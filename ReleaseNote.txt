@@ -1,0 +1,32 @@
+SDK2.0
+2016.01.15
+1.Working Principle of Alpha 2 Robot App
+2.Developer Guide
+3.Third Party development document
+  3.1 voice related functions
+  3.2 The use and release of microphone function
+  3.3 Execute the actions list function
+  3.4 Grammar recognition function
+  3.5 Chest control
+  3.6 Head control
+  3.7 Event control
+  3.8 3rd party development entry
+  3.9 Demo-1
+
+
+SDK2.1
+2016.04.20
+1.Get UUID
+2.English ASR and semantics understand
+(HINT:To use the SDK2.1, you should update android system,and install new alpha2services.You can find the update files in our package.When you want to test the robot, it is also supposed to use new client app.)
+
+
+SDK2.2
+2016.07.05
+1.add speech_setSelfInterrupt() for chinese speech engine
+2.add data passage between the app in robot and the app in mobile phone
+ 2.1 initCustomMessageApi()
+ 2.2 sendCustomMessageRequest()
+ 2.3 sendCustomMessageResp() 
+3.add action_getActionList() for getting available action list
+4.add the function of sound locate and head turning by registering broadcastreceiver action StaticValue.ALPHA_SPEECH_DIRECTION

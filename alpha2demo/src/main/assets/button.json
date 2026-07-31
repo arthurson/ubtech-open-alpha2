@@ -1,0 +1,11 @@
+{
+    "details": "details", 
+    "models": [
+        {
+            "index": "0", 
+            "text": "button"
+        }
+    ], 
+    "title": "title", 
+    "version": "1.0.0.0"
+}
