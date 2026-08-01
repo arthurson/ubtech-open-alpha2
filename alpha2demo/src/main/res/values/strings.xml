@@ -1,7 +1,0 @@
-<resources>
-    <string name="app_name">alpha2demo</string>
-    <string name="hello_world">Hello world!</string>
-    <string name="title_activity_action_main">ActionMainActivity</string>
-    <string name="title_activity_free_angle_main">FreeAngleMainActivity</string>
-    <string name="title_activity_new_sdk">NewSDKActivity</string>
-</resources>
