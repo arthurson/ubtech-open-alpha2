@@ -2,5 +2,6 @@
 // exactly (see its AGENTS.md / build.gradle) so the AIDL + Java sources here build
 // unmodified against the same Android Gradle Plugin version.
 plugins {
+    id 'com.android.application' version '4.2.2' apply false
     id 'com.android.library' version '4.2.2' apply false
 }

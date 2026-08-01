@@ -29,6 +29,12 @@
 
 ```
 lynx.open.sdk/                     (rootProject.name)
+├── app/                            (test panel app, applicationId: com.open.lynx)
+│   ├── build.gradle
+│   ├── debug.keystore
+│   └── src/main/
+│       ├── AndroidManifest.xml
+│       └── java/com/open/lynx/MainActivity.java
 └── lynx-open-sdk/                 (Android library module, namespace: com.open.lynx)
     ├── build.gradle
     ├── consumer-rules.pro
@@ -52,12 +58,27 @@ lynx.open.sdk/                     (rootProject.name)
 **注意**：AIDL 檔案同入面全部 interface 嘅 package 保持 `com.ubtechinc.alpha2serverlib.aidlinterface`
 唔變——呢個 package name 本身就係同機械人 `alpha2services` 溝通嘅 wire-format
 (`enforceInterface`/`writeInterfaceToken` 用嘅 descriptor string)，改咗個 SDK 就
-連唔到真機械人。`com.open.lynx` 淨係套用喺呢個 Gradle module 嘅 `namespace`
-（即係 module 自己新寫嗰啲 Java class 嘅 R-class/資源命名空間），唔涉及 AIDL。
+連唔到真機械人。`com.open.lynx` 套用喺 `app` module 嘅 `applicationId` 同
+`lynx-open-sdk` module 嘅 `namespace`（即係 module 自己新寫嗰啲 Java class 嘅
+R-class/資源命名空間），唔涉及 AIDL。
+
+## 測試面板 App（`app` module）
+
+一個純代碼、冇 XML layout 嘅單 Activity，每個 `Alpha2RobotApi` public method 對應
+一個掣，掣下面有個共用嘅 scrolling log 顯示每次呼叫嘅結果同 callback。冇 HTTP／
+WebSocket server，冇 camera，冇錄音——純粹用嚟喺機械人／模擬器螢幕上面逐個掣
+試哂個 SDK 嘅方法。
+
+裝落機械人（`adb install`）之後開 app，會即場：
+1. 用 `ClientAuthorizeListener` 建構 `Alpha2RobotApi`（開放版本一定 authorize 成功）
+2. 分頁按鈕分別覆蓋：init（action/chest/header/speech）、Action、Chest/Head
+   free-angle motor、LED、Speech（TTS/ASR/grammar/text understand）、Custom
+   message (XMPP)、Misc（`requestRobotUUID`、`isChestAvailable`、`isHeaderAvailable`）
 
 ## AIDL Interface 一覽（17 個）
 
 每個 interface 下面列晒：作用、Binder service 綁定用嘅 Action（如適用）、以及
+
 **method 名 + 完整簽名，順序就係 transaction id 順序**（好緊要，唔可以打亂）。
 
 ### 服務端 interface（機械人提供、SDK 呼叫）
@@ -235,10 +256,22 @@ method 已經全部移除，唔會再有編譯錯誤或者 runtime 呼叫失敗�
 ## Build
 
 ```bash
+# 淨係 build SDK 本身 (.aar)
 ./gradlew :lynx-open-sdk:assembleRelease
+
+# build 埋測試面板 apk（連埋 SDK 一齊）
+./gradlew :app:assembleDebug
 ```
 
-輸出係一個 `.aar`，`compileSdkVersion 25`、`minSdkVersion 19`（Alpha2 機械人
+呢個 project 已經包埋標準嘅 Gradle wrapper（`gradlew`、`gradlew.bat`、
+`gradle/wrapper/gradle-wrapper.{jar,properties}`），對應 **Gradle 7.0**（同
+AGP 4.2.2 相容），唔使自己另外裝 Gradle。
+
+`lynx-open-sdk` module 輸出係一個 `.aar`；`app` module 輸出係一個可以直接
+`adb install` 落機械人嘅 `.apk`（`applicationId com.open.lynx`，已經用committed
+嘅 `debug.keystore` 簽咗名，唔靠 AGP 自動生成嗰個 `~/.android/debug.keystore`）。
+
+兩個 module 都係 `compileSdkVersion 25`、`minSdkVersion 19`（Alpha2 機械人
 最舊韌體係 Android 4.4）、`sourceCompatibility`/`targetCompatibility` 都係 Java 8。
 
 呢個 module 淨係依賴 Android framework 本身，冇任何第三方 library。

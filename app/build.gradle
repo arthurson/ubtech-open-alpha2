@@ -6,7 +6,7 @@ android {
     compileSdkVersion 25
 
     defaultConfig {
-        applicationId "com.open.alpha2"
+        applicationId "com.open.lynx"
         minSdkVersion 19
         // The Alpha2 robot's earliest firmware ran Android 4.4 (KitKat, API 19).
         // Neither the SDK module nor this app use any API surface introduced after
@@ -19,9 +19,9 @@ android {
     }
 
     signingConfigs {
-        // Explicit debug keystore (see HelloAlpha's build.gradle comment upstream):
-        // AGP's auto-generated ~/.android/debug.keystore path can throw on some CI/
-        // headless environments, so a committed, non-secret debug key is used instead.
+        // Explicit debug keystore: AGP's auto-generated ~/.android/debug.keystore path
+        // can throw on some CI/headless environments, so a committed, non-secret debug
+        // key is used instead.
         debug {
             storeFile file('debug.keystore')
             storePassword 'android'
@@ -46,5 +46,5 @@ android {
 }
 
 dependencies {
-    implementation project(':sdk-module:ubtechalpha2robot')
+    implementation project(':lynx-open-sdk')
 }
