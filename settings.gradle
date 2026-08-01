@@ -13,6 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Alpha2TestPanel"
-include ':app'
-include ':sdk-module:ubtechalpha2robot'
+rootProject.name = "lynx.open.sdk"
+include ':lynx-open-sdk'
