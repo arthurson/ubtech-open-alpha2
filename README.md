@@ -4,6 +4,16 @@
 `com.ubtechinc.alpha2services` 呢個 system app 溝通所需嘅全部 AIDL interface 同
 一層薄薄嘅 Java wrapper (`Alpha2RobotApi` 呢個 façade + 6 個 `*ServiceUtil` class)。
 
+> ⚠️ **只適用於 `AlexaService` 1.2.10.5**
+>
+> 呢份 SDK 全部 AIDL 簽名都係直接反編譯**呢一個特定 APK**核實返嚟：
+> package `com.ubtechinc.alpha2services`、app label **`AlexaService`**、
+> versionName **`1.2.10.5`**（versionCode 15）。冇其他版本、冇其他機械人韌體
+> 一併驗證過。唔同 versionName 嘅 `alpha2services.apk`（甚至同一個 package name
+> 底下）都可能有完全唔同嘅 method 簽名、transaction id 順序，或者根本冇某啲
+> interface——用之前請自行核對機械人／APK 嘅 versionName 是否一致，唔一致嘅話
+> 呢份 SDK 唔保證接得通，亦都唔保證用得。
+
 呢份 README 淨係講呢個 SDK module 本身，唔包含任何示範 app、UI，或者其他組件。
 
 ## 呢個 SDK 係點確認返嚟
@@ -35,7 +45,7 @@ lynx.open.sdk/                     (rootProject.name)
 │   └── src/main/
 │       ├── AndroidManifest.xml
 │       └── java/com/open/lynx/MainActivity.java
-└── lynx-open-sdk/                 (Android library module, namespace: com.open.lynx)
+└── lynx-open-sdk/                 (Android library module, namespace: com.ubtechinc.lynxsdk)
     ├── build.gradle
     ├── consumer-rules.pro
     ├── proguard-rules.pro
@@ -60,9 +70,16 @@ lynx.open.sdk/                     (rootProject.name)
 **注意**：AIDL 檔案同入面全部 interface 嘅 package 保持 `com.ubtechinc.alpha2serverlib.aidlinterface`
 唔變——呢個 package name 本身就係同機械人 `alpha2services` 溝通嘅 wire-format
 (`enforceInterface`/`writeInterfaceToken` 用嘅 descriptor string)，改咗個 SDK 就
-連唔到真機械人。`com.open.lynx` 套用喺 `app` module 嘅 `applicationId` 同
-`lynx-open-sdk` module 嘅 `namespace`（即係 module 自己新寫嗰啲 Java class 嘅
-R-class/資源命名空間），唔涉及 AIDL。
+連唔到真機械人。
+
+`app` module 嘅 `applicationId` 係 `com.open.lynx`；`lynx-open-sdk` module 嘅
+`namespace` 係 `com.ubtechinc.lynxsdk`——兩者**特登唔一樣**。`namespace` 純粹係
+AGP 幫個 module 生成 `R`/`BuildConfig` class 用嘅命名空間，同 AIDL 完全無關，但
+如果 app 同 library module 兩個 `namespace`／`applicationId` 撞埋一齊，兩邊各自
+生成一份同名嘅 `BuildConfig`，最終 D8 dex-merge 嗰陣就會爆
+`Type com.open.lynx.BuildConfig is defined multiple times`（Android 官方文件：
+[Duplicate class errors](https://developer.android.com/studio/build/dependencies#duplicate_classes)）。
+所以兩個 module 一定要用唔同嘅 namespace，唔可以齊齊叫 `com.open.lynx`。
 
 ## 測試面板 App（`app` module）
 
@@ -330,6 +347,18 @@ AGP 4.2.2 相容），唔使自己另外裝 Gradle。
 
 ## 適用範圍
 
-呢份 SDK 對應嘅係 `com.ubtechinc.alpha2services` 呢一份特定 APK 抽出嚟嘅 AIDL
-wire contract。唔同韌體版本（例如 3.02/base3）嘅 AIDL 介面可以完全唔同，用之前
-請先確認機械人韌體版本，同呢個 SDK 對應嘅 APK 版本一致。
+呢份 SDK **只對應 `com.ubtechinc.alpha2services`（app 名 `AlexaService`）
+versionName `1.2.10.5`（versionCode 15）呢一份特定 APK**，全部 AIDL 簽名都係
+直接反編譯呢個 build 嘅 `Stub.onTransact()`／`Proxy` marshalling code 核實返嚟。
+
+**其他版本一律唔保證用得，包括：**
+- 同一個 package name（`com.ubtechinc.alpha2services`）但唔同 versionName 嘅
+  build——AIDL method 簽名、transaction id 順序、有冇某個 interface，之前已經
+  證實過會隨版本改變（本 SDK 修正歷史入面提到嘅 5-mic LED method、
+  `onPlay`/`onPlayHigh` 多餘參數等，都係源自跟錯咗版本嘅例子）
+- 完全唔同嘅韌體 base（例如 base3.002／`com.ubtechinc.alpha.serverlibutil.aidl`
+  嗰一套）——interface package、method set 完全唔一樣
+- `com.ubt.lynxupdate`（OTA 更新）嗰邊，仲取決於部機有冇裝呢個獨立 package
+
+用之前請自行核對機械人／APK 嘅 versionName 是否 `1.2.10.5`，唔一致嘅話請重新
+反編譯核實，唔好假設呢份 SDK 通用於其他版本。

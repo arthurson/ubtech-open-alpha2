@@ -3,7 +3,12 @@ plugins {
 }
 
 android {
-    namespace 'com.open.lynx'
+    // Deliberately NOT com.open.lynx (the app module's applicationId/namespace) - two
+    // modules sharing one namespace each generate their own com.open.lynx.BuildConfig,
+    // and D8 fails to merge the two into one dex with "Type ... is defined multiple
+    // times". This only affects the generated R/BuildConfig classes, not any AIDL
+    // package or real source package under com.ubtechinc.* - safe to change freely.
+    namespace 'com.ubtechinc.lynxsdk'
     compileSdkVersion 25
 
     // The AIDL interfaces in src/main/aidl are compiled to Binder stubs by AGP. Their
