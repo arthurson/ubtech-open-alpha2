@@ -42,6 +42,7 @@ lynx.open.sdk/                     (rootProject.name)
     └── src/main/
         ├── AndroidManifest.xml
         ├── aidl/com/ubtechinc/alpha2serverlib/aidlinterface/   ← 17 個 .aidl（見下）
+        ├── aidl/com/ubt/lynxupdate/                             ← OTA 更新 AIDL，獨立 package（見下）
         └── java/
             ├── com/ubtechinc/alpha2robot/
             │   ├── Alpha2RobotApi.java        主 façade，包裝晒下面 6 個 util
@@ -51,6 +52,7 @@ lynx.open.sdk/                     (rootProject.name)
             │   ├── interfaces/                SDK 對外嘅 callback interface（非 AIDL，係俾用家implement）
             │   ├── authority/                 Alpha2Authority
             │   └── constvalue/                Alpha2Intent
+            ├── com/ubtechinc/updatemanager/    LynxUpdateServiceUtil：獨立包裝 OTA 更新 AIDL
             ├── com/ubtechinc/constant/         ActionType, LanguageType, CustomLanguage 等常數
             └── com/ubtechinc/developer/        Developer 模式相關嘅資料 class
 ```
@@ -234,6 +236,52 @@ Java class 引用佢哋。佢哋喺反編譯出嚟嘅 dex 入面確實存在（�
 死碼／留俾未來擴充，唔係現行 wire contract 嘅一部分，SDK 冇為佢哋提供對應
 `.aidl` 定義。
 
+## 獨立嘅 OTA 更新 AIDL（`com.ubt.lynxupdate`）
+
+呢個 APK 入面重有一組**完全獨立**嘅 AIDL——同上面 17 個 `alpha2serverlib.
+aidlinterface` 唔屬於同一個 package、唔靠同一個 `initXxxApi()` 入口、甚至唔係
+`bind` 呢個 APK（`com.ubtechinc.alpha2services`）自己嘅 component。
+
+呢組 AIDL 嘅存在，源自機械人喺呢個 build 入面用嚟顯示語音提示嘅字串資源
+（`res/xml/english.xml`）自稱「Lynx」（喚醒詞係 "Hello Lynx"），加上
+`classes.dex` 入面搵到成套 `com.ubt.lynxupdate` 相關字串（`ROBOT_LYNX_READY`、
+`triggleLynxUpdate` 等）先發現。呢個亦解釋咗點解幫 SDK 改名做 `com.open.lynx`
+會啱得咁好——`Lynx` 本身就係呢個機械人喺廠內嘅產品代號。
+
+**綁定方式**：`Alpha2UpdataServiceUtil.bindUpdateService()` 用嘅係
+`new Intent("com.ubt.lynxupdate.services.UpdateAidlService")
+.setPackage("com.ubt.lynxupdate")`——即係話 `IUpdataBussiness` 呢個 service
+係由**另一個獨立安裝嘅 app**（package name `com.ubt.lynxupdate`）提供，唔係
+`alpha2services` 自己嘅 component。如果部機冇裝呢個 package，`bindService()`
+會直接 return `false`，唔會有任何 callback。
+
+#### `IClientListener`（`com.ubt.lynxupdate.IClientListener`）
+由 `IUpdataBussiness` service 反向呼叫嘅 callback。呢個 interface 喺呢個 build
+入面**冇被 proguard 縮寫**——`enforceInterface`/`writeInterfaceToken` 直接見到
+真實 descriptor string，兩個 method 名都係直接喺 smali 見到嘅原名，包括原廠碼
+本身嘅串字錯誤（`onReonseForUpdate`，少咗個「p」，即係 Response）：
+```java
+void onError(int errorCode);
+void onReonseForUpdate(boolean success);   // 原名故意保留咗呢個串字錯誤
+```
+
+#### `IUpdataBussiness`（`com.ubt.lynxupdate.IUpdataBussiness`）
+更新流程本身嘅控制 interface。呢個 interface 嘅 method 名喺呢個 build 已經俾
+proguard 縮寫做 `a`/`b`/`c`，冇得直接還原，但逐個對照返
+`Alpha2UpdataServiceUtil`（consumer）點樣呼叫佢哋，語意已經好清楚：
+```java
+void checkUpdate();                                   // id 1：對應 checkingUpdate()
+void executeUpdate();                                 // id 2：對應 executorUpdata()
+boolean registerClientListener(IClientListener listener);  // id 3：bind 完即刻call
+boolean unregisterClientListener();                    // id 4：release 前 call
+void triggerUpdate(int mode);                          // id 5：1=download，2=執行更新（直接反編譯到嘅字面常數）
+```
+`triggerUpdate` 嘅 `mode` 值係直接由 `triggleLynxDownload()`/`triggleLynxUpdate()`
+兩個 caller 傳入嘅字面常數反編譯確認（`1`／`2`），唔係估嘅。
+
+SDK 入面對應嘅 wrapper 係 `com.ubtechinc.updatemanager.LynxUpdateServiceUtil`
+（獨立於下面嘅 6 個 `*ServiceUtil`，因為佢綁定緊唔同 package）。
+
 ## Java Wrapper 層
 
 `Alpha2RobotApi` 係主要對外 façade，內部靠以下 6 個 `*ServiceUtil` 分別
@@ -248,6 +296,10 @@ Java class 引用佢哋。佢哋喺反編譯出嚟嘅 dex 入面確實存在（�
 | `Alpha2SpeechMainServiceUtil` | `ISpeechInterface` | `com.ubtechinc.services.SpeechServices` |
 | `Alpha2XmppServiceUtil` | `IAlpha2XmppListener` | XMPP service |
 | `AlphaMainServiceUtil` | （內部整合多個 util，`initSpeechApi` 等入口點） | — |
+
+`Alpha2RobotApi` 冇包 `LynxUpdateServiceUtil`（見上面 OTA 更新一節）——呢個
+util 要獨立 new 出嚟用，因為佢綁定緊完全唔同嘅 package，唔屬於 `Alpha2RobotApi`
+一直以嚟包裝嘅 `alpha2services` wire contract。
 
 呢層 wrapper 全部都跟返上面嘅 AIDL 簽名一致（包括之前發現、已經改正嘅
 `onPlay`/`onPlayHigh` 參數個數、5-mic LED 呢類喺呢個 build 根本唔存在嘅
