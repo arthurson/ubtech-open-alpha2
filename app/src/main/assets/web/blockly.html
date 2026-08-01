@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Open Alpha2 — Blockly 積木編程</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="blockly.css">
+</head>
+<body class="blockly-body">
+
+<div id="errorBanner" class="error-banner"></div>
+
+<header class="bk-header">
+  <a href="index.html" class="bk-back" title="返回控制面板">←</a>
+  <h1>🧩 Alpha2 積木編程</h1>
+  <div class="bk-header-status">
+    <span id="wsStatusDot" class="run-status-dot idle"></span>
+    <span id="wsStatusText">WebSocket: 未連接</span>
+  </div>
+</header>
+
+<div class="bk-toolbar">
+  <div class="bk-toolbar-group">
+    <button id="runBtn" class="bk-btn bk-btn-primary" onclick="AlphaBlockly.run()">▶ 執行</button>
+    <button id="stopBtn" class="bk-btn bk-btn-danger" onclick="AlphaBlockly.stop()" disabled>⏹ 停止</button>
+    <span id="runStatusDot" class="run-status-dot idle"></span>
+    <span id="runStatusText">閒置</span>
+  </div>
+
+  <div class="bk-toolbar-group">
+    <button class="bk-btn" onclick="AlphaBlockly.refreshActionDropdown()">🔄 攞動作列表</button>
+  </div>
+
+  <div class="bk-toolbar-group">
+    <input id="saveNameInput" class="bk-input" placeholder="程式名稱" style="width:120px">
+    <button class="bk-btn" onclick="doSaveNamed()">💾 儲存</button>
+    <select id="savedProgramSelect" class="bk-input"></select>
+    <button class="bk-btn" onclick="doLoadNamed()">📂 載入</button>
+    <button class="bk-btn bk-btn-danger-outline" onclick="doDeleteNamed()">🗑 刪除</button>
+  </div>
+
+  <div class="bk-toolbar-group">
+    <button class="bk-btn" onclick="AlphaBlockly.exportXmlFile()">⬇ 匯出 .xml</button>
+    <label class="bk-btn bk-btn-file">
+      ⬆ 匯入 .xml
+      <input type="file" id="importFileInput" accept=".xml" style="display:none" onchange="onImportFile(this)">
+    </label>
+    <button class="bk-btn bk-btn-danger-outline" onclick="onClearWorkspace()">🧹 清空畫布</button>
+  </div>
+</div>
+
+<div class="bk-main">
+  <div id="blocklyDiv" class="bk-canvas"></div>
+
+  <div class="bk-side">
+    <div class="bk-side-header">
+      <h2>執行紀錄</h2>
+      <div class="row">
+        <button class="bk-btn bk-btn-small" onclick="document.getElementById('runLog').innerHTML=''">清空</button>
+        <label class="bk-small-label"><input type="checkbox" id="runAutoScroll" checked> 自動捲動</label>
+      </div>
+    </div>
+    <pre id="runLog" class="run-log"></pre>
+  </div>
+</div>
+
+<script src="blockly_compressed.js"></script>
+<script src="blocks_compressed.js"></script>
+<script src="blockly_msg_zh-hant.js"></script>
+<script src="blockly-actions-data.js"></script>
+<script src="blockly-blocks.js"></script>
+<script src="blockly-toolbox.js"></script>
+<script src="blockly-run.js"></script>
+<script src="blockly-page.js"></script>
+</body>
+</html>
