@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title data-i18n="page_title">Open Alpha2 — Blockly 積木編程</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="blockly.css">
+</head>
+<body class="blockly-body">
+
+<div id="errorBanner" class="error-banner"></div>
+
+<header class="bk-header">
+  <a href="index.html" class="bk-back" data-i18n="page_back_title" data-i18n-attr="title" title="返回控制面板">←</a>
+  <h1 data-i18n="page_h1">🧩 Alpha2 積木編程</h1>
+  <span id="blocklyVersionBadge" class="bk-version-badge" data-i18n="page_version_badge_title" data-i18n-attr="title" title="Blockly library 版本 (核心 blockly_compressed.js + 標準 blocks_compressed.js)"></span>
+  <span class="lang-toggle bk-lang-toggle">
+    <button type="button" data-ui-lang-btn="zh" onclick="setUiLanguage('zh')">中文</button>
+    <button type="button" data-ui-lang-btn="en" onclick="setUiLanguage('en')">English</button>
+  </span>
+  <div class="bk-header-status">
+    <span id="wsStatusDot" class="run-status-dot idle"></span>
+    <span id="wsStatusText" data-i18n="page_ws_disconnected">WebSocket: 未連接</span>
+  </div>
+</header>
+
+<div class="bk-toolbar">
+  <div class="bk-toolbar-group">
+    <button id="runBtn" class="bk-btn bk-btn-primary" onclick="AlphaBlockly.run()" data-i18n="page_run_btn">▶ 執行</button>
+    <button id="stopBtn" class="bk-btn bk-btn-danger" onclick="AlphaBlockly.stop()" disabled data-i18n="page_stop_btn">⏹ 停止</button>
+    <span id="runStatusDot" class="run-status-dot idle"></span>
+    <span id="runStatusText" data-i18n="page_run_status_idle">閒置</span>
+  </div>
+
+  <div class="bk-toolbar-group">
+    <button class="bk-btn" onclick="AlphaBlockly.refreshActionDropdown()" data-i18n="page_refresh_actions_btn">🔄 攞動作列表</button>
+  </div>
+
+  <div class="bk-toolbar-group">
+    <input id="saveNameInput" class="bk-input" placeholder="程式名稱" data-i18n="page_save_name_placeholder" data-i18n-attr="placeholder" style="width:120px">
+    <button class="bk-btn" onclick="doSaveNamed()" data-i18n="page_save_btn">💾 儲存</button>
+    <select id="savedProgramSelect" class="bk-input"></select>
+    <button class="bk-btn" onclick="doLoadNamed()" data-i18n="page_load_btn">📂 載入</button>
+    <button class="bk-btn bk-btn-danger-outline" onclick="doDeleteNamed()" data-i18n="page_delete_btn">🗑 刪除</button>
+  </div>
+
+  <div class="bk-toolbar-group">
+    <button class="bk-btn" onclick="AlphaBlockly.exportXmlFile()" data-i18n="page_export_btn">⬇ 匯出 .xml</button>
+    <label class="bk-btn bk-btn-file">
+      <span data-i18n="page_import_btn">⬆ 匯入 .xml</span>
+      <input type="file" id="importFileInput" accept=".xml" style="display:none" onchange="onImportFile(this)">
+    </label>
+    <button class="bk-btn bk-btn-danger-outline" onclick="onClearWorkspace()" data-i18n="page_clear_workspace_btn">🧹 清空畫布</button>
+  </div>
+</div>
+
+<div class="bk-main">
+  <div id="blocklyDiv" class="bk-canvas"></div>
+
+  <div class="bk-side">
+    <div class="bk-side-header">
+      <h2 data-i18n="page_run_log_title">執行紀錄</h2>
+      <div class="row">
+        <button class="bk-btn bk-btn-small" onclick="document.getElementById('runLog').innerHTML=''" data-i18n="page_clear_log_btn">清空</button>
+        <label class="bk-small-label"><input type="checkbox" id="runAutoScroll" checked> <span data-i18n="page_auto_scroll_label">自動捲動</span></label>
+      </div>
+    </div>
+    <pre id="runLog" class="run-log"></pre>
+  </div>
+</div>
+
+<script src="blockly_compressed.js"></script>
+<script src="blocks_compressed.js"></script>
+<script src="blockly_msg_zh-hant.js"></script>
+<script>
+  // 兩份 Blockly 內建 msg 檔 (zh-hant/en) 揸手都係直接寫入 Blockly.Msg,
+  // 冇留低獨立 dictionary 俾之後切換用 —— 呢度喺 zh-hant load 完、en load
+  // 之前, 影一份快照低, 等 blockly-i18n.js 之後可以喺兩者之間 runtime 切換
+  // (詳見 blockly-i18n.js 開頭註解)。
+  window.__ALPHA_BLOCKLY_MSG_ZH = Object.assign({}, Blockly.Msg);
+</script>
+<script src="blockly_msg_en.js"></script>
+<script>
+  window.__ALPHA_BLOCKLY_MSG_EN = Object.assign({}, Blockly.Msg);
+</script>
+<script src="blockly-i18n.js"></script>
+<script src="blockly-blocks-i18n-data.js"></script>
+<script src="blockly-actions-data.js"></script>
+<script src="blockly-servo-data.js"></script>
+<script src="blockly-ringtone-data.js"></script>
+<script src="blockly-blocks.js"></script>
+<script src="blockly-toolbox.js"></script>
+<script src="blockly-run.js"></script>
+<script src="blockly-page.js"></script>
+</body>
+</html>

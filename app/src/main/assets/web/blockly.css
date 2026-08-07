@@ -1,0 +1,208 @@
+/* Open Alpha2 — Blockly 頁面樣式。
+   刻意唔重新定義色系, 全部食 style.css 已有嘅 CSS 變數 (--bg/--accent/--border/...),
+   等呢頁同「控制面板」個幾個 tab 睇落係同一個產品, 唔係外掛第三方風格。 */
+
+.blockly-body {
+  /* style.css 個 body 本身已經係 flex column + height:100vh + overflow:hidden,
+     呢度淨係補返 Blockly 頁專屬嘅內層排版, 唔覆寫 body 本身。 */
+}
+
+.bk-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.bk-back {
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 20px;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.bk-back:hover { background: var(--track); color: var(--text); }
+
+.bk-header h1 {
+  margin: 0;
+  font-size: 17px;
+  flex: 1 1 auto;
+}
+
+.bk-version-badge {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--track);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+.bk-header-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.bk-lang-toggle {
+  flex: 0 0 auto;
+}
+
+.bk-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  padding: 8px 20px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.bk-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bk-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bk-btn:hover { background: var(--accent-hover); }
+.bk-btn:disabled { background: var(--track); color: var(--muted); cursor: not-allowed; }
+
+.bk-btn-small { padding: 4px 8px; font-size: 12px; }
+
+.bk-btn-danger { background: var(--err); }
+.bk-btn-danger:hover { background: #b91c1c; }
+.bk-btn-danger:disabled { background: var(--track); color: var(--muted); }
+
+.bk-btn-danger-outline {
+  background: #fff;
+  color: var(--err);
+  border: 1px solid var(--err);
+}
+.bk-btn-danger-outline:hover { background: #fef2f2; }
+
+.bk-btn-file {
+  display: inline-flex;
+  align-items: center;
+}
+
+.bk-input {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--text);
+  background: #fff;
+}
+
+.bk-small-label {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.run-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  background: var(--muted);
+  flex: 0 0 auto;
+}
+.run-status-dot.idle { background: var(--muted); }
+.run-status-dot.running {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
+  animation: bk-pulse 1.4s infinite;
+}
+@keyframes bk-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.35); }
+  70%  { box-shadow: 0 0 0 6px rgba(22, 163, 74, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+}
+
+.bk-main {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.bk-canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bg);
+}
+
+.bk-side {
+  flex: 0 0 340px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--card-bg);
+  min-height: 0;
+}
+
+.bk-side-header {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.bk-side-header h2 {
+  margin: 0 0 6px 0;
+  font-size: 14px;
+}
+.bk-side-header .row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.run-log {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  margin: 0;
+  padding: 10px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+
+.run-log-line { padding: 2px 0; border-bottom: 1px dashed var(--border); }
+.run-log-line.sys { color: var(--accent); }
+.run-log-line.user { color: var(--text); font-weight: 600; }
+.run-log-line.warn { color: #b45309; }
+.run-log-line.err { color: var(--err); }
+
+@media (max-width: 900px) {
+  .bk-main { flex-direction: column; }
+  .bk-side { flex: 0 0 260px; border-left: none; border-top: 1px solid var(--border); }
+  .bk-header h1 { font-size: 15px; }
+  /* 窄螢幕 (手機直向) 個 header 已經幾迫: 返回箭頭 + 標題 + WS 連接狀態,
+     版本號 badge 淨係參考資訊, 唔係核心操作, 索性喺呢個闊度隱藏, 留返空間
+     俾 WebSocket 連接狀態 (呢個先係用家實際需要留意嘅嘢)。 */
+  .bk-version-badge { display: none; }
+  .bk-lang-toggle button { padding: 3px 8px; font-size: 11px; }
+}
+
