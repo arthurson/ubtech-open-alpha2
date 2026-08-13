@@ -177,6 +177,11 @@ window.ALPHA_BLOCK_I18N = {
   sensor_sonar_toggle__tooltip: { zh: '開啟或關閉聲納感應器 (/api/alpha2/servo/sonar)。聲納冇獨立嘅開關欄位 —— 「關閉」係送 distance=0, 「開啟」就送右邊揀嘅門檻距離。要先開咗呢個, 「當聲納偵測到障礙」個 block 先會有反應。同主控制面板「感應」分頁嘅開關掣係同一個狀態。',
                                 en: 'Turn the sonar sensor on or off (/api/alpha2/servo/sonar). Sonar has no separate on/off field — "Off" sends distance=0, "On" sends the threshold distance selected on the right. This must be on for the "when sonar detects an obstacle" block to fire. Shares the same state as the toggle in the main panel\u2019s "Sensors" tab.' },
 
+  // -- PIR sensor (Lynx 專屬硬件, 見 blockly-blocks.js alpha_sensor_pir_toggle 註解) --
+  sensor_pir_toggle__label: { zh: '📟 PIR 人體感應器', en: '📟 PIR sensor' },
+  sensor_pir_toggle__tooltip: { zh: '開啟或關閉 PIR (人體紅外線) 感應器硬件 (/api/lynx/sys/pir)。淨係 Lynx 有呢種硬件, Alpha2 冇對應概念。要先開咗呢個, 「當 PIR 偵測到有人」個 block 先會有反應。同主控制面板「PIR 感應器」card 嘅「感應器開關」係同一個狀態 (同「警示反應」(閃紅燈/響鈴) 係兩件事, 呢粒 block 淨係開硬件, 唔會自動觸發警示)。',
+                                en: 'Turn the PIR (passive infrared, human-presence) sensor hardware on or off (/api/lynx/sys/pir). Only Lynx has this hardware — Alpha2 has no equivalent. This must be on for the "when PIR detects presence" block to fire. Shares the same state as the "Sensor switch" toggle in the main panel\u2019s "PIR Sensor" card (this is separate from the "Alert reaction" (red LED + chime) toggle — this block only turns the hardware on, it doesn\u2019t trigger the alert by itself).' },
+
   // -- alpha_event_accel_threshold --
   event_accel__label:        { zh: '🔔 當加速度計', en: '🔔 When accelerometer' },
   event_accel__axis_x:       { zh: 'X 軸', en: 'X axis' },
@@ -198,6 +203,15 @@ window.ALPHA_BLOCK_I18N = {
   // 注意: 冇 event_sonar__var_label key, 原因同上 (見 event_accel__var_label 註解)。
   event_sonar__tooltip:      { zh: '聲納事件驅動 hat block: 機械人偵測到障礙物進入設定門檻距離之內先觸發 (即 sonar_obstacle 事件嘅 triggered=true 果一刻, 由遠變近先算, 唔會不斷重複觸發)。門檻距離用「伺服」分類嘅「聲納觸發距離」block 或者「感應」分頁設定。存入變數嘅資料包含 {triggered, thresholdCm}。',
                                 en: 'Sonar event-driven hat block: fires when the robot detects an obstacle coming within the configured threshold distance (i.e. the moment the sonar_obstacle event\u2019s triggered=true, going from far to near — it doesn\u2019t fire repeatedly). Set the threshold with the "Sonar trigger distance" block in the Servo category, or on the Sensors tab. The stored data includes {triggered, thresholdCm}.' },
+
+  // -- alpha_event_pir_triggered (Lynx 專屬, 見 sensor_pir_toggle__tooltip 註解) --
+  event_pir__label:        { zh: '🔔 當 PIR', en: '🔔 When PIR' },
+  event_pir__when_detected: { zh: '偵測到有人', en: 'detects presence' },
+  event_pir__when_lost:     { zh: '冇再偵測到有人', en: 'no longer detects presence' },
+  event_pir__store_prefix: { zh: '存資料入', en: 'store data in' },
+  // 注意: 冇 event_pir__var_label key, 原因同 event_accel__var_label 一樣 (見該處註解)。
+  event_pir__tooltip:      { zh: 'PIR 事件驅動 hat block, 用開頭個 dropdown 揀觸發方向:「偵測到有人」係冇人變有人嗰一刻觸發 (rising edge),「冇再偵測到有人」就係有人變返冇人嗰一刻觸發 (falling edge) —— 兩個方向都係狀態改變先觸發一次, 唔會人一路企喺度就不斷重複跑。要先用返上面「PIR 人體感應器」block 或者主控制面板「PIR 感應器」card 開咗個開關先會有事件送到。存入變數嘅資料包含 {triggered}。淨係 Lynx 有呢種硬件, Alpha2 完全冇對應概念。',
+                                en: 'PIR event-driven hat block — use the dropdown at the start to choose the trigger direction: "detects presence" fires on the no-one-to-someone edge (rising edge), "no longer detects presence" fires on the someone-to-no-one edge (falling edge) — either way it fires once per state change, not repeatedly while someone stands there. The "PIR sensor" block above, or the "Sensor switch" toggle in the main panel\u2019s "PIR Sensor" card, must be on first for events to arrive. The stored data includes {triggered}. Only Lynx has this hardware — Alpha2 has no equivalent.' },
 
   // -- flow control --
   wait_seconds__label:       { zh: '等待', en: 'Wait' },
@@ -243,11 +257,23 @@ window.ALPHA_BLOCK_I18N = {
   page_export_btn:           { zh: '⬇ 匯出 .xml', en: '⬇ Export .xml' },
   page_import_btn:           { zh: '⬆ 匯入 .xml', en: '⬆ Import .xml' },
   page_clear_workspace_btn:  { zh: '🧹 清空畫布', en: '🧹 Clear workspace' },
+
+  // -- 剪貼/復原掣列 (抄自 NuwaRobotics Code Lab, 而家用 Blockly.ComponentManager
+  // 起做真正嘅 SVG UI component, 見 blockly-run.js 嘅 EditFabControls class) --
+  page_edit_undo_title:      { zh: '復原 (Ctrl+Z)', en: 'Undo (Ctrl+Z)' },
+  page_edit_redo_title:      { zh: '取消復原 (Ctrl+Y)', en: 'Redo (Ctrl+Y)' },
+  page_edit_cut_title:       { zh: '剪下揀咗嘅積木 (Ctrl+X)', en: 'Cut selected block (Ctrl+X)' },
+  page_edit_copy_title:      { zh: '複製揀咗嘅積木 (Ctrl+C)', en: 'Copy selected block (Ctrl+C)' },
+  page_edit_paste_title:     { zh: '貼上 (Ctrl+V)', en: 'Paste (Ctrl+V)' },
+  page_edit_delete_title:    { zh: '刪除揀咗嘅積木 (Delete)', en: 'Delete selected block (Delete)' },
+  page_side_toggle_title:    { zh: '收埋/展開執行紀錄面板', en: 'Collapse/expand the run log panel' },
+
   page_run_log_title:        { zh: '執行紀錄', en: 'Run log' },
   page_clear_log_btn:        { zh: '清空', en: 'Clear' },
   page_auto_scroll_label:    { zh: '自動捲動', en: 'Auto-scroll' },
   page_version_badge_title:  { zh: 'Blockly library 版本 (核心 blockly_compressed.js + 標準 blocks_compressed.js)',
                                 en: 'Blockly library version (core blockly_compressed.js + standard blocks_compressed.js)' },
+  page_backend_toggle_title: { zh: '每粒積木會經邊個 backend (Alpha2 / Lynx) 送出 API', en: 'Which backend (Alpha2 / Lynx) each block sends its API call through' },
 
   // ==== blockly-page.js 動態產生嘅文字 (WebSocket 狀態/錯誤訊息/confirm 對話框) ====
   page_ws_connected:         { zh: '已連接', en: 'connected' },
@@ -259,8 +285,8 @@ window.ALPHA_BLOCK_I18N = {
   page_confirm_delete:       { zh: '確定要刪除「{name}」？', en: 'Delete "{name}"?' },
   page_confirm_clear_workspace: { zh: '確定要清空成個畫布？呢個動作唔可以復原 (但係自動儲存已存低嘅版本仍然可以用「載入」攞返)。',
                                 en: 'Clear the entire workspace? This cannot be undone (but the auto-saved version can still be recovered via "Load").' },
-  page_https_hint:           { zh: '　(如果重新整理都係咁, 可以試下開返首頁 index.html, 喺網址列嗰個 "連線不是私人連線" 警告度撳 進階 → 繼續前往, 接受自簽證書後先再開返呢頁)',
-                                en: '\u3000(If reloading doesn\u2019t help, try opening index.html first and, on the browser\u2019s "connection is not private" warning, click Advanced \u2192 Proceed to accept the self-signed certificate, then come back to this page)' },
+  page_confirm_switch_backend: { zh: '轉 backend 會刷新頁面，畫布上未儲存嘅積木會不見 (已經用「儲存」存低嘅程式唔會受影響)。是否繼續？',
+                                en: 'Switching backend reloads the page — any unsaved blocks on the canvas will be lost (programs you already saved are not affected). Continue?' },
 
   // ==== blockly-run.js 「執行紀錄」面板嘅 logLine() 訊息 ====
   run_status_running:        { zh: '執行緊…', en: 'Running…' },
@@ -304,6 +330,7 @@ window.ALPHA_BLOCK_I18N = {
   run_accel_toggle:           { zh: '📟 加速度計感應器: {on}', en: '📟 Accelerometer sensor: {on}' },
   run_sonar_toggle:           { zh: '📟 聲納感應器: {on}{thresholdNote}', en: '📟 Sonar sensor: {on}{thresholdNote}' },
   run_sonar_toggle_threshold: { zh: ' (門檻 {dist}cm)', en: ' (threshold {dist}cm)' },
+  run_pir_toggle:              { zh: '📟 PIR 人體感應器: {on}', en: '📟 PIR sensor: {on}' },
   run_wait_seconds:           { zh: '⏳ 等待 {secs} 秒', en: '\u23F3 Wait {secs}s' },
   run_stop_program:           { zh: '⏹ 程式主動停止', en: '⏹ Program stopped' },
   run_unsupported_block:      { zh: '⚠ 未支援嘅 block 類型: {type}', en: '⚠ Unsupported block type: {type}' },
@@ -314,9 +341,10 @@ window.ALPHA_BLOCK_I18N = {
   run_program_stopped:        { zh: '⏹ 程式已停止', en: '⏹ Program stopped' },
   run_program_finished:       { zh: '✅ 程式執行完畢', en: '✅ Program finished' },
   run_user_pressed_stop:      { zh: '⏹ 使用者按下停止', en: '⏹ User pressed stop' },
-  run_handlers_registered:    { zh: '🔗 已註冊 {accel} 個加速度計觸發 + {sonar} 個聲納觸發 block', en: '\u{1F517} Registered {accel} accelerometer trigger(s) + {sonar} sonar trigger(s)' },
+  run_handlers_registered:    { zh: '🔗 已註冊 {accel} 個加速度計觸發 + {sonar} 個聲納觸發 + {pir} 個 PIR 觸發 block', en: '\u{1F517} Registered {accel} accelerometer trigger(s) + {sonar} sonar trigger(s) + {pir} PIR trigger(s)' },
   run_accel_trigger_error:    { zh: '❌ 加速度計觸發錯誤: {err}', en: '❌ Accelerometer trigger error: {err}' },
   run_sonar_trigger_error:    { zh: '❌ 聲納觸發錯誤: {err}', en: '❌ Sonar trigger error: {err}' },
+  run_pir_trigger_error:      { zh: '❌ PIR 觸發錯誤: {err}', en: '❌ PIR trigger error: {err}' },
   run_restored_autosave:      { zh: '💾 已還原上次自動儲存嘅程式', en: '💾 Restored last auto-saved program' },
   run_saved_as:               { zh: '💾 已儲存做「{name}」', en: '💾 Saved as "{name}"' },
   run_loaded:                 { zh: '📂 已載入「{name}」', en: '📂 Loaded "{name}"' },
@@ -330,6 +358,24 @@ window.ALPHA_BLOCK_I18N = {
   run_action_list_loaded:       { zh: '✅ 已載入 {count} 個動作', en: '✅ Loaded {count} action(s)' },
   run_action_list_failed:       { zh: '❌ 抓取動作清單失敗', en: '❌ Failed to fetch action list' },
   run_action_list_load_failed_option: { zh: '(載入失敗)', en: '(load failed)' },
+
+  // ==== Lynx/Alpha2 backend adapter (見 blockly-run.js 開頭嘅 backend adapter 註解) ====
+  run_unsupported_on_lynx:      { zh: '⚠ 「{block}」喺 Lynx backend 冇對應功能, 已跳過', en: '⚠ "{block}" has no Lynx equivalent — skipped' },
+  run_unsupported_on_alpha2:    { zh: '⚠ 「{block}」喺 Alpha2 backend 冇對應功能, 已跳過', en: '⚠ "{block}" has no Alpha2 equivalent — skipped' },
+  run_led_preset_name_chase:    { zh: '走馬燈', en: 'chase' },
+  run_led_preset_name_dual:     { zh: '雙色', en: 'dual-colour' },
+  run_led_preset_name_breathe:  { zh: '呼吸燈', en: 'breathe' },
+  run_tts_lynx_engine_ignored:  { zh: 'ℹ Lynx 淨係用 Android 內建 TTS, 呢粒 block 揀嘅語音引擎/聲線喺 Lynx 冇效果', en: 'ℹ Lynx only uses the built-in Android TTS — this block\\u2019s engine/voice selection has no effect on Lynx' },
+  run_block_name_set_mic:       { zh: '設定咪高峰擁有權 (麥克風喚醒切換)', en: 'Set microphone ownership (wake-word toggle)' },
+  run_block_name_start_asr:     { zh: '開始語音辨識 (ASR)', en: 'Start speech recognition (ASR)' },
+  run_block_name_set_voice:     { zh: '設定語音聲線', en: 'Set TTS voice' },
+  run_block_name_set_language:  { zh: '設定語音語言', en: 'Set TTS language' },
+  run_block_name_self_interrupt: { zh: '語音自我打斷開關', en: 'TTS self-interrupt toggle' },
+  run_block_name_ringtone:      { zh: '電話/通知鈴聲', en: 'Phone/notification ringtone' },
+  run_block_name_sonar:         { zh: '超聲波測距', en: 'Ultrasonic distance sensor' },
+  run_block_name_sonar_event:   { zh: '「偵測到聲納障礙」事件 block', en: '"Sonar obstacle detected" event block' },
+  run_block_name_pir:           { zh: 'PIR 人體感應器', en: 'PIR sensor' },
+  run_block_name_pir_event:     { zh: '「PIR 偵測到有人」事件 block', en: '"PIR detects presence" event block' },
 
   // ==== blockly-actions-data.js 嘅 15 個子分類顯示名 ====
   // ⚠️ 呢啲 key 純粹用嚟顯示 (dropdown label / 分類前綴), 唔係 sub 本身嘅

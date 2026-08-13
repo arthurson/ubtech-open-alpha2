@@ -33,14 +33,33 @@ window.buildAlphaToolbox = function () {
       ]
     },
     {
+      // Sonar (聲納) 係 Alpha2 專屬硬件, PIR (人體紅外線) 係 Lynx 專屬硬件,
+      // 兩者冇對應關係 (見 blockly-blocks.js alpha_sensor_pir_toggle /
+      // alpha_servo_sonar 一帶嘅註解) —— 用家反映想要「toolbox 完全唔顯示
+      // 用唔到嗰種」, 所以呢度按 window.BLOCKLY_BACKEND 揀邊 4 粒 block 加入
+      // 呢個分類, 唔再淨係靠 blockly-run.js 執行時先報「唔支援」。
+      //
+      // ⚠️ 呢個判斷一定要喺 buildAlphaToolbox() 入面 (即係每次 call 先計一次),
+      // 唔可以攞出去做 module-level const —— 原因同 t() 嗰堆 i18n 字串一樣
+      // (見檔案開頭大段註解): window.BLOCKLY_BACKEND 理論上可以喺頁面生命週期
+      // 入面唔同 (雖然而家 setBlocklyBackend() 實際上係刷新成頁, 但呢度唔應該
+      // 假設呢個實作細節唔會變), buildAlphaToolbox 必須每次執行都reflect 返
+      // 當下嘅 backend。
       kind: 'category', name: t('toolbox_cat_events'), colour: '0',
       contents: [
         { kind: 'block', type: 'alpha_sensor_accel_toggle', fields: { ON: 'true' } },
-        { kind: 'block', type: 'alpha_sensor_sonar_toggle', fields: { ON: 'true' } },
+      ].concat(
+        window.BLOCKLY_BACKEND === 'lynx'
+          ? [{ kind: 'block', type: 'alpha_sensor_pir_toggle', fields: { ON: 'true' } }]
+          : [{ kind: 'block', type: 'alpha_sensor_sonar_toggle', fields: { ON: 'true' } }]
+      ).concat([
         { kind: 'sep' },
         { kind: 'block', type: 'alpha_event_accel_threshold' },
-        { kind: 'block', type: 'alpha_event_sonar_triggered' },
-      ]
+      ]).concat(
+        window.BLOCKLY_BACKEND === 'lynx'
+          ? [{ kind: 'block', type: 'alpha_event_pir_triggered' }]
+          : [{ kind: 'block', type: 'alpha_event_sonar_triggered' }]
+      )
     },
     {
       // 2026-08 更新: 動作 block 由一粒 alpha_action_play_builtin (帶 CATEGORY
@@ -95,8 +114,11 @@ window.buildAlphaToolbox = function () {
         { kind: 'block', type: 'alpha_servo_home' },
         { kind: 'block', type: 'alpha_servo_all', inputs: { ANGLES: { shadow: { type: 'text', fields: { TEXT: '120,120,120,120,120,120,120,65,145,140,120,120,175,95,100,120,120,120,120,120' } } } } },
         { kind: 'block', type: 'alpha_servo_all_helper' },
-        { kind: 'block', type: 'alpha_servo_sonar' },
-      ]
+      ].concat(
+        // alpha_servo_sonar 淨係 Alpha2 有對應硬件 (見上面「🔔 事件」分類嗰段
+        // 大註解, 一樣嘅原因) —— Lynx toolbox 完全唔顯示呢粒 block。
+        window.BLOCKLY_BACKEND === 'lynx' ? [] : [{ kind: 'block', type: 'alpha_servo_sonar' }]
+      )
     },
     {
       kind: 'category', name: t('toolbox_cat_led'), colour: '290',
@@ -177,7 +199,7 @@ window.buildAlphaToolbox = function () {
       kind: 'category', name: t('toolbox_cat_examples'), colour: '15',
       contents: (function () {
         // 例子 1 嘅 TTS engine 要跟住顯示語言變: 中文用 iflytek, 英文用
-        // nuance (對照 AIDL_REFERENCE.md 1.1 節: iFlytek 對應 zh_cn, Nuance
+        // nuance (對照 AIDL_REFERENCE_ALPHA2.md 1.1 節: iFlytek 對應 zh_cn, Nuance
         // 對應 en_us, 呢個係機身引擎本身嘅語言限制, 唔係隨便揀)。原始 XML
         // (用家喺 workspace 度手動組出嚟嘅) 淨係得一個固定語言版本, 兩句
         // TTS 都係 iflytek —— 但依家個示範文字本身已經跟 uiLang 切換

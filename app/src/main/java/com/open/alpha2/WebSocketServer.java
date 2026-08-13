@@ -104,13 +104,34 @@ public class WebSocketServer {
                 boolean masked = (b1 & 0x80) != 0;
                 long len = b1 & 0x7F;
 
+                // 2026-08 修正: 之前呢兩個分支入面嘅 in.read() 完全冇檢查 -1 (EOF) ——
+                // 如果連線啱啱好喺讀緊 16-bit/64-bit length 嗰陣斷咗, `-1 & 0xFF` 會
+                // 變成 255, 靜靜哋攞到一個錯誤嘅 length 值而唔係俾人發現到係 EOF, 跟住
+                // 落去可能用住一個垃圾 length 去讀 payload, 有機會卡死或者讀入垃圾
+                // 資料。而家改用 readByteOrThrow(), 一旦撞到 EOF 就即刻拋
+                // IOException, 俾返 handleUpgrade() 嗰層現有嘅 catch (IOException e)
+                // 接住, 同一般連線中斷冇分別噉樣結束呢個 loop。
                 if (len == 126) {
-                    len = ((in.read() & 0xFF) << 8) | (in.read() & 0xFF);
+                    len = (readByteOrThrow(in) << 8) | readByteOrThrow(in);
                 } else if (len == 127) {
                     len = 0;
                     for (int i = 0; i < 8; i++) {
-                        len = (len << 8) | (in.read() & 0xFF);
+                        len = (len << 8) | readByteOrThrow(in);
                     }
+                }
+
+                // 2026-08 新增: 之前呢度冇對 len 做任何上限檢查 —— 一個惡意 client
+                // 可以送一個 opcode=127 (64-bit length) 嘅 frame header, 聲稱 payload
+                // 有幾 GB, `new byte[(int) len]` 就算 len cast 落 int 冇溢出都可以即刻
+                // 令呢條 pool thread 拋 OutOfMemoryError (Error, 接唔到)。呢個 panel
+                // 由頭到尾都唔期望瀏覽器送任何有意義嘅 data frame 返嚟 (見上面
+                // class javadoc), 所以上限可以定得幾保守都得 - 1MB 已經遠超任何
+                // 呢個 panel 會用到嘅入站 frame (ping/pong payload 通常得幾個 byte)。
+                final long MAX_FRAME_PAYLOAD_BYTES = 1024 * 1024;
+                if (len < 0 || len > MAX_FRAME_PAYLOAD_BYTES) {
+                    Log.w(TAG, "Rejecting WebSocket frame with payload length " + len
+                            + " (limit " + MAX_FRAME_PAYLOAD_BYTES + ")");
+                    return;
                 }
 
                 byte[] mask = new byte[4];
@@ -152,6 +173,17 @@ public class WebSocketServer {
                     // JS; ignore continuation complexity rather than mis-parse it.
                 }
             }
+        }
+
+        /** Reads exactly one byte, throwing IOException on EOF instead of silently
+         *  returning -1 (which, if used directly in a bit-shift expression, becomes
+         *  0xFF and looks like valid data rather than a closed connection). */
+        private static int readByteOrThrow(InputStream in) throws IOException {
+            int b = in.read();
+            if (b == -1) {
+                throw new IOException("Unexpected EOF while reading WebSocket frame header");
+            }
+            return b;
         }
 
         void sendText(String text) {

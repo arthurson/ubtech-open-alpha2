@@ -21,8 +21,10 @@ import android.os.BatteryManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Build;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
+import android.speech.tts.Voice;
 import android.text.format.Formatter;
 import android.util.Log;
 import android.view.Gravity;
@@ -37,9 +39,14 @@ import android.widget.Toast;
 import com.ubtechinc.alpha2ctrlapp.network.action.ClientAuthorizeListener;
 import com.ubtechinc.alpha2robot.Alpha2RobotApi;
 import com.ubtechinc.alpha2robot.constant.UbxErrorCode;
+import com.ubtechinc.alpha2serverlib.aidlinterface.ASRRecord;
+import com.ubtechinc.alpha2serverlib.aidlinterface.IAlphaEnglishOfflineUnderstandListener;
+import com.ubtechinc.alpha2serverlib.aidlinterface.IAlphaEnglishUnderstandListener;
+import com.ubtechinc.alpha2serverlib.aidlinterface.IReplaySpeechCallback;
 import com.ubtechinc.alpha2serverlib.interfaces.AlphaActionClientListener;
 import com.ubtechinc.alpha2serverlib.interfaces.IAlpha2ActionListListener;
 import com.ubtechinc.alpha2serverlib.interfaces.IAlpha2RobotClientListener;
+import com.ubtechinc.lynxrobot.LynxRobotApi;
 import com.ubtechinc.alpha2serverlib.interfaces.IAlpha2RobotTextUnderstandListener;
 import com.ubtechinc.alpha2serverlib.interfaces.IAlpha2SpeechGrammarInitListener;
 import com.ubtechinc.alpha2serverlib.interfaces.IAlpha2SpeechGrammarListener;
@@ -50,7 +57,14 @@ import com.ubtechinc.constant.LanguageType;
 import com.ubtechinc.constant.StaticValue;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -81,10 +95,24 @@ public class MainActivity extends Activity implements SensorEventListener {
     private static final String PREFS_NAME = "robotpanel";
     private static final String PREF_BACKEND = "backend";
     private static final String DEFAULT_BACKEND = "alpha2";
+    private static final String PREF_XIAOZHI_DEVICE_ID = "xiaozhi_device_id";
 
     private Alpha2RobotApi robot;
     private LynxController lynxController;
     private HttpServer httpServer;
+    // 小智 (XiaoZhi) AI 對話 - 獨立於 alpha2/lynx AIDL 之外嘅 client-side WebSocket
+    // 連線, 連出去 xiaozhi.me。單一 instance, 喺 onCreate() 先建立 (要用
+    // getSharedPreferences() 攞/生成 device id, field initializer 嗰陣 Activity
+    // context 未必 ready), 由 handleXiaozhiApi() 開關, 唔跟隨 backend 切換
+    // (見 handleXiaozhiApi() 嘅 javadoc)。
+    private XiaozhiClient xiaozhiClient;
+    // PHASE 2: mic-capture-encode + decode-playback for XiaoZhi voice chat - separate
+    // instance from audioController/audioPlaybackController below (different sample
+    // rate/purpose/lifecycle, see XiaozhiAudioController's class javadoc). Constructed
+    // eagerly (no Activity context needed, unlike xiaozhiClient) but only ever
+    // start()ed from handleXiaozhiApi()'s "mic/start", gated on
+    // XiaozhiClient.isAudioSupported().
+    private final XiaozhiAudioController xiaozhiAudioController = new XiaozhiAudioController();
     private RobotEventReceiver dynamicReceiver;
     private BroadcastReceiver batteryReceiver;
     private final CameraController cameraController = new CameraController();
@@ -94,6 +122,23 @@ public class MainActivity extends Activity implements SensorEventListener {
     private AudioManager audioManager;
     private EventBus.Listener gestureListener;
     private Runnable volumeRepeater;
+
+    /** true = 用戶喺 TTS tab 撳咗「釋放麥克風俾 App」，想長期持有 mic 俾 app 用，
+     *  未撳返「交返麥克風俾機器人」之前唔算完。見 handleMicStream() finally 段嘅
+     *  用法 - Mic Listen 個 stream 斷開唔應該喺呢個狀態係 true 嘅時候將 mic
+     *  還俾機械人，否則個「釋放」狀態會被 Mic Listen 嘅斷線清埋，令用戶要不斷
+     *  重新撳「釋放麥克風俾 App」。 */
+    private volatile boolean micHeldByApp = false;
+
+    /** true = 用戶開咗「持續搶 mic」呢個選項 (mic card 嗰粒 checkbox)。同
+     *  micHeldByApp 唔同 - micHeldByApp 淨係記住「而家個狀態係咪 app 持有」,
+     *  呢個 flag 就係話「就算 firmware 自己內部側面攞返咗 (例如 setWakeState
+     *  呢個 call 本身喺 firmware bytecode 入面會順便觸發 IflytekWakeUp5mic.
+     *  startRecording() 呢個 side effect - 唔係用戶自己撳咗「交返」), 都要
+     *  自動再搶一次返嚟」。見 micHoldEnforcer 呢條背景 thread。 */
+    private volatile boolean micHoldEnforced = false;
+    private Thread micHoldEnforcerThread;
+    private static final long MIC_HOLD_ENFORCER_INTERVAL_MS = 2000;
 
     // -- Accelerometer (IMU): standard Android SensorManager, NOT the UBTECH AIDL SDK -
     // see docs/capabilities.md "IMU / accelerometer" in the Alpha2OpenSdk repo and the
@@ -117,7 +162,41 @@ public class MainActivity extends Activity implements SensorEventListener {
     private android.net.Uri shutterCueUri;
     private boolean shutterCueLookupDone = false;
 
+    // Lynx PIR alert cue - "Heaven" 係 Android 內置系統鈴聲標題, 同 STOP_CUE/SHUTTER_CUE
+    // 一樣做法 (lazy lookup by title, cache 埋個 content:// Uri)。播放時機見
+    // registerPirAlertListener() - PIR_STATE broadcast (RobotEventReceiver.java) 一到
+    // triggered=true 就即刻播, triggered=false 即刻停 (跟 sonar 個 purple LED 一樣, 唔
+    // 等成首歌播完)。
+    private static final String PIR_ALERT_RINGTONE_TITLE = "Heaven";
+    private android.net.Uri pirAlertUri;
+    private boolean pirAlertLookupDone = false;
+    // 獨立一個 LynxRobotApi instance, 淨係俾 registerPirAlertListener() 用嚟操控頭/眼
+    // LED - 冇用返 lynxController 入面嗰個 (private field, 冇曝露), 但呢個做法完全冇
+    // 額外開銷: LynxRobotApi constructor 本身唔做任何 binder bind (見 LynxController
+    // 建構嗰句 comment), 淨係每個 subsystem 第一次用先 lazy fetch, 開幾多個 instance
+    // 都可以共存。
+    private LynxRobotApi pirLedRobot;
+
     private volatile boolean speechReady = false;
+
+    // speech/stop -> speech/tts race guard.
+    //
+    // speech_StopTTS() (AIDL onStopPlay) is fire-and-forget: the call returns as
+    // soon as the binder transaction is queued, but the robot side's audio
+    // teardown (tearing down the current Nuance/iFlytek playback session) happens
+    // asynchronously after that. If speech/tts starts a new TTS session while that
+    // teardown is still in flight, Nuance's SpeakerPlayerSink can throw an
+    // IllegalStateException that kills the TTS session until the robot reboots.
+    //
+    // Fix: record the wall-clock time of the last speech/stop, and have speech/tts
+    // block (on the HTTP worker thread only - safe because HttpServer uses
+    // newCachedThreadPool, so this never stalls other requests) until at least
+    // STOP_TO_TTS_MIN_GAP_MS has elapsed since that stop. 400ms was enough headroom
+    // in testing for the teardown to finish without being long enough to feel like
+    // a UI stall for a normal stop-then-speak flow.
+    private static final long STOP_TO_TTS_MIN_GAP_MS = 400;
+    private volatile long lastSpeechStopAtMs = 0L;
+
     // 2026-08 新增: 記低而家 speech binding 實際綁緊邊個 engine
     // ("nuance" 或 "iflytek")。開機 initSpeechApi() 一開始用通用
     // ALPHA_SPEECH_MAIN_SERVER action, 呢個 action 喺呢部機實測落嚟一直
@@ -152,23 +231,66 @@ public class MainActivity extends Activity implements SensorEventListener {
     // Android system TTS (a third engine option alongside the robot's own Nuance/
     // iFlytek, used directly rather than via ISpeechInterface). No voice selection -
     // voice choice is only meaningful for iFlytek's named voices.
-    private TextToSpeech androidTts;
+    // volatile: Lynx's speech/set_tts_engine handler (see LynxController.AndroidTtsHandler
+    // wiring below) reassigns this from an HTTP worker thread when switching engines, and
+    // it's read from other worker threads on every speech/tts call - a plain field could
+    // let one thread see a stale/half-published reference.
+    private volatile TextToSpeech androidTts;
     private volatile boolean androidTtsReady = false;
+    private volatile String androidTtsEnginePkg = ""; // package of the engine androidTts is currently bound to
 
     // Speed used for the mouth LED breathing effect auto-triggered around TTS speech
     // (see startMouthLedForTts()/stopMouthLedForTts()) - matches the web UI slider's
     // default (0-5000 range, default 0).
     private static final int TTS_MOUTH_LED_SPEED = 0;
 
+    // 2026-08 新增: RobotEventReceiver 冇 constructor/field 攞到 outer
+    // MainActivity instance (佢一直淨係經 EventBus 靜態方法送 event, 唔識
+    // MainActivity 本身), 但 sonar_obstacle 嘅 LED 指示邏輯 (applyObstacleIndicator,
+    // sonarThresholdCm) 全部係 instance-level, 靠住 robot 呢個 AIDL 連線。加一個
+    // static instance reference, 喺 onCreate/onDestroy set/clear, 等
+    // RobotEventReceiver 可以經 MainActivity.getSonarThresholdCm() /
+    // MainActivity.onSonarDistanceReceived() 呢兩個 static bridge 方法接駁返去
+    // instance 邏輯, 而唔使將 RobotEventReceiver 個 constructor 簽名擴大 (咁樣會
+    // 影響埋成個 registerDynamicReceiver() 個 new RobotEventReceiver() call 位)。
+    private static volatile MainActivity sInstance;
+
+    /** SONAR_DISTANCE_ACTION 觸發嘅 broadcast 未到之前, RobotEventReceiver 都要知
+     *  依家個門檻先計到 "triggered"。冇 instance (例如 Activity 未起好/已destroy
+     *  中間嗰段窗口) 就當冇門檻, 唔會誤判 triggered。 */
+    static int getSonarThresholdCm() {
+        MainActivity m = sInstance;
+        return m != null ? m.sonarThresholdCm : 30;
+    }
+
+    /** RobotEventReceiver 收到 SONAR_DISTANCE_ACTION 之後嘅入口, 負責將
+     *  distanceCm/triggered 接駁去 applyObstacleIndicator() (5-mic + mouth LED
+     *  雙路徑, 見該方法 javadoc)。同 handleChestObstacleFrame() 一樣, 只喺
+     *  triggered 狀態實際改變嗰下先重新驅動 LED, 避免每秒 ~1 幀嘅重複讀數不斷
+     *  重送同一個 LED command。 */
+    static void onSonarDistanceReceived(int distanceCm, boolean triggered) {
+        MainActivity m = sInstance;
+        if (m == null) {
+            return;
+        }
+        if (triggered == m.sonarLedActive) {
+            return;
+        }
+        m.sonarLedActive = triggered;
+        m.applyObstacleIndicator(triggered);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        sInstance = this;
         installCrashRestartHandler();
 
         registerDynamicReceiver();
         registerBatteryReceiver();
         registerGestureController();
         initRobot();
+        xiaozhiClient = new XiaozhiClient(getXiaozhiDeviceId());
         // Lynx (3.0.0.2) side: unlike Alpha2RobotApi, LynxRobotApi needs no explicit
         // init/bind step (every subsystem binder is fetched lazily on first use), so
         // constructing this here is cheap and doesn't block onCreate() even on a robot
@@ -181,45 +303,144 @@ public class MainActivity extends Activity implements SensorEventListener {
         // to handleApi() (this method reference isn't invoked until the first actual
         // matching request, well after onCreate() finishes, so it's safe to bind here
         // even before cameraController/audioPlaybackController exist yet).
-        lynxController = new LynxController(this, this::handleApi);
-        androidTts = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
+        // Lynx UI's TTS tab uses Android's own system TTS only (no robot-side engine
+        // picker) - the handler below just forwards to androidTts, the very same
+        // instance Alpha2's engine=android option uses, constructed right after this.
+        // Safe to wire up here even though androidTts isn't assigned until the next
+        // statement: speak()/stop() below only run later, in response to an actual
+        // HTTP request, by which point onCreate() (and thus this assignment) has long
+        // finished.
+        lynxController = new LynxController(this, this::handleApi, new LynxController.AndroidTtsHandler() {
             @Override
-            public void onInit(int status) {
-                androidTtsReady = (status == TextToSpeech.SUCCESS);
-                if (!androidTtsReady) {
-                    // status == LANG_MISSING_DATA/ERROR usually means this Android build has
-                    // no system TTS engine installed at all (common on robot firmware images
-                    // that ship only the robot's own Nuance/iFlytek speech services) - not
-                    // something this app can fix without bundling a TTS engine APK.
-                    Log.e(TAG, "Android TTS init failed, status=" + status
-                            + " (likely no system TTS engine installed on this device)");
+            public boolean speak(String text, String langTag) {
+                if (androidTts == null || !androidTtsReady) {
+                    return false;
                 }
-            }
-        });
-        // Unlike onServerPlayEnd (robot-side TTS), Android system TTS reports per-
-        // utterance completion only through this listener, not through onInit - needed
-        // to know when to stop the mouth LED breathing effect started in speech/tts's
-        // engine=android branch. "panel_tts" is the utteranceId passed to speak() there;
-        // onStart/onDone/onError all fire on this same id since QUEUE_FLUSH means only
-        // one utterance is ever in flight from this app at a time.
-        androidTts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            @Override
-            public void onStart(String utteranceId) {
-                // no-op: the mouth LED is already started in speech/tts right before
-                // speak() is called, not here, so it lights up without waiting for this
-                // callback's round-trip.
+                if (langTag != null && !langTag.isEmpty()) {
+                    Locale locale = Locale.forLanguageTag(langTag);
+                    int result = androidTts.setLanguage(locale);
+                    // LANG_MISSING_DATA / LANG_NOT_SUPPORTED are both negative - only
+                    // proceed to speak if the engine actually accepted the language,
+                    // otherwise the utterance would silently fall back to whatever
+                    // language was already active, which the caller didn't ask for.
+                    if (result < TextToSpeech.LANG_AVAILABLE) {
+                        return false;
+                    }
+                }
+                // 2026-08 新增: 之前 Lynx tab 嘅 TTS 完全冇同咀部呼吸燈同步 - 對比
+                // Alpha2 個 speech/tts (MainActivity 嗰個 case) 一早已經有
+                // startMouthLedForTts()/stopMouthLedForTts() 包住個 speak() call。
+                // 跟返 Alpha2 個做法: 開口講嘢前先開返個呼吸燈效果 (MouthLedData 呢個
+                // JNI path 同機身 AIDL 完全獨立, 兩邊 backend 都用得 - 見
+                // MouthLedData 個 class javadoc), 等聲一開始就見到燈同步郁。呢個
+                // utteranceId ("lynx_tts") 已經喺 initAndroidTts() 嗰個共用
+                // UtteranceProgressListener.onDone()/onError() 入面, 講完/出錯都會
+                // call stopMouthLedForTts() (唔分邊個 utteranceId, 兩個 tab 共用同一個
+                // listener) - 所以呢度淨係要負責「開始」嗰邊, 收尾已經有人做。
+                startMouthLedForTts();
+                androidTts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "lynx_tts");
+                return true;
             }
 
             @Override
-            public void onDone(String utteranceId) {
+            public void stop() {
+                if (androidTts != null) {
+                    androidTts.stop();
+                }
+                // 用戶主動撳「停止」冇保證會觸發 onDone/onError (視乎 TTS engine 實
+                // 作), 同 Alpha2 個 speech/stop case 一樣, 主動停個 mouth LED, 唔淨係
+                // 靠 UtteranceProgressListener。
                 stopMouthLedForTts();
             }
 
             @Override
-            public void onError(String utteranceId) {
-                stopMouthLedForTts();
+            public List<LynxController.TtsLanguageOption> listLanguages(String uiLang) {
+                if (androidTts == null || !androidTtsReady) {
+                    return new ArrayList<>();
+                }
+                // checkTtsDataSync() 揀方法有分先後 - 見佢自己個 method comment:
+                //  - getVoices() (API 21+) 做主要來源: 直接問 engine 自己嘅完整
+                //    voice metadata, 唔靠任何手寫語言表, engine 有幾多個國家變體就
+                //    吐幾多個。2026-08 user-confirmed 呢部機冇 Google Play Store,
+                //    令 Google TTS 嘅 ACTION_CHECK_TTS_DATA 淨係答到出廠內建嗰一
+                //    個國家變體 (中文得 zh-TW, 英文得 en-US) - getVoices() 唔受呢
+                //    個限制。
+                //  - ACTION_CHECK_TTS_DATA (EXTRA_AVAILABLE_VOICES) 做 fallback,
+                //    畀 API 19/20 (冇 getVoices()) 嘅裝置, 或者 getVoices() 回埋
+                //    空清單嗰陣用 (見 checkTtsDataSyncLegacy() 嘅 comment - 呢個
+                //    仍然係 SVOX Pico 呢類冇實作 getVoices() 或者實作咗但回空嘅
+                //    engine 嘅安全網, 佢哋嘅 getAvailableLanguages()/
+                //    isLanguageAvailable() 都證實唔可靠, 但 ACTION_CHECK_TTS_DATA
+                //    喺 Pico 度用得)。
+                Locale displayLocale = "en".equals(uiLang) ? Locale.ENGLISH : Locale.TRADITIONAL_CHINESE;
+                return checkTtsDataSync(displayLocale);
+            }
+
+            @Override
+            public List<String> listEngines() {
+                // getEngines() works off a throwaway TextToSpeech instance rather than
+                // the live androidTts field on purpose - it's a static-ish device-wide
+                // list (which engine packages are installed), not something that
+                // depends on which engine is currently selected, so it doesn't need
+                // androidTtsReady to be true first. A fresh instance also avoids ever
+                // returning a stale list captured back when a *different* engine was
+                // bound.
+                List<String> result = new ArrayList<>();
+                TextToSpeech probe = null;
+                try {
+                    final CountDownLatch initLatch = new CountDownLatch(1);
+                    probe = new TextToSpeech(MainActivity.this, status -> initLatch.countDown());
+                    // getEngines() itself doesn't require init to finish (it's not
+                    // engine-specific), but waiting briefly avoids racing the very
+                    // first call against the constructor's own async setup on some
+                    // OEM engine implementations.
+                    try {
+                        initLatch.await(500, TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                    List<TextToSpeech.EngineInfo> engines = probe.getEngines();
+                    if (engines != null) {
+                        Set<String> pkgs = new TreeSet<>();
+                        for (TextToSpeech.EngineInfo e : engines) {
+                            pkgs.add(e.name);
+                        }
+                        result.addAll(pkgs);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "androidTts.getEngines failed", e);
+                } finally {
+                    if (probe != null) {
+                        probe.shutdown();
+                    }
+                }
+                return result;
+            }
+
+            @Override
+            public boolean setEngine(String enginePackage) {
+                if (enginePackage == null || enginePackage.isEmpty()) {
+                    return false;
+                }
+                initAndroidTts(enginePackage);
+                return true;
+            }
+
+            @Override
+            public String currentEngine() {
+                return androidTtsEnginePkg;
+            }
+        }, new LynxController.PirAlertHandler() {
+            @Override
+            public void setEnabled(boolean enabled) {
+                setPirAlertEnabled(enabled);
             }
         });
+        // Constructs (or re-constructs, when switching engines - see setEngine() above)
+        // androidTts. Pulled out of onCreate()'s inline block into its own method so
+        // speech/set_tts_engine can call it again later without duplicating the
+        // OnInitListener/UtteranceProgressListener wiring.
+        initAndroidTts(null); // null = device's current default engine, same as before
 
         // Plain HTTP only. TLS/HTTPS was tried (self-signed cert) to make getUserMedia()
         // available for the walkie-talkie mic feature, but browsers on this device
@@ -229,11 +450,12 @@ public class MainActivity extends Activity implements SensorEventListener {
         // the TLS handshake and the self-signed cert's trust exception did not reliably
         // carry over, so the WebSocket feed (accel, uuid, wakeup, etc.) dropped
         // intermittently even though the HTTP API calls themselves succeeded. Rather
-        // than fight browser cert-trust behavior, TLS is disabled outright: walkie-talkie
-        // (which needs a secure context) is disabled in the UI - see app.js - and
-        // everything else works reliably over plain HTTP/WS.
+        // than fight browser cert-trust behavior, TLS support was removed outright
+        // (2026-08: TlsSupport.java/SelfSignedCert.java deleted, HttpServer's TLS
+        // constructor overload removed) - walkie-talkie (which needs a secure context)
+        // stays permanently disabled in the UI (see app-mic.js) and everything else works
+        // reliably over plain HTTP/WS.
         String ip = getWifiIp();
-        javax.net.ssl.SSLServerSocketFactory tlsFactory = null;
 
         httpServer = new HttpServer(getAssets(), new HttpServer.ApiHandler() {
             @Override
@@ -252,6 +474,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                 if (path.startsWith("system/")) {
                     return handleSystemApi(path.substring(7), query, method, body);
                 }
+                if (path.startsWith("xiaozhi/")) {
+                    return handleXiaozhiApi(path.substring(8), query, method, body);
+                }
                 // Back-compat: requests with no backend prefix (older cached browser
                 // tab, or a client that hasn't picked a backend yet) fall through to
                 // the original Alpha2 dispatch, matching this app's pre-Lynx behaviour.
@@ -267,14 +492,14 @@ public class MainActivity extends Activity implements SensorEventListener {
             public HttpServer.ApiResponse handle(String path, Map<String, String> query, byte[] body) {
                 return handleUpload(path, query, body);
             }
-        }, tlsFactory);
+        });
         httpServer.start();
-        String scheme = httpServer.isTlsActive() ? "https" : "http";
+        String scheme = "http";
 
         // The on-device screen does NOT mirror the HTML control panel via WebView -
         // that path had unreliable CSS/JS rendering on this device's WebView build (blank/
         // broken layout, buttons stuck disabled). Per this class's original design intent,
-        // the HTML panel at http(s)://<robot-ip>:8888/ is the actual UI; the on-device
+        // the HTML panel at http://<robot-ip>:8888/ is the actual UI; the on-device
         // screen is just a native status readout telling the user where to point a browser.
         final String panelUrl = scheme + "://" + ip + ":" + HttpServer.PORT + "/";
         int pad = (int) (16 * getResources().getDisplayMetrics().density);
@@ -290,7 +515,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         // Tappable URL row: tapping the link itself, or the dedicated Copy button,
         // both copy the panel URL to the clipboard so the user doesn't have to
-        // retype a long https://<ip>:8888/ address by hand on the robot's own screen.
+        // retype a long http://<ip>:8888/ address by hand on the robot's own screen.
         LinearLayout linkRow = new LinearLayout(this);
         linkRow.setOrientation(LinearLayout.HORIZONTAL);
         linkRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -328,11 +553,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         TextView footerView = new TextView(this);
         footerView.setTextSize(16);
         StringBuilder footerText = new StringBuilder();
-        if (httpServer.isTlsActive()) {
-            footerText.append("(Self-signed cert - browser will warn \"not private\";\n")
-                    .append("click Advanced -> Proceed. Needed for the mic/\n")
-                    .append("walkie-talkie feature to work.)\n\n");
-        }
         footerText.append("SDK version: 3.0.0.1");
         footerView.setText(footerText.toString());
         root.addView(footerView);
@@ -363,6 +583,14 @@ public class MainActivity extends Activity implements SensorEventListener {
     private void registerDynamicReceiver() {
         dynamicReceiver = new RobotEventReceiver();
         IntentFilter filter = new IntentFilter();
+        // 2026-08 更新: 反編譯 alpha2services_base 3.0.0.2 全個 APK, 搜晒所有
+        // sendBroadcast() call site 逐個核對 (詳見 AIDL_GUIDE_LYNX.md 「未使用/未接收
+        // 嘅 broadcast」一節) —— "com.ubtechinc.key" 呢個 action string 喺呢個
+        // 韌體版本已經搵唔到任何 sendBroadcast 出處, 已經被下面
+        // "com.ubtechinc.services.header" 完全取代 (HeadkeyManager, lynx 專用
+        // package, 用 int extra "value" 代替原本嘅 Byte extra "key")。依然保留
+        // filter + RobotEventReceiver 嗰個 case, 純粹做向後相容 (以防其他韌體/
+        // 舊機用返呢個 action), 但呢部機唔會再觸發。
         filter.addAction("com.ubtechinc.key");
         filter.addAction("com.ubtechinc.services.SPEECH_DIRECTION");
         filter.addAction("com.ubtechinc.robot.tts_hint_wakeup");
@@ -371,6 +599,48 @@ public class MainActivity extends Activity implements SensorEventListener {
         filter.addAction(StaticValue.ALPHA_QR_CODE);
         filter.addAction(StaticValue.ALPHA_WIFI_RESULT);
         filter.addAction(StaticValue.ALPHA_BT_CONNECTION);
+        // Lynx PIR 狀態通知 (見 RobotEventReceiver 呢個 case 嘅 comment) - 反編譯
+        // companion_v17_signed.apk 搵到嘅 action string, 唔喺 StaticValue 度 (呢個
+        // App 之前冇引用過)。
+        filter.addAction("com.ubtechinc.services.Action.PIR_STATE");
+        // 2026-08 新增 (4個): 反編譯 alpha2services_base 3.0.0.2 全個 APK 搵到嘅
+        // sendBroadcast() 出處, 之前呢個 App 完全冇 register, 詳見
+        // AIDL_GUIDE_LYNX.md「未使用/未接收嘅 broadcast」一節同各自嘅 RobotEventReceiver
+        // case comment。
+        filter.addAction("com.ubtechinc.services.header");
+        filter.addAction("com.ubtechinc.services.Action.ACTION_STOP");
+        filter.addAction("com.ubtechinc.services.Action.ROBOT_INTERRUPTED");
+        filter.addAction("com.ubtechinc.services.stoptts");
+        // 2026-08 新增: 實機 (firmware 1.1.1.14) 證實 sonar 讀數唔會經
+        // IAlpha2SerialPortService.onListenSerialPortRcvData() 送到 - app 自己
+        // registerSerialPortRcvListener() 淨係收到 config command 嘅 2-byte ack
+        // "04 00"。CHEST_ACTION 呢個 broadcast 都收到, 但反編譯官方
+        // alpha2demo.apk 後證實佢淨係印機身內部 raw command byte 做 debug log
+        // (getmCmd()), 唔係真正嘅 sonar 讀數路徑。真正生效嘅係下面獨立嘅
+        // SONAR_DISTANCE_ACTION - 保留 CHEST_ACTION filter 純粹做輔助 debug 用
+        // (RobotEventReceiver 個 case 依然會 dump 佢嘅 extras, 對比返兩條路徑
+        // 嘅時序有用), 唔再指望佢係主要事件來源。
+        filter.addAction(StaticValue.CHEST_ACTION);
+        // 官方 alpha2demo.apk (firmware 1.1.1.14) 反編譯確認: sonar 讀數經呢個
+        // 獨立 broadcast 送出, extra 已經係 parse 好嘅 int, 唔使自己再解 raw
+        // wire frame。見 StaticValue.SONAR_DISTANCE_ACTION 個 comment。
+        filter.addAction(StaticValue.SONAR_DISTANCE_ACTION);
+        // 2026-08 新增 (8個): 用嚟查「speech_SetMIC() 攞返 mic 會唔會有 broadcast
+        // 通知」呢條問題, 反編譯 Alpha2Services-v1.1.7.3.20-5mic.apk 全個 APK 搵到
+        // 嘅 sendBroadcast() 出處 (speechmanager.d.*/AlphaMainSeviceImpl 呢兩個
+        // class), 之前呢個 App 完全冇 register。特登連語意未確定嘅都全部先
+        // register 埋、經 mic_broadcast_debug event 轉送去 WebSocket log (見
+        // RobotEventReceiver 呢幾個 case comment) - 目的係收集實際 payload,
+        // 睇完先決定邊幾個同 mic ownership 真係有關、要唔要正式做成獨立 event/
+        // 更新 UI 指示燈, 唔喺未驗證之前就假設個名啱啱好似就係咩意思。
+        filter.addAction("com.ubtechinc.services.ABOUT_TTS");
+        filter.addAction("com.ubtechinc.services.ALPHA_SOCKET_ASR_OK");
+        filter.addAction("com.ubtechinc.services.SPEECH_ANGLE_5MIC");
+        filter.addAction("com.ubtechinc.services.LED_ACTION");
+        filter.addAction("com.ubtechinc.services.IFLY_OFFLINE_CMD");
+        filter.addAction("com.ubtechinc.services.NUANCE_OFFLINE_CMD");
+        filter.addAction("com.ubtechinc.services.POWER_SAVE");
+        filter.addAction("com.ubtechinc.services.ALPHA_NOTIFY_POWER");
         registerReceiver(dynamicReceiver, filter);
     }
 
@@ -838,6 +1108,12 @@ public class MainActivity extends Activity implements SensorEventListener {
                 EventBus.get().publish("chest_rcv", "{\"hex\":\"" + hex + "\"}");
                 handleChestObstacleFrame(bytes, len);
             }
+
+            @Override
+            public void onListenBlueToothSerialPortRcvData(byte[] bytes, int len) {
+                String hex = toHex(bytes, len);
+                EventBus.get().publish("bt_rcv", "{\"hex\":\"" + hex + "\"}");
+            }
         };
 
         robot.initActionApi(new AlphaActionClientListener() {
@@ -849,6 +1125,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         robot.initChestSerialApi();
         robot.initHeaderSerialApi();
+        robot.initBlueToothSerialApi();
 
         robot.initSpeechApi(new IAlpha2RobotClientListener() {
             @Override
@@ -888,6 +1165,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         }, CustomLanguage.DEFAULT_LANGUAGE);
 
         registerWakeupDirectionListener();
+        registerPirAlertListener();
     }
 
     // -- Local_Result parsing (rule/action/tag intent classification) ------------------
@@ -993,18 +1271,551 @@ public class MainActivity extends Activity implements SensorEventListener {
         return angle;
     }
 
+    // -- Lynx PIR alert: 頭/眼 LED 長開紅燈 + Heaven 鈴聲 --------------------------------
+    // RobotEventReceiver.java 監聽 com.ubtechinc.services.Action.PIR_STATE 呢個 broadcast
+    // (機身真身 PIR 偵測通知, 唔經 AIDL - 詳見 docs/AIDL_GUIDE_LYNX.md「5. Sys」章節同
+    // RobotEventReceiver 嗰個 case 嘅 comment), 發返 EventBus 嘅 "pir_state" event。
+    // 呢度同 registerWakeupDirectionListener() 一樣, 訂閱返嗰個 event feed (唔係再開
+    // 多一個 BroadcastReceiver)。triggered=true 一到即刻長開 (常亮, 唔閃) 紅色頭+眼
+    // LED, 同時播 Heaven 鈴聲; triggered=false 一到即刻熄燈同停聲 (唔再轉綠燈 - 淨係
+    // 熄, 因為紅燈係「警示」, 冇偵測嗰陣唔需要另一個常亮顏色標示狀態) - 唔等成首鈴聲
+    // 播完, 跟 sonar 個 purple LED (setHeadEyeLedLong()/handleChestObstacleFrame())
+    // 一樣即停即停嘅做法。呢個反應受 pirAlertEnabled 呢個獨立開關控制 (見 index.html
+    // 「PIR 感應器」card 嘅「警示反應」toggle/lynxSetPirAlertEnabled()) - 同
+    // 「sys/pir」呢個感應器硬件開關本身係兩件事: 就算冇開呢個 toggle, PIR_STATE
+    // broadcast 都會繼續收到同轉發去前端, 淨係唔會觸發 LED/聲。
+    //
+    // 2026-08 由「長閃」改為「長開」: 用返 turnOnEye/turnOnHead (常亮, 已喺
+    // app-lynx.js LED tab 實測 confirm 嘅簡單 call) 代替 turnOnEyeFlash/
+    // turnOnHeadFlash (閃爍, p1-p3 時序參數喺 app-lynx.js 嗰段 comment 都標明「未核
+    // 實」) - PIR 警示唔再閃, 一觸發就長開紅燈直到 triggered=false 為止。
+    //
+    // 2026-08 修 bug (crash): 之前四個 led_turnOnXxx()/led_turnOnXxxFlash() call 全部
+    // 傳咗 null 做個 IRemoteLedOperationResultListener - 同 ISysService.setPIRSensor()
+    // (機身側完全唔用個 listener, 傳 null 冇問題) 唔同, LedServiceProxy$BinderStub
+    // 呢個 subsystem 機身側真身會直接 call listener.onLedOpResult(...), 冇做 null
+    // check, 傳 null 會令機身 system app (com.ubtechinc.alpha2services) 自己拋
+    // NullPointerException crash, 再觸發 Android 嘅 provider-dependency kill 連累
+    // 我哋成個 App 一齊死 (見 logcat: LedServiceProxy$BinderStub$14.a 果句 NPE, 跟住
+    // ActivityManagerService "Killing ...: depends on provider ... in dying proc
+    // com.ubtechinc.alpha2services")。修法: 用返 noopLedListener() 呢個真實、乜都
+    // 唔做嘅 Stub instance, 唔再傳 null。
+    private static final String PIR_STATE_MARKER = "\"type\":\"pir_state\"";
+    // LedColor: RED=1 (見 docs/AIDL_GUIDE_LYNX.md 附錄)。
+    private static final int PIR_LED_COLOR_RED = 1;
+    // 光度用返 app-lynx.js LED tab 已實測 confirm 嘅慣用預設值 (見 app-lynx.js
+    // 「p0=顏色(1-7), p1=光暗(1-9)」嗰段 comment) - 開盡(9) 比較顯眼, 用嚟做警示。
+    private static final int PIR_LED_BRIGHTNESS = 9;
+
+    private volatile boolean pirAlertActive = false;
+    // 「警示反應」開關 - 獨立於 sys/pir 感應器硬件開關, 見上面段大 comment。預設關,
+    // 使用者要自己揀開先會有 LED/聲反應, 避免一開機就無啦啦閃紅燈/響鈴。
+    private volatile boolean pirAlertEnabled = false;
+
+    private void registerPirAlertListener() {
+        pirLedRobot = new LynxRobotApi(getApplicationContext());
+        EventBus.get().subscribe(new EventBus.Listener() {
+            @Override
+            public void onEvent(String line) {
+                if (!line.contains(PIR_STATE_MARKER)) {
+                    return;
+                }
+                final Boolean triggered = extractPirTriggered(line);
+                if (triggered == null) {
+                    return;
+                }
+                // onEvent() 喺 main thread 行 (broadcast receiver 預設咁 dispatch,
+                // EventBus.publish() 又係同步喺 publisher 條 thread call 晒啲 listener) -
+                // 同 registerWakeupDirectionListener() 一樣, AIDL/MediaPlayer call 搬去
+                // background thread 做, 唔好用主線程。
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        applyPirLedAndSound(triggered);
+                    }
+                }).start();
+            }
+        });
+    }
+
+    /** Toggled from "sys/pir_alert_enabled" - see LynxController's case for this. */
+    void setPirAlertEnabled(boolean enabled) {
+        pirAlertEnabled = enabled;
+        if (!enabled && pirAlertActive) {
+            // Switching the alert off mid-trigger should also clear whatever's
+            // currently lit/playing, not just stop reacting to future events.
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    applyPirLedAndSound(false);
+                }
+            }).start();
+        }
+    }
+
+    /** Pulls the boolean after "triggered":  out of an EventBus-published "pir_state"
+     *  JSON line, matching extractAbsoluteAngle()'s no-JSON-library style. */
+    private static Boolean extractPirTriggered(String line) {
+        String key = "\"triggered\":";
+        int i = line.indexOf(key);
+        if (i < 0) return null;
+        int start = i + key.length();
+        if (line.startsWith("true", start)) return true;
+        if (line.startsWith("false", start)) return false;
+        return null;
+    }
+
+    /** A real (non-null) no-op IRemoteLedOperationResultListener.Stub - see the "修 bug
+     *  (crash)" note above this section for why passing null here isn't safe. */
+    private static com.ubtechinc.alpha.serverlibutil.aidl.IRemoteLedOperationResultListener noopLedListener() {
+        return new com.ubtechinc.alpha.serverlibutil.aidl.IRemoteLedOperationResultListener.Stub() {
+            @Override
+            public void onLedOpResult(int code, int extra) {
+                // Intentionally empty - this alert doesn't need the op-result callback,
+                // it just must not be null (see crash note above).
+            }
+        };
+    }
+
+    private synchronized void applyPirLedAndSound(boolean triggered) {
+        if (!pirAlertEnabled && triggered) {
+            return; // alert switched off - ignore new triggers (but still let an
+                     // already-active alert be cleared via setPirAlertEnabled(false)).
+        }
+        if (triggered == pirAlertActive) {
+            return; // avoid re-sending the same LED/sound state on every repeated event
+        }
+        pirAlertActive = triggered;
+        if (triggered) {
+            pirLedRobot.led_turnOnEye(PIR_LED_COLOR_RED, noopLedListener());
+            pirLedRobot.led_turnOnHead(PIR_LED_COLOR_RED, PIR_LED_BRIGHTNESS, noopLedListener());
+            playPirAlertCue();
+        } else {
+            pirLedRobot.led_turnOffEye(noopLedListener());
+            pirLedRobot.led_turnOffHead(noopLedListener());
+            stopRingtonePlayback();
+        }
+    }
+
+    /** Plays the "Heaven" system ringtone as the PIR trigger alert - same lazy
+     *  lookup-by-title-then-cache approach as playStopCue()/playShutterCue() (see
+     *  playStopCue()'s javadoc for why title lookup + STREAM_MUSIC via playRingtoneUri()
+     *  instead of a plain Ringtone.play()). */
+    private void playPirAlertCue() {
+        if (!pirAlertLookupDone) {
+            pirAlertUri = findRingtoneByTitle(PIR_ALERT_RINGTONE_TITLE);
+            pirAlertLookupDone = true;
+            if (pirAlertUri == null) {
+                Log.w(TAG, "Could not find a system ringtone titled \"" + PIR_ALERT_RINGTONE_TITLE
+                        + "\" - PIR alert cue will be skipped");
+            }
+        }
+        playRingtoneUri(pirAlertUri);
+    }
+
+    /** Fires TextToSpeech.Engine.ACTION_CHECK_TTS_DATA at whichever engine androidTts is
+     *  currently bound to, and blocks (with a timeout) for the result - this is the same
+     *  intent Android's own "文字轉語音輸出 > Pico TTS" settings screen uses to build
+     *  its "已安裝" list (see AndroidTtsHandler#listLanguages() javadoc for why the two
+     *  alternatives tried before this one were both wrong on this device's Pico). Result
+     *  extras use lang-COUNTRY-variant with 3-letter ISO codes (e.g. "eng-USA"), not
+     *  BCP-47 - new Locale(lang, country).toLanguageTag() normalises that correctly since
+     *  java.util.Locale accepts either 2- or 3-letter ISO codes on construction.
+     *  Wrapped as a blocking call (via CountDownLatch + onActivityResult(), see the
+     *  ttsDataCheck* fields below) purely so AndroidTtsHandler#listLanguages() can stay a
+     *  synchronous interface method like the rest of AndroidTtsHandler, matching how
+     *  listEngines() already blocks briefly on its own probe TextToSpeech's onInit. */
+    private final Object ttsDataCheckLock = new Object();
+    private CountDownLatch ttsDataCheckLatch;
+    private volatile ArrayList<String> ttsDataCheckResult;
+    private static final int TTS_DATA_CHECK_REQUEST_CODE = 0x7454; // "T T" leetspeak-ish, just needs to be a stable unused code
+
+    private List<LynxController.TtsLanguageOption> checkTtsDataSync(Locale displayLocale) {
+        // 2026-08 改法: 之前呢度淨係靠 ACTION_CHECK_TTS_DATA (EXTRA_AVAILABLE_VOICES),
+        // user-confirmed 實測發現喺呢部機 (冇 Google Play Store) 度, 呢個查詢對 Google
+        // TTS 嚟講每種語言就淨係報一個「內建」國家變體 (例如中文淨係 zh-TW, 冇 zh-CN/
+        // zh-HK; 英文淨係 en-US, 冇 en-GB/en-AU) —— logcat 證實原因: Google TTS 嘅
+        // voice pack 一般要經 Google Play Services 動態下載 (superpacks/), 冇 Play
+        // Store 就攞唔到, ACTION_CHECK_TTS_DATA 就淨係答返 APK 出廠內建、免下載嗰批
+        // voice。呢個唔係呢個 method 個 parse 邏輯錯, 係嗰個查詢方式本身喺呢部機度嘅
+        // 資料源頭就係咁少。
+        //
+        // 改用 TextToSpeech.getVoices() (API 21+, Voice 呢個 class 本身就係
+        // android.speech.tts.Voice) 做主要來源 —— 呢個唔係 ACTION_CHECK_TTS_DATA
+        // 嗰種「已下載內容」snapshot, 而係直接問緊 engine 自己識嘅完整 voice
+        // metadata (包括未下載、需要網絡先播到嘅 voice, 用
+        // Voice.getFeatures().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
+        // 分辨), 唔使靠任何手寫嘅語言/國家清單去補 —— engine 本身有幾多個國家變體就
+        // 吐幾多個出嚟, 唔會漏, 亦唔會因為 app 冇更新緊一個手寫表而過時。
+        //
+        // minSdkVersion 19 (API 19) 令呢個 method 唔可以無條件淨係用 getVoices() -
+        // API 19/20 嘅裝置 (TextToSpeech 冇 getVoices()) 要跌返去舊嘅
+        // ACTION_CHECK_TTS_DATA 做法, 見 checkTtsDataSyncLegacy()。呢部機本身係
+        // Android 5.1.1 (API 22, 見 logcat "Device: [UBTECH] UBTECH alpha2 (Android
+        // 5.1.1)"), 用得到 getVoices()。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            List<LynxController.TtsLanguageOption> viaVoices = checkTtsDataViaGetVoices(displayLocale);
+            if (!viaVoices.isEmpty()) {
+                return viaVoices;
+            }
+            // getVoices() 得出嚟空清單 (例如 engine 未 ready、或者呢個 engine 根本冇
+            // 實作 getVoices(), 有啲舊 OEM engine 雖然 API level 夠但方法係空實作) -
+            // 唔好就咁畀個空清單用戶, 跌落去舊方法試多次, 好過乜都冇。
+        }
+        return checkTtsDataSyncLegacy(displayLocale);
+    }
+
+    /** 用 TextToSpeech.getVoices() 窮舉現時 androidTts 綁緊嗰個 engine 識嘅所有
+     *  voice/語言變體, 見 checkTtsDataSync() 頭段 comment 解釋點解揀呢個 API 做主要
+     *  來源。同 checkTtsDataSyncLegacy() 唔同, 呢個唔使 startActivityForResult 咁重
+     *  (getVoices() 係 TextToSpeech 實例本身嘅同步 method, 唔使等 onActivityResult
+     *  callback), 亦唔會夾雜住 Pico 呢類冇 Play Store 依賴嘅 engine 嘅 quirk。 */
+    private List<LynxController.TtsLanguageOption> checkTtsDataViaGetVoices(Locale displayLocale) {
+        if (androidTts == null) {
+            return new ArrayList<>();
+        }
+        Set<Voice> voices;
+        try {
+            voices = androidTts.getVoices();
+        } catch (Exception e) {
+            // user-confirmed 有 OEM engine 會喺呢度 throw NPE/IllegalStateException
+            // 而唔係好地地回傳 null - 當冇資料處理, 跌返去 legacy 方法。
+            Log.e(TAG, "androidTts.getVoices() failed", e);
+            return new ArrayList<>();
+        }
+        if (voices == null || voices.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Map<String, LynxController.TtsLanguageOption> options = new HashMap<>();
+        for (Voice voice : voices) {
+            Locale locale = voice.getLocale();
+            if (locale == null) continue;
+            String tag = locale.toLanguageTag();
+            if (tag == null || tag.isEmpty() || "und".equals(tag)) continue;
+            if (options.containsKey(tag)) continue;
+            String displayName = locale.getDisplayName(displayLocale);
+            if (displayName == null || displayName.isEmpty() || displayName.equals(tag)) {
+                displayName = tag;
+            }
+            options.put(tag, new LynxController.TtsLanguageOption(tag, displayName));
+        }
+        List<LynxController.TtsLanguageOption> result = new ArrayList<>(options.values());
+        Collections.sort(result, new Comparator<LynxController.TtsLanguageOption>() {
+            @Override
+            public int compare(LynxController.TtsLanguageOption a, LynxController.TtsLanguageOption b) {
+                return a.displayName.compareTo(b.displayName);
+            }
+        });
+        return result;
+    }
+
+    private List<LynxController.TtsLanguageOption> checkTtsDataSyncLegacy(Locale displayLocale) {
+        String enginePkg = androidTtsEnginePkg;
+        if (enginePkg == null || enginePkg.isEmpty()) {
+            return new ArrayList<>();
+        }
+        CountDownLatch latch;
+        synchronized (ttsDataCheckLock) {
+            latch = new CountDownLatch(1);
+            ttsDataCheckLatch = latch;
+            ttsDataCheckResult = null;
+        }
+        try {
+            Intent checkIntent = new Intent();
+            checkIntent.setAction(TextToSpeech.Engine.ACTION_CHECK_TTS_DATA);
+            checkIntent.setPackage(enginePkg); // target the specific engine, not "whichever app wins"
+            startActivityForResult(checkIntent, TTS_DATA_CHECK_REQUEST_CODE);
+        } catch (Exception e) {
+            Log.e(TAG, "ACTION_CHECK_TTS_DATA launch failed for engine=" + enginePkg, e);
+            return new ArrayList<>();
+        }
+        try {
+            // 3s is generous for what's normally an instant, on-device lookup with no
+            // network/disk work - if it's still not back by then, something's wrong
+            // (engine not responding) and the caller should just get an empty list
+            // rather than hang the HTTP request indefinitely.
+            if (!latch.await(3, TimeUnit.SECONDS)) {
+                Log.e(TAG, "ACTION_CHECK_TTS_DATA timed out for engine=" + enginePkg);
+                return new ArrayList<>();
+            }
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return new ArrayList<>();
+        }
+        ArrayList<String> raw = ttsDataCheckResult;
+        if (raw == null) {
+            return new ArrayList<>();
+        }
+        // Keyed by tag (not a Set<String>) so duplicate voice entries collapse to one
+        // option per language, same as before - but now carrying the display name
+        // alongside, not just the tag.
+        Map<String, LynxController.TtsLanguageOption> options = new HashMap<>();
+        for (String voice : raw) {
+            // "eng" or "eng-USA" or "eng-USA-FEMALE" - split, keep just lang[-country],
+            // drop any variant suffix (a 4th part or beyond isn't a Locale country and
+            // toLanguageTag() has no slot for arbitrary engine-specific variant labels).
+            String[] parts = voice.split("-");
+            if (parts.length == 0 || parts[0].isEmpty()) continue;
+            // Both parts are ISO-639-2/ISO-3166-1 ALPHA-3 (3-letter), e.g. "eng"/"USA" -
+            // user-confirmed bug on real hardware: new Locale("eng").toLanguageTag() does
+            // NOT come back as "en" the way it would from a 2-letter code. Locale's
+            // constructor does not translate 3-letter ISO codes to their 2-letter
+            // equivalents at all - it just stores whatever string it's given more or
+            // less verbatim, so toLanguageTag() was leaking the raw 3-letter codes
+            // straight into the dropdown ("ara", "ben", "eng", ...) instead of proper
+            // BCP-47 tags. iso3ToIso1Language()/iso3ToIso1Country() below do the actual
+            // translation via reverse lookup against Locale.getAvailableLocales(), since
+            // there's no direct "3-letter to 2-letter" API on Locale itself.
+            String lang2 = iso3ToIso1Language(parts[0]);
+            if (lang2 == null) {
+                // Unrecognised as a 3-letter ISO-639-2 code with a 2-letter
+                // equivalent - user-confirmed real case: "yue" (Cantonese) has no
+                // ISO-639-1 2-letter code at all, so iso3ToIso1Language("yue")
+                // legitimately returns null, and this used to just "continue" (skip
+                // the whole entry), silently dropping Cantonese from the list even
+                // though Google TTS genuinely had it installed (visible in logcat:
+                // "Download of yue-hk started" / "Download yue-hk Success true").
+                // BCP-47 (and Java's Locale) both accept 3-letter primary language
+                // subtags directly for exactly this situation (IANA's language
+                // subtag registry lists "yue" itself as a valid primary subtag) - so
+                // fall back to using the 3-letter code as-is rather than dropping the
+                // language. new Locale("yue","HK").toLanguageTag() correctly yields
+                // "yue-HK".
+                lang2 = parts[0];
+            }
+            String country2 = null;
+            if (parts.length >= 2 && !parts[1].isEmpty()) {
+                country2 = iso3ToIso1Country(parts[1]);
+                if (country2 == null) {
+                    // Same reasoning as the language fallback above - keep the raw
+                    // 3-letter country code rather than dropping it, since Locale/
+                    // BCP-47 both accept a 3-letter region subtag too (it just won't
+                    // be an ISO-3166-1 alpha-2 code, but it's still meaningful).
+                    country2 = parts[1];
+                }
+            }
+            Locale locale = (country2 != null) ? new Locale(lang2, country2) : new Locale(lang2);
+            String tag = locale.toLanguageTag();
+            if (options.containsKey(tag)) continue;
+            // getDisplayName(displayLocale) is exactly what Android's own "設定 > 語言"
+            // picker uses to build human-readable names (see the screenshot: "中文
+            // (中國)", "丹麥文 (丹麥)" etc are this API's own output, not a hand-picked
+            // label) - user-confirmed on real hardware that a hand-maintained JS-side
+            // tag->name table (the previous approach) covers maybe 40 languages out of
+            // Google TTS's 60+ and silently leaves the rest showing as a raw code like
+            // "ne"/"si"/"sk". Locale's own display-name machinery has the full data set
+            // built in, so nothing gets missed and there's no table to keep in sync as
+            // engines add more languages. displayLocale is TRADITIONAL_CHINESE or
+            // ENGLISH depending on the Lynx UI's own language toggle (see
+            // AndroidTtsHandler#listLanguages(uiLang)) - an earlier version hardcoded
+            // SIMPLIFIED_CHINESE by mistake and produced simplified strings ("丹麦文",
+            // "乌克兰文") inconsistent with this app's Traditional-Chinese UI.
+            String displayName = locale.getDisplayName(displayLocale);
+            if (displayName == null || displayName.isEmpty() || displayName.equals(tag)) {
+                // getDisplayName() falls back to returning the tag itself when it has
+                // no translation at all for a given subtag combination - extremely
+                // rare (would need a language Java's own Locale data doesn't know
+                // about by any name), but better to fall back to the raw tag visibly
+                // than show an empty label.
+                displayName = tag;
+            }
+            options.put(tag, new LynxController.TtsLanguageOption(tag, displayName));
+        }
+        List<LynxController.TtsLanguageOption> result = new ArrayList<>(options.values());
+        Collections.sort(result, new Comparator<LynxController.TtsLanguageOption>() {
+            @Override
+            public int compare(LynxController.TtsLanguageOption a, LynxController.TtsLanguageOption b) {
+                return a.displayName.compareTo(b.displayName);
+            }
+        });
+        return result;
+    }
+
+    private static volatile Map<String, String> iso3LanguageMap;
+    private static volatile Map<String, String> iso3CountryMap;
+
+    /** Lazily builds (once, cached in the static field) a reverse lookup from ISO-639-2
+     *  3-letter language code to ISO-639-1 2-letter code, since java.util.Locale has no
+     *  direct API for that direction - only the forward Locale.getISO3Language() from an
+     *  already-2-letter Locale. Built off Locale.getAvailableLocales() (every Locale this
+     *  JVM knows about), which covers the standard language set far more completely than
+     *  hand-maintaining a table here would. */
+    private static String iso3ToIso1Language(String iso3) {
+        Map<String, String> map = iso3LanguageMap;
+        if (map == null) {
+            map = new HashMap<>();
+            for (Locale l : Locale.getAvailableLocales()) {
+                String lang2 = l.getLanguage();
+                if (lang2.isEmpty()) continue;
+                try {
+                    String lang3 = l.getISO3Language();
+                    // containsKey()+put() instead of putIfAbsent() - user-confirmed
+                    // crash on real hardware: this device's Android version predates
+                    // API 24 (Nougat), and Map.putIfAbsent() is a default method that
+                    // only exists on the Map interface from API 24 onward (this app's
+                    // own minSdkVersion is 19) - calling it threw NoSuchMethodError and
+                    // took the whole app down. containsKey()+put() is the same "keep
+                    // the first mapping seen" behaviour using only pre-Java-8/pre-API-24
+                    // Map methods.
+                    if (lang3 != null && !lang3.isEmpty() && !map.containsKey(lang3)) {
+                        map.put(lang3, lang2);
+                    }
+                } catch (Exception ignored) {
+                    // A handful of Locales throw MissingResourceException here - just
+                    // means that particular one can't contribute a mapping, not a
+                    // reason to abort building the rest of the table.
+                }
+            }
+            iso3LanguageMap = map;
+        }
+        return map.get(iso3);
+    }
+
+    /** Same idea as iso3ToIso1Language() but for ISO-3166-1 alpha-3 country codes
+     *  (e.g. "USA" -> "US"). */
+    private static String iso3ToIso1Country(String iso3) {
+        Map<String, String> map = iso3CountryMap;
+        if (map == null) {
+            map = new HashMap<>();
+            for (Locale l : Locale.getAvailableLocales()) {
+                String country2 = l.getCountry();
+                if (country2.isEmpty()) continue;
+                try {
+                    String country3 = l.getISO3Country();
+                    // See iso3ToIso1Language() above for why this isn't putIfAbsent().
+                    if (country3 != null && !country3.isEmpty() && !map.containsKey(country3)) {
+                        map.put(country3, country2);
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            iso3CountryMap = map;
+        }
+        return map.get(iso3);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == TTS_DATA_CHECK_REQUEST_CODE) {
+            CountDownLatch latch;
+            synchronized (ttsDataCheckLock) {
+                latch = ttsDataCheckLatch;
+                ttsDataCheckResult = (data != null)
+                        ? data.getStringArrayListExtra(TextToSpeech.Engine.EXTRA_AVAILABLE_VOICES)
+                        : null;
+            }
+            if (latch != null) {
+                latch.countDown();
+            }
+        }
+    }
+
+    /** (Re)binds androidTts to a specific TTS engine and wires up the same
+     *  OnInitListener/UtteranceProgressListener behaviour every time - called once from
+     *  onCreate() with enginePackage=null (device default) and again from
+     *  LynxController.AndroidTtsHandler#setEngine() whenever the Lynx UI switches
+     *  engines. The old instance (if any) is stopped and shut down first, since Android
+     *  has no API to rebind an existing TextToSpeech to a different engine in place -
+     *  switching means tearing down and constructing a fresh one bound to the new
+     *  engine's Service. androidTtsReady is set false for the duration of the rebind so
+     *  speak() calls that land mid-switch fail fast (see AndroidTtsHandler#speak())
+     *  instead of silently going to whichever instance happened to still be assigned. */
+    private void initAndroidTts(String enginePackage) {
+        TextToSpeech old = androidTts;
+        androidTtsReady = false;
+        if (old != null) {
+            old.stop();
+            old.shutdown();
+        }
+        // Holder so initListener can reference the instance being constructed even if
+        // onInit() fires synchronously (before the constructor returns and "created"/
+        // the androidTts field get assigned) - some OEM engines do call back inline on
+        // failure rather than always posting asynchronously.
+        final TextToSpeech[] holder = new TextToSpeech[1];
+        TextToSpeech.OnInitListener initListener = status -> {
+            androidTtsReady = (status == TextToSpeech.SUCCESS);
+            if (androidTtsReady) {
+                // Use the REQUESTED enginePackage, not getDefaultEngine() - user-
+                // confirmed bug on real hardware: getDefaultEngine() reports the
+                // device's system-wide default TTS engine (a Settings-level concept),
+                // NOT "which engine this particular TextToSpeech instance is bound
+                // to". After switching to Pico via the 3-arg constructor below,
+                // getDefaultEngine() kept reporting com.google.android.tts (the
+                // system default, unchanged) - so androidTtsEnginePkg silently stayed
+                // wrong after every switch, and checkTtsDataSync() went on querying
+                // the OLD engine's languages while the UI showed the NEW engine's name
+                // (visible in logcat: ACTION_CHECK_TTS_DATA fired with
+                // cmp=.../CheckVoiceData targeting com.google.android.tts right after
+                // switching to com.svox.pico). If enginePackage is null (device-default
+                // request, e.g. the very first init in onCreate()), fall back to
+                // getDefaultEngine() since there's no explicit request to trust instead.
+                androidTtsEnginePkg = (enginePackage != null && !enginePackage.isEmpty())
+                        ? enginePackage
+                        : (holder[0] != null ? holder[0].getDefaultEngine() : "");
+            } else {
+                // status == LANG_MISSING_DATA/ERROR usually means this engine has no
+                // usable voice data on this device, or (if enginePackage was invalid)
+                // the package doesn't exist / isn't a TTS engine - either way, this app
+                // can't fix that without bundling engine/voice data itself.
+                Log.e(TAG, "Android TTS init failed, status=" + status + ", engine="
+                        + (enginePackage != null ? enginePackage : "(default)"));
+            }
+        };
+        TextToSpeech created = (enginePackage != null && !enginePackage.isEmpty())
+                ? new TextToSpeech(this, initListener, enginePackage)
+                : new TextToSpeech(this, initListener);
+        holder[0] = created;
+        // Unlike onServerPlayEnd (robot-side TTS), Android system TTS reports per-
+        // utterance completion only through this listener, not through onInit - needed
+        // to know when to stop the mouth LED breathing effect started in speech/tts's
+        // engine=android branch. "panel_tts"/"lynx_tts" are the utteranceIds passed to
+        // speak() at their respective call sites; onStart/onDone/onError all fire on
+        // whichever id is currently in flight since QUEUE_FLUSH means only one
+        // utterance is ever in flight from this app at a time.
+        created.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+            @Override
+            public void onStart(String utteranceId) {
+                // no-op: the mouth LED is already started right before speak() is
+                // called, not here, so it lights up without waiting for this callback's
+                // round-trip.
+            }
+
+            @Override
+            public void onDone(String utteranceId) {
+                stopMouthLedForTts();
+            }
+
+            @Override
+            public void onError(String utteranceId) {
+                stopMouthLedForTts();
+            }
+        });
+        androidTts = created;
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (sInstance == this) {
+            sInstance = null;
+        }
         stopVolumeRepeat();
+        stopMicHoldEnforcer();
+        micHeldByApp = false;
         setAccelerometerEnabled(false);
-        if (androidTts != null) {
-            androidTts.stop();
-            androidTts.shutdown();
+        TextToSpeech tts = androidTts; // snapshot - see initAndroidTts() javadoc on why
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
         }
         if (gestureListener != null) {
             EventBus.get().unsubscribe(gestureListener);
         }
+        if (xiaozhiClient != null) {
+            xiaozhiClient.disconnect();
+        }
+        xiaozhiAudioController.shutdown();
         if (httpServer != null) {
             httpServer.stop();
         }
@@ -1076,6 +1887,295 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
+    // ---------------- 小智 (XiaoZhi) AI 對話 ----------------
+    //
+    // Backend-agnostic namespace ("/api/xiaozhi/...") - same reasoning as "system/":
+    // AI對話 doesn't belong to either Alpha2 or Lynx's own AIDL surface, and its MCP
+    // tool bridge (see xiaozhiMcpBridge() below) reads whichever backend is currently
+    // selected (PREF_BACKEND) at call time, rather than needing its own separate
+    // connection state per backend. See XiaozhiClient's class javadoc for the overall
+    // protocol/phase-1-scope explanation.
+    private HttpServer.ApiResponse handleXiaozhiApi(String path, Map<String, String> query, String method, String body) {
+        switch (path) {
+            case "supported":
+                // Reported separately from "connected" state so the browser UI can grey
+                // out/hide the audio (Opus) controls specifically without also hiding
+                // text-only chat, once Phase 2 adds the audio path. Phase 1 has no audio
+                // path yet, so audioSupported here is purely advisory for the UI to
+                // pre-render around, not yet backed by an actual codec.
+                return HttpServer.ApiResponse.ok("{\"ok\":true,"
+                        + "\"sdkInt\":" + Build.VERSION.SDK_INT + ","
+                        + "\"audioSupported\":" + XiaozhiClient.isAudioSupported() + "}");
+
+            case "status":
+                return HttpServer.ApiResponse.ok("{\"ok\":true,"
+                        + "\"connected\":" + xiaozhiClient.isOpen() + ","
+                        + "\"sessionId\":" + (xiaozhiClient.getSessionId() != null
+                                ? "\"" + jsonSafe(xiaozhiClient.getSessionId()) + "\"" : "null") + "}");
+
+            case "connect": {
+                String wsUrl = require(query, "url");
+                String token = require(query, "token");
+                if (xiaozhiClient.isOpen()) {
+                    return HttpServer.ApiResponse.error("already connected - call xiaozhi/disconnect first");
+                }
+                xiaozhiClient.setMcpBridge(xiaozhiMcpBridge());
+                // PHASE 2: wires XiaozhiAudioController as the sink for incoming Opus
+                // binary frames - set here (not just once at construction) so a
+                // reconnect after disconnect() re-establishes the sink cleanly rather
+                // than depending on it having survived from a previous session.
+                xiaozhiClient.setAudioSink(new XiaozhiClient.AudioSink() {
+                    @Override
+                    public void onIncomingOpusFrame(byte[] opusData) {
+                        xiaozhiAudioController.onIncomingOpusFrame(opusData);
+                    }
+                });
+                // Connects synchronously on this request-handling thread (HttpServer
+                // already runs each request on its own pool thread - see
+                // Executors.newCachedThreadPool() in HttpServer - so this doesn't block
+                // any other in-flight request) and blocks up to XiaozhiClient's own
+                // 10s hello-timeout before answering, so the browser gets a definite
+                // connected/failed result instead of having to poll xiaozhi/status.
+                try {
+                    xiaozhiClient.connect(wsUrl, token);
+                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"sessionId\":\""
+                            + jsonSafe(xiaozhiClient.getSessionId()) + "\"}");
+                } catch (java.io.IOException e) {
+                    return HttpServer.ApiResponse.error("connect failed: " + e.getMessage());
+                }
+            }
+
+            case "disconnect":
+                // Tear down any in-progress mic/speaker session first - an open
+                // XiaozhiAudioController capture thread holding the mic across a
+                // WebSocket disconnect would otherwise leak the mic open with nowhere
+                // for encoded frames to go (sendAudioFrame() would just throw
+                // "not connected" repeatedly until the next mic/stop).
+                xiaozhiAudioController.stopCapture();
+                xiaozhiAudioController.stopPlayback();
+                xiaozhiClient.disconnect();
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+
+            case "mic/start": {
+                if (!XiaozhiClient.isAudioSupported()) {
+                    return HttpServer.ApiResponse.error("voice chat is not supported on this Android version (requires 5.0/API 21+)");
+                }
+                if (!xiaozhiClient.isOpen()) {
+                    return HttpServer.ApiResponse.error("not connected - call xiaozhi/connect first");
+                }
+                try {
+                    xiaozhiClient.sendListenStart();
+                } catch (java.io.IOException e) {
+                    return HttpServer.ApiResponse.error("failed to signal listen-start: " + e.getMessage());
+                }
+                // Playback is started alongside capture (not lazily on first incoming
+                // frame) so the AudioTrack is already open and prebuffering by the time
+                // the server's reply audio starts arriving - opening it reactively on
+                // the first onIncomingOpusFrame() would add a full AudioTrack-init
+                // delay (which AudioPlaybackController's own findings show can matter)
+                // to the very start of the robot's reply.
+                XiaozhiAudioController.StartResult playbackResult =
+                        xiaozhiAudioController.startPlayback(5000);
+                if (playbackResult.error != null) {
+                    return HttpServer.ApiResponse.error("failed to start playback: " + playbackResult.error);
+                }
+                XiaozhiAudioController.StartResult captureResult =
+                        xiaozhiAudioController.startCapture(new XiaozhiAudioController.EncodedFrameSink() {
+                            @Override
+                            public void onEncodedFrame(byte[] opusData) throws java.io.IOException {
+                                xiaozhiClient.sendAudioFrame(opusData);
+                            }
+                        }, 5000);
+                if (captureResult.error != null) {
+                    xiaozhiAudioController.stopPlayback();
+                    return HttpServer.ApiResponse.error("failed to start mic capture: " + captureResult.error);
+                }
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "mic/stop": {
+                xiaozhiAudioController.stopCapture();
+                xiaozhiAudioController.stopPlayback();
+                if (xiaozhiClient.isOpen()) {
+                    try {
+                        xiaozhiClient.sendListenStop();
+                    } catch (java.io.IOException e) {
+                        // Not fatal - the mic/AudioTrack are already released above
+                        // regardless of whether this final courtesy message reaches
+                        // the server (e.g. the connection may have just dropped).
+                        Log.w("MainActivity", "Failed to signal listen-stop: " + e.getMessage());
+                    }
+                }
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            default:
+                return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
+                        "{\"ok\":false,\"error\":\"unknown xiaozhi endpoint: " + path + "\"}");
+        }
+    }
+
+    /** Stable per-install device identifier for the "Device-Id" handshake header -
+     *  xiaozhi-esp32's own firmware uses the device's MAC address here, but this robot
+     *  has no single canonical MAC exposed at the Android app layer worth depending on
+     *  (WiFi MAC is unreliable/randomized on modern Android and this app targets
+     *  API 19+), so a random UUID generated once and persisted in SharedPreferences is
+     *  used instead - it just needs to be *stable across app restarts*, not tied to any
+     *  particular piece of hardware. */
+    private String getXiaozhiDeviceId() {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String existing = prefs.getString(PREF_XIAOZHI_DEVICE_ID, null);
+        if (existing != null && !existing.isEmpty()) {
+            return existing;
+        }
+        String generated = java.util.UUID.randomUUID().toString();
+        prefs.edit().putString(PREF_XIAOZHI_DEVICE_ID, generated).apply();
+        return generated;
+    }
+
+    /** Builds the MCP bridge XiaozhiClient uses to answer tools/list and tools/call.
+     *  Reads PREF_BACKEND at call time (not cached) so a backend switch takes effect on
+     *  the very next MCP request without needing to reconnect the XiaoZhi session.
+     *
+     *  PHASE 1 SCOPE: exposes a deliberately small, safe starter set of tools
+     *  (play a named action, stop action playback, speak via TTS) rather than the full
+     *  AIDL surface from AIDL_REFERENCE.md - MCP tool calls originate from a remote LLM
+     *  the operator doesn't directly control turn-by-turn, so starting narrow and
+     *  expanding later (once real usage patterns are seen) is safer than exposing
+     *  everything (LED raw params, serial port raw commands, etc.) up front. */
+    private XiaozhiClient.McpBridge xiaozhiMcpBridge() {
+        return new XiaozhiClient.McpBridge() {
+            @Override
+            public org.json.JSONObject listTools() throws org.json.JSONException {
+                org.json.JSONArray tools = new org.json.JSONArray();
+
+                org.json.JSONObject playAction = new org.json.JSONObject();
+                playAction.put("name", "self.robot.play_action");
+                playAction.put("description", "Play a named built-in robot action/animation.");
+                org.json.JSONObject playActionSchema = new org.json.JSONObject();
+                playActionSchema.put("type", "object");
+                org.json.JSONObject playActionProps = new org.json.JSONObject();
+                org.json.JSONObject nameProp = new org.json.JSONObject();
+                nameProp.put("type", "string");
+                nameProp.put("description", "Action name as returned by the robot's action list.");
+                playActionProps.put("name", nameProp);
+                playActionSchema.put("properties", playActionProps);
+                playActionSchema.put("required", new org.json.JSONArray().put("name"));
+                playAction.put("inputSchema", playActionSchema);
+                tools.put(playAction);
+
+                org.json.JSONObject stopAction = new org.json.JSONObject();
+                stopAction.put("name", "self.robot.stop_action");
+                stopAction.put("description", "Stop whatever action is currently playing.");
+                org.json.JSONObject stopActionSchema = new org.json.JSONObject();
+                stopActionSchema.put("type", "object");
+                stopActionSchema.put("properties", new org.json.JSONObject());
+                stopAction.put("inputSchema", stopActionSchema);
+                tools.put(stopAction);
+
+                org.json.JSONObject speak = new org.json.JSONObject();
+                speak.put("name", "self.robot.speak");
+                speak.put("description", "Speak a short phrase out loud through the robot's TTS.");
+                org.json.JSONObject speakSchema = new org.json.JSONObject();
+                speakSchema.put("type", "object");
+                org.json.JSONObject speakProps = new org.json.JSONObject();
+                org.json.JSONObject textProp = new org.json.JSONObject();
+                textProp.put("type", "string");
+                textProp.put("description", "Text to speak.");
+                speakProps.put("text", textProp);
+                speakSchema.put("properties", speakProps);
+                speakSchema.put("required", new org.json.JSONArray().put("text"));
+                speak.put("inputSchema", speakSchema);
+                tools.put(speak);
+
+                org.json.JSONObject result = new org.json.JSONObject();
+                result.put("tools", tools);
+                result.put("nextCursor", "");
+                return result;
+            }
+
+            @Override
+            public org.json.JSONObject callTool(String name, org.json.JSONObject arguments) throws org.json.JSONException {
+                boolean isError = false;
+                String resultText = "";
+                try {
+                    switch (name) {
+                        case "self.robot.play_action": {
+                            String actionName = arguments.optString("name", "");
+                            if (actionName.isEmpty()) {
+                                isError = true;
+                                resultText = "missing required argument: name";
+                                break;
+                            }
+                            UbxErrorCode.API_ERROR_CODE code = robot.action_PlayActionName(actionName);
+                            isError = !isOk(code);
+                            resultText = String.valueOf(code);
+                            break;
+                        }
+                        case "self.robot.stop_action": {
+                            UbxErrorCode.API_ERROR_CODE code = robot.action_StopAction();
+                            isError = !isOk(code);
+                            resultText = String.valueOf(code);
+                            break;
+                        }
+                        case "self.robot.speak": {
+                            String text = arguments.optString("text", "");
+                            if (text.isEmpty()) {
+                                isError = true;
+                                resultText = "missing required argument: text";
+                                break;
+                            }
+                            // Mirrors the "speech/tts" HTTP endpoint below (handleApi()) -
+                            // same STOP_TO_TTS_MIN_GAP_MS race guard against a just-issued
+                            // speech/stop, same mouth-LED bracket, same 3-arg
+                            // speech_startTTS(lang, text, voice) signature (Alpha2RobotApi
+                            // exposes no high-priority/interrupting TTS variant, so this
+                            // shares the low-priority entry point the rest of the app uses).
+                            // Fixed to Nuance/en_us rather than reading an "engine" query
+                            // param (no query string here, this is an MCP tool call) -
+                            // consistent with defaulting away from iFlytek's per-call voice
+                            // picker, which has no equivalent argument in this tool's schema.
+                            long sinceStopMs = System.currentTimeMillis() - lastSpeechStopAtMs;
+                            if (sinceStopMs >= 0 && sinceStopMs < STOP_TO_TTS_MIN_GAP_MS) {
+                                try {
+                                    Thread.sleep(STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
+                                } catch (InterruptedException ie) {
+                                    Thread.currentThread().interrupt();
+                                }
+                            }
+                            startMouthLedForTts();
+                            UbxErrorCode.API_ERROR_CODE code = robot.speech_startTTS("en_us", text, null);
+                            if (!isOk(code)) {
+                                stopMouthLedForTts();
+                            }
+                            isError = !isOk(code);
+                            resultText = String.valueOf(code);
+                            break;
+                        }
+                        default:
+                            isError = true;
+                            resultText = "unknown tool: " + name;
+                            break;
+                    }
+                } catch (Exception e) {
+                    isError = true;
+                    resultText = "tool execution threw: " + e.getMessage();
+                }
+
+                org.json.JSONArray content = new org.json.JSONArray();
+                org.json.JSONObject textBlock = new org.json.JSONObject();
+                textBlock.put("type", "text");
+                textBlock.put("text", resultText);
+                content.put(textBlock);
+
+                org.json.JSONObject result = new org.json.JSONObject();
+                result.put("content", content);
+                result.put("isError", isError);
+                return result;
+            }
+        };
+    }
+
     private HttpServer.ApiResponse handleApi(String path, Map<String, String> query, String method, String body) {
         switch (path) {
             case "status":
@@ -1092,8 +2192,28 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return actionList();
             case "action/play":
                 return codeResponse(robot.action_PlayActionName(require(query, "name")));
+            case "action/play_file":
+                return codeResponse(robot.action_PlayActionFile(require(query, "file")));
             case "action/stop":
                 return codeResponse(robot.action_StopAction());
+            case "action/disable":
+                return codeResponse(robot.action_DisableActionPlay(Boolean.parseBoolean(require(query, "disable"))));
+            case "action/is_actioning":
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"isActioning\":" + robot.action_IsActioning() + "}");
+            case "action/trigger_event": {
+                // nEventType/param semantics are unverified against real hardware (see
+                // AIDL_REFERENCE_ALPHA2.md) - this endpoint just passes the caller's values
+                // through as-is rather than assuming any interpretation. param is
+                // optional and taken as base64 (matching this codebase's existing
+                // convention for raw bytes over the query string, e.g. camera JPEG
+                // frames); omitted param sends an empty byte array.
+                int eventType = Integer.parseInt(require(query, "event_type"));
+                String paramB64 = queryOrDefault(query, "param_base64", "");
+                byte[] param = paramB64.isEmpty()
+                        ? new byte[0]
+                        : android.util.Base64.decode(paramB64, android.util.Base64.DEFAULT);
+                return codeResponse(robot.action_TriggerEventHandler(eventType, param));
+            }
 
             // -- Speech / TTS -----------------------------------------------------------
             // engine: nuance | iflytek | android. voice only applies to iflytek (its
@@ -1122,6 +2242,19 @@ public class MainActivity extends Activity implements SensorEventListener {
                 }
                 String voice = "iflytek".equals(engine) ? query.get("voice") : null; // may be null
                 String lang = "iflytek".equals(engine) ? "zh_cn" : "en_us"; // no language picker; engine implies it
+                // See STOP_TO_TTS_MIN_GAP_MS above: if speech/stop just ran, give the
+                // robot side's async audio teardown a minimum window to finish before
+                // starting a new AIDL TTS session, to avoid crashing the Nuance TTS
+                // session. Runs on this HTTP worker thread only (newCachedThreadPool),
+                // so it never blocks other in-flight requests.
+                long sinceStopMs = System.currentTimeMillis() - lastSpeechStopAtMs;
+                if (sinceStopMs >= 0 && sinceStopMs < STOP_TO_TTS_MIN_GAP_MS) {
+                    try {
+                        Thread.sleep(STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
                 startMouthLedForTts();
                 UbxErrorCode.API_ERROR_CODE res = robot.speech_startTTS(lang, text, voice);
                 if (!isOk(res)) {
@@ -1134,14 +2267,41 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
             case "speech/stop":
                 robot.speech_StopTTS();
+                lastSpeechStopAtMs = System.currentTimeMillis();
                 if (androidTts != null) {
                     androidTts.stop();
                 }
                 stopMouthLedForTts();
                 return codeResponse(UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED);
-            case "speech/set_mic":
-                robot.speech_SetMIC(Boolean.parseBoolean(require(query, "wake")));
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            case "speech/set_mic": {
+                boolean wake = Boolean.parseBoolean(require(query, "wake"));
+                robot.speech_SetMIC(wake);
+                // 記住呢個狀態，等 handleMicStream() 斷線時知道用戶係咪透過 TTS
+                // tab 主動要求長期持有 mic - 見 micHeldByApp 個 field javadoc。
+                micHeldByApp = wake;
+                // 用戶手動交返俾機械人 (wake=false) 就自動閂埋「持續搶 mic」,
+                // 唔係就 enforcer 兩秒之後又會將 mic 搶返嚟, 用戶個「交返」動作
+                // 會好似冇效咁樣, 好confusing。
+                if (!wake && micHoldEnforced) {
+                    stopMicHoldEnforcer();
+                }
+                EventBus.get().publish("mic_state",
+                        "{\"held\":" + micHeldByApp + ",\"keepHeld\":" + micHoldEnforced + "}");
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"held\":" + micHeldByApp
+                        + ",\"keepHeld\":" + micHoldEnforced + "}");
+            }
+            case "speech/set_mic_keep_held": {
+                boolean keep = Boolean.parseBoolean(require(query, "keep"));
+                if (keep) {
+                    startMicHoldEnforcer();
+                } else {
+                    stopMicHoldEnforcer();
+                }
+                EventBus.get().publish("mic_state",
+                        "{\"held\":" + micHeldByApp + ",\"keepHeld\":" + micHoldEnforced + "}");
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"held\":" + micHeldByApp
+                        + ",\"keepHeld\":" + micHoldEnforced + "}");
+            }
             case "speech/set_asr_engine": {
                 // 2026-08 新增: 之前 ASR 只有一條路 —— 一開機用通用嘅
                 // ALPHA_SPEECH_MAIN_SERVER 別名綁定, 由機身韌體自己決定實際
@@ -1207,6 +2367,19 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // detect its own wake word first (unlike speech/set_mic, which only claims/
                 // releases mic ownership and never itself starts listening). Results still
                 // arrive as the usual "asr_result" WebSocket event.
+                //
+                // 2026-08 修正: 呢個係整個 API 入面觸發 ASR 最主要嘅入口 (見
+                // AIDL_REFERENCE_ALPHA2.md 1.1 - startSpeechNoWakeup 先係真正可靠嘅「開始聆聽」
+                // 方法), 但之前一直冇好似 speech/inject/speech/stop_inject 咁加
+                // speechReady gate。即係話啱啱切換完 ASR engine (speechReady 短暫變
+                // false, 等緊 onSpeechInitSuccess) 嗰陣撞正撳呢個 endpoint, 會攞到
+                // 同 speech/inject 講嗰種一樣含糊嘅 API_ERROR_NOT_INIT, 而唔係清晰嘅
+                // 錯誤訊息。而家補返個 gate, 同 speech/inject 睇齊。
+                if (!speechReady) {
+                    return HttpServer.ApiResponse.error(
+                            "Speech API not ready yet - wait for the \"speech_ready\" event "
+                                    + "(e.g. right after speech/set_asr_engine) before calling speech/start_asr.");
+                }
                 return codeResponse(robot.speech_startSpeechNoWakeup());
             case "speech/set_voice":
                 return codeResponse(robot.speech_setVoiceName(require(query, "name")));
@@ -1243,9 +2416,26 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // events - no new event added here on purpose), or may be as dead as
                 // speech_understandText. This call only reports whether the SDK accepted
                 // the request, not whether recognition actually fired.
+                //
+                // 2026-08 新增: 之前呢度冇 speechReady gate，如果啱啱切換完 engine
+                // (speechReady 短暫變返 false，等緊 onSpeechInitSuccess callback)
+                // 就直接落去 SDK call，好大機會兩個 util 都仲係 null，攞到含糊嘅
+                // API_ERROR_NOT_INIT，而唔係好似 speech/reset 咁清晰嘅錯誤訊息。
+                // 而家加返個 gate，同 speech/init_grammar 嗰種做法睇齊。
+                if (!speechReady) {
+                    return HttpServer.ApiResponse.error(
+                            "Speech API not ready yet - wait for the \"speech_ready\" event "
+                                    + "(e.g. right after speech/set_asr_engine) before calling speech/inject.");
+                }
                 return codeResponse(robot.speech_startRecognized(require(query, "text")));
             case "speech/stop_inject":
                 // Companion to speech/inject (onStopSpeech). Untested, same caveats.
+                // 同上，加返 speechReady gate。
+                if (!speechReady) {
+                    return HttpServer.ApiResponse.error(
+                            "Speech API not ready yet - wait for the \"speech_ready\" event before calling "
+                                    + "speech/stop_inject.");
+                }
                 return codeResponse(robot.speech_stopRecognized());
             case "speech/init_grammar":
                 // initSpeechGrammar() - sets up a restricted-vocabulary grammar.
@@ -1311,6 +2501,47 @@ public class MainActivity extends Activity implements SensorEventListener {
                 }));
             case "speech/stop_grammar":
                 return codeResponse(robot.speech_stopGrammar());
+            case "speech/register_english_understand":
+                // Registers for online English NLU results (ISpeechInterface #15).
+                // Unverified against real hardware - what triggers a result, and
+                // under what conditions, is unknown; this just wires the callback
+                // through to the "english_understand" WebSocket event.
+                return codeResponse(robot.speech_onEnglishUnderstand(new IAlphaEnglishUnderstandListener.Stub() {
+                    @Override
+                    public void onAlpha2EnglishUnderstandResult(String strResult) {
+                        EventBus.get().publish("english_understand",
+                                "{\"result\":\"" + jsonSafe(strResult) + "\"}");
+                    }
+                }));
+            case "speech/register_english_offline_understand":
+                // Offline counterpart of the above (ISpeechInterface #16). Same
+                // caveats apply.
+                return codeResponse(robot.speech_setEnglishOfflineListener(new IAlphaEnglishOfflineUnderstandListener.Stub() {
+                    @Override
+                    public void onAlpha2EnglishOfflineUnderstandResult(String strResult) {
+                        EventBus.get().publish("english_understand_offline",
+                                "{\"result\":\"" + jsonSafe(strResult) + "\"}");
+                    }
+                }));
+            case "speech/register_replay_content":
+                // Registers for replayed ASR history records (ISpeechInterface #22,
+                // see AIDL_REFERENCE_ALPHA2.md 1.7 for ASRRecord's field provenance).
+                // extra1/extra2 are forwarded as-is under their placeholder names -
+                // their real semantics are unconfirmed on this hardware.
+                return codeResponse(robot.speech_registerReplayContentListener(new IReplaySpeechCallback.Stub() {
+                    @Override
+                    public void onRelpayContent(ASRRecord record) {
+                        EventBus.get().publish("asr_replay", "{"
+                                + "\"recordId\":\"" + jsonSafe(record.getRecordId()) + "\","
+                                + "\"msgLanguage\":\"" + jsonSafe(record.getMsgLanguage()) + "\","
+                                + "\"content\":\"" + jsonSafe(record.getContent()) + "\","
+                                + "\"contentLinks\":\"" + jsonSafe(record.getContentLinks()) + "\","
+                                + "\"labelId\":" + record.getLabelId() + ","
+                                + "\"extra1\":\"" + jsonSafe(record.getExtra1()) + "\","
+                                + "\"extra2\":\"" + jsonSafe(record.getExtra2()) + "\""
+                                + "}");
+                    }
+                }));
 
             // -- Servos -----------------------------------------------------------------
             case "servo/one": {
@@ -1419,6 +2650,33 @@ public class MainActivity extends Activity implements SensorEventListener {
                 robot.requestRobotUUID();
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
 
+            // -- Serial: raw AIDL passthrough (chest/head sendRawData bypass sendCommand's
+            // frame encapsulation entirely; Bluetooth serial is a separate, Bluetooth-backed
+            // link with no chest/head hardware behind it - see AIDL_REFERENCE_ALPHA2.md 3.1/3.3).
+            // Every payload here is base64 (this codebase's existing convention for raw
+            // bytes over the query string, e.g. camera JPEG frames / action/trigger_event).
+            case "serial/chest/send_raw":
+                return codeResponse(robot.chest_sendRawData(
+                        android.util.Base64.decode(require(query, "data_base64"), android.util.Base64.DEFAULT)));
+            case "serial/header/send_raw":
+                return codeResponse(robot.header_sendRawData(
+                        android.util.Base64.decode(require(query, "data_base64"), android.util.Base64.DEFAULT)));
+            case "serial/header/serial_number": {
+                String serial = robot.header_getRobotSerialNumber();
+                return HttpServer.ApiResponse.ok("{\"ok\":" + (serial != null)
+                        + ",\"serialNumber\":\"" + jsonSafe(serial) + "\"}");
+            }
+            case "bluetooth/send_command": {
+                byte cmd = Byte.parseByte(require(query, "cmd"));
+                String paramB64 = queryOrDefault(query, "param_base64", "");
+                byte[] param = paramB64.isEmpty()
+                        ? new byte[0]
+                        : android.util.Base64.decode(paramB64, android.util.Base64.DEFAULT);
+                return codeResponse(robot.bluetooth_sendCommand(cmd, param));
+            }
+            case "bluetooth/send_at":
+                return codeResponse(robot.bluetooth_sendATCMD(require(query, "cmd")));
+
             // -- Camera: standard Android legacy Camera API, not SDK-gated (see
             // CameraController for the front/back index quirk on this hardware). The
             // live feed itself is served at GET /stream/camera (see handleStream()) as
@@ -1469,7 +2727,6 @@ public class MainActivity extends Activity implements SensorEventListener {
             // is unverified; this test-tone endpoint exists to answer that on the physical
             // unit before relying on the real streaming path (POST /upload/audio) below.
             case "audio/testtone": {
-                Log.i(TAG, "###### BUILD MARKER v2026-06-30-diag - audio/testtone hit ######");
                 releaseMicForAudioIo();
                 AudioPlaybackController.StartResult result =
                         audioPlaybackController.playTestTone(3000);
@@ -1670,7 +2927,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             // -- Service config (/sdcard/actions/service_config.{json,txt}) -------------
             //
             // 2026-08 新增。呢個 config 檔控制緊機身開機時嘅 wake word/ASR 語言/預設對話
-            // app (見 AIDL_REFERENCE.md「引擎選擇」段落) —— 實測證實 (見 log) 改咗呢個
+            // app (見 AIDL_REFERENCE_ALPHA2.md「引擎選擇」段落) —— 實測證實 (見 log) 改咗呢個
             // 檔案、重開機之後，wake word 真係會跟住轉。
             //
             // 兩個關鍵限制，呢組 API 圍住嚟設計:
@@ -1871,8 +3128,10 @@ public class MainActivity extends Activity implements SensorEventListener {
      * connected, same as WebSocketServer.Connection.readLoop() does for "/ws" - both
      * rely on the pool's cached-thread-per-connection model rather than needing NIO.
      */
-    /** Handles POST /upload/audio: raw PCM bytes (16kHz mono 16-bit, matching
-     *  AudioPlaybackController's format) from the browser's mic, queued for playback.
+    /** Handles POST /upload/audio: raw PCM bytes (8kHz mono 16-bit, matching
+     *  AudioPlaybackController's format - see AudioPlaybackController.SAMPLE_RATE_HZ
+     *  and app-mic.js's TALK_TARGET_SAMPLE_RATE; lowered from 16kHz to 8kHz by request,
+     *  2026-08) from the browser's mic, queued for playback.
      *  Playback must already be running (audio/play/start) - this does not implicitly
      *  start it, so a stray upload after the user has stopped talking doesn't
      *  re-open the speaker session on its own. */
@@ -1987,6 +3246,39 @@ public class MainActivity extends Activity implements SensorEventListener {
         robot.header_ledSetEye5Mic(color, brightness, 255, 255, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
     }
 
+    /** 2026-08 新增: 呢部機 (head board / firmware 1.1.1.14) 嘅
+     *  header_ledSetHead5Mic/header_ledSetEye5Mic 實測全部 preset 都回
+     *  API_ERROR_FAILED (bindReady:true, 即係唔係未 ready, 係機身真係唔支援/
+     *  冇實作 - 睇落呢個機頭唔係 5-mic variant, 或者呢個 firmware 冇實作呢兩個
+     *  AIDL 方法)。Mouth LED (MouthLedData, 直接 JNI 唔經 AIDL) 就實測正常。
+     *
+     *  呢個方法將 obstacle-triggered 嘅 LED 指示同時發去兩條路: 5-mic
+     *  head/eye (setHeadEyeLedLong) 照舊保留 - 喺支援嘅機/firmware 上會着紫燈,
+     *  喺呢部機上頂多係 API_ERROR_FAILED、冇視覺效果、但唔會拋例外中斷流程;
+     *  同時亦閃 mouth LED 做 fallback, 保證呢部機都見到嘢。兩條路獨立 try/catch,
+     *  其中一條失敗唔會擋另一條。 */
+    private void applyObstacleIndicator(boolean triggered) {
+        try {
+            if (triggered) {
+                setHeadEyeLedLong(5, 9); // 5 = 紫 (purple), see led/head/set color-code comment
+            } else {
+                robot.header_stop5MicEarLED();
+                robot.header_stop5MicEyeLED();
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "applyObstacleIndicator: 5-mic head/eye LED path failed (known unsupported on this head board, see MouthLedData javadoc)", t);
+        }
+        try {
+            if (triggered) {
+                MouthLedData.breathing(150).apply(); // fast breathing = obstacle-near cue
+            } else {
+                MouthLedData.off().apply();
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "applyObstacleIndicator: mouth LED fallback failed", t);
+        }
+    }
+
     /** Parses raw chest-serial receive frames looking for CHES_SEND_OBSTACLE (command
      *  byte -127 / 0x81, per Alpha2RobotApi#chest_configureSonar javadoc), which the
      *  chest board sends unprompted once servo/sonar has configured a trigger distance.
@@ -1998,7 +3290,29 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  On trigger (param[0] != 0): solid purple (color=5) head+eye LEDs, brightness 9.
      *  On clear (param[0] == 0): LEDs turned off. Also published as "sonar_obstacle" so
      *  the front-end chart can plot live triggered/clear state against the threshold
-     *  line set via servo/sonar. */
+     *  line set via servo/sonar.
+     *
+     *  2026-08 更新: 實機 (firmware 1.1.1.14) 證實呢個 0x81 幀假設完全冇撞中 -
+     *  sonar 讀數根本唔會經 IAlpha2SerialPortService 嘅 AIDL rcv callback 送到,
+     *  onListenSerialPortRcvData() 淨係收到 app 自己送出 chest_configureSonar()
+     *  嗰個 config command 嘅 2-byte ack "04 00"。中途一度誤以為 sonar 讀數會
+     *  經 "com.ubtechinc.services.chest" (StaticValue.CHEST_ACTION) 呢個全域
+     *  broadcast 重新發送, 但反編譯官方 UBTech alpha2demo.apk 之後證實呢個都
+     *  係錯 - CHEST_ACTION 官方 demo 自己都淨係用嚟 log 機身內部 raw command
+     *  byte (見 RobotEventReceiver 個 CHEST_ACTION case), 唔係 sonar 讀數。
+     *  真正嘅 sonar 讀數係經另一個獨立、之前完全冇診斷到嘅 broadcast action
+     *  "com.ubtechinc.sonar.distance" (StaticValue.SONAR_DISTANCE_ACTION) 送出,
+     *  extra 已經係 parse 好嘅 int (key "sonar_distance",
+     *  StaticValue.SONAR_DISTANCE_EXTRA), 唔使自己再解 raw wire frame - 見
+     *  RobotEventReceiver 嗰個 SONAR_DISTANCE_ACTION case 同
+     *  MainActivity#onSonarDistanceReceived()。而且就算 0x81 幀真係經 AIDL
+     *  path 到, 實測 raw wire frame 都係 "f8 8f 0a 00 00 8b eb 04 81 05 ed" -
+     *  0x81 出現喺幀中間 (index 8), 唔係 bytes[0], 所以呢度原本嘅
+     *  offset 假設連框架格式都對唔上, 唔止係「呢部機唔行呢條路」咁簡單。
+     *  呢個方法連同佢個 0x81 假設保留低唔刪 - 留返俾第啲機身/firmware 版本,
+     *  如果真係會送 0x81-開頭嘅 AIDL rcv 幀, 呢條路徑先有意義；喺呢部機上佢
+     *  單純唔會撞到 (cmd 恒等於 4, 喺 "cmd != -127" 嗰行提早 return), 唔影響
+     *  真正生效嗰條 SONAR_DISTANCE_ACTION 路徑。 */
     private void handleChestObstacleFrame(byte[] bytes, int len) {
         if (bytes == null || len < 2) {
             return;
@@ -2014,12 +3328,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             return; // avoid re-sending the same LED state on every repeated frame
         }
         sonarLedActive = triggered;
-        if (triggered) {
-            setHeadEyeLedLong(5, 9); // 5 = 紫 (purple), see led/head/set color-code comment
-        } else {
-            robot.header_stop5MicEarLED();
-            robot.header_stop5MicEyeLED();
-        }
+        applyObstacleIndicator(triggered);
     }
 
     /**
@@ -2045,7 +3354,7 @@ public class MainActivity extends Activity implements SensorEventListener {
      * broadcasting LED_ACTION control_type:2 ("stop ear led"), turning the head/eye LED
      * back off - entirely outside this app's control, and racing against whatever LED
      * state the browser had just asked for (e.g. the green "listening" cue - see
-     * app.js's setListenLed()). Depending on scheduling this broadcast could land
+     * app-mic.js's setListenLed()). Depending on scheduling this broadcast could land
      * either before or after this app's own LED call, which is why the green LED "有時
      * 著,有時唔著" (sometimes lit, sometimes not) - a pure race, not a code bug in the
      * LED call itself. The fix is ordering: setHeadEyeLedLong() below is called from
@@ -2060,6 +3369,48 @@ public class MainActivity extends Activity implements SensorEventListener {
             Thread.sleep(300);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    /** 持續搶 mic 背景 thread - 見 micHoldEnforced 個 field javadoc。每
+     *  MIC_HOLD_ENFORCER_INTERVAL_MS 就重新 call 一次 speech_SetMIC(true),
+     *  確保就算 firmware 內部側面攞返咗 mic (例如 setWakeState 本身喺
+     *  firmware bytecode 入面會順便觸發 IflytekWakeUp5mic.startRecording()
+     *  呢個 side effect - 見 AIDL_REFERENCE_ALPHA2.md「⚠️ 重要行為」段), app
+     *  都會好快搶返嚟, 唔使等用戶自己發現支 mic 靜咗先手動再撳一次。
+     *
+     *  用獨立 thread + sleep 而唔係靠 handleMicStream() 個 loop, 係因為兩者
+     *  用途唔同: handleMicStream() 淨係喺有人真係開緊 /stream/mic 先行, 而
+     *  呢個 enforcer 係只要用戶喺 mic card 開咗個「持續搶 mic」掣, 就算冇人
+     *  開緊 mic stream 都要生效 (例如淨係想用 TTS, 但唔想俾機械人自己嘅
+     *  wake-word 引擎不時搶返支 mic)。 */
+    private void startMicHoldEnforcer() {
+        if (micHoldEnforcerThread != null) return;
+        micHoldEnforced = true;
+        micHoldEnforcerThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while (micHoldEnforced && !Thread.currentThread().isInterrupted()) {
+                    if (micHeldByApp) {
+                        robot.speech_SetMIC(true);
+                    }
+                    try {
+                        Thread.sleep(MIC_HOLD_ENFORCER_INTERVAL_MS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+        }, "MicHoldEnforcer");
+        micHoldEnforcerThread.start();
+    }
+
+    private void stopMicHoldEnforcer() {
+        micHoldEnforced = false;
+        if (micHoldEnforcerThread != null) {
+            micHoldEnforcerThread.interrupt();
+            micHoldEnforcerThread = null;
         }
     }
 
@@ -2111,13 +3462,27 @@ public class MainActivity extends Activity implements SensorEventListener {
             while (true) {
                 AudioController.Chunk chunk;
                 try {
-                    chunk = queue.poll(10, java.util.concurrent.TimeUnit.SECONDS);
+                    // 2026-08 修正 (用家要求): 之前呢度用 poll(10, SECONDS), 10 秒
+                    // 攞唔到 chunk 就當「mic 死咗」自動 break, 跟住落面個 finally
+                    // 就會 speech_SetMIC(false) 主動將 mic 還俾機械人 —— 但用家
+                    // 想要嘅係「淨係用家自己撳停先還機, 唔理有冇聲音都唔應該自動
+                    // 還」。改用冇 timeout 嘅 take(), 淨係阻塞式等下一個 chunk,
+                    // 唔會因為靜音就自行斷開。個 stream connection 本身斷咗
+                    // (用家關咗瀏覽器分頁/收咗個 tab) 會由落面 out.write() 拋
+                    // IOException 嚟令個 loop 自然跳出, 唔使靠呢度嘅逾時判斷。
+                    //
+                    // Trade-off: 如果 AudioController.readLoop() 本身真係故障
+                    // (AudioRecord.read() 持續讀錯, 見 AudioController 嗰邊 n<0
+                    // 嗰段), readLoop() 會自己 release 咗個 AudioRecord 停低, 但
+                    // 唔會再有新 chunk 送入嚟, 呢度個 take() 會永久阻塞, 呢條 HTTP
+                    // thread 唯一釋放方法係用家自己喺瀏覽器度撳「停止聽」
+                    // (令 fetch abort, socket close, out.write() 先會拋 IOException
+                    // 令個 loop 跳出)。呢個係刻意換嚟嘅代價 - 為咗完全消除「靜音
+                    // 就自動還機」呢個唔想要嘅行為, 唔會再有任何逾時自動釋放。
+                    chunk = queue.take();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
-                }
-                if (chunk == null) {
-                    break; // no audio in 10s - mic likely died
                 }
                 out.write(("--" + MIC_BOUNDARY + "\r\n"
                         + "Content-Type: audio/wav\r\n"
@@ -2137,8 +3502,15 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // stay silently disabled until someone went to the Speech tab and
                 // manually re-enabled it, same as it used to require to enable it.
                 // false = "交返麥克風俾機器人" (hand back to the robot), matching
-                // setMic(false) in app.js - true is the opposite, "release to app".
-                robot.speech_SetMIC(false);
+                // setMic(false) in app-speech.js - true is the opposite, "release to app".
+                //
+                // 例外: 如果用家喺 TTS tab 撳咗「釋放麥克風俾 App」(micHeldByApp),
+                // 就代表佢想長期由 app 持有 mic - 呢個 stream 斷開 (背景化分頁/
+                // 網絡短暫中斷都會觸發呢個 finally) 唔應該將 mic 靜靜哋還俾機械人,
+                // 否則個「釋放」狀態就會被呢度無聲蓋走, 要用家自己再撳一次先頂到住。
+                if (!micHeldByApp) {
+                    robot.speech_SetMIC(false);
+                }
                 // Safety net: turn the green "listening" LED back off here too, not
                 // just relying on the browser's stopMicListen() sending preset=stop -
                 // if this stream connection just drops (backgrounded tab, network
@@ -2228,12 +3600,36 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         @SuppressWarnings("unchecked")
         ArrayList<ArrayList<String>> list = (ArrayList<ArrayList<String>>) resultHolder[0];
+        // 2026-08 debug: action/list 響應空 actions[] 但機身 /sdcard/actions/*.ubx
+        // 實際有 ~140 個檔。可能係 (a) latch timeout, onGetActionList 冇喺 5s 內
+        // callback, list 保持 null, 或者 (b) 機身確實有 callback 返 list, 但每行
+        // < 4 欄, 全部俾下面嘅 "row.size() < 4" 跳晒。呢兩種情況分開 log 先分辨到
+        // 邊個先係真正原因。
+        if (list == null) {
+            Log.w(TAG, "actionList: onGetActionList did not complete within 5s latch (list == null)");
+        } else {
+            Log.d(TAG, "actionList: got " + list.size() + " row(s)");
+            for (int i = 0; i < list.size(); i++) {
+                ArrayList<String> row = list.get(i);
+                if (row.size() < 4) {
+                    Log.w(TAG, "actionList: row " + i + " skipped, size=" + row.size()
+                            + " content=" + row);
+                }
+            }
+        }
         StringBuilder sb = new StringBuilder("{\"ok\":true,\"actions\":[");
         if (list != null) {
+            // Bug fix: "if (i > 0) sb.append(',')" used the *list index* as the
+            // "already emitted something" check. When an earlier row is skipped
+            // (row.size() < 4, see above), the first row that IS emitted still has
+            // i > 0 and gets a leading comma anyway -> malformed JSON "[,{...}".
+            // Track whether anything has actually been appended instead.
+            boolean firstEmitted = true;
             for (int i = 0; i < list.size(); i++) {
                 ArrayList<String> row = list.get(i);
                 if (row.size() < 4) continue;
-                if (i > 0) sb.append(',');
+                if (!firstEmitted) sb.append(',');
+                firstEmitted = false;
                 sb.append("{\"id\":\"").append(jsonSafe(row.get(0))).append("\",")
                         .append("\"type\":\"").append(jsonSafe(row.get(1))).append("\",")
                         .append("\"nameCn\":\"").append(jsonSafe(row.get(2))).append("\",")

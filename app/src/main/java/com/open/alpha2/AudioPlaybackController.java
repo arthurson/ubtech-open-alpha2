@@ -38,7 +38,7 @@ public class AudioPlaybackController {
     // Playback sample rate. Confirmed compatible via logcat: alpha2services' own TTS
     // engine (IflytekTTS) successfully opens an AudioTrack at sampleRate=16000 (its
     // Lowered from 16000 to 8000 by request, alongside the same change in
-    // AudioController.java and app.js's TALK_TARGET_SAMPLE_RATE - all three must agree.
+    // AudioController.java and app-mic.js's TALK_TARGET_SAMPLE_RATE - all three must agree.
     // Halves bytes/sec, which doubles how much playback time bufBytes/
     // JITTER_BUFFER_CAP_BYTES represent for the same byte count - directly increasing
     // headroom against the mid-session network jitter that caused the underrun seen in
@@ -55,7 +55,7 @@ public class AudioPlaybackController {
     // SAMPLE_RATE_HZ was lowered from 16000 to 8000 above - this formula must track
     // that change, or the cap's actual duration would silently double instead of
     // staying at the intended ~600ms). Each browser chunk (ScriptProcessorNode
-    // bufferSize=4096 at the browser's native rate, downsampled to 8kHz - see app.js)
+    // bufferSize=4096 at the browser's native rate, downsampled to 8kHz - see app-mic.js)
     // arrives roughly every 50-160ms in practice, but HTTP upload timing over a LAN is
     // bursty (each /upload/audio POST is its own short-lived TCP connection -
     // "Connection: close" - not a steady stream), so chunks can arrive in clusters
@@ -419,7 +419,39 @@ public class AudioPlaybackController {
     }
 
     public void shutdown() {
+        // 2026-08 修正: 同 AudioController.shutdown() 一樣嘅 race - 之前呢度冇同步
+        // 等待 writeLoop() 收尾就即刻 quitSafely()。playing=false 之後, writeLoop()
+        // 要行多一個 loop iteration 先會發現、跟住先做 finishAndReleaseTrack()
+        // (audioTrack.stop()/release()) —— 呢個 release 本身係喺 playbackHandler
+        // 嗰條 playback thread 度做緊嘅, quitSafely() 唔會中斷佢, 但如果 shutdown()
+        // 之後好快又有人 start(), 新一輪會開一條新 HandlerThread, 有機會同舊嗰條
+        // 仲喺度做緊 release() 嘅 thread 短暫並行, 兩邊都摞住 AudioTrack/audioTrack
+        // 呢個共享狀態。跟 AudioController.shutdown() 嘅做法睇齊: 用一個 post 落
+        // playbackHandler 嘅 Runnable + CountDownLatch, 等實際 release 完成先返。
+        if (playbackHandler == null) {
+            playing = false;
+            if (playbackThread != null) {
+                playbackThread.quitSafely();
+            }
+            return;
+        }
         playing = false;
+        final CountDownLatch latch = new CountDownLatch(1);
+        playbackHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                // writeLoop() 本身跑緊喺呢條 playback thread, 佢個 while 循環一見到
+                // playing=false 就會自然完成同做埋 finishAndReleaseTrack() —— 呢個
+                // Runnable post 落同一條 handler 嘅 queue, 保證喺 writeLoop() 嗰個
+                // Runnable 之後先執行, 所以行到呢度嗰陣 audioTrack 一定已經 release 咗。
+                latch.countDown();
+            }
+        });
+        try {
+            latch.await(2, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         if (playbackThread != null) {
             playbackThread.quitSafely();
         }

@@ -7,7 +7,11 @@ public class LedControl {
 
     public static native boolean ledSetHead(int i, int i2, int i3, int i4, int i5, int i6, int i7, int i8);
 
-    public static native boolean ledSetMouth(int runtime, int mode, int bright, int uptime, int downtime);
+    // Parameter names match MouthLedData's hardware-verified field semantics
+    // (see MouthLedData javadoc for how each position was confirmed) rather than
+    // the demo app's original, unverified names - do not rename positionally,
+    // the native .so only reads these by position.
+    public static native boolean ledSetMouth(int runTime, int breatheSpeedMs, int offDurationMs, int playDurationMs, int effectMode);
 
     public static native boolean ledSetOn(int i);
 

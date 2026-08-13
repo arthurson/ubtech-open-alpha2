@@ -1,19 +1,57 @@
 // Open Alpha2 — Blockly 頁面初始化。
-// 提供同 app.js 完全一致嘅 api()/連 WebSocket 邏輯 (獨立一份, 等呢版頁面可以自己
-// 開一個分頁使用, 唔一定要靠 app.js 已經執行緊), 再初始化 Blockly workspace、
-// 綁定工具列按鈕、接駁 blockly-run.js 嘅事件系統。
+// 提供同 index.html (app-core.js) 完全一致嘅 api()/連 WebSocket 邏輯 (獨立一份, 等呢版
+// 頁面可以自己開一個分頁使用, 唔一定要靠 index.html 嗰邊已經執行緊), 再初始化 Blockly
+// workspace、綁定工具列按鈕、接駁 blockly-run.js 嘅事件系統。
 
 const API = '/api/';
+
+// ---------------- Backend 選擇 (alpha2 / lynx) ----------------
+// window.BLOCKLY_BACKEND 本身喺 blockly.html <head> 嗰段 inline script 已經
+// set 好 (要喺 blockly-toolbox.js 之前就有得用, 詳見嗰邊嘅大段註解 —— toolbox
+// 而家會按 backend 揀顯示 sonar 定 PIR block, 所以順序好緊要, 唔可以留喺呢個
+// 檔案先計, 因為呢個係全部 <script src> 入面最後至 load 嗰個)。呢度淨係負責
+// backend 切換掣嘅 UI 狀態同撳掣行為, 揀 backend 嗰套邏輯 (URL query string /
+// localStorage / 預設 alpha2) 唔喺呢度, 睇 blockly.html。
+const BACKEND_STORAGE_KEY = 'blocklyBackend';
+
+window.updateBackendButtonsUI = updateBackendButtonsUI;
+function updateBackendButtonsUI() {
+  const alpha2Btn = document.getElementById('backendBtnAlpha2');
+  const lynxBtn = document.getElementById('backendBtnLynx');
+  if (alpha2Btn) alpha2Btn.classList.toggle('active', window.BLOCKLY_BACKEND === 'alpha2');
+  if (lynxBtn) lynxBtn.classList.toggle('active', window.BLOCKLY_BACKEND === 'lynx');
+  // 個標題本身 (page_h1) 一路都寫死「Alpha2 積木編程」— 而家兩個 backend 共用緊
+  // 呢版頁面, 唔應該再淨係顯示 Alpha2, 所以喺套用 i18n 之後補一個 backend 字尾
+  // (例如「🧩 積木編程 [Lynx]」), 等用家一眼睇到而家揀緊邊個。
+  const h1 = document.querySelector('.bk-header h1');
+  if (h1) {
+    const base = h1.textContent.replace(/\s*\[(Alpha2|Lynx)\]\s*$/, '');
+    h1.textContent = base + ' [' + (window.BLOCKLY_BACKEND === 'lynx' ? 'Lynx' : 'Alpha2') + ']';
+  }
+}
+
+// 由 blockly.html 個 header 按鈕 onclick 直接叫。
+// 切換 backend 會改緊行嘅程式語意 (邊粒 block 對應邊個 AIDL 呼叫, 而家仲加埋
+// toolbox 本身有邊粒 block 可揀都會唔同, 見 blockly-toolbox.js) 太多, 唔應該
+// 喺 workspace 有嘢跑緊嗰陣靜雞雞轉走 —— 所以呢度直接刷新成個頁面 (workspace
+// 本身冇 autosave, 如果用家有未儲存嘅積木, 刷新前提提佢), 令 blockly-run.js/
+// blockly-toolbox.js 嗰邊都唔使另外處理「中途轉 backend」呢個狀態。
+function setBlocklyBackend(backend) {
+  if (backend !== 'alpha2' && backend !== 'lynx') return;
+  if (backend === window.BLOCKLY_BACKEND) return;
+  if (workspace && workspace.getAllBlocks && workspace.getAllBlocks(false).length > 0) {
+    if (!confirm(t('page_confirm_switch_backend'))) return;
+  }
+  try { localStorage.setItem(BACKEND_STORAGE_KEY, backend); } catch (e) { /* 忽略, 冇 localStorage 都唔緊要, 淨係下次要再揀一次 */ }
+  const params = new URLSearchParams(location.search);
+  params.set('backend', backend);
+  location.search = params.toString();
+}
+window.setBlocklyBackend = setBlocklyBackend;
 
 function showError(context, err) {
   const banner = document.getElementById('errorBanner');
   let msg = (err && err.message) ? err.message : String(err);
-  // "Failed to fetch" 呢個訊息本身冇講明點解 -- 喺 https:// 頁面, 最常見嘅成因係
-  // 自簽證書未被瀏覽器信任 (呢個 panel 用自簽 HTTPS 嚟令 getUserMedia 可以用,
-  // 見 TlsSupport.java)。加一句實用嘅提示, 好過畀個用家摸不著頭腦嘅 network error。
-  if (location.protocol === 'https:' && /fail(ed)? to fetch/i.test(msg)) {
-    msg += t('page_https_hint');
-  }
   banner.textContent = '⚠ ' + context + ': ' + msg;
   banner.style.display = 'block';
   console.error(context, err);
@@ -26,11 +64,15 @@ function clearError() {
 window.addEventListener('error', function (e) { showError('JavaScript error', e.error || e.message); });
 window.addEventListener('unhandledrejection', function (e) { showError('Unhandled promise rejection', e.reason); });
 
-// 統一嘅 api() helper — 同 app.js 個版本行為一致 (GET + query string, 回傳 parsed JSON)。
+// 統一嘅 api() helper — 同 app-core.js 個版本行為一致 (GET + query string, 回傳 parsed JSON),
+// 但 prefix 唔再寫死 "alpha2/", 改用 window.BLOCKLY_BACKEND (見上面) —— 呢個 helper 本身淨係
+// 負責「揀啱個 backend prefix、送出去、處理回應」, 邊粒 block 用邊個 endpoint 名/參數形狀
+// (兩個 backend 好多時唔一樣, 例如 servo/one vs motor/move_absolute) 係 blockly-run.js
+// 嗰邊 execStatement() 入面按 window.BLOCKLY_BACKEND 分支決定, 呢度唔理呢層。
 window.api = function (path, params) {
   clearError();
   const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-  return fetch(API + 'alpha2/' + path + qs).then(function (res) {
+  return fetch(API + window.BLOCKLY_BACKEND + '/' + path + qs).then(function (res) {
     return res.json().catch(function () {
       return { ok: false, error: 'invalid response (status ' + res.status + ')' };
     }).then(function (json) {
@@ -102,7 +144,7 @@ function initWorkspace() {
   workspace = Blockly.inject('blocklyDiv', {
     toolbox: window.ALPHA_TOOLBOX,
     // 呢個 Blockly 版本嘅預設 pathToMedia 係 "https://static.blockly.com/media/"
-    // (外部 CDN) —— 喺呢個 app 嘅 WebView/自簽 HTTPS 環境入面攞唔到, 令
+    // (外部 CDN) —— 喺呢個 app 嘅 WebView 環境入面攞唔到, 令
     // 還原/放大/縮細/垃圾桶 (undo/redo/zoom-in/zoom-out/zoom-reset/trashcan)
     // 嗰批 icon 全部壞曬 (SVG sprite 攞唔到)。改用本機 media/ 資料夾 (已經
     // copy 咗 Blockly 官方 npm package 嘅 media 檔案落嚟), 全部 offline 可用。
@@ -115,13 +157,43 @@ function initWorkspace() {
     sounds: false,
   });
   window.__alphaBlocklyWorkspace = workspace; // 俾 blockly-i18n.js 切語言嗰陣攞返嚟用
+  // AlphaBlockly.init() 入面而家連埋起返「復原/剪貼掣列」同「側欄收埋掣」呢兩組
+  // Blockly IPositionable component (詳見 blockly-run.js 嘅 EditFabControls/
+  // SidePanelToggleControl 大段註解) —— 佢哋同垃圾桶/zoom controls 用返完全
+  // 同一套 Blockly 官方定位管線, 一定要喺 workspace inject 咗之後先可以起。
   window.AlphaBlockly.init(workspace);
 
   // 視窗 resize 時重新計算 Blockly 畫布大小。
-  function resizeBlockly() { Blockly.svgResize(workspace); }
   window.addEventListener('resize', resizeBlockly);
   resizeBlockly();
+
+  // 抄自 Code Lab (見對話紀錄嘅截圖): 側欄 (執行紀錄面板) 收埋/展開狀態,
+  // 記喺 localStorage, 等用家下次開返呢個分頁都記得住上次揀嘅收/開。用
+  // setSidePanelCollapsedInitial() 唔係 toggleSidePanel(), 因為呢個係
+  // 「頁面啱啱 load 就要已經係咁」, 唔應該播 0.18s 嘅收埋動畫。
+  try {
+    if (localStorage.getItem('blocklySideCollapsed') === '1') {
+      window.AlphaBlockly.setSidePanelCollapsedInitial(true);
+      resizeBlockly();
+    }
+  } catch (e) { /* localStorage 喺部分 WebView 環境可能唔可用, 冇記錄就預設展開, 唔緊要 */ }
 }
+
+// 視窗 resize / 側欄收/展開之後都要重新計算 Blockly 畫布大小 —— Blockly.svgResize()
+// 一 call, 內部會自動連埋 ComponentManager 嗰批 POSITIONABLE component (垃圾桶/
+// zoom controls/我哋自己嘅 EditFabControls/SidePanelToggleControl) 一齊重新
+// 定位, 唔使各自另外再郁佢哋。拆做獨立 function 等 window resize listener 同
+// AlphaBlockly.toggleSidePanel() 可以共用。
+function resizeBlockly() {
+  if (workspace) Blockly.svgResize(workspace);
+}
+
+function toggleSidePanel() {
+  if (window.AlphaBlockly && window.AlphaBlockly.toggleSidePanel) {
+    window.AlphaBlockly.toggleSidePanel();
+  }
+}
+window.toggleSidePanel = toggleSidePanel;
 
 function buildAlphaTheme() {
   // 用返 style.css 個淡藍/白色系 (--bg #f5f7fa / --accent #3b7dff),
@@ -185,6 +257,7 @@ function onClearWorkspace() {
 
 // ---------------- 啟動 ----------------
 document.addEventListener('DOMContentLoaded', function () {
+  updateBackendButtonsUI();
   initWorkspace();
   connectWs();
 });

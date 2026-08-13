@@ -4,6 +4,30 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title data-i18n="page_title">Open Alpha2 — Blockly 積木編程</title>
+<script>
+// window.BLOCKLY_BACKEND 要喺呢個檔案入面所有其他 <script src> (尤其
+// blockly-toolbox.js) load 之前就搞掂 —— toolbox 而家會按 backend 揀顯示
+// sonar 定 PIR (見 blockly-toolbox.js buildAlphaToolbox()), 如果 toolbox
+// 個 script 喺 BLOCKLY_BACKEND 都未 set 之前就 build 咗個 toolbox, 佢會讀到
+// undefined, 兩粒 block 會齊齊唔見或者齊齊出現, 睇 backend 揀邊個係邊個。
+// 呢段邏輯本來喺 blockly-page.js (最後至 load 嗰個 script), 而家搬咗上嚟做
+// inline script, 保證喺 <head> 階段、任何其他 script 之前就搞掂 —— 揀法本身
+// 冇變 (URL query string ?backend= 優先, 冇嘅話讀 localStorage 記住上次揀
+// 嘅, 兩者都冇就預設 alpha2), blockly-page.js 嗰邊淨係讀返呢個已經計好嘅
+// window.BLOCKLY_BACKEND, 唔再自己計一次。
+(function () {
+  var BACKEND_STORAGE_KEY = 'blocklyBackend';
+  var params = new URLSearchParams(location.search);
+  var fromUrl = params.get('backend');
+  if (fromUrl !== 'lynx' && fromUrl !== 'alpha2') fromUrl = null;
+  var fromStorage = null;
+  try {
+    var v = localStorage.getItem(BACKEND_STORAGE_KEY);
+    if (v === 'lynx' || v === 'alpha2') fromStorage = v;
+  } catch (e) { /* localStorage 喺部分 WebView 環境可能唔可用, 靜靜地降級 */ }
+  window.BLOCKLY_BACKEND = fromUrl || fromStorage || 'alpha2';
+})();
+</script>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="blockly.css">
 </head>
@@ -15,6 +39,10 @@
   <a href="index.html" class="bk-back" data-i18n="page_back_title" data-i18n-attr="title" title="返回控制面板">←</a>
   <h1 data-i18n="page_h1">🧩 Alpha2 積木編程</h1>
   <span id="blocklyVersionBadge" class="bk-version-badge" data-i18n="page_version_badge_title" data-i18n-attr="title" title="Blockly library 版本 (核心 blockly_compressed.js + 標準 blocks_compressed.js)"></span>
+  <span class="bk-backend-toggle" data-i18n="page_backend_toggle_title" data-i18n-attr="title" title="每粒積木會經邊個 backend (Alpha2 / Lynx) 送出 API">
+    <button type="button" id="backendBtnAlpha2" class="bk-backend-btn" onclick="setBlocklyBackend('alpha2')">Alpha2</button>
+    <button type="button" id="backendBtnLynx" class="bk-backend-btn" onclick="setBlocklyBackend('lynx')">Lynx</button>
+  </span>
   <span class="lang-toggle bk-lang-toggle">
     <button type="button" data-ui-lang-btn="zh" onclick="setUiLanguage('zh')">中文</button>
     <button type="button" data-ui-lang-btn="en" onclick="setUiLanguage('en')">English</button>
@@ -58,7 +86,7 @@
 <div class="bk-main">
   <div id="blocklyDiv" class="bk-canvas"></div>
 
-  <div class="bk-side">
+  <div class="bk-side" id="bkSide">
     <div class="bk-side-header">
       <h2 data-i18n="page_run_log_title">執行紀錄</h2>
       <div class="row">

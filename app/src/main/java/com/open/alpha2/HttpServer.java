@@ -17,8 +17,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import javax.net.ssl.SSLServerSocketFactory;
-
 /**
  * A minimal, dependency-free HTTP/1.1 server built directly on java.net.ServerSocket -
  * deliberately no NanoHTTPD or other library, to match the SDK's own "Android framework +
@@ -43,12 +41,6 @@ import javax.net.ssl.SSLServerSocketFactory;
 public class HttpServer implements Runnable {
     private static final String TAG = "HttpServer";
     public static final int PORT = 8888;
-
-    /** True once this instance actually ended up listening with TLS - false if a null
-     *  factory was passed in (TLS setup failed - see MainActivity) or if the plain
-     *  ServerSocket fallback path was used. Exposed so MainActivity can log/display
-     *  "http://" vs "https://" accurately rather than assuming. */
-    private volatile boolean tlsActive = false;
 
     /**
      * For endpoints that need the raw POST body bytes rather than a UTF-8-decoded
@@ -103,37 +95,26 @@ public class HttpServer implements Runnable {
     private final ApiHandler apiHandler;
     private final StreamHandler streamHandler;
     private final RawUploadHandler rawUploadHandler;
-    private final SSLServerSocketFactory tlsFactory;
     private final ExecutorService pool = Executors.newCachedThreadPool();
     private volatile ServerSocket serverSocket;
     private volatile boolean running = false;
     private volatile IOException bindError;
     private final CountDownLatch bindLatch = new CountDownLatch(1);
 
-    /** Plain-HTTP constructor - kept for callers/tests that don't need TLS. */
+    /**
+     * 2026-08: TLS support (self-signed cert, see the now-deleted TlsSupport.java/
+     * SelfSignedCert.java) was removed outright rather than kept as a dead optional
+     * path - browsers on this device repeatedly rejected new TLS connections after the
+     * very first page load ("SSLHandshakeException: certificate unknown"), and the
+     * walkie-talkie mic feature that TLS existed for is permanently disabled in the UI
+     * anyway (see app-mic.js). This is now the only constructor - plain HTTP only.
+     */
     public HttpServer(AssetManager assets, ApiHandler apiHandler, StreamHandler streamHandler,
             RawUploadHandler rawUploadHandler) {
-        this(assets, apiHandler, streamHandler, rawUploadHandler, null);
-    }
-
-    /** @param tlsFactory if non-null, the server listens with TLS using this factory
-     *  (see TlsSupport.buildServerSocketFactory()) instead of a plain ServerSocket -
-     *  required so the browser origin is a "secure context" and getUserMedia() (the
-     *  walkie-talkie mic feature) actually exists. Pass null to fall back to plain HTTP
-     *  (e.g. if TLS setup itself failed - see MainActivity). */
-    public HttpServer(AssetManager assets, ApiHandler apiHandler, StreamHandler streamHandler,
-            RawUploadHandler rawUploadHandler, SSLServerSocketFactory tlsFactory) {
         this.assets = assets;
         this.apiHandler = apiHandler;
         this.streamHandler = streamHandler;
         this.rawUploadHandler = rawUploadHandler;
-        this.tlsFactory = tlsFactory;
-    }
-
-    /** Whether this server ended up actually listening with TLS. Only meaningful after
-     *  start() has returned. */
-    public boolean isTlsActive() {
-        return tlsActive;
     }
 
     /**
@@ -171,14 +152,8 @@ public class HttpServer implements Runnable {
     @Override
     public void run() {
         try {
-            if (tlsFactory != null) {
-                serverSocket = tlsFactory.createServerSocket(PORT);
-                tlsActive = true;
-                Log.i(TAG, "Listening on port " + PORT + " (TLS/self-signed)");
-            } else {
-                serverSocket = new ServerSocket(PORT);
-                Log.i(TAG, "Listening on port " + PORT + " (plain HTTP)");
-            }
+            serverSocket = new ServerSocket(PORT);
+            Log.i(TAG, "Listening on port " + PORT + " (plain HTTP)");
             bindLatch.countDown();
             while (running) {
                 final Socket client = serverSocket.accept();
@@ -332,7 +307,29 @@ public class HttpServer implements Runnable {
         byte[] rawBody = new byte[0];
         String lenStr = headers.get("content-length");
         if (lenStr != null) {
-            int len = Integer.parseInt(lenStr.trim());
+            int len;
+            try {
+                len = Integer.parseInt(lenStr.trim());
+            } catch (NumberFormatException e) {
+                // Malformed Content-Length header - can't trust anything about the
+                // body that follows (or even how much of it there is), so close the
+                // connection instead of trying to guess/recover.
+                return false;
+            }
+            // 2026-08 新增: 之前呢度冇上限, len 直接嚟自客戶端嘅 Content-Length 個
+            // header, 一個惡意或者損壞嘅請求 (例如 Content-Length: 2000000000) 會令
+            // `new byte[len]` 即刻拋 OutOfMemoryError —— OOM Error 唔係 Exception,
+            // handleClient() 嗰個 catch (Exception e) 接唔住, 個 pool thread 會直接
+            // 死咗, connection 都唔會 close。呢個上限要夠大唔可以誤傷正常請求 (最大
+            // 嘅正常 body 係 /upload/audio 嗰啲 walkie-talkie PCM chunk, 睇
+            // AudioController/app-mic.js 都係幾十 KB 級別), 但要細過任何合理嘅單一
+            // request body, 32MB 留有幾百倍餘裕。
+            final int MAX_BODY_BYTES = 32 * 1024 * 1024;
+            if (len < 0 || len > MAX_BODY_BYTES) {
+                Log.w(TAG, "Rejecting request with Content-Length=" + len
+                        + " (limit " + MAX_BODY_BYTES + ")");
+                return false;
+            }
             rawBody = new byte[len];
             int readTotal = 0;
             while (readTotal < len) {
@@ -391,10 +388,22 @@ public class HttpServer implements Runnable {
             while ((n = is.read(chunk)) != -1) {
                 buffer.write(chunk, 0, n);
             }
-            writeResponse(out, 200, mimeType(path), buffer.toByteArray(), keepAlive);
+            // No Cache-Control header used to be sent at all, which left every browser/
+            // WebView free to apply its own heuristic caching to these .js/.css/.html
+            // files - user-confirmed symptom: after updating this web UI (new APK
+            // install, fresh backend), the browser kept serving an old cached copy of
+            // app-lynx.js/app-log.js, so WebSocket events the new backend genuinely
+            // sent (visible in the raw event log, which is itself driven by JS that
+            // happened to be unchanged) never reached the *new* per-servo readout
+            // handler because that handler's code wasn't in the stale cached file yet.
+            // This control panel is always served fresh off the device's own assets/
+            // (never a CDN, never meant to be offline-cached), so there is no upside to
+            // caching it and real downside (silently stale UI logic after every
+            // update) - explicitly forbid caching for every static response.
+            writeResponse(out, 200, mimeType(path), buffer.toByteArray(), keepAlive, true);
         } catch (IOException notFound) {
             byte[] msg = ("Not found: " + path).getBytes(StandardCharsets.UTF_8);
-            writeResponse(out, 404, "text/plain; charset=utf-8", msg, keepAlive);
+            writeResponse(out, 404, "text/plain; charset=utf-8", msg, keepAlive, true);
         }
     }
 
@@ -410,12 +419,23 @@ public class HttpServer implements Runnable {
 
     private static void writeResponse(OutputStream out, int status, String contentType, byte[] body, boolean keepAlive)
             throws IOException {
+        writeResponse(out, status, contentType, body, keepAlive, false);
+    }
+
+    private static void writeResponse(OutputStream out, int status, String contentType, byte[] body, boolean keepAlive, boolean noCache)
+            throws IOException {
         String statusText = status == 200 ? "OK" : status == 404 ? "Not Found" : "Error";
         StringBuilder header = new StringBuilder();
         header.append("HTTP/1.1 ").append(status).append(' ').append(statusText).append("\r\n");
         header.append("Content-Type: ").append(contentType).append("\r\n");
         header.append("Content-Length: ").append(body.length).append("\r\n");
         header.append("Access-Control-Allow-Origin: *\r\n");
+        if (noCache) {
+            // See serveStatic()'s javadoc comment above for why - covers index.html and
+            // every app-*.js/style.css it references, plus the 404 body for completeness.
+            header.append("Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\n");
+            header.append("Pragma: no-cache\r\n");
+        }
         header.append("Connection: ").append(keepAlive ? "keep-alive" : "close").append("\r\n");
         header.append("\r\n");
         out.write(header.toString().getBytes(StandardCharsets.ISO_8859_1));

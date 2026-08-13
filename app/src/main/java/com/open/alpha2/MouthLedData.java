@@ -117,7 +117,7 @@ public final class MouthLedData {
             }
             boolean rawResult;
             try {
-                rawResult = LedControl.ledSetMouth(runTime, breatheSpeedMs, offDurationMs, playDurationMs, effectMode);
+                rawResult = LedControl.ledSetMouth(runTime, breatheSpeedMs, offDurationMs, playDurationMs, effectMode); // positions match LedControl's (now aligned) parameter names
             } finally {
                 LedControl.close();
             }

@@ -1,6 +1,6 @@
 // Open Alpha2 — Blockly 自訂 block 定義。
-// 每個 block 對應 app.js / MainActivity.handleApi() 入面已驗證嘅一個 /api/* 端點,
-// 或者係一個流程控制 block (repeat/if/wait/variable/event)。
+// 每個 block 對應 index.html (app-*.js) / MainActivity.handleApi() 入面已驗證嘅一個
+// /api/* 端點, 或者係一個流程控制 block (repeat/if/wait/variable/event)。
 //
 // 呢個檔案淨係定義「個 block 生埋嚟長咩樣、有咩輸入」——實際「行呢個 block 會做咩」
 // 喺 blockly-run.js 嘅 interpreter 入面,唔喺呢度用 Blockly 內建嘅 code-generator。
@@ -397,7 +397,7 @@
   // ---------------------------------------------------------------------
 
   // 實際嘅 SERVO_NAMES / SERVO_GROUPS / SERVO_CALIBRATION 資料喺獨立檔案
-  // blockly-servo-data.js 定義 (同 app.js 保持一致, 見該檔頭註解), 呢度淨係讀
+  // blockly-servo-data.js 定義 (同 app-core.js 保持一致, 見該檔頭註解), 呢度淨係讀
   // window.ALPHA_SERVO_* 嚟用, 唔重複定義一份會走數嘅副本。
   // 2026-08 更新: 伺服 toolbox 由「總分類 -> 5 個部位子分類 (各自顏色)」嘅 nested
   // tree 改做扁平化 —— 一按「伺服」就即刻見晒所有伺服 block, 唔再逐層展開先見到。
@@ -480,7 +480,7 @@
           .appendField(t('servo_group__angle_label'))
           .appendField(new Blockly.FieldNumber(servoHomeAngle(defaultId), 0, 255, 1, function (newVal) {
             // Field-level validator: 揀住邊粒馬達就 clamp 喺嗰粒嘅 min/max 校準
-            // 範圍之內, 唔可以送出會撞機械極限嘅角度 (見 app.js clampServoAngle()
+            // 範圍之內, 唔可以送出會撞機械極限嘅角度 (見 app-core.js clampServoAngle()
             // 嘅同一個安全設計, 呢度喺 UI 層面提早擋, 執行時 blockly-run.js 會再
             // clamp 多一次做保險)。
             const block = this.getSourceBlock();
@@ -701,6 +701,25 @@
     }
   };
 
+  // PIR (人體紅外線感應) —— Lynx 專屬硬件, 冇對應 Alpha2 概念 (Alpha2 淨係有
+  // 聲納 alpha_sensor_sonar_toggle, 兩種硬件唔可以互相映射, 見上面
+  // alpha_servo_sonar/alpha_sensor_sonar_toggle 一帶嘅註解)。呢粒 block 用嚟開/
+  // 關機身側 PIR 感應器硬件本身 (/api/lynx/sys/pir), 同「警示反應」(閃紅燈+
+  // 響鈴, sys/pir_alert_enabled) 係兩件事 —— 呢度淨係開硬件, 冇開「警示反應」
+  // 一樣會有 pir_state 事件送到俾下面嘅 alpha_event_pir_triggered 用, 淨係唔會
+  // 自動閃燈/響鈴 (見 MainActivity.java registerPirAlertListener() 嗰段大 comment)。
+  Blockly.Blocks['alpha_sensor_pir_toggle'] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField(t('sensor_pir_toggle__label'))
+        .appendField(new Blockly.FieldDropdown([[t('toggle_on'), 'true'], [t('toggle_off'), 'false']]), 'ON');
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(clr.sensor);
+      this.setTooltip(t('sensor_pir_toggle__tooltip'));
+    }
+  };
+
   // 加速度計 / 聲納「觸發」專用 hat block —— 直接俾用家設門檻, 貼近「觸發」呢個
   // 語意 (唔係「事件一到就執行」, 而係「事件到咗、但要數值過咗門檻先執行」),
   // 所以邏輯喺 blockly-run.js 用獨立嘅 accelHandlers/sonarHandlers 處理。
@@ -756,6 +775,35 @@
       this.appendStatementInput('DO');
       this.setColour(clr.sensor);
       this.setTooltip(t('event_sonar__tooltip'));
+    }
+  };
+
+  // PIR「偵測到人／冇偵測到人」hat block —— 同 alpha_event_sonar_triggered 一樣嘅
+  // 「邊緣觸發」語意 (狀態改變嗰一刻先執行一次 DO, 唔係人一路企喺度就不斷重複跑),
+  // 邏輯喺 blockly-run.js 用獨立嘅 pirHandlers 處理, 同 accelHandlers/sonarHandlers
+  // 手法一致 (edge-detect + re-entrancy guard, 見該檔 rewireEventHandlers()/
+  // onWsEvent() 嘅註解)。
+  //
+  // 2026-08 加咗 WHEN 呢個 dropdown: 之前個 block 淨係硬寫死監聽「由冇人變有人」
+  // (rising edge), 用家冇得砌「PIR 由有人變返冇人」(falling edge) 嘅程式 (例如
+  // 「有人行開就熄燈」)。而家俾用家自己揀觸發方向, 兩個方向都係邊緣觸發 (唔係
+  // 「PIR 而家係咪 true/false」咁樣持續判斷), 保持同 sonar/accel 一致嘅「觸發
+  // 一次先算」語意。
+  Blockly.Blocks['alpha_event_pir_triggered'] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField(t('event_pir__label'))
+        .appendField(new Blockly.FieldDropdown([
+          [t('event_pir__when_detected'), 'detected'],
+          [t('event_pir__when_lost'), 'lost'],
+        ]), 'WHEN')
+        .appendField(t('event_pir__store_prefix'))
+        // 同上面兩粒 hat block 一樣道理: 純粹係 blockly-run.js 自己
+        // variables Map 嘅 key, i18n 刻意跳過 (見上面兩段一樣嘅解釋)。
+        .appendField(new Blockly.FieldLabelSerializable('PIR資料'), 'VAR');
+      this.appendStatementInput('DO');
+      this.setColour(clr.sensor);
+      this.setTooltip(t('event_pir__tooltip'));
     }
   };
 

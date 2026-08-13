@@ -1,8 +1,8 @@
 // Open Alpha2 — Blockly 頁面語言切換 (中文/英文)。
 //
 // 呢個 Blockly 頁面 (blockly.html) 設計上可以獨立喺新分頁開, 唔一定要靠
-// index.html/app.js 已經 run 緊 (見 blockly-page.js 開頭註解) —— 所以呢度
-// 自己有一套完整嘅語言切換, 唔靠 app.js 嗰套。但兩邊共用同一個
+// index.html (app-*.js) 已經 run 緊 (見 blockly-page.js 開頭註解) —— 所以呢度
+// 自己有一套完整嘅語言切換, 唔靠 app-core.js 嗰套。但兩邊共用同一個
 // localStorage key ("ui_lang"), 所以喺主控制面板切咗語言之後, 開返/切去
 // Blockly 呢個分頁都會自動跟返嗰個揀擇, 唔使兩邊分開揀。
 //
@@ -84,10 +84,10 @@
   }
 
   // 套用去成個頁面外框 (header/工具列/側邊面板) 嘅靜態 UI 文字 —— 同
-  // app.js 個 applyUiLanguage() 一樣嘅 [data-i18n] pattern, 兩邊刻意保持
+  // app-core.js 個 applyUiLanguage() 一樣嘅 [data-i18n] pattern, 兩邊刻意保持
   // 一致寫法, 純粹呢度用 window.ALPHA_BLOCK_I18N/window.t() 做字典, 唔係
-  // app.js 嗰份獨立 I18N object (呢個頁面獨立於 index.html 存在, 唔應該
-  // 反過去倚賴 app.js 先至有字典)。
+  // app-core.js 嗰份獨立 I18N object (呢個頁面獨立於 index.html 存在, 唔應該
+  // 反過去倚賴 app-core.js 先至有字典)。
   function applyUiTextLocale() {
     document.querySelectorAll('[data-i18n]').forEach(function (el) {
       const key = el.dataset.i18n;
@@ -127,6 +127,10 @@
     applyBlocklyMsgTable(lang);
     updateToggleButtons();
     applyUiTextLocale();
+    // applyUiTextLocale() 啱啱樣樣 data-i18n 元素 (包括 <h1>) 都重新用純 i18n
+    // 字串蓋過晒 —— 呢個會抹走 blockly-page.js updateBackendButtonsUI() 加落去
+    // 個 "[Alpha2]"/"[Lynx]" 字尾, 所以呢度要再叫一次補返。
+    if (typeof window.updateBackendButtonsUI === 'function') window.updateBackendButtonsUI();
     // ⚠️ 次序好重要: 動作分類/選項呢啲 data table 一定要喺 workspace/toolbox
     // rebuild *之前* 就更新好, 因為 rebuildWorkspaceForLocale()
     // (XML roundtrip 令 block 重新 init()) 同 refreshToolbox() 都會即場讀
@@ -146,6 +150,14 @@
     // 一齊重新 render。
     if (window.AlphaBlockly && window.AlphaBlockly.refreshSavedProgramDropdown) {
       window.AlphaBlockly.refreshSavedProgramDropdown();
+    }
+    // 復原/剪貼掣列 + 側欄收埋掣而家係 SVG UI component (見 blockly-run.js
+    // 嘅 EditFabControls/SidePanelToggleControl), 唔係普通 HTML <button>,
+    // 唔喺 applyUiTextLocale() 嘅 [data-i18n] 掃描範圍之內 (佢淨係識揾
+    // document.querySelectorAll('[data-i18n]') 嗰批 DOM 元素) —— 要主動 call
+    // 先會令佢哋嘅 <title> tooltip 文字跟住轉語言。
+    if (window.AlphaBlockly && window.AlphaBlockly.refreshEditControlsI18n) {
+      window.AlphaBlockly.refreshEditControlsI18n();
     }
   };
 

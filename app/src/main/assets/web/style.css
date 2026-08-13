@@ -218,6 +218,16 @@ label {
   margin: 4px 0 0 0;
 }
 
+/* Inline monospace readout for advanced-tab raw API results (e.g. isActioning,
+   serial number, English-understand text) - same idea as .device-value but sized
+   for sitting inline in a .row rather than in the device-info grid. */
+.mono-out {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  color: var(--text);
+  word-break: break-word;
+}
+
 pre {
   background: #f8fafc;
   border: 1px solid var(--border);
@@ -234,6 +244,13 @@ pre {
   max-height: 320px;
   overflow-y: auto;
 }
+
+/* 小智 (XiaoZhi) AI 對話氣泡 - user/assistant 左右對齊分開, system 行 (連接狀態/
+   MCP 工具調用/錯誤) 用淡色置中, 好似其他聊天介面咁易分辨邊句係邊個講。 */
+.xiaozhi-msg { padding: 4px 8px; border-radius: 8px; margin: 2px 0; max-width: 85%; }
+.xiaozhi-msg-user { background: var(--track); margin-left: auto; text-align: right; }
+.xiaozhi-msg-assistant { background: var(--card-bg); border: 1px solid var(--border); margin-right: auto; }
+.xiaozhi-msg-system { color: var(--muted); font-size: 0.85em; text-align: center; max-width: 100%; }
 
 .chip-list {
   display: flex;
@@ -377,6 +394,17 @@ pre {
   align-items: center;
   gap: 10px;
   padding: 6px 0;
+}
+
+.servo-slider-row.has-readout {
+  grid-template-columns: 130px 1fr 56px 64px;
+}
+
+.servo-slider-readout {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+  color: var(--muted);
 }
 
 .servo-slider-label {
@@ -810,6 +838,42 @@ input[type="range"] {
   border-radius: 8px;
   margin-top: 8px;
   display: block;
+}
+
+.pir-indicator {
+  width: 100%;
+  height: 60px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.pir-indicator.pir-indicator-clear { background: #16a34a; }
+.pir-indicator.pir-indicator-triggered {
+  background: #dc2626;
+  box-shadow: 0 0 12px 2px rgba(220, 38, 38, 0.55);
+}
+
+/* 麥克風擁有權指示燈 - 綠 = app 攞緊, 灰 = 已交返俾機械人。跟 pir-indicator
+   同一套 transition/box-shadow pattern, 但做圓形 dot 唔係長方形 bar, 因為呢
+   度只需要一個簡單嘅開/關狀態, 唔似 PIR 咁需要成條 bar 嘅視覺重量。 */
+.mic-state-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.mic-state-dot-on {
+  background: #16a34a;
+  box-shadow: 0 0 8px 2px rgba(22, 163, 74, 0.55);
+}
+.mic-state-dot-off {
+  background: #9ca3af;
+}
+.mic-state-label {
+  font-size: 14px;
+  color: var(--muted);
 }
 
 /* ---------------- Responsive: phones / narrow viewports ---------------- */

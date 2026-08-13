@@ -7,6 +7,28 @@
      呢度淨係補返 Blockly 頁專屬嘅內層排版, 唔覆寫 body 本身。 */
 }
 
+/* 2026-08 修正: 之前呢個 class 完全冇任何 rule - showError() (blockly-page.js)
+   淨係識得 banner.style.display = 'block'/'none' 去切換, 但個 <div id="errorBanner">
+   本身喺 HTML 入面冇 inline style, 亦冇對應 css rule 提供預設 display:none, 令佢
+   一開波 (未觸發任何錯誤) 就用返瀏覽器 <div> 嘅 default display:block 顯示緊 -
+   雖然因為冇文字/冇 padding 大部分情況下唔算好顯眼, 但一旦真係有錯誤發生, 個
+   banner 顯示出嚟嘅係完全冇樣式嘅純黑字, 冇背景色冇邊框, 達唔到「警示」呢個
+   UX 目的。呢度補返: 預設用 display:none (同 showError()/clearError() 嘅
+   assumption 一致), 出現錯誤嗰陣用返呢個 project 已有嘅 --err 紅色系, 同
+   .bk-btn-danger 保持一致嘅設計語言。 */
+.error-banner {
+  display: none;
+  flex: 0 0 auto;
+  padding: 10px 20px;
+  background: #fef2f2;
+  color: var(--err);
+  border-bottom: 1px solid var(--err);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .bk-header {
   flex: 0 0 auto;
   display: flex;
@@ -53,6 +75,34 @@
 
 .bk-lang-toggle {
   flex: 0 0 auto;
+}
+
+.bk-backend-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-left: 8px;
+}
+.bk-backend-btn {
+  background: #ffffff;
+  border: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--muted);
+}
+.bk-backend-btn + .bk-backend-btn {
+  border-left: 1px solid var(--border);
+}
+.bk-backend-btn:hover {
+  color: var(--text);
+}
+.bk-backend-btn.active {
+  background: var(--accent);
+  color: white;
 }
 
 .bk-toolbar {
@@ -145,12 +195,101 @@
   flex: 1 1 auto;
   display: flex;
   min-height: 0;
+  position: relative;
 }
 
 .bk-canvas {
   flex: 1 1 auto;
   min-width: 0;
   background: var(--bg);
+  position: relative;
+}
+
+/* 2026-08: 復原/取消復原/剪下/複製/貼上/刪除 6 粒掣, 同「收埋/展開執行紀錄
+   面板」嗰粒 ›/‹ 掣, 之前用嘅係獨立喺 Blockly 之外嘅 HTML <div>/<button>,
+   靠 CSS position:absolute + JS 度度 Blockly 垃圾桶而家喺邊嚟跟實佢 ——
+   試過兩次都始終同 Blockly 真正嘅內部排位邏輯對唔實 (scrollbar/toolbox
+   闊度/zoom 等因素動態影響垃圾桶實際位置, HTML overlay 追極都會慢半拍或者
+   量錯)。而家改用 Blockly 官方嘅 Blockly.ComponentManager +
+   Blockly.uiPosition 呢一套 IPositionable 機制重寫呢兩組掣, 同垃圾桶/zoom
+   controls 用返完全同一套定位管線 (WorkspaceSvg 內部會將所有已註冊嘅
+   POSITIONABLE component 按 weight 排序, 逐個 call .position(metrics,
+   alreadyPositionedRects) 再攞返 .getBoundingRectangle() 傳俾下一個, 等
+   佢哋自動 stacking 唔會疊埋), 所以呢兩組掣而家係真正嘅 Blockly SVG UI
+   component (喺 blockly-run.js 嘅 EditToolbarControls/SidePanelToggle
+   class 度實現), 唔再需要呢度有對應嘅 HTML/CSS —— 呢兩組掣自己嘅視覺
+   style 直接用 inline SVG attribute/CSS class (.bk-svg-fab 系列, 定義喺
+   下面) 控制。 */
+.bk-svg-fab-group {
+  cursor: pointer;
+}
+.bk-svg-fab-bg {
+  fill: rgba(255, 255, 255, 0.95);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.bk-svg-fab-circle {
+  fill: #eef1f5;
+}
+.bk-svg-fab-group:hover .bk-svg-fab-circle {
+  fill: #dde3ec;
+}
+.bk-svg-fab-group.bk-svg-fab-disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+.bk-svg-fab-group.bk-svg-fab-disabled .bk-svg-fab-circle {
+  fill: transparent;
+}
+.bk-svg-fab-circle-danger {
+  fill: #fde8e8;
+}
+.bk-svg-fab-group:hover .bk-svg-fab-circle-danger {
+  fill: #fbd5d5;
+}
+.bk-svg-fab-icon {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.bk-svg-fab-icon-danger {
+  stroke: #c0392b;
+}
+.bk-svg-fab-sep {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.bk-svg-side-toggle-bg {
+  fill: #ffffff;
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.bk-svg-side-toggle-group:hover .bk-svg-side-toggle-bg {
+  fill: #eef2f8;
+}
+.bk-svg-side-toggle-arrow {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.bk-svg-side-toggle-group:hover .bk-svg-side-toggle-arrow {
+  stroke: var(--text);
+}
+
+.bk-main.bk-side-collapsed .bk-side {
+  /* display:none 會令 Blockly.svgResize() 攞唔到正確嘅剩餘闊度 (flex 计算
+     喺個元素消失嗰一刻已經定咗), 用 flex-basis:0 + overflow:hidden 淨係將
+     佢闊度收窄到 0, 保留返個 flex box 存在, resize 先計得啱。 */
+  flex: 0 0 0;
+  min-width: 0;
+  overflow: hidden;
+  border-left: none;
 }
 
 .bk-side {
@@ -160,6 +299,7 @@
   border-left: 1px solid var(--border);
   background: var(--card-bg);
   min-height: 0;
+  transition: flex-basis 0.18s ease;
 }
 
 .bk-side-header {
@@ -198,11 +338,18 @@
 @media (max-width: 900px) {
   .bk-main { flex-direction: column; }
   .bk-side { flex: 0 0 260px; border-left: none; border-top: 1px solid var(--border); }
+  .bk-main.bk-side-collapsed .bk-side {
+    flex: 0 0 0;
+    min-height: 0;
+    overflow: hidden;
+    border-top: none;
+  }
   .bk-header h1 { font-size: 15px; }
   /* 窄螢幕 (手機直向) 個 header 已經幾迫: 返回箭頭 + 標題 + WS 連接狀態,
      版本號 badge 淨係參考資訊, 唔係核心操作, 索性喺呢個闊度隱藏, 留返空間
      俾 WebSocket 連接狀態 (呢個先係用家實際需要留意嘅嘢)。 */
   .bk-version-badge { display: none; }
   .bk-lang-toggle button { padding: 3px 8px; font-size: 11px; }
+  .bk-backend-btn { padding: 3px 8px; font-size: 11px; }
 }
 

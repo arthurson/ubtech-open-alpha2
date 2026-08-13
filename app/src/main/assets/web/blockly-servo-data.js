@@ -1,13 +1,13 @@
 // Open Alpha2 — Blockly 專用伺服馬達分組/校準資料。
 //
-// 呢份資料刻意同 app.js 嘅 SERVO_CALIBRATION / SERVO_NAMES / SERVO_GROUPS 保持
-// 完全一致 (見 app.js 「Servo calibration」段落嘅註解: min/max/home 值嚟自實機
+// 呢份資料刻意同 app-core.js 嘅 SERVO_CALIBRATION / SERVO_NAMES / SERVO_GROUPS 保持
+// 完全一致 (見 app-core.js 「Servo calibration」段落嘅註解: min/max/home 值嚟自實機
 // 用「二代舵機校準軟件 1.0.0.4」量出嚟嘅硬件校準, 唔係 SDK 協定原生值, 換過機
-// 就要重新量)。獨立開一份而唔直接 include app.js, 係因為 blockly.html 唔想拉埋
+// 就要重新量)。獨立開一份而唔直接 include app-core.js, 係因為 blockly.html 唔想拉埋
 // 成個控制面板嘅 DOM/事件邏輯做依賴 —— 呢個分頁本身就設計成可以獨立開嚟用
 // (見 blockly-page.js 檔頭註解)。
 //
-// ⚠ 如果之後喺「伺服」分頁 (app.js) 重新量過校準值, 呢度都要跟住手動同步一次。
+// ⚠ 如果之後喺「伺服」分頁 (app-servo.js) 重新量過校準值, 呢度都要跟住手動同步一次。
 
 (function () {
   const SERVO_CALIBRATION = {
@@ -33,7 +33,7 @@
     20: { min: 105, max: 155, home: 120 },
   };
 
-  // 20 顆伺服馬達嘅顯示名, 中英對照直接跟 app.js 嘅 SERVO_NAMES (主控制面板
+  // 20 顆伺服馬達嘅顯示名, 中英對照直接跟 app-core.js 嘅 SERVO_NAMES (主控制面板
   // 「伺服」分頁用緊嗰份) 保持一致, 唔重新譯一次, 避免兩邊用詞唔夾。
   const SERVO_NAMES = {
     1:  { zh: '右肩上下', en: 'R Shoulder Pitch' },
@@ -68,7 +68,7 @@
     return lang === 'zh' ? entry.zh : entry.en;
   }
 
-  // 分組: 頭 / 右手 / 左手 / 右腳 / 左腳 (跟 app.js SERVO_GROUPS 一致), 每組一個
+  // 分組: 頭 / 右手 / 左手 / 右腳 / 左腳 (跟 app-core.js SERVO_GROUPS 一致), 每組一個
   // 顏色, 令 Blockly 分類、以及個 block 本身嘅顏色都可以直接跟返呢個分組。
   // ⚠ label 呢個 field 淨係內部參考用, 冇任何地方讀佢嚟做顯示 (搜索過成個
   // blockly-*.js 確認) —— 顯示用嘅分組名由 blockly-blocks-i18n-data.js 嘅
@@ -96,7 +96,7 @@
   }
 
   /** Clamp a value into [min,max] for the given servo id (string or number).
-   *  Mirrors app.js clampServoAngle() exactly — this is what guarantees a
+   *  Mirrors app-core.js clampServoAngle() exactly — this is what guarantees a
    *  Blockly-issued "set angle" can never exceed the calibrated safe range. */
   function clampServoAngle(id, value) {
     const cal = SERVO_CALIBRATION[Number(id)];

@@ -48,4 +48,13 @@ android {
 dependencies {
     implementation project(':sdk-module:ubtechalpha2robot')
     implementation project(':sdk-module:lynxrobot')
+    // theeasiestway/android-opus-codec (opus.aar in app/libs/) - JNI wrapper around
+    // libopus 1.3.1, written in Kotlin but usable directly from Java (the compiled
+    // .aar exposes plain public classes/methods - see XiaozhiAudioController.java's
+    // class javadoc for the compatibility investigation that went into choosing this
+    // specific artifact). No Kotlin source is written in this project; the Kotlin
+    // stdlib below is only needed because the .aar's compiled bytecode references
+    // Kotlin runtime classes (kotlin.jvm.internal.* markers, etc.) at class-load time.
+    implementation fileTree(dir: 'libs', include: '*.aar')
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.6.21'
 }

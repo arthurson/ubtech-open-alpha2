@@ -30,7 +30,12 @@ module 各自對應一套獨立嘅 `.aidl` 定義，唔可以混用。**一部�
 
 Alpha2 呢邊 17 個 AIDL interface（連埋原本 SDK 缺失、事後補返嘅
 `disableActionPlay`、`isActioning`、`IAlpha2BlueToothSerialPortService`）嘅
-完整方法清單、transaction id、參數語意，見 `AIDL_REFERENCE.md`。
+完整方法清單、transaction id、參數語意，見 `AIDL_REFERENCE_ALPHA2.md`。
+
+Lynx 呢邊 21 個 AIDL interface（`ServiceFetcher`/`LynxRobotApi` 用嗰套，
+`com.ubtechinc.alpha.serverlibutil.aidl`）嘅完整方法清單同反編譯確認嘅韌體
+行為（包括 `speech` service 喺 `alpha2services_base` 3.0.0.2 冇被登記、未接收
+嘅 broadcast 等已知限制），見 `AIDL_GUIDE_LYNX.md`。
 
 ## Build 方法
 
@@ -94,7 +99,8 @@ cd open-alpha2
 
 ```
 open-alpha2/
-├── AIDL_REFERENCE.md                   ← Alpha2 17 個 AIDL interface 完整參考
+├── AIDL_REFERENCE_ALPHA2.md                   ← Alpha2 17 個 AIDL interface 完整參考
+├── AIDL_GUIDE_LYNX.md                  ← Lynx 21 個 AIDL interface 完整指南
 ├── sdk-module/
 │   ├── ubtechalpha2robot/              ← Alpha2 SDK（package com.ubtechinc.alpha2robot）
 │   └── lynxrobot/                      ← Lynx/QRobot SDK（package com.ubtechinc.lynxrobot）
@@ -106,20 +112,30 @@ open-alpha2/
 │       ├── java/com/open/alpha2/
 │       │   ├── MainActivity.java            — App 生命週期 + Alpha2 API 路由 + backend 分派
 │       │   ├── LynxController.java          — Lynx API 路由
-│       │   ├── HttpServer.java              — 零依賴 HTTP(S) server
+│       │   ├── HttpServer.java              — 零依賴 HTTP server（純 HTTP，TLS 已移除，見下）
 │       │   ├── WebSocketServer.java         — 手寫 RFC 6455 WebSocket
 │       │   ├── EventBus.java                — pub/sub 事件中樞
 │       │   ├── RobotEventReceiver.java      — 接收機械人 broadcast
 │       │   ├── AudioController.java         — 耳筒錄音（聽聲）
 │       │   ├── AudioPlaybackController.java — Walkie-talkie 播放（講嘢）
 │       │   ├── CameraController.java        — 相機串流/拍照/錄影
-│       │   ├── SelfSignedCert.java          — 自簽憑證生成
-│       │   ├── TlsSupport.java              — KeyStore/SSLContext 組裝
 │       │   ├── BootReceiver.java            — 開機自動啟動
 │       │   └── MouthLedData.java            — 咀部 LED preset 資料
 │       └── assets/web/
-│           ├── index.html / style.css / app.js   ← 主控制面板
-│           └── blockly*.{html,js,css}            ← 積木編程頁（獨立於主面板）
+│           ├── index.html / style.css             ← 主控制面板 (HTML/CSS)
+│           ├── app-core.js                        ← 主控制面板核心 (api()/lynxApi()/
+│           │                                          hwApi()、servo 校準表、I18N 字典 —
+│           │                                          要第一個 load)
+│           ├── app-status.js / app-actions.js /
+│           │   app-speech.js / app-servo.js /
+│           │   app-led.js / app-camera.js /
+│           │   app-mic.js / app-accel.js /
+│           │   app-lynx.js                        ← 主控制面板各分頁邏輯 (2026-08 由
+│           │                                          單一 app.js 拆出, 見 app-core.js
+│           │                                          檔頭註解)
+│           ├── app-log.js                         ← WebSocket log + 頁面初始化
+│           │                                          (DOMContentLoaded — 要最後 load)
+│           └── blockly*.{html,js,css}              ← 積木編程頁（獨立於主面板）
 ```
 
 ## HTTPS / 麥克風（walkie-talkie）
