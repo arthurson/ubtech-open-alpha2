@@ -36,8 +36,6 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.ubtechinc.constant.StaticValue;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -379,7 +377,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                Intent i = new Intent(StaticValue.ALPHA_SET_CHARGE_PLAY);
+                Intent i = new Intent("com.ubtechinc.alpha_set_charge_play");
                 i.putExtra("open_charge_play", true);
                 sendBroadcast(i);
             }
@@ -402,9 +400,9 @@ public class MainActivity extends Activity implements SensorEventListener {
         filter.addAction("com.ubtechinc.robot.tts_hint_wakeup");
         filter.addAction("come.ubt.alpha2.gesture");
         filter.addAction("com.ubtechinc.robot_uuid.info");
-        filter.addAction(StaticValue.ALPHA_QR_CODE);
-        filter.addAction(StaticValue.ALPHA_WIFI_RESULT);
-        filter.addAction(StaticValue.ALPHA_BT_CONNECTION);
+        filter.addAction("com.ubtechinc.alpha_qrcode");
+        filter.addAction("com.ubtechinc.alpha_wifi_result");
+        filter.addAction("com.ubtechinc.alpha_bt_connection");
         // Lynx PIR 狀態通知 (見 RobotEventReceiver 呢個 case 嘅 comment) - 反編譯
         // companion_v17_signed.apk 搵到嘅 action string, 唔喺 StaticValue 度 (呢個
         // App 之前冇引用過)。
@@ -426,7 +424,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         // SONAR_DISTANCE_ACTION - 保留 CHEST_ACTION filter 純粹做輔助 debug 用
         // (RobotEventReceiver 個 case 依然會 dump 佢嘅 extras, 對比返兩條路徑
         // 嘅時序有用), 唔再指望佢係主要事件來源。
-        filter.addAction(StaticValue.CHEST_ACTION);
+        filter.addAction("com.ubtechinc.services.Action.CHEST_ACTION");
         // 2026-08 新增: ⚠️ 未經真機驗證 (見 RobotEventReceiver 呢個 case 嘅
         // comment) - 反編譯官方 alpha2services 3.0.0.2 APK 逆出嚟嘅 PIR 通知
         // broadcast, 淨係喺 SecurityCameraUtil 監控開關開緊嗰陣先會發出。
@@ -434,7 +432,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         // 官方 alpha2demo.apk (firmware 1.1.1.14) 反編譯確認: sonar 讀數經呢個
         // 獨立 broadcast 送出, extra 已經係 parse 好嘅 int, 唔使自己再解 raw
         // wire frame。見 StaticValue.SONAR_DISTANCE_ACTION 個 comment。
-        filter.addAction(StaticValue.SONAR_DISTANCE_ACTION);
+        filter.addAction("com.ubtechinc.services.Action.SONAR_DISTANCE");
         // 2026-08 新增 (8個): 用嚟查「speech_SetMIC() 攞返 mic 會唔會有 broadcast
         // 通知」呢條問題, 反編譯 Alpha2Services-v1.1.7.3.20-5mic.apk 全個 APK 搵到
         // 嘅 sendBroadcast() 出處 (speechmanager.d.*/AlphaMainSeviceImpl 呢兩個
@@ -591,6 +589,9 @@ public class MainActivity extends Activity implements SensorEventListener {
      * playStopCue()/STOP_CUE_RINGTONE_TITLE above - title is the only stable way to
      * name a specific built-in system sound across devices/Android versions.
      */
+    private static final String SHUTTER_CUE_RINGTONE_TITLE = "Sirrah";
+    private android.net.Uri shutterCueUri;
+    private boolean shutterCueLookupDone;
     private void playShutterCue() {
         if (!shutterCueLookupDone) {
             shutterCueUri = findRingtoneByTitle(SHUTTER_CUE_RINGTONE_TITLE);

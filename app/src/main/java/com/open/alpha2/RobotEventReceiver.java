@@ -6,7 +6,6 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 
-import com.ubtechinc.constant.StaticValue;
 
 /**
  * Receives sensor/event broadcasts and forwards a JSON-ish line to the shared
@@ -58,20 +57,20 @@ public class RobotEventReceiver extends BroadcastReceiver {
                     EventBus.get().publish("robot_uuid", "{\"uuid\":" + jsonValue(uuid) + "}");
                     break;
                 }
-                case StaticValue.ALPHA_QR_CODE: {
+                case "com.ubtechinc.alpha_qrcode": {
                     Object result = readAny(intent, "uncode_result");
                     Object flag = readAny(intent, "flag");
                     EventBus.get().publish("qr_code", "{\"result\":" + jsonValue(result)
                             + ",\"flag\":" + jsonValue(flag) + "}");
                     break;
                 }
-                case StaticValue.ALPHA_WIFI_RESULT: {
+                case "com.ubtechinc.alpha_wifi_result": {
                     // Payload shape isn't pinned down in docs; forward every extra name
                     // present so nothing is silently dropped.
                     EventBus.get().publish("wifi_result", bundleToJson(intent.getExtras()));
                     break;
                 }
-                case StaticValue.ALPHA_BT_CONNECTION: {
+                case "com.ubtechinc.alpha_bt_connection": {
                     Object btFlag = readAny(intent, "BT_FLAG");
                     EventBus.get().publish("bt_connection", "{\"btFlag\":" + jsonValue(btFlag) + "}");
                     break;
@@ -99,7 +98,7 @@ public class RobotEventReceiver extends BroadcastReceiver {
                     EventBus.get().publish("robot_interrupted", "{}");
                     break;
                 }
-                case StaticValue.CHEST_ACTION: {
+                case "com.ubtechinc.services.Action.CHEST_ACTION": {
                     // Chest broadcast - forwards raw extras for debug; mute key (-111)
                     // scanned from raw "value" byte array.
                     EventBus.get().publish("chest_broadcast_debug",
@@ -117,15 +116,14 @@ public class RobotEventReceiver extends BroadcastReceiver {
                     }
                     break;
                 }
-                case StaticValue.SONAR_DISTANCE_ACTION: {
+                case "com.ubtechinc.services.Action.SONAR_DISTANCE": {
                     // Sonar distance: extra "sonar_distance" is int (cm), 0/negative = out of range.
-                    int distanceCm = intent.getIntExtra(StaticValue.SONAR_DISTANCE_EXTRA, -1);
-                    boolean triggered = distanceCm > 0 && distanceCm <= MainActivity.getSonarThresholdCm();
+                    int distanceCm = intent.getIntExtra("sonar_distance", -1);
+                    boolean triggered = distanceCm > 0 && distanceCm <= 30;
                     EventBus.get().publish("sonar_obstacle",
                             "{\"distanceCm\":" + distanceCm
-                                    + ",\"thresholdCm\":" + MainActivity.getSonarThresholdCm()
+                                    + ",\"thresholdCm\":" + 30
                                     + ",\"triggered\":" + triggered + "}");
-                    MainActivity.onSonarDistanceReceived(distanceCm, triggered);
                     break;
                 }
                 case "com.ubtechinc.services.stoptts": {
