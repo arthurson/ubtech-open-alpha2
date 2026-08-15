@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>OpenLynx</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="errorBanner" class="error-banner"></div>
+
+<nav class="tab-bar" id="navLynx" data-backend-nav="lynx">
+  <button class="tab-btn active" data-tab="tab-lynx-status" onclick="switchTab('tab-lynx-status')" data-i18n="nav_status">📊 狀態</button>
+  <button class="tab-btn" data-tab="tab-lynx-action" onclick="switchTab('tab-lynx-action')" data-i18n="nav_actions">🕺 動作</button>
+  <button class="tab-btn" data-tab="tab-lynx-motor" onclick="switchTab('tab-lynx-motor')" data-i18n="nav_motor">⚙️ 舵機</button>
+  <button class="tab-btn" data-tab="tab-lynx-speech" onclick="switchTab('tab-lynx-speech')" data-i18n="nav_speech">🗣️ 語音</button>
+  <button class="tab-btn" data-tab="tab-lynx-led" onclick="switchTab('tab-lynx-led')" data-i18n="nav_led">💡 LED</button>
+  <button class="tab-btn" data-tab="tab-camera" onclick="switchTab('tab-camera')" data-i18n="nav_camera">📷 相機</button>
+</nav>
+
+<main>
+
+<!-- Alpha2 system 已完全移除, 只保留 Lynx -->
+
+<!-- Camera is plain Android hardware access - same physical camera regardless of
+     which robot SDK is selected, so this tab lives outside pagesLynx and is always
+     visible, matching the shared nav buttons above. -->
+<div id="tab-camera" class="tab-page">
+  <section class="card">
+    <h2 data-i18n="camera_heading">相機</h2>
+    <div class="row">
+      <button id="cameraToggleBtn" onclick="toggleCameraLive()">▶</button>
+      <select id="cameraResolution" onchange="onResolutionChanged()">
+        <option value="320x240">320x240</option>
+        <option value="640x480">640x480</option>
+        <option value="800x600" selected>800x600</option>
+        <option value="1280x720">1280x720</option>
+        <option value="1920x1080">1920x1080</option>
+        <option value="2064x1548">2064x1548</option>
+      </select>
+      <label class="switch-label"><span data-i18n="camera_feature_key">功能鍵</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="featureEnabled" checked>
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+    </div>
+    <div id="cameraViewport" class="camera-viewport" tabindex="0"
+         ondblclick="toggleCameraFullscreen()" oncontextmenu="return false">
+      <span class="camera-live-badge" id="cameraLiveBadge"><span class="dot"></span>LIVE</span>
+      <span class="camera-placeholder" id="cameraPlaceholder"></span>
+      <div id="crosshairPad" class="crosshair-pad">
+        <div id="crosshairMark" class="crosshair-mark"></div>
+      </div>
+      <div id="fabRow" class="fab-row">
+        <button id="photoFab" class="fab-btn" onclick="takePhoto()">📷</button>
+        <button id="recordFab" class="fab-btn" onclick="toggleRecording()">⏺</button>
+        <button id="micListenFab" class="fab-btn" onclick="toggleMicListen()">🎧</button>
+        <button id="talkFab" class="fab-btn">🎤</button>
+      </div>
+      <span class="camera-kbd-hint" id="cameraKbdHint"></span>
+    </div>
+    <p class="hint" id="cameraStatusHint"></p>
+    <div id="cameraCaptureList" class="capture-list"></div>
+  </section>
+</div>
+
+<!-- 小智 AI 對話 - 已完全移除 -->
+
+
+<div id="pagesLynx" data-backend-pages="lynx">
+  <!-- ============ TAB: LYNX STATUS ============ -->
+  <div id="tab-lynx-status" class="tab-page active">
+    <section class="card">
+      <div class="backend-switch-inline">
+        <span class="backend-switch-label" data-i18n="lang_switch_label">語言：</span>
+        <span class="lang-toggle">
+          <button type="button" data-ui-lang-btn="zh" onclick="setUiLanguage('zh')">中文</button>
+          <button type="button" data-ui-lang-btn="en" onclick="setUiLanguage('en')">English</button>
+        </span>
+      </div>
+      <h2 data-i18n="lynx_status_heading">系統狀態 (Lynx 3.0.0.2)</h2>
+      <pre id="lynxStatusOut">-</pre>
+    </section>
+
+    <section class="card">
+      <h2 data-i18n="lynx_device_info_heading">裝置資訊</h2>
+      <div class="device-grid">
+        <div class="device-tile">
+          <div class="device-label" data-i18n="lynx_device_sid">🆔 SID</div>
+          <div id="lynxSidOut" class="device-value">-</div>
+        </div>
+        <div class="device-tile">
+          <div class="device-label" data-i18n="lynx_device_battery_ver">🔋 電池版本</div>
+          <div id="lynxBatteryVerOut" class="device-value">-</div>
+        </div>
+        <div class="device-tile">
+          <div class="device-label" data-i18n="lynx_device_power">⚡ 電量</div>
+          <div id="lynxPowerOut" class="device-value">-</div>
+        </div>
+        <div class="device-tile">
+          <div class="device-label" data-i18n="lynx_device_charging">🔌 充電中</div>
+          <div id="lynxChargingOut" class="device-value">-</div>
+        </div>
+        <div class="device-tile">
+          <div class="device-label" data-i18n="lynx_device_mic_ver">🎙️ MIC 版本</div>
+          <div id="lynxMicVerOut" class="device-value">-</div>
+        </div>
+        <div class="device-tile">
+          <div class="device-label" data-i18n="lynx_device_head_ver">🧠 頭部版本</div>
+          <div id="lynxHeadVerOut" class="device-value">-</div>
+        </div>
+        <div class="device-tile">
+          <div class="device-label" data-i18n="lynx_device_chest_ver">🫁 胸部版本</div>
+          <div id="lynxChestVerOut" class="device-value">-</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2026-08 新增: PIR card, 跟 accel/sonar 個 pattern - toggle 開關 (經
+         sys/pir, 真身會生效, 但 IRemotePIRSensorOperationResultListener.onPIRSensorOpResult()
+         個開關結果 callback 喺 alpha2services_base 3.0.0.2 反編譯確認咗永遠唔會
+         fire, 見 docs/AIDL_GUIDE_LYNX.md「5. Sys」章節) + 一個 step chart 畫緊
+         「pir_state」呢個 event (RobotEventReceiver.java 監聽
+         com.ubtechinc.services.Action.PIR_STATE 呢個 broadcast 先攞到, 唔經
+         AIDL) - 冇偵測=綠色, 偵測到=紅色。 -->
+    <section class="card">
+      <h2 data-i18n="lynx_pir_heading">PIR 感應器</h2>
+      <div class="row">
+        <label class="switch-label"><span data-i18n="lynx_pir_switch_label">感應器開關</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="lynxPir" onchange="lynxSetPir()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+        <label class="switch-label"><span data-i18n="lynx_pir_alert_label">警示反應 (LED+鈴聲)</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="lynxPirAlertEnabled" onchange="lynxSetPirAlertEnabled()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
+      <div class="row">
+        <div id="lynxPirIndicator" class="pir-indicator pir-indicator-clear"></div>
+      </div>
+    </section>
+
+    <section class="card" id="accelCard">
+      <h2 data-i18n="accel_heading">加速度計</h2>
+      <div class="row">
+        <label class="switch-label">
+          <span class="toggle-switch">
+            <input type="checkbox" id="accelToggle" onchange="toggleAccelerometer()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+        <div class="accel-readout">
+          <span class="accel-axis accel-x">X: <b id="accelXVal">-</b></span>
+          <span class="accel-axis accel-y">Y: <b id="accelYVal">-</b></span>
+          <span class="accel-axis accel-z">Z: <b id="accelZVal">-</b></span>
+        </div>
+      </div>
+      <canvas id="accelChart" class="accel-chart" width="900" height="220"></canvas>
+      <p class="hint" id="accelHint"></p>
+      <div class="row" style="margin-top:8px;">
+        <label class="switch-label">
+          <span class="toggle-switch">
+            <input type="checkbox" id="tiltLedToggle">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+        <span data-i18n="tilt_led_toggle_label">4角度傾側著頭/眼LED</span>
+      </div>
+      <p class="hint" id="tiltLedHint"></p>
+    </section>
+  </div>
+
+  <!-- ============ TAB: LYNX ACTION ============ -->
+  <div id="tab-lynx-action" class="tab-page">
+    <section class="card">
+      <h2 data-i18n="lynx_actions_heading">動作 (Actions)</h2>
+      <div class="row">
+        <button onclick="lynxLoadActionList()" data-i18n="actions_load_btn">攞動作列表</button>
+      </div>
+      <div id="lynxActionSubTabBar" class="sub-tab-bar"></div>
+      <div id="lynxActionSubSubTabBar" class="sub-tab-bar sub-sub-tab-bar"></div>
+      <div id="lynxActionList" class="chip-list">-</div>
+      <div class="row">
+        <input id="lynxActionName" placeholder="動作 ID（撳上面嘅 chip 自動填入並播放，或自行輸入例如 wave01）" data-i18n="lynx_action_id_placeholder" data-i18n-attr="placeholder">
+        <div class="hint" data-i18n="lynx_action_id_hint">播放要用動作 ID（.ubx 檔名），唔係顯示名稱 — 撳上面嘅 chip 會即刻播放 (撳新嘅動作會自動停咗個舊嘅先播)</div>
+        <button onclick="lynxPlayAction()" data-i18n="action_play_btn">播放</button>
+        <button onclick="lynxStopAction()" data-i18n="action_stop_btn">停止</button>
+      </div>
+      <p class="hint" id="lynxActionStatus"></p>
+    </section>
+  </div>
+
+  <!-- ============ TAB: LYNX SERVO ============ -->
+  <!-- Reuses SERVO_CALIBRATION/SERVO_NAMES/SERVO_GROUPS (app-core.js),
+       API calls go via lynxApi("motor/..."). -->
+  <div id="tab-lynx-motor" class="tab-page">
+    <section class="card">
+      <h2 data-i18n="lynx_servo_heading">舵機 (Servo, 1–20)</h2>
+      <p class="hint" data-i18n="lynx_servo_hint">拖動滑桿放手即送出。讀取結果 (code) 顯示喺滑桿右邊, 淨係撳「讀取所有角度」先會更新。</p>
+      <div class="row">
+        <label data-i18n="lynx_servo_time_label">時間(ms)：</label>
+        <input id="lynxServoAllTime" type="number" min="20" value="1000" style="width:90px">
+        <button class="secondary" onclick="lynxResetServoGrid()" data-i18n="lynx_servo_reset_btn">全部回到中位</button>
+        <button class="secondary" onclick="lynxReadAllServoAngles()" data-i18n="lynx_servo_read_all_btn">讀取所有角度</button>
+        <label class="switch-label"><span data-i18n="lynx_servo_power_save">省電</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="lynxPowerSave" onchange="lynxMotorPowerSave()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
+      <div id="lynxServoGroups"></div>
+    </section>
+  </div>
+
+  <!-- ============ TAB: LYNX SPEECH ============ -->
+  <!-- Android 內置 TTS 專用 - 冇機身 Nuance/iFlytek 引擎/聲音揀擇, 亦冇 ASR。
+       流程: 先揀「邊個 TTS engine」(呢部機可能裝咗多過一個 TTS app), 揀好之後先
+       至列到嗰個 engine 有嘅語言。engine 列表嚟自 speech/tts_engines, 語言列表
+       嚟自 speech/tts_languages (兩個都係 LynxController.AndroidTtsHandler 嘅方法),
+       反映緊機身實際裝咗嘅嘢, 唔係寫死嘅清單 - 要撳掣先載入, 同 lynxLoadActionList()
+       個模式一致。攞到列表就自動揀第一項並真係轉過去 (冇「唔轉/預設」呢個選項),
+       轉 engine 之後語言列表會自動重新載入 (見 lynxLoadTtsEngines()/lynxSetTtsEngine())。
+       語言 dropdown 顯示緊嘅中文名由後端 (MainActivity#checkTtsDataSync(),
+       Locale.getDisplayName()) 生成, 前端揀完之後送去後端嘅仲係 BCP-47 tag 本身。 -->
+  <div id="tab-lynx-speech" class="tab-page">
+    <section class="card">
+      <h2 data-i18n="lynx_tts_heading">TTS 播放 (Android 內置)</h2>
+      <div class="row">
+        <input id="lynxTtsText" placeholder="要講嘅文字" data-i18n="lynx_tts_text_placeholder" data-i18n-attr="placeholder" style="flex:1">
+        <button onclick="lynxSpeak()" data-i18n="lynx_tts_speak_btn">播放</button>
+        <button onclick="lynxStopSpeak()" data-i18n="lynx_tts_stop_btn">停止</button>
+      </div>
+      <div class="row">
+        <label data-i18n="lynx_tts_engine_label">TTS 引擎：</label>
+        <select id="lynxTtsEngine" onchange="lynxSetTtsEngine()" style="flex:1">
+          <option value="" data-i18n="lynx_tts_engine_placeholder">(撳右邊掣載入)</option>
+        </select>
+        <button class="secondary" onclick="lynxLoadTtsEngines()" data-i18n="lynx_tts_engine_load_btn">攞引擎列表</button>
+      </div>
+      <div class="row">
+        <label data-i18n="lynx_tts_lang_label">語言：</label>
+        <select id="lynxTtsLang" onchange="lynxSetTtsLang()" style="flex:1">
+          <option value="" data-i18n="lynx_tts_lang_placeholder">(先揀引擎)</option>
+        </select>
+        <button class="secondary" onclick="lynxLoadTtsLanguages()" data-i18n="lynx_tts_lang_load_btn">攞語言列表</button>
+      </div>
+    </section>
+
+    <!-- 2026-08 新增: 「搶 mic」/「放 mic」測試掣, 對應 ISpeechInterface 嘅
+         startRecording()/stopRecording()。呢兩個 method 反編譯確認同
+         startSpeechAsr()/onPlayCallback() 唔同層 —— 佢哋唔經
+         SpeechServicesImpl$1 (空 stub), 而係經 sj.d()/sj.e() 直接掛住 sl
+         (機身自己嗰個 TencentAIAudioRecognizer singleton, 開機後幾秒左右
+         由 AlphaApplication 自動觸發、requestAudioFocus, 為機身自己嘅
+         wake-word/語音功能長開住 system mic)。呢度純粹用嚟測試 call
+         startRecording()/stopRecording() 有冇令機身側釋放/重新攞返個
+         mic session (例如令上面個 Android TTS 或者呢個 App 自己開嘅
+         AudioRecord 唔再撞板) —— 詳見 docs/AIDL_GUIDE_LYNX.md「4. Speech」
+         章節。呢個唔係 ASR (唔會有任何辨識結果送返嚟), 純粹係 mic
+         擁有權嘅開關。 -->
+    <section class="card">
+      <h2 data-i18n="lynx_mic_grab_heading">Mic 擁有權測試</h2>
+      <p class="hint" data-i18n="lynx_mic_grab_hint">
+        startRecording()/stopRecording() —— 唔係 ASR, 純粹測試機身自己套
+        語音子系統(sl)會唔會因為呢兩個 call 而釋放/重新攞返部機嘅
+        system mic。撳掣之後留意 logcat 有冇 mic 相關 log, 或者試下播放
+        TTS 或者用呢個 App 自己嘅 mic 功能睇下有冇分別。
+      </p>
+      <div class="row">
+        <button onclick="lynxGrabMic()" data-i18n="lynx_mic_grab_btn">🎙️ 搶 Mic</button>
+        <button onclick="lynxReleaseMic()" data-i18n="lynx_mic_release_btn">🔓 放 Mic</button>
+      </div>
+      <div class="row">
+        <label data-i18n="lynx_mic_grab_status_label">狀態：</label>
+        <div id="lynxMicGrabStatus" class="device-value">-</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============ TAB: LYNX LED ============ -->
+  <!-- IMPORTANT: Lynx's ILedInterface is its own AIDL surface with separate
+       methods (turnOnHead/turnOnHeadFlash/turnOnHeadMarquee/turnOnHeadBreath etc.)
+       with their own unlabelled int params (p0..p3). Only the colour codes (1-7,
+       LedColor enum) and the LED-group listing are confirmed. Every raw parameter
+       is exposed here as its own labelled input, on purpose, so its actual effect
+       can be determined by testing on real hardware rather than guessed. -->
+  <div id="tab-lynx-led" class="tab-page">
+    <section class="card">
+      <h2 data-i18n="lynx_led_heading">LED</h2>
+
+      <div class="led-block">
+        <h3 data-i18n="lynx_led_head_heading">頭部 LED</h3>
+        <div class="row">
+          <label data-i18n="lynx_led_color_label">顏色：</label>
+          <div id="lynxHeadColorPicker" class="color-picker"></div>
+        </div>
+        <div class="row">
+          <label><span data-i18n="lynx_led_brightness_label">光度 (1–9)：</span><span id="lynxHeadBrightnessVal">9</span></label>
+          <input id="lynxHeadBrightness" type="range" min="1" max="9" value="9" style="width:160px"
+                 oninput="document.getElementById('lynxHeadBrightnessVal').textContent=this.value; lynxHeadApply()">
+        </div>
+        <div class="row">
+          <label><span data-i18n="lynx_led_speed_label">速度 (0–1000)：</span><span id="lynxHeadSpeedVal">100</span></label>
+          <input id="lynxHeadSpeed" type="range" min="0" max="1000" value="100" style="width:160px"
+                 oninput="document.getElementById('lynxHeadSpeedVal').textContent=this.value; lynxHeadApply()">
+        </div>
+        <div class="row">
+          <button onclick="lynxHeadOn()" data-i18n="lynx_led_preset_long">💡 長開</button>
+          <button onclick="lynxHeadFlash()" data-i18n="lynx_led_preset_flash">⚡ 閃燈</button>
+          <button onclick="lynxHeadBreath()" data-i18n="lynx_led_preset_breathe">🫧 呼吸燈</button>
+          <button onclick="lynxHeadMarquee()" data-i18n="lynx_led_preset_marquee">🏃 跑馬燈</button>
+          <button onclick="lynxHeadOff()" data-i18n="lynx_led_preset_stop">⏹ 停止</button>
+        </div>
+      </div>
+
+      <div class="led-block">
+        <h3 data-i18n="lynx_led_eye_heading">眼睛 LED</h3>
+        <div class="row">
+          <label data-i18n="lynx_led_color_label">顏色：</label>
+          <div id="lynxEyeColorPicker" class="color-picker"></div>
+        </div>
+        <div class="row">
+          <label><span data-i18n="lynx_led_brightness_label">光度 (1–9)：</span><span id="lynxEyeBrightnessVal">9</span></label>
+          <input id="lynxEyeBrightness" type="range" min="1" max="9" value="9" style="width:160px"
+                 oninput="document.getElementById('lynxEyeBrightnessVal').textContent=this.value; lynxEyeApply()">
+        </div>
+        <div class="row">
+          <label><span data-i18n="lynx_led_speed_label">速度 (0–1000)：</span><span id="lynxEyeSpeedVal">100</span></label>
+          <input id="lynxEyeSpeed" type="range" min="0" max="1000" value="100" style="width:160px"
+                 oninput="document.getElementById('lynxEyeSpeedVal').textContent=this.value; lynxEyeApply()">
+        </div>
+        <div class="row">
+          <button onclick="lynxEyeOn()" data-i18n="lynx_led_preset_long">💡 長開</button>
+          <button onclick="lynxEyeBlink()" data-i18n="lynx_led_preset_blink">👁 眨眼</button>
+          <button onclick="lynxEyeFlash()" data-i18n="lynx_led_preset_flash">⚡ 閃燈</button>
+          <button onclick="lynxEyeMarquee()" data-i18n="lynx_led_preset_marquee">🏃 跑馬燈</button>
+          <button onclick="lynxEyeOff()" data-i18n="lynx_led_preset_stop">⏹ 停止</button>
+        </div>
+      </div>
+
+      <div class="led-block">
+        <h3 data-i18n="lynx_led_mouth_heading">咀部 LED</h3>
+        <div class="row">
+          <label data-i18n="lynx_led_mouth_brightness_label">光暗 (1-9)：</label>
+          <input id="lynxMouthBrightness" type="range" min="1" max="9" value="9" style="width:160px"
+                 oninput="document.getElementById('lynxMouthBrightnessVal').textContent=this.value; lynxMouthApply()">
+          <span id="lynxMouthBrightnessVal">9</span>
+        </div>
+        <div class="row">
+          <label data-i18n="lynx_led_mouth_speed_label">速度 (0-1000ms)：</label>
+          <input id="lynxMouthFlickerTime" type="range" min="0" max="1000" value="100" style="width:220px"
+                 oninput="document.getElementById('lynxMouthFlickerTimeVal').textContent=this.value; lynxMouthApply()">
+          <span id="lynxMouthFlickerTimeVal">100</span>
+        </div>
+        <div class="row">
+          <label data-i18n="lynx_led_mouth_off_time_label">OffTime (1-1000)：</label>
+          <input id="lynxMouthOffTime" type="range" min="1" max="1000" value="100" style="width:220px"
+                 oninput="document.getElementById('lynxMouthOffTimeVal').textContent=this.value; lynxMouthApply()">
+          <span id="lynxMouthOffTimeVal">100</span>
+        </div>
+        <div class="row">
+          <button onclick="lynxMouthOn()" data-i18n="lynx_led_mouth_on_btn">長開</button>
+          <button onclick="lynxMouthBreath()" data-i18n="lynx_led_preset_breathe_mouth">🫁 呼吸燈</button>
+          <button onclick="lynxMouthOff()" data-i18n="lynx_led_mouth_off_btn">停止</button>
+        </div>
+      </div>
+
+      <div class="led-block">
+        <h3 data-i18n="lynx_led_wifi_heading">WiFi 燈</h3>
+        <div class="row">
+          <button onclick="lynxWifiSet(1)" data-i18n="lynx_led_wifi_red_btn">紅色</button>
+          <button onclick="lynxWifiSet(2)" data-i18n="lynx_led_wifi_blue_btn">藍色</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+</div><!-- /pagesLynx -->
+
+  <!-- ============ EVENT LOG (常駐,喺 main 嘅捲動區域內,唔屬於任何一個tab) ============ -->
+  <section class="card event-log-card">
+    <h2 data-i18n="event_log_heading">即時事件 Log (WebSocket)</h2>
+    <div class="row">
+      <button onclick="clearLog()" data-i18n="clear_log_btn">清空 Log</button>
+      <label class="switch-label"><span data-i18n="auto_scroll_label">自動捲動</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="autoScroll" checked>
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+    </div>
+    <pre id="eventLog" class="event-log"></pre>
+  </section>
+
+</main>
+
+<!-- 拆檔: 全部檔案共用 window/global scope (冇用 ES module), 所以順序有講究:
+     1. app-core.js 要第一個 load - 佢定義咗 lynxApi()、SERVO_CALIBRATION、I18N
+        呢啲所有其他檔案都會用到嘅核心 helper/資料。
+     2. app-log.js 要最尾 load - 佢個 DOMContentLoaded handler 會 call 晒
+        lynxBuildServoGrid()/lynxBuildHeadColorPicker() 呢啲上面幾個檔案先定義嘅
+        build*()/refresh*() function。
+     3. 中間檔案之間冇互相排序依賴 (function hoisting 令佢哋可以隨便順序 call 到大家)。
+     尾段嗰個 inline <script> 會覆寫 window.onAccelSample, 佢假設嗰陣 app-accel.js
+     已經定義咗原本嗰份 onAccelSample - 所以所有 <script src> 一定要全部行完先到嗰個
+     inline script。 -->
+<script src="app-core.js"></script>
+<script src="app-status.js"></script>
+<script src="app-actions.js"></script>
+<script src="app-speech.js"></script>
+<script src="app-servo.js"></script>
+<script src="app-led.js"></script>
+<script src="app-camera.js"></script>
+<script src="app-mic.js"></script>
+<script src="app-accel.js"></script>
+<script src="app-lynx.js"></script>
+<script src="app-log.js"></script>
+
+<!-- ============================================================
+     Sample: 4角度傾側控制頭/眼 LED
+     ============================================================
+     判斷/優先權/hysteresis 嘅行為不變, 淨係用 lynxApi("led/head/on")/
+     lynxApi("led/eye/on") (turnOnHead(color,brightness)/turnOnEye(colorCode) -
+     常亮)。LedColor code (1=紅 2=綠 3=藍 4=黃 5=紫 6=青 7=白) 兩邊一致。
+
+     四個方向、四隻色 (同一個頭/眼 LED 硬件淨係可以顯示一種顏色，用
+     tiltActiveOrder 記住邊個方向最後觸發, 邊個就贏做目前顯示顏色):
+       y >  9 -> 開; y <  6 -> 關   -> 黃 (yellow)
+       y < -9 -> 開; y > -6 -> 關   -> 紅 (red)
+       x >  9 -> 開; x <  6 -> 關   -> 青 (cyan)
+       x < -9 -> 開; x > -6 -> 關   -> 紫 (purple)
+-->
+<script>
+(function () {
+  const TILT_DIRECTIONS = [
+    { id: "yHigh", axis: "y", onThresh: 9, offThresh: 6, sign: 1, color: 4, name: "黃", nameEn: "Yellow" },
+    { id: "yLow", axis: "y", onThresh: -9, offThresh: -6, sign: -1, color: 1, name: "紅", nameEn: "Red" },
+    { id: "xHigh", axis: "x", onThresh: 9, offThresh: 6, sign: 1, color: 6, name: "青", nameEn: "Cyan" },
+    { id: "xLow", axis: "x", onThresh: -9, offThresh: -6, sign: -1, color: 5, name: "紫", nameEn: "Purple" },
+  ];
+  const tiltState = {}; // id -> boolean (目前是否觸發緊)
+  TILT_DIRECTIONS.forEach(function (d) { tiltState[d.id] = false; });
+  let tiltActiveOrder = []; // 目前觸發緊嘅 id, 舊的排前面, 最後觸發嘅排最尾
+  let tiltCurrentColor = null; // 頭/眼 LED 目前顯示緊嘅顏色碼, null = 熄咗
+
+  function setHint(text) {
+    const el = document.getElementById("tiltLedHint");
+    if (el) el.textContent = text;
+  }
+
+  /** 熄返頭/眼 LED。 */
+  function stopTiltLed() {
+    lynxApi("led/head/off");
+    lynxApi("led/eye/off");
+  }
+
+  /** 用指定顏色開返頭/眼 LED - 常亮 (turnOnHead/turnOnEye)。 */
+  function applyTiltLed(wantColor) {
+    // led/head/on 收 p0=顏色/p1=光度 (turnOnHead(color,brightness));
+    // led/eye/on 淨係收 color (turnOnEye(colorCode) 冇獨立光度參數)。
+    const headBrightness = document.getElementById("lynxHeadBrightness").value;
+    lynxApi("led/head/on", { p0: wantColor, p1: headBrightness });
+    lynxApi("led/eye/on", { color: wantColor });
+  }
+
+  function resetTiltLed() {
+    TILT_DIRECTIONS.forEach(function (d) { tiltState[d.id] = false; });
+    tiltActiveOrder = [];
+    if (tiltCurrentColor !== null) {
+      tiltCurrentColor = null;
+      stopTiltLed();
+    }
+  }
+
+  function updateTiltLed(data) {
+    TILT_DIRECTIONS.forEach(function (d) {
+      const v = d.axis === "y" ? data.y : data.x;
+      const wasActive = tiltState[d.id];
+      let nowActive = wasActive;
+      if (!wasActive && d.sign > 0 && v > d.onThresh) nowActive = true;
+      else if (!wasActive && d.sign < 0 && v < d.onThresh) nowActive = true;
+      else if (wasActive && d.sign > 0 && v < d.offThresh) nowActive = false;
+      else if (wasActive && d.sign < 0 && v > d.offThresh) nowActive = false;
+
+      if (nowActive === wasActive) return;
+      tiltState[d.id] = nowActive;
+      tiltActiveOrder = tiltActiveOrder.filter(function (id) { return id !== d.id; });
+      if (nowActive) tiltActiveOrder.push(d.id); // 最後觸發嘅排最尾
+    });
+
+    const winnerId = tiltActiveOrder.length > 0 ? tiltActiveOrder[tiltActiveOrder.length - 1] : null;
+    const winner = winnerId ? TILT_DIRECTIONS.find(function (d) { return d.id === winnerId; }) : null;
+    const wantColor = winner ? winner.color : null;
+
+    if (wantColor === tiltCurrentColor) return; // 應該顯示嘅顏色冇變, 唔使再送
+    tiltCurrentColor = wantColor;
+    setHint(winner ? (t("tilt_led_direction_prefix") + (uiLang === "en" ? winner.nameEn : winner.name)) : "");
+
+    if (wantColor === null) {
+      stopTiltLed();
+    } else {
+      applyTiltLed(wantColor);
+    }
+  }
+
+  function onTiltSample(data) {
+    const enabled = document.getElementById("tiltLedToggle").checked;
+    if (!enabled) return;
+    updateTiltLed(data);
+  }
+
+  // 保留一份原本 (app-accel.js 定義嗰份, 淨係畫圖/讀數) 嘅參照, wrapper 入面先
+  // call 返佢, 再執行呢度嘅傾側判斷 - 兩者職責分開, 唔互相取代。
+  const previousOnAccelSample = window.onAccelSample;
+  window.onAccelSample = function (data) {
+    if (typeof previousOnAccelSample === "function") previousOnAccelSample(data);
+    onTiltSample(data);
+  };
+
+  document.getElementById("tiltLedToggle").addEventListener("change", function () {
+    if (!this.checked) {
+      resetTiltLed();
+      setHint("");
+    } else {
+      setHint(t("tilt_led_monitoring_hint"));
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

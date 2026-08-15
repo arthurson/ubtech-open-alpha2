@@ -1,0 +1,58 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    compileSdkVersion 25
+
+    defaultConfig {
+        applicationId "com.open.alpha2"
+        minSdkVersion 19
+        // The Alpha2 robot's earliest firmware ran Android 4.4 (KitKat, API 19).
+        // Neither the SDK module nor this app use any API surface introduced after
+        // API 19 (checked: no android.* imports here or in the SDK post-date API 19;
+        // try-with-resources is a javac/D8 language-level rewrite, not a runtime API,
+        // so it works unchanged down to API 19).
+        targetSdkVersion 22
+        versionCode 1
+        versionName "1.0"
+
+        // 2026-08: 呢部機淨係 armeabi-v7a (RK3288, 32-bit ARM) - 其他 ABI 完全用唔
+        // 到, 亦唔應該出現喺呢個專案任何一部分。呢個 abiFilters 喺 Gradle 層面
+        // 明文化呢個專案一路以嚟嘅前提, 同 jniLibs/armeabi-v7a/libhead_led.so
+        // 一路都冇第二份嘅事實一致。
+        ndk {
+            abiFilters 'armeabi-v7a'
+        }
+    }
+
+    signingConfigs {
+        // Explicit debug keystore (see HelloAlpha's build.gradle comment upstream):
+        // AGP's auto-generated ~/.android/debug.keystore path can throw on some CI/
+        // headless environments, so a committed, non-secret debug key is used instead.
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation project(':sdk-module:lynxrobot')
+}
