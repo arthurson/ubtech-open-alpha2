@@ -13,6 +13,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "open-alpha2"
+rootProject.name = "open-lynx"
 include ':app'
 include ':sdk-module:lynxrobot'

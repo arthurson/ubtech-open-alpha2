@@ -1,0 +1,57 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    compileSdkVersion 25
+
+    defaultConfig {
+        applicationId "com.open.lynx"
+        minSdkVersion 19
+        // Lynx 機身最早期韌體對應 Android 4.4 (KitKat, API 19)。呢個 app
+        // 冇用任何 API 19 之後先出現嘅 API surface (checked: 冇 android.*
+        // import 喺呢度或者 lynxrobot SDK 入面遲過 API 19 先有;
+        // try-with-resources 純粹係 javac/D8 language-level rewrite, 唔係
+        // runtime API, 所以落到 API 19 都行得)。
+        targetSdkVersion 22
+        versionCode 1
+        versionName "1.0"
+
+        // 呢部機淨係 armeabi-v7a (RK3288, 32-bit ARM) - 其他 ABI 完全用唔到,
+        // 亦唔應該出現喺呢個專案任何一部分 (同 jniLibs/armeabi-v7a/
+        // libhead_led.so 一路都冇第二份嘅事實一致)。
+        ndk {
+            abiFilters 'armeabi-v7a'
+        }
+    }
+
+    signingConfigs {
+        // Explicit debug keystore (see HelloAlpha's build.gradle comment upstream):
+        // AGP's auto-generated ~/.android/debug.keystore path can throw on some CI/
+        // headless environments, so a committed, non-secret debug key is used instead.
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation project(':sdk-module:lynxrobot')
+}

@@ -827,12 +827,10 @@ public class SpeechVoice {
 
 ## 完整範例
 
-見 `sdk-module/ubtechalpha2robot/src/main/java/com/ubtechinc/alpha2robot/SampleUsage.java`
-——一個獨立、可直接參考嘅 class，逐個子系統示範晒點樣調用，包括正確嘅
-listener 寫法、UI thread 處理、資源釋放時機。
-
-亦可以參考 `app/src/main/java/com/open/lynx/MainActivity.java`——實際運行嘅測試
-面板，每粒掣對應一個 AIDL call。
+見 `app/src/main/java/com/open/lynx/MainActivity.java` 同
+`app/src/main/java/com/open/lynx/LynxController.java`——實際運行嘅測試
+面板，每粒掣對應一個 AIDL call，包括正確嘅 listener 寫法、UI thread 處理、
+資源釋放時機。
 
 ---
 

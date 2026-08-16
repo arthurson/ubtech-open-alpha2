@@ -1,38 +1,27 @@
-# Open Alpha2
+# OpenLynx
 
-`com.open.alpha2` —— 裝喺 UBTECH Alpha2 / Lynx（QRobot）機械人本機嘅一個 Android
+`com.open.lynx` —— 裝喺 UBTECH Lynx（QRobot）機械人本機嘅一個 Android
 App。開機自動喺機械人度起一個 HTTP + WebSocket server（port `8888`），提供一份
 網頁控制面板，喺同一個 WiFi 網絡任何裝置嘅瀏覽器就可以連過去，測試/操作機械人
-兩個唔同世代 AIDL SDK 暴露嘅幾乎全部功能，另外仲有一個獨立嘅 Blockly 積木編程頁
-可以砌程式俾機械人行。
+Lynx AIDL SDK 暴露嘅幾乎全部功能。
 
 ## 支援嘅機械人 / 前提
 
-呢個 App 入面 bundle 咗**兩個獨立嘅 AIDL SDK module**，對應兩代唔同嘅機身韌體：
+呢個 App bundle 咗一個 AIDL SDK module，對應 Lynx 機身韌體：
 
-| Backend | SDK module | 對應機身韌體 | HTTP 路由前綴 | 控制面板 nav |
-|---|---|---|---|---|
-| **Alpha2** | `sdk-module/ubtechalpha2robot`（package `com.ubtechinc.alpha2robot`） | `alpha2services` v1.1.7.3.20 | `/api/alpha2/...` | 狀態/動作/伺服/語音/LED |
-| **Lynx / QRobot** | `sdk-module/lynxrobot`（package `com.ubtechinc.lynxrobot`） | `alpha2services_base` 3.0.0.2 | `/api/lynx/...` | 狀態/動作/馬達/語音/LED |
+| SDK module | 對應機身韌體 | HTTP 路由前綴 |
+|---|---|---|
+| `sdk-module/lynxrobot`（package `com.ubtechinc.lynxrobot`） | `alpha2services_base` 3.0.0.2 | `/api/lynx/...` |
 
-兩代韌體嘅 AIDL 介面完全唔同（method 簽名、transaction 順序都唔一樣），兩個
-module 各自對應一套獨立嘅 `.aidl` 定義，唔可以混用。**一部實體機同一時間只會
-跑緊其中一代韌體**，呢個 App 唔會自動偵測機身係邊一代——控制面板開頭要人手揀一次
-「Alpha2」定「Lynx」，之後個揀擇會存喺瀏覽器（`localStorage`）同 App
-（`/api/system/backend/get`、`/api/system/backend/set`），淨係俾網頁記得住你上次
-揀邊個，方便下次開返同一個 tab 有個合理預設；實際會唔會真係傾到偈，取決於你部
-機本身跑緊邊代韌體。
+Camera/音效測試/音量/鈴聲/WiFi 狀態/藍牙狀態/加速度計/咀部 LED 呢類純硬件功能唔經
+呢個 AIDL SDK，直接用 Android 自身 API（見下面「檔案結構」），HTTP 路由冇任何前綴。
 
 其餘前提：
 - 機械人同你個瀏覽器裝置要喺同一個 WiFi 網絡。
 - 機身跑 Android，App 本身 `targetSdkVersion 22`、`minSdkVersion 19`——冇用任何
   API 19 之後先出現嘅 method（見 `app/build.gradle` comment）。
 
-Alpha2 呢邊 17 個 AIDL interface（連埋原本 SDK 缺失、事後補返嘅
-`disableActionPlay`、`isActioning`、`IAlpha2BlueToothSerialPortService`）嘅
-完整方法清單、transaction id、參數語意，見 `AIDL_REFERENCE_ALPHA2.md`。
-
-Lynx 呢邊 21 個 AIDL interface（`ServiceFetcher`/`LynxRobotApi` 用嗰套，
+Lynx 21 個 AIDL interface（`ServiceFetcher`/`LynxRobotApi` 用嗰套，
 `com.ubtechinc.alpha.serverlibutil.aidl`）嘅完整方法清單同反編譯確認嘅韌體
 行為（包括 `speech` service 喺 `alpha2services_base` 3.0.0.2 冇被登記、未接收
 嘅 broadcast 等已知限制），見 `AIDL_GUIDE_LYNX.md`。
@@ -43,7 +32,7 @@ Lynx 呢邊 21 個 AIDL interface（`ServiceFetcher`/`LynxRobotApi` 用嗰套，
 喺你自己有 Android SDK 嘅機器（或者裝咗 Android Studio）跑：
 
 ```bash
-cd open-alpha2
+cd open-lynx
 ./gradlew assembleDebug
 ```
 
@@ -59,63 +48,43 @@ cd open-alpha2
    起到就係 `https://<機械人IP>:8888/`，起唔到就 fallback 落 `http://`，見下面
    「HTTPS / 麥克風」一節）。撳個網址或者「複製」掣可以將個網址複製落剪貼簿，
    方便打去另一部裝置嘅瀏覽器。
-2. 喺同一 WiFi 網絡任何裝置嘅瀏覽器開嗰個網址。頁頂 nav bar 會跟你上次揀嘅
-   backend（Alpha2 / Lynx）顯示對應嗰組分頁，要跟返你部機實際跑緊嘅韌體代數。
-3. 控制面板分咗幾個分頁（有幾個係兩個 backend 各自獨立、有幾個係共用）：
+2. 喺同一 WiFi 網絡任何裝置嘅瀏覽器開嗰個網址。
+3. 控制面板分咗幾個分頁：
 
-**Alpha2 / Lynx 各自獨立嘅分頁**（跟返上面表所示嘅 HTTP 前綴）：
-- **狀態**：SDK 版本、系統狀態 JSON dump、電池/WiFi/藍牙/UUID 查詢、頭部降噪、
-  聲納開關同即時距離圖表（Lynx 呢邊仲有 PIR、電量/版本查詢）
+- **狀態**：SDK 版本、電量/版本查詢、PIR 開關同即時觸發指示、加速度計（唔屬於
+  AIDL SDK，同一粒實體 IMU 讀數，即時 X/Y/Z 折線圖），仲有一個「4角度傾側著
+  頭/眼LED」小功能
 - **動作**：攞返機身內建動作列表、播放、停止
-- **伺服馬達 / 馬達**：Alpha2 20 顆伺服逐一/一齊控制（含 servo 19/20 頭部
-  pan/tilt）；Lynx 呢邊係 `motor/*`（read/move_absolute/move_ref/set_all/
-  power_save）
-- **語音**：ASR 辨識結果/意圖分類即時顯示、TTS（多引擎/聲線）、麥克風釋放/交回、
-  自我打斷、機身 wake word 語言 preset、一個「語音輸入三合一測試」card（同一句
-  輸入同時試 `onSpeech` 模擬講嘢／`initSpeechGrammar`+`startSpeechGrammar`
-  語法式辨識／`onTextUnderstand` 文字語意理解三條唔同 AIDL 路徑，方便逐一對比
-  邊個真係有反應——語法式辨識喺 Nuance binding 底下係空 stub，要自己先手動
-  切去 iFlytek engine 先會有反應，呢個測試唔會幫你自動切）
-- **LED**：頭部/眼睛/咀部（Alpha2）；頭部/眼睛/咀部/胸口/WiFi 燈（Lynx，款式
-  更多：flash/breath/marquee 等效果）
+- **舵機**：`motor/*`（read/move_absolute/move_ref/set_all/power_save）
+- **語音**：TTS（Android 系統引擎，Cantonese `yue` fallback）
+- **LED**：頭部/眼睛/咀部/胸口/WiFi 燈（flash/breath/marquee 等效果）
+- **相機**（純硬件，唔經 AIDL）：即時串流、拍照、錄影、可調解像度（320×240 到
+  2064×1548）、講嘢（walkie-talkie 送，要 HTTPS 先有 mic 權限）、一個自居中嘅
+  拖曳搖桿（同鍵盤方向鍵）可以直接拖動控制頭部 pan/tilt
 
-**共用分頁**（同揀緊邊個 backend 無關，一份 UI 兩邊共用）：
-- **相機**：即時串流、拍照、錄影、可調解像度（320×240 到 2064×1548）、耳筒
-  聽聲（walkie-talkie 收）、講嘢（walkie-talkie 送，要 HTTPS 先有 mic
-  權限）、一個自居中嘅拖曳搖桿（同鍵盤方向鍵）可以直接拖動控制頭部 pan/tilt
-- **加速度計**：純 `SensorManager` 讀數（唔屬於任何一個 AIDL backend，同一粒
-  實體 IMU），即時 X/Y/Z 折線圖，仲有一個「4角度傾側著頭/眼LED」小功能（Alpha2
-  限定）
-- **積木編程**（`blockly.html`，喺新分頁開）：Blockly 視覺化編程介面，Alpha2
-  限定。分咗流程/事件/動作/語音/伺服/LED 幾個自訂分類，另加 Blockly 標準嘅
-  邏輯/數學/文字/變數/自訂函式；支援中英雙語即時切換、程式命名儲存/載入/刪除、
-  匯出入 `.xml`、有內建範例程式。事件驅動用加速度計門檻／聲納觸發嘅 hat block。
-
-即時事件（頭部觸摸、手勢、ASR 結果/意圖、電池、跌落方向、聲源角度、喚醒詞、
-藍牙連線、WiFi 查詢結果等）全部經 WebSocket 即時推送到「即時事件 Log」，控制
-面板唔使手動 refresh。
+即時事件（PIR、聲納距離、電池等）全部經 WebSocket 即時推送到「即時事件 Log」，
+控制面板唔使手動 refresh。
 
 ## 檔案結構
 
 ```
-open-alpha2/
-├── AIDL_REFERENCE_ALPHA2.md                   ← Alpha2 17 個 AIDL interface 完整參考
+open-lynx/
 ├── AIDL_GUIDE_LYNX.md                  ← Lynx 21 個 AIDL interface 完整指南
 ├── sdk-module/
-│   ├── ubtechalpha2robot/              ← Alpha2 SDK（package com.ubtechinc.alpha2robot）
 │   └── lynxrobot/                      ← Lynx/QRobot SDK（package com.ubtechinc.lynxrobot）
 ├── app/
 │   ├── build.gradle
 │   ├── debug.keystore
 │   └── src/main/
 │       ├── AndroidManifest.xml
-│       ├── java/com/open/alpha2/
-│       │   ├── MainActivity.java            — App 生命週期 + Alpha2 API 路由 + backend 分派
-│       │   ├── LynxController.java          — Lynx API 路由
+│       ├── java/com/open/lynx/
+│       │   ├── MainActivity.java            — App 生命週期 + shared-hardware API 路由
+│       │   ├── LynxController.java          — Lynx AIDL API 路由
 │       │   ├── HttpServer.java              — 零依賴 HTTP server（純 HTTP，TLS 已移除，見下）
 │       │   ├── WebSocketServer.java         — 手寫 RFC 6455 WebSocket
 │       │   ├── EventBus.java                — pub/sub 事件中樞
 │       │   ├── RobotEventReceiver.java      — 接收機械人 broadcast
+│       │   ├── RobotWireConstants.java      — 機身底層 broadcast action/extra 常量
 │       │   ├── AudioController.java         — 耳筒錄音（聽聲）
 │       │   ├── AudioPlaybackController.java — Walkie-talkie 播放（講嘢）
 │       │   ├── CameraController.java        — 相機串流/拍照/錄影
@@ -123,19 +92,14 @@ open-alpha2/
 │       │   └── MouthLedData.java            — 咀部 LED preset 資料
 │       └── assets/web/
 │           ├── index.html / style.css             ← 主控制面板 (HTML/CSS)
-│           ├── app-core.js                        ← 主控制面板核心 (api()/lynxApi()/
+│           ├── app-core.js                        ← 主控制面板核心 (lynxApi()/
 │           │                                          hwApi()、servo 校準表、I18N 字典 —
 │           │                                          要第一個 load)
-│           ├── app-status.js / app-actions.js /
-│           │   app-speech.js / app-servo.js /
-│           │   app-led.js / app-camera.js /
+│           ├── app-status.js / app-camera.js /
 │           │   app-mic.js / app-accel.js /
-│           │   app-lynx.js                        ← 主控制面板各分頁邏輯 (2026-08 由
-│           │                                          單一 app.js 拆出, 見 app-core.js
-│           │                                          檔頭註解)
-│           ├── app-log.js                         ← WebSocket log + 頁面初始化
-│           │                                          (DOMContentLoaded — 要最後 load)
-│           └── blockly*.{html,js,css}              ← 積木編程頁（獨立於主面板）
+│           │   app-lynx.js                        ← 主控制面板各分頁邏輯
+│           └── app-log.js                         ← WebSocket log + 頁面初始化
+│                                                      (DOMContentLoaded — 要最後 load)
 ```
 
 ## HTTPS / 麥克風（walkie-talkie）
@@ -365,6 +329,10 @@ client 一方冇信任個憑證。
 
 ## 「聽聲」（耳筒）仍然慢 3 秒 + 取消搶咪最長時間
 
+> **2026-08 更新**：本節記錄嘅「聽機械人麥克風」（耳筒收聽環境聲）功能已經喺
+> Lynx-only 修訂移除（見「已知限制」一節解釋原因）。以下內容純粹保留做歷史
+> debugging 記錄，唔再反映依家嘅程式行為。
+
 ### 聽聲延遲累積嘅真正根源(唔喺播放層,而係 decode 並行)
 
 之前修過「講嘢」（`AudioPlaybackController`，機械人講嘢俾你聽）嘅延遲累積問題,
@@ -487,12 +455,10 @@ crash fix 嘅 try/catch 回滾)。
 
 ## 已知限制
 
-- 兩代機身韌體（Alpha2 / Lynx）唔會自動偵測，要手動揀 backend；一部機同一時間
-  淨係跑緊其中一代，揀錯個 tab 會全部 API call 失敗。
-- 冇自訂語音詞彙——Nuance 呢邊用寫死嘅 VoCon 語法（`initSpeechGrammar`/
-  `startSpeechGrammar` 喺 Nuance binding 之下係空 stub），要試 grammar 式辨識要
-  自己先手動切去 iFlytek engine（「語音輸入三合一測試」唔會幫你自動切）。
-- 冇伺服角度/電流回授、Alpha2 呢邊冇聲納實際距離數值（只有 boolean 觸發）。
+- 冇伺服角度/電流回授。
 - `action/list` 用咗一個最多等 5 秒嘅 blocking wait（AIDL callback 本質係 async），
   如果機器人服務初始化好慢，第一次攞列表可能會 timeout 返空列表——可以再按一次。
-- Blockly 積木編程頁淨係支援 Alpha2 backend。
+- 「聽機械人麥克風」（耳筒收聽環境聲）功能已經喺呢個修訂移除——原本呢個功能靠
+  Alpha2 專屬嘅 `speech_SetMIC()` AIDL call 去釋放/收返機械人自己嘅 mic，Lynx
+  AIDL SDK 冇對應方法，所以呢個功能喺 Lynx-only 版本冇得保留。「講嘢」
+  （walkie-talkie，瀏覽器 mic → 機械人喇叭）唔受影響，繼續可用。
