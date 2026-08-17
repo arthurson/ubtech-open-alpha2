@@ -18,6 +18,232 @@ const API = "/api/";
 const APP_VERSION = "beta2";
 const APP_REPO_URL = "https://github.com/arthurson/ubtech-open-lynx";
 
+// ---------------- Action categories (shared data/DOM helpers) ----------------
+// 動作分類機制 - Alpha2/Lynx 兩邊都用緊, 因為 action_classification.json 嘅 key
+// 係機身 action 服務嘅 id (兩邊 ActionInfo.getId() 都係同一份), 分類表可以直接
+// 共用, 唔使機身額外提供多一份 Lynx 專用嘅分類 json。呢個 SDK 淨係支援 Lynx
+// backend, 但呢組 helper 本身冇 backend 之分, 擺喺 app-core.js (第一個 load
+// 嘅檔案) 等 app-lynx.js 用得到。
+
+// Categories as returned by the robot's own action list (row[1] = type). The
+// robot's static action-info file uses numeric types (1/2/3/4); some runtime
+// builds report the same categories as text instead. Either way each of
+// basic/dance/story/yoga gets its own sub-tab with a distinct theme colour;
+// anything not in this whitelist (regardless of what the raw type string
+// actually says) falls back to a shared "others" sub-tab - the whitelist
+// approach means no unknown category value ever needs to be spelled out
+// literally here.
+const ACTION_CATEGORIES = [
+  { key: "basic",  label: "基本", labelEn: "Basic", color: "#3b7dff" },
+  { key: "dance",  label: "跳舞", labelEn: "Dance", color: "#db2777" },
+  { key: "story",  label: "故事", labelEn: "Story", color: "#d97706" },
+  { key: "yoga",   label: "瑜伽", labelEn: "Yoga",  color: "#16a34a" },
+  { key: "others", label: "其他", labelEn: "Other", color: "#6b7280" },
+];
+// 白名單: 數字 type (actionInfo.txt 靜態格式) 同文字 type (部分機身 runtime 格式) 都對應埋。
+const ACTION_CATEGORY_MAP = {
+  "1": "basic", "2": "dance", "3": "story", "4": "yoga",
+  basic: "basic", dance: "dance", story: "story", yoga: "yoga",
+};
+
+// 動作 ID -> {main, sub} 嘅子分類對照表, 由 action_classification.json 讀入 (見
+// action_classified.txt 嘅整理來源)。呢個 mapping 淨係喺 asset 檔案有出現嘅動作先會有
+// sub 分類 - 冇出現嘅動作仍然跟返 categoryOf() 嗰個大分類, 但喺嗰個大分類入面冇
+// 子分類 tab 可以揀 (即係直接混喺主列表, 冚方向上等於落咗嗰個大分類嘅"其他")。
+// 呢個表故意唔喺 code 度寫死: 下次要再分類就淨係改/換份 json, 唔使動 app-core.js。
+let actionClassification = {}; // id -> {main, sub}
+
+function loadActionClassification() {
+  return fetch("action_classification.json").then(function (r) {
+    if (!r.ok) throw new Error("http " + r.status);
+    return r.json();
+  }).then(function (json) {
+    actionClassification = json || {};
+  }).catch(function (e) {
+    // 冇呢個檔案或者讀取失敗都唔應該累到成個動作 tab 用唔到 - 淨係冇子分類 tab,
+    // 主分類(基本/跳舞/故事/瑜伽/其他)照舊運作。
+    console.warn("action_classification.json 讀取失敗, 子分類 tab 將唔會出現:", e);
+    actionClassification = {};
+  });
+}
+
+function categoryOf(rawType) {
+  return ACTION_CATEGORY_MAP[rawType] || "others";
+}
+
+/** 攞返一個動作嘅子分類名 (例如「移動類」), 冇對照到就 null。 */
+function subCategoryOf(action) {
+  const entry = actionClassification[action.id];
+  return entry ? entry.sub : null;
+}
+
+// Fixed palette for sub-category tabs (移動類/手勢類/...), cycled by index so each
+// sub-category gets a distinct, stable colour regardless of which main category it's
+// under - deliberately a separate palette from ACTION_CATEGORIES' colours so the two
+// tab levels stay visually distinguishable from each other.
+const SUB_CATEGORY_COLORS = [
+  "#0891b2", "#ca8a04", "#9333ea", "#059669", "#e11d48",
+  "#2563eb", "#c2410c", "#4d7c0f", "#be185d", "#0d9488",
+];
+
+// English labels for the sub-categories that come from action_classification.json
+// (see loadActionClassification() above). The Chinese string is still the filter key
+// used everywhere else (subCategoryOf() / activeActionSubCategory) - this table is
+// purely for what's shown on the tab when uiLang === "en", so it never needs to touch
+// action_classification.json or action_classified.txt (source of truth for the actual
+// classification). Add an entry here whenever a new sub value shows up in that file.
+const SUB_CATEGORY_LABELS_EN = {
+  "移動類":            "Locomotion",
+  "手勢類":            "Gestures",
+  "頭部類":            "Head",
+  "表情 / 互動類":      "Expression / Interaction",
+  "全身 / 其他動作":    "Full Body / Other",
+  "伸展式":            "Stretch",
+  "站立式 / 平衡式":    "Standing / Balance",
+  "騎馬式":            "Horse Stance",
+  "踢腿 / 動態式":      "Kick / Dynamic",
+  "流行 / 節奏舞蹈":    "Pop / Rhythm Dance",
+  "兒童歌曲 / 卡通舞蹈": "Kids Songs / Cartoon Dance",
+  "品牌 / 客製舞蹈":    "Brand / Custom Dance",
+  "中國寓言":          "Chinese Fables",
+  "西方寓言 / 故事":    "Western Fables / Stories",
+};
+
+/** 攞返一個子分類應該顯示嘅名: 跟主 UI 語言 (uiLang)。內部 filter 仍然用返 `sub`
+ *  (中文) 呢個 key, 呢個 function 淨係用喺顯示層。冇對照到就照原文顯示, 唔會有
+ *  空白 tab。 */
+function subCategoryDisplayName(sub) {
+  if (uiLang === "en") {
+    return SUB_CATEGORY_LABELS_EN[sub] || sub;
+  }
+  return sub;
+}
+
+/** 建立第二層子分類 tab (例如 基本 之下嘅 移動類/手勢類/頭部類/...) 嘅共用邏輯。
+ *  action_classification.json 嘅 key 係機身 action 服務嘅 id, 所以呢份分類表
+ *  可以畀唔同 caller (目前即係 app-lynx.js 嘅 buildLynxActionSubSubTabs())
+ *  共用, 唔使複製多一份。只有 action_classification.json 對呢個大分類有出現嘅
+ *  子分類先會出 tab - 冇資料就唔顯示呢層 tab bar, 直接顯示嗰個大分類入面成個
+ *  flat 清單。An always-present「全部」tab 清空子分類篩選。
+ *  @param barElId       子分類 tab bar 容器嘅 id
+ *  @param actions       完整動作陣列 (lynxAllActions)
+ *  @param mainCategory  目前揀咗嘅大分類 key (activeLynxActionCategory)
+ *  @param getActiveSub  () => 目前揀咗嘅子分類 (null = 全部)
+ *  @param setActiveSub  (sub) => void, 寫返去嗰個 caller 自己嘅 activeXxxSubCategory 變數
+ *  @param onChange      揀咗新子分類之後要做嘅嘢 (重畫 tab bar + 重畫動作清單)
+ */
+function buildActionSubSubTabsShared(barElId, actions, mainCategory, getActiveSub, setActiveSub, onChange) {
+  const bar = document.getElementById(barElId);
+  if (!bar) return;
+  bar.innerHTML = "";
+
+  // Sub-category labels, in the order first encountered in the classification file,
+  // restricted to actions that belong to the currently active main category.
+  const subsInOrder = [];
+  actions.forEach(function (a) {
+    if (categoryOf(a.type) !== mainCategory) return;
+    const sub = subCategoryOf(a);
+    if (sub && subsInOrder.indexOf(sub) === -1) subsInOrder.push(sub);
+  });
+
+  if (subsInOrder.length === 0) {
+    setActiveSub(null);
+    return; // 呢個大分類冇任何子分類資料 - 唔顯示呢層 tab bar
+  }
+
+  const allBtn = document.createElement("button");
+  allBtn.className = "sub-tab-btn" + (getActiveSub() === null ? " active" : "");
+  allBtn.textContent = uiLang === "en" ? "All" : "全部";
+  allBtn.onclick = function () {
+    setActiveSub(null);
+    onChange();
+  };
+  bar.appendChild(allBtn);
+
+  subsInOrder.forEach(function (sub, i) {
+    const btn = document.createElement("button");
+    btn.className = "sub-tab-btn" + (sub === getActiveSub() ? " active" : "");
+    btn.style.setProperty("--sub-tab-color", SUB_CATEGORY_COLORS[i % SUB_CATEGORY_COLORS.length]);
+    const count = actions.filter(function (a) {
+      return categoryOf(a.type) === mainCategory && subCategoryOf(a) === sub;
+    }).length;
+    btn.textContent = subCategoryDisplayName(sub) + " (" + count + ")";
+    btn.onclick = function () {
+      setActiveSub(sub);
+      onChange();
+    };
+    bar.appendChild(btn);
+  });
+}
+
+/** 建動作 chip 清單嘅共用邏輯 - 邊個 list element、邊批經 filter 嘅動作、點樣攞
+ *  顯示名、撳落去做咩、清單為空顯示咩字, 全部由 caller 決定。 */
+function renderActionChips(listElId, filtered, nameFn, onPick, emptyText) {
+  const listEl = document.getElementById(listElId);
+  if (!listEl) return;
+  if (filtered.length === 0) {
+    listEl.textContent = emptyText;
+    return;
+  }
+  listEl.innerHTML = "";
+  filtered.forEach(function (a) {
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.textContent = nameFn(a);
+    chip.onclick = function () { onPick(a); };
+    listEl.appendChild(chip);
+  });
+}
+
+
+// 用喺 Lynx LED tab 嘅眼/頭色點揀色器 (lynxBuildEyeColorPicker()/
+// lynxBuildHeadColorPicker(), 見 app-lynx.js)。呢個 helper 本身冇 Lynx-only
+// 定 Alpha2-only 之分, 純粹係一個共用 DOM utility, 所以擺喺 app-core.js (第一
+// 個 load 嘅檔案) 等所有其他 app-*.js 都用得到。
+const LED_COLORS = [
+  { code: 1, name: "紅", hex: "#ff3b3b" },
+  { code: 2, name: "綠", hex: "#3bff5c" },
+  { code: 3, name: "藍", hex: "#3b6bff" },
+  { code: 4, name: "黃", hex: "#ffe93b" },
+  { code: 5, name: "紫", hex: "#a83bff" },
+  { code: 6, name: "青", hex: "#3bfff0" },
+  { code: 7, name: "白", hex: "#ffffff" },
+];
+
+function buildColorPicker(wrapId, getSelected, setSelected, onPick) {
+  // 之前試過冇 null check, 一旦 wrapId 打錯或者 index.html 個對應 element 被
+  // 誤刪, document.getElementById() 會返 null, wrap.innerHTML 即刻
+  // TypeError —— 而呢個 function 兩個 call site
+  // (lynxBuildEyeColorPicker/lynxBuildHeadColorPicker) 都喺頁面初始化
+  // (DOMContentLoaded 果條 call chain) 連續執行, 其中一個掉低就會拋出未捕獲
+  // 例外, 中斷埋後面幾行初始化 (連累 lynxRefreshStatus()/lynxRefreshSys()/
+  // connectWs() 都行唔到), 令狀態頁睇落一片空白、讀唔到機身 data, 卻冇任何
+  // 錯誤提示喺 UI 度 (window.onerror 會 log 落 console/logcat, 但畫面本身
+  // 一片空白)。加返 guard: 揾唔到就靜靜哋跳過呢一個 color picker, 唔阻住
+  // 其他初始化步驟。
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) {
+    console.error("buildColorPicker: element #" + wrapId + " not found, skipping");
+    return;
+  }
+  wrap.innerHTML = "";
+  LED_COLORS.forEach(function (c) {
+    const dot = document.createElement("button");
+    dot.type = "button";
+    dot.className = "color-dot" + (c.code === getSelected() ? " selected" : "");
+    dot.style.background = c.hex;
+    dot.title = c.name;
+    dot.onclick = function () {
+      setSelected(c.code);
+      wrap.querySelectorAll(".color-dot").forEach(function (d) { d.classList.remove("selected"); });
+      dot.classList.add("selected");
+      onPick();
+    };
+    wrap.appendChild(dot);
+  });
+}
+
+
 // ---------------- UI language (whole-panel zh/en translation) ----------------
 //
 // Single source of truth for language across the whole panel - this drives both the
@@ -318,6 +544,66 @@ const SERVO_GROUPS = [
   { key: "right-leg",  label: "右腳", labelEn: "R Leg",     icon: "🦵", ids: [7, 8, 9, 10, 11] },
   { key: "left-leg",   label: "左腳", labelEn: "L Leg",     icon: "🦵", ids: [12, 13, 14, 15, 16] },
 ];
+
+/** 建立 servo grid 嘅共用邏輯 - 邊個 caller 用邊個 wrap element id / slider id
+ *  prefix / 送出去 robot 嘅 call, 全部由參數決定。
+ *  @param wrapId       外層容器嘅 id ("lynxServoGroups")
+ *  @param sliderPrefix slider input 嘅 id prefix ("lynxServoSlider_")
+ *  @param valPrefix    數值顯示 span 嘅 id prefix ("lynxServoSliderVal_")
+ *  @param sendFn       (id, angle) => void, 拖完手之後實際送出去robot嘅call
+ *                       (motor/move_absolute, 見 caller)
+ *  @param readPrefix   (可選) 「讀取所有角度」結果顯示 span 嘅 id prefix - 冇傳嘅話
+ *                       唔會加呢欄, 版面同以前一樣。
+ */
+function buildServoGridInto(wrapId, sliderPrefix, valPrefix, sendFn, readPrefix) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) {
+    console.error("buildServoGridInto: #" + wrapId + " not found, skipping");
+    return;
+  }
+  wrap.innerHTML = "";
+  SERVO_GROUPS.forEach(function (group) {
+    const groupEl = document.createElement("div");
+    groupEl.className = "servo-group";
+
+    const title = document.createElement("div");
+    title.className = "servo-group-title";
+    title.innerHTML = "<span class=\"servo-group-icon\">" + group.icon + "</span>" + (uiLang === "en" ? group.labelEn : group.label);
+    groupEl.appendChild(title);
+
+    group.ids.forEach(function (id) {
+      const cal = SERVO_CALIBRATION[id];
+      const row = document.createElement("div");
+      row.className = "servo-slider-row" + (readPrefix ? " has-readout" : "");
+      row.innerHTML =
+          "<span class=\"servo-slider-label\">#" + id + " " + servoNameOf(id) + "</span>" +
+          "<input type=\"range\" id=\"" + sliderPrefix + id + "\" min=\"" + cal.min + "\" max=\"" + cal.max + "\" value=\"" + cal.home + "\">" +
+          "<span class=\"servo-slider-value\" id=\"" + valPrefix + id + "\">" + cal.home + "</span>" +
+          (readPrefix ? "<span class=\"servo-slider-readout\" id=\"" + readPrefix + id + "\">-</span>" : "");
+      const slider = row.querySelector("input");
+      const valueLabel = row.querySelector(".servo-slider-value");
+
+      // Live readout while dragging - no network call yet.
+      slider.addEventListener("input", function () {
+        valueLabel.textContent = slider.value;
+      });
+      // Actually move the servo once the drag ends.
+      slider.addEventListener("change", function () {
+        const raw = parseInt(slider.value, 10);
+        const clamped = clampServoAngle(id, isNaN(raw) ? cal.home : raw);
+        if (clamped !== raw) {
+          slider.value = clamped;
+          valueLabel.textContent = clamped;
+        }
+        sendFn(id, clamped);
+      });
+
+      groupEl.appendChild(row);
+    });
+
+    wrap.appendChild(groupEl);
+  });
+}
 
 // ---------------- Global error surface ----------------
 // Any uncaught JS error used to fail silently (a button's onclick handler would just

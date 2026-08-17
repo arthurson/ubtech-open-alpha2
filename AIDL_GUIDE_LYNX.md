@@ -2,7 +2,7 @@
 
 呢份文件詳細講解 `com.ubtechinc.alpha.serverlibutil.aidl` 底下全部 **21 個 AIDL
 interface** 同 **6 個 Parcelable**，包括每個 method 嘅參數、回調時機、transaction
-id，同埋點樣透過 `Alpha2RobotApi` facade（建議做法）或者直接用 AIDL Stub
+id，同埋點樣透過 `LynxRobotApi` facade（建議做法）或者直接用 AIDL Stub
 （進階做法）去調用。
 
 > 所有資料都係對照 `com.ubtechinc.alpha2services_base.3.002.apk` 反編譯結果確認，
@@ -28,15 +28,15 @@ id，同埋點樣透過 `Alpha2RobotApi` facade（建議做法）或者直接用
 
 ### 兩種調用方式
 
-**方式一：`Alpha2RobotApi` facade（建議）**
+**方式一：`LynxRobotApi` facade（建議）**
 
-`sdk-module` 提供咗一個 `Alpha2RobotApi` class，將全部 65 個 AIDL method 包裝成
+`sdk-module` 提供咗一個 `LynxRobotApi` class，將全部 65 個 AIDL method 包裝成
 易用嘅 Java method，自動處理 binder 連線、重試、例外捕獲。Method 命名規則係
 `<子系統>_<AIDL method 名>`，例如 `IMotorInterface.moveToAbsoluteAngle()` 對應
-`Alpha2RobotApi.motor_moveToAbsoluteAngle()`。
+`LynxRobotApi.motor_moveToAbsoluteAngle()`。
 
 ```java
-Alpha2RobotApi robot = new Alpha2RobotApi(context);
+LynxRobotApi robot = new LynxRobotApi(context);
 robot.motor_moveToAbsoluteAngle(1, 90, 1000L, listener);
 ```
 
@@ -55,7 +55,7 @@ motor.moveToAbsoluteAngle(1, 90, 1000L, listener);
 
 ### 錯誤處理慣例
 
-`Alpha2RobotApi` 嘅每個 method 都會捕獲 `RemoteException`，用返
+`LynxRobotApi` 嘅每個 method 都會捕獲 `RemoteException`，用返
 `UbxErrorCode.API_ERROR_CODE` 呢個 enum 表達結果：
 
 | 值 | 意思 |
@@ -100,7 +100,7 @@ public final class ServiceFetcher {
 }
 ```
 
-一般你唔需要直接用呢個 class（`Alpha2RobotApi` 內部已經幫你叫咗），淨係喺你想
+一般你唔需要直接用呢個 class（`LynxRobotApi` 內部已經幫你叫咗），淨係喺你想
 直接用 AIDL Stub（方式二）先需要。
 
 ---
@@ -567,7 +567,7 @@ SpeechVoice getCurSpeechVoices();
 > ⚠️ **重要**：`getSpeechVoices()` 喺 AIDL 層面聲明做冇 generic 參數嘅 raw
 > `List`（唔係 `List<SpeechVoice>`）——呢個係跟返機械人韌體實際嘅 marshalling
 > 方式（`writeList`/`readArrayList`，唔係 typed list 嗰種 `writeTypedList`）。
-> 你唔使理呢個底層細節：`Alpha2RobotApi.speech_getSpeechVoices()` 已經幫你做咗
+> 你唔使理呢個底層細節：`LynxRobotApi.speech_getSpeechVoices()` 已經幫你做咗
 > unchecked cast，直接畀返 `List<SpeechVoice>`。如果你係直接用 Stub（方式二），
 > 就要自己做呢個 cast。
 
@@ -896,13 +896,12 @@ public class SpeechVoice {
 
 > **適用範圍**：以下發現全部對照
 > `com.ubtechinc.alpha2services_base.3.002.apk`（`open-lynx` 專案實際連緊嘅
-> 韌體版本，`android:versionName="v3.0.0.2"`）反編譯確認，**唔一定適用於
-> Alpha2 韌體 1.1.7.3**（見文件頭段「錯誤處理慣例」表之後嘅一般假設）。
-> `open-lynx` 用嘅 `LynxRobotApi`/`ServiceFetcher` 底層機制同呢份文件描述嘅
-> `Alpha2RobotApi`/`ServiceFetcher` 一致，都係經 `IServiceFetcher.getService()`
-> 攞 binder，所以以下關於 broker 行為嘅發現原則上兩邊通用；但邊個 service
-> key/broadcast action 實際有冇被登記/發出，則完全取決於個別韌體版本嘅
-> `MainService` 實作，唔可以假設 Alpha2 韌體都係咁。
+> 韌體版本，`android:versionName="v3.0.0.2"`）反編譯確認。`open-lynx` 用嘅
+> `LynxRobotApi`/`ServiceFetcher` 底層機制同呢份文件描述嘅一致，都係經
+> `IServiceFetcher.getService()` 攞 binder；但邊個 service key/broadcast
+> action 實際有冇被登記/發出，完全取決於呢一個特定韌體 build
+> （`alpha2services_base` 3.0.0.2）嘅 `MainService` 實作——如果你哋將來要
+> 支援其他韌體版本，唔應該假設呢份附錄嘅結論通用，要重新反編譯核實。
 
 ### Service registry 機制（`IServiceFetcher.getService()` 底層行為）
 
@@ -947,7 +946,7 @@ protected void a() {  // onStartOnce
 | `led` | ✅ | 正常 |
 | `motor` | ✅ | 正常 |
 | `sysinfo` | ✅ | 正常 |
-| **`speech`** | ❌ 從未登記 | `getService("speech")` 永遠返 `null` → `LynxRobotApi`/`Alpha2RobotApi` 呼叫任何 `speech_*()` method 都會即刻返 `API_ERROR_NOT_INIT`，唔會因為等耐咗、重試就好返 |
+| **`speech`** | ❌ 從未登記 | `getService("speech")` 永遠返 `null` → `LynxRobotApi` 呼叫任何 `speech_*()` method 都會即刻返 `API_ERROR_NOT_INIT`，唔會因為等耐咗、重試就好返 |
 
 **同「4. Speech」章節嘅已知限制係互相獨立、但互相呼應嘅兩層問題**：即使將來
 繞過咗 `SpeechServicesImpl$1` 全部 method 係空 stub 呢一層，`getService("speech")`
