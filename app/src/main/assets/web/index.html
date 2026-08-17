@@ -251,35 +251,6 @@
       </div>
     </section>
 
-    <!-- 2026-08 新增: 「搶 mic」/「放 mic」測試掣, 對應 ISpeechInterface 嘅
-         startRecording()/stopRecording()。呢兩個 method 反編譯確認同
-         startSpeechAsr()/onPlayCallback() 唔同層 —— 佢哋唔經
-         SpeechServicesImpl$1 (空 stub), 而係經 sj.d()/sj.e() 直接掛住 sl
-         (機身自己嗰個 TencentAIAudioRecognizer singleton, 開機後幾秒左右
-         由 AlphaApplication 自動觸發、requestAudioFocus, 為機身自己嘅
-         wake-word/語音功能長開住 system mic)。呢度純粹用嚟測試 call
-         startRecording()/stopRecording() 有冇令機身側釋放/重新攞返個
-         mic session (例如令上面個 Android TTS 或者呢個 App 自己開嘅
-         AudioRecord 唔再撞板) —— 詳見 docs/AIDL_GUIDE_LYNX.md「4. Speech」
-         章節。呢個唔係 ASR (唔會有任何辨識結果送返嚟), 純粹係 mic
-         擁有權嘅開關。 -->
-    <section class="card">
-      <h2 data-i18n="lynx_mic_grab_heading">Mic 擁有權測試</h2>
-      <p class="hint" data-i18n="lynx_mic_grab_hint">
-        startRecording()/stopRecording() —— 唔係 ASR, 純粹測試機身自己套
-        語音子系統(sl)會唔會因為呢兩個 call 而釋放/重新攞返部機嘅
-        system mic。撳掣之後留意 logcat 有冇 mic 相關 log, 或者試下播放
-        TTS 或者用呢個 App 自己嘅 mic 功能睇下有冇分別。
-      </p>
-      <div class="row">
-        <button onclick="lynxGrabMic()" data-i18n="lynx_mic_grab_btn">🎙️ 搶 Mic</button>
-        <button onclick="lynxReleaseMic()" data-i18n="lynx_mic_release_btn">🔓 放 Mic</button>
-      </div>
-      <div class="row">
-        <label data-i18n="lynx_mic_grab_status_label">狀態：</label>
-        <div id="lynxMicGrabStatus" class="device-value">-</div>
-      </div>
-    </section>
   </div>
 
   <!-- ============ TAB: LYNX LED ============ -->

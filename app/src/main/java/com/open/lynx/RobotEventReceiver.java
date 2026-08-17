@@ -205,32 +205,6 @@ public class RobotEventReceiver extends BroadcastReceiver {
                     EventBus.get().publish("stop_tts", "{}");
                     break;
                 }
-                // 2026-08 新增 (8個, 見 MainActivity.registerDynamicReceiver() 對應
-                // filter.addAction() comment): 用嚟查 speech_SetMIC()/setWakeState()
-                // 攞返 mic 呢一刻機身有冇發任何 broadcast 通知呢個問題。反編譯搵到
-                // 呢 8 個 action 都由 SpeechServiceImpl/SpeechManager
-                // (com.ubtechinc.speechmanager.d/b package) 或者
-                // AlphaMainSeviceImpl 發出, 個名/extras 睇落同 TTS、ASR、mic 相關
-                // 事件有關, 但實際邊個會唔會喺 setWakeState() 嗰一刻觸發、payload
-                // 實際裝住咩, 純粹反編譯 bytecode 睇唔出嚟 (bytecode 淨係睇到個
-                // action 字串同 putExtra() 嘅 key 名/型別, 睇唔到幾時會行到嗰段
-                // code) —— 所以呢度刻意唔即刻假設邊個 extra 代表 mic 狀態、唔即刻
-                // 攞出嚟做獨立 UI event, 淨係用同一個 mic_broadcast_debug event
-                // 將成個 intent (action + 全部 extras, 用 bundleToJson() 唔理型別
-                // 全部原樣轉送) 送去 WebSocket log, 等收集到實機觸發嘅實際 payload
-                // 之後, 先揀邊幾個真係同 mic ownership 有關、要拆做獨立 event。
-                case "com.ubtechinc.services.ABOUT_TTS":
-                case "com.ubtechinc.services.ALPHA_SOCKET_ASR_OK":
-                case "com.ubtechinc.services.SPEECH_ANGLE_5MIC":
-                case "com.ubtechinc.services.LED_ACTION":
-                case "com.ubtechinc.services.IFLY_OFFLINE_CMD":
-                case "com.ubtechinc.services.NUANCE_OFFLINE_CMD":
-                case "com.ubtechinc.services.POWER_SAVE":
-                case "com.ubtechinc.services.ALPHA_NOTIFY_POWER": {
-                    EventBus.get().publish("mic_broadcast_debug",
-                            "{\"action\":\"" + action + "\",\"extras\":" + bundleToJson(intent.getExtras()) + "}");
-                    break;
-                }
                 default:
                     Log.d(TAG, "Unhandled action: " + action);
             }

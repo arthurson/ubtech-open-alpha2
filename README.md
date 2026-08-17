@@ -462,3 +462,15 @@ crash fix 嘅 try/catch 回滾)。
   Alpha2 專屬嘅 `speech_SetMIC()` AIDL call 去釋放/收返機械人自己嘅 mic，Lynx
   AIDL SDK 冇對應方法，所以呢個功能喺 Lynx-only 版本冇得保留。「講嘢」
   （walkie-talkie，瀏覽器 mic → 機械人喇叭）唔受影響，繼續可用。
+- 「語音」分頁之前有過一組「Mic 擁有權測試」實驗性掣（`speech/start_recording`/
+  `speech/stop_recording`，對應 `ISpeechInterface.startRecording()`/
+  `stopRecording()`），連同 `MainActivity.registerDynamicReceiver()` 用嚟收集
+  `mic_broadcast_debug` payload 嘅 8 個試探性 broadcast filter（`ABOUT_TTS`、
+  `ALPHA_SOCKET_ASR_OK`、`SPEECH_ANGLE_5MIC`、`LED_ACTION`、`IFLY_OFFLINE_CMD`、
+  `NUANCE_OFFLINE_CMD`、`POWER_SAVE`、`ALPHA_NOTIFY_POWER`），純粹用嚟查
+  「攞返 mic 會唔會有 broadcast 通知」呢條問題。現已整組移除（UI、
+  `app-lynx.js`/`app-core.js` 對應 function/i18n、`LynxController.java` 嘅 API
+  case、`MainActivity.java`/`RobotEventReceiver.java` 嘅 broadcast filter/case）。
+  `LynxRobotApi.speech_startRecording()`/`speech_stopRecording()` 呢兩個 SDK
+  method 本身冇改動，仍然存在於 `sdk-module/lynxrobot`，淨係呢個 App 自己加嘅
+  測試 UI/API endpoint 被移除。

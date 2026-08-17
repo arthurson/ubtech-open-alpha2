@@ -331,18 +331,6 @@ const I18N = {
   lynx_tts_switching_engine: { zh: "切緊 engine…", en: "Switching engine…" },
   lynx_tts_lang_load_empty: { zh: "(讀唔到語言列表 - engine 未 ready？)",
                                en: "(Couldn\u2019t read the language list - engine not ready?)" },
-  lynx_mic_grab_heading: { zh: "Mic 擁有權測試", en: "Mic Ownership Test" },
-  lynx_mic_grab_hint:    { zh: "startRecording()/stopRecording() —— 唔係 ASR, 純粹測試機身自己套語音子系統(sl)會唔會因為呢兩個 call 而釋放/重新攞返部機嘅 system mic。撳掣之後留意 logcat 有冇 mic 相關 log, 或者試下播放 TTS 或者用呢個 App 自己嘅 mic 功能睇下有冇分別。",
-                            en: "startRecording()/stopRecording() — not ASR, purely tests whether the robot's own speech subsystem (sl) releases/re-takes the device's system mic because of these two calls. After pressing, check logcat for mic-related logs, or try playing TTS or using this app's own mic feature to see if there's a difference." },
-  lynx_mic_grab_btn:     { zh: "🎙️ 搶 Mic", en: "🎙️ Grab Mic" },
-  lynx_mic_release_btn:  { zh: "🔓 放 Mic", en: "🔓 Release Mic" },
-  lynx_mic_grab_status_label: { zh: "狀態：", en: "Status:" },
-  lynx_mic_grabbing:     { zh: "搶緊…", en: "Grabbing…" },
-  lynx_mic_grabbed_ok:   { zh: "已搶 (startRecording ok)", en: "Grabbed (startRecording ok)" },
-  lynx_mic_failed_prefix: { zh: "失敗: ", en: "Failed: " },
-  lynx_mic_releasing:    { zh: "放緊…", en: "Releasing…" },
-  lynx_mic_released_ok:  { zh: "已放 (stopRecording ok)", en: "Released (stopRecording ok)" },
-
   // -- Lynx LED tab --
   lynx_led_heading:      { zh: "LED", en: "LED" },
   lynx_led_head_heading: { zh: "頭部 LED", en: "Head LED" },

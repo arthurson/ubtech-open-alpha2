@@ -502,20 +502,6 @@ public class LynxController {
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"engine\":\"" + jsonSafe(cur) + "\"}");
             }
 
-            // 2026-08 新增: startRecording()/stopRecording() 係 ISpeechInterface 入面
-            // 反編譯確認過真身有效嘅兩個 method (唔似 startSpeechAsr()/onPlayCallback()
-            // 咁全部落地喺 SpeechServicesImpl$1 空 stub) —— SpeechServiceProxy$BinderStub
-            // 呢兩個 method 直接掛住機身自己嗰個 sl (TencentAIAudioRecognizer) singleton,
-            // 開機後幾秒左右由 AlphaApplication 自動 requestAudioFocus/開始錄音, 為機身
-            // 自己嘅 wake-word/語音功能長開住 system mic。純粹用嚟測試呢兩個 call 會唔會
-            // 令機身側釋放/重新攞返個 mic session (例如令 androidTts 或者呢個 App 自己
-            // 開嘅 AudioRecord 唔再撞板) —— 唔係 ASR, 唔會有任何辨識結果送返嚟。詳見
-            // docs/AIDL_GUIDE_LYNX.md「4. Speech」章節。
-            case "speech/start_recording":
-                return codeResponse(robot.speech_startRecording());
-            case "speech/stop_recording":
-                return codeResponse(robot.speech_stopRecording());
-
             // -- Sys ----------------------------------------------------------------------
             case "sys/sid":
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"sid\":\"" + jsonSafe(robot.sys_getSid()) + "\"}");

@@ -438,7 +438,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         TextView titleView = new TextView(this);
         titleView.setTextSize(16);
-        titleView.setText("Open Alpha2\n\nOpen in a browser on the same network:");
+        titleView.setText("OpenLynx\n\nOpen in a browser on the same network:");
         root.addView(titleView);
 
         // Tappable URL row: tapping the link itself, or the dedicated Copy button,
@@ -535,22 +535,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         // 獨立 broadcast 送出, extra 已經係 parse 好嘅 int, 唔使自己再解 raw
         // wire frame。見 RobotWireConstants.SONAR_DISTANCE_ACTION 個 comment。
         filter.addAction(RobotWireConstants.SONAR_DISTANCE_ACTION);
-        // 2026-08 新增 (8個): 用嚟查「speech_SetMIC() 攞返 mic 會唔會有 broadcast
-        // 通知」呢條問題, 反編譯 Alpha2Services-v1.1.7.3.20-5mic.apk 全個 APK 搵到
-        // 嘅 sendBroadcast() 出處 (speechmanager.d.*/AlphaMainSeviceImpl 呢兩個
-        // class), 之前呢個 App 完全冇 register。特登連語意未確定嘅都全部先
-        // register 埋、經 mic_broadcast_debug event 轉送去 WebSocket log (見
-        // RobotEventReceiver 呢幾個 case comment) - 目的係收集實際 payload,
-        // 睇完先決定邊幾個同 mic ownership 真係有關、要唔要正式做成獨立 event/
-        // 更新 UI 指示燈, 唔喺未驗證之前就假設個名啱啱好似就係咩意思。
-        filter.addAction("com.ubtechinc.services.ABOUT_TTS");
-        filter.addAction("com.ubtechinc.services.ALPHA_SOCKET_ASR_OK");
-        filter.addAction("com.ubtechinc.services.SPEECH_ANGLE_5MIC");
-        filter.addAction("com.ubtechinc.services.LED_ACTION");
-        filter.addAction("com.ubtechinc.services.IFLY_OFFLINE_CMD");
-        filter.addAction("com.ubtechinc.services.NUANCE_OFFLINE_CMD");
-        filter.addAction("com.ubtechinc.services.POWER_SAVE");
-        filter.addAction("com.ubtechinc.services.ALPHA_NOTIFY_POWER");
         registerReceiver(dynamicReceiver, filter);
     }
 

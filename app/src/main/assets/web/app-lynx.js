@@ -361,30 +361,6 @@ function lynxStopSpeak() {
   lynxApi("speech/stop");
 }
 
-// 2026-08 新增: 「搶 mic」/「放 mic」測試掣, 對應 ISpeechInterface 嘅
-// startRecording()/stopRecording() —— 呢兩個 method 反編譯確認同
-// startSpeechAsr()/onPlayCallback() 唔同層, 唔係空 stub, 真身會掛住機身
-// 自己嗰個語音 mic singleton (sl)。詳見 index.html 呢個 section 頭嘅
-// comment 同 docs/AIDL_GUIDE_LYNX.md「4. Speech」章節。純粹測試 mic 擁有權
-// 開關, 唔係 ASR, 唔會有辨識結果。
-function lynxGrabMic() {
-  const statusEl = document.getElementById("lynxMicGrabStatus");
-  if (statusEl) statusEl.textContent = t("lynx_mic_grabbing");
-  lynxApi("speech/start_recording").then(function (j) {
-    if (!statusEl) return;
-    statusEl.textContent = j.ok ? t("lynx_mic_grabbed_ok") : t("lynx_mic_failed_prefix") + j.code;
-  });
-}
-
-function lynxReleaseMic() {
-  const statusEl = document.getElementById("lynxMicGrabStatus");
-  if (statusEl) statusEl.textContent = t("lynx_mic_releasing");
-  lynxApi("speech/stop_recording").then(function (j) {
-    if (!statusEl) return;
-    statusEl.textContent = j.ok ? t("lynx_mic_released_ok") : t("lynx_mic_failed_prefix") + j.code;
-  });
-}
-
 // -- LED --
 // Lynx's ILedInterface is a different AIDL surface from Alpha2's 5-mic serial-port
 // LED protocol (see the big comment on tab-lynx-led in index.html). Confirmed on

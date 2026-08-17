@@ -951,8 +951,9 @@ protected void a() {  // onStartOnce
 **同「4. Speech」章節嘅已知限制係互相獨立、但互相呼應嘅兩層問題**：即使將來
 繞過咗 `SpeechServicesImpl$1` 全部 method 係空 stub 呢一層，`getService("speech")`
 連 binder 都攞唔返嚟，兩層都要解決先有得用。`speech_startRecording()`/
-`speech_stopRecording()`（`open-lynx` 用嚟測試釋放/重攞機身 mic session 嗰兩個
-method）喺呢部機呢個韌體版本上**冇得用**，唔使再花時間喺呢個方向嘗試修。
+`speech_stopRecording()`（見「錄音控制」一節，原本用嚟測試釋放/重攞機身 mic
+session 嗰兩個 method，對應嘅 App 內測試 UI 已移除，見 README「已知限制」）
+喺呢部機呢個韌體版本上**冇得用**，唔使再花時間喺呢個方向嘗試修。
 
 > 機身內部另一個模組（`SpeechMainServiceUtil`，喺 `alpha2services_base`
 > process 自己入面）都係用同一個機制（`ru`/`BinderProvider`）去攞
