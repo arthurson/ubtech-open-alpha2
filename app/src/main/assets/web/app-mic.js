@@ -1,93 +1,17 @@
 // OpenLynx — client logic (app-mic.js)
-// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: walkie-talkie (瀏覽器 mic
-// -> 機械人喇叭, 已永久停用) 、downsample、相機全螢幕。
+// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: walkie-talkie 咪掣 no-op
+// guard（瀏覽器 mic -> 機械人喇叭, 已永久停用）、相機全螢幕。
 // 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
 // <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
 
-// ---------------- Walkie-talkie: browser mic -> robot speaker ----------------
+// ---------------- Walkie-talkie: browser mic -> robot speaker (已永久停用) ----------------
 //
-// AudioPlaybackController's javadoc flags this as unverified: whether the robot's
-// speaker is reachable through a plain AudioTrack, as opposed to being reserved for a
-// dedicated TTS/audio pipeline, isn't known from static analysis alone. playTestTone()
-// exists purely to answer that on the physical unit - press it and listen for a 440Hz
-// beep from the robot before relying on push-to-talk actually being audible.
-//
-// Push-to-talk capture uses ScriptProcessorNode rather than AudioWorkletNode - it's
-// deprecated but has far broader browser support, which matters more here than using
-// the newer API, since this panel's audience is "whatever browser happens to be on
-// hand on the local network" rather than a controlled deployment target.
-//
-// getUserMedia() is requested at whatever sample rate the browser/OS default mic
-// gives (typically 44.1kHz or 48kHz) and then downsampled in JS to 8000Hz mono to
-// match AudioPlaybackController's expected format - the robot's AudioTrack is
-// configured for a fixed sample rate (see AudioPlaybackController.SAMPLE_RATE_HZ) and
-// resampling server-side would be considerably more code than doing it once in the
-// browser. Lowered from 16000 to 8000 by request, alongside the same change in
-// AudioController.java/AudioPlaybackController.java - all three legs of the audio
-// pipeline must agree on sample rate or one side effectively resamples by mismatch
-// (pitch-shifted/sped-up audio). Halves the uploaded bytes/sec, reducing both network
-// load and the size of each /upload/audio POST.
-
-const TALK_TARGET_SAMPLE_RATE = 8000;
-let talkStream = null;
-let talkAudioContext = null;
-let talkProcessorNode = null;
-let talkSourceNode = null;
-let talkActive = false;
-
-// 2026-08 修正: 呢兩個 function 對應嘅 server 端點 (audio/testtone,
-// audio/diagnose - 見 MainActivity.java) 依然實際存在同有效, 但 index.html 冇
-// 任何按鈕/入口綁住呢兩個 function (交叉核對成個 index.html 搵唔到
-// testToneBtn/audioDiagBtn 呢兩個 id) —— 應該係之前「相機/音效」分類被移除
-// (見 blockly-blocks.js/blockly-toolbox.js 對應 comment) 嗰次改動連帶清埋
-// 咗按鈕, 但呢兩個 function 本身冇一齊刪。冇入口即係實際上唔會俾人 call 到,
-// 但之前完全冇 null check 就直接用 btn.textContent/btn.disabled——一旦將來
-// 補返個按鈕但 id 打錯, 或者由 console 手動 call, 就會即刻 TypeError。
-// 加返同 toggleMicListen() 一類 function 睇齊嘅 if (btn) guard, 冇按鈕就靜
-// 靜哋跳過個 UI 更新, 唔阻住實際 API 呼叫本身。
-async function playTestTone() {
-  const btn = document.getElementById("testToneBtn");
-  const original = btn ? btn.textContent : null;
-  if (btn) {
-    btn.textContent = "🔔 播放緊…";
-    btn.disabled = true;
-  }
-  try {
-    const resp = await hwApi("audio/testtone", {});
-    if (!resp || resp.ok === false) {
-      alert("測試喇叭失敗: " + (resp && resp.error ? resp.error : "未知錯誤"));
-    }
-  } finally {
-    setTimeout(function () {
-      if (btn) {
-        btn.textContent = original;
-        btn.disabled = false;
-      }
-    }, 1200);
-  }
-}
-
-async function runAudioDiagnose() {
-  const btn = document.getElementById("audioDiagBtn");
-  const original = btn ? btn.textContent : null;
-  if (btn) {
-    btn.textContent = "🔍 測試緊…";
-    btn.disabled = true;
-  }
-  try {
-    const resp = await hwApi("audio/diagnose", {});
-    if (resp && resp.results) {
-      alert("音頻參數掃描結果:\n\n" + resp.results);
-    } else {
-      alert("音頻診斷失敗,冧唔到結果");
-    }
-  } finally {
-    if (btn) {
-      btn.textContent = original;
-      btn.disabled = false;
-    }
-  }
-}
+// 呢個功能（連同錄音/downsample/播放嘅成套實作）已經永久停用同移除，詳見
+// README.md「已知限制」一節。`talkFab`（🎤 掣）留喺 index.html 純粹做 UI 佔位，
+// 一開頁就俾 disableTalkFabIfInsecureContext()（見 app-log.js）強制 disabled，
+// 唔會再觸發任何 pointer/keyboard 事件。startTalk() 保留做一個無條件 no-op guard，
+// 以防萬一將來有第啲入口（例如新增嘅 keyboard shortcut）漏咗檢查 talkFab 嘅
+// disabled 狀態就直接 call 到呢個 function。
 
 async function startTalk() {
   // 講嘢 (🎤 walkie-talkie 咪) 功能已經永久停用 - 唔止喺 http:// (非安全來源) 先停用,
@@ -96,153 +20,6 @@ async function startTalk() {
   // 途徑, 呢度加多一層 guard 係以防萬一有第啲入口(例如 keyboard shortcut)漏咗冇
   // check 就直接 call 到呢個 function。
   return;
-}
-
-async function startTalkDisabled_unused() {
-  if (talkActive) return;
-
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    // Browsers only expose getUserMedia on secure contexts (HTTPS or localhost) -
-    // navigator.mediaDevices itself is simply undefined on a plain http://<lan-ip>/
-    // origin like this panel's. There is no way to work around this in JS; the fix
-    // has to be at the transport level (e.g. accessing this page via a tunnel/port
-    // forward that presents as localhost to the browser, or serving over HTTPS).
-    alert("呢個瀏覽器唔俾用麥克風功能,因為呢版面用緊 http:// (非安全來源)。"
-        + "瀏覽器安全限制:麥克風/攝像頭錄音 API 只喺 https:// 或者 localhost 先開放,"
-        + "呢個係瀏覽器本身嘅政策,呢個頁面做極都繞唔過。");
-    return;
-  }
-
-  talkActive = true;
-  const fab = document.getElementById("talkFab");
-  if (fab) fab.classList.add("talking");
-  // Mute incoming mic playback for the duration of talking - see micMuted's
-  // declaration above for why (breaks the speaker->mic acoustic echo loop). Muting
-  // happens even if mic-listen isn't currently on, which is harmless (playWavChunk()
-  // simply isn't called at all in that case).
-  micMuted = true;
-
-  try {
-    talkStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (e) {
-    alert("攞唔到麥克風權限: " + e.message);
-    talkActive = false;
-    micMuted = false;
-    if (fab) fab.classList.remove("talking");
-    return;
-  }
-
-  // Everything below this point (AudioContext/ScriptProcessor setup) is wrapped in its
-  // own try/catch too - this used to be unguarded, and a failure here (observed in
-  // practice as "Failed to execute 'createMediaStreamSource' on 'AudioContext': ...is
-  // not of type 'MediaStream'" - an unhandled promise rejection) left talkActive/
-  // micMuted stuck at true forever with no cleanup, since the function just died
-  // mid-way through. That meant the talk FAB looked "stuck on" and pressing it again
-  // did nothing (startTalk() immediately returns early via the "if (talkActive) return"
-  // guard at the top) - "之後就再無辦法發射" - and mic-listen stayed silently muted
-  // too. Any failure here now falls through to the same full cleanup stopTalk() does,
-  // so the FAB/state always recovers to a normal "off" state instead of wedging.
-  try {
-    await hwApi("audio/play/start", {});
-
-    talkAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-    talkSourceNode = talkAudioContext.createMediaStreamSource(talkStream);
-    // bufferSize 4096 at the browser's native rate (~44.1/48kHz) is a common choice
-    // that balances latency against how often onaudioprocess fires - small enough for
-    // push-to-talk to feel responsive, large enough not to flood /upload/audio with
-    // requests every few milliseconds.
-    talkProcessorNode = talkAudioContext.createScriptProcessor(4096, 1, 1);
-
-    talkProcessorNode.onaudioprocess = function (evt) {
-      // Guard against BOTH talkActive and talkAudioContext directly (not just
-      // talkActive) - disconnect()/onaudioprocess=null in stopTalk() don't guarantee
-      // an in-flight callback invocation is cancelled before it runs, so a callback
-      // that was already scheduled can still fire after stopTalk() has already set
-      // talkAudioContext to null (observed in practice as "Cannot read properties of
-      // null (reading 'sampleRate')" - an unhandled error from exactly this line
-      // reading talkAudioContext.sampleRate after it had been nulled out).
-      if (!talkActive || !talkAudioContext) return;
-      const inputData = evt.inputBuffer.getChannelData(0); // Float32, -1..1
-      const nativeSampleRate = talkAudioContext.sampleRate;
-      const pcm16 = downsampleToInt16(inputData, nativeSampleRate, TALK_TARGET_SAMPLE_RATE);
-      if (pcm16.length > 0) {
-        // Fire-and-forget: push-to-talk audio is latency-sensitive, and awaiting each
-        // upload here would serialize network round-trips behind onaudioprocess's own
-        // timing, adding lag chunk after chunk.
-        fetch("/upload/audio", { method: "POST", body: pcm16.buffer }).catch(function (e) {
-          console.warn("Audio upload failed: " + e.message);
-        });
-      }
-    };
-
-    talkSourceNode.connect(talkProcessorNode);
-    // ScriptProcessorNode requires being connected to a destination to fire
-    // onaudioprocess at all, even though the actual output is discarded via gain 0 -
-    // the mic audio must not also play back out of this browser's own speakers.
-    const silentGain = talkAudioContext.createGain();
-    silentGain.gain.value = 0;
-    talkProcessorNode.connect(silentGain);
-    silentGain.connect(talkAudioContext.destination);
-  } catch (e) {
-    console.error("startTalk() setup failed after getUserMedia: " + e.message, e);
-    alert("開始講嘢失敗: " + e.message + "。已經自動重設,可以再撳一次咪掣試多次。");
-    stopTalk(); // full cleanup - same teardown as a normal stop, safe even if some
-                 // pieces (talkProcessorNode/talkSourceNode/talkAudioContext) never
-                 // got created before the failure, since stopTalk() null-checks each.
-  }
-}
-
-function stopTalk() {
-  if (!talkActive) return;
-  talkActive = false;
-  const fab = document.getElementById("talkFab");
-  if (fab) fab.classList.remove("talking");
-  micMuted = false; // resume mic-listen playback now that we've stopped transmitting
-
-  if (talkProcessorNode) {
-    talkProcessorNode.disconnect();
-    talkProcessorNode.onaudioprocess = null;
-    talkProcessorNode = null;
-  }
-  if (talkSourceNode) {
-    talkSourceNode.disconnect();
-    talkSourceNode = null;
-  }
-  if (talkAudioContext) {
-    talkAudioContext.close();
-    talkAudioContext = null;
-  }
-  if (talkStream) {
-    talkStream.getTracks().forEach(function (t) { t.stop(); });
-    talkStream = null;
-  }
-  hwApi("audio/play/stop", {});
-}
-
-/** Downsamples Float32 PCM from the browser's native mic sample rate to
- *  targetRate (8kHz), converting to Int16 in the same pass to match
- *  AudioPlaybackController's expected wire format. Simple nearest-neighbor
- *  decimation rather than a proper resampling filter - adequate for voice at these
- *  rates, and far less code than a windowed-sinc resampler for a push-to-talk feature
- *  where perfect audio fidelity isn't the goal. */
-function downsampleToInt16(float32Data, nativeRate, targetRate) {
-  if (targetRate >= nativeRate) {
-    // Shouldn't happen (native mic rates are always >= 8kHz in practice), but guard
-    // against a divide producing a zero/negative step.
-    const out = new Int16Array(float32Data.length);
-    for (let i = 0; i < float32Data.length; i++) {
-      out[i] = Math.max(-32768, Math.min(32767, Math.round(float32Data[i] * 32767)));
-    }
-    return out;
-  }
-  const ratio = nativeRate / targetRate;
-  const outLength = Math.floor(float32Data.length / ratio);
-  const out = new Int16Array(outLength);
-  for (let i = 0; i < outLength; i++) {
-    const sample = float32Data[Math.floor(i * ratio)];
-    out[i] = Math.max(-32768, Math.min(32767, Math.round(sample * 32767)));
-  }
-  return out;
 }
 
 /** Double-click/double-tap on the viewport toggles native fullscreen on that
@@ -261,4 +38,3 @@ function toggleCameraFullscreen() {
     }
   }
 }
-

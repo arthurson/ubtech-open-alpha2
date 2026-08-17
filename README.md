@@ -59,8 +59,9 @@ cd open-lynx
 - **語音**：TTS（Android 系統引擎，Cantonese `yue` fallback）
 - **LED**：頭部/眼睛/咀部/胸口/WiFi 燈（flash/breath/marquee 等效果）
 - **相機**（純硬件，唔經 AIDL）：即時串流、拍照、錄影、可調解像度（320×240 到
-  2064×1548）、講嘢（walkie-talkie 送，要 HTTPS 先有 mic 權限）、一個自居中嘅
-  拖曳搖桿（同鍵盤方向鍵）可以直接拖動控制頭部 pan/tilt
+  2064×1548）、一個自居中嘅拖曳搖桿（同鍵盤方向鍵）可以直接拖動控制頭部
+  pan/tilt。**冇 walkie-talkie**（瀏覽器 mic → 機械人喇叭呢個方向嘅語音功能
+  已經永久停用，見下面「已知限制」）
 
 即時事件（PIR、聲納距離、電池等）全部經 WebSocket 即時推送到「即時事件 Log」，
 控制面板唔使手動 refresh。
@@ -85,8 +86,9 @@ open-lynx/
 │       │   ├── EventBus.java                — pub/sub 事件中樞
 │       │   ├── RobotEventReceiver.java      — 接收機械人 broadcast
 │       │   ├── RobotWireConstants.java      — 機身底層 broadcast action/extra 常量
-│       │   ├── AudioController.java         — 耳筒錄音（聽聲）
-│       │   ├── AudioPlaybackController.java — Walkie-talkie 播放（講嘢）
+│       │   ├── AudioPlaybackController.java — Walkie-talkie 播放後端（瀏覽器 mic →
+│       │   │                                    機械人喇叭）—— **後端 code 保留住
+│       │   │                                    但前端入口已永久停用**，見「已知限制」
 │       │   ├── CameraController.java        — 相機串流/拍照/錄影
 │       │   ├── BootReceiver.java            — 開機自動啟動
 │       │   └── MouthLedData.java            — 咀部 LED preset 資料
@@ -102,58 +104,31 @@ open-lynx/
 │                                                      (DOMContentLoaded — 要最後 load)
 ```
 
-## HTTPS / 麥克風（walkie-talkie）
+## HTTPS / 麥克風（已移除）
 
-「用瀏覽器 mic 向機械人發聲」呢個功能（控制面板嘅「講嘢」按鈕）用到瀏覽器嘅
-`getUserMedia()` API。**瀏覽器規範規定呢個 API 只喺「安全來源」（secure context）
-先出現**——即係 `https://` 或者 `http://localhost`。之前用 `http://<機器人IP>:8888/`
-開嘅話，`navigator.mediaDevices` 本身就係 `undefined`，呢個係瀏覽器政策，JS
-層面完全繞唔過，唔關 APK 本身邏輯事。
+> **2026-08 更新**：呢個 App 曾經有一套自簽憑證 + `SSLServerSocket` 嘅 TLS
+> 支援（`SelfSignedCert.java`/`TlsSupport.java`），原意係俾瀏覽器嘅
+> `getUserMedia()` API（walkie-talkie 用瀏覽器 mic 錄音必須嘅安全來源
+> secure context）可以喺 `https://<機械人IP>:8888/` 用到。依家已經**整套
+> 刪除**——裝置上嘅瀏覽器對呢個自簽憑證持續 reject 新 TLS 連線
+> （`SSLHandshakeException: certificate unknown`，見 `HttpServer.java`
+> constructor 個 comment），而 TLS 存在嘅唯一原因（walkie-talkie）本身已經
+> 永久喺 UI 停用咗（見下面「已知限制」），所以索性連 TLS 呢層都一齊拆走，
+> 唔再保留做死 code。依家 App 淨係用 plain HTTP（`http://<機械人IP>:8888/`），
+> 開機畫面顯示嘅網址永遠係 `http://` scheme，冇任何憑證警告要處理。
 
-依家 App 開機時會：
-1. 用 `SelfSignedCert.java`（純 `java.security.*`，手寫 ASN.1/X.509v3 DER
-   encoding，冇用任何第三方 crypto library）產生一張自簽 RSA 2048 憑證，CN 用機器人
-   本身嘅 WiFi IP，有效期 20 年（避免裝置時鐘唔準）。
-2. 用 `TlsSupport.java` 將呢張憑證/私鑰放入一個只喺記憶體嘅 `PKCS12 KeyStore`，起
-   一個 `SSLContext`/`SSLServerSocketFactory`。
-3. `HttpServer` 用呢個 factory 起 `SSLServerSocket`（唔係普通 `ServerSocket`），
-   accept loop / handleClient 邏輯完全冇變——`SSLSocket` 本身都係 `Socket`
-   嘅 subtype。
-4. 如果因為任何原因 TLS 起唔到（例如某啲裝置嘅 crypto provider 有問題），會自動
-   fallback 用返 plain HTTP，唔會累到成個 panel 用唔到（只係麥克風呢一個功能冧）。
+## Walkie-talkie 音質修正（斷斷續續 + 延遲累積）—— 歷史記錄
 
-**用法：**
-- Activity 開機畫面會顯示 `https://<機器人IP>:8888/`（如果 TLS 起到嘅話）。
-- 第一次用瀏覽器開會見到「連線不是私人連線 / 不安全」嘅警告——呢個係**必然**嘅，
-  因為呢張憑證冇真正 CA 簽發（LAN IP 本身冇資格攞正式憑證）。撳
-  **「進階」→「繼續前往 <IP>（不安全）」** 就得，之後嗰個 session
-  `getUserMedia()` 就會正常出現，麥克風功能即可使用。
-- 呢個警告手機（Android/iOS Chrome/Safari）同桌面都要各自click 過一次
-  （每個瀏覽器獨立記錄，換瀏覽器/換裝置要再click一次）。
-- 已知：Safari 對自簽憑證嘅提示流程同 Chrome 唔完全一樣，但原理一致，撳
-  「顯示詳細資料 → 前往這個網站」等效嘅選項就得。
-
-**憑證會跨 app 重啟保持不變**：`SelfSignedCert`/`TlsSupport` 會將生成咗嘅私鑰/憑證
-存落 app 私有儲存（`getFilesDir()`），下次開機如果 IP 冇變就直接讀返舊嗰張用，唔會
-每次都生成一張全新嘅。呢個好重要，因為瀏覽器嘅「已接受此憑證」記錄係綁定住憑證
-本身（fingerprint），唔淨係網址；如果每次 app 開機都係一張新憑證（之前嘅行為），
-即使用家啱啱先撳過「進階 → 繼續前往」，下一次開 app（甚至同一個瀏覽器分頁）都會
-再顯示一次警告——呢個正正係 `logcat_2026-07-03_12-46-07.txt` 反映嘅「每次都要重新
-撳一次」現象嘅根因。如果機械人 IP 變咗（換 WiFi、DHCP 重新分配），會自動偵測到
-CN 唔匹配並生成一張新嘅（唔會將舊 IP 嘅憑證錯誤咁沿用落去）。
-
-**驗證狀態**：呢部分（`SelfSignedCert`/`TlsSupport`）嘅 ASN.1 encoding、自簽名驗證、
-`KeyStore`/`SSLContext`/`SSLServerSocket` 建立、一次完整 TLS handshake（包括
-`HttpsURLConnection` 完整 hostname verification 同 `openssl s_client` 交叉驗證）、
-以及**憑證持久化**（同一個 cacheDir + 同一個 IP 兩次 call `loadOrGenerate()`，確認
-serial number / 憑證 raw bytes / 私鑰 raw bytes 完全一致；IP 唔同時正確生成新憑證），
-已經喺沙盒用 standalone JDK 21 harness 測試通過。**未驗證**：喺 Android 5.1
-（API 22）實機上嘅實際行為——雖然呢度用到嘅全部 API（`javax.net.ssl.*`,
-`java.security.*`, `KeyManagerFactory`, `SSLContext.getInstance("TLS")`,
-`context.getFilesDir()`）由 API 1/9 開始已經存在，理論上冇兼容性問題，但最終都要
-你喺機械人度實機確認。
-
-## Walkie-talkie 音質修正（斷斷續續 + 延遲累積）
+> **2026-08 更新**：本節同下面幾節（「Walkie-talkie 音質修正」「用電腦 mic
+> 講嘢有回音修正」「講嘢 crash 之後永久卡死修正」）記錄嘅係瀏覽器 mic → 機械人
+> 喇叭呢個方向嘅語音功能（`startTalk()`/`app-mic.js` 嘅 push-to-talk 咪掣）
+> **喺修過呢啲問題之後、之後嘅版本又整套永久停用咗**——`startTalk()` 而家係
+> 一個無條件 `return;` 嘅 no-op，UI 個咪掣一開頁就強制 `disabled`（見
+> `disableTalkFabIfInsecureContext()`），原本做嘢嗰個版本改咗名做
+> `startTalkDisabled_unused()` 留底但唔會再被 call 到。**OpenLynx 依家冇
+> walkie-talkie 功能**，以下內容純粹保留做歷史 debugging 記錄（呢啲修正本身
+> 都仲啱，只係之後成個功能被上層決定停用咗），唔反映依家嘅實際行為，詳見
+> 「已知限制」一節。
 
 實機 logcat（`logcat_2026-06-30_14-08-34.txt`）反映咗兩個症狀：聲音斷斷續續、
 播出嚟嘅聲慢咗大約 3 秒。分析後確認係同一個根本問題嘅兩個表徵——
@@ -210,7 +185,17 @@ chunk，underrun 就跟住嗰下即刻發生）。
 情況下延遲累積），但單靠佢哋解決唔到「一開始就 underrun」嘅問題——真正主因
 係 `play()` 時序，而唔係 buffer 容量。
 
-## 相機頁面 UI 重整（浮動掣 + Keyboard 控制）
+## 相機頁面 UI 重整（浮動掣 + Keyboard 控制）—— 歷史記錄
+
+> **2026-08 更新**：本節記錄嘅耳筒 icon（🎧 聽機械人）同咪 icon（🎤 講嘢）依家
+> 都已經唔存在——聽機械人（`AudioController.java`）已經連檔案帶死 code 一齊
+> 刪走；咪 icon/講嘢功能已經永久停用，`app-mic.js` 淨低一個 `startTalk()`
+> no-op guard（防止萬一有第啲入口漏 check），成套錄音/downsample/
+> `stopTalk()` 邏輯同埋 `app-camera.js` 綁住 `talkFab`/Space鍵嘅死 event
+> listener都已經清走（見上面「Walkie-talkie 音質修正」節頭嘅 notice）。
+> 相機分頁依家得返鏡頭串流、拍照、錄影、解像度切換、頭部
+> pan/tilt 拖曳搖桿/keyboard 控制,冇耳筒/咪呢兩粒浮動 icon。以下內容純粹保留
+> 做歷史記錄。
 
 移除咗「測試喇叭」「音頻診斷」「按住講嘢」呢幾個獨立按鈕（診斷用途已完成任務），
 相機頁面依家嘅操作方式：
@@ -239,7 +224,7 @@ API 調用（確認真係打去 servo 19）、Space 鍵唔會拋錯、耳筒掣�
 outline 喺唔同瀏覽器嘅視覺表現、觸控裝置嘅 pointer capture 行為），呢啲要你裝
 返個新 APK 實測。
 
-## 用電腦 mic 講嘢有回音（Echo）修正
+## 用電腦 mic 講嘢有回音（Echo）修正 —— 歷史記錄
 
 根據 logcat（`logcat_2026-07-01_03-26-09.txt`）確認：講嘢（`AudioTrack` 播放）同
 聽機械人（`AudioController` 用 `AudioRecord` 錄音）可以同時開喺度。呢部機嘅
@@ -263,7 +248,7 @@ mic 即刻收返 → 經耳筒串流返上你電腦播返出嚟 → 你聽到自
 `BufferSource`(即冇聲),`stopTalk()` 之後播放正常恢復。未驗證:實機上主觀聽感
 (半雙工手感、静音/恢復嘅時間點準唔準)——呢個要你裝返新 APK 實測先知。
 
-## 講嘢 crash 之後永久卡死（無法再發射）修正
+## 講嘢 crash 之後永久卡死（無法再發射）修正 —— 歷史記錄
 
 反映:講嘢中途 crash 咗一次之後,之後點撳咪掣都冇反應,瀏覽器 console 見到
 `Unhandled promise rejection: Failed to execute 'createMediaStreamSource' on
@@ -335,7 +320,8 @@ client 一方冇信任個憑證。
 
 ### 聽聲延遲累積嘅真正根源(唔喺播放層,而係 decode 並行)
 
-之前修過「講嘢」（`AudioPlaybackController`，機械人講嘢俾你聽）嘅延遲累積問題,
+之前修過 walkie-talkie 播放端（`AudioPlaybackController`，播放瀏覽器 mic
+錄音落嚟嘅聲音,經機械人喇叭放出）嘅延遲累積問題,
 但你反映「聽聲」(耳筒,即係聽機械人四周環境聲, `AudioController` + `app.js`
 嘅 `runMicStreamLoop`/`playWavChunk`)依然會越聽越慢,累積到大約 3 秒。呢個係
 一條完全獨立嘅 code path,之前冇改過。
@@ -376,10 +362,17 @@ App 揸住唔放。跟你要求已經移除,依家聽幾耐都唔會被強制斷
 自己嘅語音喚醒功能可能會被無限期揸住冇得用,要重啟 App 先解決。目前 logcat
 未見過呢類情況發生。
 
-## 音質降至 8kHz + 播放 buffer 加大（應對「聽聲慢」+「播聲斷續」）
+## 音質降至 8kHz + 播放 buffer 加大（應對「聽聲慢」+「播聲斷續」）—— 歷史記錄
 
-根據新 logcat（`logcat_2026-07-30_08-43-18.txt`）,播聲（機械人講嘢俾你聽）
-**喺 session 中途**（唔係之前修過嗰個「session 開始就 underrun」）都出現
+> **2026-08 更新**：本節同下面「播聲 session 中途長時間停頓」節記錄嘅
+> `AudioPlaybackController`（播放瀏覽器 mic 錄音落嚟嘅聲音，經機械人喇叭
+> 放出——即係 walkie-talkie 嘅**播放/收音端**，同 TTS 播放係兩件完全獨立嘅
+> 嘢，TTS 用嘅係另一套 `AndroidTtsHandler`/Android 系統 TTS engine，唔經
+> `AudioPlaybackController`）依家已經永久停用（見「已知限制」）。以下內容
+> 純粹保留做歷史 debugging 記錄。
+
+根據新 logcat（`logcat_2026-07-30_08-43-18.txt`）,播聲（機械人播放瀏覽器 mic
+錄音）**喺 session 中途**（唔係之前修過嗰個「session 開始就 underrun」）都出現
 `releaseBuffer() ... disabled due to previous underrun, restarting`,前一個
 upload gap 只係 234ms,已經足以榨乾當時嘅 buffer(舊設定 `bufBytes = minBufBytes
 * 4` ≈ 240ms,幾乎冇 headroom)。
@@ -391,8 +384,8 @@ upload gap 只係 234ms,已經足以榨乾當時嘅 buffer(舊設定 `bufBytes =
 
 **修正二:三邊音質統一由 16kHz 降至 8kHz**(應你要求,同時針對「聽聲慢」呢個
 之前確認過根源喺瀏覽器 `decodeAudioData()` 追唔切到達速度嘅問題):
-- `AudioController.java`(耳筒錄音)、`AudioPlaybackController.java`(講嘢/
-  TTS 播放)、`app.js` 嘅 `TALK_TARGET_SAMPLE_RATE`(講嘢上載downsample 目標)
+- `AudioController.java`(耳筒錄音)、`AudioPlaybackController.java`(walkie-talkie
+  播放)、`app.js` 嘅 `TALK_TARGET_SAMPLE_RATE`(講嘢上載downsample 目標)
   三處由 `16000` 一齊改做 `8000`——三者必須一致,否則會出現速度/音調唔對嘅
   情況。
 - `JITTER_BUFFER_CAP_BYTES` 嘅 bytes/sec 公式(原本寫死 `32000`,即 16kHz 嘅
@@ -453,6 +446,53 @@ focus 令 `onaudioprocess` 被節流,或者純粹講嘢中途唞氣好耐)。任
 `micPendingChunks`/`micDrainLoop` 冇並行 decode、echo fix 嘅 `micMuted`、
 crash fix 嘅 try/catch 回滾)。
 
+## 中文/English 切換掣 JS error 修正 + 死 code 清理
+
+> **2026-08 修正**：「語音」分頁撳「中文/English」切換掣（`setUiLanguage()`）
+> 會拋 `ReferenceError: allActions is not defined`，令個切換掣完全失效。
+
+**根源**：`app-core.js` 嘅 `setUiLanguage()` 入面有一段引用住 `allActions`、
+`buildActionSubTabs()`、`renderActionList()` 嘅 if block——呢三樣嘢喺成個
+project 都**從未定義過**。追查歷史改動，確認呢個係之前 Alpha2 → Lynx-only
+嘅 refactor 遺留低嘅殘餘：舊版 Alpha2 UI 曾經有一套獨立嘅「全部動作」子分頁
+邏輯（用 `allActions`/`buildActionSubTabs`/`renderActionList` 呢組名），
+Lynx 版本已經有自己完整獨立嘅一套（`lynxAllActions`/
+`buildLynxActionSubTabs()`/`lynxRenderActionList()`，喺同一個 function 下面
+果幾行），但舊嗰組 Alpha2 專屬嘅 if block 冇跟住刪，變成一段引用緊三個唔存在
+嘅名嘅死 code——平時撳個切換掣冇問題係因為 JS 會由頭至尾行晒成個 function
+body，直到行到呢句先拋 `ReferenceError`（`allActions` 呢個名連宣告都冇，唔係
+得個空值），中斷咗成個 `setUiLanguage()`，連累埋落面本來應該執行嘅
+`buildLynxActionSubTabs()`/`lynxRenderActionList()` 都冇行到。
+
+**修正**：刪走成段引用 `allActions`/`buildActionSubTabs`/`renderActionList`
+嘅死 if block，`setUiLanguage()` 淨低 Lynx 版本嗰段（`typeof lynxAllActions
+!== "undefined"` 個 guard 保留，因為呢個 function 有可能喺 `lynxAllActions`
+都仲未載入嘅頁面初始階段被 call 到）。
+
+**順帶做嘅死 code 清理**（同一輪一齊做，範圍見下面「已知限制」對應各項嘅
+更新）：
+- `app-camera.js`：`restoreBaseLed()`——完全冇任何 call site 嘅空殼 function
+- `app-mic.js`：`playTestTone()`/`runAudioDiagnose()`——UI 冇任何按鈕綁住嘅
+  audio/testtone、audio/diagnose 測試掣邏輯；`startTalkDisabled_unused()`、
+  `stopTalk()`、`downsampleToInt16()`，同埋淨係俾呢幾個 function 用嘅全域
+  變數/常量（`talkStream`/`talkAudioContext`/`talkProcessorNode`/
+  `talkSourceNode`/`TALK_TARGET_SAMPLE_RATE`）——已永久停用嘅 walkie-talkie
+  子系統嘅殘餘實作
+- `app-camera.js`：綁住 `talkFab` 嘅 4 個 pointer event listener、keydown/
+  keyup 入面嘅 Space 鍵分支、3 處已經永遠冧唔到嘅 `if (talkActive)
+  stopTalk();` cleanup guard——全部都係已停用 walkie-talkie 嘅死觸發入口，
+  刪走之後 `app-mic.js` 淨係留低一個 `startTalk()` no-op guard（見上面
+  「Walkie-talkie 音質修正」節頭嘅 notice）
+- `AudioController.java`：成個檔案（356行）連同 `MainActivity.java` 入面
+  嘅 instantiate/`shutdown()` 引用——冇任何 API endpoint 連住呢個 class,
+  純粹係死 code
+
+**驗證**：全部改動後重新用 `node --check` 驗證晒 7 個 JS 檔案語法、去除
+comment/string 之後嘅大括號/括號平衡驗證晒全部 Java 檔案，兩者皆通過。仲用
+一個自動化交叉比對腳本（top-level function/變數定義 vs 全 project 引用次數）
+掃描咗成個 `assets/web` 目錄，確認清理完之後冇再殘留任何完全冇被引用嘅
+function/變數。
+
 ## 已知限制
 
 - 冇伺服角度/電流回授。
@@ -460,8 +500,30 @@ crash fix 嘅 try/catch 回滾)。
   如果機器人服務初始化好慢，第一次攞列表可能會 timeout 返空列表——可以再按一次。
 - 「聽機械人麥克風」（耳筒收聽環境聲）功能已經喺呢個修訂移除——原本呢個功能靠
   Alpha2 專屬嘅 `speech_SetMIC()` AIDL call 去釋放/收返機械人自己嘅 mic，Lynx
-  AIDL SDK 冇對應方法，所以呢個功能喺 Lynx-only 版本冇得保留。「講嘢」
-  （walkie-talkie，瀏覽器 mic → 機械人喇叭）唔受影響，繼續可用。
+  AIDL SDK 冇對應方法，所以呢個功能喺 Lynx-only 版本冇得保留。對應嘅
+  `AudioController.java` 呢個 class 檔案已經連埋 `MainActivity.java` 入面
+  instantiate/`shutdown()` 嘅引用一齊刪走（2026-08 死 code 清理）。
+- **冇 walkie-talkie 功能**（瀏覽器 mic → 機械人喇叭，`startTalk()`/
+  `app-mic.js` 嘅咪掣）。呢個功能之前試過修過幾輪音質/回音/crash 問題（見
+  上面幾個歷史記錄章節），但之後嘅版本整套永久停用咗。**2026-08 死 code
+  清理**：`startTalkDisabled_unused()`（原本做嘢嗰個版本，一早已經冇任何入口
+  call 到）、`stopTalk()`、`downsampleToInt16()`、同埋所有錄音相關嘅全域
+  變數/常量（`talkStream`/`talkAudioContext`/`talkProcessorNode`/
+  `talkSourceNode`/`TALK_TARGET_SAMPLE_RATE`）已經全部由 `app-mic.js` 刪走；
+  `app-camera.js` 入面綁住 `talkFab` 嘅 4 個 pointer event listener、Space鍵
+  keydown/keyup 分支、以及 3 處 `if (talkActive) stopTalk();` 呢類已經永遠
+  冧唔到嘅 cleanup guard 都一併清走。`app-mic.js` 淨係留低一個
+  `startTalk()`——一個無條件 `return;` 嘅 no-op guard，UI 個咪掣
+  （`talkFab`）一開頁就俾 `disableTalkFabIfInsecureContext()` 強制
+  disable，唔會再觸發任何 pointer/keyboard 事件，呢個 no-op 純粹防止萬一
+  將來加新入口漏咗 check。後端 `AudioPlaybackController.java`（播放瀏覽器
+  mic 錄音、經機械人喇叭放出嘅播放端）同 `POST /upload/audio`/
+  `audio/play/start`/`audio/play/stop`/`audio/testtone`/`audio/diagnose`
+  呢啲 API endpoint code **保留未刪**——雖然冇任何前端入口會 call 到，但
+  呢啲係完整、獨立可用嘅 HTTP API surface（可以直接用 curl/其他 HTTP
+  client call 到），唔屬於「死 code」嘅範疇，淨係前端 UI 入口停用咗。連帶
+  支援呢個功能嘅 HTTPS/TLS（`SelfSignedCert.java`/`TlsSupport.java`）已經
+  整套刪走（見上面「HTTPS / 麥克風」一節）。
 - 「語音」分頁之前有過一組「Mic 擁有權測試」實驗性掣（`speech/start_recording`/
   `speech/stop_recording`，對應 `ISpeechInterface.startRecording()`/
   `stopRecording()`），連同 `MainActivity.registerDynamicReceiver()` 用嚟收集
@@ -474,3 +536,23 @@ crash fix 嘅 try/catch 回滾)。
   `LynxRobotApi.speech_startRecording()`/`speech_stopRecording()` 呢兩個 SDK
   method 本身冇改動，仍然存在於 `sdk-module/lynxrobot`，淨係呢個 App 自己加嘅
   測試 UI/API endpoint 被移除。
+- 「語音」分頁嘅 TTS 播放**唔經 AIDL `speech` service**（見
+  `AIDL_GUIDE_LYNX.md`「4. Speech」一節開頭嘅警告——呢部機嘅 `speech`
+  service key 根本攞唔到 binder），而係用獨立嘅 Android 系統 TTS engine
+  （`TextToSpeech` API）。呢部分幾個已喺真機驗證嘅得失：
+  - 呢部機**冇 Google Play Store**，令 Google TTS 嘅
+    `ACTION_CHECK_TTS_DATA`（`EXTRA_AVAILABLE_VOICES`）淨係答到出廠內建嗰
+    一個國家變體（例如中文淨係 `zh-TW`，英文淨係 `en-US`），睇唔到實際已
+    安裝嘅完整語言/聲線列表。**解法**：主要改用 `getVoices()`（API 21+，
+    直接問 engine 自己嘅完整 voice metadata，唔受呢個限制），`ACTION_
+    CHECK_TTS_DATA` 淨係做 fallback（畀冇 `getVoices()` 嘅 API 19/20 裝置，
+    或者 `getVoices()` 本身都回空清單嗰陣用）。
+  - 部分 TTS engine（**已確認 SVOX Pico** 屬於呢類）嘅
+    `getAvailableLanguages()`/`isLanguageAvailable()` 唔可靠、會回空/唔完整
+    嘅結果，但同一部機嘅 `ACTION_CHECK_TTS_DATA` 喺呢啲 engine 度反而用得，
+    所以兩條路徑都保留（`getVoices()` 為主、`ACTION_CHECK_TTS_DATA` 為
+    engine-specific fallback），唔可以淨係靠其中一條。
+  - ISO 3166-1 alpha-3 → alpha-2 國家碼轉換**冧咗用
+    `Locale.getAvailableLocales()` 反查**（呢個做法喺實機唔可靠，未必涵蓋
+    晒 engine 報返嚟嘅每一個 alpha-3 碼），改用一個寫死嘅完整對照表
+    （249 組 mapping）。

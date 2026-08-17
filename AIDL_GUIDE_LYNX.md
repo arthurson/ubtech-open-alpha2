@@ -153,6 +153,20 @@ void playAction(String p0, IActionResultListener p1);
 - `onPlayActionResult(int code, int progress)` — 播放進度/結果更新，可能會多次觸發
 - `onStopActionResult(int code)` — 動作被停止時觸發（同一個 listener 兩個 method 都可能收到）
 
+> ⚠️ **已喺真機驗證，⚠️ 得失並存**：官方閉源嘅 `IActionService` 實作**唔可靠
+> 咁保證會 call 到 `onStopActionResult()`**——實測觀察到有情況動作播放完咗，
+> 但呢個回調完全冇觸發，令 `open-lynx` 內部用嚟防止重疊播放嘅
+> `actionInFlight` guard 永久卡住 `true`，之後任何 `action/play` request 都
+> 會被誤拒（睇落好似「播唔到」，其實係上一次嘅 slot 冧咗冇放返）。**解法**
+> （`LynxController.java`）：每次送出 `action/play` 之前，額外排定一個
+> **20 秒嘅 `ScheduledExecutorService` 安全放行計時器**（`ACTION_SAFETY_
+> RELEASE_MS = 20000`）；如果真係收到 `onStopActionResult()`（或者
+> `onPlayActionResult()` 顯示已完成），就即刻攞消呢個計時器同正常放行；
+> 如果 20 秒之後計時器都未被攞消，就強制將 `actionInFlight` 設返 `false`，
+> 保證就算韌體側嗰個回調冧咗都唔會永久卡死呢個 slot。20 秒呢個數值係
+> 「大部分動作嘅播放時長」加一個緩衝，並非任何官方文檔講明嘅逾時值——如果
+> 之後撞到啲動作原生播放時間超過 20 秒導致誤放行，可以調大呢個常數。
+
 ```java
 robot.action_playAction("wave", new IActionResultListener.Stub() {
     @Override
@@ -264,6 +278,23 @@ void readAbsoluteAngle(int p0, boolean p1, IMotorReadAngleListener p2);
 - `p2` — 回調
 
 **回調**：`onReadMotorAngle(int motorId, int angle, int code)`
+
+> ⚠️ **已喺真機驗證，⚠️ 得失並存**：`onReadMotorAngle()` 回調嗰個 `motorId`
+> 參數（即係回調自己 echo 返嚟嗰個，唔係你 call 之前傳入嘅嗰個 `p0`）**喺高
+> 頻率連續調用底下唔可靠**——`open-lynx` 實際做法係一次過對 20 顆馬達逐個
+> 發起 `readAbsoluteAngle`（見「舵機」分頁嘅 bulk 讀取），連續密集咁 call 之下
+> 觀察到回調嘅 `motorId` 會變成完全唔對辦嘅垃圾值（例如 274-293 呢個範圍，
+> 遠超實際 1-20 嘅馬達 id 範圍），同時 `code` 都會夾雜住 120/144/-1 呢啲
+> 唔合理數值——睇落係機身韌體側喺高負載底下追蹤緊「呢個回調屬於邊次
+> request」呢件事本身有 bug，唔係 SDK 呢層嘅責任。**解法**：由於每次
+> HTTP request 本身已經知道自己問緊邊個 `motorId`（call 之前就用一個
+> `final int id` 喺 closure 度捕捉咗），回調入面完全唔理會佢自己 echo
+> 返嚟嗰個 `motorId`，一律用返 closure 捕捉嗰個先算數——`code`/`angle`
+> 兩個欄位反而係可信嘅（垃圾嘅淨係 `motorId` 呢個 echo 值），所以 UI 只
+> 顯示 `code`/`angle`，唔顯示回調嘅 `motorId`。`moveToAbsoluteAngle`/
+> `moveRefAngle` 用嘅係同一個回調 shape（`onMoveAngle(int motorId, ...)`），
+> 為安全起見一律採用同一個 closure-capture 做法，即使呢兩個 endpoint 依家
+> 未必會好似 `motor/read` 咁密集咁連續 call。
 
 ```java
 robot.motor_readAbsoluteAngle(1, true, new IMotorReadAngleListener.Stub() {
@@ -448,6 +479,18 @@ robot.led_turnOffChestLed(listener);
 
 對應 AIDL：`ISpeechInterface`。呢個係最大嘅 interface（24 個 method），涵蓋
 TTS 播放、語音辨識（ASR）、喚醒詞、麥克風 PCM 串流、聲音設定。
+
+> ⚠️ **已喺真機驗證，⚠️ 呢個 service key 喺呢部機呢個韌體版本完全用唔到**：
+> 以下記錄嘅全部 24 個 method 都係 AIDL interface 本身嘅完整規格，但反編譯
+> `alpha2services_base` 3.0.0.2 確認咗 `"speech"` 呢個 service key **從未喺
+> `onStartOnce()` 登記**（對比 `action`/`led`/`motor`/`sysinfo` 四個都
+> 有登記）——即係話 `ServiceFetcher.getService("speech")` 喺呢部機呢個韌體
+> 版本上永遠會攞到 `null`，`LynxRobotApi` 任何 `speech_*()` method 一 call
+> 就會即刻返 `API_ERROR_NOT_INIT`，唔會因為等耐咗、重試就攞到。詳細分析
+> 見本文檔尾段「附錄：Lynx 韌體反編譯發現」→「Service key：`speech`
+> 喺呢個韌體版本攞唔到 binder」一節。以下方法簽名/用法示範保留做完整規格
+> 參考（換一部有正式登記 `speech` key 嘅機身/韌體版本應該可以用），但喺
+> 你手上呢部機**唔好指望呢一整個 interface 有得用**，唔使再花時間試修。
 
 ### PCM 串流（原始音頻）
 
@@ -712,6 +755,21 @@ void setPIRSensor(boolean p0, IRemotePIRSensorOperationResultListener p1);
 ```
 
 **回調**：`onPIRSensorOpResult(int code)`
+
+> ⚠️ **已喺真機驗證，⚠️ 得失並存**：`onPIRSensorOpResult()` 呢個回調**只會
+> 喺你 call `setPIRSensor()` 開/關嗰一刻觸發一次，代表「開關呢個動作本身
+> 有冇成功」**，唔係「PIR 感應到有人/冇人」嘅持續事件——反編譯
+> `alpha2services_base` 3.0.0.2 嘅 `SysServiceImpl.setPIRSensor()` 確認咗
+> 佢從來冇將呢個 listener 轉發去實際嘅感應觸發路徑，所以呢個回調實際上
+> **永遠唔會因為「感應到人」而再被觸發第二次**。真正、會持續 fire 嘅「PIR
+> 偵測到人/冇人」通知，係經完全獨立嘅
+> `com.ubtechinc.services.Action.PIR_STATE` broadcast（`boolean` extra
+> `"pirState"`），唔係經呢個 AIDL callback——反編譯 `companion_v17_signed.apk`
+> 官方 SDK（`AlphaRobotApi$RobotReceiver`/`PirStateListener.onState(boolean)`）
+> 確認呢個先係機身側實際監聽緊嘅事件來源。`open-lynx` 嘅做法：`sys/pir`
+> API 淨係負責開關（call `setPIRSensor()`），觸發指示（solid-on 紅燈）
+> 由 `MainActivity.registerDynamicReceiver()` 監聽 `PIR_STATE` broadcast
+> 驅動，兩條 code path 完全分開，唔好將呢兩個機制搞埋一齊。
 
 ```java
 robot.sys_setPIRSensor(true, new IRemotePIRSensorOperationResultListener.Stub() {

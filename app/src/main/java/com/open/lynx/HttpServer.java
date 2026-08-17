@@ -322,7 +322,7 @@ public class HttpServer implements Runnable {
             // handleClient() 嗰個 catch (Exception e) 接唔住, 個 pool thread 會直接
             // 死咗, connection 都唔會 close。呢個上限要夠大唔可以誤傷正常請求 (最大
             // 嘅正常 body 係 /upload/audio 嗰啲 walkie-talkie PCM chunk, 睇
-            // AudioController/app-mic.js 都係幾十 KB 級別), 但要細過任何合理嘅單一
+            // AudioPlaybackController/app-mic.js 都係幾十 KB 級別), 但要細過任何合理嘅單一
             // request body, 32MB 留有幾百倍餘裕。
             final int MAX_BODY_BYTES = 32 * 1024 * 1024;
             if (len < 0 || len > MAX_BODY_BYTES) {

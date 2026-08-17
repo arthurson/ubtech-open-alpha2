@@ -74,7 +74,6 @@ public class MainActivity extends Activity implements SensorEventListener {
     private RobotEventReceiver dynamicReceiver;
     private BroadcastReceiver batteryReceiver;
     private final CameraController cameraController = new CameraController();
-    private final AudioController audioController = new AudioController();
     private final AudioPlaybackController audioPlaybackController = new AudioPlaybackController();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private AudioManager audioManager;
@@ -1574,7 +1573,6 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
         }
         cameraController.shutdown();
-        audioController.shutdown();
         audioPlaybackController.shutdown();
         stopRingtonePlayback();
     }

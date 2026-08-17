@@ -172,11 +172,6 @@ async function takePhoto() {
 function flashCaptureLed() {
 }
 
-/** 攞返而家「底層」應該長開嘅 LED 狀態 - 依家未實現, 見 flashCaptureLed() 嘅
- *  comment。 */
-function restoreBaseLed() {
-}
-
 // ---------------- Camera: video recording (client-side) ----------------
 //
 // The server's CameraController only ever produces individual JPEG preview frames (see
@@ -327,12 +322,6 @@ function updateCrosshairVisibility() {
   if (els.fabRow) {
     els.fabRow.classList.toggle("active", shouldShow);
   }
-  // Unticking the master checkbox (or stopping the camera) must not leave
-  // push-to-talk silently running with its FAB hidden - force it off so the
-  // control state always matches what's actually visible on screen.
-  if (!shouldShow) {
-    if (talkActive) stopTalk();
-  }
 }
 
 function setupCrosshairIfNeeded() {
@@ -442,7 +431,7 @@ function setupCrosshairIfNeeded() {
 
   els.crosshairToggle.addEventListener("change", updateCrosshairVisibility);
 
-  // ---- Keyboard control: arrow keys -> servo 19/20 (pan/tilt), held Space -> talk ----
+  // ---- Keyboard control: arrow keys -> servo 19/20 (pan/tilt) ----
   //
   // Reuses the same axisToAngle/throttle/knob-position plumbing as pointer-drag above,
   // so keyboard and mouse/touch control feel identical and never fight each other -
@@ -484,12 +473,6 @@ function setupCrosshairIfNeeded() {
       }
       return;
     }
-    if (evt.key === " " || evt.code === "Space") {
-      evt.preventDefault(); // stop Space from also activating a focused button/etc.
-      if (!evt.repeat) startTalk(); // ignore the browser's own key-repeat firing, since
-                                      // startTalk() is idempotent (talkActive guard) but
-                                      // there's no need to call it repeatedly anyway
-    }
   });
 
   els.viewport.addEventListener("keyup", function (evt) {
@@ -502,14 +485,11 @@ function setupCrosshairIfNeeded() {
       }
       return;
     }
-    if (evt.key === " " || evt.code === "Space") {
-      stopTalk();
-    }
   });
 
   // If the viewport loses keyboard focus entirely (Tab away, click elsewhere) while a
   // key was physically still held down, the corresponding keyup event never reaches
-  // this listener - without this, the head or mic could get stuck "on" until some
+  // this listener - without this, the head could get stuck "on" until some
   // other event happened to reset it.
   els.viewport.addEventListener("blur", function () {
     if (heldArrowKeys.size > 0) {
@@ -517,27 +497,7 @@ function setupCrosshairIfNeeded() {
       setKnobPosition(0, 0);
       sendServoForAxis(0, 0);
     }
-    if (talkActive) stopTalk();
   });
-
-  // ---- Talk FAB: press-and-hold (mouse/touch), mirroring a physical walkie-talkie's
-  // call button - replaces the old dedicated #talkBtn's inline onmousedown/ontouchstart
-  // attributes now that the button is generated inside the viewport rather than in the
-  // static toolbar row. ----
-  if (els.talkFab) {
-    els.talkFab.addEventListener("pointerdown", function (evt) {
-      evt.preventDefault();
-      // Capture the pointer so pointerup still fires on this element even if the
-      // finger/mouse drags off the FAB before releasing - without this, dragging off
-      // while still pressed would leave talkActive stuck "on" until pointerleave
-      // (which covers mouse hover-out, but not always a moved touch-point reliably).
-      try { els.talkFab.setPointerCapture(evt.pointerId); } catch (e) { /* ignore */ }
-      startTalk();
-    });
-    els.talkFab.addEventListener("pointerup", function () { stopTalk(); });
-    els.talkFab.addEventListener("pointerleave", function () { stopTalk(); });
-    els.talkFab.addEventListener("pointercancel", function () { stopTalk(); });
-  }
 }
 
 /** (Re)points the viewport's <img> at a fresh /stream/camera connection. A query-string

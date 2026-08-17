@@ -14,9 +14,13 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Plays audio sent from the browser out through the robot's speaker, using a
- * standard AudioTrack on STREAM_MUSIC. This is the browser-mic -> robot-speaker half
- * of the walkie-talkie feature (the other half, robot-mic -> browser, is
- * AudioController).
+ * standard AudioTrack on STREAM_MUSIC. This was the browser-mic -> robot-speaker half
+ * of the walkie-talkie feature; the other half (robot-mic -> browser) has been
+ * removed entirely. The walkie-talkie feature itself is now permanently disabled on
+ * the frontend (see app-mic.js's startTalk()), but this class and its
+ * audio/play/start, audio/play/stop, audio/testtone, and audio/diagnose HTTP
+ * endpoints remain functional and reachable directly over the API, independent of
+ * the disabled UI button - see README.md's "已知限制" section for the full picture.
  *
  * IMPORTANT / UNVERIFIED: whether the robot's physical speaker is actually reachable
  * through a plain AudioTrack, as opposed to being reserved for a dedicated TTS/audio
@@ -24,12 +28,12 @@ import java.util.concurrent.atomic.AtomicReference;
  * static analysis - docs/hardware.md only documents a dedicated audio DSP node
  * (/dev/zl380tw) on the MIC array side for echo cancellation, and says nothing about
  * the speaker output path. playTestTone() exists specifically so this can be checked
- * on the physical unit before building anything on top of it.
+ * on the physical unit before building anything on top of it - reachable via
+ * POST /api/audio/testtone even though no UI button calls it anymore.
  *
- * Same open-once, keep-open-for-the-session pattern as AudioController/
- * CameraController, using a dedicated HandlerThread so playback setup/teardown never
- * runs on whatever thread happens to call start()/shutdown() (e.g. an HTTP worker
- * thread).
+ * Same open-once, keep-open-for-the-session pattern as CameraController, using a
+ * dedicated HandlerThread so playback setup/teardown never runs on whatever thread
+ * happens to call start()/shutdown() (e.g. an HTTP worker thread).
  */
 public class AudioPlaybackController {
     private static final String TAG = "AudioPlaybackController";
@@ -37,19 +41,18 @@ public class AudioPlaybackController {
     // Must match whatever sample rate the browser-side encoder uses when it sends PCM
     // Playback sample rate. Confirmed compatible via logcat: alpha2services' own TTS
     // engine (IflytekTTS) successfully opens an AudioTrack at sampleRate=16000 (its
-    // Lowered from 16000 to 8000 by request, alongside the same change in
-    // AudioController.java and app-mic.js's TALK_TARGET_SAMPLE_RATE - all three must agree.
-    // Halves bytes/sec, which doubles how much playback time bufBytes/
-    // JITTER_BUFFER_CAP_BYTES represent for the same byte count - directly increasing
-    // headroom against the mid-session network jitter that caused the underrun seen in
-    // logcat_2026-07-30_08-43-18.txt, on top of (not instead of) the *4->*8 bufBytes
+    // Lowered from 16000 to 8000 by request. Halves bytes/sec, which doubles how much
+    // playback time bufBytes/JITTER_BUFFER_CAP_BYTES represent for the same byte
+    // count - directly increasing headroom against the mid-session network jitter that
+    // caused the underrun seen in logcat_2026-07-30_08-43-18.txt, on top of (not
+    // instead of) the *4->*8 bufBytes
     // widening below. 8kHz is telephone-grade voice quality, an acceptable tradeoff
     // here.
     private static final int SAMPLE_RATE_HZ = 8000;
     private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_OUT_MONO;
     private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
-    private static final long MAX_SESSION_MS = 5 * 60 * 1000; // same safety rationale as
-                                                                 // AudioController's cap
+    private static final long MAX_SESSION_MS = 5 * 60 * 1000; // safety cap against a
+                                                                 // stuck/forgotten session
 
     // Jitter-buffer cap: bytes/sec at 8kHz mono 16-bit = 16000 (halved from 32000 when
     // SAMPLE_RATE_HZ was lowered from 16000 to 8000 above - this formula must track
@@ -410,24 +413,20 @@ public class AudioPlaybackController {
         }
     }
 
-    /** Stops playback and releases the AudioTrack. Unlike AudioController's
-     *  stopIfIdle() (which only closes once every subscriber is gone, since multiple
-     *  browser tabs might be watching the camera/mic at once), playback is inherently
+    /** Stops playback and releases the AudioTrack. Playback is inherently
      *  single-session/push-to-talk, so any explicit stop just stops it outright. */
     public void stop() {
         playing = false; // writeLoop() notices and releases on its own thread
     }
 
     public void shutdown() {
-        // 2026-08 修正: 同 AudioController.shutdown() 一樣嘅 race - 之前呢度冇同步
-        // 等待 writeLoop() 收尾就即刻 quitSafely()。playing=false 之後, writeLoop()
-        // 要行多一個 loop iteration 先會發現、跟住先做 finishAndReleaseTrack()
-        // (audioTrack.stop()/release()) —— 呢個 release 本身係喺 playbackHandler
-        // 嗰條 playback thread 度做緊嘅, quitSafely() 唔會中斷佢, 但如果 shutdown()
-        // 之後好快又有人 start(), 新一輪會開一條新 HandlerThread, 有機會同舊嗰條
-        // 仲喺度做緊 release() 嘅 thread 短暫並行, 兩邊都摞住 AudioTrack/audioTrack
-        // 呢個共享狀態。跟 AudioController.shutdown() 嘅做法睇齊: 用一個 post 落
-        // playbackHandler 嘅 Runnable + CountDownLatch, 等實際 release 完成先返。
+        // 2026-08 修正: playing=false 之後, writeLoop() 要行多一個 loop iteration
+        // 先會發現、跟住先做 finishAndReleaseTrack() (audioTrack.stop()/release())
+        // —— 呢個 release 本身係喺 playbackHandler 嗰條 playback thread 度做緊嘅,
+        // quitSafely() 唔會中斷佢, 但如果 shutdown() 之後好快又有人 start(), 新一輪
+        // 會開一條新 HandlerThread, 有機會同舊嗰條仲喺度做緊 release() 嘅 thread
+        // 短暫並行, 兩邊都摞住 AudioTrack/audioTrack 呢個共享狀態。做法: 用一個 post
+        // 落 playbackHandler 嘅 Runnable + CountDownLatch, 等實際 release 完成先返。
         if (playbackHandler == null) {
             playing = false;
             if (playbackThread != null) {

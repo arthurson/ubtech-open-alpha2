@@ -405,11 +405,7 @@ function setUiLanguage(lang) {
   applyUiLanguage();
   // Category tab labels (基本/跳舞/... and 全部) are built dynamically from
   // ACTION_CATEGORIES, not tagged with data-i18n, so applyUiLanguage() alone won't
-  // update them - re-run the builders if the action lists are already loaded.
-  if (allActions.length > 0) {
-    buildActionSubTabs();
-    renderActionList();
-  }
+  // update them - re-run the builder if the action list is already loaded.
   if (typeof lynxAllActions !== "undefined" && lynxAllActions.length > 0) {
     buildLynxActionSubTabs();
     lynxRenderActionList();
