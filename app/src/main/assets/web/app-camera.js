@@ -34,13 +34,13 @@ function cameraElements() {
     resolution: document.getElementById("cameraResolution"),
     crosshairPad: document.getElementById("crosshairPad"),
     crosshairMark: document.getElementById("crosshairMark"),
-    // "featureEnabled" is the single master checkbox that now gates all three
-    // overlay features together (head-aim joystick pad, mic-listen headphone FAB,
-    // talk FAB) - kept under the name crosshairToggle here since all the existing
-    // crosshair drag-to-aim code below already reads els.crosshairToggle.
+    // "featureEnabled" is the single master checkbox that gates the head-aim joystick
+    // pad overlay - kept under the name crosshairToggle here since all the existing
+    // crosshair drag-to-aim code below already reads els.crosshairToggle. (Historically
+    // this checkbox also gated a mic-listen headphone FAB and a walkie-talkie talk FAB;
+    // both features have since been removed entirely, along with their FABs.)
     crosshairToggle: document.getElementById("featureEnabled"),
     fabRow: document.getElementById("fabRow"),
-    talkFab: document.getElementById("talkFab"),
   };
 }
 

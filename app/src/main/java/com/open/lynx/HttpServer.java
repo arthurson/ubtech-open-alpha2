@@ -44,10 +44,12 @@ public class HttpServer implements Runnable {
 
     /**
      * For endpoints that need the raw POST body bytes rather than a UTF-8-decoded
-     * String - currently just the walkie-talkie audio upload, where the body is
-     * arbitrary binary PCM and UTF-8 decoding (as ApiHandler.handle()'s body param
-     * does) would corrupt byte sequences that aren't valid UTF-8. Returns the
-     * ApiResponse to send back, same as ApiHandler.
+     * String - for binary uploads where UTF-8 decoding (as ApiHandler.handle()'s body
+     * param does) would corrupt byte sequences that aren't valid UTF-8. Not currently
+     * wired to anything (the one prior use, walkie-talkie audio upload, has been
+     * removed along with the rest of that feature - see README.md's "已知限制"
+     * section), but kept as a general extension point for any future binary-upload
+     * endpoint. Returns the ApiResponse to send back, same as ApiHandler.
      */
     public interface RawUploadHandler {
         ApiResponse handle(String path, Map<String, String> query, byte[] body);
@@ -106,8 +108,9 @@ public class HttpServer implements Runnable {
      * SelfSignedCert.java) was removed outright rather than kept as a dead optional
      * path - browsers on this device repeatedly rejected new TLS connections after the
      * very first page load ("SSLHandshakeException: certificate unknown"), and the
-     * walkie-talkie mic feature that TLS existed for is permanently disabled in the UI
-     * anyway (see app-mic.js). This is now the only constructor - plain HTTP only.
+     * walkie-talkie mic feature that TLS existed for has since been removed entirely
+     * (both frontend and backend - see README.md's "已知限制" section). This is now
+     * the only constructor - plain HTTP only.
      */
     public HttpServer(AssetManager assets, ApiHandler apiHandler, StreamHandler streamHandler,
             RawUploadHandler rawUploadHandler) {
@@ -320,10 +323,10 @@ public class HttpServer implements Runnable {
             // header, 一個惡意或者損壞嘅請求 (例如 Content-Length: 2000000000) 會令
             // `new byte[len]` 即刻拋 OutOfMemoryError —— OOM Error 唔係 Exception,
             // handleClient() 嗰個 catch (Exception e) 接唔住, 個 pool thread 會直接
-            // 死咗, connection 都唔會 close。呢個上限要夠大唔可以誤傷正常請求 (最大
-            // 嘅正常 body 係 /upload/audio 嗰啲 walkie-talkie PCM chunk, 睇
-            // AudioPlaybackController/app-mic.js 都係幾十 KB 級別), 但要細過任何合理嘅單一
-            // request body, 32MB 留有幾百倍餘裕。
+            // 死咗, connection 都唔會 close。呢個上限要夠大唔可以誤傷正常請求 (呢個
+            // app 嘅正常 request body 全部都係細嘅 JSON API call, 冇任何 endpoint
+            // 需要上載大檔案), 但要細過任何合理嘅單一 request body, 32MB 留有幾百倍
+            // 餘裕。
             final int MAX_BODY_BYTES = 32 * 1024 * 1024;
             if (len < 0 || len > MAX_BODY_BYTES) {
                 Log.w(TAG, "Rejecting request with Content-Length=" + len

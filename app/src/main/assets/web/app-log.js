@@ -118,21 +118,7 @@ window.addEventListener("DOMContentLoaded", function () {
   lynxBuildEyeColorPicker();
   lynxBuildHeadColorPicker();
   applyUiLanguage();
-  disableTalkFabIfInsecureContext();
   lynxRefreshStatus();
   lynxRefreshSys();
   connectWs();
 });
-
-/**
- * 講嘢 (🎤 walkie-talkie 咪) 功能已經永久停用 - 唔止喺 http:// (非安全來源) 先停用,
- * 而係一律 disable, 唔理 secure context 定唔係。掣本身 disable 咗之後瀏覽器唔會再
- * fire pointerdown/click 呢啲事件 (見 startTalk() 頂部個 no-op guard 做多一層保險)。
- */
-function disableTalkFabIfInsecureContext() {
-  const fab = document.getElementById("talkFab");
-  if (!fab) return;
-  fab.disabled = true;
-  fab.classList.add("disabled");
-  fab.title = "講嘢功能已停用";
-}

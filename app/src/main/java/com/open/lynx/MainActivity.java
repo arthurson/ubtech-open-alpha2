@@ -74,7 +74,6 @@ public class MainActivity extends Activity implements SensorEventListener {
     private RobotEventReceiver dynamicReceiver;
     private BroadcastReceiver batteryReceiver;
     private final CameraController cameraController = new CameraController();
-    private final AudioPlaybackController audioPlaybackController = new AudioPlaybackController();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private AudioManager audioManager;
     private EventBus.Listener gestureListener;
@@ -239,7 +238,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         // 唔經任何 AIDL backend - LynxController 會將呢啲轉俾
         // handleSharedHardwareApi() (呢個 method reference 要到真係有 matching
         // request 先會被 invoke, 遠遲過 onCreate() 完結, 所以喺呢度綁定係安全嘅,
-        // 就算 cameraController/audioPlaybackController 呢陣都仲未起好)。
+        // 就算 cameraController 呢陣都仲未起好)。
         // Lynx UI 嘅 TTS tab 淨係用 Android 自己嘅系統 TTS (冇機身側 engine 揀擇) -
         // 落面個 handler 直接轉發去 androidTts, 同下面即刻起嗰個 instance 係同一個。
         // 呢度綁定嗰陣 androidTts 都仲未 assign, 都係安全嘅: speak()/stop() 淨係喺
@@ -387,9 +386,11 @@ public class MainActivity extends Activity implements SensorEventListener {
         // intermittently even though the HTTP API calls themselves succeeded. Rather
         // than fight browser cert-trust behavior, TLS support was removed outright
         // (2026-08: TlsSupport.java/SelfSignedCert.java deleted, HttpServer's TLS
-        // constructor overload removed) - walkie-talkie (which needs a secure context)
-        // stays permanently disabled in the UI (see app-mic.js) and everything else works
-        // reliably over plain HTTP/WS.
+        // constructor overload removed) - the walkie-talkie feature that TLS existed
+        // for has since been removed entirely (frontend and backend, including
+        // AudioController.java/AudioPlaybackController.java and every audio/testtone,
+        // audio/diagnose, audio/play/*, /upload/audio endpoint) and everything else
+        // works reliably over plain HTTP/WS.
         String ip = getWifiIp();
 
         httpServer = new HttpServer(getAssets(), new HttpServer.ApiHandler() {
@@ -413,12 +414,9 @@ public class MainActivity extends Activity implements SensorEventListener {
             public void handle(String path, Map<String, String> query, java.net.Socket socket) throws java.io.IOException {
                 handleStream(path, query, socket);
             }
-        }, new HttpServer.RawUploadHandler() {
-            @Override
-            public HttpServer.ApiResponse handle(String path, Map<String, String> query, byte[] body) {
-                return handleUpload(path, query, body);
-            }
-        });
+        }, null); // RawUploadHandler: 冇任何 /upload/* endpoint 用緊 (walkie-talkie 嘅
+                   // /upload/audio 已經連同前端一齊移除) - HttpServer 對 null 有
+                   // guard (path.startsWith("/upload/") && rawUploadHandler != null)。
         httpServer.start();
         String scheme = "http";
 
@@ -1573,7 +1571,6 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
         }
         cameraController.shutdown();
-        audioPlaybackController.shutdown();
         stopRingtonePlayback();
     }
 
@@ -1667,39 +1664,6 @@ public class MainActivity extends Activity implements SensorEventListener {
                         + ",\"requestedHeight\":" + h + "}");
             }
 
-            // -- Walkie-talkie: browser mic -> robot speaker. See AudioPlaybackController's
-            // javadoc - whether the speaker is reachable via a standard AudioTrack at all
-            // is unverified; this test-tone endpoint exists to answer that on the physical
-            // unit before relying on the real streaming path (POST /upload/audio) below.
-            case "audio/testtone": {
-                releaseMicForAudioIo();
-                AudioPlaybackController.StartResult result =
-                        audioPlaybackController.playTestTone(3000);
-                if (result.error != null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
-                            + jsonSafe(result.error) + "\"}");
-                }
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-            case "audio/diagnose": {
-                releaseMicForAudioIo();
-                String sweep = audioPlaybackController.diagnoseAudioTrack(10000);
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"results\":\""
-                        + jsonSafe(sweep).replace("\n", "\\n") + "\"}");
-            }
-            case "audio/play/start": {
-                releaseMicForAudioIo();
-                AudioPlaybackController.StartResult result = audioPlaybackController.start(3000);
-                if (result.error != null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
-                            + jsonSafe(result.error) + "\"}");
-                }
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-            case "audio/play/stop":
-                audioPlaybackController.stop();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-
             // -- System ringtones/notification sounds: exposes every ringtone Android
             // knows about (via RingtoneManager, same mechanism findRingtoneByTitle()
             // above already uses to look up "Proxima"/"Sirrah" by name) as a numbered
@@ -1783,7 +1747,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
 
             // -- Media volume: STREAM_MUSIC, same stream the +/- gesture buttons and
-            // the walkie-talkie/TTS playback all use (see registerGestureController()/
+            // TTS playback/ringtones all use (see registerGestureController()/
             // startVolumeRepeat() above) - so this slider and the physical +/- pads
             // stay in sync with each other. -------------------------------------------
             case "audio/volume/get": {
@@ -1895,21 +1859,6 @@ public class MainActivity extends Activity implements SensorEventListener {
      * connected, same as WebSocketServer.Connection.readLoop() does for "/ws" - both
      * rely on the pool's cached-thread-per-connection model rather than needing NIO.
      */
-    /** Handles POST /upload/audio: raw PCM bytes (8kHz mono 16-bit, matching
-     *  AudioPlaybackController's format - see AudioPlaybackController.SAMPLE_RATE_HZ
-     *  and app-mic.js's TALK_TARGET_SAMPLE_RATE; lowered from 16kHz to 8kHz by request,
-     *  2026-08) from the browser's mic, queued for playback.
-     *  Playback must already be running (audio/play/start) - this does not implicitly
-     *  start it, so a stray upload after the user has stopped talking doesn't
-     *  re-open the speaker session on its own. */
-    private HttpServer.ApiResponse handleUpload(String path, Map<String, String> query, byte[] body) {
-        if ("audio".equals(path)) {
-            audioPlaybackController.enqueuePcm(body);
-            return HttpServer.ApiResponse.ok("{\"ok\":true,\"bytes\":" + body.length + "}");
-        }
-        return HttpServer.ApiResponse.error("Unknown upload path: " + path);
-    }
-
     private void handleStream(String path, Map<String, String> query, java.net.Socket socket) throws java.io.IOException {
         if ("camera".equals(path)) {
             handleCameraStream(socket);
@@ -2078,20 +2027,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         sonarLedActive = triggered;
         applyObstacleIndicator(triggered);
-    }
-
-    /**
-     * Gives Android's own audio HAL a brief moment to settle before this app opens its
-     * own AudioTrack for playback (test tone / ringtone / walkie-talkie playback) -
-     * cheap insurance against transient AudioTrack construction races on this
-     * hardware's audio HAL right after a previous playback session ends.
-     */
-    private void releaseMicForAudioIo() {
-        try {
-            Thread.sleep(300);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     /** Polls CameraController.getLastFrame() until a frame newer than "none yet"

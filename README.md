@@ -86,9 +86,6 @@ open-lynx/
 │       │   ├── EventBus.java                — pub/sub 事件中樞
 │       │   ├── RobotEventReceiver.java      — 接收機械人 broadcast
 │       │   ├── RobotWireConstants.java      — 機身底層 broadcast action/extra 常量
-│       │   ├── AudioPlaybackController.java — Walkie-talkie 播放後端（瀏覽器 mic →
-│       │   │                                    機械人喇叭）—— **後端 code 保留住
-│       │   │                                    但前端入口已永久停用**，見「已知限制」
 │       │   ├── CameraController.java        — 相機串流/拍照/錄影
 │       │   ├── BootReceiver.java            — 開機自動啟動
 │       │   └── MouthLedData.java            — 咀部 LED preset 資料
@@ -493,6 +490,36 @@ comment/string 之後嘅大括號/括號平衡驗證晒全部 Java 檔案，兩�
 掃描咗成個 `assets/web` 目錄，確認清理完之後冇再殘留任何完全冇被引用嘅
 function/變數。
 
+### 第二輪：walkie-talkie 徹底清走（唔止死 code，成套功能都刪）
+
+上面第一輪清理判斷得太保守——當時將 `AudioPlaybackController.java` 同佢嘅
+`audio/testtone`/`audio/diagnose`/`audio/play/*`、`/upload/audio` 呢批
+endpoint 當做「完整、獨立可用嘅 HTTP API surface」而保留低，理由係「可以
+用 curl 直接 call」。但呢個理由站唔住腳：成個 project 冇任何文檔/客戶端
+會咁樣用，一個 endpoint 冇任何呼叫者，就係死 code，唔係「保留咗嘅 API」。
+
+`AudioPlaybackController` 本身淨係做一件事——播放瀏覽器 mic 錄音經機械人
+喇叭放出，佢由頭到尾都係 walkie-talkie 呢個功能嘅後半段，唔係一個獨立、
+通用嘅播放服務。**成個 project 冇 walkie-talkie 功能，呢個 class 同佢嘅
+endpoint 就冇存在意義**，所以第二輪一次過清晒：
+
+- `AudioPlaybackController.java` 成個檔案刪走
+- `MainActivity.java`：`audio/testtone`/`audio/diagnose`/`audio/play/start`/
+  `audio/play/stop` 四個 API case、`/upload/audio` 嘅 `handleUpload()`
+  dispatcher、`releaseMicForAudioIo()` helper 全部刪走；`HttpServer`
+  constructor 嘅 `RawUploadHandler` 參數改傳 `null`
+- `LynxController.java`：`isSharedHardwarePath()` 入面殘留緊嘅
+  `audio/testtone`/`audio/diagnose`/`audio/play/` 路由判斷——第一輪清理
+  漏咗嘅一處，第二輪搜尋先搵到
+- 前端 `app-mic.js`：連第一輪特登保留低嘅 `startTalk()` no-op guard 都刪埋
+- 前端 `app-camera.js`：`talkFab` element lookup 刪走
+- 前端 `app-log.js`：`disableTalkFabIfInsecureContext()` 刪走（`talkFab`
+  已經唔存在，冇嘢可以 disable）
+- 前端 `index.html`：`talkFab`（🎤）呢粒 UI 掣本身刪走
+
+**驗證**：同第一輪一樣，重新跑晒 `node --check`（JS）、去除 comment/string
+之後嘅大括號/括號平衡驗證（Java）、以及死引用交叉比對腳本，三者皆通過。
+
 ## 已知限制
 
 - 冇伺服角度/電流回授。
@@ -503,27 +530,45 @@ function/變數。
   AIDL SDK 冇對應方法，所以呢個功能喺 Lynx-only 版本冇得保留。對應嘅
   `AudioController.java` 呢個 class 檔案已經連埋 `MainActivity.java` 入面
   instantiate/`shutdown()` 嘅引用一齊刪走（2026-08 死 code 清理）。
-- **冇 walkie-talkie 功能**（瀏覽器 mic → 機械人喇叭，`startTalk()`/
-  `app-mic.js` 嘅咪掣）。呢個功能之前試過修過幾輪音質/回音/crash 問題（見
-  上面幾個歷史記錄章節），但之後嘅版本整套永久停用咗。**2026-08 死 code
-  清理**：`startTalkDisabled_unused()`（原本做嘢嗰個版本，一早已經冇任何入口
-  call 到）、`stopTalk()`、`downsampleToInt16()`、同埋所有錄音相關嘅全域
-  變數/常量（`talkStream`/`talkAudioContext`/`talkProcessorNode`/
-  `talkSourceNode`/`TALK_TARGET_SAMPLE_RATE`）已經全部由 `app-mic.js` 刪走；
-  `app-camera.js` 入面綁住 `talkFab` 嘅 4 個 pointer event listener、Space鍵
-  keydown/keyup 分支、以及 3 處 `if (talkActive) stopTalk();` 呢類已經永遠
-  冧唔到嘅 cleanup guard 都一併清走。`app-mic.js` 淨係留低一個
-  `startTalk()`——一個無條件 `return;` 嘅 no-op guard，UI 個咪掣
-  （`talkFab`）一開頁就俾 `disableTalkFabIfInsecureContext()` 強制
-  disable，唔會再觸發任何 pointer/keyboard 事件，呢個 no-op 純粹防止萬一
-  將來加新入口漏咗 check。後端 `AudioPlaybackController.java`（播放瀏覽器
-  mic 錄音、經機械人喇叭放出嘅播放端）同 `POST /upload/audio`/
-  `audio/play/start`/`audio/play/stop`/`audio/testtone`/`audio/diagnose`
-  呢啲 API endpoint code **保留未刪**——雖然冇任何前端入口會 call 到，但
-  呢啲係完整、獨立可用嘅 HTTP API surface（可以直接用 curl/其他 HTTP
-  client call 到），唔屬於「死 code」嘅範疇，淨係前端 UI 入口停用咗。連帶
-  支援呢個功能嘅 HTTPS/TLS（`SelfSignedCert.java`/`TlsSupport.java`）已經
-  整套刪走（見上面「HTTPS / 麥克風」一節）。
+- 「聽機械人麥克風」（耳筒收聽環境聲）功能已經喺呢個修訂移除——原本呢個功能靠
+  Alpha2 專屬嘅 `speech_SetMIC()` AIDL call 去釋放/收返機械人自己嘅 mic，Lynx
+  AIDL SDK 冇對應方法，所以呢個功能喺 Lynx-only 版本冇得保留。對應嘅
+  `AudioController.java` 呢個 class 檔案已經連埋 `MainActivity.java` 入面
+  instantiate/`shutdown()` 嘅引用一齊刪走（2026-08 死 code 清理）。
+- **冇 walkie-talkie 功能**（瀏覽器 mic → 機械人喇叭）——**成套實作已經徹底
+  刪走，唔止 UI 停用**。呢個功能之前試過修過幾輪音質/回音/crash 問題（見
+  上面幾個歷史記錄章節），之後嘅版本先永久停用；**2026-08 完整清理**（分兩輪
+  做）：
+  - 前端 `app-mic.js`：`startTalkDisabled_unused()`、`stopTalk()`、
+    `downsampleToInt16()`、所有錄音相關全域變數/常量（`talkStream`/
+    `talkAudioContext`/`talkProcessorNode`/`talkSourceNode`/
+    `TALK_TARGET_SAMPLE_RATE`）、以及**最後淨低嘅 `startTalk()` no-op guard
+    本身**，全部刪走，成個檔案而家淨係得 `toggleCameraFullscreen()`。
+  - 前端 `app-camera.js`：綁住 `talkFab` 嘅 4 個 pointer event listener、
+    Space鍵 keydown/keyup 分支、3 處 `if (talkActive) stopTalk();` cleanup
+    guard、`talkFab` 嘅 element lookup，全部刪走。
+  - 前端 `app-log.js`：`disableTalkFabIfInsecureContext()` 刪走（`talkFab`
+    元素本身已經唔存在，冇嘢可以 disable）。
+  - 前端 `index.html`：`talkFab`（🎤）呢粒 UI 掣本身刪走。
+  - 後端 `MainActivity.java`：`audio/testtone`、`audio/diagnose`、
+    `audio/play/start`、`audio/play/stop` 四個 API endpoint、
+    `/upload/audio` handler（`handleUpload()`）、`releaseMicForAudioIo()`
+    helper，全部刪走；`HttpServer` constructor 嘅 `RawUploadHandler` 改傳
+    `null`（`HttpServer` 本身對 `null` 有 guard）。
+  - 後端：**`AudioPlaybackController.java` 成個檔案刪走**——上一輪清理曾經
+    以為呢個 class 嘅 HTTP endpoint 係「獨立可用嘅 API surface」而保留低，
+    但成個 project 冇任何文檔/客戶端會咁樣用，實際上都係死 code，呢輪一併
+    清走。
+  - 後端 `LynxController.java`：`isSharedHardwarePath()` 入面殘留緊
+    `audio/testtone`/`audio/diagnose`/`audio/play/` 嘅路由判斷（前一輪清理
+    漏咗嘅一處）都已經刪走。
+  - 連帶支援呢個功能嘅 HTTPS/TLS（`SelfSignedCert.java`/`TlsSupport.java`）
+    之前已經整套刪走（見上面「HTTPS / 麥克風」一節）。
+  - 成套清理之後，`app-mic.js`/`app-camera.js`/`app-log.js`/`index.html`/
+    `MainActivity.java`/`LynxController.java`/`HttpServer.java` 已經重新用
+    `node --check`（JS）同去除 comment/string 之後嘅大括號/括號平衡驗證
+    （Java）確認，加埋一個自動化交叉比對腳本（top-level function/變數定義
+    vs 全 project 引用次數）掃描確認冇再殘留任何死引用。
 - 「語音」分頁之前有過一組「Mic 擁有權測試」實驗性掣（`speech/start_recording`/
   `speech/stop_recording`，對應 `ISpeechInterface.startRecording()`/
   `stopRecording()`），連同 `MainActivity.registerDynamicReceiver()` 用嚟收集
