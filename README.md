@@ -101,6 +101,22 @@ open-lynx/
   obstacle）事件監聽同紫色 LED 觸發指示邏輯，源自機身確實會發送
   `com.ubtechinc.sonar.distance` broadcast；但對應嘅設定/圖表 UI 未接駁（前端
   冇觸發距離設定介面，圖表 canvas 都未加入頁面），實際運作狀況未完整驗證。
+- 電量變化都會經 WebSocket 推送一個 `battery` event（由電量 broadcast
+  receiver 觸發），但前端冇對應嘅顯示元素（`batteryOut`），推送咗都冇畫面
+  反映——同上面聲納嗰項一樣，屬於前端 UI 未接駁嘅半制品狀態，唔屬於死 code
+  （因為觸發來源同底層邏輯係真實運作緊嘅）。
+
+**2026-08 死 code 清理**：曾經有一批完整實作但前端完全冇任何 UI/引用嘅 HTTP
+endpoint——`audio/ringtones/list`、`audio/ringtones/play`、
+`audio/ringtones/play_by_title`、`audio/ringtones/stop`（原本係俾一個已經
+移除嘅 Blockly 頁用）、`audio/volume/get`、`audio/volume/set`、
+`wifi/status`、`bt/status`、`battery/status`、`led/mouth/set`（同前端實際
+用嘅 `led/mouth/on`/`off`/`breath` 唔同名，係另一組冇被用嘅 case）。已經全部
+刪走，連同淨係俾呢批 endpoint 用嘅 `wifiStatus()`/`btStatus()` helper method
+同 `BluetoothAdapter` 呢個 unused import。`playRingtoneUri()`/
+`findRingtoneByTitle()`/`stopRingtonePlayback()`/`MouthLedData` 呢批共用
+helper 本身冇刪——佢哋仍然俾快門聲、動作停止音效、PIR 警示音效、TTS 咀部
+LED 同步呢啲仍然生效嘅功能用緊。
 
 ## AIDL 參考
 

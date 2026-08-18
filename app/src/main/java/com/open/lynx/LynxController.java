@@ -195,11 +195,7 @@ public class LynxController {
      *  AIDL backend the browser has selected - not implemented in LynxRobotApi/AlphaRobotApi
      *  at all, so unconditionally deferred to sharedHardware (see its javadoc). */
     private static boolean isSharedHardwarePath(String path) {
-        return path.startsWith("camera/")
-                || path.startsWith("audio/volume/") || path.startsWith("audio/ringtones/")
-                || path.startsWith("accelerometer/") || path.equals("wifi/status")
-                || path.equals("bt/status") || path.equals("battery/status")
-                || path.equals("led/mouth/set");
+        return path.startsWith("camera/") || path.startsWith("accelerometer/");
     }
 
     /** Routes "/api/lynx/<name>" calls. Runs on an HttpServer worker thread. */

@@ -3,7 +3,6 @@ package com.open.lynx;
 import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
-import android.bluetooth.BluetoothAdapter;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -721,20 +720,19 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     // 2026-08 新增 (修 bug): 之前 playRingtoneUri() 每次都開一個全新、完全冇留低
     // reference 嘅 MediaPlayer, fire-and-forget, 播完/出錯先自己 release —— 呢個
-    // 做法有兩個問題: (1) 用家喺個 ringtone 未播完之前撳多次「播放」(或者 Blockly
-    // 個「例子 5」撳多過一次執行), 就會有多個 MediaPlayer 同時各自播緊, 聲音疊埋
-    // 一齊, 聽落好似「唔停咁響」; (2) 完全冇任何方法可以由外面 (前端「停止播放」
-    // 掣) 中斷佢, 一定要等成首歌/鈴聲自然播完。修法: 用呢個 field 記住「依家播緊
-    // 嗰個」MediaPlayer, 每次開新嘅之前先停舊嗰個, 並且加返
-    // audio/ringtones/stop 呢個 endpoint 俾前端隨時中斷。
+    // 做法有兩個問題: (1) 短時間內連續觸發 (例如連續影相觸發快門聲), 就會有多個
+    // MediaPlayer 同時各自播緊, 聲音疊埋一齊, 聽落好似「唔停咁響」; (2) 完全冇
+    // 任何方法可以中途停低佢, 一定要等成首歌/鈴聲自然播完。修法: 用呢個 field
+    // 記住「依家播緊嗰個」MediaPlayer, 每次開新嘅之前先停舊嗰個, 並且透過
+    // stopRingtonePlayback() 喺其他情況 (例如切換動作、App 銷毀) 隨時中斷。
     private android.media.MediaPlayer currentRingtonePlayer;
 
     /** Shared playback: STREAM_MUSIC (see playStopCue()'s javadoc for why not a plain
      *  Ringtone.play()). Stops/releases whatever ringtone was previously playing before
-     *  starting the new one, and keeps a reference so audio/ringtones/stop (or the next
-     *  call to this method) can interrupt it early instead of only ever letting it run
-     *  to completion. No-ops silently if uri is null (title lookup found nothing on this
-     *  device). */
+     *  starting the new one, and keeps a reference so stopRingtonePlayback() (or the
+     *  next call to this method) can interrupt it early instead of only ever letting it
+     *  run to completion. No-ops silently if uri is null (title lookup found nothing on
+     *  this device). */
     private synchronized void playRingtoneUri(android.net.Uri uri) {
         stopRingtonePlaybackLocked();
         if (uri == null) {
@@ -829,12 +827,12 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     /** Same as findRingtoneByTitle(String) but restricted to a single RingtoneManager
-     *  type (TYPE_RINGTONE / TYPE_NOTIFICATION) - used by "audio/ringtones/play_by_title"
-     *  so a phone-ringtone lookup can never accidentally match a notification sound (or
-     *  vice versa) that happens to share the same title. Uses getCachedRingtoneManager()
-     *  (see its javadoc) instead of `new RingtoneManager(this)` per call - the previous
-     *  per-call instantiation leaked a Cursor every time this ran, since nothing ever
-     *  released it (Android's RingtoneManager has no close()/release() of its own to call). */
+     *  type (TYPE_RINGTONE / TYPE_NOTIFICATION) - lets a lookup be scoped to avoid
+     *  accidentally matching a sound of the wrong type that happens to share the same
+     *  title. Uses getCachedRingtoneManager() (see its javadoc) instead of
+     *  `new RingtoneManager(this)` per call - the previous per-call instantiation
+     *  leaked a Cursor every time this ran, since nothing ever released it (Android's
+     *  RingtoneManager has no close()/release() of its own to call). */
     private android.net.Uri findRingtoneByTitle(String title, int rmType) {
         android.media.RingtoneManager manager = getCachedRingtoneManager(rmType);
         android.database.Cursor cursor = manager.getCursor();
@@ -1605,26 +1603,15 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     /**
-     * Answers plain-Android hardware endpoints ("camera/...", "audio/...",
-     * "wifi/status", "bt/status", "accelerometer/...") that go through neither
-     * LynxRobotApi nor any AIDL backend - the same physical camera/mic/speaker/
-     * Wi-Fi/accelerometer exist on this hardware regardless of firmware. Reached
+     * Answers plain-Android hardware endpoints ("camera/...", "accelerometer/...")
+     * that go through neither LynxRobotApi nor any AIDL backend - the same physical
+     * camera/accelerometer exist on this hardware regardless of firmware. Reached
      * either directly (no-prefix legacy path) or via LynxController's
      * sharedHardware fallback (see isSharedHardwarePath() there). Runs on an
      * HttpServer worker thread.
      */
     private HttpServer.ApiResponse handleSharedHardwareApi(String path, Map<String, String> query, String method, String body) {
         switch (path) {
-            case "led/mouth/set": {
-                if ("off".equals(queryOrDefault(query, "preset", ""))) {
-                    boolean ok = MouthLedData.off().apply();
-                    return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
-                }
-                int speed = Integer.parseInt(queryOrDefault(query, "speed", "0"));
-                boolean ok = MouthLedData.breathing(speed).apply();
-                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
-            }
-
             // -- Head / misc ---------------------------------------------------------------
 
             case "camera/snapshot": {
@@ -1663,124 +1650,6 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"requestedWidth\":" + w
                         + ",\"requestedHeight\":" + h + "}");
             }
-
-            // -- System ringtones/notification sounds: exposes every ringtone Android
-            // knows about (via RingtoneManager, same mechanism findRingtoneByTitle()
-            // above already uses to look up "Proxima"/"Sirrah" by name) as a numbered
-            // list, so the Blockly page can offer a dropdown without hardcoding titles
-            // that vary by OEM/Android version. "list" returns titles+type; "play"
-            // takes the numbered index back and plays it through the same STREAM_MUSIC
-            // MediaPlayer path as playRingtoneUri() (so it follows the media volume
-            // slider, not the separate ringer/notification volume). -------------------
-            case "audio/ringtones/list": {
-                String type = queryOrDefault(query, "type", "ringtone");
-                int rmType = "notification".equals(type)
-                        ? android.media.RingtoneManager.TYPE_NOTIFICATION
-                        : android.media.RingtoneManager.TYPE_RINGTONE;
-                // 2026-08 更新 (修 bug): 改用 getCachedRingtoneManager() 唔再逐次
-                // new RingtoneManager 即用即棄 —— 見 findRingtoneByTitle() 上面
-                // 嗰個 cache function 嘅 javadoc, 呢度係同一種 cursor 洩漏, 一齊修。
-                android.media.RingtoneManager manager = getCachedRingtoneManager(rmType);
-                android.database.Cursor cursor = manager.getCursor();
-                StringBuilder sb = new StringBuilder("{\"ok\":true,\"type\":\"" + jsonSafe(type) + "\",\"sounds\":[");
-                int position = 0;
-                boolean first = true;
-                while (cursor.moveToNext()) {
-                    String title = cursor.getString(android.media.RingtoneManager.TITLE_COLUMN_INDEX);
-                    if (!first) sb.append(",");
-                    first = false;
-                    sb.append("{\"index\":").append(position).append(",\"title\":\"")
-                            .append(jsonSafe(title == null ? "" : title)).append("\"}");
-                    position++;
-                }
-                sb.append("]}");
-                return HttpServer.ApiResponse.ok(sb.toString());
-            }
-            case "audio/ringtones/play": {
-                String type = queryOrDefault(query, "type", "ringtone");
-                int index = Integer.parseInt(require(query, "index"));
-                int rmType = "notification".equals(type)
-                        ? android.media.RingtoneManager.TYPE_NOTIFICATION
-                        : android.media.RingtoneManager.TYPE_RINGTONE;
-                // 2026-08 更新 (修 bug): 同上, 改用 cached manager。
-                android.media.RingtoneManager manager = getCachedRingtoneManager(rmType);
-                android.net.Uri uri;
-                try {
-                    uri = manager.getRingtoneUri(index);
-                } catch (Exception e) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"invalid index\"}");
-                }
-                if (uri == null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"sound not found\"}");
-                }
-                playRingtoneUri(uri);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-
-            // 2026-08 新增: 用 title 揾鈴聲, 唔再用 audio/ringtones/list 個 numbered
-            // index (見上面 findRingtoneByTitle() 嘅 javadoc: cursor position 唔保證
-            // 跨機一致, 因為 RingtoneManager 內部排序邏輯唔一定同 adb content query
-            // 手動加 --sort 果個排序一樣)。Blockly 頁依家內嵌一份靜態 title 清單
-            // (由實機 adb content query 走一次抓返嚟, 見 blockly-actions-data.js
-            // 隔籬嘅 blockly-ringtone-data.js), 揀咗個 title 直接送呢個 API, 用返
-            // findRingtoneByTitle() 呢個已經俾 playStopCue()/playShutterCue() 用緊、
-            // 驗證過穩陣嘅「查 title 過 Uri」機制, 完全唔使理 index 排序呢個問題。
-            case "audio/ringtones/play_by_title": {
-                String type = queryOrDefault(query, "type", "ringtone");
-                String title = require(query, "title");
-                int rmType = "notification".equals(type)
-                        ? android.media.RingtoneManager.TYPE_NOTIFICATION
-                        : android.media.RingtoneManager.TYPE_RINGTONE;
-                android.net.Uri uri = findRingtoneByTitle(title, rmType);
-                if (uri == null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"sound not found\"}");
-                }
-                playRingtoneUri(uri);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-
-            // 2026-08 新增: 停止依家播緊嘅系統鈴聲/通知聲 (play / play_by_title 兩個
-            // endpoint 播嗰個), 對應 Blockly「例子 5」個「停止播放」掣。
-            case "audio/ringtones/stop": {
-                stopRingtonePlayback();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-
-            // -- Media volume: STREAM_MUSIC, same stream the +/- gesture buttons and
-            // TTS playback/ringtones all use (see registerGestureController()/
-            // startVolumeRepeat() above) - so this slider and the physical +/- pads
-            // stay in sync with each other. -------------------------------------------
-            case "audio/volume/get": {
-                int max = audioManager != null
-                        ? audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) : 0;
-                int cur = audioManager != null
-                        ? audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) : 0;
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"volume\":" + cur
-                        + ",\"max\":" + max + "}");
-            }
-            case "audio/volume/set": {
-                if (audioManager == null) {
-                    return HttpServer.ApiResponse.error("AudioManager not available");
-                }
-                int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                int vol = Integer.parseInt(require(query, "level"));
-                vol = Math.max(0, Math.min(max, vol));
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, vol, 0);
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"volume\":" + vol + ",\"max\":" + max + "}");
-            }
-
-            case "battery/status":
-                return HttpServer.ApiResponse.ok("{\"ok\":true,"
-                        + "\"level\":" + lastBatteryLevel + ","
-                        + "\"scale\":" + lastBatteryScale + ","
-                        + "\"charging\":" + lastBatteryCharging + ","
-                        + "\"status\":\"" + lastBatteryStatus + "\"}");
-
-            // -- Wi-Fi / Bluetooth: standard Android framework, not SDK-gated. -----------
-            case "wifi/status":
-                return wifiStatus();
-            case "bt/status":
-                return btStatus();
 
             case "accelerometer/set": {
                 final boolean on = Boolean.parseBoolean(require(query, "on"));
@@ -2047,40 +1916,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         return controller.getLastFrame();
     }
-
-    private HttpServer.ApiResponse wifiStatus() {
-        try {
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-            boolean enabled = wm.isWifiEnabled();
-            String ssid = "";
-            int ipInt = 0;
-            if (wm.getConnectionInfo() != null) {
-                ssid = wm.getConnectionInfo().getSSID();
-                ipInt = wm.getConnectionInfo().getIpAddress();
-            }
-            return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled
-                    + ",\"ssid\":\"" + jsonSafe(ssid) + "\",\"ip\":\""
-                    + Formatter.formatIpAddress(ipInt) + "\"}");
-        } catch (Exception e) {
-            return HttpServer.ApiResponse.error(String.valueOf(e.getMessage()));
-        }
-    }
-
-    private HttpServer.ApiResponse btStatus() {
-        try {
-            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-            if (adapter == null) {
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"available\":false}");
-            }
-            boolean enabled = adapter.isEnabled();
-            String name = adapter.getName();
-            return HttpServer.ApiResponse.ok("{\"ok\":true,\"available\":true,\"enabled\":" + enabled
-                    + ",\"name\":\"" + jsonSafe(name) + "\"}");
-        } catch (Exception e) {
-            return HttpServer.ApiResponse.error(String.valueOf(e.getMessage()));
-        }
-    }
-
 
     private static String require(Map<String, String> query, String key) {
         String v = query.get(key);
