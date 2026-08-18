@@ -131,15 +131,15 @@ public class RobotEventReceiver extends BroadcastReceiver {
                     break;
                 }
                 case RobotWireConstants.CHEST_ACTION: {
-                    // 2026-08 更新: 之前假設 sonar 讀數經呢個全域 broadcast 送 -
-                    // 反編譯官方 UBTech alpha2demo.apk (firmware 1.1.1.14) 之後證實
-                    // 呢個假設錯咗。Demo 自己個 receiver (ActionMainActivity$6)
-                    // 對呢個 action 淨係將 extra "value" (byte[]) 包做
-                    // Alpha2ProtocolPacket 之後 Log.d 個 getmCmd() 做 debug, 完全冇
-                    // 用嚟顯示 sonar 距離。真正嘅 sonar 事件係下面獨立嘅
-                    // RobotWireConstants.SONAR_DISTANCE_ACTION case, 保留呢度純粹做輔助
-                    // debug (可以睇到機身內部 raw command byte 嘅時序), 唔再指望
-                    // 佢係 sonar 嘅來源。
+                    // 2026-08 更新: 呢個 App 之前一度誤以為呢個全域 broadcast 帶住
+                    // sonar (超聲波避障) 讀數 - 反編譯官方 UBTech alpha2demo.apk
+                    // (firmware 1.1.1.14) 之後證實呢個假設錯咗 (demo 自己嗰個
+                    // receiver 淨係將 extra "value" 包做 packet 之後 log 做 debug,
+                    // 完全冇用嚟顯示 sonar 距離), 而且 Lynx 呢部機根本冇心口超聲波
+                    // 感應硬件, 相關 sonar_obstacle 事件/LED 邏輯已經喺 2026-08
+                    // 死 code 清理移除。淨低嘅 chest_broadcast_debug 純粹保留做
+                    // debug (可以睇到機身內部 raw command byte 嘅時序), 心口 mute
+                    // 鍵掃描（下面）仍然生效。
                     EventBus.get().publish("chest_broadcast_debug",
                             "{\"action\":\"" + action + "\",\"extras\":" + bundleToJson(intent.getExtras()) + "}");
 
@@ -159,8 +159,8 @@ public class RobotEventReceiver extends BroadcastReceiver {
                     // 確認 Android SDK 傳落嚟嘅 "value" extra 陣列, 個 -111 (0x91)
                     // 呢個 byte 究竟排喺陣列邊個 index (SDK 可能有剝走/唔剝走
                     // firmware wire frame 嘅 f8 8f 08 00 00 呢段 header, 或者仲有
-                    // 其他包裝) - 對比 handleChestObstacleFrame() 用 bytes[0] 判斷
-                    // sonar (-127) 個做法, 兩個 callback 未必用緊同一種 trim 方式。
+                    // 其他包裝) - 一開始用 bytes[0] 判斷單一 byte 位置嘅做法睇落唔夠
+                    // 穩陣。
                     // 為避免再靠估 index 錯一次, 呢度改為掃描成個陣列, 唔理位置,
                     // 只要陣列入面出現過 -111 就當撳咗。已核對呢部機兩份 logcat
                     // 見過嘅全部 raw wire frame (cmd -115/-111/-109/-128 對應嘅
@@ -176,25 +176,6 @@ public class RobotEventReceiver extends BroadcastReceiver {
                             }
                         }
                     }
-                    break;
-                }
-                case RobotWireConstants.SONAR_DISTANCE_ACTION: {
-                    // 2026-08 新增: 反編譯官方 UBTech alpha2demo.apk (firmware
-                    // 1.1.1.14) 確認 - sonar 讀數真正經呢個獨立 broadcast 送出, extra
-                    // 已經係 firmware parse 好嘅 int (SONAR_DISTANCE_EXTRA =
-                    // "sonar_distance"), 唔使自己再解 raw wire frame。Demo 自己個
-                    // UI (ActionMainActivity$7) 用 intent.getIntExtra(key, 0) 讀,
-                    // 0 或負數當「冇讀數/超出範圍」顯示做 "INF" - 呢度跟返同一個假設。
-                    // 呢個值究竟係咪已經係 cm 未經 100% 證實 (demo 只係直接印出嚟,
-                    // 冇做任何換算), 但 enableSonar() 送出去嘅 config 第二個 param
-                    // byte (40) 睇落好似係 cm 門檻, 兩者單位一致嘅可能性高。
-                    int distanceCm = intent.getIntExtra(RobotWireConstants.SONAR_DISTANCE_EXTRA, -1);
-                    boolean triggered = distanceCm > 0 && distanceCm <= MainActivity.getSonarThresholdCm();
-                    EventBus.get().publish("sonar_obstacle",
-                            "{\"distanceCm\":" + distanceCm
-                                    + ",\"thresholdCm\":" + MainActivity.getSonarThresholdCm()
-                                    + ",\"triggered\":" + triggered + "}");
-                    MainActivity.onSonarDistanceReceived(distanceCm, triggered);
                     break;
                 }
                 case "com.ubtechinc.services.stoptts": {

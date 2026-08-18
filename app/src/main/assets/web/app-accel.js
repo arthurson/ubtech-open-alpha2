@@ -1,5 +1,5 @@
 // OpenLynx — client logic (app-accel.js)
-// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: 加速度計/聲納圖表。
+// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: 加速度計圖表 + PIR 指示燈。
 // 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
 // <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
 
@@ -14,16 +14,6 @@
 const ACCEL_HISTORY_LEN = 150;
 const ACCEL_RANGE = 12; // ±12 m/s^2 covers gravity (±9.8) plus headroom for motion
 let accelHistory = []; // [{x,y,z}, ...], oldest first
-
-// Sonar obstacle history, driven by the "sonar_obstacle" WebSocket event (fired by
-// MainActivity#handleChestObstacleFrame whenever a CHES_SEND_OBSTACLE frame arrives).
-// Plotted as a step chart: 1 = triggered, 0 = clear, alongside the current threshold
-// as a reference line so you can visually confirm the reading matches what the slider
-// requested.
-const SONAR_HISTORY_LEN = 150;
-let sonarHistory = []; // [{triggered: bool}, ...], oldest first
-let sonarThresholdCm = 30; // mirrors the slider; kept as its own var since configureSonar()
-                            // updates it eagerly on release, ahead of any server round-trip
 
 // PIR: fed by the "pir_state" WebSocket event, which RobotEventReceiver.java publishes
 // from the com.ubtechinc.services.Action.PIR_STATE broadcast (see that file's comment) -
@@ -84,72 +74,6 @@ function onAccelSample(data) {
     accelHistory.shift();
   }
   drawAccelChart();
-}
-
-function drawSonarChart() {
-  const canvas = document.getElementById("sonarChart");
-  if (!canvas) return;
-  const cssWidth = canvas.clientWidth || 900;
-  const cssHeight = canvas.clientHeight || 160;
-  const dpr = window.devicePixelRatio || 1;
-  if (canvas.width !== cssWidth * dpr || canvas.height !== cssHeight * dpr) {
-    canvas.width = cssWidth * dpr;
-    canvas.height = cssHeight * dpr;
-  }
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const w = cssWidth, h = cssHeight;
-  ctx.clearRect(0, 0, w, h);
-
-  // Step chart: y=0 (bottom) = clear, y=1 (top) = triggered.
-  const topY = h * 0.15, bottomY = h * 0.85;
-
-  // Gridlines at clear/triggered levels for reference.
-  ctx.strokeStyle = "#e2e6ec";
-  ctx.lineWidth = 1;
-  [topY, bottomY].forEach(function (py) {
-    ctx.beginPath();
-    ctx.moveTo(0, py);
-    ctx.lineTo(w, py);
-    ctx.stroke();
-  });
-
-  // Threshold reference line (dashed), labelled with the current cm setting - purely
-  // informational since the actual trigger/clear line comes back from the sensor
-  // itself, not computed client-side.
-  ctx.save();
-  ctx.strokeStyle = "#a855f7";
-  ctx.setLineDash([4, 4]);
-  ctx.lineWidth = 1.5;
-  const midY = (topY + bottomY) / 2;
-  ctx.beginPath();
-  ctx.moveTo(0, midY);
-  ctx.lineTo(w, midY);
-  ctx.stroke();
-  ctx.restore();
-  ctx.fillStyle = "#a855f7";
-  ctx.font = "11px sans-serif";
-  ctx.fillText("門檻 " + sonarThresholdCm + " cm", 6, midY - 6);
-
-  if (sonarHistory.length < 2) return;
-
-  ctx.strokeStyle = "#db2777";
-  ctx.lineWidth = 1.8;
-  ctx.beginPath();
-  sonarHistory.forEach(function (sample, i) {
-    const px = (i / (SONAR_HISTORY_LEN - 1)) * w;
-    const py = sample.triggered ? topY : bottomY;
-    if (i === 0) {
-      ctx.moveTo(px, py);
-    } else {
-      // Step (not diagonal) transitions: draw the horizontal segment at the previous
-      // level up to this sample's x, then jump vertically if the state changed.
-      const prevPy = sonarHistory[i - 1].triggered ? topY : bottomY;
-      ctx.lineTo(px, prevPy);
-      ctx.lineTo(px, py);
-    }
-  });
-  ctx.stroke();
 }
 
 function drawAccelChart() {

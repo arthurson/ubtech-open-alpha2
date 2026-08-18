@@ -103,8 +103,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     // Lynx PIR alert cue - "Heaven" 係 Android 內置系統鈴聲標題, 同 STOP_CUE/SHUTTER_CUE
     // 一樣做法 (lazy lookup by title, cache 埋個 content:// Uri)。播放時機見
     // registerPirAlertListener() - PIR_STATE broadcast (RobotEventReceiver.java) 一到
-    // triggered=true 就即刻播, triggered=false 即刻停 (跟 sonar 個 purple LED 一樣, 唔
-    // 等成首歌播完)。
+    // triggered=true 就即刻播, triggered=false 即刻停 (即停即播, 唔等成首歌播完)。
     private static final String PIR_ALERT_RINGTONE_TITLE = "Heaven";
     private android.net.Uri pirAlertUri;
     private boolean pirAlertLookupDone = false;
@@ -157,15 +156,6 @@ public class MainActivity extends Activity implements SensorEventListener {
     private volatile boolean lastBatteryCharging = false;
     private volatile String lastBatteryStatus = "unknown";
 
-    // Chest sonar trigger threshold in cm, as last set via servo/sonar. Assumption
-    // (unverified on real hardware): chest_configureSonar()'s distance byte IS the
-    // threshold in cm directly (0-100 fits a single byte with room to spare) - kept
-    // here purely so the obstacle-triggered purple-LED logic below knows what
-    // threshold is currently active, and so the front-end chart can draw it as a
-    // reference line against live sonar readings.
-    private volatile int sonarThresholdCm = 30;
-    private volatile boolean sonarLedActive = false;
-
     // Android system TTS (a third engine option alongside the robot's own Nuance/
     // iFlytek, used directly rather than via ISpeechInterface). No voice selection -
     // voice choice is only meaningful for iFlytek's named voices.
@@ -182,46 +172,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     // default (0-5000 range, default 0).
     private static final int TTS_MOUTH_LED_SPEED = 0;
 
-    // 2026-08 新增: RobotEventReceiver 冇 constructor/field 攞到 outer
-    // MainActivity instance (佢一直淨係經 EventBus 靜態方法送 event, 唔識
-    // MainActivity 本身), 但 sonar_obstacle 嘅 LED 指示邏輯 (applyObstacleIndicator,
-    // sonarThresholdCm) 全部係 instance-level, 靠住 robot 呢個 AIDL 連線。加一個
-    // static instance reference, 喺 onCreate/onDestroy set/clear, 等
-    // RobotEventReceiver 可以經 MainActivity.getSonarThresholdCm() /
-    // MainActivity.onSonarDistanceReceived() 呢兩個 static bridge 方法接駁返去
-    // instance 邏輯, 而唔使將 RobotEventReceiver 個 constructor 簽名擴大 (咁樣會
-    // 影響埋成個 registerDynamicReceiver() 個 new RobotEventReceiver() call 位)。
-    private static volatile MainActivity sInstance;
-
-    /** SONAR_DISTANCE_ACTION 觸發嘅 broadcast 未到之前, RobotEventReceiver 都要知
-     *  依家個門檻先計到 "triggered"。冇 instance (例如 Activity 未起好/已destroy
-     *  中間嗰段窗口) 就當冇門檻, 唔會誤判 triggered。 */
-    static int getSonarThresholdCm() {
-        MainActivity m = sInstance;
-        return m != null ? m.sonarThresholdCm : 30;
-    }
-
-    /** RobotEventReceiver 收到 SONAR_DISTANCE_ACTION 之後嘅入口, 負責將
-     *  distanceCm/triggered 接駁去 applyObstacleIndicator() (5-mic + mouth LED
-     *  雙路徑, 見該方法 javadoc)。同 handleChestObstacleFrame() 一樣, 只喺
-     *  triggered 狀態實際改變嗰下先重新驅動 LED, 避免每秒 ~1 幀嘅重複讀數不斷
-     *  重送同一個 LED command。 */
-    static void onSonarDistanceReceived(int distanceCm, boolean triggered) {
-        MainActivity m = sInstance;
-        if (m == null) {
-            return;
-        }
-        if (triggered == m.sonarLedActive) {
-            return;
-        }
-        m.sonarLedActive = triggered;
-        m.applyObstacleIndicator(triggered);
-    }
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        sInstance = this;
         installCrashRestartHandler();
 
         registerDynamicReceiver();
@@ -513,24 +466,16 @@ public class MainActivity extends Activity implements SensorEventListener {
         filter.addAction("com.ubtechinc.services.Action.ACTION_STOP");
         filter.addAction("com.ubtechinc.services.Action.ROBOT_INTERRUPTED");
         filter.addAction("com.ubtechinc.services.stoptts");
-        // 2026-08 新增: 實機 (firmware 1.1.1.14) 證實 sonar 讀數唔會經
-        // IAlpha2SerialPortService.onListenSerialPortRcvData() 送到 - app 自己
-        // registerSerialPortRcvListener() 淨係收到 config command 嘅 2-byte ack
-        // "04 00"。CHEST_ACTION 呢個 broadcast 都收到, 但反編譯官方
-        // alpha2demo.apk 後證實佢淨係印機身內部 raw command byte 做 debug log
-        // (getmCmd()), 唔係真正嘅 sonar 讀數路徑。真正生效嘅係下面獨立嘅
-        // SONAR_DISTANCE_ACTION - 保留 CHEST_ACTION filter 純粹做輔助 debug 用
-        // (RobotEventReceiver 個 case 依然會 dump 佢嘅 extras, 對比返兩條路徑
-        // 嘅時序有用), 唔再指望佢係主要事件來源。
+        // 2026-08 新增: 心口 mute 鍵測試 (見 registerChestMuteKeyTestListener()/
+        // RobotEventReceiver 個 CHEST_ACTION case) 靠住呢個 broadcast, extra
+        // "value" (byte[]) 入面出現 -111 (0x91) 就代表撳咗。呢個 filter 保留純粹
+        // 因為呢個測試功能仲用緊, 唔係為咗任何 sonar/避障相關嘅嘢 (呢部機冇心口
+        // 超聲波感應硬件, 相關舊 code 已經喺 2026-08 死 code 清理移除)。
         filter.addAction(RobotWireConstants.CHEST_ACTION);
         // 2026-08 新增: ⚠️ 未經真機驗證 (見 RobotEventReceiver 呢個 case 嘅
         // comment) - 反編譯官方 alpha2services 3.0.0.2 APK 逆出嚟嘅 PIR 通知
         // broadcast, 淨係喺 SecurityCameraUtil 監控開關開緊嗰陣先會發出。
         filter.addAction("com.ubtech.securityCamera.pirStatus");
-        // 官方 alpha2demo.apk (firmware 1.1.1.14) 反編譯確認: sonar 讀數經呢個
-        // 獨立 broadcast 送出, extra 已經係 parse 好嘅 int, 唔使自己再解 raw
-        // wire frame。見 RobotWireConstants.SONAR_DISTANCE_ACTION 個 comment。
-        filter.addAction(RobotWireConstants.SONAR_DISTANCE_ACTION);
         registerReceiver(dynamicReceiver, filter);
     }
 
@@ -984,8 +929,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 多一個 BroadcastReceiver)。triggered=true 一到即刻長開 (常亮, 唔閃) 紅色頭+眼
     // LED, 同時播 Heaven 鈴聲; triggered=false 一到即刻熄燈同停聲 (唔再轉綠燈 - 淨係
     // 熄, 因為紅燈係「警示」, 冇偵測嗰陣唔需要另一個常亮顏色標示狀態) - 唔等成首鈴聲
-    // 播完, 跟 sonar 個 purple LED (setHeadEyeLedLong()/handleChestObstacleFrame())
-    // 一樣即停即停嘅做法。呢個反應受 pirAlertEnabled 呢個獨立開關控制 (見 index.html
+    // 播完, 即停即停嘅做法。呢個反應受 pirAlertEnabled 呢個獨立開關控制 (見 index.html
     // 「PIR 感應器」card 嘅「警示反應」toggle/lynxSetPirAlertEnabled()) - 同
     // 「sys/pir」呢個感應器硬件開關本身係兩件事: 就算冇開呢個 toggle, PIR_STATE
     // broadcast 都會繼續收到同轉發去前端, 淨係唔會觸發 LED/聲。
@@ -1048,8 +992,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 真係收到心口 mute 鍵 (chest cmd = -111) 嘅 broadcast - 呢個唔係最終功能,
     // 純粹一個「有冇反應」嘅測試訊號 (見 RobotEventReceiver 嗰個 case 嘅 comment)。
     // 官方 firmware 呢粒鍵本身完全冇連任何 LED, 呢度嘅紫燈完全係呢個專案自己加,
-    // 同 sonar obstacle 用嘅係同一個 setHeadEyeLedLong(5, 9) helper (5=紫,
-    // 9=最光, 見 applyObstacleIndicator() 個 comment)。
+    // 見 applyPurpleLedIndicator() 個 comment。
     private volatile boolean chestMuteKeyLedOn = false;
 
     private void registerChestMuteKeyTestListener() {
@@ -1068,9 +1011,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                         chestMuteKeyLedOn = !chestMuteKeyLedOn;
                         try {
                             if (chestMuteKeyLedOn) {
-                                applyObstacleIndicator(true); // reuse: solid purple eye+head + mouth breathe
+                                applyPurpleLedIndicator(true);
                             } else {
-                                applyObstacleIndicator(false);
+                                applyPurpleLedIndicator(false);
                             }
                         } catch (Throwable t) {
                             Log.w(TAG, "registerChestMuteKeyTestListener: LED path failed", t);
@@ -1540,9 +1483,6 @@ public class MainActivity extends Activity implements SensorEventListener {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (sInstance == this) {
-            sInstance = null;
-        }
         stopVolumeRepeat();
         setAccelerometerEnabled(false);
         TextToSpeech tts = androidTts; // snapshot - see initAndroidTts() javadoc on why
@@ -1808,94 +1748,45 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    /** Same colour code Alpha2's old 5-mic LED path used for obstacle warnings,
-     *  reused here for LynxRobotApi.led_turnOnEye/Head - see applyObstacleIndicator(). */
-    private static final int SONAR_LED_COLOR_PURPLE = 5;
+    /** Purple LED colour code, reused from Alpha2's old 5-mic obstacle-warning LED
+     *  path for LynxRobotApi.led_turnOnEye/Head - see applyPurpleLedIndicator(). */
+    private static final int OBSTACLE_LED_COLOR_PURPLE = 5;
 
-    /** Sonar-obstacle LED indicator - solid purple eye+head LED while triggered, off
-     *  otherwise. Uses the same LynxRobotApi.led_turnOnEye/led_turnOnHead pair (and
-     *  noopLedListener()) as the PIR alert path in applyPirLedAndSound(), just with a
-     *  different colour, so the two features never fight over the LED hardware using
-     *  different APIs. Mouth LED breathing is layered on top as an always-visible
-     *  fallback in case the head board doesn't support the eye/head 5-mic-style LEDs
-     *  on a given unit (MouthLedData is plain JNI, not AIDL, so it doesn't depend on
-     *  whichever LED subsystem the eye/head call above resolves to). */
-    private void applyObstacleIndicator(boolean triggered) {
+    /** Solid purple eye+head LED while triggered, off otherwise - currently used only
+     *  by registerChestMuteKeyTestListener() as a visual "did the chest mute-key
+     *  broadcast actually fire" test signal (see that method's comment; the chest
+     *  mute key itself has no LED of its own on stock firmware). Uses the same
+     *  LynxRobotApi.led_turnOnEye/led_turnOnHead pair (and noopLedListener()) as the
+     *  PIR alert path in applyPirLedAndSound(), just with a different colour, so the
+     *  two features never fight over the LED hardware using different APIs. Mouth LED
+     *  breathing is layered on top as an always-visible fallback in case the head
+     *  board doesn't support the eye/head 5-mic-style LEDs on a given unit
+     *  (MouthLedData is plain JNI, not AIDL, so it doesn't depend on whichever LED
+     *  subsystem the eye/head call above resolves to). */
+    private void applyPurpleLedIndicator(boolean triggered) {
         try {
             if (pirLedRobot == null) {
                 pirLedRobot = new LynxRobotApi(getApplicationContext());
             }
             if (triggered) {
-                pirLedRobot.led_turnOnEye(SONAR_LED_COLOR_PURPLE, noopLedListener());
-                pirLedRobot.led_turnOnHead(SONAR_LED_COLOR_PURPLE, PIR_LED_BRIGHTNESS, noopLedListener());
+                pirLedRobot.led_turnOnEye(OBSTACLE_LED_COLOR_PURPLE, noopLedListener());
+                pirLedRobot.led_turnOnHead(OBSTACLE_LED_COLOR_PURPLE, PIR_LED_BRIGHTNESS, noopLedListener());
             } else {
                 pirLedRobot.led_turnOffEye(noopLedListener());
                 pirLedRobot.led_turnOffHead(noopLedListener());
             }
         } catch (Throwable t) {
-            Log.w(TAG, "applyObstacleIndicator: eye/head LED path failed", t);
+            Log.w(TAG, "applyPurpleLedIndicator: eye/head LED path failed", t);
         }
         try {
             if (triggered) {
-                MouthLedData.breathing(150).apply(); // fast breathing = obstacle-near cue
+                MouthLedData.breathing(150).apply(); // fast breathing = "triggered" cue
             } else {
                 MouthLedData.off().apply();
             }
         } catch (Throwable t) {
-            Log.w(TAG, "applyObstacleIndicator: mouth LED fallback failed", t);
+            Log.w(TAG, "applyPurpleLedIndicator: mouth LED fallback failed", t);
         }
-    }
-
-    /** Parses raw chest-serial receive frames looking for CHES_SEND_OBSTACLE (command
-     *  byte -127 / 0x81, per Alpha2RobotApi#chest_configureSonar javadoc), which the
-     *  chest board sends unprompted once servo/sonar has configured a trigger distance.
-     *  ASSUMPTION (unverified on real hardware, needs confirming from a logged frame):
-     *  bytes[0] is the command byte and bytes[1] is param[0], mirroring the symmetric
-     *  layout sendCommand() uses on the way out (cmd byte + param array). If real
-     *  frames turn out to carry a different header/offset, only this method needs
-     *  adjusting - the purple-LED behaviour and "sonar_obstacle" event stay the same.
-     *  On trigger (param[0] != 0): solid purple (color=5) head+eye LEDs, brightness 9.
-     *  On clear (param[0] == 0): LEDs turned off. Also published as "sonar_obstacle" so
-     *  the front-end chart can plot live triggered/clear state against the threshold
-     *  line set via servo/sonar.
-     *
-     *  2026-08 更新: 實機 (firmware 1.1.1.14) 證實呢個 0x81 幀假設完全冇撞中 -
-     *  sonar 讀數根本唔會經 IAlpha2SerialPortService 嘅 AIDL rcv callback 送到,
-     *  onListenSerialPortRcvData() 淨係收到 app 自己送出 chest_configureSonar()
-     *  嗰個 config command 嘅 2-byte ack "04 00"。中途一度誤以為 sonar 讀數會
-     *  經 "com.ubtechinc.services.chest" (RobotWireConstants.CHEST_ACTION) 呢個全域
-     *  broadcast 重新發送, 但反編譯官方 UBTech alpha2demo.apk 之後證實呢個都
-     *  係錯 - CHEST_ACTION 官方 demo 自己都淨係用嚟 log 機身內部 raw command
-     *  byte (見 RobotEventReceiver 個 CHEST_ACTION case), 唔係 sonar 讀數。
-     *  真正嘅 sonar 讀數係經另一個獨立、之前完全冇診斷到嘅 broadcast action
-     *  "com.ubtechinc.sonar.distance" (RobotWireConstants.SONAR_DISTANCE_ACTION) 送出,
-     *  extra 已經係 parse 好嘅 int (key "sonar_distance",
-     *  RobotWireConstants.SONAR_DISTANCE_EXTRA), 唔使自己再解 raw wire frame - 見
-     *  RobotEventReceiver 嗰個 SONAR_DISTANCE_ACTION case 同
-     *  MainActivity#onSonarDistanceReceived()。而且就算 0x81 幀真係經 AIDL
-     *  path 到, 實測 raw wire frame 都係 "f8 8f 0a 00 00 8b eb 04 81 05 ed" -
-     *  0x81 出現喺幀中間 (index 8), 唔係 bytes[0], 所以呢度原本嘅
-     *  offset 假設連框架格式都對唔上, 唔止係「呢部機唔行呢條路」咁簡單。
-     *  呢個方法連同佢個 0x81 假設保留低唔刪 - 留返俾第啲機身/firmware 版本,
-     *  如果真係會送 0x81-開頭嘅 AIDL rcv 幀, 呢條路徑先有意義；喺呢部機上佢
-     *  單純唔會撞到 (cmd 恒等於 4, 喺 "cmd != -127" 嗰行提早 return), 唔影響
-     *  真正生效嗰條 SONAR_DISTANCE_ACTION 路徑。 */
-    private void handleChestObstacleFrame(byte[] bytes, int len) {
-        if (bytes == null || len < 2) {
-            return;
-        }
-        int cmd = bytes[0]; // signed byte compare against -127 on purpose - CHES_SEND_OBSTACLE is negative
-        if (cmd != -127) {
-            return;
-        }
-        boolean triggered = bytes[1] != 0;
-        EventBus.get().publish("sonar_obstacle",
-                "{\"triggered\":" + triggered + ",\"thresholdCm\":" + sonarThresholdCm + "}");
-        if (triggered == sonarLedActive) {
-            return; // avoid re-sending the same LED state on every repeated frame
-        }
-        sonarLedActive = triggered;
-        applyObstacleIndicator(triggered);
     }
 
     /** Polls CameraController.getLastFrame() until a frame newer than "none yet"

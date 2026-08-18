@@ -97,10 +97,6 @@ open-lynx/
 - 冇麥克風/walkie-talkie 功能（機身麥克風收聽、瀏覽器 mic 對講）。Lynx AIDL SDK
   冇對應嘅 mic 釋放/收返方法，呢類功能喺呢個 Lynx-only 版本冇得做。
 - 純 plain HTTP，冇 HTTPS（機身瀏覽器對自簽憑證唔穩定支援，索性唔用 TLS）。
-- 狀態分頁嘅加速度計卡片附近，程式碼入面有一套完整嘅「聲納避障」（sonar
-  obstacle）事件監聽同紫色 LED 觸發指示邏輯，源自機身確實會發送
-  `com.ubtechinc.sonar.distance` broadcast；但對應嘅設定/圖表 UI 未接駁（前端
-  冇觸發距離設定介面，圖表 canvas 都未加入頁面），實際運作狀況未完整驗證。
 - 電量變化都會經 WebSocket 推送一個 `battery` event（由電量 broadcast
   receiver 觸發），但前端冇對應嘅顯示元素（`batteryOut`），推送咗都冇畫面
   反映——同上面聲納嗰項一樣，屬於前端 UI 未接駁嘅半制品狀態，唔屬於死 code
@@ -117,6 +113,18 @@ endpoint——`audio/ringtones/list`、`audio/ringtones/play`、
 `findRingtoneByTitle()`/`stopRingtonePlayback()`/`MouthLedData` 呢批共用
 helper 本身冇刪——佢哋仍然俾快門聲、動作停止音效、PIR 警示音效、TTS 咀部
 LED 同步呢啲仍然生效嘅功能用緊。
+
+另外亦刪走咗一套完全獨立嘅「聲納避障」（sonar obstacle）事件監聽同紫色 LED
+觸發指示邏輯——**Lynx 呢部機根本冇心口超聲波感應硬件**（Lynx AIDL SDK 嘅
+`ILedInterface`/`ISysService` 淨係得「胸口燈」、「胸口韌體版本」，完全冇
+任何 sonar 相關方法），呢套邏輯係之前 Alpha2 refactor 遺留低嘅殘餘（Alpha2
+專屬嘅 `chest_configureSonar()`/`Alpha2RobotApi`），連對應嘅 `sonar_obstacle`
+broadcast filter 都喺呢部機永遠唔會觸發，前後端加埋係徹底嘅死 code，唔止
+UI 未接駁咁簡單。已經刪走 `MainActivity.java`/`RobotEventReceiver.java`/
+`RobotWireConstants.java`/`app-accel.js`/`app-log.js` 入面成套相關變數、
+method、broadcast filter、WebSocket event 處理同圖表繪畫邏輯。用嚟畀心口
+mute 鍵測試功能顯示紫燈嘅 helper（改名做 `applyPurpleLedIndicator()`）本身
+保留——呢個測試功能同 sonar 冇關係，仍然生效。
 
 ## AIDL 參考
 

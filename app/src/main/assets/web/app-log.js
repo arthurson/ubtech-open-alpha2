@@ -63,14 +63,6 @@ function appendLog(msg) {
     const el = document.getElementById("batteryOut");
     if (el) el.textContent = msg.data.level + "/" + msg.data.scale + " " + (msg.data.charging ? "⚡充電中" : "") + " (" + msg.data.status + ")";
   }
-  if (msg.type === "sonar_obstacle" && msg.data) {
-    sonarThresholdCm = msg.data.thresholdCm;
-    sonarHistory.push({ triggered: !!msg.data.triggered });
-    if (sonarHistory.length > SONAR_HISTORY_LEN) {
-      sonarHistory.shift();
-    }
-    drawSonarChart();
-  }
   if (msg.type === "pir_state" && msg.data) {
     onPirState(msg.data);
   }
