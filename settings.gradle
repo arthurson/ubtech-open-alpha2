@@ -16,4 +16,3 @@ dependencyResolutionManagement {
 rootProject.name = "open-alpha2"
 include ':app'
 include ':sdk-module:ubtechalpha2robot'
-include ':sdk-module:lynxrobot'
