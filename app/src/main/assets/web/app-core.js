@@ -185,6 +185,7 @@ const I18N = {
   iflytek_test_hint: { zh: "呢個測試完全獨立於 alpha2services.apk 之外：喺 open-alpha2 自己個 process 度，用抽自原裝韌體嘅 libmsc.so + iFlytek Java class，自己起一個 SpeechRecognizer（engine_type=local）。用法：撳「初始化」→撳「開始聽」→對住機講嘢→撳「睇 log」睇識別結果。判準好簡單：整段裝置斷晒網，睇識別結果係咪空白——空白就係 offline 唔work，唔理 log 入面揀緊邊個 engine。",
                     en: "This test is fully independent of alpha2services.apk: it runs its own SpeechRecognizer (engine_type=local) inside open-alpha2's own process, using libmsc.so + the iFlytek Java classes extracted from the stock firmware. Usage: tap Init → tap Start Listening → speak → tap View Log. The test itself is simple: disconnect the device from all networks, then check whether the recognized text comes back empty — empty means offline doesn't work, regardless of which engine the log says was picked." },
   iflytek_test_init_btn: { zh: "① 初始化", en: "① Init" },
+  iflytek_test_init_dictation_btn: { zh: "①b 初始化(聽寫實驗)", en: "①b Init (Dictation Experiment)" },
   iflytek_test_start_btn: { zh: "② 開始聽", en: "② Start Listening" },
   iflytek_test_stop_btn: { zh: "停止", en: "Stop" },
   iflytek_test_destroy_btn: { zh: "銷毀", en: "Destroy" },

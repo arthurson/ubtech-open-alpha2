@@ -221,6 +221,85 @@ public final class IflytekOfflineTest {
         return sb.toString();
     }
 
+    /**
+     * [2026-08 新增] 實驗性: 測試 iFlytek local engine 完全唔用 buildGrammar()/
+     * local_grammar，睇下 common.jet (6.7MB，比一個「淨係識 call/Tom/Lucy」嘅細
+     * 語法模型大好多，大細級數更似一個通用語言模型) 本身係咪已經支援自由聽寫。
+     *
+     * 背景: Arthur 話 Vosk 試過但效果差，想留喺 iFlytek local 呢條線。上一輪
+     * 逆向 (com.ubtechinc.iflytek.speech.b.f()、成個 project 嘅 "dictation"
+     * 字眼) 顯示原廠呢個 wrapper 嘅聽寫功能全部行緊 Nuance/engine_type=cloud，
+     * 冇一條路用緊 iFlytek 做聽寫 —— 但呢個只證明「呢個 project 冇咁做」，唔證明
+     * 「SDK 本身做唔到」。libmsc.so 係 closed-source native binary，strings
+     * 搵唔到 grammar type 常數 (可能加密咗)，逆向去唔到盡，所以呢度用實驗方法
+     * 直接測: 完全唔設 local_grammar、唔 call buildGrammar()，睇 native engine
+     * 實際點回應。
+     *
+     * 呢個係獨立於 init() 之外嘅平行方法，唔會影響你已經驗證得到嘅 call.bnf
+     * grammar 比對路徑 (init() 保持不變)。用法: initDictationMode() 代替
+     * init()，然後照舊 startListening()。
+     *
+     * 三種可能結果:
+     *   1. onResult() 攞到非空文字 -> common.jet 本身支援自由聽寫，證實可行
+     *   2. onError() 報錯 (例如要求必須有 grammar) -> 證實 local engine 真係
+     *      要求 grammar，冇 buildGrammar() 就唔俾聽
+     *   3. onResult() 永遠 isEmpty=true (唔會報錯，但都攞唔到內容) -> 同你之前
+     *      喺 alpha2services.apk 見到嘅「聽寫識別無效結果」現象吻合，即係話
+     *      engine 收咗音，但識別唔到內容 (可能係 common.jet 呢份語言模型本身
+     *      詞彙覆蓋率唔夠，或者需要另一種未知嘅 setParameter 組合先開得到)
+     */
+    public static synchronized void initDictationMode(Context context) {
+        log("initDictationMode() called");
+        try {
+            SpeechUtility utility = SpeechUtility.createUtility(context, "appid=56652373");
+            if (utility == null) {
+                log("SpeechUtility.createUtility() returned null");
+                return;
+            }
+            log("SpeechUtility.createUtility() OK");
+
+            sRecognizer = SpeechRecognizer.createRecognizer(context, new InitListener() {
+                @Override
+                public void onInit(int code) {
+                    log("InitListener.onInit(" + code + ")"
+                            + (code == 0 ? " -- SUCCESS" : " -- FAILURE"));
+                }
+            });
+            if (sRecognizer == null) {
+                log("SpeechRecognizer.createRecognizer() returned null");
+                return;
+            }
+            java.io.File grammarDir = new java.io.File(context.getFilesDir(), "grammar");
+            if (!grammarDir.exists() && !grammarDir.mkdirs()) {
+                log("WARNING: failed to mkdir " + grammarDir.getAbsolutePath());
+            }
+            String asrResPath = ResourceUtil.generateResourcePath(
+                    context, ResourceUtil.RESOURCE_TYPE.assets, "asr/common.jet");
+            log("asr_res_path resolved to: " + asrResPath);
+
+            sRecognizer.setParameter("engine_type", "local");
+            sRecognizer.setParameter("engine_mode", "msc");
+            sRecognizer.setParameter("asr_res_path", asrResPath);
+            sRecognizer.setParameter("grm_build_path", grammarDir.getAbsolutePath());
+            // 特登唔設 local_grammar —— 呢個係同 init() 唯一嘅分別。
+            sRecognizer.setParameter("result_type", "json");
+            sRecognizer.setParameter("vad_bos", "4000");
+            sRecognizer.setParameter("vad_eos", "1000");
+            // 中文聽寫相關參數 (照抄原廠 com.ubtechinc.iflytek.speech.b.f() 對
+            // cloud engine 用嘅 language/accent，喺 local engine 度試下呢兩個
+            // key 會唔會生效 —— 未驗證 local engine 認唔認呢兩個 key)。
+            sRecognizer.setParameter("language", "zh_cn");
+            sRecognizer.setParameter("accent", "mandarin");
+            log("SpeechRecognizer created for DICTATION MODE, engine_type=local, "
+                    + "no buildGrammar() will be called — grammarReady forced true "
+                    + "so startListening() is allowed");
+            // initDictationMode() 冇 grammar 呢個概念，直接放行 startListening()。
+            sGrammarReady = true;
+        } catch (Throwable t) {
+            log("initDictationMode() threw: " + t);
+        }
+    }
+
     /** 開始聽。結果/錯誤全部經 RecognizerListener 記落 log。 */
     public static synchronized void startListening(Context context) {
         if (sRecognizer == null) {

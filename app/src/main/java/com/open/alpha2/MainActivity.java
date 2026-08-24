@@ -5859,6 +5859,14 @@ public class MainActivity extends Activity implements SensorEventListener {
                 IflytekOfflineTest.clearLog();
                 IflytekOfflineTest.init(getApplicationContext());
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"status\":\"init called, see /api/iflytektest/log\"}");
+            // 2026-08 新增: 平行嘅「聽寫模式」測試 (見 IflytekOfflineTest.java
+            // initDictationMode() 嘅完整 javadoc) —— 完全唔用 buildGrammar()/
+            // local_grammar，測試 common.jet 呢份 6.7MB 語言模型本身係咪已經支援
+            // 自由聽寫，唔限於 call.bnf 嗰幾個詞。
+            case "iflytektest/init-dictation":
+                IflytekOfflineTest.clearLog();
+                IflytekOfflineTest.initDictationMode(getApplicationContext());
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"status\":\"initDictationMode called, see /api/iflytektest/log\"}");
             case "iflytektest/start":
                 IflytekOfflineTest.startListening(getApplicationContext());
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"status\":\"startListening called, see /api/iflytektest/log\"}");
