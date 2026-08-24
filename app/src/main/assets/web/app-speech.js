@@ -408,3 +408,58 @@ function iflytekTestShowLog() {
     logEl.textContent = Array.isArray(lines) && lines.length ? lines.join("\n") : "(log is empty — call 初始化 first)";
   });
 }
+
+// 2026-08 新增: 複製 log 內容去 clipboard。裝置系統 WebView 係 Chromium 39
+// (2014)，navigator.clipboard (Clipboard API) 要 Chrome 66+ 先有，呢部機
+// 冇得用，所以主力用 document.execCommand("copy") 呢個舊式、廣泛支援嘅方法
+// (用一個隱藏 textarea 做中介)，navigator.clipboard 得閒先當額外嘗試。
+function iflytekTestCopyLog(btn) {
+  const logEl = document.getElementById("iflytekTestLog");
+  const text = logEl.textContent || "";
+  if (!text || text === "-") {
+    return; // 未撳過「睇 Log」，冇嘢好複製
+  }
+
+  function fallbackCopy() {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    // 避免喺畫面度閃一下/影響 scroll 位置
+    ta.style.position = "fixed";
+    ta.style.top = "-9999px";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch (e) {
+      ok = false;
+    }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  const btn2 = btn || null;
+  const originalText = btn2 ? btn2.textContent : null;
+  function flashFeedback(success) {
+    if (!btn2) return;
+    btn2.textContent = success ? t("iflytek_test_copy_log_ok") : t("iflytek_test_copy_log_failed");
+    setTimeout(function () {
+      btn2.textContent = originalText;
+    }, 1500);
+  }
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(
+      function () {
+        flashFeedback(true);
+      },
+      function () {
+        flashFeedback(fallbackCopy());
+      }
+    );
+  } else {
+    flashFeedback(fallbackCopy());
+  }
+}

@@ -190,6 +190,9 @@ const I18N = {
   iflytek_test_stop_btn: { zh: "停止", en: "Stop" },
   iflytek_test_destroy_btn: { zh: "銷毀", en: "Destroy" },
   iflytek_test_log_btn: { zh: "③ 睇 Log", en: "③ View Log" },
+  iflytek_test_copy_log_btn: { zh: "📋 複製 Log", en: "📋 Copy Log" },
+  iflytek_test_copy_log_ok: { zh: "✅ 已複製", en: "✅ Copied" },
+  iflytek_test_copy_log_failed: { zh: "❌ 複製失敗", en: "❌ Copy failed" },
 
   // -- Alpha2 speech tab (ASR engine switch buttons + dynamic status strings) --
   asr_switch_zh_btn:      { zh: "中文 (iFlytek)", en: "Chinese (iFlytek)" },
