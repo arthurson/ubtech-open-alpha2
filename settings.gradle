@@ -13,6 +13,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "lynx.open.sdk"
+rootProject.name = "open-alpha2"
 include ':app'
-include ':lynx-open-sdk'
+include ':sdk-module:ubtechalpha2robot'

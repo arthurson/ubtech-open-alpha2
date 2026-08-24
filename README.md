@@ -1,364 +1,183 @@
-# lynx.open.sdk
+# Open Alpha2
 
-一個 Android library module（`com.open.lynx`），封裝咗同 UBTech Alpha2 機械人上面
-`com.ubtechinc.alpha2services` 呢個 system app 溝通所需嘅全部 AIDL interface 同
-一層薄薄嘅 Java wrapper (`Alpha2RobotApi` 呢個 façade + 6 個 `*ServiceUtil` class)。
+`com.open.alpha2` —— 裝喺 UBTECH Alpha2 機械人本機嘅一個 Android
+App。開機自動起一個 HTTP + WebSocket server（port `8888`），提供一份網頁控制
+面板，喺同一個 WiFi 網絡任何裝置嘅瀏覽器就可以連過去操作機械人；另外仲有一個
+獨立嘅 Blockly 積木編程頁可以砌程式俾機械人行，同一個 XiaoZhi（小智）AI
+語音對話橋接。
 
-> ⚠️ **只適用於 `AlexaService` 1.2.10.5**
->
-> 呢份 SDK 全部 AIDL 簽名都係直接反編譯**呢一個特定 APK**核實返嚟：
-> package `com.ubtechinc.alpha2services`、app label **`AlexaService`**、
-> versionName **`1.2.10.5`**（versionCode 15）。冇其他版本、冇其他機械人韌體
-> 一併驗證過。唔同 versionName 嘅 `alpha2services.apk`（甚至同一個 package name
-> 底下）都可能有完全唔同嘅 method 簽名、transaction id 順序，或者根本冇某啲
-> interface——用之前請自行核對機械人／APK 嘅 versionName 是否一致，唔一致嘅話
-> 呢份 SDK 唔保證接得通，亦都唔保證用得。
+## 支援嘅機械人 / 前提
 
-呢份 README 淨係講呢個 SDK module 本身，唔包含任何示範 app、UI，或者其他組件。
+呢個 App 用嘅係 `sdk-module/ubtechalpha2robot`（package `com.ubtechinc.alpha2robot`）
+呢個 AIDL SDK module，對應 `alpha2services` v1.1.7.3.20 呢代機身韌體。
 
-## 呢個 SDK 係點確認返嚟
+其餘前提：
+- 機械人同你個瀏覽器裝置要喺同一個 WiFi 網絡。
+- 機身跑 Android 5.1.1（API 22），App 本身 `targetSdkVersion 22`、
+  `minSdkVersion 19`，`armeabi-v7a` 單一 ABI。
+- Server 用純 HTTP（`http://<機械人IP>:8888/`）——之前試過嘅自簽憑證 HTTPS
+  方案已經完全移除（見下面「已知限制」）。
 
-呢 17 個 AIDL interface 嘅每一個 method（transaction id、參數類型、方向、返回值）
-都係直接反編譯 `com.ubtechinc.alpha2services` 呢個 APK，逐個攞返 `Xxx$Stub.onTransact()`
-嘅 sparse-switch disassembly 同 `Xxx$Stub$Proxy` 嘅 marshalling code 對比核實，
-唔係憑記憶或者估估吓寫。核實方法：
+17 個 AIDL interface（連埋原本 SDK 缺失、事後補返嘅 `disableActionPlay`、
+`isActioning`、`IAlpha2BlueToothSerialPortService`）嘅完整方法清單、
+transaction id、參數語意，見 `AIDL_REFERENCE_ALPHA2.md`。
 
-- Binder 嘅 transaction id 由 method 喺 `.aidl` 入面嘅**宣告順序**決定（第一個
-  method 係 id 1，如此類推），所以 `onTransact()` 個 switch 有幾多個 case、每個
-  case 讀寫 `Parcel` 嘅順序，就係最可靠嘅 wire-format 證據——呢個對唔上，輕則
-  RemoteException，重則靜靜雞讀壞另一個 method 嘅參數。
-- 每個 interface 都逐個攞晒 `Stub.onTransact()` 嘅完整 disassembly，同（如果有
-  client 端 Proxy 嘅話）`Proxy` 入面每個 method 點樣 `writeInterfaceToken` /
-  `writeXxx` / `transact(id, ...)` / `readException` / `readXxx`，兩邊對照過先落實
-  最終簽名。
-- 有啲 method 嘅原始名喺呢個 build 已經俾 proguard 縮到得返單一字母
-  (`a`/`b`/`c`...)，冇得還原返原名；呢啲情況會喺對應嘅 `.aidl` 檔案頭部用註解
-  講明「簽名已確認，名係推斷」，唔會當成同其他已知名字一樣嘅確定事實。
+## Build 方法
 
-## Module 結構
+呢個沙盒環境冇 Android SDK/aapt2/d8，冇辦法喺度直接砌出 `.apk`。要 build 嘅話，
+喺你自己有 Android SDK 嘅機器（或者裝咗 Android Studio）跑：
+
+```bash
+cd open-alpha2
+./gradlew assembleDebug
+```
+
+輸出喺 `app/build/outputs/apk/debug/app-debug.apk`。
+
+已經包含一條 `app/debug.keystore`（標準 debug key，密碼 `android`，alias
+`androiddebugkey`），簽名用嘅，唔使你自己再生成一條。裝落機械人之前如果之前裝過
+簽名唔同嘅舊版本，記得先解除安裝，否則 Android 會因為簽名唔匹配拒絕覆蓋安裝。
+
+Opus 音頻編解碼（小智語音對話用）而家係喺 `app/src/main/cpp` 用 CMake
+自行編譯 `libeasyopus.so`，link 一份 prebuilt 嘅 `armeabi-v7a/libopus.so`
+（1.5.x 系，帶 DRED），Java 側對應 `com.theeasiestway.opus.Opus/Constants`
+係純 Java 檔案——build 唔再需要任何 `.aar`。
+
+## 用法
+
+1. 裝好 APK 開啟個 App——會自動起 server，機身螢幕會顯示網址
+   `http://<機械人IP>:8888/`。撳個網址或者「複製」掣可以將個網址複製落剪貼簿，
+   方便打去另一部裝置嘅瀏覽器。
+2. 喺同一 WiFi 網絡任何裝置嘅瀏覽器開嗰個網址。
+3. 控制面板分咗幾個分頁：
+
+- **狀態**：媒體音量、SDK 版本/系統狀態 JSON dump、電池/WiFi/藍牙/UUID
+  查詢、充電同時播放開關、最近手勢辨識、頭部降噪、聲納開關同即時距離圖表、
+  PIR（人體紅外線）感應器開關同警示反應（觸發時眼/頭 5-mic LED 長著紅燈 +
+  播鈴聲，真機已確認）、加速度計即時 X/Y/Z 折線圖同一個「4角度傾側著頭/眼
+  LED」小功能
+- **動作**：攞返機身內建動作列表（分子分類）、播放、停止
+- **舵機**：20 顆伺服逐一/一齊拖曳控制（含頭部 pan/tilt）、省電模式
+- **語音**：ASR 引擎切換（中文 iFlytek / 英文 Nuance）、辨識結果同意圖分類
+  即時顯示、一個「語音輸入三合一測試」card（同一句輸入同時試模擬講嘢／語法式
+  辨識／文字語意理解三條唔同 AIDL 路徑，方便逐一對比邊個有反應）、TTS（多引擎/
+  聲線）、麥克風擁有權釋放/交回（含「持續搶 Mic」開關）、機身 wake word
+  語言 preset（中/英，寫入後要重開機）同一鍵重開機掣
+- **LED**：頭部/眼睛（顏色、亮度、長開/閃燈/呼吸燈/跑馬燈/雙色燈幾個 preset）、
+  咀部（呼吸燈速度）
+- **相機**：即時串流、拍照、錄影、可調解像度（320×240 到 2064×1548）、
+  「聽機械人」（耳筒收聲）、一個自居中嘅拖曳搖桿（同鍵盤方向鍵）可以直接拖動
+  控制頭部 pan/tilt
+- **小智（XiaoZhi）**：連接官方 xiaozhi.me（或者自架相容 server）嘅 AI 語音
+  助理服務，開關開＝配對／連線／隨時語音對話，關＝斷開；首次要喺
+  xiaozhi.me 輸入機械人讀出嘅配對碼；亦可打字對話；有一個內置 MCP 工具清單
+  card（見下面「MCP 工具」一節），同一個自訂 server 設定 card（覆寫
+  OTA/WebSocket/MAC/Token）
+- **進階**（raw AIDL passthrough，未經真機完整驗證嘅方法）：用檔案播放動作、
+  停用/啟用動作播放、查詢是否播放緊、觸發自訂事件、註冊英文理解（線上/
+  離線）、註冊 ASR 歷史回放、序列埠（心口/頭部）原始資料收發、攞機身序號、
+  藍牙序列埠命令/AT 指令
+- **積木編程**（`blockly.html`，喺新分頁開）：Blockly 視覺化編程介面。分咗
+  流程/事件/動作/語音/伺服/LED 幾個自訂分類，另加 Blockly 標準嘅
+  邏輯/數學/文字/變數/自訂函式，同一個內建範例分類；支援中英雙語即時切換、
+  程式命名儲存/載入/刪除、匯出入 `.xml`。事件驅動用加速度計門檻／聲納觸發嘅
+  hat block。
+
+即時事件（頭部觸摸、手勢、ASR 結果/意圖、電池、跌落方向、聲源角度、喚醒詞、
+PIR、藍牙連線、WiFi 查詢結果等）全部經 WebSocket 即時推送到「即時事件 Log」，
+控制面板唔使手動 refresh。
+
+### MCP 工具（俾小智用）
+
+呢部機經 XiaoZhi 協議嘅 MCP 橋接暴露以下工具俾遠端 LLM 直接操作機械人（喺
+「小智」分頁嘅「內置MCP功能列表」card 可以睇齊全部工具同逐項開關）：
+
+- `self.robot.list_actions` / `play_action`（中英文名 fuzzy match）/
+  `stop_action` / `play_random_action`
+- `self.robot.servo_set_one` / `servo_set_all`
+- `self.robot.led_set_head` / `led_set_eye` / `led_set_mouth`
+- `self.sensors.get_pir` / `set_pir_enabled`
+- `self.sensors.get_sonar` / `set_sonar_threshold`
+- `self.camera.take_photo`
+- `self.robot.speak`（TTS）
+- `self.media.list_music` / `play_music` / `stop_music`
+- `self.media.search_radio` / `play_radio` / `stop_radio`
+
+呢批工具亦可以透過對應嘅 `/api/audio/local_music/*`、`/api/audio/radio/*`
+等 HTTP 端點直接呼叫，但控制面板本身冇為呢幾個做獨立 UI 分頁（純粹畀小智用，
+或者自己手動 call API）。
+
+## 檔案結構
 
 ```
-lynx.open.sdk/                     (rootProject.name)
-├── app/                            (test panel app, applicationId: com.open.lynx)
+open-alpha2/
+├── AIDL_REFERENCE_ALPHA2.md                   ← Alpha2 17 個 AIDL interface 完整參考
+├── sdk-module/
+│   └── ubtechalpha2robot/              ← Alpha2 SDK（package com.ubtechinc.alpha2robot）
+├── app/
 │   ├── build.gradle
 │   ├── debug.keystore
 │   └── src/main/
 │       ├── AndroidManifest.xml
-│       └── java/com/open/lynx/MainActivity.java
-└── lynx-open-sdk/                 (Android library module, namespace: com.ubtechinc.lynxsdk)
-    ├── build.gradle
-    ├── consumer-rules.pro
-    ├── proguard-rules.pro
-    └── src/main/
-        ├── AndroidManifest.xml
-        ├── aidl/com/ubtechinc/alpha2serverlib/aidlinterface/   ← 17 個 .aidl（見下）
-        ├── aidl/com/ubt/lynxupdate/                             ← OTA 更新 AIDL，獨立 package（見下）
-        └── java/
-            ├── com/ubtechinc/alpha2robot/
-            │   ├── Alpha2RobotApi.java        主 façade，包裝晒下面 6 個 util
-            │   └── constant/                  UbxErrorCode, AlphaConstant
-            ├── com/ubtechinc/alpha2serverlib/
-            │   ├── util/                      6 個 *ServiceUtil：實際 bind AIDL service 嘅地方
-            │   ├── interfaces/                SDK 對外嘅 callback interface（非 AIDL，係俾用家implement）
-            │   ├── authority/                 Alpha2Authority
-            │   └── constvalue/                Alpha2Intent
-            ├── com/ubtechinc/updatemanager/    LynxUpdateServiceUtil：獨立包裝 OTA 更新 AIDL
-            ├── com/ubtechinc/constant/         ActionType, LanguageType, CustomLanguage 等常數
-            └── com/ubtechinc/developer/        Developer 模式相關嘅資料 class
+│       ├── cpp/                            — Opus native 編解碼（CMake, easyopus-jni-src + prebuilt libopus.so）
+│       ├── java/com/open/alpha2/
+│       │   ├── MainActivity.java            — App 生命週期 + Alpha2 API 路由 + MCP tool 定義
+│       │   ├── HttpServer.java              — 零依賴 HTTP server（純 HTTP，PORT 8888）
+│       │   ├── WebSocketServer.java         — 手寫 RFC 6455 WebSocket（俾控制面板即時事件用）
+│       │   ├── EventBus.java                — pub/sub 事件中樞
+│       │   ├── RobotEventReceiver.java      — 接收機械人 broadcast（含 PIR / 心口 mute 鍵）
+│       │   ├── AudioController.java         — 耳筒錄音（「聽機械人」功能）
+│       │   ├── AudioPlaybackController.java — 播放器（TTS/local music/radio 音頻播放）
+│       │   ├── CameraController.java        — 相機串流/拍照/錄影
+│       │   ├── XiaozhiClient.java           — 小智 WebSocket client（連 xiaozhi.me，STT/LLM/TTS/MCP/system 訊息）
+│       │   ├── XiaozhiAudioController.java  — 小智語音對話嘅 mic 錄音/Opus 編碼、解碼/播放
+│       │   ├── XiaozhiOtaClient.java        — 小智 OTA 配對/啟用流程
+│       │   ├── XiaozhiActivationStatus.java — 小智配對狀態資料類
+│       │   ├── BootReceiver.java            — 開機自動啟動 MainActivity
+│       │   └── MouthLedData.java            — 咀部 LED preset 資料
+│       ├── java/com/theeasiestway/opus/     — Opus JNI 純 Java 包裝（配合 cpp/ 嘅 native lib）
+│       ├── java/com/ubtechinc/mic5/         — 頭部 5-mic LED JNI 包裝
+│       └── assets/web/
+│           ├── index.html / style.css              ← 主控制面板 (HTML/CSS)
+│           ├── app-core.js                         ← 主控制面板核心 (api()/hwApi()、
+│           │                                           servo 校準表、I18N 字典 — 要第一個 load)
+│           ├── app-status.js / app-actions.js /
+│           │   app-speech.js / app-servo.js /
+│           │   app-led.js / app-camera.js /
+│           │   app-mic.js / app-accel.js /
+│           │   app-xiaozhi.js                      ← 主控制面板各分頁邏輯
+│           ├── app-log.js                          ← WebSocket log + 頁面初始化
+│           └── blockly*.{html,js,css}               ← 積木編程頁（獨立於主面板）
 ```
 
-**注意**：AIDL 檔案同入面全部 interface 嘅 package 保持 `com.ubtechinc.alpha2serverlib.aidlinterface`
-唔變——呢個 package name 本身就係同機械人 `alpha2services` 溝通嘅 wire-format
-(`enforceInterface`/`writeInterfaceToken` 用嘅 descriptor string)，改咗個 SDK 就
-連唔到真機械人。
+## 已知限制
 
-`app` module 嘅 `applicationId` 係 `com.open.lynx`；`lynx-open-sdk` module 嘅
-`namespace` 係 `com.ubtechinc.lynxsdk`——兩者**特登唔一樣**。`namespace` 純粹係
-AGP 幫個 module 生成 `R`/`BuildConfig` class 用嘅命名空間，同 AIDL 完全無關，但
-如果 app 同 library module 兩個 `namespace`／`applicationId` 撞埋一齊，兩邊各自
-生成一份同名嘅 `BuildConfig`，最終 D8 dex-merge 嗰陣就會爆
-`Type com.open.lynx.BuildConfig is defined multiple times`（Android 官方文件：
-[Duplicate class errors](https://developer.android.com/studio/build/dependencies#duplicate_classes)）。
-所以兩個 module 一定要用唔同嘅 namespace，唔可以齊齊叫 `com.open.lynx`。
-
-## 測試面板 App（`app` module）
-
-一個純代碼、冇 XML layout 嘅單 Activity，每個 `Alpha2RobotApi` public method 對應
-一個掣，掣下面有個共用嘅 scrolling log 顯示每次呼叫嘅結果同 callback。冇 HTTP／
-WebSocket server，冇 camera，冇錄音——純粹用嚟喺機械人／模擬器螢幕上面逐個掣
-試哂個 SDK 嘅方法。
-
-裝落機械人（`adb install`）之後開 app，會即場：
-1. 用 `ClientAuthorizeListener` 建構 `Alpha2RobotApi`（開放版本一定 authorize 成功）
-2. 分頁按鈕分別覆蓋：init（action/chest/header/speech）、Action、Chest/Head
-   free-angle motor、LED、Speech（TTS/ASR/grammar/text understand）、Custom
-   message (XMPP)、Misc（`requestRobotUUID`、`isChestAvailable`、`isHeaderAvailable`）
-
-## AIDL Interface 一覽（17 個）
-
-每個 interface 下面列晒：作用、Binder service 綁定用嘅 Action（如適用）、以及
-
-**method 名 + 完整簽名，順序就係 transaction id 順序**（好緊要，唔可以打亂）。
-
-### 服務端 interface（機械人提供、SDK 呼叫）
-
-#### 1. `IAlpha2BlueToothSerialPortService`
-藍牙序列埠通訊 service。呢個 build 冇 client 端 Proxy（Stub-only，冇任何組件
-喺呢個 APK 入面 cross-process 呼叫佢）。
-```java
-int registerSerialPortRcvListener(IAlpha2SerialPortRcvClient cb);
-int unRegisterSerialPortRcvListener(IAlpha2SerialPortRcvClient cb);
-boolean sendCommand(byte nSessionID, byte nCmd, in byte[] nParam, int nLen);
-void sendATCMD(String cmd);
-```
-
-#### 2. `IAlpha2SerialPortService`
-機械人胸口/頭部嘅序列埠通訊 service（`AlphaSerialPortServices` /
-`AlphaSerialPortHeaderServices`）。
-```java
-int registerSerialPortRcvListener(IAlpha2SerialPortRcvClient cb);
-int unRegisterSerialPortRcvListener(IAlpha2SerialPortRcvClient cb);
-boolean sendCommand(byte nSessionID, byte nCmd, in byte[] nParam, int nLen);
-boolean sendRawData(in byte[] data, int nLen);
-boolean sendCommandString(String cmd, int nLen);   // 簽名已確認，名係推斷（見上）
-```
-
-#### 3. `IAlphaActionService`
-機械人動作播放 service（`AlphaActionServices`）。Action：
-`com.ubtechinc.services.AlphaActionServices`。
-```java
-int registerActionClient(IAlphaActionClient client);
-void unRegisterActionClient(IAlphaActionClient client);
-boolean playActionFile(String strActionFile);
-boolean playActionName(String strActionName);
-void stopActionPlay();
-void onEventHandlerTrigger(int nEventType, in byte[] param);
-boolean isCompleted();
-void getActionList(IAlphaActionListListener listener);
-void disableActionPlay(boolean disable);
-```
-
-#### 4. `IAlpha2XmppListener`
-機械人 XMPP 訊息 service。呢個 interface 嘅 method 名喺呢個 build 冇被
-proguard（直接喺 smali 見到真名，唔係推斷）。
-```java
-int registerXmppCallBackListener(String appID, IAlpha2XmppCallBack callBack);
-int unRegisterXmppCallBackListener(IAlpha2XmppCallBack callBack);
-void sendCustomXmppMessage(int type, String appID, String message);
-```
-
-#### 5. `ISpeechInterface`
-機械人語音 service（`SpeechServices`）：TTS 播放、語音辨識、文法辨識、語意理解，
-係 17 個入面 method 最多嘅一個（20個）。
-```java
-int registerSpeechCallBackListener(ISpeechCallBackListener callBack);
-int unRegisterSpeechCallBackListener(ISpeechCallBackListener callBack);
-void onSpeech(ISpeechCallBackListener listener, String text);
-void onStopSpeech(ISpeechCallBackListener listener);
-void onPlay(ISpeechCallBackListener listener, String text, String strVoiceName, String language);
-void onPlayHigh(ISpeechCallBackListener listener, String text, String strVoiceName, String language);
-void onStopPlay(ISpeechCallBackListener listener);
-void setWakeState(boolean onWake);
-void onTextUnderstand(String strText, IAlphaTextUnderstandListener listener);
-void initSpeechGrammar(String strGrammar, ISpeechGrammarInitListener listener);
-void startSpeechGrammar(ISpeechGrammarListener listern);
-void stopSpeechGrammar();
-void stopSpeechAndEnterIdleMode();
-void setRecognizedLanguage(String strLanguage);
-void setVoiceName(String strVoiceName);
-void onEnglishUnderstand(IAlphaEnglishUnderstandListener listener);
-void setEnglishOfflineListener(IAlphaEnglishOfflineUnderstandListener listener);
-void setSelfInterrupt(boolean isInterrupt);
-void setStartEarLed();
-void startSpeechNoWakeup(ISpeechCallBackListener listener);
-```
-`onPlay`/`onPlayHigh` 淨係 4 個參數（冇額外嘅 `int priority`）——呢個係經常俾人加錯
-嘅一點，加咗嗰個多餘 int 會令 Parcel 讀寫位移，累到之後所有欄位都讀錯。
-
-#### 6. `IAppMonitor`
-接收另一個 component 傳過嚟嘅 `IBinder`（`MainService` 用）。冇 client 端
-Proxy（Stub-only）。方法名係推斷（原名已被 proguard 縮寫）。
-```java
-void onAppBinderReceived(IBinder binder);
-```
-
-### Callback interface（SDK 實作、機械人反向呼叫）
-
-#### 7. `IAlpha2SerialPortRcvClient`
-```java
-void onListenSerialPortRcvData(in byte[] bytes, int len);
-```
-
-#### 8. `IAlpha2SpeechClientListener`（舊版語音 client 路徑，Stub-only）
-```java
-void onServerCallBack(String text);
-void onServerPlayEnd(boolean isEnd);
-```
-
-#### 9. `IAlpha2XmppCallBack`
-```java
-void onReceiveMessage(String message);
-```
-
-#### 10. `IAlphaActionClient`
-```java
-void onActionStop(String strActionFileName);
-```
-
-#### 11. `IAlphaActionListListener`
-```java
-void onGetActionList(String list);   // "##" 分隔、每 4 個一組 [id, type, cn-name, en-name]
-```
-
-#### 12. `IAlphaEnglishOfflineUnderstandListener`
-```java
-void onAlpha2EnglishOfflineUnderstandResult(String strResult);
-```
-
-#### 13. `IAlphaEnglishUnderstandListener`
-```java
-void onAlpha2EnglishUnderstandResult(String strResult);
-```
-
-#### 14. `IAlphaTextUnderstandListener`
-```java
-void onAlpha2UnderStandError(int nErrorCode);
-void onAlpha2UnderStandTextResult(String strResult);
-```
-
-#### 15. `ISpeechCallBackListener`
-```java
-void onCallBack(int type, String text);
-void onPlayEnd(boolean isEnd);
-```
-
-#### 16. `ISpeechGrammarInitListener`
-```java
-void speechGrammarInitCallback(String grammarID, int nErrorCode);
-```
-
-#### 17. `ISpeechGrammarListener`
-```java
-void onSpeechGrammarResult(String strResultType, String strResult);   // 順序：結果在前
-void onSpeechGrammarError(int nErrorCode);                             // 錯誤在後
-```
-（留意呢個順序同 `IAlphaTextUnderstandListener` 相反——嗰個係錯誤先、結果後。
-兩個都係逐個對照返 `onTransact` 個 switch 出嚟嘅真實順序，冇對調錯。）
-
-## 未用到嘅 Parcelable
-
-`ActionInfoList` 同 `AlphaActionList`（兩者都只係包住一個 `List` 嘅簡單
-`Parcelable`）喺呢個 APK 版本入面**冇任何一個 AIDL method 用到**，亦都冇任何
-Java class 引用佢哋。佢哋喺反編譯出嚟嘅 dex 入面確實存在（唔係捏造），但屬於
-死碼／留俾未來擴充，唔係現行 wire contract 嘅一部分，SDK 冇為佢哋提供對應
-`.aidl` 定義。
-
-## 獨立嘅 OTA 更新 AIDL（`com.ubt.lynxupdate`）
-
-呢個 APK 入面重有一組**完全獨立**嘅 AIDL——同上面 17 個 `alpha2serverlib.
-aidlinterface` 唔屬於同一個 package、唔靠同一個 `initXxxApi()` 入口、甚至唔係
-`bind` 呢個 APK（`com.ubtechinc.alpha2services`）自己嘅 component。
-
-呢組 AIDL 嘅存在，源自機械人喺呢個 build 入面用嚟顯示語音提示嘅字串資源
-（`res/xml/english.xml`）自稱「Lynx」（喚醒詞係 "Hello Lynx"），加上
-`classes.dex` 入面搵到成套 `com.ubt.lynxupdate` 相關字串（`ROBOT_LYNX_READY`、
-`triggleLynxUpdate` 等）先發現。呢個亦解釋咗點解幫 SDK 改名做 `com.open.lynx`
-會啱得咁好——`Lynx` 本身就係呢個機械人喺廠內嘅產品代號。
-
-**綁定方式**：`Alpha2UpdataServiceUtil.bindUpdateService()` 用嘅係
-`new Intent("com.ubt.lynxupdate.services.UpdateAidlService")
-.setPackage("com.ubt.lynxupdate")`——即係話 `IUpdataBussiness` 呢個 service
-係由**另一個獨立安裝嘅 app**（package name `com.ubt.lynxupdate`）提供，唔係
-`alpha2services` 自己嘅 component。如果部機冇裝呢個 package，`bindService()`
-會直接 return `false`，唔會有任何 callback。
-
-#### `IClientListener`（`com.ubt.lynxupdate.IClientListener`）
-由 `IUpdataBussiness` service 反向呼叫嘅 callback。呢個 interface 喺呢個 build
-入面**冇被 proguard 縮寫**——`enforceInterface`/`writeInterfaceToken` 直接見到
-真實 descriptor string，兩個 method 名都係直接喺 smali 見到嘅原名，包括原廠碼
-本身嘅串字錯誤（`onReonseForUpdate`，少咗個「p」，即係 Response）：
-```java
-void onError(int errorCode);
-void onReonseForUpdate(boolean success);   // 原名故意保留咗呢個串字錯誤
-```
-
-#### `IUpdataBussiness`（`com.ubt.lynxupdate.IUpdataBussiness`）
-更新流程本身嘅控制 interface。呢個 interface 嘅 method 名喺呢個 build 已經俾
-proguard 縮寫做 `a`/`b`/`c`，冇得直接還原，但逐個對照返
-`Alpha2UpdataServiceUtil`（consumer）點樣呼叫佢哋，語意已經好清楚：
-```java
-void checkUpdate();                                   // id 1：對應 checkingUpdate()
-void executeUpdate();                                 // id 2：對應 executorUpdata()
-boolean registerClientListener(IClientListener listener);  // id 3：bind 完即刻call
-boolean unregisterClientListener();                    // id 4：release 前 call
-void triggerUpdate(int mode);                          // id 5：1=download，2=執行更新（直接反編譯到嘅字面常數）
-```
-`triggerUpdate` 嘅 `mode` 值係直接由 `triggleLynxDownload()`/`triggleLynxUpdate()`
-兩個 caller 傳入嘅字面常數反編譯確認（`1`／`2`），唔係估嘅。
-
-SDK 入面對應嘅 wrapper 係 `com.ubtechinc.updatemanager.LynxUpdateServiceUtil`
-（獨立於下面嘅 6 個 `*ServiceUtil`，因為佢綁定緊唔同 package）。
-
-## Java Wrapper 層
-
-`Alpha2RobotApi` 係主要對外 façade，內部靠以下 6 個 `*ServiceUtil` 分別
-`bindService()` 對應嘅 AIDL service，並且喺 `ServiceConnection` callback 入面
-`Xxx.Stub.asInterface(binder)`：
-
-| Util class | 綁定嘅 AIDL | 對應機械人 Service |
-|---|---|---|
-| `AlphaActionServiceUtil` | `IAlphaActionService` | `com.ubtechinc.services.AlphaActionServices` |
-| `Alpha2SerialServiceUtil` | `IAlpha2SerialPortService` | 胸口序列埠 service |
-| `Alpha2SerialHeaderServiceUtil` | `IAlpha2SerialPortService` | 頭部序列埠 service |
-| `Alpha2SpeechMainServiceUtil` | `ISpeechInterface` | `com.ubtechinc.services.SpeechServices` |
-| `Alpha2XmppServiceUtil` | `IAlpha2XmppListener` | XMPP service |
-| `AlphaMainServiceUtil` | （內部整合多個 util，`initSpeechApi` 等入口點） | — |
-
-`Alpha2RobotApi` 冇包 `LynxUpdateServiceUtil`（見上面 OTA 更新一節）——呢個
-util 要獨立 new 出嚟用，因為佢綁定緊完全唔同嘅 package，唔屬於 `Alpha2RobotApi`
-一直以嚟包裝嘅 `alpha2services` wire contract。
-
-呢層 wrapper 全部都跟返上面嘅 AIDL 簽名一致（包括之前發現、已經改正嘅
-`onPlay`/`onPlayHigh` 參數個數、5-mic LED 呢類喺呢個 build 根本唔存在嘅
-method 已經全部移除，唔會再有編譯錯誤或者 runtime 呼叫失敗）。
-
-## Build
-
-```bash
-# 淨係 build SDK 本身 (.aar)
-./gradlew :lynx-open-sdk:assembleRelease
-
-# build 埋測試面板 apk（連埋 SDK 一齊）
-./gradlew :app:assembleDebug
-```
-
-呢個 project 已經包埋標準嘅 Gradle wrapper（`gradlew`、`gradlew.bat`、
-`gradle/wrapper/gradle-wrapper.{jar,properties}`），對應 **Gradle 7.0**（同
-AGP 4.2.2 相容），唔使自己另外裝 Gradle。
-
-`lynx-open-sdk` module 輸出係一個 `.aar`；`app` module 輸出係一個可以直接
-`adb install` 落機械人嘅 `.apk`（`applicationId com.open.lynx`，已經用committed
-嘅 `debug.keystore` 簽咗名，唔靠 AGP 自動生成嗰個 `~/.android/debug.keystore`）。
-
-兩個 module 都係 `compileSdkVersion 25`、`minSdkVersion 19`（Alpha2 機械人
-最舊韌體係 Android 4.4）、`sourceCompatibility`/`targetCompatibility` 都係 Java 8。
-
-呢個 module 淨係依賴 Android framework 本身，冇任何第三方 library。
-
-## 適用範圍
-
-呢份 SDK **只對應 `com.ubtechinc.alpha2services`（app 名 `AlexaService`）
-versionName `1.2.10.5`（versionCode 15）呢一份特定 APK**，全部 AIDL 簽名都係
-直接反編譯呢個 build 嘅 `Stub.onTransact()`／`Proxy` marshalling code 核實返嚟。
-
-**其他版本一律唔保證用得，包括：**
-- 同一個 package name（`com.ubtechinc.alpha2services`）但唔同 versionName 嘅
-  build——AIDL method 簽名、transaction id 順序、有冇某個 interface，之前已經
-  證實過會隨版本改變（本 SDK 修正歷史入面提到嘅 5-mic LED method、
-  `onPlay`/`onPlayHigh` 多餘參數等，都係源自跟錯咗版本嘅例子）
-- 完全唔同嘅韌體 base（例如 base3.002／`com.ubtechinc.alpha.serverlibutil.aidl`
-  嗰一套）——interface package、method set 完全唔一樣
-- `com.ubt.lynxupdate`（OTA 更新）嗰邊，仲取決於部機有冇裝呢個獨立 package
-
-用之前請自行核對機械人／APK 嘅 versionName 是否 `1.2.10.5`，唔一致嘅話請重新
-反編譯核實，唔好假設呢份 SDK 通用於其他版本。
+- **HTTPS / 瀏覽器咪（walkie-talkie 講嘢功能）已永久停用**：之前試過用手寫
+  自簽憑證起 HTTPS 去解鎖瀏覽器 `getUserMedia()`（因為瀏覽器規範限定呢個
+  API 只喺 secure context 先出現），但實測發現裝置嘅瀏覽器會不斷拒絕自簽
+  憑證觸發大量 `SSLHandshakeException`，最終決定連 TLS 一齊移除，改返純
+  HTTP-only。控制面板「講嘢」呢個功能（用瀏覽器咪直接向機械人發聲）已經
+  無條件停用（唔止喺 http:// 先停用），UI 掣仍在但完全冇反應。「聽機械人」
+  （耳筒收聲，方向相反）不受影響，正常運作。
+- **冇自訂語音詞彙**——Nuance 呢邊用寫死嘅 VoCon 語法（`initSpeechGrammar`/
+  `startSpeechGrammar` 喺 Nuance binding 之下係空 stub），要試 grammar 式
+  辨識要自己先手動切去 iFlytek engine（「語音輸入三合一測試」唔會幫你自動
+  切）。自由辨識（wake word 之後）行 Nuance，local confidence 要 ≥4500 分
+  先接受，雲端補完伺服器已停用。
+- 冇伺服角度/電流回授。聲納方面：後端同小智 MCP 工具（`self.sensors.get_sonar`）
+  已經有真正嘅 `distanceCm` 讀數（經 `com.ubtechinc.sonar.distance`
+  broadcast，真機已確認），但主控制面板「狀態」分頁嗰個聲納圖表、同 Blockly
+  嘅聲納事件 block，暫時都仲淨係畫/存 `triggered`（有冇觸發門檻）呢個
+  boolean，未有將實際 cm 讀數畫出嚟。
+- 「進階」分頁嘅方法（英文理解、ASR 歷史回放、觸發自訂事件、原始序列埠）
+  未經完整真機驗證，僅供測試/探索用。
+- `action/list` 用咗一個最多等 5 秒嘅 blocking wait（AIDL callback 本質係
+  async），如果機器人服務初始化好慢，第一次攞列表可能會 timeout 返空
+  列表——可以再按一次。
+- PIR 感應器同警示反應（LED+鈴聲）已喺真機確認正常觸發；心口 mute 鍵目前
+  淨係一個測試信號（撳一下著紫燈、再撳一下熄燈），未接去任何實際功能。
+- LED 分頁嘅頭部/眼睛 5-mic preset（顏色/亮度/長開/閃燈/呼吸燈/跑馬燈/
+  雙色燈）色碼同參數組合已喺真機確認生效；但另外兩條獨立、唔經呢啲 preset
+  嘅硬件觸發路徑——聲納 obstacle 同心口 mute 鍵各自嘗試直接觸發 5-mic
+  頭/眼 LED 嗰段——喺呢部機頭板上一直撞到 `API_ERROR_FAILED`，唔代表 LED
+  分頁本身壞咗，純粹係唔同參數組合／唔同觸發時機嘅分別。
