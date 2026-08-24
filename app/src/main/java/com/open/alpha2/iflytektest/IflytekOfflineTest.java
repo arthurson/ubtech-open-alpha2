@@ -3,6 +3,7 @@ package com.open.alpha2.iflytektest;
 import android.content.Context;
 import android.util.Log;
 
+import com.iflytek.cloud.GrammarListener;
 import com.iflytek.cloud.InitListener;
 import com.iflytek.cloud.RecognizerListener;
 import com.iflytek.cloud.RecognizerResult;
@@ -10,6 +11,9 @@ import com.iflytek.cloud.SpeechError;
 import com.iflytek.cloud.SpeechRecognizer;
 import com.iflytek.cloud.SpeechUtility;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -46,12 +50,22 @@ import java.util.Locale;
  *     (MobileAgent) + com.a.a.a + com.a.b.{a..g}，實機一 call
  *     createUtility() 就 NoClassDefFoundError: Lcom/b/a; 。已用遞歸依賴
  *     掃描確認閉包完整，見 app/build.gradle 嘅 dependencies 註解。
+ *   - [2026-08 已修正] 實機測試證實 engine_type=local 生效、麥克風/VAD 完全
+ *     正常 (onBeginOfSpeech -> EVENT_SPEECH_START(22002) ->
+ *     EVENT_RECORD_STOP(22003) -> EVENT_SESSION_ID(20001))，但一直
+ *     onError(23002, "本地引擎错误")。原因: 淨係 setParameter
+ *     ("local_grammar","call")，冇實際 call buildGrammar() 將
+ *     assets/call.bnf 編譯成語法。已加返 buildGrammar() 呢一步 (async，
+ *     結果經 onBuildFinish() 記落 log，startListening() 而家會檢查
+ *     sGrammarReady 先郁)。未實機驗證過呢個修正。
  */
 public final class IflytekOfflineTest {
 
     private static final String TAG = "IflytekOfflineTest";
 
     private static SpeechRecognizer sRecognizer;
+    private static volatile boolean sGrammarReady = false;
+    private static volatile String sGrammarId = null;
     private static final List<String> sLog = new ArrayList<>();
     private static final SimpleDateFormat TIME_FMT =
             new SimpleDateFormat("HH:mm:ss.SSS", Locale.US);
@@ -126,15 +140,74 @@ public final class IflytekOfflineTest {
             sRecognizer.setParameter("vad_bos", "4000");
             sRecognizer.setParameter("vad_eos", "1000");
             log("SpeechRecognizer created, engine_type=local, engine_mode=msc");
+
+            // [2026-08 新增，修正 code=23002 "本地引擎错误"] 第一輪實機測試證實
+            // engine_type=local 已經生效、麥克風/VAD 都行得完全正常
+            // (onBeginOfSpeech -> EVENT_SPEECH_START(22002) -> EVENT_RECORD_STOP(22003)
+            // -> EVENT_SESSION_ID(20001))，但每次都跟住即刻 onError(23002)。原因:
+            // 之前呢個 init() 淨係 setParameter("local_grammar", "call")，但完全冇
+            // 實際 call 過 buildGrammar() —— local grammar 引擎要求你必先用
+            // buildGrammar() 將 assets/call.bnf 嘅內容編譯成一個語法 (對應
+            // grm_build_path 嗰個路徑)，先俾 startListening() 用得。冇呢一步，
+            // native 層攞唔到已編譯嘅語法，就係 "本地引擎錯誤" 嘅直接成因。
+            //
+            // buildGrammar(grammarType, grammarContent, listener) 嘅 grammarType
+            // 呢度用 "abnf" (對應原廠 assets 入面 call.bnf 用嘅 BNF 格式)；
+            // grammarContent 唔係路徑，係要求傳入成份 .bnf 檔嘅實際文字內容。
+            String grammarContent = readAssetAsString(context, "call.bnf");
+            if (grammarContent == null) {
+                log("readAssetAsString(call.bnf) failed — cannot buildGrammar, "
+                        + "startListening() will not be attempted");
+                return;
+            }
+            int buildRet = sRecognizer.buildGrammar("abnf", grammarContent, new GrammarListener() {
+                @Override
+                public void onBuildFinish(String grammarId, SpeechError error) {
+                    if (error != null) {
+                        log("onBuildFinish() FAILED code=" + error.getErrorCode()
+                                + " desc=" + error.getErrorDescription());
+                        sGrammarReady = false;
+                        return;
+                    }
+                    log("onBuildFinish() OK grammarId=" + grammarId);
+                    sGrammarId = grammarId;
+                    sGrammarReady = true;
+                }
+            });
+            log("buildGrammar() called, return code=" + buildRet
+                    + " (result comes async via onBuildFinish — call log again after a moment)");
         } catch (Throwable t) {
             log("init() threw: " + t);
         }
+    }
+
+    /** 由 assets/ 讀一個文字檔做成 String (UTF-8)。讀唔到就記落 log 並返 null。 */
+    private static String readAssetAsString(Context context, String assetName) {
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                context.getAssets().open(assetName), StandardCharsets.UTF_8))) {
+            char[] buf = new char[4096];
+            int n;
+            while ((n = reader.read(buf)) != -1) {
+                sb.append(buf, 0, n);
+            }
+        } catch (Throwable t) {
+            log("readAssetAsString(" + assetName + ") threw: " + t);
+            return null;
+        }
+        return sb.toString();
     }
 
     /** 開始聽。結果/錯誤全部經 RecognizerListener 記落 log。 */
     public static synchronized void startListening(Context context) {
         if (sRecognizer == null) {
             log("startListening() called but recognizer is null — call init() first");
+            return;
+        }
+        if (!sGrammarReady) {
+            log("startListening() called but grammar not ready yet "
+                    + "(buildGrammar() is async — check log for onBuildFinish() first, "
+                    + "or call init() again if you haven't)");
             return;
         }
         try {
