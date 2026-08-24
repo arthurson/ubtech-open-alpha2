@@ -10,6 +10,7 @@ import com.iflytek.cloud.RecognizerResult;
 import com.iflytek.cloud.SpeechError;
 import com.iflytek.cloud.SpeechRecognizer;
 import com.iflytek.cloud.SpeechUtility;
+import com.iflytek.cloud.util.ResourceUtil;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -132,9 +133,31 @@ public final class IflytekOfflineTest {
             // 完整拆解。
             sRecognizer.setParameter("engine_type", "local");
             sRecognizer.setParameter("engine_mode", "msc");
-            sRecognizer.setParameter("asr_res_path", "assets:///asr/common.jet");
-            sRecognizer.setParameter("grm_build_path",
-                    context.getFilesDir().getAbsolutePath() + "/grammar");
+            // [2026-08 再次修正 code=23002] 上一版用 setParameter("asr_res_path",
+            // "assets:///asr/common.jet") 呢個係我憑估寫嘅字串格式，經拆解
+            // com.iflytek.cloud.util.ResourceUtil.generateResourcePath() 嘅實際
+            // smali 實現，證實完全錯——真正嘅格式係
+            // "fo|<apk完整路徑>|<asset嘅byte offset>|<asset嘅byte length>"，即係
+            // 用 AssetManager.openFd() 攞返 asset 喺 apk zip 入面嘅位元組位置，
+            // 等 native 層用 mmap/seek 直接讀 apk 內嵌檔案，唔係一個普通路徑
+            // 字串。呢度改用返官方 ResourceUtil.generateResourcePath() helper
+            // 生成，唔再自己砌字串。
+            //
+            // grm_build_path 呢度暫時保持用 app 私有目錄 (getFilesDir())，未跟
+            // 原廠用 Environment.getExternalStorageDirectory()+"/msc/test" —— 因為
+            // grm_build_path 睇落只係一個「輸出目錄」(俾 native 層寫入編譯好嘅
+            // 語法檔)，唔係好似 asr_res_path 咁要求特殊協議格式，用私有目錄應該
+            // 一樣得，仲可以避免 WRITE_EXTERNAL_STORAGE 權限問題。如果呢個修正之後
+            // 仍然 23002，下一個懷疑對象就係呢個路徑格式。
+            java.io.File grammarDir = new java.io.File(context.getFilesDir(), "grammar");
+            if (!grammarDir.exists() && !grammarDir.mkdirs()) {
+                log("WARNING: failed to mkdir " + grammarDir.getAbsolutePath());
+            }
+            String asrResPath = ResourceUtil.generateResourcePath(
+                    context, ResourceUtil.RESOURCE_TYPE.assets, "asr/common.jet");
+            log("asr_res_path resolved to: " + asrResPath);
+            sRecognizer.setParameter("asr_res_path", asrResPath);
+            sRecognizer.setParameter("grm_build_path", grammarDir.getAbsolutePath());
             sRecognizer.setParameter("local_grammar", "call");
             sRecognizer.setParameter("result_type", "json");
             sRecognizer.setParameter("vad_bos", "4000");
