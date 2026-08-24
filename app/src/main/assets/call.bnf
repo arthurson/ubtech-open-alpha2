@@ -1,0 +1,10 @@
+#BNF+IAT 1.0 UTF-8;
+!grammar call;
+!slot <contact>;
+!slot <callPre>;
+!slot <callPhone>;
+!start <callStart>;
+<callStart>:[<callPre>]<callPhone><contact>;
+<contact>:Lucy|Tom;
+<callPre>:please;
+<callPhone>:call;

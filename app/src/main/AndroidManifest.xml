@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.open.alpha2">
+
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.BROADCAST_STICKY" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.REBOOT" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- AlarmManager.setExact() itself needs no extra permission below API 31 - this
+         app targets API 22 / compiles against API 25, well under that threshold, so
+         SCHEDULE_EXACT_ALARM is deliberately NOT declared here. -->
+
+    <application
+        android:allowBackup="true"
+        android:label="Open Alpha2"
+        android:icon="@android:drawable/ic_menu_manage"
+        android:largeHeap="true"
+        android:theme="@android:style/Theme.Material.Light">
+
+        <activity
+            android:name=".MainActivity"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Legacy UBTECH app id meta-data. Alpha2OpenSdk removes the store-authorization
+          check entirely, so this value is never validated against any server - but the
+          SDK still reads a non-empty string here structurally.
+        -->
+        <meta-data
+            android:name="alpha2_appid"
+            android:value="222B998EDFA5FAD7FCE78678FB9F2521" />
+
+        <!--
+          RobotEventReceiver is registered dynamically in MainActivity.onCreate() instead
+          of here. It used to ALSO be declared here as a static <receiver>, which meant
+          every broadcast triggered BOTH the static and the dynamic instance - each one
+          independently calling EventBus.publish() - so every event showed up twice in
+          the Event Log / WebSocket feed. This app is a foreground tool with a running
+          Activity the whole time it's useful (it needs its own HttpServer alive to serve
+          the control panel at all), so there's no scenario where a static "wake the app
+          from a broadcast while not running" receiver is needed - the dynamic
+          registration alone is correct here.
+        -->
+
+        <!--
+          BootReceiver, unlike RobotEventReceiver above, genuinely needs a static manifest
+          registration: there is no running process to hold a dynamic receiver until the
+          app itself has been launched at least once by this very broadcast. Android only
+          delivers BOOT_COMPLETED to receivers declared here.
+        -->
+        <receiver android:name=".BootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>
