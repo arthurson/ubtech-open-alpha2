@@ -221,6 +221,22 @@ public final class IflytekOfflineTest {
         return sb.toString();
     }
 
+    /** 遞歸刪除一個目錄同佢入面所有內容 (唔理有冇嘢，都唔會拋 exception)。 */
+    private static void deleteRecursive(java.io.File file) {
+        if (file == null || !file.exists()) {
+            return;
+        }
+        java.io.File[] children = file.listFiles();
+        if (children != null) {
+            for (java.io.File child : children) {
+                deleteRecursive(child);
+            }
+        }
+        if (!file.delete()) {
+            log("WARNING: failed to delete " + file.getAbsolutePath());
+        }
+    }
+
     /**
      * [2026-08 新增] 實驗性: 測試 iFlytek local engine 完全唔用 buildGrammar()/
      * local_grammar，睇下 common.jet (6.7MB，比一個「淨係識 call/Tom/Lucy」嘅細
@@ -269,9 +285,19 @@ public final class IflytekOfflineTest {
                 log("SpeechRecognizer.createRecognizer() returned null");
                 return;
             }
-            java.io.File grammarDir = new java.io.File(context.getFilesDir(), "grammar");
-            if (!grammarDir.exists() && !grammarDir.mkdirs()) {
+            // [2026-08 修正] 第一輪測試用返同 init() 一模一樣嘅
+            // getFilesDir()/grammar 呢個 grm_build_path，結果 onResult() 嘅 slot
+            // 名 (<callPhone>/<contact>) 同 call.bnf 一模一樣 —— 呢個唔可能係
+            // 巧合，好可能係之前 init() 用 buildGrammar() 編譯好嘅語法已經持久化
+            // 咗喺呢個目錄，令呢次測試冇實際測到「唔用 buildGrammar() 情況下
+            // common.jet 識唔識自由聽寫」，只不過係沿用緊舊有編譯結果。呢度改用
+            // 一個全新、獨立、每次都清空嘅目錄，徹底排除呢個污染可能性。
+            java.io.File grammarDir = new java.io.File(context.getFilesDir(), "grammar_dictation_clean");
+            deleteRecursive(grammarDir);
+            if (!grammarDir.mkdirs()) {
                 log("WARNING: failed to mkdir " + grammarDir.getAbsolutePath());
+            } else {
+                log("grm_build_path freshly created (empty): " + grammarDir.getAbsolutePath());
             }
             String asrResPath = ResourceUtil.generateResourcePath(
                     context, ResourceUtil.RESOURCE_TYPE.assets, "asr/common.jet");
