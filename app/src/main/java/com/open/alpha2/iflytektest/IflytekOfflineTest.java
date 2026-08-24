@@ -41,7 +41,11 @@ import java.util.Locale;
  *     MSC.isLoaded()==false (例如 libmsc.so 冇成功 load)，createRecognizer()
  *     會 silently 建立一個冇 local engine 嘅 instance，之後 startListening()
  *     大機會直接攞唔到結果，呢個都會反映喺 log 度。
- *   - 未做過任何實機測試 —— 呢份code本身編唔編到、行唔行到，都仲未驗證過。
+ *   - [2026-08 已修正] 第一版 jar 淨係抽咗 com/iflytek/{cloud,msc,common,speech}
+ *     四個 package，漏咗 com.iflytek.common.a.* 反過嚟依賴嘅 com.b.a
+ *     (MobileAgent) + com.a.a.a + com.a.b.{a..g}，實機一 call
+ *     createUtility() 就 NoClassDefFoundError: Lcom/b/a; 。已用遞歸依賴
+ *     掃描確認閉包完整，見 app/build.gradle 嘅 dependencies 註解。
  */
 public final class IflytekOfflineTest {
 

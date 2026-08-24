@@ -45,6 +45,15 @@ android {
         }
     }
 
+    // 2026-08 新增: iflytek-msc-core.jar (見 dependencies block 詳細註解) 用緊
+    // org.apache.http.* (Apache HttpClient) —— 呢個 API 喺 Android 6.0 (API 23)
+    // 開始由 Android SDK 主體移走, 改做一個要顯式 opt-in 嘅 legacy library。
+    // 呢部機本身 targetSdkVersion 22 (Android 5.1), runtime 一定有呢個 API,
+    // 但 compileSdkVersion 25 意味住 compile-time classpath 未必預設攞得到,
+    // 所以顯式加返 useLibrary 先，避免編譯時 "package org.apache.http.* does
+    // not exist" 呢類 error。
+    useLibrary 'org.apache.http.legacy'
+
     // 2026-08-14 更新: 上面加 sourceSets.jniLibs 去手動打包 libopus.so 呢個
     //做法喺呢部機嘅 AGP 版本 (4.2.2) 度撞咗版 - CI build 報:
     //   "2 files found with path 'lib/armeabi-v7a/libopus.so' from inputs:
@@ -132,8 +141,17 @@ dependencies {
     //      (com.ubtechinc.iflytek.speech.a.a) 屬於 com.ubtechinc.* package，
     //      未包含喺呢份 jar 入面 —— 要自己攞返嗰組 login 參數，或者自己
     //      重寫一份，先可以真正 QMSPLogin 成功。
-    //   3. 未做過任何實機編譯/執行測試 —— 呢份 jar 只經過 dex2jar 轉換，
-    //      未驗證 class 內容可以喺 Android runtime (ART) 正常 load、
-    //      同埋同 project 現有 minSdkVersion 19 / targetSdkVersion 22 兼容。
+    //   3. [2026-08 更新, 第一次實機測試發現] 第一版 jar 淨係抽咗
+    //      com/iflytek/{cloud,msc,common,speech} 四個 package, 漏咗
+    //      com.iflytek.common.a.* (LaunchService 嗰組) 反過嚟依賴嘅
+    //      com.b.a (MobileAgent) + com.a.a.a + com.a.b.{a..g} 呢 9 個
+    //      class —— 實機一 call SpeechUtility.createUtility() 就
+    //      NoClassDefFoundError: Lcom/b/a; ，個 constructor 中斷。已經用
+    //      一個遞歸依賴掃描腳本 (find_deps.py) 由呢 9 個做 seed 追多一層,
+    //      確認冚唪唥剩低嘅缺口都係 org.apache.http.*/org.json.*/
+    //      org.w3c.dom.*/org.xmlpull.* 呢啲 Android platform 自帶嘅框架
+    //      class (唔使打包，但 org.apache.http.* 呢個要留意 —— 見上面
+    //      android { useLibrary 'org.apache.http.legacy' } 嗰句)，依賴
+    //      閉包已經封閉。而家份 jar 係 319 個 class (310+9)。
     implementation files('libs/iflytek-msc-core.jar')
 }
