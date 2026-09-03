@@ -293,11 +293,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/CodeResponse'
       operationId: directUbxStop_post
+  /api/direct/ubx/speed:
+    get:
+      tags:
+      - direct
+      summary: 動作播放變速（舵機+配樂同縮放；黏性，播緊時設會由頭重播即時生效）
+      parameters:
+      - name: value
+        in: query
+        required: true
+        schema:
+          type: number
+          enum: [0.5, 0.67, 1, 1.5, 2]
+        description: 變速倍率（配樂同 pitch 一齊變）
+      responses:
+        '200':
+          description: UbxErrorCode 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: directUbxSpeed_get
   /api/direct/ubx/status:
     get:
       tags:
       - direct
-      summary: UbxPlayer 狀態 (playing/name/sent/total/lastError)
+      summary: UbxPlayer 狀態 (playing/name/sent/total/voice/speed/lastError)
       responses:
         '200':
           description: 播放狀態
@@ -438,6 +459,97 @@ paths:
               schema:
                 $ref: '#/components/schemas/CodeResponse'
       operationId: directServoAll_get
+  /api/ubx/list:
+    get:
+      tags:
+      - direct
+      summary: 列出 /sdcard/actions 内 .ubx 档（前端动作 tab 经 /api/alpha2 前缀调用）
+      responses:
+        '200':
+          description: 檔案清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    files:
+                      type: array
+                      items:
+                        type: object
+      operationId: ubxList_get
+  /api/ubx/play:
+    get:
+      tags:
+      - direct
+      summary: 解析并经 UbxPlayer 直播指定 .ubx（抢占：播新自动停旧；name 或 path 二选一）
+      parameters:
+      - name: name
+        in: query
+        schema:
+          type: string
+        description: /sdcard/actions 下檔名
+      - name: path
+        in: query
+        schema:
+          type: string
+        description: 絕對路徑
+      responses:
+        '200':
+          description: UbxErrorCode 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: ubxPlay_get
+  /api/ubx/stop:
+    post:
+      tags:
+      - direct
+      summary: 截停 UbxPlayer（舵机保持末位姿）
+      responses:
+        '200':
+          description: 停止結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: ubxStop_post
+  /api/ubx/status:
+    get:
+      tags:
+      - direct
+      summary: UbxPlayer 狀態 (playing/name/sent/total/voice/speed/lastError)
+      responses:
+        '200':
+          description: 播放狀態
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: ubxStatus_get
+  /api/ubx/speed:
+    get:
+      tags:
+      - direct
+      summary: 動作播放變速（舵機+配樂同縮放；黏性，播緊時設會由頭重播即時生效）
+      parameters:
+      - name: value
+        in: query
+        required: true
+        schema:
+          type: number
+          enum: [0.5, 0.67, 1, 1.5, 2]
+        description: 變速倍率（配樂同 pitch 一齊變）
+      responses:
+        '200':
+          description: UbxErrorCode 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: ubxSpeed_get
   /api/speech/tts:
     get:
       tags:
@@ -2672,6 +2784,48 @@ paths:
                     enabled:
                       type: boolean
       operationId: xiaozhiAutoMode_get
+  /api/xiaozhi/auto_connect/get:
+    get:
+      tags:
+      - xiaozhi
+      summary: 讀取「開app自動連接小智」開關
+      responses:
+        '200':
+          description: 開關狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    enabled:
+                      type: boolean
+      operationId: xiaozhiAutoConnect_get
+  /api/xiaozhi/auto_connect/set:
+    get:
+      tags:
+      - xiaozhi
+      summary: 設定「開app自動連接小智」開關（下次開app生效）
+      parameters:
+      - name: enabled
+        in: query
+        required: true
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: 已儲存
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    enabled:
+                      type: boolean
+      operationId: xiaozhiAutoConnect_set
   /api/xiaozhi/send_text:
     get:
       tags:

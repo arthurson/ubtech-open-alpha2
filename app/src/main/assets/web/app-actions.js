@@ -275,3 +275,9 @@ function stopAction() {
   return Alpha2Api.actionStop();
 }
 
+function setActionSpeed() {
+  const el = document.getElementById("actionSpeed");
+  const v = parseFloat(el.value);
+  return Alpha2Api.ubxSpeed({ value: v });
+}
+

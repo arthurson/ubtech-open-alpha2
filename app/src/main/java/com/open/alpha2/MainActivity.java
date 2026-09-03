@@ -38,7 +38,7 @@ import android.widget.Toast;
 
 import com.ubtechinc.alpha.hardware.DirectLedController;
 import com.ubtechinc.alpha.hardware.RobotWire;
-import com.ubtechinc.mic5.LedControl;
+import com.ubtechinc.alpha.jni.LedControl;
 import com.ubtechinc.alpha.hardware.HardwareDirectManager;
 import com.ubtechinc.alpha.hardware.LocalAlpha2Services;
 import com.ubtechinc.alpha.hardware.ubx.UbxFile;
@@ -105,6 +105,8 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 見 xiaozhiTtsEngine field 的 javadoc。
     private static final String PREF_XIAOZHI_TTS_ENGINE = "xiaozhi_tts_engine";
     private static final String PREF_XIAOZHI_MCP_DISABLED_TOOLS = "xiaozhi_mcp_disabled_tools";
+    /** 開app自動連接小智（小智tab開關，預設關；見 auto_connect/get|set）。 */
+    private static final String PREF_XIAOZHI_AUTO_CONNECT = "xiaozhi_auto_connect";
     /** 官方 xiaozhi-esp32 firmware 寫死用的 vision/explain endpoint (esp32_camera.cc
      *  Explain() 實作) - 這個 URL 不會經 OTA check_version 的回應帶回來 (見
      *  runXiaozhiActivationFlow() 的 comment: response 只有 activation/websocket
@@ -159,14 +161,12 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private RobotStub robot;
     private LocalAlpha2Services localServices;
+    // 動作配樂由 UbxPlayer 内 voice 线负责（a/j/a/o 官方语义：同 clock 并行、
+    // 槽位起播、b*timeBase 自停、切帧打断），獨立於 currentMusicPlayer/currentRadioPlayer，
+    // 唔經 filler 循環/EQ/頻譜。
     private final UbxPlayer ubxPlayer = new UbxPlayer();
-    // 動作配樂 MediaPlayer（.ubx type4 音樂 meta 指住的 /sdcard/actions/<id>/xxx.mp3）。
-    // 獨立於 currentMusicPlayer/currentRadioPlayer：播動作歌唔可以觸發
-    // startMusicFillerActionLoop（佢會不停 triggerRandomFillerAction → playActionDirect，
-    // 即刻打斷緊播緊嘅舵機），亦唔掂共用 EQ/頻譜。生命週期跟 UbxPlayer：開動作起，
-    // 停動作（stop/搶佔/播完 backstop）即停。
-    private android.media.MediaPlayer currentActionMusicPlayer;
-    private int actionMusicGen;
+    /** 最近一次播放的 .ubx 文件（供 ubx/speed 播緊時由頭重播；三個播放入口都会更新）。 */
+    private volatile java.io.File lastPlayedFile;
     private final HeadKeyPoller headKeyPoller = new HeadKeyPoller();
     private HttpServer httpServer;
     // 小智 (XiaoZhi) AI 對話 - 獨立於機械人 AIDL 之外的 client-side WebSocket
@@ -237,6 +237,8 @@ public class MainActivity extends Activity implements SensorEventListener {
             new java.util.concurrent.atomic.AtomicBoolean(false);
     private RobotEventReceiver dynamicReceiver;
     private BroadcastReceiver batteryReceiver;
+    /** 低電量蹲下 latch：10% 播過一次後不再重複，直到充過電或回升過 12% 才重置。 */
+    private boolean batteryLowSquatDone = false;
 
     // -- WiFi 指示燈 (2026-08-25) -----------------------------------------------
     // 開機預設 wifi 燈長着紅色; WiFi 一連上就轉藍燈, 斷開就轉返紅燈。真機掃描確認
@@ -246,6 +248,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     private static final int WIFI_LED_INDEX_BLUE = 12;
     private static final int WIFI_LED_INDEX_RED = 13;
     private BroadcastReceiver wifiLedReceiver;
+    private Runnable wifiLedReapply;
     private BroadcastReceiver panelUrlReceiver;
     private TextView panelLinkView;
     private String currentPanelUrl;
@@ -258,21 +261,16 @@ public class MainActivity extends Activity implements SensorEventListener {
     private EventBus.Listener gestureListener;
     private Runnable volumeRepeater;
 
-    // -- Pad (+/-) 實體鍵指示燈 (2026-08-25) -----------------------------------
-    // headboard v1.1 上 alpha2services v1.0 協議不合, 按 +/- 時 MCU 不再自己點燈,
-    // 要我們經 /dev/led_eye (LedControl JNI) 補回。真機掃描確認:
-    //   ledSetOn(14) = volume- 燈, ledSetOn(16) = volume+ 燈, ledSetOn(12) = wifi 藍燈。
-    // ledSetOn 是累加式 (連續 call 兩個 index 兩顆都會亮); ledSetOFF() 熄掉這些
-    // 單顆 LED 但不影響頭/眼環燈。
-    //
-    // 實測單發一條 ledSetOn 有時會靜靜地失敗 (原因未明, 疑似 alpha2services 那個
-    // 假熄燈循環間中搶贏), 所以策略是「快速連發」: 按住期間每 PAD_LED_INTERVAL_MS
-    // 補發一次組合, 一旦成功燈就會維持住; 放手後連發幾次 ledSetOFF 確保熄到。
-    // 不用任何「prime+等待」序列 - 不需要, 也是之前反應慢的原因。
+    // -- Pad (+/-) 實體鍵指示燈 -----------------------------------------------
+    // 真機掃描確認: ledSetOn(14) = volume- 燈, ledSetOn(16) = volume+ 燈。
+    // 2026-09 A/B 驗證：firmware 唔會自亮，按住期間由 app 連發補燈，放手補 OFF；
+    // wifi 燈 (12/13) firmware 唔會自己著，繼續手動（三態：熄/紅/藍）。
+    // （舊註：1.1.7.3 .so 年代註解保留作 mapping 參考。）
     private static final int PAD_LED_INDEX_MINUS = 14;
     private static final int PAD_LED_INDEX_PLUS = 16;
     private static final long PAD_LED_INTERVAL_MS = 80;
-    private static final int PAD_LED_OFF_RETRIES = 4;
+    // 2026-09：alpha2services 已移除，無人再搶 /dev/led_eye，重試只防偶發打唔開。
+    private static final int PAD_LED_OPEN_ATTEMPTS = 3;
     private final java.util.concurrent.ExecutorService padLedExecutor =
             java.util.concurrent.Executors.newSingleThreadExecutor();
     private volatile boolean padMinusHeld = false;
@@ -659,9 +657,21 @@ public class MainActivity extends Activity implements SensorEventListener {
             @Override public void run() {
                 boolean direct = localServices.start();
                 Log.i(TAG, "LocalAlpha2Services direct=" + direct + " (pure-direct, no alpha2services fallback)");
+                // 用戶要求：開app自動做一次蹲下站起（伸展筋骨），只在直驅就緒先播。
+                if (direct) {
+                    if (playActionDirect(STOP_RECOVERY_ACTION_ID)
+                            != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+                        Log.w(TAG, "startup squat not started: " + ubxPlayer.lastError());
+                    }
+                }
             }
         }, "LocalServicesInit").start();
         xiaozhiClient = new XiaozhiClient(getXiaozhiDeviceId());
+        // 開app自動連接小智（小智tab開關，預設關）。延遲 15s 等網絡穩定，
+        // 連線恢復時 connectivityReceiver 亦會再試，helper 內有 gate 保證單飛。
+        mainHandler.postDelayed(new Runnable() {
+            @Override public void run() { maybeAutoConnectXiaozhi("startup"); }
+        }, 15000);
         // 見 xiaozhiTtsEngine field 的 javadoc - 讀取上次選定的 TTS 引擎, 如果沒有存過
         // 就用預設值 "xiaozhi" (原本行為, 不靜音)。2026-09: 舊版本存落的
         // "iflytek"/"nuance" 已無對應引擎, 一律遷移到 "xiaozhi" 並寫返落去,
@@ -1047,11 +1057,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     /**
-     * 2026-08-25: 按 +/- pad 時點亮對應的指示燈 (headboard v1.1, alpha2services
-     * 不會自動點亮)。單發 ledSetOn 偶爾會靜悄悄地失敗, 所以用「worker loop 快速連發」:
-     * 按住期間每 PAD_LED_INTERVAL_MS 重發一次目前的組合 (累加式, 兩顆一起按兩顆都會亮),
-     * 放開之後連發 PAD_LED_OFF_RETRIES 次 ledSetOFF 確保能熄滅。單線程 worker,
-     * 如果已經在執行就不會重複啟動第二條。
+     * 2026-09 A/B 驗證結論：撳住 +/- firmware 唔會自亮 14/16（press-ON 刪除後實測
+     * 全暗；早前 suppressed build 見到著燈未能重現，不可依賴），所以按住期間繼續由
+     * app 主動點亮；放手後補 ledSetOFF 清場。單線程 worker，跑緊唔重入。
      */
     private void padLedUpdate() {
         if (padLedWorkerRunning) {
@@ -1059,18 +1067,20 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         padLedWorkerRunning = true;
         padLedExecutor.execute(() -> {
+            int lastCombo = -1; // bit0=minus bit1=plus；只在組合變化先補發（無人搶燈）
             try {
-                while (padMinusHeld || padPlusHeld) {
-                    assertPadLedsComboBurst();
-                    Thread.sleep(PAD_LED_INTERVAL_MS);
-                }
-                for (int i = 0; i < PAD_LED_OFF_RETRIES; i++) {
-                    assertPadLedsOffBurst();
-                    Thread.sleep(PAD_LED_INTERVAL_MS);
-                    if (!padMinusHeld && !padPlusHeld) {
-                        continue;
+                for (;;) {
+                    while (padMinusHeld || padPlusHeld) {
+                        int combo = (padMinusHeld ? 1 : 0) | (padPlusHeld ? 2 : 0);
+                        if (combo != lastCombo) {
+                            assertPadLedsComboBurst();
+                            lastCombo = combo;
+                        }
+                        Thread.sleep(PAD_LED_INTERVAL_MS);
                     }
-                    break; // released again mid-shutdown - hand control back to the loop
+                    assertPadLedsOffBurst();
+                    if (!padMinusHeld && !padPlusHeld) break;
+                    // 熄燈途中又撳過：兜返去 loop，唔交棒
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -1080,16 +1090,12 @@ public class MainActivity extends Activity implements SensorEventListener {
         });
     }
 
-    /** Retry count for one burst of open() attempts on /dev/led_eye. */
-    private static final int PAD_LED_OPEN_ATTEMPTS = 10;
     /** Gap between open() attempts inside one burst (ms). */
     private static final long PAD_LED_RETRY_GAP_MS = 40;
 
     /**
-     * One burst: keep trying LedControl.open() until the device actually opens
-     * (alpha2services' fake-off loop opens/closes it every ~0.8-2s, so our open()
-     * intermittently loses the race), then assert the held combo and close.
-     * Returns true if a session ran; false if every attempt failed to open.
+     * 按住期間點亮組合 burst：open 到就按 padMinusHeld/padPlusHeld 點 14/16
+     *（累加式，兩顆齊撳兩顆都著），打唔開就重試。
      */
     private boolean assertPadLedsComboBurst() {
         for (int attempt = 1; attempt <= PAD_LED_OPEN_ATTEMPTS; attempt++) {
@@ -1131,6 +1137,11 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     /**
+     * 放手後熄燈 burst：連發 ledSetOFF（已熄即 no-op）。
+     * 注意 ledSetOFF 會連 wifi 12/13 一起清，wifi 燈由 applyWifiLed 在狀態變化時重設。
+     */
+
+    /**
      * Same burst pattern but asserting ledSetOFF() instead of the held combo -
      * used after release so the pads go dark even if we have to wait out a race.
      */
@@ -1144,7 +1155,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
             if (openOk) {
                 try {
-                    LedControl.ledSetOFF();
+                    LedControl.ledSetOFF(0);
                 } finally {
                     try {
                         LedControl.close();
@@ -1608,7 +1619,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         stopLocalMusicPlaybackLocked();
         // 共用播放器：播本地時停掉電台，避免兩路同時出聲；動作配樂亦停，免疊聲
         stopRadioPlaybackLocked();
-        stopActionMusicLocked();
+        ubxPlayer.stopVoice();
         if (file == null || !file.exists()) {
             return;
         }
@@ -1788,7 +1799,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         stopRadioPlaybackLocked();
         // 共用播放器：播電台時停掉本地音樂，避免兩路同時出聲；動作配樂亦停
         stopLocalMusicPlaybackLocked();
-        stopActionMusicLocked();
+        ubxPlayer.stopVoice();
         if (station == null) {
             return;
         }
@@ -2031,55 +2042,136 @@ public class MainActivity extends Activity implements SensorEventListener {
                 lastBatteryStatus = batteryStatusName(status);
                 EventBus.get().publish("battery", "{\"level\":" + level + ",\"scale\":" + scale
                         + ",\"charging\":" + lastBatteryCharging + ",\"status\":\"" + lastBatteryStatus + "\"}");
+                // 用戶要求：電量跌到 10%（且不在充電）自動蹲下一次。ACTION_BATTERY_CHANGED
+                // 係 sticky broadcast，註冊即刻有一次，latch 防重複；充緊電/回升過 12% 重置。
+                int pct = (level >= 0 && scale > 0) ? (level * 100 / scale) : -1;
+                if (lastBatteryCharging || pct > 12) {
+                    batteryLowSquatDone = false;
+                } else if (pct >= 0 && pct <= 10 && !batteryLowSquatDone) {
+                    batteryLowSquatDone = true;
+                    new Thread(new Runnable() {
+                        @Override public void run() {
+                            if (playActionDirect(STOP_RECOVERY_ACTION_ID)
+                                    != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+                                Log.w(TAG, "low-battery squat not started: " + ubxPlayer.lastError());
+                            }
+                        }
+                    }, "LowBatterySquat").start();
+                }
             }
         };
         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
     }
 
     /**
-     * 2026-08-25: WiFi 狀態 → wifi 指示燈。連上轉藍 (ledSetOn(12)), 斷開轉返紅
-     * (ledSetOn(13))。切換前先 ledSetOFF() 清場 (ledSetOn 是累加式)。註冊當下
-     * 立即檢查一次現狀, 處理「app 開啟之前已經連上/斷線」的情況。
+     * 2026-08-25: WiFi 狀態 → wifi 指示燈 (2026-09 三態: wifi 熄=熄燈,
+     * wifi 開但未連=紅 13, 連上 AP=藍 12)。註冊當下立即檢查一次現狀,
+     * 處理「app 開啟之前已經連上/斷線」的情況。
      */
     private void registerWifiLedReceiver() {
         wifiLedReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                android.net.NetworkInfo info =
-                        intent.getParcelableExtra(WifiManager.EXTRA_NETWORK_INFO);
-                if (info == null || info.getType() != android.net.ConnectivityManager.TYPE_WIFI) {
+                String action = intent != null ? intent.getAction() : "";
+                // 收斂：熄 wifi 時 DISABLED 同 disconnected 兩個 broadcast 先後不定，
+                // 先到的若判了紅，後到的熄燈蓋過；反之亦然。1.2s 後按權威狀態重設一次，
+                // 保證最終一致（單線程 executor 保序，debounce 防堆積）。
+                if (wifiLedReapply != null) mainHandler.removeCallbacks(wifiLedReapply);
+                wifiLedReapply = new Runnable() {
+                    @Override public void run() { applyWifiLed(); }
+                };
+                mainHandler.postDelayed(wifiLedReapply, 1200);
+                if (WifiManager.WIFI_STATE_CHANGED_ACTION.equals(action)) {
+                    // 開關掣本身：熄了即熄燈；其他狀態轉 query 最新為準。
+                    int st = intent.getIntExtra(WifiManager.EXTRA_WIFI_STATE, -1);
+                    if (st == WifiManager.WIFI_STATE_DISABLED
+                            || st == WifiManager.WIFI_STATE_DISABLING) {
+                        applyWifiLedState(false, false);
+                    } else {
+                        applyWifiLed();
+                    }
                     return;
                 }
-                applyWifiLed(info.isConnected());
+                // 連線變化：intent 自帶的 NetworkInfo 即權威新狀態，直接用，
+                // 唔重查（重查有 race：broadcast 到咗但 ConnectivityManager
+                // 仲係舊值，會凍結喺紅燈，實機見過）。但開關制要現查——熄 wifi
+                // 時 DISABLED 同 disconnected 兩個 broadcast 先後到，後者若
+                // 當 wifi 仲開住就會點返紅燈蓋過熄燈。
+                android.net.NetworkInfo info = intent != null ? intent
+                        .getParcelableExtra(WifiManager.EXTRA_NETWORK_INFO) : null;
+                if (info != null && info.getType()
+                        == android.net.ConnectivityManager.TYPE_WIFI) {
+                    boolean onNow = isWifiEnabledNow();
+                    applyWifiLedState(onNow, onNow && info.isConnected());
+                } else {
+                    applyWifiLed();
+                }
             }
         };
-        IntentFilter filter = new IntentFilter(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+        filter.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
         registerReceiver(wifiLedReceiver, filter);
 
         // App 啟動時按當前狀態即刻設好。
-        android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
-                getSystemService(Context.CONNECTIVITY_SERVICE);
-        boolean connected = false;
-        if (cm != null) {
-            android.net.NetworkInfo ni = cm.getNetworkInfo(android.net.ConnectivityManager.TYPE_WIFI);
-            connected = ni != null && ni.isConnected();
-        }
-        final boolean connectedNow = connected;
-        padLedExecutor.execute(() -> applyWifiLedInternal(connectedNow));
+        applyWifiLed();
     }
 
-    /** WiFi 燈狀態切換入口 - 排給 pad LED 單線程 executor 執行。 */
-    private void applyWifiLed(boolean connected) {
-        padLedExecutor.execute(() -> applyWifiLedInternal(connected));
+    /** WiFi 燈狀態切換入口（已知名確狀態版） - 排給 pad LED 單線程 executor 執行。 */
+    private void applyWifiLedState(final boolean wifiOn, final boolean connected) {
+        padLedExecutor.execute(() -> applyWifiLedInternal(wifiOn, connected));
+    }
+
+    /** 現查 wifi 開關制（裹 try/catch，查唔到當開住，由連線態決定）。 */
+    private boolean isWifiEnabledNow() {
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager)
+                    getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            return wm == null || wm.isWifiEnabled();
+        } catch (Exception e) {
+            Log.w(TAG, "wifi enabled check failed", e);
+            return true;
+        }
+    }
+
+    /** WiFi 燈狀態切換入口（現查版：開機/開關變化時用） - 排給 pad LED 單線程 executor 執行。 */
+    private void applyWifiLed() {
+        final boolean wifiOn;
+        final boolean connected;
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager)
+                    getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            wifiOn = wm != null && wm.isWifiEnabled();
+        } catch (Exception e) {
+            Log.w(TAG, "wifi enabled check failed", e);
+            return;
+        }
+        boolean conn = false;
+        if (wifiOn) {
+            try {
+                android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                        getSystemService(Context.CONNECTIVITY_SERVICE);
+                if (cm != null) {
+                    android.net.NetworkInfo ni =
+                            cm.getNetworkInfo(android.net.ConnectivityManager.TYPE_WIFI);
+                    conn = ni != null && ni.isConnected();
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "wifi connected check failed", e);
+            }
+        }
+        final boolean connectedNow = conn;
+        padLedExecutor.execute(() -> applyWifiLedInternal(wifiOn, connectedNow));
     }
 
     /**
-     * 實際切換: 先 ledSetOFF() 清走舊色, 等 100ms, 再點目標顏色。兩步都係 burst
-     * 重試式, 同 alpha2services 搭 /dev/led_eye 輸贏都最終會成。
+     * 實際切換: 先 ledSetOFF() 清走舊色, 等 100ms, 再點目標顏色
+     * （wifi 熄就唔點）。兩步都係 burst 重試式。
      */
-    private void applyWifiLedInternal(boolean connected) {
+    private void applyWifiLedInternal(boolean wifiOn, boolean connected) {
         try {
             assertPadLedsOffBurst();
+            if (!wifiOn) return;
             Thread.sleep(100);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -3220,7 +3312,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             sInstance = null;
         }
         stopVolumeRepeat();
-        stopActionMusic();
+        ubxPlayer.stopVoice();
         stopMicHoldEnforcer();
         micHeldByApp = false;
         setAccelerometerEnabled(false);
@@ -3555,53 +3647,17 @@ public class MainActivity extends Activity implements SensorEventListener {
                 boolean ok = localServices.ledMouthBreathe(sp);
                 return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
             }
-            case "ubx/list": {
-                java.io.File dir = new java.io.File("/sdcard/actions");
-                String[] names = dir.list();
-                if (names == null) return HttpServer.ApiResponse.error("no /sdcard/actions");
-                StringBuilder sb = new StringBuilder("{\"ok\":true,\"files\":[");
-                boolean first = true;
-                for (String n : names) {
-                    java.io.File f = new java.io.File(dir, n);
-                    if (!f.isFile()) continue;
-                    if (!first) sb.append(',');
-                    first = false;
-                    sb.append("{\"name\":\"").append(jsonSafe(n)).append("\",\"size\":").append(f.length()).append('}');
-                }
-                sb.append("]}");
-                return HttpServer.ApiResponse.ok(sb.toString());
-            }
-            case "ubx/play": {
-                String name = query.get("name");
-                String p = query.get("path");
-                java.io.File f;
-                if (p != null) f = new java.io.File(p);
-                else if (name != null) f = new java.io.File("/sdcard/actions/" + name);
-                else return HttpServer.ApiResponse.error("name or path required");
-                if (!f.isFile()) return HttpServer.ApiResponse.error("not found: " + f.getPath());
-                if (ubxPlayer.isPlaying()) return HttpServer.ApiResponse.error("already playing (stop first)");
-                HardwareDirectManager dm = HardwareDirectManager.get(this);
-                if (!dm.chest().isAvailable()) return HttpServer.ApiResponse.error("chest not available");
-                UbxFile ubx;
-                try {
-                    ubx = UbxParser.parseFile(f);
-                } catch (Exception e) {
-                    return HttpServer.ApiResponse.error("parse failed: " + e.getMessage());
-                }
-                boolean started = ubxPlayer.play(ubx, f.getName(), dm.chest());
-                if (!started) return HttpServer.ApiResponse.error("cannot start: " + ubxPlayer.lastError());
-                startActionMusic(f, ubx);
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"name\":\"" + jsonSafe(f.getName())
-                        + "\",\"total\":" + ubxPlayer.total() + "}");
-            }
-            case "ubx/stop": {
-                ubxPlayer.stop();
-                stopActionMusic();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-            case "ubx/status": {
-                return HttpServer.ApiResponse.ok(ubxPlayer.statusJson());
-            }
+            // Ubx 直播（与 /api/alpha2/ubx/* 同 helper；抢占式：播新自动停旧）。
+            case "ubx/list":
+                return ubxListResponse();
+            case "ubx/play":
+                return ubxPlayResponse(query.get("name"), query.get("path"));
+            case "ubx/speed":
+                return ubxSpeedResponse(query.get("value"));
+            case "ubx/stop":
+                return ubxStopResponse();
+            case "ubx/status":
+                return ubxStatusResponse();
             default:
                 return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
                         "{\"ok\":false,\"error\":\"unknown direct endpoint: " + path + "\"}");
@@ -3909,6 +3965,19 @@ public class MainActivity extends Activity implements SensorEventListener {
                     stopXiaozhiMic();
                 }
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + "}");
+            }
+
+            case "auto_connect/get": {
+                boolean autoConn = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .getBoolean(PREF_XIAOZHI_AUTO_CONNECT, false);
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + autoConn + "}");
+            }
+            case "auto_connect/set": {
+                String v = query.get("enabled");
+                boolean autoConn = "true".equalsIgnoreCase(v) || "1".equals(v);
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                        .putBoolean(PREF_XIAOZHI_AUTO_CONNECT, autoConn).apply();
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + autoConn + "}");
             }
 
             case "send_text": {
@@ -4386,6 +4455,30 @@ public class MainActivity extends Activity implements SensorEventListener {
             // (手動撳掣或者自動重連) 先可以再次通過。
             xiaozhiActivationInFlight.set(false);
         }
+    }
+
+    /**
+     * 開app自動連接小智（設定見 auto_connect/get|set，預設關）。冪等：
+     * 開關冇開/已連線/已有 activation 在飛都直接返，由開機延遲任務同
+     * connectivity 恢復兩處觸發，唔會重複連。
+     */
+    private void maybeAutoConnectXiaozhi(String why) {
+        boolean enabled;
+        try {
+            enabled = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .getBoolean(PREF_XIAOZHI_AUTO_CONNECT, false);
+        } catch (Exception e) {
+            return;
+        }
+        if (!enabled) return;
+        if (xiaozhiClient == null || xiaozhiClient.isOpen()) return;
+        if (!xiaozhiActivationInFlight.compareAndSet(false, true)) return;
+        xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
+        final String deviceId = getXiaozhiDeviceId();
+        Log.i(TAG, "xiaozhi auto-connect (" + why + ")");
+        new Thread(new Runnable() {
+            @Override public void run() { runXiaozhiActivationFlow(deviceId); }
+        }, "XiaozhiAutoConnect").start();
     }
 
     /** 小智常開開啟時, WebSocket 意外斷線 (見 XiaozhiClient.DisconnectListener)
@@ -6145,92 +6238,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         };
     }
 
-    // -- CPU 使用率 (2026-08 v2 新增, /api/status 用) -----------------------------
-    // 讀 /proc/stat 第一行 (user/nice/system/idle/iowait/irq/softirq/steal),
-    // 同上次取樣計 delta -> 使用率 %。兩次 call 至少隔 CPU_SAMPLE_MIN_GAP_MS 先
-    // 會重新取樣, 中間重複 poll 就回用上一次計算好的值 - 不用每次都等夠窗口。
-    private static final long CPU_SAMPLE_MIN_GAP_MS = 500;
-    private final Object cpuSampleLock = new Object();
-    private long[] lastCpuTick;      // [0]=總 ticks, [1]=idle+iowait ticks
-    private long lastCpuTickAtMs = 0;
-    private double lastCpuPercent = -1;
-
-    /** 回傳 "cpuPercent":<value> JSON 片段; 尚未有足夠數據時回傳 null。 */
-    private String cpuUsageJson() {
-        synchronized (cpuSampleLock) {
-            long now = android.os.SystemClock.elapsedRealtime();
-            long[] cur = readCpuTicks();
-            if (cur == null) {
-                return "\"cpuPercent\":null";
-            }
-            boolean haveGap = lastCpuTick != null && (now - lastCpuTickAtMs) >= CPU_SAMPLE_MIN_GAP_MS;
-            if (lastCpuTick == null) {
-                // 第一次 call: 存基準, 等一個短窗口再取第二次, 等第一次就有值。
-                try {
-                    Thread.sleep(200);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    lastCpuTick = cur;
-                    lastCpuTickAtMs = now;
-                    return "\"cpuPercent\":null";
-                }
-                long[] cur2 = readCpuTicks();
-                if (cur2 != null) {
-                    lastCpuPercent = computeCpuPercent(cur, cur2);
-                }
-                lastCpuTick = cur2 != null ? cur2 : cur;
-                lastCpuTickAtMs = android.os.SystemClock.elapsedRealtime();
-            } else if (haveGap) {
-                lastCpuPercent = computeCpuPercent(lastCpuTick, cur);
-                lastCpuTick = cur;
-                lastCpuTickAtMs = now;
-            }
-            // else: 間隔未夠, 沿用 lastCpuPercent。
-            if (lastCpuPercent < 0) {
-                return "\"cpuPercent\":null";
-            }
-            return "\"cpuPercent\":" + String.format(java.util.Locale.US, "%.1f",
-                    Math.max(0.0, Math.min(100.0, lastCpuPercent)));
-        }
-    }
-
-    /** 兩個取樣點之間的使用率 (%) = (totalDelta - idleDelta) / totalDelta。 */
-    private static double computeCpuPercent(long[] from, long[] to) {
-        long totalDelta = to[0] - from[0];
-        long idleDelta = to[1] - from[1];
-        if (totalDelta <= 0) return -1;
-        return (double) (totalDelta - idleDelta) * 100.0 / (double) totalDelta;
-    }
-
-    /** 讀 /proc/stat 第一行, 回 {總ticks, idle(+iowait)ticks}, 失敗回 null。 */
-    private static long[] readCpuTicks() {
-        java.io.BufferedReader reader = null;
-        try {
-            reader = new java.io.BufferedReader(new java.io.FileReader("/proc/stat"));
-            String line = reader.readLine(); // "cpu  user nice system idle iowait irq softirq steal ..."
-            if (line == null || !line.startsWith("cpu")) return null;
-            String[] parts = line.trim().split("\\s+");
-            long total = 0;
-            long idle = 0;
-            for (int i = 1; i < parts.length; i++) {
-                long v = Long.parseLong(parts[i]);
-                total += v;
-                if (i == 4) idle += v;              // idle
-                if (i == 5) idle += v;              // iowait 都算閒置
-            }
-            return new long[]{total, idle};
-        } catch (Exception e) {
-            return null;
-        } finally {
-            if (reader != null) {
-                try {
-                    reader.close();
-                } catch (Exception ignored) {
-                }
-            }
-        }
-    }
-
     private HttpServer.ApiResponse handleApi(String path, Map<String, String> query, String method, String body) {
         switch (path) {
             case "status":
@@ -6244,8 +6251,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                         + "\"appVersion\":\"" + appVer + "\","
                         + "\"chestAvailable\":" + directChestReady() + ","
                         + "\"headerAvailable\":" + directHeaderReady() + ","
-                        + "\"androidTtsReady\":" + androidTtsReady + ","
-                        + cpuUsageJson() + "}");
+                        + "\"androidTtsReady\":" + androidTtsReady + "}");
 
             case "chest/version": {
                 // 只回 chest MCU 真實韌體版本 (sendCommand 51)
@@ -6313,6 +6319,20 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // stopActionWithRecovery()，回位播唔播到唔影響停止本身回 true。
                 return codeResponse(stopActionWithRecovery());
             }
+
+            // -- Ubx 直播（供前端动作 tab：api() 只发 /api/alpha2/*，故在此挂一份；
+            // /api/direct/ubx/* 那份调同一 helper，行为一致；/api/ubx/* 裸路径经
+            // fallthrough 亦到此）--------------
+            case "ubx/list":
+                return ubxListResponse();
+            case "ubx/play":
+                return ubxPlayResponse(query.get("name"), query.get("path"));
+            case "ubx/stop":
+                return ubxStopResponse();
+            case "ubx/status":
+                return ubxStatusResponse();
+            case "ubx/speed":
+                return ubxSpeedResponse(query.get("value"));
 
             // -- Speech / TTS -----------------------------------------------------------
             // engine: nuance | iflytek | android. voice only applies to iflytek (its
@@ -6690,8 +6710,8 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
             // NOTE: unlike led/head/set and led/eye/set above, this does NOT go through
             // Alpha2RobotApi/AIDL at all - there is no AIDL "mouth LED" method. It calls
-            // com.ubtechinc.mic5.LedControl directly (a native JNI class backed by
-            // libhead_led.so), a completely separate control path found in a different
+            // com.ubtechinc.alpha.jni.LedControl directly (a native JNI class backed by
+            // libhead_led.so 3.002), a completely separate control path found in a different
             // demo app, not gated by isHeaderReady()/waitHeaderReady() since it has
             // nothing to do with the header serial AIDL bind. See MouthLedData's
             // javadoc for the confirmed field semantics and the same-device-contention
@@ -6723,7 +6743,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 String func = ApiValidator.optional(query, "func", "");
                 if ("off".equals(func)) {
                     boolean openOk = LedControl.open();
-                    boolean r = LedControl.ledSetOFF();
+                    boolean r = LedControl.ledSetOFF(0);
                     LedControl.close();
                     Log.i(TAG, "ledSetOFF open=" + openOk + " raw=" + r);
                     return HttpServer.ApiResponse.ok(
@@ -8656,6 +8676,87 @@ public class MainActivity extends Activity implements SensorEventListener {
         return f.isFile() ? f : null;
     }
 
+    // -- Ubx 直播共用实现（/api/direct/ubx/* 与 /api/alpha2/ubx/* 同调；
+    // 抢占式：播新动作自动停旧动作，与原厂 playActionName 打断语义一致）--
+    private HttpServer.ApiResponse ubxListResponse() {
+        java.io.File dir = new java.io.File("/sdcard/actions");
+        String[] names = dir.list();
+        if (names == null) return HttpServer.ApiResponse.error("no /sdcard/actions");
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"files\":[");
+        boolean first = true;
+        for (String n : names) {
+            java.io.File f = new java.io.File(dir, n);
+            if (!f.isFile()) continue;
+            if (!first) sb.append(',');
+            first = false;
+            sb.append("{\"name\":\"").append(jsonSafe(n)).append("\",\"size\":").append(f.length()).append('}');
+        }
+        sb.append("]}");
+        return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    private HttpServer.ApiResponse ubxPlayResponse(String name, String p) {
+        java.io.File f;
+        if (p != null) f = new java.io.File(p);
+        else if (name != null) f = new java.io.File("/sdcard/actions/" + name);
+        else return HttpServer.ApiResponse.error("name or path required");
+        if (!f.isFile()) return HttpServer.ApiResponse.error("not found: " + f.getPath());
+        HardwareDirectManager dm = HardwareDirectManager.get(this);
+        if (!dm.chest().isAvailable()) return HttpServer.ApiResponse.error("chest not available");
+        UbxFile ubx;
+        try {
+            ubx = UbxParser.parseFile(f);
+        } catch (Exception e) {
+            return HttpServer.ApiResponse.error("parse failed: " + e.getMessage());
+        }
+        ubxPlayer.stop(); // 抢占：停旧播新
+        boolean started = ubxPlayer.play(ubx, f.getName(), dm.chest(), f);
+        if (!started) return HttpServer.ApiResponse.error("cannot start: " + ubxPlayer.lastError());
+        lastPlayedFile = f;
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"name\":\"" + jsonSafe(f.getName())
+                + "\",\"total\":" + ubxPlayer.total() + "}");
+    }
+
+    private HttpServer.ApiResponse ubxSpeedResponse(String v) {
+        if (v == null) return HttpServer.ApiResponse.error("value required (0.5|0.67|1|1.5|2)");
+        float f;
+        try {
+            f = Float.parseFloat(v.trim());
+        } catch (Exception e) {
+            return HttpServer.ApiResponse.error("bad speed: " + v);
+        }
+        if (!ubxPlayer.setSpeed(f)) {
+            return HttpServer.ApiResponse.error("bad speed (0.5|0.67|1|1.5|2)");
+        }
+        // 播緊時即時生效：用新速度由頭重播同一文件（内部快照隔离，旧计划安全交接）。
+        boolean restarted = false;
+        java.io.File last = lastPlayedFile;
+        if (ubxPlayer.isPlaying() && last != null && last.isFile()) {
+            try {
+                UbxFile rubx = UbxParser.parseFile(last);
+                HardwareDirectManager rdm = HardwareDirectManager.get(this);
+                if (rdm.chest().isAvailable()) {
+                    ubxPlayer.stop();
+                    restarted = ubxPlayer.play(rubx, last.getName(), rdm.chest(), last);
+                    if (restarted) lastPlayedFile = last;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "speed restart failed", e);
+            }
+        }
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"code\":\"API_ERROR_SUCCEED\",\"speed\":" + ubxPlayer.getSpeed()
+                + ",\"restarted\":" + restarted + "}");
+    }
+
+    private HttpServer.ApiResponse ubxStopResponse() {
+        ubxPlayer.stop();
+        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+    }
+
+    private HttpServer.ApiResponse ubxStatusResponse() {
+        return HttpServer.ApiResponse.ok(ubxPlayer.statusJson());
+    }
+
     private HttpServer.ApiResponse actionListDirect() {
         List<String[]> info = loadActionInfo();
         StringBuilder sb = new StringBuilder("{\"ok\":true,\"actions\":[");
@@ -8675,7 +8776,6 @@ public class MainActivity extends Activity implements SensorEventListener {
     private HttpServer.ApiResponse actionPlayDirect(String name) {
         java.io.File f = resolveActionFile(name);
         if (f == null) return HttpServer.ApiResponse.error("unknown action: " + name);
-        if (ubxPlayer.isPlaying()) return HttpServer.ApiResponse.error("already playing (stop first)");
         HardwareDirectManager dm = HardwareDirectManager.get(this);
         if (!dm.chest().isAvailable()) return HttpServer.ApiResponse.error("chest not available");
         UbxFile ubx;
@@ -8684,10 +8784,11 @@ public class MainActivity extends Activity implements SensorEventListener {
         } catch (Exception e) {
             return HttpServer.ApiResponse.error("parse failed: " + e.getMessage());
         }
-        if (!ubxPlayer.play(ubx, f.getName(), dm.chest())) {
+        ubxPlayer.stop(); // 抢占：播新自动停旧
+        if (!ubxPlayer.play(ubx, f.getName(), dm.chest(), f)) {
             return HttpServer.ApiResponse.error("cannot start: " + ubxPlayer.lastError());
         }
-        startActionMusic(f, ubx);
+        lastPlayedFile = f;
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"code\":\"API_ERROR_SUCCEED\",\"name\":\""
                 + jsonSafe(f.getName()) + "\",\"total\":" + ubxPlayer.total() + "}");
     }
@@ -8710,12 +8811,11 @@ public class MainActivity extends Activity implements SensorEventListener {
             return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
         }
         ubxPlayer.stop();
-        stopActionMusic();
-        if (!ubxPlayer.play(ubx, f.getName(), dm.chest())) {
+        if (!ubxPlayer.play(ubx, f.getName(), dm.chest(), f)) {
             Log.w(TAG, "playActionDirect not started: " + ubxPlayer.lastError());
             return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
         }
-        startActionMusic(f, ubx);
+        lastPlayedFile = f;
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
 
@@ -8726,7 +8826,6 @@ public class MainActivity extends Activity implements SensorEventListener {
      */
     private UbxErrorCode.API_ERROR_CODE stopActionWithRecovery() {
         ubxPlayer.stop();
-        stopActionMusic();
         try {
             UbxErrorCode.API_ERROR_CODE rec = playActionDirect(STOP_RECOVERY_ACTION_ID);
             if (rec != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
@@ -8738,127 +8837,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
 
-    /**
-     * 动作配乐解析：机身布局沿用 PC 端（{@code <id>.ubx} + 同名目录 {@code <id>/xxx.mp3}），
-     * 如 {@code /sdcard/actions/1524573025741.ubx} 配
-     * {@code /sdcard/actions/1524573025741/rap.mp3}。优先用 .ubx 内 type4 的
-     * musicName 精确命中，搵唔到就退回目录下第一首 *.mp3；无音乐返回 null。
-     */
-    private java.io.File resolveActionMusicFile(java.io.File ubxFile, UbxFile ubx) {
-        if (ubxFile == null) return null;
-        String fname = ubxFile.getName();
-        String base = fname.endsWith(".ubx") ? fname.substring(0, fname.length() - 4) : fname;
-        java.io.File parent = ubxFile.getParentFile();
-        if (parent == null) parent = new java.io.File(ACTION_DIR);
-        java.io.File dir = new java.io.File(parent, base);
-        String want = null;
-        if (ubx != null) {
-            for (UbxFile.UbxTrack t : ubx.tracks) {
-                if (t.musicName != null && !t.musicName.isEmpty()) { want = t.musicName; break; }
-            }
-        }
-        if (dir.isDirectory()) {
-            if (want != null) {
-                java.io.File hit = new java.io.File(dir, want);
-                if (hit.isFile()) return hit;
-            }
-            java.io.File[] all = dir.listFiles();
-            if (all != null) {
-                for (java.io.File f : all) {
-                    if (f.isFile() && f.getName().toLowerCase(java.util.Locale.US).endsWith(".mp3")) {
-                        return f;
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * 起动作配乐（STREAM_MUSIC + prepareAsync，和播本地音乐同一形状，但刻意唔經
-     * filler 循環/EQ/頻譜——嗰啲會反過來搶舵機）。另排一個 backstop：按 servo 總時長
-     * + 2s 後截停（generation 把關，防舊動作拖住新動作的音樂）；正常情況音樂同動作
-     * 等長，自然播完經 onCompletion 收尾。
-     */
-    private synchronized void startActionMusic(java.io.File ubxFile, UbxFile ubx) {
-        stopActionMusicLocked();
-        final int gen = ++actionMusicGen;
-        java.io.File music = resolveActionMusicFile(ubxFile, ubx);
-        if (music == null) return;
-        try {
-            android.media.MediaPlayer player = new android.media.MediaPlayer();
-            player.setAudioStreamType(AudioManager.STREAM_MUSIC);
-            player.setDataSource(music.getAbsolutePath());
-            player.setOnPreparedListener(mp -> {
-                synchronized (MainActivity.this) {
-                    if (currentActionMusicPlayer != mp) {
-                        try { mp.release(); } catch (Exception ignored) {}
-                        return;
-                    }
-                }
-                try { mp.start(); } catch (Exception e) {
-                    Log.w(TAG, "action music start failed", e);
-                }
-            });
-            player.setOnCompletionListener(mp -> {
-                synchronized (MainActivity.this) {
-                    try { mp.release(); } catch (Exception ignored) {}
-                    if (currentActionMusicPlayer == mp) currentActionMusicPlayer = null;
-                }
-            });
-            player.setOnErrorListener((mp, what, extra) -> {
-                synchronized (MainActivity.this) {
-                    try { mp.release(); } catch (Exception ignored) {}
-                    if (currentActionMusicPlayer == mp) currentActionMusicPlayer = null;
-                }
-                Log.w(TAG, "action music error what=" + what + " extra=" + extra + " for " + music);
-                return true;
-            });
-            currentActionMusicPlayer = player;
-            player.prepareAsync();
-            long totalMs = 0;
-            if (ubx != null) {
-                for (UbxFile.UbxTrack t : ubx.tracks) {
-                    for (UbxFile.UbxServoFrame sf : t.frames) {
-                        if (sf.moveTimeHintMs > 0) totalMs += sf.moveTimeHintMs;
-                    }
-                }
-            }
-            if (totalMs > 0) {
-                final long stopAt = totalMs + 2000;
-                mainHandler.postDelayed(new Runnable() {
-                    @Override public void run() {
-                        synchronized (MainActivity.this) {
-                            if (actionMusicGen == gen) stopActionMusicLocked();
-                        }
-                    }
-                }, stopAt);
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "Failed to play action music " + music, e);
-        }
-    }
-
-    private synchronized void stopActionMusic() {
-        actionMusicGen++;
-        stopActionMusicLocked();
-    }
-
-    private void stopActionMusicLocked() {
-        if (currentActionMusicPlayer != null) {
-            try {
-                currentActionMusicPlayer.stop();
-            } catch (Exception ignored) {
-                // prepareAsync 中途 race 可拋 IllegalStateException，照 release，吞掉。
-            }
-            try {
-                currentActionMusicPlayer.release();
-            } catch (Exception ignored) {
-            }
-            currentActionMusicPlayer = null;
-        }
-    }
-
+    // 动作配乐已并入 UbxPlayer 内 voice 线（a/j/a/o 官方语义），此处不再另起 MediaPlayer。
+    // 配乐寻址规则见 UbxPlayer.resolveVoiceFile：ubx去扩展名/music名，缺省退回目录首首 mp3。
     private static String require(Map<String, String> query, String key) {
         String v = query.get(key);
         if (v == null) {
@@ -9356,6 +9336,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                             boolean online = hasRealInternet();
                             lastProbeOnline = online;
                             applyConnectivityMode(online, "connectivity_change");
+                            if (online) maybeAutoConnectXiaozhi("connectivity");
                         }
                     }, "conn-probe").start();
                 }

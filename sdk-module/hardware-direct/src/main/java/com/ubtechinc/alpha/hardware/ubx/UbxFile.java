@@ -38,6 +38,8 @@ public final class UbxFile {
         @Deprecated
         public int xfield;
         public int servoGroups;
+        /** voice d.a（f==4 → a/j/a/o 链）成功拆出的次数（配乐帧见 frames 内 voice 项）。 */
+        public int voiceGroups;
         public int framesA;
         public int nonServoFrames;
         public int leafA;
@@ -88,6 +90,9 @@ public final class UbxFile {
     public static final class UbxServoFrame {
         public int start;
         public int end;
+        /** voice 帧（d.a f==4 → a/j/a/o 链）：只供配乐调度，舵机发送跳过。music 为 e-blob 尾 GBK 名。 */
+        public boolean voice;
+        public String music;
         public final byte[] angles20 = new byte[20];
         public int baseB;
         public int baseC;

@@ -816,6 +816,22 @@ function xiaozhiSetTtsEngine(engine) {
   });
 }
 
+/** Page load 讀返「開app自動連接」開關狀態 - 對照 xiaozhiLoadOtaConfig() 嘅做法。 */
+function xiaozhiLoadAutoConnect() {
+  xiaozhiApi("auto_connect/get", {}).then(function (res) {
+    const toggle = document.getElementById("xiaozhiAutoConnectToggle");
+    if (toggle) toggle.checked = !!(res && res.ok && res.enabled);
+  });
+}
+
+/** 開app自動連接開關切換 - 即刻儲存，下次開app生效（唔會即刻連線）。 */
+function xiaozhiSetAutoConnect(checked) {
+  xiaozhiApi("auto_connect/set", { enabled: checked ? "true" : "false" }).then(function (res) {
+    const toggle = document.getElementById("xiaozhiAutoConnectToggle");
+    if (toggle) toggle.checked = !!(res && res.ok && res.enabled);
+  });
+}
+
 /** Page load 讀返上次揀低嘅 TTS 引擎, 同步按鈕 active 狀態 - 對照
  *  xiaozhiLoadOtaConfig() 嘅做法。 */
 function xiaozhiLoadTtsConfig() {
@@ -830,6 +846,7 @@ window.addEventListener("DOMContentLoaded", function () {
   xiaozhiCheckSupport();
   xiaozhiRefreshStatus();
   xiaozhiLoadOtaConfig();
+  xiaozhiLoadAutoConnect();
   xiaozhiLoadMcpConfig();
   xiaozhiLoadTtsConfig();
   setTimeout(xiaozhiBackgroundStatusWatch, 8000);

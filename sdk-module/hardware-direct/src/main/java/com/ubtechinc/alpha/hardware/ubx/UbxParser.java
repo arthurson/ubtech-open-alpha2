@@ -204,10 +204,12 @@ public final class UbxParser {
     }
 
     /**
-     * d.a 复帧（pos 指向 L2'，len 即 L1'）。布局：
-     * [len][fLen][f表][a 编排][b 编排][c[50]][d[50]][e][f][g][h][h字节→i]。
-     * 是否 servo 只看 f（f==0 走 a.d servo 链；b 实测恒非零，非判据）。
-     * 非 servo（f!=0，如声/灯）不作 a.d 解析，只计数。
+ * d.a 复帧（pos 指向 L2'，len 即 L1'）。布局：
+ * [len][fLen][f表][a 编排][b 编排][c[50]][d[50]][e][f][g][h][h字节→i]。
+ * 只看 f（f.b.f 分发原文）：f==0 走 f.i/a.d servo 链；f==4 走 voice/b（联网 TTS，
+ * 不作解析）；b 实测恒非零，非判据。配乐 mp3 来自 servo 链内 type==4 块（a/d 原文
+ * 按 type 建 handler：1→a/h servo，2→a/f，3→a/e，4→a/j/mp3，5→a/i），a/j 内为
+ * 同形 a/c→a/b→a.a，帧 e-blob 去头尾 8B 即 GBK 歌名（a/o.a() 原文）。
      */
     private static void parseFrameA(byte[] f, int off, int declaredLen, UbxFile.UbxTrack track, UbxFile out) throws UbxParseException {
         if (le(f, off) != declaredLen) throw new UbxParseException("aframe len check");
@@ -230,9 +232,9 @@ public final class UbxParser {
         track.framesA++;
         track.frameBValues.add(fb);
         if (fh == 0) return;
-        if (ff != 0) { track.nonServoFrames++; return; } // 声/灯等非 servo d.a：原厂走 f.e/e.d 分支，不作 a.d 解析
+        if (ff != 0) { track.nonServoFrames++; return; } // f.e/e.d/voice-b（联网TTS）分支，不作 a.d 解析
         try {
-            parseServoChain(f, p, fh, out, track);
+            parseServoChain(f, p, fh, out, track, false);
             track.servoGroups++;
         } catch (UbxParseException e) {
             track.nonServoFrames++;
@@ -240,11 +242,13 @@ public final class UbxParser {
     }
 
     /**
-     * servo 执行链（a.d 多轨分发）：[len==self][count][type][len][data]*（pos 指向 len）。
+     * servo/voice 执行链（a.d 多轨分发）：[len==self][count][type][len][data]*（pos 指向 len）。
      * type==0 且 len==8 → 时间基 [a][b]（static，a.p 语义；记入本 track，out 取首个）；
-     * type==1 → data → a.h；其余 type（2/3/4/5…灯/音乐）原样保留并提取音乐名/路径。
+     * type==1 → data → a.h servo 帧；
+     * type==4 → data → a/j 配乐链（同形 a/c→a/b→a.a，帧标 voice 供配乐调度，不进舵机）；
+     * 其余 type（2/3/5…）原样保留并提取音乐名/路径（回退）。
      */
-    static void parseServoChain(byte[] eBytes, int off, int eLen, UbxFile out, UbxFile.UbxTrack track) throws UbxParseException {
+    static void parseServoChain(byte[] eBytes, int off, int eLen, UbxFile out, UbxFile.UbxTrack track, boolean voice) throws UbxParseException {
         if (le(eBytes, off) != eLen) throw new UbxParseException("adispatch len check");
         int count = le(eBytes, off + 4);
         int p = off + 8;
@@ -259,7 +263,21 @@ public final class UbxParser {
                 track.timeBaseB = le(eBytes, p + 4);
                 if (out.timeBaseMs <= 0) out.timeBaseMs = base;
             } else if (type == 1) {
-                parseTrackH(eBytes, p, len, out, track);
+                parseTrackH(eBytes, p, len, out, track, voice);
+            } else if (type == 4) {
+                // a/j 配乐链：内容即 a/c 容器（失败则回退到原样保留，不影响 servo）。
+                try {
+                    parseTrackH(eBytes, p, len, out, track, true);
+                    track.voiceGroups++;
+                } catch (UbxParseException e) {
+                    track.nonServoFrames++;
+                }
+                UbxFile.UbxBlock blk = new UbxFile.UbxBlock();
+                blk.type = type;
+                blk.data = new byte[len];
+                System.arraycopy(eBytes, p, blk.data, 0, len);
+                track.blocks.add(blk);
+                supplementMusic(blk.data, track);
             } else {
                 UbxFile.UbxBlock blk = new UbxFile.UbxBlock();
                 blk.type = type;
@@ -357,7 +375,7 @@ public final class UbxParser {
     }
 
     /** a.h → a.c 容器：[echo==len][count][L1 outer][内容]*（内容从 echo 起读）。 */
-    private static void parseTrackH(byte[] h, int off, int len, UbxFile out, UbxFile.UbxTrack track) throws UbxParseException {
+    private static void parseTrackH(byte[] h, int off, int len, UbxFile out, UbxFile.UbxTrack track, boolean voice) throws UbxParseException {
         if (le(h, off) != len) throw new UbxParseException("ablock len check");
         int count = le(h, off + 4);
         int p = off + 8;
@@ -366,7 +384,7 @@ public final class UbxParser {
             if (l1 <= 0) { track.skipped++; continue; }
             if (le(h, p) != l1) throw new UbxParseException("ablock echo");
             if (p + l1 > off + len) throw new UbxParseException("bad ablock item " + l1);
-            parseBlockB(h, p, l1, out, track);
+            parseBlockB(h, p, l1, out, track, voice);
             p += l1;
         }
         if (p != off + len) throw new UbxParseException("ablock slack " + (off + len - p));
@@ -377,7 +395,7 @@ public final class UbxParser {
      * [L1 outer][L1内容→a.a]*。
      * a.a servo 帧（off 指向 echo）：[echo][a][b=start][c=end][d[30]][f][e(f字节)]。
      */
-    private static void parseBlockB(byte[] bl, int off, int len, UbxFile out, UbxFile.UbxTrack track) throws UbxParseException {
+    private static void parseBlockB(byte[] bl, int off, int len, UbxFile out, UbxFile.UbxTrack track, boolean voice) throws UbxParseException {
         if (le(bl, off) != len) throw new UbxParseException("bblock len check");
         int p = off + 4;
         p += 4; // a
@@ -390,26 +408,27 @@ public final class UbxParser {
             if (l1 <= 0) { track.skipped++; continue; }
             if (le(bl, p) != l1) throw new UbxParseException("sframe echo");
             if (p + l1 > off + len) throw new UbxParseException("bad aframe2 len " + l1);
-            parseServoFrame(bl, p, l1, out, track);
+            parseServoFrame(bl, p, l1, out, track, voice);
             p += l1;
         }
         if (p != off + len) throw new UbxParseException("bblock slack " + (off + len - p));
     }
 
     /**
-     * a.a servo 帧（pos 指向 echo，len 即 L1'）。
-     * 角度（a.m 私有发送原文）：groups=f()/8（上限20）；angles[i]=LE32(e[i*8+8..+4])&amp;0xFF；
-     * 不足 20 组余轴保持 0（原装字节为准，不另改写）。
+     * a.a 帧（pos 指向 echo，len 即 L1'）。
+     * servo：角度（a.m 私有发送原文）groups=f()/8（上限20）；
+     * angles[i]=LE32(e[i*8+8..+4])&amp;0xFF；不足 20 组余轴保持 0。
+     * voice（a/o 原文）：e-blob 为 [8B头][GBK路径][8B尾]，取中段解歌名，不提角度。
      * 发送 time = b*timeBase（以同 track 时间基计，解析后统一回填）。
      */
-    private static void parseServoFrame(byte[] f, int off, int len, UbxFile out, UbxFile.UbxTrack track) throws UbxParseException {
+    private static void parseServoFrame(byte[] f, int off, int len, UbxFile out, UbxFile.UbxTrack track, boolean voice) throws UbxParseException {
         if (le(f, off) != len) throw new UbxParseException("sframe len check");
         int p = off + 4;
         p += 4; // a
         int start = le(f, p); p += 4; // b＝mStartTime
         int end = le(f, p); p += 4; // c＝mEndTime
         p += 60; // d[30]
-        int ff = le(f, p); p += 4; // f＝组数字节数
+        int ff = le(f, p); p += 4; // f＝组数字节数（voice 时为歌名 blob 长）
         if (ff < 0 || p + ff > off + len) throw new UbxParseException("bad sframe eblob " + ff);
         if (p + ff != off + len) throw new UbxParseException("sframe slack " + (off + len - p - ff));
         int epos = p;
@@ -418,17 +437,40 @@ public final class UbxParser {
         sf.end = end;
         sf.baseB = start;
         sf.baseC = end;
-        int groups = Math.min(ff / 8, 20);
-        for (int i = 0; i < groups; i++) {
-            int o = epos + i * 8 + 8;
-            if (o + 4 > epos + ff) break;
-            sf.angles20[i] = (byte) (f[o] & 0xFF);
+        if (voice) {
+            sf.voice = true;
+            sf.groupBytes = ff;
+            sf.music = extractVoiceMusic(f, epos, ff);
+        } else {
+            int groups = Math.min(ff / 8, 20);
+            for (int i = 0; i < groups; i++) {
+                int o = epos + i * 8 + 8;
+                if (o + 4 > epos + ff) break;
+                sf.angles20[i] = (byte) (f[o] & 0xFF);
+            }
+            sf.groupBytes = ff;
         }
-        sf.groupBytes = ff;
         int base = track.timeBaseMs > 0 ? track.timeBaseMs
                 : (out.timeBaseMs > 0 ? out.timeBaseMs : 0);
         sf.moveTimeHintMs = base > 0 ? start * base : start;
         track.frames.add(sf);
+    }
+
+    /**
+     * voice 帧歌名（a/o.a() 原文）：e-blob 从第 8B 起取到尾（arraycopy(e,8,dst,0,len-8)，
+     * 只去头不去尾），GBK 解码 trim，取最后一个 {@code \} 或 {@code /} 之后为 basename。
+     */
+    private static String extractVoiceMusic(byte[] f, int epos, int eLen) {
+        if (eLen <= 8) return null;
+        try {
+            String s = new String(f, epos + 8, eLen - 8, "GBK").trim();
+            if (s.isEmpty()) return null;
+            int slash = Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/'));
+            String base = (slash >= 0 ? s.substring(slash + 1) : s).trim();
+            return base.isEmpty() ? null : base;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**

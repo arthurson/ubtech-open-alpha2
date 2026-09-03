@@ -80,6 +80,7 @@ const I18N = {
   actions_load_btn:      { zh: "攞動作列表",      en: "Load Action List" },
   action_name_placeholder:{ zh: "動作名稱 e.g. ACT0", en: "Action name e.g. ACT0" },
   action_play_btn:       { zh: "播放",            en: "Play" },
+  action_speed_label:    { zh: "變速",            en: "Speed" },        
   action_stop_btn:       { zh: "停止",            en: "Stop" },
 
   // -- servo tab --
@@ -210,6 +211,7 @@ const I18N = {
                                  en: "Please enter the pairing code below at <a href=\"https://xiaozhi.me/console/\" target=\"_blank\" rel=\"noopener\">xiaozhi.me</a>:" },
   xiaozhi_activation_modal_dismiss: { zh: "知道喇", en: "Got it" },
   xiaozhi_session_toggle_label: { zh: "🤖 小智（開＝連線並隨時語音對話，關＝斷開）", en: "🤖 XiaoZhi (on = connect & voice chat anytime, off = disconnect)" },
+  xiaozhi_auto_connect_label: { zh: "🔌 開app自動連接小智", en: "🔌 Auto-connect XiaoZhi on app start" },
   xiaozhi_status_disconnected:{ zh: "未連接",               en: "Disconnected" },
   xiaozhi_status_checking:    { zh: "檢查中…",              en: "Checking…" },
   xiaozhi_status_awaiting_code: { zh: "等待配對…",          en: "Awaiting pairing…" },

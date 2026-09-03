@@ -1,6 +1,6 @@
 package com.open.alpha2;
 
-import com.ubtechinc.mic5.LedControl;
+import com.ubtechinc.alpha.jni.LedControl;
 
 /**
  * Thin value-object wrapper around {@link LedControl#ledSetMouth(int, int, int, int, int)}.

@@ -43,7 +43,9 @@
 
 ## 关于 so 的选择
 
-* `jniLibs/armeabi-v7a/libhead_led.so` 保留的是 `1.1.7.3` 实机同款 (13516b)，不是 `3.002` 的 17824b 版本
+* `jniLibs/armeabi-v7a/libhead_led.so` 用的是 `3.002` 版 (17824b，`com.ubtechinc.alpha.jni.LedControl`
+  接口；ioctl 号与 1.1.7.3 版逐个相同，反汇编核对过)，`libhead_key_mgr.so` 同样来自 `3.002`
+ （`com.ubtechinc.alpha.jni.headkey.HeadKeyMgr`，见 app 侧 HeadKeyPoller）
 * `libserial_port.so` 来自 `3.002` 仅作占位，1.1.7.3 真机上建议直接 `adb pull /system/lib/libserial_port.so` 替换，确保是 `ttyS0` 版本
 
 ## 不搬的部分

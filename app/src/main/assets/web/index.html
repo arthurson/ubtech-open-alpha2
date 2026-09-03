@@ -182,6 +182,14 @@
         <input id="actionName" placeholder="動作名稱 e.g. ACT0" data-i18n="action_name_placeholder" data-i18n-attr="placeholder">
         <button onclick="playAction()" data-i18n="action_play_btn">播放</button>
         <button onclick="stopAction()" data-i18n="action_stop_btn">停止</button>
+        <label data-i18n="action_speed_label">變速</label>
+        <select id="actionSpeed" onchange="setActionSpeed()">
+          <option value="0.5">0.5x</option>
+          <option value="0.67">0.67x</option>
+          <option value="1" selected>1x</option>
+          <option value="1.5">1.5x</option>
+          <option value="2">2x</option>
+        </select>
       </div>
     </section>
   </div>
@@ -401,6 +409,16 @@
         <span data-i18n="xiaozhi_session_toggle_label">🤖 小智（開＝連線並隨時語音對話，關＝斷開）</span>
       </label>
       <span id="xiaozhiStatusBadge" class="hint" data-i18n="xiaozhi_status_disconnected">未連接</span>
+    </div>
+
+    <div class="row">
+      <label class="switch-label">
+        <span class="toggle-switch">
+          <input type="checkbox" id="xiaozhiAutoConnectToggle" onchange="xiaozhiSetAutoConnect(this.checked)">
+          <span class="toggle-track"></span>
+        </span>
+        <span data-i18n="xiaozhi_auto_connect_label">🔌 開app自動連接小智</span>
+      </label>
     </div>
 
     <div class="row">

@@ -317,14 +317,46 @@ const Alpha2Api = (function() {
     return api('direct/ubx/play', params);
   }
 
+  function directUbxSpeed(params) {
+    if (params && params.value != null) assertEnum(params.value, [0.5, 0.67, 1, 1.5, 2], 'value');
+    // 動作播放變速（舵機+配樂同縮放；黏性，播緊時設會由頭重播即時生效）
+    return api('direct/ubx/speed', params);
+  }
+
   function directUbxStatus(params) {
-    // UbxPlayer 狀態 (playing/name/sent/total/lastError)
+    // UbxPlayer 狀態 (playing/name/sent/total/voice/speed/lastError)
     return api('direct/ubx/status', params);
   }
 
   function directUbxStop(params) {
     // 截停 UbxPlayer (舵機保持末位姿)
     return api('direct/ubx/stop', params);
+  }
+
+  function ubxList(params) {
+    // 列出 /sdcard/actions 内 .ubx 档（前端动作 tab 经 /api/alpha2 前缀调用）
+    return api('ubx/list', params);
+  }
+
+  function ubxPlay(params) {
+    // 解析并经 UbxPlayer 直播指定 .ubx（抢占：播新自动停旧；name 或 path 二选一）
+    return api('ubx/play', params);
+  }
+
+  function ubxSpeed(params) {
+    if (params && params.value != null) assertEnum(params.value, [0.5, 0.67, 1, 1.5, 2], 'value');
+    // 動作播放變速（舵機+配樂同縮放；黏性，播緊時設會由頭重播即時生效）
+    return api('ubx/speed', params);
+  }
+
+  function ubxStatus(params) {
+    // UbxPlayer 狀態 (playing/name/sent/total/voice/speed/lastError)
+    return api('ubx/status', params);
+  }
+
+  function ubxStop(params) {
+    // 截停 UbxPlayer（舵机保持末位姿）
+    return api('ubx/stop', params);
   }
 
   // ── led ──────────────────────────────────────────────
@@ -700,8 +732,14 @@ const Alpha2Api = (function() {
     directSonarConfig,
     directUbxList,
     directUbxPlay,
+    directUbxSpeed,
     directUbxStatus,
     directUbxStop,
+    ubxList,
+    ubxPlay,
+    ubxSpeed,
+    ubxStatus,
+    ubxStop,
     debugJniLed,
     debugSerialSend,
     headNoise,

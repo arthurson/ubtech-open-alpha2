@@ -4,17 +4,19 @@ import android.util.Log;
 
 /**
  * 5-mic 头/眼/嘴 LED 的 JNI 直驱。
- * 完全绕过 alpha2services 的 AIDL，直接走 libhead_led.so 的 ioctl，
- * 在 1.1.7.3 上这是唯一有效的 5-mic 路径 (AIDL_REFERENCE 3.1)。
+ * 完全绕过 alpha2services 的 AIDL，直接走 libhead_led.so 的 ioctl。
+ * 3.002 版（/dev/led_eye，ioctl 号与 1.1.7.3 逐个相同：On=0x4c00/OFF=0x4c01/
+ * Eye=0x4c02/Head=0x4c03/Mouth=0x4c04，反汇编核对过）。
  * 已在 open-alpha2 的 MouthLedData 验证过。
  *
  * <p>为避免 sdk-module 硬件层与 app 层的循环依赖，这里用反射调用
- * {@code com.ubtechinc.mic5.LedControl} (实际类在 app 模块，随 app 打包)。
- * 这样 hardware-direct 编译期不依赖 app，运行时通过 app 的 dex 找到类。</p>
+ * {@code com.ubtechinc.alpha.jni.LedControl}（3.002 原装包名；旧
+ * {@code com.ubtechinc.mic5.LedControl} 保留文件但不再引用）。
+ * 这样 hardware-direct 编译期不依赖 app，运行时通过自身 dex 找到类。</p>
  */
 public final class DirectLedController {
     private static final String TAG = "DirectLedController";
-    private static final String LED_CTRL = "com.ubtechinc.mic5.LedControl";
+    private static final String LED_CTRL = "com.ubtechinc.alpha.jni.LedControl";
 
     private DirectLedController() {}
 
@@ -40,7 +42,8 @@ public final class DirectLedController {
     }
 
     public static boolean setOff() {
-        return callLedReflect("ledSetOFF", new Class[]{}, new Object[]{}, "ledSetOFF");
+        // 3.002 签名 ledSetOFF(I)：反汇编证实该 int 只进 log（mov r3,r4 → __android_log_print），不落硬件，传 0。
+        return callLedReflect("ledSetOFF", new Class[]{int.class}, new Object[]{0}, "ledSetOFF");
     }
 
     public static boolean openAnd(boolean r) { return r; } // 占位
