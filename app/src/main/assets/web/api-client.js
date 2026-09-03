@@ -593,6 +593,16 @@ const Alpha2Api = (function() {
     return api('xiaozhi/activation_status', params);
   }
 
+  function xiaozhiAutoConnectGet(params) {
+    // 讀取「開app自動連接小智」開關
+    return api('xiaozhi/auto_connect/get', params);
+  }
+
+  function xiaozhiAutoConnectSet(params) {
+    // 設定「開app自動連接小智」開關（下次開app生效）
+    return api('xiaozhi/auto_connect/set', params);
+  }
+
   function xiaozhiAutoMode(params) {
     // 一鍵全自動 (連線+常開麥克風)
     return api('xiaozhi/auto_mode', params);
@@ -782,6 +792,8 @@ const Alpha2Api = (function() {
     systemMusicStop,
     systemMusicVolume,
     xiaozhiActivationStatus,
+    xiaozhiAutoConnectGet,
+    xiaozhiAutoConnectSet,
     xiaozhiAutoMode,
     xiaozhiConnect,
     xiaozhiDisconnect,
