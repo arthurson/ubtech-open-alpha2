@@ -275,6 +275,58 @@ const Alpha2Api = (function() {
     return api('wifi/status', params);
   }
 
+  // ── direct ──────────────────────────────────────────────
+  function directLedHead(params) {
+    // 頭燈直驅
+    return api('direct/led/head', params);
+  }
+
+  function directLedMouth(params) {
+    // 嘴燈呼吸直驅
+    return api('direct/led/mouth', params);
+  }
+
+  function directLedOff(params) {
+    // 全燈熄直驅
+    return api('direct/led/off', params);
+  }
+
+  function directServoAll(params) {
+    // 全舵機直驅 (逗號分隔 20 個角度, 預設 time=500)
+    return api('direct/servo/all', params);
+  }
+
+  function directServoOne(params) {
+    if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
+    // 單舵機直驅 (localServices.chestSetSingle, 預設 time=500)
+    return api('direct/servo/one', params);
+  }
+
+  function directSonarConfig(params) {
+    // 胸板聲納配置直發 (subCmd=10)
+    return api('direct/sonar/config', params);
+  }
+
+  function directUbxList(params) {
+    // 列出 /sdcard/actions 內 .ubx 檔 (name/size)
+    return api('direct/ubx/list', params);
+  }
+
+  function directUbxPlay(params) {
+    // 解析並經 UbxPlayer 直播指定 .ubx (name 或 path 二選一)
+    return api('direct/ubx/play', params);
+  }
+
+  function directUbxStatus(params) {
+    // UbxPlayer 狀態 (playing/name/sent/total/lastError)
+    return api('direct/ubx/status', params);
+  }
+
+  function directUbxStop(params) {
+    // 截停 UbxPlayer (舵機保持末位姿)
+    return api('direct/ubx/stop', params);
+  }
+
   // ── led ──────────────────────────────────────────────
   function debugJniLed(params) {
     if (params && params.func != null) assertEnum(params.func, [True, 'eye', 'head', False], 'func');
@@ -640,6 +692,16 @@ const Alpha2Api = (function() {
     serviceConfigSet,
     status,
     wifiStatus,
+    directLedHead,
+    directLedMouth,
+    directLedOff,
+    directServoAll,
+    directServoOne,
+    directSonarConfig,
+    directUbxList,
+    directUbxPlay,
+    directUbxStatus,
+    directUbxStop,
     debugJniLed,
     debugSerialSend,
     headNoise,

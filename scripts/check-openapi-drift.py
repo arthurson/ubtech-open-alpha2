@@ -28,6 +28,20 @@ cases = set(re.findall(r'case "([^"]+)"', text))
 # Filter to API-like: contains / or known singletons
 api_cases = set(c for c in cases if '/' in c or c in ['status','supported','mic/start','mic/stop'])
 
+# Router fidelity: handleDirectApi() receives path with the "direct/" prefix
+# already stripped (path.substring(7)), so its case labels are relative
+# ("ubx/list") while spec paths are full ("direct/ubx/list"). Model that here:
+# drop the bare relative forms, require the prefixed forms instead.
+m = re.search(r'private HttpServer\.ApiResponse handleDirectApi\(.*?\)\s*\{(.*?)\n    private HttpServer\.ApiResponse handleXiaozhiApi',
+              text, re.DOTALL)
+if m:
+    direct_cases = set(re.findall(r'case "([^"]+)"', m.group(1)))
+    direct_cases = set(c for c in direct_cases if '/' in c)
+    api_cases -= direct_cases
+    api_cases |= set('direct/' + c for c in direct_cases)
+else:
+    print("⚠ handleDirectApi body not found, direct/ prefix mapping skipped")
+
 # Build expected mapping: for xiaozhi namespace, spec has xiaozhi/mcp_config/get but code has mcp_config/get
 # So we consider code's mcp_config/get should match spec's xiaozhi/mcp_config/get
 # Create expanded spec set that includes both with and without prefix for comparison

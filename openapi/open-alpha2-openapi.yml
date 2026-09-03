@@ -236,6 +236,208 @@ paths:
               schema:
                 $ref: '#/components/schemas/CodeResponse'
       operationId: actionStop_post
+  /api/direct/ubx/list:
+    get:
+      tags:
+      - direct
+      summary: 列出 /sdcard/actions 內 .ubx 檔 (name/size)
+      responses:
+        '200':
+          description: 檔案清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    files:
+                      type: array
+                      items:
+                        type: object
+      operationId: directUbxList_get
+  /api/direct/ubx/play:
+    get:
+      tags:
+      - direct
+      summary: 解析並經 UbxPlayer 直播指定 .ubx (name 或 path 二選一)
+      parameters:
+      - name: name
+        in: query
+        schema:
+          type: string
+        description: /sdcard/actions 下檔名
+      - name: path
+        in: query
+        schema:
+          type: string
+        description: 絕對路徑 (如 /sdcard/tiny.ubx)
+      responses:
+        '200':
+          description: UbxErrorCode 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: directUbxPlay_get
+  /api/direct/ubx/stop:
+    post:
+      tags:
+      - direct
+      summary: 截停 UbxPlayer (舵機保持末位姿)
+      responses:
+        '200':
+          description: 停止結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: directUbxStop_post
+  /api/direct/ubx/status:
+    get:
+      tags:
+      - direct
+      summary: UbxPlayer 狀態 (playing/name/sent/total/lastError)
+      responses:
+        '200':
+          description: 播放狀態
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: directUbxStatus_get
+  /api/direct/sonar/config:
+    get:
+      tags:
+      - direct
+      summary: 胸板聲納配置直發 (subCmd=10)
+      parameters:
+      - name: distance
+        in: query
+        required: true
+        schema:
+          type: integer
+        description: 距離 cm
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: directSonarConfig_get
+  /api/direct/led/head:
+    get:
+      tags:
+      - direct
+      summary: 頭燈直驅
+      parameters:
+      - name: color
+        in: query
+        schema:
+          type: integer
+      - name: mode
+        in: query
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: directLedHead_get
+  /api/direct/led/mouth:
+    get:
+      tags:
+      - direct
+      summary: 嘴燈呼吸直驅
+      parameters:
+      - name: breathe
+        in: query
+        schema:
+          type: integer
+          default: 500
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: directLedMouth_get
+  /api/direct/led/off:
+    get:
+      tags:
+      - direct
+      summary: 全燈熄直驅
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: directLedOff_get
+  /api/direct/servo/one:
+    get:
+      tags:
+      - direct
+      summary: 單舵機直驅 (localServices.chestSetSingle, 預設 time=500)
+      parameters:
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 20
+      - name: angle
+        in: query
+        required: true
+        schema:
+          type: integer
+      - name: time
+        in: query
+        schema:
+          type: integer
+          default: 500
+        description: 執行時間 ms
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: directServoOne_get
+  /api/direct/servo/all:
+    get:
+      tags:
+      - direct
+      summary: 全舵機直驅 (逗號分隔 20 個角度, 預設 time=500)
+      parameters:
+      - name: angles
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 逗號分隔 20 個角度
+      - name: time
+        in: query
+        schema:
+          type: integer
+          default: 500
+        description: 執行時間 ms
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: directServoAll_get
   /api/speech/tts:
     get:
       tags:

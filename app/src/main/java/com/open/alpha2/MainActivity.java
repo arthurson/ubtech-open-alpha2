@@ -160,6 +160,13 @@ public class MainActivity extends Activity implements SensorEventListener {
     private RobotStub robot;
     private LocalAlpha2Services localServices;
     private final UbxPlayer ubxPlayer = new UbxPlayer();
+    // 動作配樂 MediaPlayer（.ubx type4 音樂 meta 指住的 /sdcard/actions/<id>/xxx.mp3）。
+    // 獨立於 currentMusicPlayer/currentRadioPlayer：播動作歌唔可以觸發
+    // startMusicFillerActionLoop（佢會不停 triggerRandomFillerAction → playActionDirect，
+    // 即刻打斷緊播緊嘅舵機），亦唔掂共用 EQ/頻譜。生命週期跟 UbxPlayer：開動作起，
+    // 停動作（stop/搶佔/播完 backstop）即停。
+    private android.media.MediaPlayer currentActionMusicPlayer;
+    private int actionMusicGen;
     private final HeadKeyPoller headKeyPoller = new HeadKeyPoller();
     private HttpServer httpServer;
     // 小智 (XiaoZhi) AI 對話 - 獨立於機械人 AIDL 之外的 client-side WebSocket
@@ -1599,8 +1606,9 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  「真的有歌聲」同步, 而不是與「這個 method 被呼叫了」同步。 */
     private synchronized void playLocalMusicFile(java.io.File file) {
         stopLocalMusicPlaybackLocked();
-        // 共用播放器：播本地時停掉電台，避免兩路同時出聲
+        // 共用播放器：播本地時停掉電台，避免兩路同時出聲；動作配樂亦停，免疊聲
         stopRadioPlaybackLocked();
+        stopActionMusicLocked();
         if (file == null || !file.exists()) {
             return;
         }
@@ -1778,8 +1786,9 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  生動」這個原意不搭。 */
     private synchronized void playRadioStream(org.json.JSONObject station) {
         stopRadioPlaybackLocked();
-        // 共用播放器：播電台時停掉本地音樂，避免兩路同時出聲
+        // 共用播放器：播電台時停掉本地音樂，避免兩路同時出聲；動作配樂亦停
         stopLocalMusicPlaybackLocked();
+        stopActionMusicLocked();
         if (station == null) {
             return;
         }
@@ -3211,6 +3220,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             sInstance = null;
         }
         stopVolumeRepeat();
+        stopActionMusic();
         stopMicHoldEnforcer();
         micHeldByApp = false;
         setAccelerometerEnabled(false);
@@ -3580,11 +3590,13 @@ public class MainActivity extends Activity implements SensorEventListener {
                 }
                 boolean started = ubxPlayer.play(ubx, f.getName(), dm.chest());
                 if (!started) return HttpServer.ApiResponse.error("cannot start: " + ubxPlayer.lastError());
+                startActionMusic(f, ubx);
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"name\":\"" + jsonSafe(f.getName())
                         + "\",\"total\":" + ubxPlayer.total() + "}");
             }
             case "ubx/stop": {
                 ubxPlayer.stop();
+                stopActionMusic();
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
             case "ubx/status": {
@@ -8675,6 +8687,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         if (!ubxPlayer.play(ubx, f.getName(), dm.chest())) {
             return HttpServer.ApiResponse.error("cannot start: " + ubxPlayer.lastError());
         }
+        startActionMusic(f, ubx);
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"code\":\"API_ERROR_SUCCEED\",\"name\":\""
                 + jsonSafe(f.getName()) + "\",\"total\":" + ubxPlayer.total() + "}");
     }
@@ -8697,10 +8710,12 @@ public class MainActivity extends Activity implements SensorEventListener {
             return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
         }
         ubxPlayer.stop();
+        stopActionMusic();
         if (!ubxPlayer.play(ubx, f.getName(), dm.chest())) {
             Log.w(TAG, "playActionDirect not started: " + ubxPlayer.lastError());
             return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
         }
+        startActionMusic(f, ubx);
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
 
@@ -8711,6 +8726,7 @@ public class MainActivity extends Activity implements SensorEventListener {
      */
     private UbxErrorCode.API_ERROR_CODE stopActionWithRecovery() {
         ubxPlayer.stop();
+        stopActionMusic();
         try {
             UbxErrorCode.API_ERROR_CODE rec = playActionDirect(STOP_RECOVERY_ACTION_ID);
             if (rec != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
@@ -8720,6 +8736,127 @@ public class MainActivity extends Activity implements SensorEventListener {
             Log.w(TAG, "recovery play failed", e);
         }
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+    }
+
+    /**
+     * 动作配乐解析：机身布局沿用 PC 端（{@code <id>.ubx} + 同名目录 {@code <id>/xxx.mp3}），
+     * 如 {@code /sdcard/actions/1524573025741.ubx} 配
+     * {@code /sdcard/actions/1524573025741/rap.mp3}。优先用 .ubx 内 type4 的
+     * musicName 精确命中，搵唔到就退回目录下第一首 *.mp3；无音乐返回 null。
+     */
+    private java.io.File resolveActionMusicFile(java.io.File ubxFile, UbxFile ubx) {
+        if (ubxFile == null) return null;
+        String fname = ubxFile.getName();
+        String base = fname.endsWith(".ubx") ? fname.substring(0, fname.length() - 4) : fname;
+        java.io.File parent = ubxFile.getParentFile();
+        if (parent == null) parent = new java.io.File(ACTION_DIR);
+        java.io.File dir = new java.io.File(parent, base);
+        String want = null;
+        if (ubx != null) {
+            for (UbxFile.UbxTrack t : ubx.tracks) {
+                if (t.musicName != null && !t.musicName.isEmpty()) { want = t.musicName; break; }
+            }
+        }
+        if (dir.isDirectory()) {
+            if (want != null) {
+                java.io.File hit = new java.io.File(dir, want);
+                if (hit.isFile()) return hit;
+            }
+            java.io.File[] all = dir.listFiles();
+            if (all != null) {
+                for (java.io.File f : all) {
+                    if (f.isFile() && f.getName().toLowerCase(java.util.Locale.US).endsWith(".mp3")) {
+                        return f;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 起动作配乐（STREAM_MUSIC + prepareAsync，和播本地音乐同一形状，但刻意唔經
+     * filler 循環/EQ/頻譜——嗰啲會反過來搶舵機）。另排一個 backstop：按 servo 總時長
+     * + 2s 後截停（generation 把關，防舊動作拖住新動作的音樂）；正常情況音樂同動作
+     * 等長，自然播完經 onCompletion 收尾。
+     */
+    private synchronized void startActionMusic(java.io.File ubxFile, UbxFile ubx) {
+        stopActionMusicLocked();
+        final int gen = ++actionMusicGen;
+        java.io.File music = resolveActionMusicFile(ubxFile, ubx);
+        if (music == null) return;
+        try {
+            android.media.MediaPlayer player = new android.media.MediaPlayer();
+            player.setAudioStreamType(AudioManager.STREAM_MUSIC);
+            player.setDataSource(music.getAbsolutePath());
+            player.setOnPreparedListener(mp -> {
+                synchronized (MainActivity.this) {
+                    if (currentActionMusicPlayer != mp) {
+                        try { mp.release(); } catch (Exception ignored) {}
+                        return;
+                    }
+                }
+                try { mp.start(); } catch (Exception e) {
+                    Log.w(TAG, "action music start failed", e);
+                }
+            });
+            player.setOnCompletionListener(mp -> {
+                synchronized (MainActivity.this) {
+                    try { mp.release(); } catch (Exception ignored) {}
+                    if (currentActionMusicPlayer == mp) currentActionMusicPlayer = null;
+                }
+            });
+            player.setOnErrorListener((mp, what, extra) -> {
+                synchronized (MainActivity.this) {
+                    try { mp.release(); } catch (Exception ignored) {}
+                    if (currentActionMusicPlayer == mp) currentActionMusicPlayer = null;
+                }
+                Log.w(TAG, "action music error what=" + what + " extra=" + extra + " for " + music);
+                return true;
+            });
+            currentActionMusicPlayer = player;
+            player.prepareAsync();
+            long totalMs = 0;
+            if (ubx != null) {
+                for (UbxFile.UbxTrack t : ubx.tracks) {
+                    for (UbxFile.UbxServoFrame sf : t.frames) {
+                        if (sf.moveTimeHintMs > 0) totalMs += sf.moveTimeHintMs;
+                    }
+                }
+            }
+            if (totalMs > 0) {
+                final long stopAt = totalMs + 2000;
+                mainHandler.postDelayed(new Runnable() {
+                    @Override public void run() {
+                        synchronized (MainActivity.this) {
+                            if (actionMusicGen == gen) stopActionMusicLocked();
+                        }
+                    }
+                }, stopAt);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to play action music " + music, e);
+        }
+    }
+
+    private synchronized void stopActionMusic() {
+        actionMusicGen++;
+        stopActionMusicLocked();
+    }
+
+    private void stopActionMusicLocked() {
+        if (currentActionMusicPlayer != null) {
+            try {
+                currentActionMusicPlayer.stop();
+            } catch (Exception ignored) {
+                // prepareAsync 中途 race 可拋 IllegalStateException，照 release，吞掉。
+            }
+            try {
+                currentActionMusicPlayer.release();
+            } catch (Exception ignored) {
+            }
+            currentActionMusicPlayer = null;
+        }
     }
 
     private static String require(Map<String, String> query, String key) {
