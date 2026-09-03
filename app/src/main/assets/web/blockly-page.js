@@ -101,7 +101,7 @@ function initWorkspace() {
     // 嗰批 icon 全部壞曬 (SVG sprite 攞唔到)。改用本機 media/ 資料夾 (已經
     // copy 咗 Blockly 官方 npm package 嘅 media 檔案落嚟), 全部 offline 可用。
     media: 'media/',
-    grid: { spacing: 24, length: 2, colour: '#e2e6ec', snap: true },
+    grid: { spacing: 24, length: 2, colour: '#c3cad6', snap: true },
     zoom: { controls: true, wheel: true, startScale: 0.9, maxScale: 3, minScale: 0.3, scaleSpeed: 1.1 },
     trashcan: true,
     move: { scrollbars: true, drag: true, wheel: false },

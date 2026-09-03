@@ -96,7 +96,7 @@ function xiaozhiProcessTtsQueue() {
   }
   xiaozhiTtsSpeaking = true;
   const text = xiaozhiTtsQueue.shift();
-  api("speech/tts", { text: text, engine: xiaozhiTtsEngine });
+  Alpha2Api.speechTts( { text: text, engine: xiaozhiTtsEngine });
 }
 
 /** 引擎切換 (xiaozhiSetTtsEngine())/斷線都要清空隊列 - 唔係就切走engine之後,
@@ -367,10 +367,10 @@ function xiaozhiStopAll() {
   // 讀, 一齊清空。
   xiaozhiResetTtsQueue();
   Promise.all([
-    api("action/stop"),
-    api("speech/stop"),
-    api("audio/local_music/stop"),
-    api("audio/radio/stop"), // 2026-08 新增: FM/網絡電台都係「播放中」嘅一種,
+    Alpha2Api.actionStop(),
+    Alpha2Api.speechStop(),
+    Alpha2Api.audioLocalMusicStop(),
+    Alpha2Api.audioRadioStop(), // 2026-08 新增: FM/網絡電台都係「播放中」嘅一種,
                               // 跟返本地音樂一齊納入呢個總停鍵。
   ]);
 }
@@ -792,10 +792,11 @@ function xiaozhiLoadMcpConfig() {
 let xiaozhiTtsEngine = "xiaozhi";
 
 function xiaozhiSetTtsEngineUi(engine) {
+  // 2026-09: 得返 "xiaozhi"/"android" - 舊設定 (iflytek/nuance) 若果仲喺後端
+  // 度 (開機遷移之前嘅版本寫入), 一律當 "xiaozhi" 顯示, 等後端開機遷移做實。
+  if (engine !== "xiaozhi" && engine !== "android") engine = "xiaozhi";
   xiaozhiTtsEngine = engine;
   document.getElementById("xiaozhiTtsEngineXiaozhiBtn").classList.toggle("active", engine === "xiaozhi");
-  document.getElementById("xiaozhiTtsEngineIflytekBtn").classList.toggle("active", engine === "iflytek");
-  document.getElementById("xiaozhiTtsEngineNuanceBtn").classList.toggle("active", engine === "nuance");
   document.getElementById("xiaozhiTtsEngineAndroidBtn").classList.toggle("active", engine === "android");
   // 切換引擎 (或者 page load 讀返上次揀擇) 都要清空舊隊列 - 唔係就切走
   // engine 之後, 隊列入面舊引擎排緊嘅句子會用新引擎嚟讀, 對唔上用戶睇到嘅

@@ -37,13 +37,13 @@ public class AudioPlaybackController {
     // Must match whatever sample rate the browser-side encoder uses when it sends PCM
     // Playback sample rate. Confirmed compatible via logcat: alpha2services' own TTS
     // engine (IflytekTTS) successfully opens an AudioTrack at sampleRate=16000 (its
-    // 2026-08 改返 16000 (由 8000 升返上): 當初落去 8000 淨係為咗同步 walkie-talkie
-    // 上傳嗰條路 (AudioController.java, app-mic.js 嘅 TALK_TARGET_SAMPLE_RATE) - 但
-    // walkie-talkie (startTalk()) 已經永久停用, 用戶指定三個檔案一齊拉返上 16000
-    // 保持一致, 即使 walkie-talkie 依家實際用唔到。8kHz 嗰陣帶嚟嘅 headroom 著數
-    // (bufBytes/JITTER_BUFFER_CAP_BYTES 喺相同 byte 數量下代表雙倍播放時間, 對沖
-    // logcat_2026-07-30_08-43-18.txt 嗰次 underrun) 都跟住冇咗一半 - 如果之後又見
-    // 返類似嘅 underrun/jitter 症狀, 呢個係其中一個要留意嘅方向。
+    // 2026-08 改回 16000 (由 8000 升回上): 當初改成 8000 只是為了同步 walkie-talkie
+    // 上傳那條路 (AudioController.java, app-mic.js 的 TALK_TARGET_SAMPLE_RATE) - 但
+    // walkie-talkie (startTalk()) 已經永久停用, 用戶指定三個檔案一起拉回 16000
+    // 保持一致, 即使 walkie-talkie 現在實際用不到。8kHz 那時帶來的 headroom 好處
+    // (bufBytes/JITTER_BUFFER_CAP_BYTES 在相同 byte 數量下代表雙倍播放時間, 對沖
+    // logcat_2026-07-30_08-43-18.txt 那次 underrun) 也跟著沒了一半 - 如果之後又見
+    // 到類似的 underrun/jitter 症狀, 這是其中一個要留意的方向。
     private static final int SAMPLE_RATE_HZ = 16000;
     private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_OUT_MONO;
     private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
@@ -418,15 +418,15 @@ public class AudioPlaybackController {
     }
 
     public void shutdown() {
-        // 2026-08 修正: 同 AudioController.shutdown() 一樣嘅 race - 之前呢度冇同步
-        // 等待 writeLoop() 收尾就即刻 quitSafely()。playing=false 之後, writeLoop()
-        // 要行多一個 loop iteration 先會發現、跟住先做 finishAndReleaseTrack()
-        // (audioTrack.stop()/release()) —— 呢個 release 本身係喺 playbackHandler
-        // 嗰條 playback thread 度做緊嘅, quitSafely() 唔會中斷佢, 但如果 shutdown()
-        // 之後好快又有人 start(), 新一輪會開一條新 HandlerThread, 有機會同舊嗰條
-        // 仲喺度做緊 release() 嘅 thread 短暫並行, 兩邊都摞住 AudioTrack/audioTrack
-        // 呢個共享狀態。跟 AudioController.shutdown() 嘅做法睇齊: 用一個 post 落
-        // playbackHandler 嘅 Runnable + CountDownLatch, 等實際 release 完成先返。
+        // 2026-08 修正: 和 AudioController.shutdown() 一樣的 race - 之前這裡沒有同步
+        // 等待 writeLoop() 收尾就立刻 quitSafely()。playing=false 之後, writeLoop()
+        // 要多跑一個 loop iteration 才會發現、接著才做 finishAndReleaseTrack()
+        // (audioTrack.stop()/release()) —— 這個 release 本身是在 playbackHandler
+        // 那條 playback thread 裡做的, quitSafely() 不會中斷它, 但如果 shutdown()
+        // 之後很快又有人 start(), 新一輪會開一條新 HandlerThread, 有機會和舊那條
+        // 還在做 release() 的 thread 短暫並行, 兩邊都拿著 AudioTrack/audioTrack
+        // 這個共享狀態。跟 AudioController.shutdown() 的做法看齊: 用一個 post 到
+        // playbackHandler 的 Runnable + CountDownLatch, 等實際 release 完成才返回。
         if (playbackHandler == null) {
             playing = false;
             if (playbackThread != null) {
@@ -439,10 +439,10 @@ public class AudioPlaybackController {
         playbackHandler.post(new Runnable() {
             @Override
             public void run() {
-                // writeLoop() 本身跑緊喺呢條 playback thread, 佢個 while 循環一見到
-                // playing=false 就會自然完成同做埋 finishAndReleaseTrack() —— 呢個
-                // Runnable post 落同一條 handler 嘅 queue, 保證喺 writeLoop() 嗰個
-                // Runnable 之後先執行, 所以行到呢度嗰陣 audioTrack 一定已經 release 咗。
+                // writeLoop() 本身跑在這條 playback thread, 它的 while 循環一見到
+                // playing=false 就會自然完成並做完 finishAndReleaseTrack() —— 這個
+                // Runnable post 到同一條 handler 的 queue, 保證在 writeLoop() 那個
+                // Runnable 之後才執行, 所以走到這裡的時候 audioTrack 一定已經 release 了。
                 latch.countDown();
             }
         });

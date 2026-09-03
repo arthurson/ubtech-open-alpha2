@@ -42,9 +42,9 @@ public final class EventBus {
         listeners.remove(l);
     }
 
-    /** 現時登記緊嘅 listener 數量 - 純粹俾 WebSocketServer 印 log 用嚟核實
-     *  殭屍 connection 有冇成功被 unsubscribe (見 WebSocketServer.handleUpgrade()
-     *  嘅 idle-timeout comment)。 */
+    /** 目前登記中的 listener 數量 - 純粹給 WebSocketServer 印 log 用來核實
+     *  殭屍 connection 有沒有成功被 unsubscribe (見 WebSocketServer.handleUpgrade()
+     *  的 idle-timeout comment)。 */
     public int listenerCount() {
         return listeners.size();
     }

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Open Alpha2 API Docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+<style>
+body{margin:0;font-family:system-ui}
+#topbar{padding:12px 16px;background:#0f172a;color:#fff;display:flex;gap:12px;align-items:center}
+#topbar a{color:#93c5fd}
+#fallback{padding:16px}
+pre{white-space:pre-wrap;word-break:break-all;background:#f8fafc;padding:12px;border-radius:8px}
+</style>
+</head>
+<body>
+<div id="topbar">
+  <b>Open Alpha2 API Docs</b>
+  <a href="/openapi.yml" target="_blank">openapi.yml</a>
+  <a href="/.well-known/openapi.json" target="_blank">openapi.json</a>
+  <a href="/apis.yml" target="_blank">apis.yml</a>
+  <a href="/">← 控制面板</a>
+  <span style="margin-left:auto;font-size:12px;opacity:.8">GPL-3.0 · https://github.com/arthurson/ubtech-open-alpha2</span>
+</div>
+<div id="swagger-ui"></div>
+<div id="fallback" style="display:none">
+  <p>Swagger UI CDN 載入失敗（離線環境），改顯示原始 YAML：</p>
+  <pre id="raw"></pre>
+</div>
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+fetch('/openapi.yml').then(r=>r.text()).then(yaml=>{
+  // try swagger
+  try{
+    if(window.SwaggerUIBundle){
+      SwaggerUIBundle({url:'/openapi.yml', dom_id:'#swagger-ui', presets:[SwaggerUIBundle.presets.apis]});
+      return;
+    }
+  }catch(e){ console.error(e); }
+  // fallback
+  document.getElementById('fallback').style.display='block';
+  document.getElementById('raw').textContent=yaml.slice(0,12000);
+}).catch(e=>{
+  document.getElementById('fallback').style.display='block';
+  document.getElementById('raw').textContent='fetch failed: '+e;
+});
+</script>
+</body>
+</html>

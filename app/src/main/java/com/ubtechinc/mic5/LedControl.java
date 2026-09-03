@@ -3,6 +3,11 @@ package com.ubtechinc.mic5;
 public class LedControl {
     public static native boolean close();
 
+    // 2026-08-25 新增: libhead_led.so 導出表入面有 Java_..._ledSetOFF 呢個符號,
+    // 原 demo class 沒有 declare - 疑似是「全部 LED 總開關」ioctl, 用來熄掉
+    // ledSetOn(i) 點亮的單顆 LED (pad/wifi 燈實測 dark head/eye 指令熄不掉)。
+    public static native boolean ledSetOFF();
+
     public static native boolean ledSetEye(int i, int i2, int i3, int i4, int i5, int i6, int i7, int i8);
 
     public static native boolean ledSetHead(int i, int i2, int i3, int i4, int i5, int i6, int i7, int i8);

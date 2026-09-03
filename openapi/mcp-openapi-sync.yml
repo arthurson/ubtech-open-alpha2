@@ -1,0 +1,147 @@
+# MCP ↔ OpenAPI 參數對齊表 (1+2 方案第2層延伸)
+# 來源：
+#   - MCP 定義：MainActivity.java:5091 xiaozhiMcpBridge() listTools()/callTool()
+#   - OpenAPI 定義：openapi/open-alpha2-openapi.yml
+# 用途：確保 LLM 經 MCP 調用的參數與 HTTP 直接調用走同一套校驗 (ApiValidator.java + api-client.js)
+# 再生：對照此表手動更新兩邊，或未來用腳本自動由 openapi 生成 MCP inputSchema
+
+sync_version: 1.0
+generated_from: openapi/open-alpha2-openapi.yml
+# 規則：MCP tool 的 inputSchema 必須與對應 OpenAPI path 的 parameters 保持語意一致
+# 若 OpenAPI 新增 enum/range，MCP 側亦須同步，否則 LLM 會傳非法值被 ApiValidator 擋下
+
+mappings:
+  - mcp: self.robot.list_actions
+    openapi: /api/action/list
+    method: GET
+    params: []
+    note: 無參數，純查詢
+
+  - mcp: self.robot.play_action
+    openapi: /api/action/play
+    method: GET
+    params:
+      - { mcp: name, openapi: name, type: string, required: true, desc: 中/英文動作名 fuzzy match }
+    note: MCP 用人類可讀名，HTTP 用精確名；兩者皆經 resolveActionId()
+
+  - mcp: self.robot.stop_action
+    openapi: /api/action/stop
+    method: POST
+    params: []
+
+  - mcp: self.robot.play_random_action
+    openapi: null # 無直接 HTTP 對應，隨機選動作
+    params: []
+
+  - mcp: self.robot.servo_set_one
+    openapi: /api/servo/one
+    method: GET
+    params:
+      - { mcp: id, openapi: id, type: integer, range: 1-20 }
+      - { mcp: angle, openapi: angle, type: integer }
+      - { mcp: time_ms, openapi: time, type: integer, default: 1000, alias: true }
+
+  - mcp: self.robot.servo_set_all
+    openapi: /api/servo/all
+    method: GET
+    params:
+      - { mcp: angles, openapi: angles, type: string, desc: "20 comma-separated ints" }
+      - { mcp: time_ms, openapi: time, type: integer, default: 1000, alias: true }
+
+  - mcp: self.robot.led_set_head
+    openapi: /api/led/head/set
+    method: GET
+    params:
+      - { mcp: preset, openapi: preset, type: string, enum: [long, flash, breathe, chase, dual, stop] }
+      - { mcp: color, openapi: color, type: integer, range: 1-7, required_if: "preset != stop" }
+      - { mcp: brightness, openapi: brightness, type: integer, range: 1-9, required_if: "preset != stop" }
+
+  - mcp: self.robot.led_set_eye
+    openapi: /api/led/eye/set
+    method: GET
+    params:
+      - { mcp: preset, openapi: preset, type: string, enum: [long, flash, chase, dual, stop] }
+      - { mcp: color, openapi: color, type: integer, range: 1-7 }
+      - { mcp: brightness, openapi: brightness, type: integer, range: 1-9 }
+
+  - mcp: self.robot.led_set_mouth
+    openapi: /api/led/mouth/set
+    method: GET
+    params:
+      - { mcp: preset, openapi: preset, type: string, enum: [breathing, off] }
+      - { mcp: speed, openapi: speed, type: integer, range: 0-5000 }
+
+  - mcp: self.sensors.get_pir
+    openapi: null # 對應 broadcast 查詢，無 HTTP GET，僅 WebSocket pir_state
+    params: []
+
+  - mcp: self.sensors.set_pir_enabled
+    openapi: /api/pir/set
+    method: GET
+    params:
+      - { mcp: enabled, openapi: "on", type: boolean }
+
+  - mcp: self.sensors.get_sonar
+    openapi: null # 讀數經 WebSocket sonar_distance，配置經 /api/servo/sonar
+    params: []
+
+  - mcp: self.sensors.set_sonar_threshold
+    openapi: /api/servo/sonar
+    method: GET
+    params:
+      - { mcp: distance_cm, openapi: distance, type: integer }
+
+  - mcp: self.camera.take_photo
+    openapi: /api/camera/snapshot
+    method: GET
+    params: []
+    note: MCP 回傳 base64，HTTP 同
+
+  - mcp: self.camera.image_to_text
+    openapi: null # 無直接 HTTP，MCP 側自行處理視覺
+    params:
+      - { mcp: image_base64, type: string }
+
+  - mcp: self.robot.speak
+    openapi: /api/speech/tts
+    method: GET
+    params:
+      - { mcp: text, openapi: text, type: string, required: true }
+      - { mcp: engine, openapi: engine, type: string, enum: [nuance, iflytek, android], default: nuance, optional: true }
+
+  - mcp: self.media.list_music
+    openapi: /api/audio/local_music/list
+    method: GET
+    params: []
+
+  - mcp: self.media.play_music
+    openapi: /api/audio/local_music/play
+    method: GET
+    params:
+      - { mcp: name, openapi: name, type: string }
+
+  - mcp: self.media.stop_music
+    openapi: /api/audio/local_music/stop
+    method: GET
+    params: []
+
+  - mcp: self.media.search_radio
+    openapi: /api/audio/radio/search
+    method: GET
+    params:
+      - { mcp: query, openapi: query, type: string }
+
+  - mcp: self.media.play_radio
+    openapi: /api/audio/radio/play
+    method: GET
+    params:
+      - { mcp: name, openapi: name, type: string }
+
+  - mcp: self.media.stop_radio
+    openapi: /api/audio/radio/stop
+    method: GET
+    params: []
+
+# 驗證方式：
+#   python -c "import yaml; yaml.safe_load(open('openapi/mcp-openapi-sync.yml'))"
+# 未來可擴展為：由 openapi 自動生成 MCP inputSchema，替換 MainActivity.java:5091 手寫 JSON

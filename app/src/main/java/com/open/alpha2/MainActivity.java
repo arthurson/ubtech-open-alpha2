@@ -36,17 +36,14 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.ubtechinc.alpha2ctrlapp.network.action.ClientAuthorizeListener;
-import com.ubtechinc.alpha2robot.Alpha2RobotApi;
-import com.ubtechinc.alpha2robot.constant.UbxErrorCode;
-import com.ubtechinc.alpha2serverlib.interfaces.AlphaActionClientListener;
-import com.ubtechinc.alpha2serverlib.interfaces.IAlpha2ActionListListener;
-import com.ubtechinc.alpha2serverlib.interfaces.IAlpha2RobotClientListener;
-import com.ubtechinc.alpha2serverlib.constvalue.Alpha2Intent;
-import com.ubtechinc.alpha2serverlib.util.Alpha2SpeechMainServiceUtil;
-import com.ubtechinc.constant.CustomLanguage;
-import com.ubtechinc.constant.LanguageType;
-import com.ubtechinc.constant.StaticValue;
+import com.ubtechinc.alpha.hardware.DirectLedController;
+import com.ubtechinc.alpha.hardware.RobotWire;
+import com.ubtechinc.mic5.LedControl;
+import com.ubtechinc.alpha.hardware.HardwareDirectManager;
+import com.ubtechinc.alpha.hardware.LocalAlpha2Services;
+import com.ubtechinc.alpha.hardware.ubx.UbxFile;
+import com.ubtechinc.alpha.hardware.ubx.UbxParser;
+import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -60,18 +57,18 @@ import java.util.TreeSet;
 import java.nio.charset.StandardCharsets;
 import org.json.JSONException;
 import org.json.JSONObject;
-import com.open.alpha2.iflytektest.IflytekOfflineTest;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Single-activity host for the Alpha2OpenSdk test panel.
+ * Single-activity host for the Open Alpha2 robot panel.
  *
- * Owns the one {@link Alpha2RobotApi} instance for the process, initialises every
- * sub-system the SDK exposes (action, chest serial, header serial, speech), and answers
- * every "/api/..." HTTP call from {@link HttpServer} by invoking the matching SDK method.
- * All asynchronous SDK callbacks (TTS end, action stop, ASR/grammar results) are pushed to
+ * Owns the one {@link RobotStub} instance for the process (2026-09 起同
+ * Alpha2OpenSdk 脫鉤：機身無 alpha2services，所有舊 binder 調用誠實失敗；
+ * 真正行硬件經 HardwareDirectManager／DirectLedController／Android 原生 API),
+ * initialises every sub-system and answers every "/api/..." HTTP call from
+ * {@link HttpServer}. All asynchronous hardware callbacks are pushed to
  * {@link EventBus} so the browser panel's WebSocket log updates live.
  *
  * The activity itself shows minimal on-device status (IP:port, init state) since the
@@ -80,92 +77,96 @@ import java.util.concurrent.TimeUnit;
  */
 public class MainActivity extends Activity implements SensorEventListener {
     private static final String TAG = "MainActivity";
-    private static final String APP_KEY = "222B998EDFA5FAD7FCE78678FB9F2521";
 
     private static final String PREFS_NAME = "robotpanel";
-    /** 自訂小智 server 設定 - 開關開咗先用 PREF_XIAOZHI_OTA_URL, 閂咗就跟返
+    /** 自訂小智 server 設定 - 開關開了才用 PREF_XIAOZHI_OTA_URL, 關了就跟回
      *  XiaozhiOtaClient.DEFAULT_OTA_URL (官方 api.tenclass.net)。見
-     *  handleXiaozhiApi() 嘅 "ota_config/get"/"ota_config/set" case 同
-     *  runXiaozhiActivationFlow() 點讀呢個設定。 */
+     *  handleXiaozhiApi() 的 "ota_config/get"/"ota_config/set" case 和
+     *  runXiaozhiActivationFlow() 怎麼讀這個設定。 */
     private static final String PREF_XIAOZHI_OTA_CUSTOM_ENABLED = "xiaozhi_ota_custom_enabled";
     private static final String PREF_XIAOZHI_OTA_URL = "xiaozhi_ota_url";
-    // 2026-08 新增: 自架 server 未必跟足官方協議形狀 (OTA response 冧埋
-    // websocket url/token 一齊送返嚟) - 有啲自架方案要用戶自己手動填呢幾樣嘢。
-    // 全部留空 = 跟返自動流程 (OTA response 度攞); 有填就用嚟覆寫對應嘅自動值。
-    // 只喺 PREF_XIAOZHI_OTA_CUSTOM_ENABLED 開咗嗰陣先讀呢幾個, 同 OTA URL
-    // 本身一齊收埋喺同一個「自訂小智 server」開關底下。
+    // 2026-08 新增: 自架 server 未必跟足官方協議形狀 (OTA response 夾著
+    // websocket url/token 一起送回來) - 有些自架方案要用戶自己手動填這幾樣東西。
+    // 全部留空 = 跟回自動流程 (由 OTA response 拿); 有填就用來覆寫對應的自動值。
+    // 只有在 PREF_XIAOZHI_OTA_CUSTOM_ENABLED 開了的時候才讀這幾個, 和 OTA URL
+    // 本身一起收在同一個「自訂小智 server」開關底下。
     private static final String PREF_XIAOZHI_WS_URL_OVERRIDE = "xiaozhi_ws_url_override";
     private static final String PREF_XIAOZHI_DEVICE_ID_OVERRIDE = "xiaozhi_device_id_override";
     private static final String PREF_XIAOZHI_TOKEN_OVERRIDE = "xiaozhi_token_override";
     private static final String PREF_XIAOZHI_DEVICE_ID = "xiaozhi_device_id";
+    private static final String PREF_MUSIC_FILLER_ACTION_ENABLED = "music_filler_action_enabled";
+    private static final String PREF_MUSIC_EQ_PRESET = "music_eq_preset";
     // 2026-08 新增: MCP tool 個別 enable/disable 設定。總開關預設 true (保持現有
-    // 行為 - 已經喺用嘅人唔應該因為呢個功能上線而啲工具突然全部消失)。
-    // disabled tool 清單預設空 (即係全部 enabled), 用逗號分隔嘅 tool name 儲存
-    // 喺同一個 SharedPreferences, 用 name 唔用 index 係因為 tool 清單本身會隨版本
-    // 增減, index 會漂移, name 先係穩定嘅 identity。
+    // 行為 - 已經在用的人不應該因為這個功能上線而工具突然全部消失)。
+    // disabled tool 清單預設空 (也就是全部 enabled), 用逗號分隔的 tool name 儲存
+    // 在同一個 SharedPreferences, 用 name 不用 index 是因為 tool 清單本身會隨版本
+    // 增減, index 會漂移, name 才是穩定的 identity。
     private static final String PREF_XIAOZHI_MCP_ENABLED = "xiaozhi_mcp_enabled";
-    // 見 xiaozhiTtsEngine field 嘅 javadoc。
+    // 見 xiaozhiTtsEngine field 的 javadoc。
     private static final String PREF_XIAOZHI_TTS_ENGINE = "xiaozhi_tts_engine";
     private static final String PREF_XIAOZHI_MCP_DISABLED_TOOLS = "xiaozhi_mcp_disabled_tools";
-    /** 官方 xiaozhi-esp32 firmware 寫死用嘅 vision/explain endpoint (esp32_camera.cc
-     *  Explain() 實作) - 呢個 URL 唔會經 OTA check_version 嘅回應帶返嚟 (見
-     *  runXiaozhiActivationFlow() 嘅 comment: response 淨係有 activation/websocket
-     *  兩個 block), 所以要獨立一個設定。自訂 server 開住嗰陣如果冇填呢個, 就跟返
-     *  官方呢個 - 好多自架 server 都冇實作 vision explain, 呢種情況下 take_photo
-     *  call 出去會收到 404/連唔到, self.camera.take_photo 嘅 case 會將呢個原因
-     *  話俾 LLM 知, 而唔係靜靜哋扮成功。
+    /** 官方 xiaozhi-esp32 firmware 寫死用的 vision/explain endpoint (esp32_camera.cc
+     *  Explain() 實作) - 這個 URL 不會經 OTA check_version 的回應帶回來 (見
+     *  runXiaozhiActivationFlow() 的 comment: response 只有 activation/websocket
+     *  兩個 block), 所以要獨立一個設定。自訂 server 開著的時候如果沒填這個, 就跟回
+     *  官方這個 - 很多自架 server 都沒實作 vision explain, 這種情況下 take_photo
+     *  call 出去會收到 404/連不到, self.camera.take_photo 的 case 會將這個原因
+     *  告訴 LLM 知道, 而不是靜靜地假裝成功。
      *
-     *  2026-08 修正: 之前呢度寫死用 https://, 但實測用 https:// 撞到 HTTP 404
-     *  (即使 xiaozhi.me console 側已經開通咗 vision/camera 服務都一樣) - 對照
-     *  官方 esp32_camera.cc 個 source (SetExplainUrl/Explain() 實作) 同 GitHub
-     *  issue #708 嘅實機 log, 官方 firmware 打嘅其實係 http:// (唔加密), 唔係
+     *  2026-08 修正: 之前這裡寫死用 https://, 但實測用 https:// 撞到 HTTP 404
+     *  (即使 xiaozhi.me console 側已經開通了 vision/camera 服務也一樣) - 對照
+     *  官方 esp32_camera.cc 的 source (SetExplainUrl/Explain() 實作) 和 GitHub
+     *  issue #708 的實機 log, 官方 firmware 打的其實是 http:// (不加密), 不是
      *  https://: "Opening HTTP connection to http://api.xiaozhi.me/mcp/vision/explain"
-     *  低於呢個 scheme 嘅路由喺 server 側可能同 https:// 唔係同一個 virtual
-     *  host/根本冇 mapping, 所以之前一直 404。呢度跟返官方實際用緊嘅 scheme。 */
+     *  低於這個 scheme 的路由在 server 側可能和 https:// 不是同一個 virtual
+     *  host/根本沒 mapping, 所以之前一直 404。這裡跟回官方實際用的 scheme。 */
     /** Fallback vision/explain URL, only used when the server hasn't (yet) told us
      *  its real one via the "initialize" MCP request's params.capabilities.vision
      *  (see XiaozhiClient.getVisionUrl()'s comment for the full story - that's the
      *  authoritative source; this constant is a last-resort default for the case
      *  where take_photo is somehow called before any "initialize" has been
-     *  received). 唔保證啱 - 純粹一個合理猜測嘅底線值, 唔應該係主要路徑。
+     *  received). 不保證對 - 純粹一個合理猜測的底線值, 不應該是主要路徑。
      *
-     *  2026-08 修正: 之前呢度用 http://api.xiaozhi.me/... - 反編譯一個用戶提供、
-     *  實測影相成功嘅第三方 apk (package com.huihongcloud.xiaozhi) 嘅
-     *  classes.dex, 證實佢 OTA 用嘅其實係 https://api.tenclass.net/xiaozhi/ota/
-     *  (同 DEFAULT_OTA_URL 一致) - api.xiaozhi.me 呢個 domain 根本冇
-     *  /mcp/vision/explain 呢條路由, 一路 404 同 console 側有冇開通 vision 服務
-     *  完全無關。改跟返 api.tenclass.net, scheme 跟返 DEFAULT_OTA_URL 一致嘅
+     *  2026-08 修正: 之前這裡用 http://api.xiaozhi.me/... - 反編譯一個用戶提供、
+     *  實測拍照成功的第三方 apk (package com.huihongcloud.xiaozhi) 的
+     *  classes.dex, 證實它 OTA 用的其實是 https://api.tenclass.net/xiaozhi/ota/
+     *  (和 DEFAULT_OTA_URL 一致) - api.xiaozhi.me 這個 domain 根本沒有
+     *  /mcp/vision/explain 這條路由, 一直 404 和 console 側有沒有開通 vision 服務
+     *  完全無關。改跟回 api.tenclass.net, scheme 跟回 DEFAULT_OTA_URL 一致的
      *  https。 */
     private static final String DEFAULT_VISION_URL = "https://api.tenclass.net/xiaozhi/mcp/vision/explain";
     private static final String PREF_XIAOZHI_VISION_URL = "xiaozhi_vision_url";
-    /** 相機解像度 (用戶指定) - take_photo 特登用細過一般 camera/snapshot 預覽嘅
-     *  解像度, 因為呢張相淨係要上傳去 vision explain 俾 LLM 「睇」, 唔係俾人單獨
-     *  睇嘅相片, 細啲可以令上傳/處理快啲, 都夠 LLM 辨識到大致內容。 */
+    /** 相機解析度 (用戶指定) - take_photo 特意用小於一般 camera/snapshot 預覽的
+     *  解析度, 因為這張照片只是要上傳去 vision explain 給 LLM 「看」, 不是給人單獨
+     *  看的照片, 小一點可以讓上傳/處理快一點, 也夠 LLM 辨識到大致內容。 */
     private static final int XIAOZHI_PHOTO_WIDTH = 480;
     private static final int XIAOZHI_PHOTO_HEIGHT = 360;
 
     // 2026-08 新增: 用戶要求所有「停止」入口 (action/stop HTTP endpoint,
-    // self.robot.stop_action MCP tool, 小智面板「⏹ 全部停止」/拍頭都經呢兩個
-    // 之一) 停低現正播緊嘅動作之後, 補播返「蹲下站起」呢個動作做回位 - 停低
-    // 唔應該留低機身喺一個中途/唔企定嘅姿勢。id 嚟自
-    // blockly-actions-data.js/xiaozhi_actions.json 現有記錄嘅「蹲下站起」
+    // self.robot.stop_action MCP tool, 小智面板「⏹ 全部停止」/拍頭都經這兩個
+    // 之一) 停掉現在正在播放的動作之後, 補播回「蹲下站起」這個動作做回位 - 停掉
+    // 不應該留下機身在一個中途/不端正的姿勢。id 來自
+    // blockly-actions-data.js/xiaozhi_actions.json 現有記錄的「蹲下站起」
     // (nameCn: 蹲下站起, nameEn: squat down up)。
     private static final String STOP_RECOVERY_ACTION_ID = "1510818174706";
 
-    // 2026-08 新增: 記住最近一次 self.camera.take_photo 拎到嘅 "async, 未完成"
-    // uuid (見 xiaozhiVisionExplainRequest() 嘅 comment) - 俾之後 LLM (GPT-5)
-    // 主動再發嘅 "self.camera.image_to_text" tools/call 用嚟核對/攞返真正描述。
-    // 淨係記最新一個 (單一 device, 冇並行 take_photo 嘅需要) - 用完/逾時後應
-    // 清返做 null, 避免舊 uuid 谷落去新一次 call。
+    // 2026-08 新增: 記住最近一次 self.camera.take_photo 拿到的 "async, 未完成"
+    // uuid (見 xiaozhiVisionExplainRequest() 的 comment) - 給之後 LLM (GPT-5)
+    // 主動再發的 "self.camera.image_to_text" tools/call 用來核對/取回真正描述。
+    // 只記最新一個 (單一 device, 沒有並行 take_photo 的需要) - 用完/逾時後應
+    // 清成 null, 避免舊 uuid 混進新一次 call。
     private volatile String lastPendingPhotoUuid;
 
-    private Alpha2RobotApi robot;
+    private RobotStub robot;
+    private LocalAlpha2Services localServices;
+    private final UbxPlayer ubxPlayer = new UbxPlayer();
+    private final HeadKeyPoller headKeyPoller = new HeadKeyPoller();
     private HttpServer httpServer;
-    // 小智 (XiaoZhi) AI 對話 - 獨立於機械人 AIDL 之外嘅 client-side WebSocket
-    // 連線, 連出去 xiaozhi.me。單一 instance, 喺 onCreate() 先建立 (要用
-    // getSharedPreferences() 攞/生成 device id, field initializer 嗰陣 Activity
+    // 小智 (XiaoZhi) AI 對話 - 獨立於機械人 AIDL 之外的 client-side WebSocket
+    // 連線, 連出去 xiaozhi.me。單一 instance, 在 onCreate() 才建立 (要用
+    // getSharedPreferences() 取/生成 device id, field initializer 那時 Activity
     // context 未必 ready), 由 handleXiaozhiApi() 開關
-    // (見 handleXiaozhiApi() 嘅 javadoc)。
+    // (見 handleXiaozhiApi() 的 javadoc)。
     private XiaozhiClient xiaozhiClient;
     // PHASE 2: mic-capture-encode + decode-playback for XiaoZhi voice chat - separate
     // instance from audioController/audioPlaybackController below (different sample
@@ -192,17 +193,18 @@ public class MainActivity extends Activity implements SensorEventListener {
     // action rather than "connect, wait, then separately press mic".
     private final java.util.concurrent.atomic.AtomicBoolean xiaozhiAutoMode =
             new java.util.concurrent.atomic.AtomicBoolean(false);
-    // 小智 tab 嘅 TTS 輸出引擎揀擇 - "xiaozhi" (預設) 即係維持原本行為 (server
-    // 送 opus 過嚟, XiaozhiAudioController 解碼播放); 揀
-    // "iflytek"/"nuance"/"android" 就完全靜音嗰段 opus (見
-    // xiaozhiClient.setAudioSink() 入面對呢個 field 嘅判斷), 改用本地
-    // speech/tts 呢條路 (同 speech tab 個 speakTts() 用緊嗰個 API 一樣) 逐句
-    // 讀出小智回覆 - 觸發時機係 xiaozhi_tts 嘅 "sentence_start" (對話氣泡本身
-    // 都係用呢個顯示; xiaozhi_llm 個 data.text 其實係表情 emoji, 唔係對話內容,
-    // 唔可以用嚟讀), 前端用隊列排住逐句讀晒先讀下一句 (見
+    // 小智 tab 的 TTS 輸出引擎選擇 - "xiaozhi" (預設) 也就是維持原本行為 (server
+    // 送 opus 過來, XiaozhiAudioController 解碼播放); 選 "android" 就完全靜音
+    // 那段 opus (見 xiaozhiClient.setAudioSink() 裡面對這個 field 的判斷), 改用
+    // 本地 speech/tts (Android 內置, 和 speech tab 的 speakTts() 用著同一個 API)
+    // 逐句讀出小智回覆 - 觸發時機是 xiaozhi_tts 的 "sentence_start" (對話氣泡本身
+    // 也是用這個顯示; xiaozhi_llm 的 data.text 其實是表情 emoji, 不是對話內容,
+    // 不可以用來讀), 前端用隊列排著逐句讀完才讀下一句 (見
     // xiaozhiEnqueueTts()/xiaozhiProcessTtsQueue() javadoc)。用
-    // SharedPreferences 持久化 (同 PREF_XIAOZHI_MCP_ENABLED 等其他小智設定
-    // 一致嘅做法), 跨重啟記得住揀咗邊個。
+    // SharedPreferences 持久化 (和 PREF_XIAOZHI_MCP_ENABLED 等其他小智設定
+    // 一致的做法), 跨重啟記得住選了哪個。
+    // 2026-09: 舊值 "iflytek"/"nuance" 已移除 (機身已無此兩引擎, 選中只會靜音) -
+    // 開機讀到舊值會遷移到 "xiaozhi", tts_config/set 會直接拒收舊值。
     private volatile String xiaozhiTtsEngine = "xiaozhi";
     /** Tracks consecutive unexpected-disconnect reconnect attempts for
      *  xiaozhiScheduleReconnect()'s backoff - reset to 0 on any successful (re)connect
@@ -210,37 +212,87 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  doesn't inherit a long delay from an earlier flaky period. */
     private final java.util.concurrent.atomic.AtomicInteger xiaozhiReconnectAttempts =
             new java.util.concurrent.atomic.AtomicInteger(0);
+    /** 2026-08 新增: 修「連不到、很快自己斷線、用戶心急狂按連線鍵」這個 bug -
+     *  根源是 xiaozhiScheduleReconnect() 意外斷線之後有 5 秒 backoff delay,
+     *  這 5 秒裡面 xiaozhiActivationStatus 還停留在斷線前那個值 (通常是
+     *  CONNECTED), 不在 "connect" case 的 guard 擋著的 stage 名單裡面, 用戶如果
+     *  在這 5 秒內按「連線」就會通過 guard、額外起多一條 runXiaozhiActivationFlow
+     *  thread - 和 5 秒後真正觸發的自動重連 thread 同時運行, 兩條互相踩
+     *  xiaozhiActivationStatus/xiaozhiClient 的狀態, 讓連線更加不穩定、越按
+     *  越糟。單靠 xiaozhiActivationStatus 的 stage 判斷不夠, 因為由「決定要
+     *  起 thread」到「thread 真正設回那個 stage」中間有時間差, 這個窗口裡面
+     *  判斷會判錯。用這個獨立的 AtomicBoolean 做 compareAndSet 原子操作,
+     *  保證整個 app 任何時候最多只有一條 runXiaozhiActivationFlow 在跑著 -
+     *  三個起 thread 的入口 (connect case / auto_mode case /
+     *  xiaozhiScheduleReconnect 的 delayed runnable) 都要經這個 gate,
+     *  runXiaozhiActivationFlow() 本身在 finally 釋放。 */
+    private final java.util.concurrent.atomic.AtomicBoolean xiaozhiActivationInFlight =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
     private RobotEventReceiver dynamicReceiver;
     private BroadcastReceiver batteryReceiver;
+
+    // -- WiFi 指示燈 (2026-08-25) -----------------------------------------------
+    // 開機預設 wifi 燈長着紅色; WiFi 一連上就轉藍燈, 斷開就轉返紅燈。真機掃描確認
+    // ledSetOn(12) = wifi 藍燈, ledSetOn(13) = wifi 紅燈。ledSetOn 係累加式,
+    // 所以每次切換都先 ledSetOFF() 清場再點目標顏色, 避免紅藍齊着。同 pad 燈共用
+    // 同一條 burst 重試路徑 (裝置會同 alpha2services 打交)。
+    private static final int WIFI_LED_INDEX_BLUE = 12;
+    private static final int WIFI_LED_INDEX_RED = 13;
+    private BroadcastReceiver wifiLedReceiver;
+    private BroadcastReceiver panelUrlReceiver;
+    private TextView panelLinkView;
+    private String currentPanelUrl;
     private final CameraController cameraController = new CameraController();
     private final AudioController audioController = new AudioController();
     private final AudioPlaybackController audioPlaybackController = new AudioPlaybackController();
+    private final MusicController musicController = new MusicController();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private AudioManager audioManager;
     private EventBus.Listener gestureListener;
     private Runnable volumeRepeater;
 
-    /** true = 用戶喺 TTS tab 撳咗「釋放麥克風俾 App」，想長期持有 mic 俾 app 用，
-     *  未撳返「交返麥克風俾機器人」之前唔算完。見 handleMicStream() finally 段嘅
-     *  用法 - Mic Listen 個 stream 斷開唔應該喺呢個狀態係 true 嘅時候將 mic
-     *  還俾機械人，否則個「釋放」狀態會被 Mic Listen 嘅斷線清埋，令用戶要不斷
-     *  重新撳「釋放麥克風俾 App」。 */
+    // -- Pad (+/-) 實體鍵指示燈 (2026-08-25) -----------------------------------
+    // headboard v1.1 上 alpha2services v1.0 協議不合, 按 +/- 時 MCU 不再自己點燈,
+    // 要我們經 /dev/led_eye (LedControl JNI) 補回。真機掃描確認:
+    //   ledSetOn(14) = volume- 燈, ledSetOn(16) = volume+ 燈, ledSetOn(12) = wifi 藍燈。
+    // ledSetOn 是累加式 (連續 call 兩個 index 兩顆都會亮); ledSetOFF() 熄掉這些
+    // 單顆 LED 但不影響頭/眼環燈。
+    //
+    // 實測單發一條 ledSetOn 有時會靜靜地失敗 (原因未明, 疑似 alpha2services 那個
+    // 假熄燈循環間中搶贏), 所以策略是「快速連發」: 按住期間每 PAD_LED_INTERVAL_MS
+    // 補發一次組合, 一旦成功燈就會維持住; 放手後連發幾次 ledSetOFF 確保熄到。
+    // 不用任何「prime+等待」序列 - 不需要, 也是之前反應慢的原因。
+    private static final int PAD_LED_INDEX_MINUS = 14;
+    private static final int PAD_LED_INDEX_PLUS = 16;
+    private static final long PAD_LED_INTERVAL_MS = 80;
+    private static final int PAD_LED_OFF_RETRIES = 4;
+    private final java.util.concurrent.ExecutorService padLedExecutor =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
+    private volatile boolean padMinusHeld = false;
+    private volatile boolean padPlusHeld = false;
+    private volatile boolean padLedWorkerRunning = false;
+
+    /** true = 用戶在 TTS tab 按了「釋放麥克風給 App」，想長期持有 mic 給 app 用，
+     *  沒按回「交回麥克風給機器人」之前不算完。見 handleMicStream() finally 段的
+     *  用法 - Mic Listen 的 stream 斷開不應該在這個狀態是 true 的時候將 mic
+     *  還給機械人，否則「釋放」狀態會被 Mic Listen 的斷線清掉，讓用戶要不斷
+     *  重新按「釋放麥克風給 App」。 */
     private volatile boolean micHeldByApp = false;
 
-    /** true = 用戶開咗「持續搶 mic」呢個選項 (mic card 嗰粒 checkbox)。同
-     *  micHeldByApp 唔同 - micHeldByApp 淨係記住「而家個狀態係咪 app 持有」,
-     *  呢個 flag 就係話「就算 firmware 自己內部側面攞返咗 (例如 setWakeState
-     *  呢個 call 本身喺 firmware bytecode 入面會順便觸發 IflytekWakeUp5mic.
-     *  startRecording() 呢個 side effect - 唔係用戶自己撳咗「交返」), 都要
-     *  自動再搶一次返嚟」。見 micHoldEnforcer 呢條背景 thread。 */
+    /** true = 用戶開了「持續搶 mic」這個選項 (mic card 那顆 checkbox)。和
+     *  micHeldByApp 不同 - micHeldByApp 只是記住「現在這個狀態是不是 app 持有」,
+     *  這個 flag 是說「就算 firmware 自己內部側面拿回了 (例如 setWakeState
+     *  這個 call 本身在 firmware bytecode 裡面會順便觸發 IflytekWakeUp5mic.
+     *  startRecording() 這個 side effect - 不是用戶自己按了「交回」), 都要
+     *  自動再搶一次回來」。見 micHoldEnforcer 這條背景 thread。 */
     private volatile boolean micHoldEnforced = false;
     private Thread micHoldEnforcerThread;
     private static final long MIC_HOLD_ENFORCER_INTERVAL_MS = 2000;
 
-    /** true = XiaoZhi (小智) 語音對話而家持有緊 mic 擁有權 (releaseMicForAudioIo()
-     *  已經 call 咗, AudioRecord 已經開緊)。獨立過 micHeldByApp (Speech/Mic tab 專用) -
-     *  兩個功能各自攞放, 互不影響, 見 stopXiaozhiMic() 嘅 comment。前端靠
-     *  XIAOZHI_MIC_STATE_EVENT 反映呢個狀態做綠/灰燈號 (見 index.html
+    /** true = XiaoZhi (小智) 語音對話現在持有著 mic 擁有權 (releaseMicForAudioIo()
+     *  已經 call 了, AudioRecord 已經開著)。獨立於 micHeldByApp (Speech/Mic tab 專用) -
+     *  兩個功能各自拿放, 互不影響, 見 stopXiaozhiMic() 的 comment。前端靠
+     *  XIAOZHI_MIC_STATE_EVENT 反映這個狀態做綠/灰燈號 (見 index.html
      *  #xiaozhiMicLed / app-xiaozhi.js)。 */
     private volatile boolean xiaozhiMicHeld = false;
     private volatile boolean xiaozhiMicHoldEnforced = false;
@@ -258,25 +310,59 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  the parse on every single tools/list call. */
     private volatile java.util.List<org.json.JSONObject> xiaozhiActionsCache;
 
-    /** 2026-08 新增: 完全取代悠聊 APK (com.ubtech.iflytekmix) 用嘅中文語意配對引擎
-     *  實例。喺 onCreate() 建立一次 (淨係持有 Context, 唔碰 AIDL, 冇初始化順序問題),
-     *  真正嘅 1000 條資料就到 handleIflytekSemanticText() 第一次被叫先讀 assets - 見
-     *  IflytekSemanticMatcher 本身嘅 lazy-load 設計。 */
+    /** 2026-08 新增: 完全取代悠聊 APK (com.ubtech.iflytekmix) 用的中文語意配對引擎
+     *  實例。在 onCreate() 建立一次 (只持有 Context, 不碰 AIDL, 沒有初始化順序問題),
+     *  真正的 1000 條資料就到 handleIflytekSemanticText() 第一次被叫才讀 assets - 見
+     *  IflytekSemanticMatcher 本身的 lazy-load 設計。 */
     private IflytekSemanticMatcher iflytekMatcher;
 
     /** 2026-08 新增: 完全取代 AlphaEnglishChat APK
-     *  (com.ubtechinc.alphaenglishchat) 用嘅英文語意配對引擎實例, 同 iflytekMatcher
+     *  (com.ubtechinc.alphaenglishchat) 用的英文語意配對引擎實例, 和 iflytekMatcher
      *  屬於同一套機制、獨立資料 (1000 條英文問法, 見 IflytekSemanticMatcherEn)。
-     *  邊句用邊個 matcher 由 handleIflytekSemanticText() 根據輸入文字有冇 CJK 漢字
-     *  判斷 - 唔靠 speech/set_asr_engine 嘅語言設定, 因為 iFlytek 引擎本身可能自動
+     *  哪句用哪個 matcher 由 handleIflytekSemanticText() 根據輸入文字有沒有 CJK 漢字
+     *  判斷 - 不靠 speech/set_asr_engine 的語言設定, 因為 iFlytek 引擎本身可能自動
      *  偵測語言, 靠內容判斷更可靠。 */
     private IflytekSemanticMatcherEn iflytekMatcherEn;
 
-    /** 2026-08 新增: 上次由 Radio Browser API (radio-browser.info) 搜到嘅電台結果
-     *  cache - 俾 self.media.play_radio/audio/radio/play 用「上一次
-     *  self.media.search_radio 搵到嘅結果入面揀一個」呢個 flow (見
-     *  searchRadioStations()/resolveRadioStation() 嘅 javadoc), 唔係一份固定嘅
-     *  本地清單 (呢部機唔再內置任何寫死嘅電台, 全部經呢個 API 動態搵)。 */
+    /** 2026-08 新增: 離線文法辨識 (iFlytek local BNF grammar) 模式現在開不開。
+     *  開了之後, 機身 alpha2services 會用 engine_type=local + APK 裡面的
+     *  assets/asr/common.jet 離線資源做本地文法辨識 (完全不用上網), 辨識結果
+     *  經 grammar listener 這條路徑回來。同時 onServerCallBack() 那條正常聽寫
+     *  路徑會被 gate 住 - 因為 mSpeechServiceUtil 和 mAsrServiceUtil 是兩個
+     *  獨立 binding, firmware 有機會將同一句結果派給兩邊, 如果兩邊都各自
+     *  觸發語意配對 + TTS, 就會重複答兩次 (2026-08 移除舊 grammar endpoints
+     *  那時見過的問題)。只有 grammar listener 一條路徑會觸發回應。 */
+    private volatile boolean offlineGrammarActive = false;
+
+    /** 2026-08 新增: 最後一次 speech/init_grammar 的機身構建結果 - errorCode==0
+     *  才算成功。speech/start_grammar 會用它做 gate: 文法未構建成功就開始辨識,
+     *  機身會因為沒有本地 grammar 而將所有語音跌落雲端聽寫 fallback, 離線時變成
+     *  「說什麼都是網路錯誤」(實測 logcat: 10114/20002), 所以這裡早一步擋住。 */
+    private volatile boolean lastGrammarBuildOk = false;
+
+    /** 2026-08 新增: 「自動跟網路切換」開關 - 開了的話, 沒網路時自動入離線文法
+     *  模式, 有網路時自動退出來走回雲端聽寫。偏好存 SharedPreferences (共用
+     *  頂頭那個 PREFS_NAME), 預設開。 */
+    public static final String PREF_OFFLINE_AUTO = "offline_grammar_auto";
+    private volatile boolean offlineGrammarAutoSwitch = true;
+    /** 離線文法構建中/剛構建完, 等著自動開始辨識的 pending flag - 由
+     *  grammar init callback 成功之後接手做 start。 */
+    private volatile boolean pendingOfflineEnable = false;
+    /** 2026-08 新增: init_grammar 進行中的防重入鎖 - 開機那時 speech_ready
+     *  和 connectivity_change 兩個觸發可以幾乎同時到達, 疊兩次 buildGrammar
+     *  會讓 firmware destroyASR 再重建, 打壞剛起好的辨識 session (實測:
+     *  離線模式開了但完全沒反應)。 */
+    private volatile boolean grammarInitInFlight = false;
+    /** 最後一次模式切換時間 (ms) - 防止網路飄忽讓模式不停翻轉 (每次翻轉都
+     *  會 stop/start 文法, 中間那段說話是沒反應的)。 */
+    private volatile long lastModeSwitchMs = 0;
+    private static final long MODE_SWITCH_MIN_INTERVAL_MS = 15000;
+
+    /** 2026-08 新增: 上次由 Radio Browser API (radio-browser.info) 搜到的電台結果
+     *  cache - 給 self.media.play_radio/audio/radio/play 用「上一次
+     *  self.media.search_radio 找到的結果裡面選一個」這個 flow (見
+     *  searchRadioStations()/resolveRadioStation() 的 javadoc), 不是一份固定的
+     *  本地清單 (這台機不再內建任何寫死的電台, 全部經這個 API 動態找)。 */
     private volatile java.util.List<org.json.JSONObject> lastRadioSearchResults;
 
     /** Bearer token from the most recent successful runXiaozhiActivationFlow() -
@@ -285,15 +371,15 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  Authorization headers as the WebSocket connection itself, not a separate
      *  credential. null until the first successful connect. */
     private volatile String xiaozhiAccessToken;
-    // 2026-08 新增: 之前呢度嘅 comment 已經話「同 WebSocket 連接一樣嘅
+    // 2026-08 新增: 之前這裡的 comment 已經說「和 WebSocket 連接一樣的
     // Device-Id/Client-Id/Authorization headers」, 但 xiaozhiVisionExplainRequest()
-    // 實際冇送 Client-Id header - 反編譯一個用戶提供、實測影相成功嘅第三方 apk
-    // (package com.huihongcloud.xiaozhi) 嘅 vision explain 實現, 證實佢真係有送
-    // 呢個 header (invoke-virtual v3, v2, LA/i;->f("Client-Id", XiaoZhi.a0)), 對應
-    // 就係連接 WebSocket 果陣用嘅同一個 client_id。runXiaozhiActivationFlow() 之前
-    // 每次都用 java.util.UUID.randomUUID() 生成一個新 clientId 傳落
-    // XiazhiOtaClient 建構, 但冇存低俾之後嘅 vision request 讀 - 呢個 field 就係
-    // 用嚟補呢個缺口。
+    // 實際沒送 Client-Id header - 反編譯一個用戶提供、實測拍照成功的第三方 apk
+    // (package com.huihongcloud.xiaozhi) 的 vision explain 實現, 證實它真的有送
+    // 這個 header (invoke-virtual v3, v2, LA/i;->f("Client-Id", XiaoZhi.a0)), 對應
+    // 就是連接 WebSocket 那時用的同一個 client_id。runXiaozhiActivationFlow() 之前
+    // 每次都用 java.util.UUID.randomUUID() 生成一個新 clientId 傳給
+    // XiazhiOtaClient 建構, 但沒存下來給之後的 vision request 讀 - 這個 field 就是
+    // 用來補這個缺口。
     private volatile String xiaozhiClientId;
 
     // -- Accelerometer (IMU): standard Android SensorManager, NOT the UBTECH AIDL SDK -
@@ -318,16 +404,17 @@ public class MainActivity extends Activity implements SensorEventListener {
     private android.net.Uri shutterCueUri;
     private boolean shutterCueLookupDone = false;
 
-    // PIR alert cue - "Heaven" 係 Android 內置系統鈴聲標題, 同 STOP_CUE/SHUTTER_CUE
-    // 一樣做法 (lazy lookup by title, cache 埋個 content:// Uri)。播放時機見
+    // PIR alert cue - "Heaven" 是 Android 內建系統鈴聲標題, 和 STOP_CUE/SHUTTER_CUE
+    // 一樣做法 (lazy lookup by title, cache 住那個 content:// Uri)。播放時機見
     // registerAlpha2PirAlertListener() - alpha2_pir_state broadcast
-    // (RobotEventReceiver.java) 一到 triggered=true 就即刻播, triggered=false 即刻停
-    // (跟 sonar 個 purple LED 一樣, 唔等成首歌播完)。
+    // (RobotEventReceiver.java) 一到 triggered=true 就立刻播, triggered=false 立刻停
+    // (跟 sonar 的 purple LED 一樣, 不等整首歌播完)。
     private static final String PIR_ALERT_RINGTONE_TITLE = "Heaven";
     private android.net.Uri pirAlertUri;
     private boolean pirAlertLookupDone = false;
 
-    private volatile boolean speechReady = false;
+    // 2026-09 刪除: speechReady field - 無 ASR，舊 binder speech service 永遠
+    // ready 不了（唯一設 true 嘅舊 initOver 已刪），恆 false 無意義。
 
     // speech/stop -> speech/tts race guard.
     //
@@ -347,13 +434,13 @@ public class MainActivity extends Activity implements SensorEventListener {
     private static final long STOP_TO_TTS_MIN_GAP_MS = 400;
     private volatile long lastSpeechStopAtMs = 0L;
     // 追蹤機身 robot-side TTS (nuance/iflytek, 經 robot.speech_startTTS() 走)
-    // 而家係咪正播緊嘢 - 由 startXiaozhiMicHoldEnforcer()/startMicHoldEnforcer()
-    // 用嚟決定要唔要跳過呢一輪 speech_SetMIC(true)。背景: 兩條 mic-hold
+    // 現在是不是正在播 - 由 startXiaozhiMicHoldEnforcer()/startMicHoldEnforcer()
+    // 用來決定要不要跳過這一輪 speech_SetMIC(true)。背景: 兩條 mic-hold
     // enforcer thread 每 MIC_HOLD_ENFORCER_INTERVAL_MS (2 秒) 就會無條件搶一次
-    // mic, 一句超過 2 秒先讀完嘅句子播到一半就俾 speech_SetMIC(true) 打斷
-    // (真機 logcat 見過 "ttsGenerationFinished ... success = false" 跟住即刻
-    // "setWakeState onWake:true") - Android system TTS 唔經呢個 AIDL 通道,
-    // 唔會撞到, 所以之前只有 iflytek/nuance 斷斷續續, android 冇事。
+    // mic, 一句超過 2 秒才讀完的句子播到一半就被 speech_SetMIC(true) 打斷
+    // (真機 logcat 見過 "ttsGenerationFinished ... success = false" 接著立刻
+    // "setWakeState onWake:true") - Android system TTS 不經這個 AIDL 通道,
+    // 不會撞到, 所以之前只有 iflytek/nuance 斷斷續續, android 沒事。
     private volatile boolean robotTtsSpeaking = false;
 
     private volatile int lastBatteryLevel = -1;
@@ -369,51 +456,81 @@ public class MainActivity extends Activity implements SensorEventListener {
     // reference line against live sonar readings.
     private volatile int sonarThresholdCm = 30;
     private volatile boolean sonarLedActive = false;
-    // 2026-08 新增: onSonarDistanceReceived() 之前淨係用嚟判斷 triggered 有冇改變
-    // (驅動 LED), 冇存低實際讀數本身 - XiaoZhi MCP tool (self.sensors.get_sonar)
-    // 要俾 LLM 隨時查詢「而家距離幾多」, 唔止「有冇觸發」, 所以呢度加一個 cache
-    // 住最新讀數嘅 field。-1 代表「未收過任何讀數」, 同真實距離 (恆為非負) 區分開,
-    // 俾 MCP tool 可以話俾 LLM 知呢個係「未有數據」而唔係「距離 0cm」。
+    // 2026-08 新增: onSonarDistanceReceived() 之前只是用來判斷 triggered 有沒有改變
+    // (驅動 LED), 沒有存下實際讀數本身 - XiaoZhi MCP tool (self.sensors.get_sonar)
+    // 要給 LLM 隨時查詢「現在距離多少」, 不只「有沒有觸發」, 所以這裡加一個 cache
+    // 著最新讀數的 field。-1 代表「未收過任何讀數」, 和真實距離 (恆為非負) 區分開,
+    // 給 MCP tool 可以告訴 LLM 這是「未有數據」而不是「距離 0cm」。
     private volatile int lastSonarDistanceCm = -1;
-    // 2026-08 新增: 同 lastSonarDistanceCm 同一個目的 - PIR 事件之前淨係即時
-    // publish 去 EventBus (見 RobotEventReceiver 個 "com.ubtechinc.key"/-109 case),
-    // 冇存低最新狀態俾 MCP tool 隨時查詢。-1 = 未收過任何 PIR 事件, 0 = 上次收到
-    // 嘅係 EXIT (冇人), 1 = 上次收到嘅係 ENTER (有人) - 用 int 唔用 boolean 嚟
-    // 保留「未有數據」呢個第三種狀態, 同 lastSonarDistanceCm 用 -1 嘅原因一樣。
+    // 2026-08 新增: 和 lastSonarDistanceCm 同一個目的 - PIR 事件之前只是即時
+    // publish 去 EventBus (見 RobotEventReceiver 的 "com.ubtechinc.key"/-109 case),
+    // 沒存下最新狀態給 MCP tool 隨時查詢。-1 = 未收過任何 PIR 事件, 0 = 上次收到
+    // 的是 EXIT (沒人), 1 = 上次收到的是 ENTER (有人) - 用 int 不用 boolean 來
+    // 保留「未有數據」這個第三種狀態, 和 lastSonarDistanceCm 用 -1 的原因一樣。
     private volatile int lastPirTriggeredState = -1;
-    // 2026-08 新增: listTools() (見 xiaozhiMcpBridge()) 每次被 call 都會存低一份
-    // 完整、未過濾嘅 tool 清單落呢度 - 俾 "mcp_tools/list" HTTP endpoint (MCP 設定
-    // card 用) 讀, 等個 card 可以顯示全部 tool 連同已 disable 嗰啲。初始為 null
-    // (未連過 XiaoZhi/未收過 tools/list 之前), HTTP handler 要處理呢個情況 (fallback
-    // 直接 call 一次 listTools() 逼佢起返份清單, 因為個 card 應該喺用戶未連接之前
-    // 都睇到有咩 tool 可以 enable/disable)。
+    // 2026-08 新增: 真實胸口/頭部 MCU 韌體版本查詢 (CHEST_READ_VERSION 51 / 0x33)
+    // 透過 IAlpha2SerialPortService.sendCommand(51) 發送，MCU 回覆的完整 wire frame
+    // (F8 8F len 01 00 33 payload sum ED) 經 onListenSerialPortRcvData / HeaderRcvData
+    // 回調送回。這組 latch/raw/len 供 queryChestFirmwareVersion() 同步阻塞等待使用
+    // (HttpServer worker thread，非主 thread)，onReceive 回調一到就 countDown。
+    private volatile CountDownLatch chestVersionLatch;
+    private volatile byte[] chestVersionRaw;
+    private volatile int chestVersionLen;
+    // 2026-09 新增: 機械人 SN/UUID 直讀 (CHEST_READ_SID_EEPROM 55 / 0x37) 用的
+    // 同步等待狀態, 和上面 chestVersionLatch 同一個 pattern (HttpServer worker
+    // thread 發送後阻塞等 onDirectChestFrame/onListenSerialPortRcvData 回調
+    // countDown)。機身已無 alpha2services, robot.requestRobotUUID() 的 broadcast
+    // 永遠無人回覆, misc/request_uuid 改走這條 pure-direct 路徑 (見
+    // queryChestRobotUuid())。
+    private volatile CountDownLatch chestUuidLatch;
+    private volatile byte[] chestUuidRaw;
+    private volatile int chestUuidLen;
+    // 2026-09 刪除: headerVersionLatch/Raw/Len (唯一讀者 queryHeaderFirmwareVersion
+    // 無 caller，一併刪除)。
+    // 2026-08 新增: 胸口升級狀態 (48/49/50 協議，見 ag_chess/com/ubtechinc/h/a/a$b.java)
+    // 單例升級線程，升級中 chestUpgradeInProgress=true，進度 0-100，前端經 EventBus chest_upgrade_progress / chest_upgrade_done 輪詢
+    private volatile boolean chestUpgradeInProgress = false;
+    private volatile int chestUpgradeProgress = 0;
+    private volatile int chestUpgradeTotalPages = 0;
+    private volatile int chestUpgradeCurrentPage = 0;
+    private volatile String chestUpgradeStatus = "idle";
+    private volatile CountDownLatch chestUpgradeLatch;
+    private volatile byte chestUpgradeExpectedCmd = 0;
+    private volatile int chestUpgradeAckStatus = -1;
+    private volatile Thread chestUpgradeThread;
+    // 2026-08 新增: listTools() (見 xiaozhiMcpBridge()) 每次被 call 都會存下一份
+    // 完整、未過濾的 tool 清單到這裡 - 給 "mcp_tools/list" HTTP endpoint (MCP 設定
+    // card 用) 讀, 讓這個 card 可以顯示全部 tool 連同已 disable 的那些。初始為 null
+    // (未連過 XiaoZhi/未收過 tools/list 之前), HTTP handler 要處理這個情況 (fallback
+    // 直接 call 一次 listTools() 逼它起回一份清單, 因為這個 card 應該在用戶未連接之前
+    // 也看得到有哪些 tool 可以 enable/disable)。
     private volatile org.json.JSONArray lastFullMcpToolList = null;
 
-    // 2026-08 新增: 用戶要求「如果有其他動作要做, 就淨係做其他動作」- 之前純粹
-    // 靠 self.robot.play_random_action 個 tool description 勸 LLM 自己揀優先次序,
-    // 但實測發現 LLM 有時成段對話一次都唔 call play_random_action (可能覺得每輪
-    // 都有其他嘢做, 或者純粹冧咗嘴唔用), 結果機械人企定定完全唔郁, 用戶睇落好似
-    // 「random 動作完全無咗」。之前試過用一個 flag 追蹤緊「呢一輪有冇 LLM 自己
-    // call 過動作類 tool」, 冇就喺 TTS "stop" (回應播完) 先補一個 random action -
-    // 但用戶其後糾正: random 動作應該同 TTS 一齊做 (即係開始講嘢嗰刻就郁), 唔係
-    // 「講完先做」, 所以呢個做法已經改喺 TTS "start" 事件度直接觸發 (見
-    // setTtsStateListener() 嗰段), 唔再靠呢個 flag 判斷「呢一輪有冇其他動作」 -
-    // 拎走咗呢個字段同相關嘅 set 語句 (曾經喺 play_action/stop_action/
-    // play_random_action 三個 case 度出現過), 因為而家個時機邏輯已經唔需要佢。
+    // 2026-08 新增: 用戶要求「如果有其他動作要做, 就只做其他動作」- 之前純粹
+    // 靠 self.robot.play_random_action 的 tool description 勸 LLM 自己選優先順序,
+    // 但實測發現 LLM 有時整段對話一次都不 call play_random_action (可能覺得每輪
+    // 都有其他事情做, 或者純粹沒去用), 結果機械人站定完全不動, 用戶看起來好像
+    // 「random 動作完全沒了」。之前試過用一個 flag 追蹤著「這一輪有沒有 LLM 自己
+    // call 過動作類 tool」, 沒有就在 TTS "stop" (回應播完) 才補一個 random action -
+    // 但用戶其後糾正: random 動作應該和 TTS 一起做 (也就是開始說話那一刻就動), 不是
+    // 「說完才做」, 所以這個做法已經改在 TTS "start" 事件那裡直接觸發 (見
+    // setTtsStateListener() 那段), 不再靠這個 flag 判斷「這一輪有沒有其他動作」 -
+    // 拿掉了這個字段和相關的 set 語句 (曾經在 play_action/stop_action/
+    // play_random_action 三個 case 出現過), 因為現在這個時機邏輯已經不需要它。
 
-    /** RobotEventReceiver 個 "alpha2_pir_state" publish 之後順手 call 呢個, 等
-     *  self.sensors.get_pir MCP tool 可以讀到最新狀態, 唔使自己另外訂閱
-     *  EventBus。冇 instance 就靜靜哋唔做嘢 (同 onSonarDistanceReceived() 一致嘅
+    /** RobotEventReceiver 的 "alpha2_pir_state" publish 之後順手 call 這個, 讓
+     *  self.sensors.get_pir MCP tool 可以讀到最新狀態, 不用自己另外訂閱
+     *  EventBus。沒 instance 就靜靜地不做事 (和 onSonarDistanceReceived() 一致的
      *  處理)。
      *
-     *  ⚠️ 呢個方法係喺 RobotEventReceiver (一個 BroadcastReceiver) 嘅
-     *  onReceive() 入面直接被 call, 即係話呢個方法本身、同佢叫嘅任何嘢, 都
-     *  **一定唔可以有阻塞式操作** (Thread.sleep、網絡 IO、等等) - BroadcastReceiver.
-     *  onReceive() 有嚴格時限 (通常十秒內要返回), 密集嘅 PIR broadcast 一浪接一浪
-     *  嗰陣, 阻塞邏輯會連環咁卡住, 輕則觸發 ANR, 重則 (2026-08 一次粗心嘅版本
-     *  真機實測證實) 直情 hold 死成個 system 連 adb 都冇反應。所以呢度淨係做
-     *  最平嘅 field 寫入, 任何要送 WebSocket 訊息嘅耗時邏輯都必須包多一層獨立
-     *  thread 先可以做 (見下面 new Thread(...).start())。 */
+     *  ⚠️ 這個方法是在 RobotEventReceiver (一個 BroadcastReceiver) 的
+     *  onReceive() 裡面直接被 call, 也就是說這個方法本身、和它叫的任何東西, 都
+     *  **一定不可以有阻塞式操作** (Thread.sleep、網路 IO、等等) - BroadcastReceiver.
+     *  onReceive() 有嚴格時限 (通常十秒內要返回), 密集的 PIR broadcast 一波接一波
+     *  的時候, 阻塞邏輯會連環卡住, 輕則觸發 ANR, 重則 (2026-08 一次粗心的版本
+     *  真機實測證實) 直接 hold 死整個 system 連 adb 都沒反應。所以這裡只做
+     *  最輕的 field 寫入, 任何要送 WebSocket 訊息的耗時邏輯都必須包多一層獨立
+     *  thread 才可以做 (見下面 new Thread(...).start())。 */
     static void onPirStateReceived(final boolean triggered) {
         final MainActivity m = sInstance;
         if (m == null) {
@@ -421,15 +538,15 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         int newState = triggered ? 1 : 0;
         if (newState == m.lastPirTriggeredState) {
-            return; // 狀態冇變, 唔重複推播 (同 sonar 個 dedup pattern 一致)
+            return; // 狀態沒變, 不重複推播 (和 sonar 的 dedup pattern 一致)
         }
         m.lastPirTriggeredState = newState;
-        // 2026-08 新增: 用戶要求「唔係叫一次做一次, 而係只要 PIR 開左, 每次
-        // broadcast 回報有唔同都要有反應」- 即係要事件驅動、主動話俾小智知,
-        // 唔係淨係俾 LLM 隨時查詢。呢段一定要包喺獨立 thread 度先可以做
-        // (xiaozhiSendDetectTextSafely() 入面有 Thread.sleep + 阻塞式 WebSocket
-        // send, 原因見上面 class javadoc 段嘅慘痛教訓), 保持 onReceive() 本身
-        // 即刻返回, 唔會阻住個 broadcast dispatch。
+        // 2026-08 新增: 用戶要求「不是叫一次做一次, 而是只要 PIR 開了, 每次
+        // broadcast 回報有不同都要有反應」- 也就是要事件驅動、主動告訴小智知道,
+        // 不是只給 LLM 隨時查詢。這段一定要包在獨立 thread 裡才可以做
+        // (xiaozhiSendDetectTextSafely() 裡面有 Thread.sleep + 阻塞式 WebSocket
+        // send, 原因見上面 class javadoc 段的慘痛教訓), 保持 onReceive() 本身
+        // 立刻返回, 不會阻住這個 broadcast dispatch。
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -437,8 +554,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                     return;
                 }
                 String text = triggered
-                        ? "[系統事件] PIR 人體感應器偵測到有人喺附近。"
-                        : "[系統事件] PIR 人體感應器偵測唔到人喺附近喇。";
+                        ? "[系統事件] PIR 人體感應器偵測到有人在附近。"
+                        : "[系統事件] PIR 人體感應器偵測不到人在附近了。";
                 String err = m.xiaozhiSendDetectTextSafely(text);
                 if (err != null) {
                     android.util.Log.w("XiaozhiPir", "failed to push PIR event to XiaoZhi: " + err);
@@ -457,43 +574,43 @@ public class MainActivity extends Activity implements SensorEventListener {
     private volatile boolean androidTtsReady = false;
     private volatile String androidTtsEnginePkg = ""; // package of the engine androidTts is currently bound to
 
-    // listAndroidTtsLanguages() 嘅 legacy fallback (SVOX Pico 冇實作
+    // listAndroidTtsLanguages() 的 legacy fallback (SVOX Pico 沒實作
     // getVoices(), IPC 層直接 throw "NullPointerException: collection ==
-    // null" - 唔係回空 collection, 係完全冇實作) 用嘅 blocking 狀態, 見
+    // null" - 不是回空 collection, 是完全沒實作) 用的 blocking 狀態, 見
     // checkTtsDataSyncLegacy()/onActivityResult() javadoc。
     private final Object ttsDataCheckLock = new Object();
     private CountDownLatch ttsDataCheckLatch;
     private volatile ArrayList<String> ttsDataCheckResult;
-    private static final int TTS_DATA_CHECK_REQUEST_CODE = 0x7454; // "T T" leetspeak-ish, 淨係要係一個穩定、未用過嘅 code
+    private static final int TTS_DATA_CHECK_REQUEST_CODE = 0x7454; // "T T" leetspeak-ish, 只是要一個穩定、未用過的 code
 
     // Speed used for the mouth LED breathing effect auto-triggered around TTS speech
     // (see startMouthLedForTts()/stopMouthLedForTts()) - matches the web UI slider's
     // default (0-5000 range, default 0).
     private static final int TTS_MOUTH_LED_SPEED = 0;
 
-    // 2026-08 新增: RobotEventReceiver 冇 constructor/field 攞到 outer
-    // MainActivity instance (佢一直淨係經 EventBus 靜態方法送 event, 唔識
-    // MainActivity 本身), 但 sonar_obstacle 嘅 LED 指示邏輯 (applyObstacleIndicator,
-    // sonarThresholdCm) 全部係 instance-level, 靠住 robot 呢個 AIDL 連線。加一個
-    // static instance reference, 喺 onCreate/onDestroy set/clear, 等
+    // 2026-08 新增: RobotEventReceiver 沒有 constructor/field 拿到 outer
+    // MainActivity instance (它一直只經 EventBus 靜態方法送 event, 不認識
+    // MainActivity 本身), 但 sonar_obstacle 的 LED 指示邏輯 (applyObstacleIndicator,
+    // sonarThresholdCm) 全部是 instance-level, 靠著 robot 這個 AIDL 連線。加一個
+    // static instance reference, 在 onCreate/onDestroy set/clear, 讓
     // RobotEventReceiver 可以經 MainActivity.getSonarThresholdCm() /
-    // MainActivity.onSonarDistanceReceived() 呢兩個 static bridge 方法接駁返去
-    // instance 邏輯, 而唔使將 RobotEventReceiver 個 constructor 簽名擴大 (咁樣會
-    // 影響埋成個 registerDynamicReceiver() 個 new RobotEventReceiver() call 位)。
+    // MainActivity.onSonarDistanceReceived() 這兩個 static bridge 方法接回
+    // instance 邏輯, 而不用將 RobotEventReceiver 的 constructor 簽名擴大 (這樣會
+    // 影響到整個 registerDynamicReceiver() 的 new RobotEventReceiver() call 位)。
     private static volatile MainActivity sInstance;
 
-    /** SONAR_DISTANCE_ACTION 觸發嘅 broadcast 未到之前, RobotEventReceiver 都要知
-     *  依家個門檻先計到 "triggered"。冇 instance (例如 Activity 未起好/已destroy
-     *  中間嗰段窗口) 就當冇門檻, 唔會誤判 triggered。 */
+    /** SONAR_DISTANCE_ACTION 觸發的 broadcast 未到之前, RobotEventReceiver 都要知道
+     *  現在的門檻才計得到 "triggered"。沒 instance (例如 Activity 未起好/已destroy
+     *  中間那段窗口) 就當沒門檻, 不會誤判 triggered。 */
     static int getSonarThresholdCm() {
         MainActivity m = sInstance;
         return m != null ? m.sonarThresholdCm : 30;
     }
 
-    /** RobotEventReceiver 收到 SONAR_DISTANCE_ACTION 之後嘅入口, 負責將
-     *  distanceCm/triggered 接駁去 applyObstacleIndicator() (5-mic + mouth LED
-     *  雙路徑, 見該方法 javadoc)。同 handleChestObstacleFrame() 一樣, 只喺
-     *  triggered 狀態實際改變嗰下先重新驅動 LED, 避免每秒 ~1 幀嘅重複讀數不斷
+    /** RobotEventReceiver 收到 SONAR_DISTANCE_ACTION 之後的入口, 負責將
+     *  distanceCm/triggered 接到 applyObstacleIndicator() (5-mic + mouth LED
+     *  雙路徑, 見該方法 javadoc)。和 handleChestObstacleFrame() 一樣, 只在
+     *  triggered 狀態實際改變那一刻才重新驅動 LED, 避免每秒 ~1 幀的重複讀數不斷
      *  重送同一個 LED command。 */
     static void onSonarDistanceReceived(int distanceCm, boolean triggered) {
         MainActivity m = sInstance;
@@ -516,13 +633,40 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         registerDynamicReceiver();
         registerBatteryReceiver();
+        registerWifiLedReceiver();
         registerGestureController();
+        // pure-direct: 头顶 +/- pad 改由 HeadKeyPoller 直读 /dev/input/event0，
+        // 旧 come.ubt.alpha2.gesture broadcast 已随 alpha2services 消失。
+        // 仍 publish 同格式 EventBus "gesture" 事件，后续走既有 onGestureCode 管道。
+        try { headKeyPoller.start(); } catch (Throwable t) { Log.w(TAG, "headKeyPoller start failed", t); }
+        registerConnectivityReceiver();
+        // 讀返「自動跟網絡切換」偏好 (預設開) - speech_ready 之後會即刻按目前
+        // 網路狀態套用一次, 開機時如果已經離線的話也會自動進入離線文法模式。
+        offlineGrammarAutoSwitch = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .getBoolean(PREF_OFFLINE_AUTO, true);
         initRobot();
+        // pure-direct：胸 /dev/ttyS1 + 头 /dev/ttyS3 + libhead_led.so JNI，
+        // 机身已无 alpha2services，无 binder fallback，失败直接报错。
+        localServices = new LocalAlpha2Services(this);
+        new Thread(new Runnable() {
+            @Override public void run() {
+                boolean direct = localServices.start();
+                Log.i(TAG, "LocalAlpha2Services direct=" + direct + " (pure-direct, no alpha2services fallback)");
+            }
+        }, "LocalServicesInit").start();
         xiaozhiClient = new XiaozhiClient(getXiaozhiDeviceId());
-        // 見 xiaozhiTtsEngine field 嘅 javadoc - 讀返上次揀低嘅 TTS 引擎, 冇存過
-        // 就用預設值 "xiaozhi" (原本行為, 唔靜音)。
+        // 見 xiaozhiTtsEngine field 的 javadoc - 讀取上次選定的 TTS 引擎, 如果沒有存過
+        // 就用預設值 "xiaozhi" (原本行為, 不靜音)。2026-09: 舊版本存落的
+        // "iflytek"/"nuance" 已無對應引擎, 一律遷移到 "xiaozhi" 並寫返落去,
+        // 唔係隊列會經 speech/tts 打去死 binder 全程靜音。
         xiaozhiTtsEngine = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .getString(PREF_XIAOZHI_TTS_ENGINE, "xiaozhi");
+        if (!"xiaozhi".equals(xiaozhiTtsEngine) && !"android".equals(xiaozhiTtsEngine)) {
+            Log.i(TAG, "migrate legacy xiaozhiTtsEngine " + xiaozhiTtsEngine + " -> xiaozhi");
+            xiaozhiTtsEngine = "xiaozhi";
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                    .putString(PREF_XIAOZHI_TTS_ENGINE, "xiaozhi").apply();
+        }
         iflytekMatcher = new IflytekSemanticMatcher(this);
         iflytekMatcherEn = new IflytekSemanticMatcherEn(this);
         // Constructs (or re-constructs, when switching engines) androidTts. Pulled out
@@ -552,6 +696,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // "/api/alpha2/..." goes to the original Alpha2RobotApi dispatch
                 // (handleApi, unchanged below). "/api/system/..." is a small namespace
                 // for things not tied to the robot SDK itself.
+                if (path.startsWith("direct/")) {
+                    return handleDirectApi(path.substring(7), query, method, body);
+                }
                 if (path.startsWith("alpha2/")) {
                     return handleApi(path.substring(7), query, method, body);
                 }
@@ -584,7 +731,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         // broken layout, buttons stuck disabled). Per this class's original design intent,
         // the HTML panel at http://<robot-ip>:8888/ is the actual UI; the on-device
         // screen is just a native status readout telling the user where to point a browser.
-        final String panelUrl = scheme + "://" + ip + ":" + HttpServer.PORT + "/";
+        // 修正：之前 panelUrl/linkView 係 final 局部變量，轉 hotspot/WiFi 後永遠顯示舊 IP；現改為成員變量並隨網絡變化自動更新
+        currentPanelUrl = scheme + "://" + ip + ":" + HttpServer.PORT + "/";
         int pad = (int) (16 * getResources().getDisplayMetrics().density);
 
         LinearLayout root = new LinearLayout(this);
@@ -596,40 +744,38 @@ public class MainActivity extends Activity implements SensorEventListener {
         titleView.setText("Open Alpha2\n\nOpen in a browser on the same network:");
         root.addView(titleView);
 
-        // Tappable URL row: tapping the link itself, or the dedicated Copy button,
-        // both copy the panel URL to the clipboard so the user doesn't have to
-        // retype a long http://<ip>:8888/ address by hand on the robot's own screen.
         LinearLayout linkRow = new LinearLayout(this);
         linkRow.setOrientation(LinearLayout.HORIZONTAL);
         linkRow.setGravity(Gravity.CENTER_VERTICAL);
         int topMargin = (int) (8 * getResources().getDisplayMetrics().density);
         linkRow.setPadding(0, topMargin, 0, topMargin);
 
-        final TextView linkView = new TextView(this);
-        linkView.setText(panelUrl);
-        linkView.setTextSize(16);
-        linkView.setTextColor(Color.parseColor("#3b7dff"));
-        linkView.setPaintFlags(linkView.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+        panelLinkView = new TextView(this);
+        panelLinkView.setText(currentPanelUrl);
+        panelLinkView.setTextSize(16);
+        panelLinkView.setTextColor(Color.parseColor("#3b7dff"));
+        panelLinkView.setPaintFlags(panelLinkView.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
         LinearLayout.LayoutParams linkParams = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        linkView.setLayoutParams(linkParams);
+        panelLinkView.setLayoutParams(linkParams);
 
         Button copyBtn = new Button(this);
         copyBtn.setText("Copy");
         View.OnClickListener copyAction = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                String urlToCopy = currentPanelUrl != null ? currentPanelUrl : ("http://" + getWifiIp() + ":" + HttpServer.PORT + "/");
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                 if (clipboard != null) {
-                    clipboard.setPrimaryClip(ClipData.newPlainText("Alpha2 panel URL", panelUrl));
-                    Toast.makeText(MainActivity.this, "Copied: " + panelUrl, Toast.LENGTH_SHORT).show();
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Alpha2 panel URL", urlToCopy));
+                    Toast.makeText(MainActivity.this, "Copied: " + urlToCopy, Toast.LENGTH_SHORT).show();
                 }
             }
         };
-        linkView.setOnClickListener(copyAction);
+        panelLinkView.setOnClickListener(copyAction);
         copyBtn.setOnClickListener(copyAction);
 
-        linkRow.addView(linkView);
+        linkRow.addView(panelLinkView);
         linkRow.addView(copyBtn);
         root.addView(linkRow);
 
@@ -639,6 +785,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         Log.i(TAG, "Open Alpha2 - reachable at " + scheme + "://" + ip
                 + ":" + HttpServer.PORT + "/ from any browser on the same network");
+        registerPanelUrlReceiver();
 
         // Charge-and-play defaults to ON (user preference). Sent as a delayed broadcast
         // rather than immediately here because ALPHA_SET_CHARGE_PLAY has no AIDL
@@ -649,24 +796,28 @@ public class MainActivity extends Activity implements SensorEventListener {
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                Intent i = new Intent(StaticValue.ALPHA_SET_CHARGE_PLAY);
+                Intent i = new Intent(RobotWire.ALPHA_SET_CHARGE_PLAY);
                 i.putExtra("open_charge_play", true);
                 sendBroadcast(i);
             }
         }, 3000);
 
-        // 2026-08 修正: 「頭部降噪」toggle 由 UI 移除, 預設常開 - header_setNoise()
-        // 係 AIDL call (經 robot.waitHeaderReady() 等 header serial ready), 唔可以好似
-        // 上面 ALPHA_SET_CHARGE_PLAY 噉直接喺 postDelayed 嘅 UI thread 度 call (會
-        // block UI thread), 所以呢度用獨立 background thread 執行, 時機跟返上面
-        // charge-play 嗰個 3s delay 一致嘅理據 (等 alpha2services 啱啱起身嗰陣有時間
-        // 準備好)。
+        // pure-direct: 「頭部降噪」預設常開，經 DirectHeadController 直發 /dev/ttyS3，
+        // 不再經 robot.waitHeaderReady() / alpha2services binder。
+        // 仍用獨立 background thread（localServices.start() 本身都係 async）。
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    robot.waitHeaderReady(3000);
-                    robot.header_setNoise(true);
+                    // 等直驅串口就緒（最多 5s，每 100ms poll 一次）
+                    for (int i = 0; i < 50; i++) {
+                        try {
+                            if (HardwareDirectManager.get(MainActivity.this).head().isAvailable()) break;
+                        } catch (Exception ignore) {}
+                        try { Thread.sleep(100); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
+                    }
+                    boolean ok = HardwareDirectManager.get(MainActivity.this).head().setNoiseReduction(true);
+                    if (!ok) Log.w(TAG, "HeadNoiseDefaultInit: direct send failed (head not ready?)");
                 } catch (Exception e) {
                     Log.w(TAG, "Failed to enable default head noise reduction", e);
                 }
@@ -679,48 +830,48 @@ public class MainActivity extends Activity implements SensorEventListener {
         IntentFilter filter = new IntentFilter();
         // 2026-08 更新: 反編譯 alpha2services_base 3.0.0.2 全個 APK, 搜晒所有
         // sendBroadcast() call site 逐個核對 —— "com.ubtechinc.key" 呢個 action
-        // string 喺呢個韌體版本已經搵唔到任何 sendBroadcast 出處, 實際上係死
-        // code。依然保留 filter + RobotEventReceiver 嗰個 case, 純粹做向後
-        // 相容 (以防其他韌體/舊機用返呢個 action), 但呢部機唔會再觸發。
+        // string 在這個韌體版本已經找不到任何 sendBroadcast 出處, 實際上是死
+        // code。依然保留 filter + RobotEventReceiver 那個 case, 純粹做向後
+        // 相容 (以防其他韌體/舊機用到這個 action), 但這台機器不會再觸發。
         filter.addAction("com.ubtechinc.key");
         filter.addAction("com.ubtechinc.services.SPEECH_DIRECTION");
         filter.addAction("com.ubtechinc.robot.tts_hint_wakeup");
         filter.addAction("come.ubt.alpha2.gesture");
         filter.addAction("com.ubtechinc.robot_uuid.info");
-        filter.addAction(StaticValue.ALPHA_QR_CODE);
-        filter.addAction(StaticValue.ALPHA_WIFI_RESULT);
-        filter.addAction(StaticValue.ALPHA_BT_CONNECTION);
-        // 2026-08 新增 (2個): 反編譯 alpha2services_base 3.0.0.2 全個 APK 搵到嘅
-        // sendBroadcast() 出處, 之前呢個 App 完全冇 register, 詳見各自嘅
+        filter.addAction(RobotWire.ALPHA_QR_CODE);
+        filter.addAction(RobotWire.ALPHA_WIFI_RESULT);
+        filter.addAction(RobotWire.ALPHA_BT_CONNECTION);
+        // 2026-08 新增 (2個): 反編譯 alpha2services_base 3.0.0.2 整個 APK 找到的
+        // sendBroadcast() 出處, 之前這個 App 完全沒有 register, 詳見各自的
         // RobotEventReceiver case comment。
         filter.addAction("com.ubtechinc.services.Action.ACTION_STOP");
         filter.addAction("com.ubtechinc.services.Action.ROBOT_INTERRUPTED");
-        // 2026-08 新增: 實機 (firmware 1.1.1.14) 證實 sonar 讀數唔會經
-        // IAlpha2SerialPortService.onListenSerialPortRcvData() 送到 - app 自己
-        // registerSerialPortRcvListener() 淨係收到 config command 嘅 2-byte ack
-        // "04 00"。CHEST_ACTION 呢個 broadcast 都收到, 但反編譯官方
-        // alpha2demo.apk 後證實佢淨係印機身內部 raw command byte 做 debug log
-        // (getmCmd()), 唔係真正嘅 sonar 讀數路徑。真正生效嘅係下面獨立嘅
+        // 2026-08 新增: 實機 (firmware 1.1.1.14) 證實 sonar 讀數不會經由
+        // IAlpha2SerialPortService.onListenSerialPortRcvData() 送達 - app 自己
+        // registerSerialPortRcvListener() 只收到 config command 的 2-byte ack
+        // "04 00"。CHEST_ACTION 這個 broadcast 也收得到, 但反編譯官方
+        // alpha2demo.apk 之後證實它只是印機身內部 raw command byte 做 debug log
+        // (getmCmd()), 不是真正的 sonar 讀數路徑。真正生效的是下面獨立的
         // SONAR_DISTANCE_ACTION - 保留 CHEST_ACTION filter 純粹做輔助 debug 用
-        // (RobotEventReceiver 個 case 依然會 dump 佢嘅 extras, 對比返兩條路徑
-        // 嘅時序有用), 唔再指望佢係主要事件來源。
-        filter.addAction(StaticValue.CHEST_ACTION);
-        // 2026-08 新增: ⚠️ 未經真機驗證 (見 RobotEventReceiver 呢個 case 嘅
-        // comment) - 反編譯官方 alpha2services 3.0.0.2 APK 逆出嚟嘅 PIR 通知
-        // broadcast, 淨係喺 SecurityCameraUtil 監控開關開緊嗰陣先會發出。
+        // (RobotEventReceiver 那個 case 依然會 dump 它的 extras, 對照兩條路徑
+        // 的時序有用), 不再指望它是主要事件來源。
+        filter.addAction(RobotWire.CHEST_ACTION);
+        // 2026-08 新增: ⚠️ 未經真機驗證 (見 RobotEventReceiver 這個 case 的
+        // comment) - 反編譯官方 alpha2services 3.0.0.2 APK 反推出來的 PIR 通知
+        // broadcast, 只有在 SecurityCameraUtil 監控開關開啟的時候才會發出。
         filter.addAction("com.ubtech.securityCamera.pirStatus");
-        // 官方 alpha2demo.apk (firmware 1.1.1.14) 反編譯確認: sonar 讀數經呢個
-        // 獨立 broadcast 送出, extra 已經係 parse 好嘅 int, 唔使自己再解 raw
-        // wire frame。見 StaticValue.SONAR_DISTANCE_ACTION 個 comment。
-        filter.addAction(StaticValue.SONAR_DISTANCE_ACTION);
-        // 2026-08 新增 (8個): 用嚟查「speech_SetMIC() 攞返 mic 會唔會有 broadcast
-        // 通知」呢條問題, 反編譯 Alpha2Services-v1.1.7.3.20-5mic.apk 全個 APK 搵到
-        // 嘅 sendBroadcast() 出處 (speechmanager.d.*/AlphaMainSeviceImpl 呢兩個
-        // class), 之前呢個 App 完全冇 register。特登連語意未確定嘅都全部先
-        // register 埋、經 mic_broadcast_debug event 轉送去 WebSocket log (見
-        // RobotEventReceiver 呢幾個 case comment) - 目的係收集實際 payload,
-        // 睇完先決定邊幾個同 mic ownership 真係有關、要唔要正式做成獨立 event/
-        // 更新 UI 指示燈, 唔喺未驗證之前就假設個名啱啱好似就係咩意思。
+        // 官方 alpha2demo.apk (firmware 1.1.1.14) 反編譯確認: sonar 讀數是經由這個
+        // 獨立 broadcast 送出, extra 已經是 parse 好的 int, 不需要自己再解 raw
+        // wire frame。見 RobotWire.SONAR_DISTANCE_ACTION 的 comment。
+        filter.addAction(RobotWire.SONAR_DISTANCE_ACTION);
+        // 2026-08 新增 (8個): 用來查「speech_SetMIC() 拿回 mic 會不會有 broadcast
+        // 通知」這個問題, 反編譯 Alpha2Services-v1.1.7.3.20-5mic.apk 整個 APK 找到
+        // 的 sendBroadcast() 出處 (speechmanager.d.*/AlphaMainSeviceImpl 這兩個
+        // class), 之前這個 App 完全沒有 register。特意連語意未確定的也全部先
+        // register, 經 mic_broadcast_debug event 轉送到 WebSocket log (見
+        // RobotEventReceiver 這幾個 case comment) - 目的是收集實際 payload,
+        // 看完再決定哪幾個和 mic ownership 真的有關、要不要正式做成獨立 event/
+        // 更新 UI 指示燈, 在未驗證之前不假設這個名字看起來像什麼意思就是什麼意思。
         filter.addAction("com.ubtechinc.services.ABOUT_TTS");
         filter.addAction("com.ubtechinc.services.ALPHA_SOCKET_ASR_OK");
         filter.addAction("com.ubtechinc.services.SPEECH_ANGLE_5MIC");
@@ -841,46 +992,169 @@ public class MainActivity extends Activity implements SensorEventListener {
     private void onGestureCode(int code) {
         switch (code) {
             case 0x5a: // "-" pressed: start repeating volume-down
+                padMinusHeld = true;
+                padLedUpdate();
                 startVolumeRepeat(false);
                 break;
             case 0x5b: // "-" released
+                padMinusHeld = false;
                 stopVolumeRepeat();
+                padLedUpdate();
                 break;
             case 0x5c: // "+" pressed: start repeating volume-up
+                padPlusHeld = true;
+                padLedUpdate();
                 startVolumeRepeat(true);
                 break;
             case 0x5d: // "+" released
+                padPlusHeld = false;
                 stopVolumeRepeat();
+                padLedUpdate();
                 break;
             case 0x5e: // both pressed (raw gesture code 94, decimal) - 全部停止:
-                       // 用戶要求將總停鍵嘅效果搬呢粒實體鍵度, 之前呢度淨係
-                       // action_StopAction(), 而家同小智面板嗰粒「⏹ 全部停止」
-                       // 掣 (xiaozhiStopAll(), 見 app-xiaozhi.js) 睇齊, 一次過
-                       // 停埋動作/小智講嘢/本地音樂/電台四樣嘢。
+                       // 用戶要求將總停鍵的效果搬到這顆實體鍵上, 之前這裡只有
+                       // action_StopAction(), 現在跟小智面板那顆「⏹ 全部停止」
+                       // 按鈕 (xiaozhiStopAll(), 見 app-xiaozhi.js) 看齊, 一次
+                       // 停止動作/小智說話/本地音樂/電台這四樣東西。
+                padMinusHeld = true;
+                padPlusHeld = true;
+                padLedUpdate();
                 stopVolumeRepeat(); // in case one pad was already held down
                 playStopCue(); // distinct "stop" cue - must track STREAM_MUSIC volume
-                if (robot != null) {
-                    robot.action_StopAction();
-                    // 見 "action/stop" endpoint 嗰段 comment - 停低之後補一個
-                    // 「蹲下站起」做回位, 同 HTTP API/self.robot.stop_action 嗰邊
-                    // 行為保持一致 - 之前呢度漏咗呢一步。
-                    try {
-                        robot.action_PlayActionName(STOP_RECOVERY_ACTION_ID);
-                    } catch (Exception e) {
-                        Log.w(TAG, "Failed to play recovery action after "
-                                + "gesture-triggered stop-all", e);
-                    }
-                }
+                // pure-direct：一键全停（动作截停+蹲下站起回位，含拍头双 pad 触发），
+                // 与 HTTP action/stop 同语义。旧 robot.action_* 已无服务承载。
+                stopActionWithRecovery();
                 stopAllSpeechPlayback();
                 stopLocalMusicPlayback();
                 stopRadioPlayback();
                 break;
             case 0x5f: // both released: nothing further to do
+                padMinusHeld = false;
+                padPlusHeld = false;
+                padLedUpdate();
                 break;
             default:
                 // Unknown gesture code - not one of the 6 confirmed above; ignore.
                 break;
         }
+    }
+
+    /**
+     * 2026-08-25: 按 +/- pad 時點亮對應的指示燈 (headboard v1.1, alpha2services
+     * 不會自動點亮)。單發 ledSetOn 偶爾會靜悄悄地失敗, 所以用「worker loop 快速連發」:
+     * 按住期間每 PAD_LED_INTERVAL_MS 重發一次目前的組合 (累加式, 兩顆一起按兩顆都會亮),
+     * 放開之後連發 PAD_LED_OFF_RETRIES 次 ledSetOFF 確保能熄滅。單線程 worker,
+     * 如果已經在執行就不會重複啟動第二條。
+     */
+    private void padLedUpdate() {
+        if (padLedWorkerRunning) {
+            return;
+        }
+        padLedWorkerRunning = true;
+        padLedExecutor.execute(() -> {
+            try {
+                while (padMinusHeld || padPlusHeld) {
+                    assertPadLedsComboBurst();
+                    Thread.sleep(PAD_LED_INTERVAL_MS);
+                }
+                for (int i = 0; i < PAD_LED_OFF_RETRIES; i++) {
+                    assertPadLedsOffBurst();
+                    Thread.sleep(PAD_LED_INTERVAL_MS);
+                    if (!padMinusHeld && !padPlusHeld) {
+                        continue;
+                    }
+                    break; // released again mid-shutdown - hand control back to the loop
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                padLedWorkerRunning = false;
+            }
+        });
+    }
+
+    /** Retry count for one burst of open() attempts on /dev/led_eye. */
+    private static final int PAD_LED_OPEN_ATTEMPTS = 10;
+    /** Gap between open() attempts inside one burst (ms). */
+    private static final long PAD_LED_RETRY_GAP_MS = 40;
+
+    /**
+     * One burst: keep trying LedControl.open() until the device actually opens
+     * (alpha2services' fake-off loop opens/closes it every ~0.8-2s, so our open()
+     * intermittently loses the race), then assert the held combo and close.
+     * Returns true if a session ran; false if every attempt failed to open.
+     */
+    private boolean assertPadLedsComboBurst() {
+        for (int attempt = 1; attempt <= PAD_LED_OPEN_ATTEMPTS; attempt++) {
+            boolean openOk = false;
+            try {
+                openOk = LedControl.open();
+            } catch (Throwable t) {
+                Log.w(TAG, "pad LED open() threw", t);
+            }
+            if (openOk) {
+                try {
+                    if (padMinusHeld) {
+                        LedControl.ledSetOn(PAD_LED_INDEX_MINUS);
+                    }
+                    if (padPlusHeld) {
+                        LedControl.ledSetOn(PAD_LED_INDEX_PLUS);
+                    }
+                } finally {
+                    try {
+                        LedControl.close();
+                    } catch (Throwable ignored) {
+                    }
+                }
+                if (attempt > 1) {
+                    Log.d(TAG, "pad LED device opened on attempt " + attempt);
+                }
+                return true;
+            }
+            try {
+                Thread.sleep(PAD_LED_RETRY_GAP_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        Log.w(TAG, "pad LED open() failed " + PAD_LED_OPEN_ATTEMPTS
+                + "x in a row (device busy?)");
+        return false;
+    }
+
+    /**
+     * Same burst pattern but asserting ledSetOFF() instead of the held combo -
+     * used after release so the pads go dark even if we have to wait out a race.
+     */
+    private boolean assertPadLedsOffBurst() {
+        for (int attempt = 1; attempt <= PAD_LED_OPEN_ATTEMPTS; attempt++) {
+            boolean openOk = false;
+            try {
+                openOk = LedControl.open();
+            } catch (Throwable t) {
+                Log.w(TAG, "pad LED open() threw (off)", t);
+            }
+            if (openOk) {
+                try {
+                    LedControl.ledSetOFF();
+                } finally {
+                    try {
+                        LedControl.close();
+                    } catch (Throwable ignored) {
+                    }
+                }
+                return true;
+            }
+            try {
+                Thread.sleep(PAD_LED_RETRY_GAP_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        Log.w(TAG, "pad LED off: open() failed " + PAD_LED_OPEN_ATTEMPTS + "x in a row");
+        return false;
     }
 
     /**
@@ -927,14 +1201,14 @@ public class MainActivity extends Activity implements SensorEventListener {
         playRingtoneUri(shutterCueUri);
     }
 
-    // 2026-08 新增 (修 bug): 之前 playRingtoneUri() 每次都開一個全新、完全冇留低
-    // reference 嘅 MediaPlayer, fire-and-forget, 播完/出錯先自己 release —— 呢個
-    // 做法有兩個問題: (1) 用家喺個 ringtone 未播完之前撳多次「播放」(或者 Blockly
-    // 個「例子 5」撳多過一次執行), 就會有多個 MediaPlayer 同時各自播緊, 聲音疊埋
-    // 一齊, 聽落好似「唔停咁響」; (2) 完全冇任何方法可以由外面 (前端「停止播放」
-    // 掣) 中斷佢, 一定要等成首歌/鈴聲自然播完。修法: 用呢個 field 記住「依家播緊
-    // 嗰個」MediaPlayer, 每次開新嘅之前先停舊嗰個, 並且加返
-    // audio/ringtones/stop 呢個 endpoint 俾前端隨時中斷。
+    // 2026-08 新增 (修 bug): 之前 playRingtoneUri() 每次都開一個全新、完全沒有留下
+    // reference 的 MediaPlayer, fire-and-forget, 播完/出錯後自己 release —— 這個
+    // 做法有兩個問題: (1) 使用者在鈴聲還沒播完之前多次按下「播放」(或者 Blockly
+    // 的「範例 5」多次執行), 就會有多個 MediaPlayer 同時各自播放, 聲音疊在
+    // 一起, 聽起來像是「停不下來一直響」; (2) 完全沒有任何方法可以從外部 (前端「停止播放」
+    // 按鈕) 中斷它, 一定要等整首歌/鈴聲自然播完。修法: 用這個 field 記住「目前正在播放
+    // 的那個」MediaPlayer, 每次開新的之前先停掉舊的, 並且加入
+    // audio/ringtones/stop 這個 endpoint 讓前端隨時可以中斷。
     private android.media.MediaPlayer currentRingtonePlayer;
 
     /** Shared playback: STREAM_MUSIC (see playStopCue()'s javadoc for why not a plain
@@ -1005,16 +1279,144 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    // 2026-08 新增: 本地音樂播放 (自訂放喺 /mnt/internal_sd/music/ 嘅音樂檔, 唔係
-    // RingtoneManager 嗰啲系統鈴聲) - 跟返 currentRingtonePlayer 完全同一個 pattern
-    // (獨立一個 field, 唔共用 currentRingtonePlayer, 因為兩者應該可以互不影響咁
-    // 各自停/播, 例如播緊音樂期間都可以獨立播一個系統提示音), 一樣用
+    // 2026-08 新增: 本地音樂播放 (自訂放在 /mnt/internal_sd/music/ 的音樂檔, 不是
+    // RingtoneManager 那些系統鈴聲) - 沿用 currentRingtonePlayer 完全相同的 pattern
+    // (獨立一個 field, 不共用 currentRingtonePlayer, 因為兩者應該可以互不影響地
+    // 各自停止/播放, 例如播放音樂期間都可以獨立播放一個系統提示音), 同樣用
     // STREAM_MUSIC + prepareAsync() + 播完自動 release()。
     private static final java.io.File LOCAL_MUSIC_DIR = new java.io.File("/mnt/internal_sd/music");
     private static final java.util.Set<String> LOCAL_MUSIC_EXTENSIONS = new java.util.HashSet<>(
             java.util.Arrays.asList("mp3", "wav", "ogg", "m4a", "flac"));
 
     private android.media.MediaPlayer currentMusicPlayer;
+
+    /** 目前正在播放 (或正在 prepare) 的本地音樂檔名 (含副檔名), null = 沒有 -
+     *  純粹提供給 audio/local_music/status 這個新 endpoint 顯示用, 不影響播放邏輯
+     *  本身。和 currentRadioStationName 一樣的想法 - 播放狀態本身只要看
+     *  currentMusicPlayer 就夠了, 這個 field 只是為了讓 UI 不用自己另外記住選了
+     *  哪個檔名。*/
+    private volatile String currentMusicTrackName;
+
+    /** 播放中的本地音樂用的 equalizer, 綁定 currentMusicPlayer 的 audio session -
+     *  跟隨 currentMusicPlayer 的生命週期, 換歌/停歌時都要即時 release() 這個
+     *  (見 stopLocalMusicPlaybackLocked()), 不可以留著跨 session 使用, 因為
+     *  Equalizer 綁定的 audio session id 一旦 MediaPlayer release() 之後就不再
+     *  對應任何東西, 之後的 setEnabled()/usePreset() call 會拋出
+     *  IllegalStateException。 */
+    private android.media.audiofx.Equalizer musicEqualizer;
+
+    /** 用戶上次選擇的 equalizer preset index (由 SharedPreferences 讀出來, 開機/換歌
+     *  時都沿用這個) - -1 = 沒選過/用「無」(flat, 不做任何調整)。*/
+    private int musicEqPresetIndex = -1;
+
+    // -- Audio Spectrum (2026-08 v2 新增) --------------------------------------
+    // 用 android.media.audiofx.Visualizer 綁定 currentMusicPlayer 的 audio session
+    // (和 musicEqualizer 同一條 session), 開啟 FFT 擷取, 將取得的頻譜壓縮成
+    // MUSIC_SPECTRUM_BANDS 條 band, 提供給 audio/local_music/spectrum endpoint 輪詢,
+    // 前端 canvas 畫 bar。生命週期完全跟隨 MediaPlayer: playLocalMusicFile() prepare
+    // 時建立, stop/completion/error 時 release。
+    private static final int MUSIC_SPECTRUM_BANDS = 24;
+    private android.media.audiofx.Visualizer musicVisualizer;
+    /** 最近一次 FFT 算出來的頻譜 (0-255 x MUSIC_SPECTRUM_BANDS 條)。volatile 就夠 -
+     *  每個 element 獨立讀寫, 前端拿到稍微過時的一幀完全無所謂。 */
+    private final int[] musicSpectrumBands = new int[MUSIC_SPECTRUM_BANDS];
+    /** FFT bin -> band 的對照表, 第一次收到 FFT 數據時才建立 (需要知道 samplingRate)。 */
+    private int[] musicSpectrumBinMap = null;
+
+    /** FFT raw bytes (re0,im0,re1,im1,... 交錯排列) -> MUSIC_SPECTRUM_BANDS 條
+     *  magnitude, 用 log 頻率分佈 (低頻窄高頻闊, 貼近聽感) + 輕微增益補償高頻
+     *  (音樂能量天生集中在低頻, 不補償的話只有前幾條會動)。*/
+    private void updateMusicSpectrumFromFft(byte[] fft, int samplingRate) {
+        if (fft == null || fft.length < 4) return;
+        if (musicSpectrumBinMap == null) {
+            buildMusicSpectrumBinMap(samplingRate, fft.length / 2);
+            if (musicSpectrumBinMap == null) return;
+        }
+        int bins = fft.length / 2;
+        for (int b = 0; b < MUSIC_SPECTRUM_BANDS; b++) {
+            int from = musicSpectrumBinMap[b];
+            int to = musicSpectrumBinMap[b + 1];
+            if (to <= from) { to = from + 1; }
+            double peak = 0;
+            for (int i = from; i < to && i < bins; i++) {
+                double re = fft[2 * i];
+                double im = fft[2 * i + 1];
+                double mag = Math.sqrt(re * re + im * im);
+                if (mag > peak) peak = mag;
+            }
+            // 高頻補償: 第 b 條 band 乘 (1 + b/BANDS*1.5); clamp 0-255。
+            double scaled = peak * (1.0 + 1.5 * b / MUSIC_SPECTRUM_BANDS) * 0.6;
+            int v = (int) Math.min(255, scaled);
+            musicSpectrumBands[b] = v;
+        }
+    }
+
+    /** 用 log 刻度起「band index -> FFT bin 範圍」對照表, 範圍大約 40Hz - 12kHz。 */
+    private void buildMusicSpectrumBinMap(int samplingRate, int binCount) {
+        if (samplingRate <= 0 || binCount <= 0) return;
+        double minFreq = 40.0;
+        double maxFreq = Math.min(12000.0, samplingRate / 2.0);
+        musicSpectrumBinMap = new int[MUSIC_SPECTRUM_BANDS + 1];
+        for (int b = 0; b <= MUSIC_SPECTRUM_BANDS; b++) {
+            double frac = Math.pow((double) b / MUSIC_SPECTRUM_BANDS, 2.0); // 近似 log 分佈
+            double freq = minFreq * Math.pow(maxFreq / minFreq, frac);
+            int bin = (int) Math.round(freq / samplingRate * binCount * 2.0);
+            musicSpectrumBinMap[b] = Math.max(0, Math.min(binCount - 1, bin));
+        }
+        // 保證單調遞增, 避免某些 band 沒有 bin 可用。
+        for (int b = 1; b <= MUSIC_SPECTRUM_BANDS; b++) {
+            if (musicSpectrumBinMap[b] <= musicSpectrumBinMap[b - 1]) {
+                musicSpectrumBinMap[b] = musicSpectrumBinMap[b - 1] + 1;
+            }
+        }
+    }
+
+    private void setupMusicVisualizerLocked(android.media.MediaPlayer mp) {
+        releaseMusicVisualizerLocked();
+        try {
+            android.media.audiofx.Visualizer v =
+                    new android.media.audiofx.Visualizer(mp.getAudioSessionId());
+            int[] range = android.media.audiofx.Visualizer.getCaptureSizeRange();
+            v.setCaptureSize(range != null ? range[1] : 1024);
+            v.setDataCaptureListener(
+                    new android.media.audiofx.Visualizer.OnDataCaptureListener() {
+                        @Override
+                        public void onWaveFormDataCapture(
+                                android.media.audiofx.Visualizer visualizer,
+                                byte[] waveform, int samplingRate) {
+                            // 不需要 waveform, 只要 FFT。
+                        }
+
+                        @Override
+                        public void onFftDataCapture(
+                                android.media.audiofx.Visualizer visualizer,
+                                byte[] fft, int samplingRate) {
+                            updateMusicSpectrumFromFft(fft, samplingRate);
+                        }
+                    },
+                    android.media.audiofx.Visualizer.getMaxCaptureRate() / 2,
+                    false /* waveform */, true /* fft */);
+            v.setEnabled(true);
+            musicVisualizer = v;
+        } catch (Throwable t) {
+            // Visualizer 這個 effect 一樣不保證每台機器都有 - 沒有就沒有 spectrum 顯示,
+            // 不要因此拖累整首歌播不了。
+            Log.w(TAG, "Visualizer unavailable on this device", t);
+            musicVisualizer = null;
+        }
+    }
+
+    private void releaseMusicVisualizerLocked() {
+        if (musicVisualizer != null) {
+            try {
+                musicVisualizer.setEnabled(false);
+                musicVisualizer.release();
+            } catch (Exception ignored) {
+            }
+            musicVisualizer = null;
+        }
+        java.util.Arrays.fill(musicSpectrumBands, 0);
+    }
 
     /** Lists every playable audio file directly inside LOCAL_MUSIC_DIR (non-recursive -
      *  keeps this predictable for a small hand-managed folder rather than silently
@@ -1071,40 +1473,56 @@ public class MainActivity extends Activity implements SensorEventListener {
         return dot < 0 ? filename : filename.substring(0, dot);
     }
 
-    /** 2026-08 更新 (用戶要求「本地播歌, random 動作應該係不停郁, 直至首歌播完」):
-     *  之前淨係喺 onPrepared (真正開始播嗰刻) 郁一次就算, 而家改成用呢個固定
-     *  間隔不斷重複觸發 triggerRandomFillerAction(), 直到首歌完/俾人叫停為止。
-     *  用固定間隔 (而唔係「等個動作做完先郁下一個」) 嘅原因: AIDL 冇提供任何
-     *  查「一個 action 幾時做完」嘅方法 (見 AIDL_REFERENCE.md, action_PlayActionName
-     *  只係 fire-and-forget), 冇辦法準確知道上一個動作幾耐先做完, 所以揀一個
-     *  保守嘅固定 cadence, 對絕大部份動作長度嚟講都夠時間做完個動作先再開始
-     *  下一個, 唔會不斷打斷緊上一個未做完嘅動作。 */
+    /** 2026-08 更新 (用戶要求「本地播歌時, random 動作應該要不停動, 直到整首歌播完」):
+     *  之前只有在 onPrepared (真正開始播放的那一刻) 動一次就算, 現在改成用這個固定
+     *  間隔不斷重複觸發 triggerRandomFillerAction(), 直到整首歌播完/被叫停為止。
+     *  用固定間隔 (而不是「等動作做完再動下一個」) 的原因是: AIDL 沒有提供任何
+     *  查詢「一個 action 什麼時候做完」的方法 (見 AIDL_REFERENCE.md, action_PlayActionName
+     *  只是 fire-and-forget), 沒辦法準確知道上一個動作多久才做完, 所以選一個
+     *  保守的固定 cadence, 對絕大部分動作長度來說都足夠做完那個動作再開始
+     *  下一個, 不會不斷打斷上一個尚未做完的動作。 */
     private static final long MUSIC_FILLER_ACTION_INTERVAL_MS = 3500;
 
-    /** 現正行緊嘅「播歌隨機動作」循環 Runnable, null = 冇行緊 - 用嚟俾
-     *  stopLocalMusicPlaybackLocked() 用 mainHandler.removeCallbacks() 準確停低
-     *  呢個循環, 唔會靠估。 */
+    /** 目前正在執行的「播歌隨機動作」循環 Runnable, null = 沒有在執行 - 用來讓
+     *  stopLocalMusicPlaybackLocked() 用 mainHandler.removeCallbacks() 準確停止
+     *  這個循環, 不用靠猜。 */
     private Runnable musicFillerActionLoop;
 
-    /** 啟動「播歌期間不斷郁隨機動作」嘅循環 - 每 MUSIC_FILLER_ACTION_INTERVAL_MS
-     *  觸發一次 triggerRandomFillerAction(), 再重新 schedule 自己, 直至
-     *  boundPlayer 唔再係 currentMusicPlayer (即係首歌已經完/俾人叫停/俾第二首歌
-     *  取代咗) 先停低。用 mainHandler (Looper.getMainLooper()) 排程, 同
-     *  reassertHeadEyeLed() 一致嘅做法 - 呢個 method 本身淨係 postDelayed, 冇做
-     *  blocking call, 唔使擔心阻塞 main thread; 真正嘅動作播放
-     *  (triggerRandomFillerAction() 入面) 一路都係開緊獨立 thread 做 AIDL call。 */
+    /** 啟動「播歌期間不斷動隨機動作」的循環 - 每 MUSIC_FILLER_ACTION_INTERVAL_MS
+     *  觸發一次 triggerRandomFillerAction(), 再重新 schedule 自己, 直到
+     *  boundPlayer 不再是 currentMusicPlayer (也就是整首歌已經播完/被叫停/被第二首歌
+     *  取代了) 才停止。用 mainHandler (Looper.getMainLooper()) 排程, 和
+     *  reassertHeadEyeLed() 一致的做法 - 這個 method 本身只是 postDelayed, 沒有做
+     *  blocking call, 不用擔心阻塞 main thread; 真正的動作播放
+     *  (在 triggerRandomFillerAction() 裡面) 一直都是開獨立 thread 做 AIDL call。 */
+    /** 播歌隨機動作開關 - 讀取 SharedPreferences, 預設 true (保持之前還沒有開關按鈕之前
+     *  的行為: 一直都會動)。讓 audio/local_music/filler_action/get、
+     *  startMusicFillerActionLoop()、playLocalMusicFile() 一起用同一個讀法,
+     *  用戶隨時可以在 UI 上切換, 不用讓正在播放的歌也要重新播放才生效 - 下一個
+     *  loop tick (或下一次播歌) 就會反映新設定。*/
+    private boolean isMusicFillerActionEnabled() {
+        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .getBoolean(PREF_MUSIC_FILLER_ACTION_ENABLED, true);
+    }
+
     private void startMusicFillerActionLoop(final android.media.MediaPlayer boundPlayer) {
         Runnable loop = new Runnable() {
             @Override
             public void run() {
                 synchronized (MainActivity.this) {
                     if (currentMusicPlayer != boundPlayer) {
-                        // 首歌已經播完/俾人叫停/俾第二首歌取代咗 - 呢個循環
-                        // 對應嘅播放已經唔再有效, 唔再重新 schedule, 自然完結。
+                        // 整首歌已經播完/被叫停/被第二首歌取代了 - 這個循環
+                        // 對應的播放已經不再有效, 不再重新 schedule, 自然結束。
                         return;
                     }
                 }
-                triggerRandomFillerAction();
+                // 2026-08 新增: 開關 - 用戶隨時可以在音樂 tab 切換「random 動作」
+                // 這個開關, 每次 tick 都即時讀取最新值, 不用等下一次播歌才生效。
+                // 關閉時只是跳過「動一下」這個動作, loop 本身仍然繼續 schedule
+                // 下去 (讓用戶隨時開啟都能立即恢復, 不用 stop/replay 那首歌)。
+                if (isMusicFillerActionEnabled()) {
+                    triggerRandomFillerAction();
+                }
                 synchronized (MainActivity.this) {
                     if (currentMusicPlayer == boundPlayer && musicFillerActionLoop != null) {
                         mainHandler.postDelayed(musicFillerActionLoop, MUSIC_FILLER_ACTION_INTERVAL_MS);
@@ -1116,14 +1534,54 @@ public class MainActivity extends Activity implements SensorEventListener {
         mainHandler.postDelayed(loop, MUSIC_FILLER_ACTION_INTERVAL_MS);
     }
 
-    /** 停低 startMusicFillerActionLoop() 開始嘅循環 (如果有嘅話) - 俾
-     *  stopLocalMusicPlaybackLocked() call, 亦都俾 onCompletion/onError 嗰兩個
-     *  listener call (首歌自然播完/播壞都應該即刻停低郁動, 唔使等落一次
-     *  loop tick 先發現 currentMusicPlayer 已經唔啱先罷手)。 */
+    /** 停止 startMusicFillerActionLoop() 開始的循環 (如果有的話) - 供
+     *  stopLocalMusicPlaybackLocked() 呼叫, 也供 onCompletion/onError 這兩個
+     *  listener 呼叫 (整首歌自然播完/播壞都應該立即停止動作, 不用等到下一次
+     *  loop tick 才發現 currentMusicPlayer 已經不對才罷手)。 */
     private void stopMusicFillerActionLoop() {
         if (musicFillerActionLoop != null) {
             mainHandler.removeCallbacks(musicFillerActionLoop);
             musicFillerActionLoop = null;
+        }
+        stopSharedFillerLoop();
+    }
+
+    // 共用隨機動作循環 — 本地與電台共用同一開關與同一節奏，兩者任一在播即觸發
+    private Runnable sharedFillerLoop;
+    private synchronized void startSharedFillerLoop() {
+        if (sharedFillerLoop != null) return;
+        final Runnable loop = new Runnable() {
+            @Override
+            public void run() {
+                boolean hasActivePlayer = false;
+                synchronized (MainActivity.this) {
+                    if (currentMusicPlayer != null || currentRadioPlayer != null) hasActivePlayer = true;
+                }
+                if (hasActivePlayer && isMusicFillerActionEnabled()) {
+                    triggerRandomFillerAction();
+                }
+                synchronized (MainActivity.this) {
+                    // 用 this 而非 loop 變數，避免「variable loop might not have been initialized」編譯錯誤
+                    if (sharedFillerLoop == this && hasActivePlayer) {
+                        mainHandler.postDelayed(this, MUSIC_FILLER_ACTION_INTERVAL_MS);
+                    } else {
+                        sharedFillerLoop = null;
+                    }
+                }
+            }
+        };
+        sharedFillerLoop = loop;
+        mainHandler.postDelayed(loop, MUSIC_FILLER_ACTION_INTERVAL_MS);
+    }
+    private synchronized void stopSharedFillerLoop() {
+        if (sharedFillerLoop != null) {
+            mainHandler.removeCallbacks(sharedFillerLoop);
+            sharedFillerLoop = null;
+        }
+    }
+    private synchronized void stopSharedFillerLoopIfIdle() {
+        if (currentMusicPlayer == null && currentRadioPlayer == null) {
+            stopSharedFillerLoop();
         }
     }
 
@@ -1132,15 +1590,17 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  one) so a future change to one playback path can't accidentally affect the
      *  other. Stops whatever local music track was previously playing first.
      *
-     *  2026-08 更新: 開始真正播放嗰一刻 (onPreparedListener 入面, 唔係
-     *  prepareAsync() 個 request 一發出就做) 順便啟動
-     *  startMusicFillerActionLoop() - 用戶要求「播歌嗰陣要不停郁, 直至首歌播
-     *  完」, 見嗰個 method 嘅 javadoc。刻意擺喺 onPrepared 入面 (真正 start()
-     *  之後) 而唔係呢個 method 一開頭就做: 如果個檔案根本播唔到 (loss/corrupt,
-     *  prepareAsync 觸發 onError), 唔應該仍然郁咗個動作先, 個「動作」應該同
-     *  「真係有歌聲」同步, 唔係同「呢個 method 被 call 咗」同步。 */
+     *  2026-08 更新: 在真正開始播放的那一刻 (onPreparedListener 裡面, 而不是
+     *  prepareAsync() 的 request 一發出就做) 順便啟動
+     *  startMusicFillerActionLoop() - 用戶要求「播歌時要不停動, 直到整首歌播
+     *  完」, 見那個 method 的 javadoc。刻意放在 onPrepared 裡面 (真正 start()
+     *  之後) 而不是這個 method 一開頭就做: 如果檔案根本播不了 (loss/corrupt,
+     *  prepareAsync 觸發 onError), 不應該仍然先動了那個動作, 「動作」應該與
+     *  「真的有歌聲」同步, 而不是與「這個 method 被呼叫了」同步。 */
     private synchronized void playLocalMusicFile(java.io.File file) {
         stopLocalMusicPlaybackLocked();
+        // 共用播放器：播本地時停掉電台，避免兩路同時出聲
+        stopRadioPlaybackLocked();
         if (file == null || !file.exists()) {
             return;
         }
@@ -1150,48 +1610,106 @@ public class MainActivity extends Activity implements SensorEventListener {
             player.setDataSource(file.getAbsolutePath());
             player.setOnPreparedListener(mp -> {
                 mp.start();
+                setupMusicEqualizerLocked(mp);
+                setupMusicVisualizerLocked(mp);
                 startMusicFillerActionLoop(mp);
+                startSharedFillerLoop();
             });
             player.setOnCompletionListener(mp -> {
                 synchronized (MainActivity.this) {
                     stopMusicFillerActionLoop();
+                    stopSharedFillerLoopIfIdle();
+                    // 若電台仍在播，保留共用 EQ/頻譜給電台
+                    if (currentRadioPlayer == null) {
+                        releaseMusicEqualizerLocked();
+                        releaseMusicVisualizerLocked();
+                    }
                     mp.release();
                     if (currentMusicPlayer == mp) {
                         currentMusicPlayer = null;
+                        currentMusicTrackName = null;
                     }
                 }
             });
             player.setOnErrorListener((mp, what, extra) -> {
                 synchronized (MainActivity.this) {
                     stopMusicFillerActionLoop();
+                    stopSharedFillerLoopIfIdle();
+                    if (currentRadioPlayer == null) {
+                        releaseMusicEqualizerLocked();
+                        releaseMusicVisualizerLocked();
+                    }
                     mp.release();
                     if (currentMusicPlayer == mp) {
                         currentMusicPlayer = null;
+                        currentMusicTrackName = null;
                     }
                 }
                 return true;
             });
             currentMusicPlayer = player;
+            currentMusicTrackName = file.getName();
             player.prepareAsync();
         } catch (Exception e) {
             Log.w(TAG, "Failed to play local music file " + file, e);
         }
     }
 
-    /** 2026-08 新增: 停低「小智講嘢/回覆」呢一種播放 - 抽出嚟做共用 method, 俾
-     *  handleApi() 嘅 "speech/stop" HTTP endpoint 同 onGestureCode() 嘅 0x5e
-     *  (雙掣齊撳, 即係「94 鍵」) 一齊用。停埋機身本地 TTS (Nuance/iflytek,
-     *  robot.speech_StopTTS())、Android TTS、同小智語音回覆嘅音訊
+    /** 幫 mp (剛 prepared/start() 的那個 currentMusicPlayer) 建立一個新的
+     *  Equalizer, 綁定它的 audio session, 再套用用戶上次選擇的 preset (由
+     *  SharedPreferences 讀取, 沒選過就維持 flat/不處理)。每首新歌都要重新建立
+     *  一個新的 Equalizer instance - Equalizer 綁死在建立當下的 audio session id,
+     *  不可以跨 MediaPlayer 重複使用。這個 method 假設 caller 已經在
+     *  synchronized(MainActivity.this) 區塊裡面 (onPrepared callback 本身沒有
+     *  持有這個 lock, 所以用 "Locked" 命名提醒: 這個 method 期望自己執行當下沒有第二條
+     *  thread 同時在修改 currentMusicPlayer/musicEqualizer)。*/
+    private void setupMusicEqualizerLocked(android.media.MediaPlayer mp) {
+        try {
+            android.media.audiofx.Equalizer eq = new android.media.audiofx.Equalizer(0, mp.getAudioSessionId());
+            eq.setEnabled(true);
+            musicEqualizer = eq;
+            int savedPreset = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .getInt(PREF_MUSIC_EQ_PRESET, -1);
+            if (savedPreset >= 0 && savedPreset < eq.getNumberOfPresets()) {
+                try {
+                    eq.usePreset((short) savedPreset);
+                    musicEqPresetIndex = savedPreset;
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to apply saved EQ preset " + savedPreset, e);
+                }
+            }
+        } catch (Exception e) {
+            // Equalizer 這個 audio effect 不保證每台機器都有 (視乎廠商有沒有實作對應
+            // 的 effect engine) - 建不起來就當作沒有這個功能, 不應該因此拖累整首歌播不了。
+            Log.w(TAG, "Equalizer unavailable on this device", e);
+            musicEqualizer = null;
+        }
+    }
+
+    private void releaseMusicEqualizerLocked() {
+        if (musicEqualizer != null) {
+            try {
+                musicEqualizer.release();
+            } catch (Exception ignored) {
+            }
+            musicEqualizer = null;
+        }
+    }
+
+    /** 2026-08 新增: 停止「小智說話/回覆」這一種播放 - 抽出來做共用 method, 供
+     *  handleApi() 的 "speech/stop" HTTP endpoint 和 onGestureCode() 的 0x5e
+     *  (雙鍵齊按, 也就是「94 鍵」) 一起使用。停止機身本地 TTS (Nuance/iflytek,
+     *  robot.speech_StopTTS())、Android TTS、和小智語音回覆的音訊
      *  (XiaozhiAudioController, WebSocket 收 Opus frame -> 解碼 -> AudioTrack,
-     *  詳見 XiaozhiAudioController.onIncomingOpusFrame()/stopPlayback() 嘅
-     *  javadoc) - 呢三條係完全獨立嘅播放管道, 停一條唔會累到第二條停, 之前
-     *  用戶回報「停唔到小智講嘢」就係因為漏咗 XiaozhiAudioController 呢條路。 */
+     *  詳見 XiaozhiAudioController.onIncomingOpusFrame()/stopPlayback() 的
+     *  javadoc) - 這三條是完全獨立的播放管道, 停一條不會連帶讓另一條也停, 之前
+     *  用戶回報「停不了小智說話」就是因為漏了 XiaozhiAudioController 這條路。 */
     private void stopAllSpeechPlayback() {
         if (robot != null) {
             robot.speech_StopTTS();
         }
         lastSpeechStopAtMs = System.currentTimeMillis();
-        robotTtsSpeaking = false; // 見 robotTtsSpeaking field javadoc - 手動/總停鍵停咗都要即刻放行 mic enforcer
+        robotTtsSpeaking = false; // 見 robotTtsSpeaking field javadoc - 手動/總停鍵停止時都要立即放行 mic enforcer
         if (androidTts != null) {
             androidTts.stop();
         }
@@ -1204,17 +1722,19 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     private void stopLocalMusicPlaybackLocked() {
-        // 2026-08 新增: 手動停歌 (用戶撳 stop/總停鍵) 都應該即刻停低
-        // startMusicFillerActionLoop() 嗰個循環, 唔使等落一次 loop tick 先發現
-        // currentMusicPlayer 已經唔啱先罷手 - 最多會遲多三個幾秒先停到郁動,
-        // 用戶體驗上唔啱「撳咗停就即刻停」嘅預期。
         stopMusicFillerActionLoop();
+        stopSharedFillerLoopIfIdle();
+        // 共用 EQ/頻譜：若電台仍在播，保留給電台
+        if (currentRadioPlayer == null) {
+            releaseMusicEqualizerLocked();
+            releaseMusicVisualizerLocked();
+        }
         if (currentMusicPlayer != null) {
             try {
                 currentMusicPlayer.stop();
             } catch (Exception e) {
-                // 見 stopRingtonePlaybackLocked() 個 comment - prepareAsync() 中途
-                // race 可能引發 IllegalStateException, release() 一樣照做, 吞咗就得。
+                // 見 stopRingtonePlaybackLocked() 的 comment - prepareAsync() 中途
+                // race 可能引發 IllegalStateException, release() 一樣照做, 吞掉就好。
             }
             try {
                 currentMusicPlayer.release();
@@ -1222,41 +1742,44 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // already released/invalid - ignore
             }
             currentMusicPlayer = null;
+            currentMusicTrackName = null;
         }
     }
 
-    // 2026-08 新增: FM/網絡電台播放 (經 Radio Browser API, radio-browser.info,
-    // 動態搜全世界公開電台 - 見 searchRadioStations()/resolveRadioStation() 嘅
-    // javadoc) - 獨立一個 field/一套 method, 唔同 currentMusicPlayer (本地檔案)
-    // 共用, 理由同 currentMusicPlayer 唔同 currentRingtonePlayer 一樣: 三種播放
-    // 應該可以互不影響咁各自播/停 (例如轉緊台嗰陣唔應該累到本地音樂都要停)。同
-    // 本地音樂/鈴聲最大分別: 呢度個 data source 係網絡 URL, prepareAsync() 依賴緊
-    // 網絡連線, 比本地檔案更容易因為網絡問題觸發 onError - 呢個係
-    // playRadioStream() 特登保留 onErrorListener 有做嘢 (清 currentRadioPlayer)
-    // 嘅原因, 等下一次 "轉台" 唔會撞到一個已經死咗但冇清走嘅 reference。
+    // 2026-08 新增: FM/網路電台播放 (經由 Radio Browser API, radio-browser.info,
+    // 動態搜尋全世界公開電台 - 見 searchRadioStations()/resolveRadioStation() 的
+    // javadoc) - 獨立一個 field/一套 method, 不和 currentMusicPlayer (本地檔案)
+    // 共用, 理由和 currentMusicPlayer 不和 currentRingtonePlayer 共用一樣: 三種播放
+    // 應該可以互不影響地各自播放/停止 (例如轉台時不應該連帶讓本地音樂也要停)。和
+    // 本地音樂/鈴聲最大的差別: 這裡的 data source 是網路 URL, prepareAsync() 依賴
+    // 網路連線, 比本地檔案更容易因為網路問題觸發 onError - 這是
+    // playRadioStream() 特意保留 onErrorListener 做事 (清除 currentRadioPlayer)
+    // 的原因, 讓下一次「轉台」不會撞到一個已經失效但沒清掉的 reference。
     private android.media.MediaPlayer currentRadioPlayer;
 
-    /** 現正播緊嘅電台 Radio Browser stationuuid, null = 冇播緊 - 純粹俾
-     *  audio/radio/status 呢個 HTTP endpoint 顯示用, 唔影響播放邏輯本身。 */
+    /** 目前正在播放的電台 Radio Browser stationuuid, null = 沒有播放 - 純粹提供給
+     *  audio/radio/status 這個 HTTP endpoint 顯示用, 不影響播放邏輯本身。 */
     private volatile String currentRadioStationId;
 
-    /** 現正播緊嘅電台名 (Radio Browser 嘅 "name") - 同 currentRadioStationId 一齊
-     *  存, 純粹俾 audio/radio/status 直接顯示用, 唔使為咗攞返個名再打一次 API。 */
+    /** 目前正在播放的電台名 (Radio Browser 的 "name") - 和 currentRadioStationId 一起
+     *  存, 純粹提供給 audio/radio/status 直接顯示用, 不用為了取得名稱再打一次 API。 */
     private volatile String currentRadioStationName;
 
-    /** 播放一個電台嘅直播串流 - 同 playLocalMusicFile()/playRingtoneUri() 一樣嘅
-     *  STREAM_MUSIC/prepareAsync()/auto-release 形狀, 但呢度 setDataSource() 收嘅
-     *  係網絡 URL (Radio Browser struct 嘅 "url_resolved" - 官方文件建議用呢個
-     *  唔係 "url": url_resolved 已經解析咗 playlist/HTTP redirect, 唔使呢部機自己
-     *  再識 parse .pls/.m3u, 對一個冇 yt-dlp 呢類工具嘅 Android 5.1 App 嚟講關鍵),
-     *  所以 prepareAsync() 要靠網絡連線先攞到串流真正開始 buffer - 呢個 method
-     *  淨係負責觸發, 唔 block caller 等網絡, 由 onPreparedListener 喺真正攞到嘢、
-     *  可以開始播嗰刻先 start()。播歌嗰陣順便郁一下嘅 triggerRandomFillerAction()
-     *  (見 playLocalMusicFile() javadoc) 呢度冇加 - 電台可以連續播幾個鐘, 唔似
-     *  一首歌咁短, 唔應該淨係因為「啱啱轉咗台」就郁一次, 同「播緊嘢嗰陣要睇落
-     *  生動」呢個原意唔夾。 */
+    /** 播放一個電台的直播串流 - 和 playLocalMusicFile()/playRingtoneUri() 一樣的
+     *  STREAM_MUSIC/prepareAsync()/auto-release 形狀, 但這裡 setDataSource() 收的
+     *  是網路 URL (Radio Browser struct 的 "url_resolved" - 官方文件建議使用這個
+     *  而不是 "url": url_resolved 已經解析過 playlist/HTTP redirect, 不需要這台機器自己
+     *  再會解析 .pls/.m3u, 對一個沒有 yt-dlp 這類工具的 Android 5.1 App 來說很關鍵),
+     *  所以 prepareAsync() 要靠網路連線才能讓串流真正開始 buffer - 這個 method
+     *  只負責觸發, 不 block caller 等網路, 由 onPreparedListener 在真正取得資料、
+     *  可以開始播放的那一刻才 start()。播歌時順便動一下的 triggerRandomFillerAction()
+     *  (見 playLocalMusicFile() javadoc) 這裡沒有加 - 電台可以連續播好幾個小時, 不像
+     *  一首歌那麼短, 不應該只因為「剛轉了台」就動一次, 和「播放時要看起來
+     *  生動」這個原意不搭。 */
     private synchronized void playRadioStream(org.json.JSONObject station) {
         stopRadioPlaybackLocked();
+        // 共用播放器：播電台時停掉本地音樂，避免兩路同時出聲
+        stopLocalMusicPlaybackLocked();
         if (station == null) {
             return;
         }
@@ -1267,18 +1790,18 @@ public class MainActivity extends Activity implements SensorEventListener {
         if (url.isEmpty()) {
             return;
         }
-        // 2026-08 修正 (compile error: "local variables referenced from a lambda
-        // expression must be final or effectively final") - url 上面因為
-        // url_resolved/url 兩個欄位嘅 fallback 邏輯被重新賦值咗一次, 唔再係
-        // effectively final, 但下面 setOnErrorListener 個 lambda 要用佢嚟寫
-        // log。開多一個唯讀嘅 final 變量專俾 lambda 用, 唔改動上面嘅 fallback
-        // 邏輯本身。
         final String resolvedUrl = url;
         try {
             android.media.MediaPlayer player = new android.media.MediaPlayer();
             player.setAudioStreamType(AudioManager.STREAM_MUSIC);
             player.setDataSource(url);
-            player.setOnPreparedListener(android.media.MediaPlayer::start);
+            player.setOnPreparedListener(mp -> {
+                mp.start();
+                // 共用 EQ/頻譜/隨機動作 — 與本地音樂同一套
+                setupMusicEqualizerLocked(mp);
+                setupMusicVisualizerLocked(mp);
+                startSharedFillerLoop();
+            });
             player.setOnErrorListener((mp, what, extra) -> {
                 synchronized (MainActivity.this) {
                     mp.release();
@@ -1287,14 +1810,17 @@ public class MainActivity extends Activity implements SensorEventListener {
                         currentRadioStationId = null;
                         currentRadioStationName = null;
                     }
+                    // 電台出錯時若本地也沒在播，才釋放共用資源
+                    if (currentMusicPlayer == null) {
+                        releaseMusicEqualizerLocked();
+                        releaseMusicVisualizerLocked();
+                    }
+                    stopSharedFillerLoopIfIdle();
                 }
                 Log.w(TAG, "Radio stream playback error: what=" + what + " extra=" + extra
                         + " url=" + resolvedUrl);
                 return true;
             });
-            // 冇設 OnCompletionListener - 電台直播理論上唔會自然「播完」(唔似
-            // 本地檔案/鈴聲咁有固定長度), 如果串流中途斷埋, MediaPlayer 會經
-            // onError 嗰條路反映, 唔會經 onCompletion。
             currentRadioPlayer = player;
             currentRadioStationId = station.optString("stationuuid");
             currentRadioStationName = station.optString("name");
@@ -1313,31 +1839,35 @@ public class MainActivity extends Activity implements SensorEventListener {
             try {
                 currentRadioPlayer.stop();
             } catch (Exception e) {
-                // 見 stopLocalMusicPlaybackLocked() 個 comment - 同一種 race, 吞咗就得。
             }
             try {
                 currentRadioPlayer.release();
             } catch (Exception e) {
-                // already released/invalid - ignore
             }
             currentRadioPlayer = null;
         }
         currentRadioStationId = null;
         currentRadioStationName = null;
+        // 共用 EQ/頻譜/隨機動作：若本地仍在播，保留
+        if (currentMusicPlayer == null) {
+            releaseMusicEqualizerLocked();
+            releaseMusicVisualizerLocked();
+        }
+        stopSharedFillerLoopIfIdle();
     }
 
-    // 2026-08 更新 (修 bug): findRingtoneByTitle() 之前每次 call 都 `new
-    // RingtoneManager(this)`, 用完即刻拋棄個 object, 但 Android 官方文件明確話
-    // RingtoneManager.getCursor() 每次攞返嘅係*同一個*底層 cursor, 唔應該由
-    // 使用者自己 close() —— 佢嘅生命週期本身係跟住個 RingtoneManager instance
-    // 走, 如果冇用 RingtoneManager(Activity) 呢個會自動同 activity 生命週期綁定
-    // 嘅 constructor (呢度用緊 RingtoneManager(Context), 冇自動綁定), 就要自己
-    // 保住個 RingtoneManager instance 唔好整咗即棄, 否則個底層 cursor 冇人釋放,
-    // 一直漏 (實測 logcat 見到 CursorWindowAllocationException, # Open Cursors
-    // 累積到 991 個, 就係呢個 bug 導致)。修法: 用 rmType (TYPE_RINGTONE /
-    // TYPE_NOTIFICATION) 做 key, cache 住得返嗰兩個 RingtoneManager instance,
-    // 成個 app 生命週期入面淨係 new 一次, 之後全部 call 都攞返 cache 嗰個嚟重用
-    // (RingtoneManager.getCursor() 內部自己會 requery(), 唔使我哋手動 refresh)。
+    // 2026-08 更新 (修 bug): findRingtoneByTitle() 之前每次呼叫都 `new
+    // RingtoneManager(this)`, 用完立刻拋棄那個 object, 但 Android 官方文件明確說明
+    // RingtoneManager.getCursor() 每次取得的是*同一個*底層 cursor, 不應該由
+    // 使用者自己 close() —— 它的生命週期本身是跟著 RingtoneManager instance
+    // 走的, 如果沒有用 RingtoneManager(Activity) 這個會自動與 activity 生命週期綁定
+    // 的 constructor (這裡用的是 RingtoneManager(Context), 沒有自動綁定), 就要自己
+    // 保住這個 RingtoneManager instance, 不要用完即丟, 否則底層的 cursor 沒人釋放,
+    // 一直洩漏 (實測 logcat 看到 CursorWindowAllocationException, # Open Cursors
+    // 累積到 991 個, 就是這個 bug 導致的)。修法: 用 rmType (TYPE_RINGTONE /
+    // TYPE_NOTIFICATION) 做 key, 快取住那兩個 RingtoneManager instance,
+    // 整個 app 生命週期裡只 new 一次, 之後所有呼叫都取快取的那個來重用
+    // (RingtoneManager.getCursor() 內部自己會 requery(), 不需要我們手動 refresh)。
     private final java.util.Map<Integer, android.media.RingtoneManager> ringtoneManagerCache = new java.util.HashMap<>();
 
     private synchronized android.media.RingtoneManager getCachedRingtoneManager(int rmType) {
@@ -1497,6 +2027,89 @@ public class MainActivity extends Activity implements SensorEventListener {
         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
     }
 
+    /**
+     * 2026-08-25: WiFi 狀態 → wifi 指示燈。連上轉藍 (ledSetOn(12)), 斷開轉返紅
+     * (ledSetOn(13))。切換前先 ledSetOFF() 清場 (ledSetOn 是累加式)。註冊當下
+     * 立即檢查一次現狀, 處理「app 開啟之前已經連上/斷線」的情況。
+     */
+    private void registerWifiLedReceiver() {
+        wifiLedReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                android.net.NetworkInfo info =
+                        intent.getParcelableExtra(WifiManager.EXTRA_NETWORK_INFO);
+                if (info == null || info.getType() != android.net.ConnectivityManager.TYPE_WIFI) {
+                    return;
+                }
+                applyWifiLed(info.isConnected());
+            }
+        };
+        IntentFilter filter = new IntentFilter(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+        registerReceiver(wifiLedReceiver, filter);
+
+        // App 啟動時按當前狀態即刻設好。
+        android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                getSystemService(Context.CONNECTIVITY_SERVICE);
+        boolean connected = false;
+        if (cm != null) {
+            android.net.NetworkInfo ni = cm.getNetworkInfo(android.net.ConnectivityManager.TYPE_WIFI);
+            connected = ni != null && ni.isConnected();
+        }
+        final boolean connectedNow = connected;
+        padLedExecutor.execute(() -> applyWifiLedInternal(connectedNow));
+    }
+
+    /** WiFi 燈狀態切換入口 - 排給 pad LED 單線程 executor 執行。 */
+    private void applyWifiLed(boolean connected) {
+        padLedExecutor.execute(() -> applyWifiLedInternal(connected));
+    }
+
+    /**
+     * 實際切換: 先 ledSetOFF() 清走舊色, 等 100ms, 再點目標顏色。兩步都係 burst
+     * 重試式, 同 alpha2services 搭 /dev/led_eye 輸贏都最終會成。
+     */
+    private void applyWifiLedInternal(boolean connected) {
+        try {
+            assertPadLedsOffBurst();
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+        assertSingleLedBurst(connected ? WIFI_LED_INDEX_BLUE : WIFI_LED_INDEX_RED);
+    }
+
+    /** One burst: retry open()/dev/led_eye until it opens, light a single LED index. */
+    private boolean assertSingleLedBurst(int index) {
+        for (int attempt = 1; attempt <= PAD_LED_OPEN_ATTEMPTS; attempt++) {
+            boolean openOk = false;
+            try {
+                openOk = LedControl.open();
+            } catch (Throwable t) {
+                Log.w(TAG, "wifi LED open() threw", t);
+            }
+            if (openOk) {
+                try {
+                    LedControl.ledSetOn(index);
+                } finally {
+                    try {
+                        LedControl.close();
+                    } catch (Throwable ignored) {
+                    }
+                }
+                return true;
+            }
+            try {
+                Thread.sleep(PAD_LED_RETRY_GAP_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        Log.w(TAG, "wifi LED open() failed " + PAD_LED_OPEN_ATTEMPTS + "x in a row");
+        return false;
+    }
+
     private static String batteryStatusName(int status) {
         switch (status) {
             case BatteryManager.BATTERY_STATUS_CHARGING: return "charging";
@@ -1508,185 +2121,217 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     private void initRobot() {
-        // Subclassed (anonymous) rather than constructed plain, so the two
-        // onListenSerialPort*RcvData() callbacks below are reachable. Alpha2RobotApi's
-        // own default implementation of both is an empty no-op - the upstream SDK's own
-        // HelloAlpha example overrides them the same way specifically to see whatever
-        // raw bytes the chest/head boards send back (acks, error codes, sensor frames).
-        // Every sendCommand() call in this app up to now was fire-and-forget with no
-        // visibility into whether the head/chest board responded at all; these two
-        // overrides close that blind spot by surfacing the raw hex to the Event Log.
-        robot = new Alpha2RobotApi(this, APP_KEY, new ClientAuthorizeListener() {
-            @Override
-            public void onResult(int code, String info) {
-                EventBus.get().publish("authorize", "{\"code\":" + code + ",\"info\":\"" + info + "\"}");
-                Log.i(TAG, "Authorize result: " + code + " " + info);
-            }
-        }) {
-            @Override
-            public void onListenSerialPortHeaderRcvData(byte[] bytes, int len) {
-                String hex = toHex(bytes, len);
-                EventBus.get().publish("head_rcv", "{\"hex\":\"" + hex + "\"}");
-            }
+        // 2026-09: 脫離 Alpha2OpenSdk —— robot 係 RobotStub 純本地 no-op facade
+        // (機身無 alpha2services, 舊 binder 調用全部誠實失敗, 見 RobotStub)。
+        // 舊匿名子類的三個 onListenSerialPort* AIDL 回調在 pure-direct 下永不
+        // 觸發, 已經成段刪除; chest/head 回幀只走下面的 wireDirectFrameListeners()。
+        // 舊 if(false) initSpeechApi 整塊 (約 100 行回調) 一併刪除。
+        robot = new RobotStub(this);
+        EventBus.get().publish("authorize", "{\"code\":1,\"info\":\"have offline authority\"}");
+        Log.i(TAG, "Authorize result: 1 have offline authority");
 
-            @Override
-            public void onListenSerialPortRcvData(byte[] bytes, int len) {
-                String hex = toHex(bytes, len);
-                EventBus.get().publish("chest_rcv", "{\"hex\":\"" + hex + "\"}");
-                handleChestObstacleFrame(bytes, len);
-            }
+        // pure-direct: 机身已无 com.ubtechinc.alpha2services，不再做任何 bindService。
+        // 胸/头串口帧由 HardwareDirectManager 经 DirectSerialPort 直接推送，
+        // 见 wireDirectFrameListeners()。
+        wireDirectFrameListeners();
 
-            @Override
-            public void onListenBlueToothSerialPortRcvData(byte[] bytes, int len) {
-                String hex = toHex(bytes, len);
-                EventBus.get().publish("bt_rcv", "{\"hex\":\"" + hex + "\"}");
-            }
-        };
-
-        robot.initActionApi(new AlphaActionClientListener() {
-            @Override
-            public void onActionStop(String strActionFileName) {
-                EventBus.get().publish("action_stop", "{\"name\":\"" + jsonSafe(strActionFileName) + "\"}");
-            }
-        });
-
-        robot.initChestSerialApi();
-        robot.initHeaderSerialApi();
-        robot.initBlueToothSerialApi();
-
-        robot.initSpeechApi(new IAlpha2RobotClientListener() {
-            @Override
-            public void onServerCallBack(String text) {
-                // Built-in ASR results arrive here, typically formatted as
-                // "Local_Result:rule:... action:... tag:...". This is the robot's own
-                // Nuance recogniser (wake word "hello alpha", hardware-gated - see
-                // Alpha2OpenSdk-main HelloAlpha example) doing recognition AND intent
-                // classification together; there is no separate NLU step for this path.
-                // speech_understandText() is a different AIDL entry point that returns
-                // in ~1ms with no callback firing on this firmware - it does not appear
-                // to reach a real engine,
-                // matching HelloAlpha's own note that speech_initGrammar "compiles but
-                // never reaches the active engine". This Local_Result path is the only
-                // one confirmed working end-to-end.
-                // NOTE: wakeup direction is NOT parsed here - it arrives via the separate
-                // com.ubtechinc.services.SPEECH_DIRECTION broadcast, handled in
-                // RobotEventReceiver, which is where the servo-19 turn is triggered.
-                // 2026-08 修正: 「語法識別」(grammar recognition, logcat 見
-                // SpeechManager 印 "语法识别成功:...type:1") 呢條 ASR 路徑同
-                // 「聽寫識別」(dictation, type:0) 唔同 - onServerCallBack() 呢度
-                // 收到嘅 text 唔係純文字, 而係機身 iFlytek SDK 未解構嘅原始 JSON
-                // 字串, 例如 {"text":"你的爸爸是谁啊","rc":4} (rc = 識別結果嘅
-                // confidence/類型代碼, 呢度冇用到, 淨係抽 text field)。之前呢個
-                // 未解構嘅 JSON 字串會直接:
-                //   1) 塞落 asr_result 嘅 text field, 令對話界面 user 氣泡顯示
-                //      成句 raw JSON 而唔係純文字;
-                //   2) 送去 IflytekSemanticMatcher.match(), 因為 match() 有做
-                //      q.contains(e.q) 嘅 fuzzy 包含匹配, 個 JSON 字串好可能
-                //      「碰巧」包含到問法庫入面某條短問法做子字串而match中 (例如
-                //      實測見到 {"text":"我煮的不开心","rc":4} 撞中「不开心」),
-                //      但正常情況下 (問法冇喺個 JSON 字串裡面湊巧出現做子字串)
-                //      就乜都match唔中, 對話界面睇唔到任何 assistant 回覆。
-                // 呢度先抽出返真正嘅 text field (抽唔到就當原文處理, 保持同
-                // type:0 聽寫路徑一致嘅 fallback 行為), 先至送去下面嘅
-                // asr_result/parseLocalResult/handleIflytekSemanticText。
-                //
-                // 2026-08 修正: extractGrammarResultText() 只識抽 iFlytek JSON
-                // 格式 {"text":"...","rc":4}，對於 Nuance 嘅
-                // "Local_Result:rule:QA action:QA_CHATTING tag:How do you do"
-                // 格式會原樣返回成句 raw string，令對話界面顯示成句
-                // Local_Result 而唔係淨係 tag 後面嘅辨識文字。呢度加多層判斷：
-                // 如果係 Local_Result 格式，用 fieldBetween() 抽 tag: 後面嘅文字。
-                String rawText = extractGrammarResultText(text);
-                final String recognizedText;
-                if (rawText != null && rawText.startsWith(LOCAL_RESULT_PREFIX)) {
-                    recognizedText = fieldBetween(rawText, "tag:", null);
-                } else {
-                    recognizedText = rawText;
-                }
-                EventBus.get().publish("asr_result", "{\"text\":\"" + jsonSafe(recognizedText) + "\"}");
-                // 2026-08 移除 handleIflytekSemanticText() 呢個 call:
-                // 前端已經統一用 triggerIflytekSimulate() (speech/iflytek_simulate)
-                // 處理所有 5 種輸入方法嘅語意配對 + TTS + 動作,
-                // 如果後端都做就會雙重 TTS 播兩次。
-            }
-
-            @Override
-            public void onServerPlayEnd(boolean isEnd) {
-                stopMouthLedForTts();
-                robotTtsSpeaking = false;
-                EventBus.get().publish("tts_end", "{\"isEnd\":" + isEnd + "}");
-            }
-        }, new Alpha2SpeechMainServiceUtil.ISpeechInitInterface() {
-            @Override
-            public void initOver() {
-                speechReady = true;
-                EventBus.get().publish("speech_ready", "{\"ready\":true}");
-                // 2026-08 新增: 「自我打斷」由用戶可揀嘅 checkbox 改做恆常開 -
-                // UI 個揀擇掣已經移除 (見 index.html), 呢度喺 speech 引擎 ready
-                // 嗰刻主動開一次, 唔使用戶手動揀。speech/self_interrupt endpoint
-                // 保留 (Blockly 積木 alpha_speech_self_interrupt 仲用緊), 淨係
-                // UI 主開關拎走。
-                robot.speech_setSelfInterrupt(true);
-            }
-        }, CustomLanguage.DEFAULT_LANGUAGE);
+        // 2026-09: 脫離 Alpha2OpenSdk —— 舊 binder initSpeechApi 整塊
+        // （約 100 行 asr_result/tts_end/speech_ready 回調，包喺 if(false))
+        // 已經成段刪除：機身無 alpha2services，永遠唔會執行。
 
         registerWakeupDirectionListener();
         registerChestMuteKeyTestListener();
         registerAlpha2PirAlertListener();
     }
 
-    // -- Local_Result parsing (rule/action/tag intent classification) ------------------
+    // -- pure-direct frame wiring -----------------------------------------------
     //
-    // Format confirmed by Alpha2OpenSdk-main's HelloAlpha example:
-    //   "Local_Result:rule:<RULE> action:<ACTION> tag:<recognised text>"
-    // e.g. "Local_Result:rule:QA action:QA_Age tag:how old are you"
-    // rule/action come from the robot's own on-device Nuance grammar - not something
-    // this app defines or can extend (custom grammar via speech_initGrammar was tried
-    // upstream and confirmed not to reach the active engine).
-    private static final String LOCAL_RESULT_PREFIX = "Local_Result";
-
-    /** Extracts the substring between two markers. If end is null, reads to the end of
-     *  the string. Returns "" (not null) if start marker isn't found, matching the
-     *  permissive style HelloAlpha uses for this same parsing. */
-    private static String fieldBetween(String s, String startMarker, String endMarker) {
-        int i = s.indexOf(startMarker);
-        if (i < 0) {
-            return "";
+    // 胸/头 MCU 回帧經 HardwareDirectManager 直收：DirectSerialPort 送出的是完整
+    // wire 帧（F8 8F ... ED，回复含 00 00 头），先經 stripSerialFrame() 剥到
+    // payload 层（bytes[0] 即 cmd）再走 latch/EventBus 逻辑。对外发布的
+    // chest_rcv/head_rcv 事件用完整帧 hex（信息更多，前端事件 Log 照常显示）。
+    private void wireDirectFrameListeners() {
+        try {
+            HardwareDirectManager dm = HardwareDirectManager.get(this);
+            dm.chest().setFrameListener(new com.ubtechinc.alpha.hardware.DirectSerialPort.OnFrameListener() {
+                @Override public void onFrame(byte[] frame) { onDirectChestFrame(frame); }
+            });
+            dm.head().setFrameListener(new com.ubtechinc.alpha.hardware.DirectSerialPort.OnFrameListener() {
+                @Override public void onFrame(byte[] frame) { onDirectHeadFrame(frame); }
+            });
+            Log.i(TAG, "wireDirectFrameListeners: direct chest/head listeners attached (pure-direct)");
+        } catch (Throwable t) {
+            Log.w(TAG, "wireDirectFrameListeners failed", t);
         }
-        int start = i + startMarker.length();
-        int end = (endMarker == null) ? s.length() : s.indexOf(endMarker, start);
-        if (end < 0) {
-            end = s.length();
-        }
-        return s.substring(start, end).trim();
     }
+
+    /**
+     * 把完整 wire 帧剥到 payload 层（bytes[0] 即 cmd，与旧 AIDL 回调格式一致）。
+     * 兼容长式（F8 8F LEN 00 00 CMD PAYLOAD SUM ED，MCU 回复用此式）和短式
+     * （F8 8F LEN CMD PAYLOAD SUM ED，本 app 发出的式样）；找不到帧头返回 null。
+     */
+    private static byte[] stripSerialFrame(byte[] frame) {
+        if (frame == null) return null;
+        int n = frame.length;
+        for (int i = 0; i + 5 < n; i++) {
+            if ((frame[i] & 0xFF) == 0xF8 && (frame[i + 1] & 0xFF) == 0x8F) {
+                int lenByte = frame[i + 2] & 0xFF;
+                // 长式：[i+3],[i+4] 为 00 00，cmd 在 i+5
+                if (frame[i + 3] == 0 && frame[i + 4] == 0) {
+                    int pl = lenByte - 7;
+                    if (pl < 0) pl = 0;
+                    if (i + 6 + pl > n) pl = Math.max(0, n - (i + 6));
+                    byte[] out = new byte[1 + pl];
+                    out[0] = frame[i + 5];
+                    if (pl > 0) System.arraycopy(frame, i + 6, out, 1, pl);
+                    return out;
+                }
+                // 短式：cmd 在 i+3
+                int pl = lenByte - 1;
+                if (pl < 0) pl = 0;
+                if (i + 4 + pl > n) pl = Math.max(0, n - (i + 4));
+                byte[] out = new byte[1 + pl];
+                out[0] = frame[i + 3];
+                if (pl > 0) System.arraycopy(frame, i + 4, out, 1, pl);
+                return out;
+            }
+        }
+        return null;
+    }
+
+    private void onDirectHeadFrame(byte[] frame) {
+        if (frame == null || frame.length == 0) return;
+        EventBus.get().publish("head_rcv", "{\"hex\":\"" + toHex(frame, frame.length) + "\"}");
+        // 2026-09: 頭版本 latch 已刪 (queryHeaderFirmwareVersion 無 caller) -
+        // 頭幀淨係 publish，不再做任何 latch。
+    }
+
+    private void onDirectChestFrame(byte[] frame) {
+        if (frame == null || frame.length == 0) return;
+        byte[] payload = stripSerialFrame(frame);
+        if (payload == null) payload = frame;
+        // 2026-09: 心跳靜音 - cmd 0x8B(-117, ~1Hz telemetry) 同 0x8D(-115, 5s
+        // heartbeat) 唔再 publish chest_rcv 上 WebSocket (Event Log 洗版, 見
+        // logcat 定量: 5 分鐘 361 幀幾乎全部係呢兩種)。其他 cmd (UUID 回覆 0x37、
+        // PIR 0x93 等) 照舊發布; -109 PIR 采集/轉發邏輯喺下面完全唔郁。
+        // logcat 嘅 DirectSerialPort RX hex 照樣保留, 要睇 raw 幀去嗰度睇。
+        boolean noisyHeartbeat = payload.length >= 1
+                && (payload[0] == (byte) 0x8B || payload[0] == (byte) 0x8D);
+        if (!noisyHeartbeat) {
+            EventBus.get().publish("chest_rcv", "{\"hex\":\"" + toHex(frame, frame.length) + "\"}");
+        }
+        int plen = payload.length;
+        handleChestObstacleFrame(payload, plen);
+        // pure-direct: 心口 mute 键 (-111/0x91) 与 PIR (-109/0x93) 直接从串口帧来。
+        // 旧路径（CHEST_ACTION broadcast 由 alpha2services 转发）已随 APK 移除而消失，
+        // 这里按旧 RobotEventReceiver 同一套语义直推：sub-value 1=按下/进入，0=放开/离开。
+        if (plen >= 1) {
+            if (payload[0] == (byte) -111) {
+                boolean pressed = plen < 2 || payload[1] == 1;
+                EventBus.get().publish("chest_mute_key", "{\"pressed\":" + pressed + "}");
+                try { onMuteKeyEvent(pressed); } catch (Throwable t) { Log.w(TAG, "onMuteKeyEvent failed", t); }
+            } else if (payload[0] == (byte) -109) {
+                boolean pirTriggered = plen < 2 || payload[1] == 1;
+                EventBus.get().publish("alpha2_pir_state", "{\"triggered\":" + pirTriggered + "}");
+                try { onPirStateReceived(pirTriggered); } catch (Throwable t) { Log.w(TAG, "onPirStateReceived failed", t); }
+            }
+        }
+        // 优先处理升级 ACK (48/49/50)
+        if (chestUpgradeLatch != null && chestUpgradeLatch.getCount() > 0 && plen >= 1) {
+            byte cmd = payload[0];
+            if (cmd == chestUpgradeExpectedCmd) {
+                if (cmd == 49) {
+                    chestUpgradeAckStatus = (plen >= 2 ? (payload[1] & 0xFF) : 0);
+                } else {
+                    chestUpgradeAckStatus = 0;
+                }
+                chestUpgradeLatch.countDown();
+                return;
+            }
+        }
+        // 2026-09 新增: UUID/SN 回覆 latch (cmd 55)。放喺版本 latch 之前優先處理,
+        // 避免版本查詢的 fallback 誤食 uuid 幀 (uuid 幀 plen 好長, 唔係 sonar ack /
+        // obstacle, 舊 fallback 條件會當佢係版本回覆)。
+        if (chestUuidLatch != null && chestUuidLatch.getCount() > 0) {
+            boolean isUuid = isUuidFrame(frame, frame.length)
+                    || (plen >= 1 && payload[0] == RobotWire.CHEST_READ_SID_EEPROM);
+            if (isUuid) {
+                chestUuidRaw = java.util.Arrays.copyOf(frame, frame.length);
+                chestUuidLen = frame.length;
+                chestUuidLatch.countDown();
+                return;
+            }
+        }
+        // 版本 latch：完整帧优先（isVersionFrame 认 F8 8F），否则按 payload fallback
+        if (chestVersionLatch != null && chestVersionLatch.getCount() > 0) {
+            boolean isVer = isVersionFrame(frame, frame.length, RobotWire.CHEST_READ_VERSION);
+            boolean isFallback = false;
+            if (!isVer) {
+                boolean isSonarAck = (plen == 2 && payload[0] == 4 && payload[1] == 0);
+                boolean isObstacle = (plen >= 2 && payload[0] == (byte) -127);
+                boolean isUuid = (plen >= 1 && payload[0] == RobotWire.CHEST_READ_SID_EEPROM);
+                if (plen >= 1 && !isSonarAck && !isObstacle && !isUuid) {
+                    isFallback = true;
+                }
+            }
+            if (isVer || isFallback) {
+                if (isVer) {
+                    chestVersionRaw = java.util.Arrays.copyOf(frame, frame.length);
+                    chestVersionLen = frame.length;
+                } else {
+                    chestVersionRaw = java.util.Arrays.copyOf(payload, plen);
+                    chestVersionLen = plen;
+                }
+                chestVersionLatch.countDown();
+            }
+        }
+    }
+
+    // -- pure-direct 状态/发送 helpers（取代 robot.waitChestReady/isChestReady 等 binder 语义） --
+    private boolean directChestReady() {
+        try { return HardwareDirectManager.get(this).chest().isAvailable(); }
+        catch (Exception e) { return false; }
+    }
+
+    private boolean directHeaderReady() {
+        try { return HardwareDirectManager.get(this).head().isAvailable(); }
+        catch (Exception e) { return false; }
+    }
+
+    private static UbxErrorCode.API_ERROR_CODE directCode(boolean ok) {
+        return ok ? UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED
+                : UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
+    }
+
+    // 2026-09 刪除: Local_Result 解析 (LOCAL_RESULT_PREFIX/fieldBetween) -
+    // 唯一 caller (舊 binder onServerCallBack) 已隨脫鉤刪除。
 
     // -- iFlytek 語意配對: 完全取代悠聊 APK (com.ubtech.iflytekmix) -------------------
     //
-    // 悠聊 APK 反編譯還原返嚟嘅完整 pipeline (見對話 history) 係:
-    //   機身 ASR 辨識完一句話 -> JsonResultParse 解析做 operation+slots
+    // 悠聊 APK 反編譯還原出來的完整 pipeline (見對話 history) 是:
+    //   機身 ASR 辨識完一句話 -> JsonResultParse 解析成 operation+slots
     //     -> RobotActionBusiness.startBusiness(): TTS(200ms sleep)Action
-    // OpenAlpha2 已經有自己嘅 robot.speech_startTTS()/robot.action_PlayActionName(),
-    // 唔需要悠聊嗰層 RobotHandle wrapper, 淨係需要搬「文字 -> operation/答案/動作」
-    // 呢層語意配對 (IflytekSemanticMatcher, 由悠聊 assets/local_semantic 嗰 850 條
-    // 問法還原) 同埋呢個時序。
+    // OpenAlpha2 已經有自己的 robot.speech_startTTS()/robot.action_PlayActionName(),
+    // 不需要悠聊那層 RobotHandle wrapper, 只需要搬「文字 -> operation/答案/動作」
+    // 這層語意配對 (IflytekSemanticMatcher, 由悠聊 assets/local_semantic 那 850 條
+    // 問法還原) 以及這個時序。
     //
-    // 掛喺邊: 唔再掛喺 onServerCallBack() (見上面 2026-08 移除嗰個 comment) - 前端
-    // 統一經 speech/iflytek_simulate 觸發, 令所有輸入方法 (真人講嘢/打字模擬) 都行
-    // 同一條路, 避免雙重 TTS。中英文由 looksChinese() 判斷, 淨係睇輸入文字內容,
-    // 唔理個 ASR engine 而家 set 緊邊種語言。
+    // 掛在哪裡: 不再掛在 onServerCallBack() (見上面 2026-08 移除那個 comment) - 前端
+    // 統一經由 speech/iflytek_simulate 觸發, 讓所有輸入方法 (真人說話/打字模擬) 都走
+    // 同一條路, 避免重複 TTS。中英文由 looksChinese() 判斷, 只看輸入文字內容,
+    // 不理會 ASR engine 目前設定的是哪種語言。
 
-    /** TTS 之後等幾耐先播動作, 跟返悠聊 RobotActionBusiness.startBusiness() 反編譯
-     *  出嚟嘅原本時序 (先 TTS, sleep 200ms, 先至播動作 - 兩者係分開、非同步嘅 AIDL
-     *  call, 淨係靠呢個 sleep 頂住, 冇等 TTS 真係播完先郁)。用戶已確認跟返悠聊原本
-     *  咁做, 唔改做等 TTS 播完先郁。 */
+    /** TTS 之後要等多久才播動作, 沿用悠聊 RobotActionBusiness.startBusiness() 反編譯
+     *  出來的原本時序 (先 TTS, sleep 200ms, 才播動作 - 兩者是分開、非同步的 AIDL
+     *  call, 只靠這個 sleep 頂住, 沒有等 TTS 真的播完才動)。用戶已確認沿用悠聊原本
+     *  這樣做, 不改成等 TTS 播完才動。 */
     private static final int IFLYTEK_TTS_TO_ACTION_DELAY_MS = 200;
 
-    /** 判斷一句輸入文字係咪應該用中文 matcher 處理: 有任何 CJK 統一表意文字 (漢字)
-     *  就當中文, 完全冇就當英文。2026-08 特登揀呢個做法, 唔靠 speech/set_asr_engine
-     *  嗰個手動語言設定, 因為 iFlytek 引擎本身可能自動偵測用戶講緊咩語言, 淨係睇辨識
-     *  出嚟嘅文字內容本身最可靠。中英文夾雜嘅句子 (例如 "跳個 dance") 會因為有漢字而
-     *  當中文 - 呢個係刻意嘅簡化, 唔追求完美嘅語言偵測, 對呢個用途已經夠準。 */
+    /** 判斷一句輸入文字是否應該用中文 matcher 處理: 有任何 CJK 統一表意文字 (漢字)
+     *  就當中文, 完全沒有就當英文。2026-08 特意選這個做法, 不依靠 speech/set_asr_engine
+     *  那個手動語言設定, 因為 iFlytek 引擎本身可能自動偵測用戶說的是什麼語言, 只看辨識
+     *  出來的文字內容本身最可靠。中英文夾雜的句子 (例如 "跳個 dance") 會因為有漢字而
+     *  當中文 - 這是刻意的簡化, 不追求完美的語言偵測, 對這個用途已經夠準確。 */
     private static boolean looksChinese(String text) {
         if (text == null) return false;
         for (int i = 0; i < text.length(); i++) {
@@ -1698,33 +2343,33 @@ public class MainActivity extends Activity implements SensorEventListener {
         return false;
     }
 
-    /** IflytekSemanticMatcherEn.MatchResult -> IflytekSemanticMatcher.MatchResult 嘅
-     *  薄轉接層。兩個 class 嘅 MatchResult 結構完全一樣 (question/type/operation/
-     *  slot/answer/actionId), 但屬於唔同 class 嘅 nested type, Java 唔會自動當佢哋
-     *  係同一個型別 - 呢個 method 純粹做欄位複製, 等 handleIflytekSemanticText() 嘅
-     *  下半部分 (publish event、TTS/動作執行) 唔使為中英文分別寫多一份。 */
+    /** IflytekSemanticMatcherEn.MatchResult -> IflytekSemanticMatcher.MatchResult 的
+     *  薄轉接層。兩個 class 的 MatchResult 結構完全一樣 (question/type/operation/
+     *  slot/answer/actionId), 但屬於不同 class 的 nested type, Java 不會自動把它們
+     *  當成同一個型別 - 這個 method 純粹做欄位複製, 讓 handleIflytekSemanticText() 的
+     *  下半部分 (publish event、TTS/動作執行) 不用為中英文分別多寫一份。 */
     private static IflytekSemanticMatcher.MatchResult toZhResult(IflytekSemanticMatcherEn.MatchResult en) {
         if (en == null) return null;
         return new IflytekSemanticMatcher.MatchResult(
                 en.question, en.type, en.operation, en.slot, en.answer, en.actionId);
     }
 
-    /** 將一句文字 (可能係 iFlytek 引擎真正辨識到嘅, 亦可能係 speech/iflytek_simulate
-     *  呢個 endpoint 用嚟測試嘅打字輸入) 對照 1000 條問法配對, 命中就做返悠聊原本嘅
-     *  「先 TTS、再隔 200ms 播動作」流程。搵唔到就乜都唔做 (唔係錯誤 - 用戶講嘅嘢唔喺
-     *  嗰 1000 條入面係好正常嘅事, 靜靜哋唔回應好過亂噏一個唔相關嘅回覆), 回傳 null。
+    /** 將一句文字 (可能是 iFlytek 引擎真正辨識到的, 也可能是 speech/iflytek_simulate
+     *  這個 endpoint 用來測試的打字輸入) 對照 1000 條問法配對, 命中就執行悠聊原本的
+     *  「先 TTS、再隔 200ms 播動作」流程。找不到就什麼都不做 (不是錯誤 - 用戶說的話不在
+     *  那 1000 條裡面是很正常的事, 靜靜地不回應好過亂回一個不相關的回覆), 回傳 null。
      *
-     *  中英文用邊個 matcher 由 looksChinese() 判斷 - 有漢字用 IflytekSemanticMatcher
-     *  (中文, iflytek_semantic_zh.json), 冇就用 IflytekSemanticMatcherEn (英文,
-     *  iflytek_semantic_en.json)。兩個 class 結構一致、資料獨立, 唔會互相影響。
+     *  中英文用哪個 matcher 由 looksChinese() 判斷 - 有漢字用 IflytekSemanticMatcher
+     *  (中文, iflytek_semantic_zh.json), 沒有就用 IflytekSemanticMatcherEn (英文,
+     *  iflytek_semantic_en.json)。兩個 class 結構一致、資料獨立, 不會互相影響。
      *
-     *  回傳 MatchResult (而唔係 void) 係俾 speech/iflytek_simulate 呢個 endpoint 用嚟
-     *  即時話俾前端知「配對中未」, publishEvent=false 個 overload 唔會再經 EventBus
-     *  publish 多一次 (前端 sendSpeechChatText() 已經即時用 HTTP response 顯示)。
+     *  回傳 MatchResult (而不是 void) 是為了讓 speech/iflytek_simulate 這個 endpoint 用來
+     *  即時告訴前端「有沒有配對中」, publishEvent=false 那個 overload 不會再經由 EventBus
+     *  多 publish 一次 (前端 sendSpeechChatText() 已經即時用 HTTP response 顯示)。
      *
-     *  TTS/動作執行本身依然喺獨立 thread 度做 AIDL blocking call, 唔喺呼叫者嘅
-     *  thread (可能係 HTTP worker thread) 度直接做 - 同 triggerRandomFillerAction()
-     *  一致嘅安全做法。 */
+     *  TTS/動作執行本身依然在獨立 thread 上做 AIDL blocking call, 不在呼叫者的
+     *  thread (可能是 HTTP worker thread) 上直接做 - 和 triggerRandomFillerAction()
+     *  一致的安全做法。 */
     private IflytekSemanticMatcher.MatchResult handleIflytekSemanticText(final String text) {
         return handleIflytekSemanticText(text, true);
     }
@@ -1733,7 +2378,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                                                                          final boolean publishEvent) {
         final boolean chinese = looksChinese(text);
         if (chinese) {
-            if (iflytekMatcher == null) return null; // onCreate() 未行完 (理論上唔會, 保險)
+            if (iflytekMatcher == null) return null; // onCreate() 尚未執行完 (理論上不會, 保險)
         } else {
             if (iflytekMatcherEn == null) return null;
         }
@@ -1742,7 +2387,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 ? iflytekMatcher.match(text)
                 : toZhResult(iflytekMatcherEn.match(text));
         if (result == null) {
-            return null; // 搵唔到對應問法 - 靜靜哋唔做嘢, 唔算錯誤
+            return null; // 找不到對應問法 - 靜靜地不做事, 不算錯誤
         }
         if (publishEvent) {
             EventBus.get().publish("iflytek_match",
@@ -1753,22 +2398,25 @@ public class MainActivity extends Activity implements SensorEventListener {
                             + "\"actionId\":\"" + jsonSafe(result.actionId) + "\"}");
         }
 
-        // ASR 呢邊固定用 iFlytek engine (唔再用 Nuance 做 ASR) - iFlytek 一個 engine
-        // 就識辨識中文同英文, 用戶已經確認唔會再切返 Nuance 做 ASR。TTS 呢邊就跟返
-        // 辨識出嚟嘅語言揀返啱嘅 TTS engine 讀出答案: 中文答案用 "zh_cn" (行 iFlytek
-        // TTS), 英文答案用 "en_us" (行 Nuance TTS, 呢個 project 一貫做法 - 見
-        // "Fixed to Nuance/en_us" 嗰個 self.robot.speak MCP tool 附近嘅 comment)。
-        // 即係話 ASR 同 TTS 用緊嘅 engine 唔係同一個, 呢度純粹係按語言揀返把聲靚嘅
-        // TTS engine, 唔關 ASR engine 事。
-        final String ttsLang = chinese ? "zh_cn" : "en_us";
+        // 2026-09 更新: 機身已無 iFlytek/Nuance (無 alpha2services),
+        // robot.speech_startTTS() 只會回 NOT_INIT 全程靜音。語意配對答案改行
+        // Android 內置 TTS (同 speech/tts engine=android 分支同一部機), 依答案
+        // 語言揀 locale。嘴 LED 熄燈靠 Android TTS 個 UtteranceProgressListener
+        // (見 initAndroidTts), 唔使自己熄。
+        final String ttsAnswer = result.answer;
+        final java.util.Locale ttsLocale =
+                chinese ? java.util.Locale.SIMPLIFIED_CHINESE : java.util.Locale.ENGLISH;
         new Thread(new Runnable() {
             @Override
             public void run() {
-                if (result.answer != null && !result.answer.isEmpty()) {
-                    robot.speech_startTTS(ttsLang, result.answer, null);
+                if (ttsAnswer != null && !ttsAnswer.isEmpty()) {
+                    startMouthLedForTts();
+                    if (!speakAndroidTts(ttsAnswer, ttsLocale)) {
+                        stopMouthLedForTts();
+                    }
                 }
                 if (result.actionId == null) {
-                    return; // CHAT 類或者部分 FUNCTION 類冇對應動作, TTS 完就完
+                    return; // CHAT 類或部分 FUNCTION 類沒有對應動作, TTS 完就結束
                 }
                 try {
                     Thread.sleep(IFLYTEK_TTS_TO_ACTION_DELAY_MS);
@@ -1778,23 +2426,23 @@ public class MainActivity extends Activity implements SensorEventListener {
                 }
                 String actionId = result.actionId;
                 if (actionId != null && actionId.startsWith("__RANDOM_CATEGORY__")) {
-                    // 2026-08 新增: 用戶講到分類名 (例如「跳舞」/"Dance for me") 但冇
-                    // 講出具體邊個動作 - 喺 202 動作清單嘅對應分類 (例如
-                    // DANCE_KIDS/YOGA_ANY) 入面隨機揀一個。同下面 "__RANDOM__"
-                    // (完全唔限分類, 202 個隨便揀) 唔同, 呢個係分類限定嘅隨機。中英文
-                    // matcher 共用同一份 action_category_pools.json, 邊個 instance
-                    // call 結果都一樣, 淨係跟返 chinese 呢個 flag 揀返啱嘅 instance。
+                    // 2026-08 新增: 用戶說到分類名 (例如「跳舞」/"Dance for me") 但沒有
+                    // 說出具體是哪個動作 - 在 202 動作清單的對應分類 (例如
+                    // DANCE_KIDS/YOGA_ANY) 裡面隨機選一個。和下面 "__RANDOM__"
+                    // (完全不限分類, 202 個隨便選) 不同, 這是分類限定的隨機。中英文
+                    // matcher 共用同一份 action_category_pools.json, 哪個 instance
+                    // 呼叫結果都一樣, 只是依 chinese 這個 flag 選擇對應的 instance。
                     actionId = chinese
                             ? iflytekMatcher.resolveCategoryRandomActionId(actionId)
                             : iflytekMatcherEn.resolveCategoryRandomActionId(actionId);
                 } else if ("__RANDOM__".equals(actionId)) {
-                    // TFBOY 呢類 operation 喺原廠問法入面冇固定動作 - 跟返
-                    // triggerRandomFillerAction() 已有嘅隨機動作池 (202 動作入面
-                    // 「隨機短/長」開頭嗰批, 專門用嚟做呢種「郁下等佢生動啲」效果)。
+                    // TFBOY 這類 operation 在原廠問法裡沒有固定動作 - 沿用
+                    // triggerRandomFillerAction() 已有的隨機動作池 (202 個動作裡
+                    // 「隨機短/長」開頭的那批, 專門用來做這種「動一下讓它生動一點」的效果)。
                     actionId = resolveRandomActionId();
                 }
                 if (actionId != null) {
-                    robot.action_PlayActionName(actionId);
+                    playActionDirect(actionId); // pure-direct：旧 AIDL 已无服务承载
                 }
             }
         }, "IflytekSemanticAction").start();
@@ -1826,16 +2474,15 @@ public class MainActivity extends Activity implements SensorEventListener {
                 if (angle == null) {
                     return;
                 }
-                // onEvent() runs on the main thread (broadcast receivers dispatch there by
-                // default, and EventBus.publish() calls listeners synchronously from the
-                // publisher's thread). waitChestReady()'s own javadoc requires a background
-                // thread - its main-thread guard otherwise makes it a silent no-op.
+                // onEvent() runs on the main thread. pure-direct 下直发无需等待，
+                // 仍放 background thread 避免阻塞 EventBus 分发。
+                // 注：SPEECH_DIRECTION 广播本身由旧 alpha2services 发出，机身无此 APK
+                // 后此监听自然不再触发，保留仅作兼容。
                 new Thread(new Runnable() {
                     @Override
                     public void run() {
                         int servoAngle = clampServoAngle(angle);
-                        robot.waitChestReady(1000);
-                        robot.chest_SendOneFreeAngle((byte) SERVO_HEAD_ID, servoAngle, SERVO_TURN_TIME_MS);
+                        HardwareDirectManager.get(MainActivity.this).chest().setSingleServo((byte) SERVO_HEAD_ID, servoAngle, SERVO_TURN_TIME_MS);
                     }
                 }).start();
             }
@@ -1868,13 +2515,14 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     // -- 心口 mute 鍵 (-111) 測試: 撳一下紫燈長開, 再撳一下熄燈 ------------------------
-    // 2026-08 新增: 純粹用嚟目視確認 RobotEventReceiver 個 CHEST_ACTION case 有冇
-    // 真係收到心口 mute 鍵 (chest cmd = -111) 嘅 broadcast - 呢個唔係最終功能,
-    // 純粹一個「有冇反應」嘅測試訊號 (見 RobotEventReceiver 嗰個 case 嘅 comment)。
-    // 官方 firmware 呢粒鍵本身完全冇連任何 LED, 呢度嘅紫燈完全係呢個專案自己加,
-    // 同 sonar obstacle 用嘅係同一個 setHeadEyeLedLong(5, 9) helper (5=紫,
+    // 2026-08 新增: 純粹用來目視確認 RobotEventReceiver 那個 CHEST_ACTION case 有沒有
+    // 真的收到胸口 mute 鍵 (chest cmd = -111) 的 broadcast - 這不是最終功能,
+    // 純粹一個「有沒有反應」的測試訊號 (見 RobotEventReceiver 那個 case 的 comment)。
+    // 官方 firmware 這顆鍵本身完全沒有連任何 LED, 這裡的紫燈完全是這個專案自己加的,
+    // 和 sonar obstacle 用的是同一個 setHeadEyeLedLong(5, 9) helper (5=紫,
     // 9=最光, 見 applyObstacleIndicator() 個 comment)。
-    private volatile boolean chestMuteKeyLedOn = false;
+    // (2026-09: chestMuteKeyLedOn field 已刪 - 純寫入、從無讀取。注意同
+    // setChestMuteLed() 用的 chestMuteLedOn 係兩個 field，嗰個仲用緊。)
 
     private void registerChestMuteKeyTestListener() {
         EventBus.get().subscribe(new EventBus.Listener() {
@@ -1883,49 +2531,143 @@ public class MainActivity extends Activity implements SensorEventListener {
                 if (!line.contains("\"type\":\"chest_mute_key\"")) {
                     return;
                 }
-                // onEvent() 喺 main thread 行 (見 registerPirAlertListener() 同一句
-                // comment 嘅解釋) - AIDL LED call 搬去 background thread, 唔好用
-                // 主線程, 同專案一貫做法一致。
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        chestMuteKeyLedOn = !chestMuteKeyLedOn;
-                        try {
-                            if (chestMuteKeyLedOn) {
-                                setHeadEyeLedLong(5, 9); // 5 = 紫 (purple)
-                            } else {
-                                robot.header_stop5MicEarLED();
-                                robot.header_stop5MicEyeLED();
-                            }
-                        } catch (Throwable t) {
-                            Log.w(TAG, "registerChestMuteKeyTestListener: 5-mic head/eye LED path failed", t);
-                        }
-                    }
-                }).start();
+                // 2026-08-25: 之前這裡是紫燈測試 (head/eye 5-mic LED toggle), 現在
+                // 換成真正的 mute 燈 - 實機掃描確認 chest serial cmd=68 (0x44):
+                // data [01]=點亮, [00]=熄滅 (wire frame F8 8F 08 00 00 44 <d> <sum> ED,
+                // sum=(8+0x44+d)&0xFF)。onMuteKeyEvent(pressed) 由 RobotEventReceiver
+                // 在收到 -111 broadcast 的當下直接呼叫 (按下=true/放開=false),
+                // 這個 listener 只負責轉發事件給前端 Event Log。
             }
         });
     }
 
+    // -- 心口 mute 鍵 LED (chest cmd=68) ------------------------------------------
+    // 2026-08-25 新增: headboard v1.1 + 舊版 alpha2services 之下按 mute 鍵 MCU 不會
+    // 自己點燈, 我們在這裡補上: 按下一下 → toggle 燈 (亮=muted 視覺狀態), 放開不理。
+    private static final byte CHEST_MUTE_LED_CMD = 68; // 0x44, 實機掃描確認
+    private volatile boolean chestMuteLedOn = false;
+    // 2026-08-25 實機 log 發現每次按鍵送出去的全部是 68[00] - 也就是 press 事件重複
+    // 觸發導致 toggle 兩次又變回原狀。加 400ms 防抖: 太接近的第二次 press 當作同一次。
+    private static final long MUTE_PRESS_DEBOUNCE_MS = 400;
+    private final java.util.concurrent.atomic.AtomicLong lastMutePressMs =
+            new java.util.concurrent.atomic.AtomicLong(0);
+
+    /** RobotEventReceiver 收到胸口 mute 鍵 (-111) broadcast 時直接呼叫。
+     *  pressed=true (按下) 就 toggle mute LED; pressed=false (放開) 不理。 */
+    public static void onMuteKeyEvent(final boolean pressed) {
+        if (!pressed) {
+            return;
+        }
+        final MainActivity m = sInstance;
+        if (m == null) {
+            return;
+        }
+        m.toggleChestMuteLed();
+    }
+
+    private void toggleChestMuteLed() {
+        long now = android.os.SystemClock.elapsedRealtime();
+        long last = lastMutePressMs.get();
+        if (now - last < MUTE_PRESS_DEBOUNCE_MS) {
+            Log.d(TAG, "mute press debounced (gap " + (now - last) + "ms)");
+            return;
+        }
+        lastMutePressMs.set(now);
+        // 2026-08 v2: mute 鍵改做「小智開關」- 撳一下連線 (燈着 = 已連接),
+        // 再撳一下斷線 (燈熄)。LED 由實際連線事件驅動 (見 runXiaozhiActivationFlow()
+        // 個 connected hook / DisconnectListener / activation error hook), 呢度
+        // 按下當下的 send 只是即時的視覺反應, 之後會被真實狀態 hook 校正。
+        final boolean wasOpen = xiaozhiClient.isOpen();
+        padLedExecutor.execute(() -> {
+            if (wasOpen) {
+                // 斷線 - 和 handleXiaozhiApi 的 "disconnect" case 一致的清理順序。
+                xiaozhiAutoMode.set(false);
+                xiaozhiReconnectAttempts.set(0);
+                stopXiaozhiMic();
+                stopMouthLedForTts();
+                cancelHeadLedReassert();
+                cancelEyeLedReassert();
+                xiaozhiClient.disconnect();
+                Log.i(TAG, "mute key -> xiaozhi DISCONNECT");
+            } else {
+                // 連線 - 同 "connect" case 一致: 搶 activation gate, 背景行
+                // OTA/activation flow; 完成後 CONNECTED hook 會再確認 LED。
+                // 2026-08 v2 修正: 和小智 UI 那個開關看齊 - 開關的語意是「連線並
+                // 隨時語音對話」, 連線完成後 auto_mode 會立即 startXiaozhiMic()
+                // 取得 mic (見 runXiaozhiActivationFlow() 的 CONNECTED branch 和
+                // "auto_mode" case)。之前漏了 set auto_mode, 導致只連了線
+                // 卻沒拿到 mic, 這顆鍵等於沒用。
+                xiaozhiAutoMode.set(true);
+                if (xiaozhiActivationInFlight.compareAndSet(false, true)) {
+                    xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
+                    final String deviceId = getXiaozhiDeviceId();
+                    new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            runXiaozhiActivationFlow(deviceId);
+                        }
+                    }, "XiaozhiActivationThread").start();
+                    Log.i(TAG, "mute key -> xiaozhi CONNECT (activation started, auto_mode on)");
+                } else {
+                    Log.i(TAG, "mute key -> xiaozhi connect skipped (activation already in flight)");
+                }
+            }
+        });
+        setChestMuteLed(!wasOpen);
+    }
+
+    /** 設定 mute LED (小智連線指示) - 連發六次確保在 chest 匯流排壅塞的情況下也生效。 */
+    private void setChestMuteLed(final boolean on) {
+        chestMuteLedOn = on;
+        padLedExecutor.execute(() -> {
+            try {
+                for (int i = 0; i < 6; i++) {
+                    sendChestMuteLedImage(on);
+                    if (i < 5) {
+                        Thread.sleep(i == 0 ? 100 : (i < 3 ? 150 : 250));
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+    }
+
+    /** 砌 F8 8F 08 00 00 44 <data> <sum> ED 幀經 chest_sendRawData 送出。 */
+    private void sendChestMuteLedImage(boolean on) {
+        byte data = (byte) (on ? 1 : 0);
+        int sum = (8 + (CHEST_MUTE_LED_CMD & 0xFF) + (data & 0xFF)) & 0xFF;
+        byte[] frame = {(byte) 0xF8, (byte) 0x8F, 0x08, 0x00, 0x00,
+                CHEST_MUTE_LED_CMD, data, (byte) sum, (byte) 0xED};
+        try {
+            // pure-direct: 经 /dev/ttyS1 直发。
+            boolean sent = HardwareDirectManager.get(this).chest().sendRaw(frame);
+            Log.i(TAG, "mute LED " + (on ? "ON" : "OFF") + " -> " + directCode(sent).name());
+        } catch (Throwable t) {
+            Log.w(TAG, "sendChestMuteLedImage failed", t);
+        }
+    }
+
     // -- Alpha2 PIR 警示反應 (LED+鈴聲) ----------------------------------------------
-    // 2026-08-15 新增: 監聽獨立嘅 "alpha2_pir_state" event (見 RobotEventReceiver
-    // 個 CHEST_ACTION case 入面 alpha2_pir_state 嗰段 comment), 用 Alpha2 backend
-    // 嘅 LED API 觸發 LED/鈴聲。
+    // 2026-08-15 新增: 監聽獨立的 "alpha2_pir_state" event (見 RobotEventReceiver
+    // 的 CHEST_ACTION case 裡面 alpha2_pir_state 那段 comment), 用 Alpha2 backend
+    // 的 LED API 觸發 LED/鈴聲。
     //
-    // 真機已確認: PIR raw 事件 (chest cmd=-109, "PIR HUMON DETECT") 會正常觸發 (見
-    // logcat_2026-08-15_12-06-19.txt) - 呢部機 (1.1.7.3) 底層 chest MCU 硬件本身
-    // 識做 PIR, 淨係之前 1.1.7.3 呢個 Android apk 版本冇代碼處理呢個 case, 已喺
-    // RobotEventReceiver 補返。
+    // 實機已確認: PIR raw 事件 (chest cmd=-109, "PIR HUMON DETECT") 會正常觸發 (見
+    // logcat_2026-08-15_12-06-19.txt) - 這台機器 (1.1.7.3) 底層 chest MCU 硬體本身
+    // 能做 PIR, 只是之前 1.1.7.3 這個 Android apk 版本沒有程式碼處理這個 case, 已在
+    // RobotEventReceiver 補上。
     //
-    // LED 部分: 眼/頭 5-mic LED 長著紅燈 (setHeadEyeLedLong(1, 9)), 顏色代碼 1=紅,
-    // 已喺 "led/head/set" case 上面嗰段 comment 真機確認過 (color: 1=紅 2=綠 3=藍
+    // LED 部分: 眼/頭 5-mic LED 長亮紅燈 (setHeadEyeLedLong(1, 9)), 顏色代碼 1=紅,
+    // 已在 "led/head/set" case 上面那段 comment 經實機確認過 (color: 1=紅 2=綠 3=藍
     // 4=黃 5=紫 6=青 7=白)。
     //
-    // 2026-08-15 真機測試 (PIR sample test) 確認: 呢部機頭板嘅 5-mic head/eye LED
-    // 對 PIR 警示反應係有效嘅 (眼/頭會著紅燈), 唔似之前 applyObstacleIndicator()/
-    // registerChestMuteKeyTestListener() 撞到嘅情況 (header_ledSetHead5Mic/
-    // header_ledSetEye5Mic 全部 preset 都回 API_ERROR_FAILED) - 兩者用嘅係唔同
-    // AIDL 方法/參數組合, 唔可以直接假設「一個唔得全部都唔得」。所以 PIR 警示淨係
-    // 用呢一條路, 冇再加 mouth LED breathing 做 fallback, 咀唔使閃, 同鈴聲一齊
+    // 2026-08-15 實機測試 (PIR sample test) 確認: 這台機器頭板的 5-mic head/eye LED
+    // 對 PIR 警示反應是有效的 (眼/頭會亮紅燈), 不像之前 applyObstacleIndicator()/
+    // registerChestMuteKeyTestListener() 遇到的情況 (header_ledSetHead5Mic/
+    // header_ledSetEye5Mic 全部 preset 都回 API_ERROR_FAILED) - 兩者用的是不同
+    // AIDL 方法/參數組合, 不能直接假設「一個不行全部都不行」。所以 PIR 警示只
+    // 走這一條路, 沒有再加 mouth LED breathing 做 fallback, 嘴部不用閃, 和鈴聲一起
     // 淨係眼/頭長著紅燈。
 
     private volatile boolean alpha2PirAlertActive = false;
@@ -1944,8 +2686,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                 if (triggered == null) {
                     return;
                 }
-                // onEvent() 喺 main thread 行 - AIDL/JNI LED call 搬去 background
-                // thread, 唔好用主線程, 同專案一貫做法一致 (見
+                // onEvent() 在 main thread 執行 - AIDL/JNI LED call 搬到 background
+                // thread, 不要用主執行緒, 和專案一貫做法一致 (見
                 // registerPirAlertListener()/registerChestMuteKeyTestListener())。
                 new Thread(new Runnable() {
                     @Override
@@ -1961,7 +2703,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     void setPirAlertEnabledAlpha2(boolean enabled) {
         alpha2PirAlertEnabled = enabled;
         if (!enabled && alpha2PirAlertActive) {
-            // 中途關咗個開關都要即刻熄返而家亮緊嘅燈/停緊嘅聲, 唔止係唔再對之後嘅
+            // 中途關掉開關也要立即熄掉目前亮著的燈/停止正在播的聲音, 不只是不再對之後的
             // 事件有反應。
             new Thread(new Runnable() {
                 @Override
@@ -1974,43 +2716,43 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private synchronized void applyAlpha2PirLedAndSound(boolean triggered) {
         if (!alpha2PirAlertEnabled && triggered) {
-            return; // 開關閂咗 - 唔理新觸發 (但已經亮緊嗰個仍然可以經
-                     // setPirAlertEnabledAlpha2(false) 熄返)。
+            return; // 開關關閉 - 不理會新觸發 (但已經亮著的仍然可以經由
+                     // setPirAlertEnabledAlpha2(false) 熄掉)。
         }
         if (triggered == alpha2PirAlertActive) {
-            return; // 避免每次重複收到同一個狀態嘅事件都重新送一次 LED/聲, 同
-                     // onSonarDistanceReceived() 一致嘅做法。
+            return; // 避免每次重複收到同一個狀態的事件都重新送一次 LED/聲音, 和
+                     // onSonarDistanceReceived() 一致的做法。
         }
         alpha2PirAlertActive = triggered;
-        // 2026-08 新增: 用戶提出一個關鍵盲點 - 呢個 PIR 警示 (獨立網頁「PIR 測試」
-        // 開關 alpha2PirAlertEnabled 控制, 原意純粹俾用戶喺 web UI 度自己測試 PIR
-        // 感應器有冇反應) 同 XiaoZhi 常開對話期間嘅 self.robot.led_set_head/
-        // led_set_eye MCP tool, 兩者完全獨立、互不知情, 但用緊同一份 head/eye
-        // LED 硬件資源。如果兩者同時觸發, reassertHeadEyeLed() 嗰個持續補發
-        // thread 會不斷同呢度嘅 setHeadEyeLedLong()/header_stop5MicEarLED() 打
-        // 交, 令個 LED 睇落不斷閃/跳色, 就係用戶講嘅「頭LED 仍然同其他 code
-        // 相撞」嘅其中一種病灶 (另一種係 alpha2services 內部熄燈循環, 已經喺
-        // reassertHeadEyeLed() javadoc 處理)。呢度令 PIR 警示觸發／解除嗰刻都
-        // cancel 咗 XiaoZhi 嗰邊嘅持續補發, 等呢個「用戶主動開咗嘅 PIR 測試」
-        // 優先贏, 唔會兩份 code 同時不斷寫緊同一個硬件。
+        // 2026-08 新增: 用戶提出一個關鍵盲點 - 這個 PIR 警示 (獨立網頁「PIR 測試」
+        // 開關 alpha2PirAlertEnabled 控制, 原意純粹供用戶在 web UI 上自己測試 PIR
+        // 感應器有沒有反應) 和 XiaoZhi 常開對話期間的 self.robot.led_set_head/
+        // led_set_eye MCP tool, 兩者完全獨立、互不知情, 但用的是同一份 head/eye
+        // LED 硬體資源。如果兩者同時觸發, reassertHeadEyeLed() 那個持續補發的
+        // thread 會不斷和這裡的 setHeadEyeLedLong()/header_stop5MicEarLED() 互相
+        // 干擾, 導致 LED 看起來不斷閃爍/跳色, 這就是用戶說的「頭部 LED 仍然和其他 code
+        // 衝突」的其中一種病灶 (另一種是 alpha2services 內部熄燈循環, 已經在
+        // reassertHeadEyeLed() javadoc 處理)。這裡讓 PIR 警示觸發／解除的當下都
+        // 取消 XiaoZhi 那邊的持續補發, 讓這個「用戶主動開啟的 PIR 測試」
+        // 優先勝出, 不會兩份 code 同時不斷寫入同一個硬體。
         cancelHeadLedReassert();
         cancelEyeLedReassert();
         try {
             if (triggered) {
                 setHeadEyeLedLong(1, 9); // 1 = 紅 (red), 9 = 最光
             } else {
-                robot.header_stop5MicEarLED();
-                robot.header_stop5MicEyeLED();
+                DirectLedController.stopHead5Mic();
+                DirectLedController.stopEye5Mic();
             }
         } catch (Throwable t) {
-            // 2026-08-15 更新: 真機已確認呢部機頭板嘅 5-mic head/eye LED 對 PIR
-            // 警示反應有效 (眼/頭會著紅燈), 唔再需要 mouth LED 做 fallback -
+            // 2026-08-15 更新: 實機已確認這台機器頭板的 5-mic head/eye LED 對 PIR
+            // 警示反應有效 (眼/頭會亮紅燈), 不再需要 mouth LED 做 fallback -
             // 呢個 try/catch 純粹保留做保護, 防止呢句 AIDL call 出意外時累到成個
             // listener thread 死埋。
             Log.w(TAG, "applyAlpha2PirLedAndSound: 5-mic head/eye LED path failed", t);
         }
         if (triggered) {
-            playPirAlertCue(); // lazy-lookup 好嘅 "Heaven" 鈴聲, 見 playPirAlertCue()
+            playPirAlertCue(); // lazy-lookup 好的 "Heaven" 鈴聲, 見 playPirAlertCue()
         } else {
             stopRingtonePlayback();
         }
@@ -2045,30 +2787,30 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
 
-    /** 列出而家 androidTts 綁緊嗰個 engine 識嘅所有語言/國家變體, 由
-     *  speech/tts_languages endpoint 用 (揀咗 engine=android 先顯示語言揀擇)。
-     *  getVoices() (API 21+) 做主要來源, 得出空清單先跌落去
-     *  ACTION_CHECK_TTS_DATA legacy fallback - SVOX Pico 完全冇實作
+    /** 列出目前 androidTts 綁定的那個 engine 支援的所有語言/國家變體, 供
+     *  speech/tts_languages endpoint 使用 (選了 engine=android 才顯示語言選擇)。
+     *  getVoices() (API 21+) 做主要來源, 得到空清單才退回
+     *  ACTION_CHECK_TTS_DATA legacy fallback - SVOX Pico 完全沒有實作
      *  getVoices(), IPC 層直接 throw "NullPointerException: collection ==
-     *  null" (唔係回空 collection, 已經俾 try/catch 接住冇 crash, 但結果係空
-     *  清單), Google TTS 就用 getVoices() 攞到完整清單, 唔使行 legacy 呢條路。
+     *  null" (不是回傳空 collection, 已經用 try/catch 接住不會 crash, 但結果是空
+     *  清單), Google TTS 則用 getVoices() 取得完整清單, 不需要走 legacy 這條路。
      *
-     *  用 getVoices() 而唔係 ACTION_CHECK_TTS_DATA 做主要來源嘅原因: 呢部機冇
-     *  Google Play Store, Google TTS 嘅 ACTION_CHECK_TTS_DATA 淨係答到出廠
-     *  內建嗰一個國家變體 (中文得 zh-TW, 英文得 en-US) - getVoices() 直接問
-     *  engine 自己嘅完整 voice metadata, 唔受呢個限制。 */
+     *  用 getVoices() 而不是 ACTION_CHECK_TTS_DATA 做主要來源的原因: 這台機器沒有
+     *  Google Play Store, Google TTS 的 ACTION_CHECK_TTS_DATA 只能答出出廠
+     *  內建的那一個國家變體 (中文只有 zh-TW, 英文只有 en-US) - getVoices() 直接問
+     *  engine 自己完整的 voice metadata, 不受這個限制。 */
     private List<TtsLanguageOption> listAndroidTtsLanguages(Locale displayLocale) {
         List<TtsLanguageOption> viaVoices = checkTtsDataViaGetVoices(displayLocale);
         if (!viaVoices.isEmpty()) {
             return viaVoices;
         }
-        // getVoices() 得出嚟空清單 (engine 未 ready、throw 咗 exception 俾接住、
-        // 或者根本冇實作) - 唔好就咁畀個空清單用戶, 跌落去舊方法試多次。
+        // getVoices() 得到空清單 (engine 未 ready、丟出 exception 被接住、
+        // 或者根本沒實作) - 不要就這樣把空清單給用戶, 退回舊方法再試一次。
         return checkTtsDataSyncLegacy(displayLocale);
     }
 
-    /** 用 TextToSpeech.getVoices() 窮舉現時 androidTts 綁緊嗰個 engine 識嘅所有
-     *  voice/語言變體 - 見 listAndroidTtsLanguages() javadoc 解釋點解揀呢個
+    /** 用 TextToSpeech.getVoices() 窮舉目前 androidTts 綁定的那個 engine 支援的所有
+     *  voice/語言變體 - 見 listAndroidTtsLanguages() javadoc 解釋為何選這個
      *  API 做主要來源。 */
     private List<TtsLanguageOption> checkTtsDataViaGetVoices(Locale displayLocale) {
         if (androidTts == null) {
@@ -2078,8 +2820,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         try {
             voices = androidTts.getVoices();
         } catch (Exception e) {
-            // user-confirmed 有 OEM engine 會喺呢度 throw NPE/IllegalStateException
-            // 而唔係好地地回傳 null - 當冇資料處理, 跌返去 legacy 方法。
+            // user-confirmed 有 OEM engine 會在這裡 throw NPE/IllegalStateException
+            // 而不是正常回傳 null - 當作沒有資料處理, 退回 legacy 方法。
             Log.e(TAG, "androidTts.getVoices() failed", e);
             return new ArrayList<>();
         }
@@ -2111,8 +2853,8 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     /** Fires TextToSpeech.Engine.ACTION_CHECK_TTS_DATA at whichever engine androidTts
      *  is currently bound to, and blocks (with a timeout) for the result -同 Android
-     *  自己「文字轉語音輸出」設定畫面起「已安裝」清單用緊嗰個 intent 一樣。Result
-     *  extras 用 lang-COUNTRY-variant 3 個字母 ISO code (例如 "eng-USA"), 唔係
+     *  自己「文字轉語音輸出」設定畫面建立「已安裝」清單所用的 intent 一樣。Result
+     *  extras 用 lang-COUNTRY-variant 3 個字母 ISO code (例如 "eng-USA"), 不是
      *  BCP-47 - iso3ToIso1Language()/iso3ToIso1Country() 轉做 2 個字母先起
      *  Locale。 */
     private List<TtsLanguageOption> checkTtsDataSyncLegacy(Locale displayLocale) {
@@ -2129,15 +2871,15 @@ public class MainActivity extends Activity implements SensorEventListener {
         try {
             Intent checkIntent = new Intent();
             checkIntent.setAction(TextToSpeech.Engine.ACTION_CHECK_TTS_DATA);
-            checkIntent.setPackage(enginePkg); // 指定嗰個 engine, 唔係「隨便邊個應用程式贏咗就用邊個」
+            checkIntent.setPackage(enginePkg); // 指定該 engine, 不是「隨便哪個應用程式搶到就用哪個」
             startActivityForResult(checkIntent, TTS_DATA_CHECK_REQUEST_CODE);
         } catch (Exception e) {
             Log.e(TAG, "ACTION_CHECK_TTS_DATA launch failed for engine=" + enginePkg, e);
             return new ArrayList<>();
         }
         try {
-            // 3 秒對一個正常應該即時、冇網絡/磁碟 IO 嘅本機查詢嚟講已經好夠 - 過咗
-            // 仲未返就即係有嘢唔妥 (engine 冇回應), 應該回空清單俾 caller, 唔應該
+            // 3 秒對一個正常應該即時、不涉及網路/磁碟 IO 的本機查詢來說已經很夠 - 超過
+            // 還沒回應就代表有問題 (engine 沒有回應), 應該回傳空清單給 caller, 不應該
             // 令個 HTTP request 無限期卡住。
             if (!latch.await(3, TimeUnit.SECONDS)) {
                 Log.e(TAG, "ACTION_CHECK_TTS_DATA timed out for engine=" + enginePkg);
@@ -2154,37 +2896,37 @@ public class MainActivity extends Activity implements SensorEventListener {
         Map<String, TtsLanguageOption> options = new HashMap<>();
         for (String voice : raw) {
             // "eng" 或 "eng-USA" 或 "eng-USA-FEMALE" - 拆開, 淨係要 lang[-country],
-            // 拎走第 4 段開始嘅任何 variant 後綴 (唔係 Locale 嘅 country, 亦
-            // toLanguageTag() 冇任何位置擺任意 engine-specific variant 標籤)。
+            // 去除第 4 段開始的任何 variant 後綴 (不是 Locale 的 country, 也
+            // 不是 toLanguageTag() 任何位置會放置的 engine-specific variant 標籤)。
             String[] parts = voice.split("-");
             if (parts.length == 0 || parts[0].isEmpty()) continue;
-            // 兩段都係 ISO-639-2/ISO-3166-1 ALPHA-3 (3 個字母), 例如 "eng"/"USA" -
-            // user-confirmed 真機 bug: new Locale("eng").toLanguageTag() 唔會變返
-            // "en" 咁 (2 個字母個陣先會)。Locale 個 constructor 完全唔會將 3 個字母
-            // ISO code 轉做 2 個字母嘅對應版本 - 佢淨係將俾佢嘅字串照原樣存低,
-            // 所以 toLanguageTag() 之前會直接漏晒啲 raw 3 字母 code 出嚟 ("ara",
-            // "ben", "eng", ...), 而唔係啱嘅 BCP-47 tag。iso3ToIso1Language()/
-            // iso3ToIso1Country() 就做緊呢個轉換, 靠 Locale.getAvailableLocales()
-            // 反查, 因為 Locale 本身冇「3 個字母轉 2 個字母」嘅直接 API。
+            // 兩段都是 ISO-639-2/ISO-3166-1 ALPHA-3 (3 個字母), 例如 "eng"/"USA" -
+            // user-confirmed 實機 bug: new Locale("eng").toLanguageTag() 不會變回
+            // "en" 這樣 (只有 2 個字母時才會)。Locale 的 constructor 完全不會將 3 個字母
+            // 的 ISO code 轉成 2 個字母的對應版本 - 它只是把傳入的字串原樣存起來,
+            // 所以 toLanguageTag() 之前會直接漏出原始的 3 字母 code ("ara",
+            // "ben", "eng", ...), 而不是正確的 BCP-47 tag。iso3ToIso1Language()/
+            // iso3ToIso1Country() 就是在做這個轉換, 靠 Locale.getAvailableLocales()
+            // 反查, 因為 Locale 本身沒有「3 個字母轉 2 個字母」的直接 API。
             String lang2 = iso3ToIso1Language(parts[0]);
             if (lang2 == null) {
-                // 認唔到係一個有 2 個字母對應版本嘅 3 個字母 ISO-639-2 code -
-                // user-confirmed 真實 case: "yue" (粵語) 根本冇 ISO-639-1 2 個
-                // 字母 code, 所以 iso3ToIso1Language("yue") 合理咁回 null, 之前
-                // 呢度會直接 "continue" (跳過成個 entry), 靜雞雞漏咗粵語, 雖然
-                // Google TTS 真係裝咗 (logcat 見到 "Download of yue-hk started"/
-                // "Download yue-hk Success true")。BCP-47 (同 Java 嘅 Locale)
-                // 都接受 3 個字母嘅 primary language subtag 直接用 (IANA 嘅
-                // language subtag registry 本身有列 "yue" 做合法 primary
-                // subtag) - 所以跌返去用 3 個字母 code 原樣, 唔好拎走成個語言。
+                // 不是一個有 2 個字母對應版本的 3 個字母 ISO-639-2 code -
+                // user-confirmed 真實 case: "yue" (粵語) 根本沒有 ISO-639-1 2 個
+                // 字母 code, 所以 iso3ToIso1Language("yue") 合理地回傳 null, 之前
+                // 這裡會直接 "continue" (跳過整個 entry), 悄悄地漏掉了粵語, 雖然
+                // Google TTS 確實裝了 (logcat 看到 "Download of yue-hk started"/
+                // "Download yue-hk Success true")。BCP-47 (和 Java 的 Locale)
+                // 都接受 3 個字母的 primary language subtag 直接使用 (IANA 的
+                // language subtag registry 本身有列出 "yue" 作為合法 primary
+                // subtag) - 所以退回用 3 個字母 code 原樣, 不要去掉整個語言。
                 lang2 = parts[0];
             }
             String country2 = null;
             if (parts.length >= 2 && !parts[1].isEmpty()) {
                 country2 = iso3ToIso1Country(parts[1]);
                 if (country2 == null) {
-                    // 同上面語言果句一樣嘅道理 - 保留原本 3 個字母 country code
-                    // 好過拎走 (雖然唔係 ISO-3166-1 alpha-2, 但仍然有意義)。
+                    // 和上面語言那句一樣的道理 - 保留原本 3 個字母 country code
+                    // 比去掉好 (雖然不是 ISO-3166-1 alpha-2, 但仍然有意義)。
                     country2 = parts[1];
                 }
             }
@@ -2211,9 +2953,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     private static volatile Map<String, String> iso3CountryMap;
 
     /** Lazily builds (一次過, cache 落 static field) 一個由 ISO-639-2 3 個字母語言
-     *  code 去 ISO-639-1 2 個字母 code 嘅反查表, 因為 java.util.Locale 冇呢個方向
-     *  嘅直接 API - 淨係有正向嘅 Locale.getISO3Language() (由一個已經係 2 個字母
-     *  嘅 Locale 出發)。用 Locale.getAvailableLocales() (呢個 JVM 識嘅全部
+     *  code 到 ISO-639-1 2 個字母 code 的反查表, 因為 java.util.Locale 沒有這個方向
+     *  的直接 API - 只有正向的 Locale.getISO3Language() (由一個已經是 2 個字母
+     *  的 Locale 出發)。用 Locale.getAvailableLocales() (這個 JVM 支援的全部
      *  Locale) 起, 覆蓋範圍遠比手寫一個表齊全。 */
     private static String iso3ToIso1Language(String iso3) {
         Map<String, String> map = iso3LanguageMap;
@@ -2224,19 +2966,19 @@ public class MainActivity extends Activity implements SensorEventListener {
                 if (lang2.isEmpty()) continue;
                 try {
                     String lang3 = l.getISO3Language();
-                    // 用 containsKey()+put() 而唔係 putIfAbsent() - user-confirmed
+                    // 用 containsKey()+put() 而不是 putIfAbsent() - user-confirmed
                     // 真機 crash: 呢部機 Android 版本早過 API 24 (Nougat),
                     // Map.putIfAbsent() 係 default method, 淨係 API 24 開始先有
                     // (呢個 app 自己個 minSdkVersion 係 19) - call 落去會 throw
                     // NoSuchMethodError 令成個 app 死埋。containsKey()+put() 用
-                    // pre-Java-8/pre-API-24 都有嘅 Map method 做返一樣「keep the
-                    // first mapping seen」嘅效果。
+                    // pre-Java-8/pre-API-24 都支援的 Map method 做出同樣「keep the
+                    // first mapping seen」的效果。
                     if (lang3 != null && !lang3.isEmpty() && !map.containsKey(lang3)) {
                         map.put(lang3, lang2);
                     }
                 } catch (Exception ignored) {
-                    // 有部份 Locale 會喺呢度 throw MissingResourceException - 淨係
-                    // 代表嗰一個貢獻唔到映射, 唔係要中止起成個表嘅理由。
+                    // 有部分 Locale 會在這裡 throw MissingResourceException - 只是
+                    // 代表那一個貢獻不了映射, 不是要中止建立整個表的理由。
                 }
             }
             iso3LanguageMap = map;
@@ -2244,7 +2986,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         return map.get(iso3);
     }
 
-    /** 同 iso3ToIso1Language() 諗法一樣, 但係轉 ISO-3166-1 alpha-3 國家 code
+    /** 和 iso3ToIso1Language() 想法一樣, 但是轉 ISO-3166-1 alpha-3 國家 code
      *  (例如 "USA" -> "US")。 */
     private static String iso3ToIso1Country(String iso3) {
         Map<String, String> map = iso3CountryMap;
@@ -2255,7 +2997,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 if (country2.isEmpty()) continue;
                 try {
                     String country3 = l.getISO3Country();
-                    // 見上面 iso3ToIso1Language() 點解唔用 putIfAbsent()。
+                    // 見上面 iso3ToIso1Language() 為何不用 putIfAbsent()。
                     if (country3 != null && !country3.isEmpty() && !map.containsKey(country3)) {
                         map.put(country3, country2);
                     }
@@ -2267,8 +3009,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         return map.get(iso3);
     }
 
-    /** langTag 傳返俾 speak(text, langTag)/setLanguage(), displayName 係俾 UI 顯示
-     *  嘅名 - 喺 server 端經 Locale.getDisplayName() 起, 唔使前端自己維護一份
+    /** langTag 傳回給 speak(text, langTag)/setLanguage(), displayName 是提供給 UI 顯示
+     *  的名稱 - 在 server 端經由 Locale.getDisplayName() 建立, 不用讓前端自己維護一份
      *  tag->name 對照表。 */
     private static final class TtsLanguageOption {
         final String langTag;
@@ -2279,20 +3021,20 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    /** 列出機身裝咗嘅全部 Android TTS 引擎 package name (排咗序) - 由
-     *  speech/tts_engines endpoint 用, 等 speech tab 嘅 Android 選項可以揀邊個
-     *  引擎講。用一個 throwaway TextToSpeech instance 攞呢個裝置層面嘅清單,
-     *  唔綁住現正用緊嗰個 androidTts field - getEngines() 本身唔係
-     *  engine-specific, 唔使等 androidTtsReady 先可以問, 用返 live 嘅
-     *  androidTts 反而有機會攞到「舊 engine 嗰陣捕捉低」嘅過時清單。 */
+    /** 列出機身已安裝的全部 Android TTS 引擎 package name (已排序) - 供
+     *  speech/tts_engines endpoint 使用, 讓 speech tab 的 Android 選項可以選擇哪個
+     *  引擎發音。用一個 throwaway TextToSpeech instance 取得這個裝置層面的清單,
+     *  不綁定目前使用中的 androidTts field - getEngines() 本身不是
+     *  engine-specific, 不用等 androidTtsReady 才能查詢, 用 live 的
+     *  androidTts 反而有可能取得「舊 engine 時捕捉到」的過時清單。 */
     private List<String> listAndroidTtsEngines() {
         List<String> result = new ArrayList<>();
         TextToSpeech probe = null;
         try {
             final CountDownLatch initLatch = new CountDownLatch(1);
             probe = new TextToSpeech(this, status -> initLatch.countDown());
-            // getEngines() 本身唔需要 init 完成 (唔係 engine-specific), 但等一下
-            // 避免同 constructor 自己嗰個 async setup 撞頭 (部份 OEM engine 見過)。
+            // getEngines() 本身不需要 init 完成 (不是 engine-specific), 但稍等一下
+            // 避免和 constructor 自己的 async setup 互相衝突 (部分 OEM engine 見過)。
             try {
                 initLatch.await(500, TimeUnit.MILLISECONDS);
             } catch (InterruptedException ie) {
@@ -2388,28 +3130,62 @@ public class MainActivity extends Activity implements SensorEventListener {
             @Override
             public void onDone(String utteranceId) {
                 stopMouthLedForTts();
-                // 同 robot-side TTS 嘅 onServerPlayEnd 一致, publish tts_end
-                // 俾前端知道呢句讀完 - 小智 tab 揀咗本地引擎嗰陣靠呢個 event
+                // 和 robot-side TTS 的 onServerPlayEnd 一致, publish tts_end
+                // 讓前端知道這句讀完了 - 小智 tab 選了本地引擎的時候靠這個 event
                 // 排隊讀多句回覆 (見 xiaozhiTtsQueue 相關 comment)。isEnd 固定
-                // true, Android TTS 冇對應 onServerPlayEnd 個 isEnd 語義, 呢度
-                // 冇對應嘅 false case。
+                // true, Android TTS 沒有對應 onServerPlayEnd 的 isEnd 語意, 這裡
+                // 沒有對應的 false case。
                 EventBus.get().publish("tts_end", "{\"isEnd\":true}");
             }
 
             @Override
             public void onError(String utteranceId) {
                 stopMouthLedForTts();
-                // 出錯都要 publish, 唔係前端個 queue 會卡死喺度等一個永遠唔會嚟
-                // 嘅 tts_end, 之後全部排緊隊嘅句子都讀唔到。
+                // 出錯也要 publish, 不然前端的 queue 會卡在那裡等一個永遠不會來
+                // 的 tts_end, 之後所有排隊的句子都讀不到。
                 EventBus.get().publish("tts_end", "{\"isEnd\":true}");
             }
         });
         androidTts = created;
     }
 
-    /** 接住 checkTtsDataSyncLegacy() 發出嘅 ACTION_CHECK_TTS_DATA 結果。淨係
-     *  處理呢個 app 自己識嘅 requestCode, 其他一律交返俾 super (雖然目前呢個
-     *  app 冇第二個地方用 startActivityForResult(), 但呢個係基本禮貌, 唔應該
+    /**
+     * 2026-09 新增: 經 Android 內置 TTS 讀一句 (供語意配對答案等唔經 speech/tts
+     * endpoint 的內部調用)。同 speech/tts engine=android 分支同一個語義:
+     * 嘗試切 locale (唔支援就記 warning 照用引擎現有語言讀, 唔靜音),
+     * QUEUE_FLUSH 單句播放。嘴 LED 由 UtteranceProgressListener 負責熄,
+     * 呼叫方開始前點亮、失敗時自己熄即可。
+     * @return true = 已送去播放, false = Android TTS 未 ready (呼叫方要自己熄燈)
+     */
+    private boolean speakAndroidTts(String text, java.util.Locale locale) {
+        TextToSpeech tts = androidTts;
+        if (tts == null || !androidTtsReady || text == null || text.isEmpty()) {
+            Log.w(TAG, "speakAndroidTts: Android TTS not ready, drop: " + text);
+            return false;
+        }
+        if (locale != null) {
+            try {
+                int r = tts.setLanguage(locale);
+                if (r < TextToSpeech.LANG_AVAILABLE) {
+                    Log.w(TAG, "speakAndroidTts: locale " + locale.toLanguageTag()
+                            + " not supported, speak with current language instead");
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "speakAndroidTts setLanguage failed", e);
+            }
+        }
+        try {
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "semantic_tts");
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "speakAndroidTts speak failed", e);
+            return false;
+        }
+    }
+
+    /** 接住 checkTtsDataSyncLegacy() 發出的 ACTION_CHECK_TTS_DATA 結果。只
+     *  處理這個 app 自己認得的 requestCode, 其他一律交回給 super (雖然目前這個
+     *  app 沒有其他地方用 startActivityForResult(), 但這是基本禮貌, 不應該
      *  吞晒所有 requestCode)。 */
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -2446,18 +3222,22 @@ public class MainActivity extends Activity implements SensorEventListener {
         if (gestureListener != null) {
             EventBus.get().unsubscribe(gestureListener);
         }
+        try { headKeyPoller.stop(); } catch (Throwable ignored) {}
+        if (localServices != null) {
+            try { localServices.stop(); } catch (Throwable ignored) {}
+        }
         if (xiaozhiClient != null) {
             // 2026-08 修 crash: 之前呢度直接 (同步) call disconnect(), 但
-            // disconnect() 內部而家會做 sendCloseFrame() (socket write, 完成
-            // WebSocket close handshake, 見 XiaozhiClient 個 case 0x8 嘅
-            // comment)。onDestroy() 保證喺 main thread 執行, Android 對 main
-            // thread 做網絡 I/O 嘅限制唔會因為「呢個 write 好快」就豁免 - 真機
-            // 證實會擲 NetworkOnMainThreadException, 令 onDestroy() 本身拋
-            // uncaught exception, 導致成個 activity destroy 失敗、app crash
+            // disconnect() 內部現在會做 sendCloseFrame() (socket write, 完成
+            // WebSocket close handshake, 見 XiaozhiClient 的 case 0x8 的
+            // comment)。onDestroy() 保證在 main thread 執行, Android 對 main
+            // thread 做網路 I/O 的限制不會因為「這個 write 很快」就豁免 - 實機
+            // 證實會拋出 NetworkOnMainThreadException, 導致 onDestroy() 本身拋出
+            // uncaught exception, 造成整個 activity destroy 失敗、app crash
             // (見 logcat FATAL EXCEPTION: main / "Unable to destroy activity")。
-            // 呢度將 disconnect() 挪去背景 thread 行 - onDestroy() 唔使等佢做完
-            // (fire-and-forget, app 反正就嚟收工, close frame 送唔送到都唔影響
-            // 用戶體驗), 淨係要避免喺 main thread 直接觸發網絡 write。
+            // 這裡將 disconnect() 移到背景 thread 執行 - onDestroy() 不用等它做完
+            // (fire-and-forget, app 反正就要結束了, close frame 送不送得到都不影響
+            // 用戶體驗), 只需要避免在 main thread 直接觸發網路 write。
             final XiaozhiClient clientToClose = xiaozhiClient;
             new Thread(new Runnable() {
                 @Override
@@ -2485,20 +3265,113 @@ public class MainActivity extends Activity implements SensorEventListener {
             } catch (IllegalArgumentException ignored) {
             }
         }
+        if (wifiLedReceiver != null) {
+            try {
+                unregisterReceiver(wifiLedReceiver);
+                wifiLedReceiver = null;
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        if (panelUrlReceiver != null) {
+            try {
+                unregisterReceiver(panelUrlReceiver);
+                panelUrlReceiver = null;
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        try {
+            unregisterReceiver(connectivityReceiver);
+        } catch (IllegalArgumentException ignored) {
+        }
+        if (offlineWatchdogThread != null) {
+            offlineWatchdogThread.quitSafely();
+            offlineWatchdogThread = null;
+        }
         cameraController.shutdown();
         audioController.shutdown();
         audioPlaybackController.shutdown();
+        // padLedExecutor 之前建立了 (applyWifiLed*/PIR/mute 等呼叫用到) 卻從未在
+        // onDestroy() 釋放 - single-thread executor 的 core thread 不會自己結束,
+        // 補上跟其他 controller.shutdown() 一致的清理。
+        padLedExecutor.shutdownNow();
         stopRingtonePlayback();
+        // 2026-08 新增: 之前這裡沒有呼叫 stopLocalMusicPlayback()/stopRadioPlayback() -
+        // onDestroy() 就算執行了也不會釋放正在播放的 currentMusicPlayer/currentRadioPlayer,
+        // 一直以來都是個 leak (MediaPlayer native resource 沒有 release())。加入
+        // Equalizer (musicEqualizer, 跟隨 currentMusicPlayer 的生命週期) 之後這個
+        // 缺口更需要補上: Equalizer 綁定的 audio session 如果連 app 結束都不釋放,
+        // 留下的 native effect engine 資源就更難追蹤。沿用 stopRingtonePlayback()
+        // 一樣的做法, 在這裡一併全部停止。
+        stopLocalMusicPlayback();
+        stopRadioPlayback();
     }
 
     private String getWifiIp() {
         try {
             WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
             int ipInt = wm.getConnectionInfo().getIpAddress();
-            return Formatter.formatIpAddress(ipInt);
+            String wifiIp = Formatter.formatIpAddress(ipInt);
+            if (wifiIp != null && !wifiIp.equals("0.0.0.0") && !wifiIp.isEmpty()) {
+                return wifiIp;
+            }
+            // 热点 AP 模式或未連接作 STA 時，WifiManager 回 0.0.0.0；改列舉網卡找 site-local
+            try {
+                java.util.Enumeration<java.net.NetworkInterface> en = java.net.NetworkInterface.getNetworkInterfaces();
+                while (en != null && en.hasMoreElements()) {
+                    java.net.NetworkInterface intf = en.nextElement();
+                    java.util.Enumeration<java.net.InetAddress> addrs = intf.getInetAddresses();
+                    while (addrs.hasMoreElements()) {
+                        java.net.InetAddress addr = addrs.nextElement();
+                        if (!addr.isLoopbackAddress() && addr instanceof java.net.Inet4Address) {
+                            String host = addr.getHostAddress();
+                            if (host != null && (host.startsWith("192.168.") || host.startsWith("10."))) {
+                                return host;
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+            return wifiIp != null ? wifiIp : "<device-ip>";
         } catch (Exception e) {
             return "<device-ip>";
         }
+    }
+
+    private void updatePanelUrlDisplay() {
+        final String newIp = getWifiIp();
+        final String newUrl = "http://" + newIp + ":" + HttpServer.PORT + "/";
+        currentPanelUrl = newUrl;
+        if (panelLinkView != null) {
+            runOnUiThread(new Runnable() {
+                @Override public void run() {
+                    panelLinkView.setText(newUrl);
+                }
+            });
+        }
+        Log.i(TAG, "Panel URL updated to " + newUrl + " (ip=" + newIp + ")");
+    }
+
+    private void registerPanelUrlReceiver() {
+        panelUrlReceiver = new BroadcastReceiver() {
+            @Override public void onReceive(Context context, Intent intent) {
+                String action = intent != null ? intent.getAction() : "";
+                if (WifiManager.NETWORK_STATE_CHANGED_ACTION.equals(action)
+                        || WifiManager.WIFI_STATE_CHANGED_ACTION.equals(action)
+                        || android.net.ConnectivityManager.CONNECTIVITY_ACTION.equals(action)
+                        || "android.net.wifi.WIFI_AP_STATE_CHANGED".equals(action)) {
+                    // 延時 500ms 等 DHCP 完成取到新 IP
+                    mainHandler.postDelayed(new Runnable() {
+                        @Override public void run() { updatePanelUrlDisplay(); }
+                    }, 700);
+                }
+            }
+        };
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+        filter.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
+        filter.addAction(android.net.ConnectivityManager.CONNECTIVITY_ACTION);
+        filter.addAction("android.net.wifi.WIFI_AP_STATE_CHANGED");
+        registerReceiver(panelUrlReceiver, filter);
     }
 
     // -- API dispatch ----------------------------------------------------------------
@@ -2515,9 +3388,211 @@ public class MainActivity extends Activity implements SensorEventListener {
      */
     private HttpServer.ApiResponse handleSystemApi(String path, Map<String, String> query, String method, String body) {
         switch (path) {
+            // ---------------- 本地音樂播放 ----------------
+            // "/api/system/music/..." - 播放機身 SD 卡裡面 (/sdcard/Music 等) 已有的
+            // 音樂檔, 經由 MusicController (standard android.media.MediaPlayer,
+            // STREAM_MUSIC 由機器人喇叭輸出) 播放, 和 AIDL 機器人 API 完全無關,
+            // 所以放在 system 這個 namespace 底下, 和 camera/audio-testtone 那類
+            // 純硬體功能看齊。
+
+            case "music/list": {
+                java.util.List<MusicController.Track> tracks = musicController.listTracks();
+                StringBuilder sb = new StringBuilder();
+                sb.append("{\"ok\":true,\"tracks\":[");
+                for (int i = 0; i < tracks.size(); i++) {
+                    if (i > 0) sb.append(",");
+                    MusicController.Track t = tracks.get(i);
+                    sb.append("{\"path\":\"").append(jsonSafe(t.path)).append("\",")
+                      .append("\"name\":\"").append(jsonSafe(t.name)).append("\",")
+                      .append("\"sizeBytes\":").append(t.sizeBytes).append("}");
+                }
+                sb.append("]}");
+                return HttpServer.ApiResponse.ok(sb.toString());
+            }
+
+            case "music/play": {
+                String p = query.get("path");
+                String err = musicController.play(p);
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "music/pause": {
+                String err = musicController.pause();
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "music/resume": {
+                String err = musicController.resume();
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "music/stop": {
+                String err = musicController.stop();
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "music/seek": {
+                String msStr = query.get("ms");
+                int ms;
+                try {
+                    ms = Integer.parseInt(msStr);
+                } catch (Exception e) {
+                    return HttpServer.ApiResponse.error("ms must be an integer");
+                }
+                String err = musicController.seekTo(ms);
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "music/volume": {
+                String pctStr = query.get("percent");
+                int pct;
+                try {
+                    pct = Integer.parseInt(pctStr);
+                } catch (Exception e) {
+                    return HttpServer.ApiResponse.error("percent must be an integer");
+                }
+                String err = musicController.setVolume(pct);
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "music/status": {
+                MusicController.Status s = musicController.status();
+                return HttpServer.ApiResponse.ok("{\"ok\":true,"
+                        + "\"hasTrack\":" + s.hasTrack + ","
+                        + "\"playing\":" + s.playing + ","
+                        + "\"prepared\":" + s.prepared + ","
+                        + "\"path\":" + (s.path != null ? "\"" + jsonSafe(s.path) + "\"" : "null") + ","
+                        + "\"positionMs\":" + s.positionMs + ","
+                        + "\"durationMs\":" + s.durationMs + "}");
+            }
+
             default:
                 return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
                         "{\"ok\":false,\"error\":\"unknown system endpoint: " + path + "\"}");
+        }
+    }
+
+    private HttpServer.ApiResponse handleDirectApi(String path, Map<String, String> query, String method, String body) {
+        if (localServices == null) {
+            return HttpServer.ApiResponse.error("direct not initialized");
+        }
+        switch (path) {
+            case "status": {
+                boolean direct = localServices.isDirectActive();
+                boolean chest = false, head = false;
+                try { chest = localServices.isDirectActive() && com.ubtechinc.alpha.hardware.HardwareDirectManager.get(this).chest().isAvailable(); } catch (Exception ignore) {}
+                try { head = com.ubtechinc.alpha.hardware.HardwareDirectManager.get(this).head().isAvailable(); } catch (Exception ignore) {}
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"direct\":" + direct + ",\"chest\":" + chest + ",\"head\":" + head + "}");
+            }
+            case "servo/one": {
+                String idStr = query.get("id"), angleStr = query.get("angle"), timeStr = query.get("time");
+                if (idStr == null || angleStr == null) return HttpServer.ApiResponse.error("id and angle required");
+                try {
+                    byte id = (byte) Integer.parseInt(idStr);
+                    int angle = Integer.parseInt(angleStr);
+                    short time = (short) (timeStr != null ? Integer.parseInt(timeStr) : 500);
+                    boolean ok = localServices.chestSetSingle(id, angle, time);
+                    if (!ok) return HttpServer.ApiResponse.error("direct not ready or send failed (need /dev/ttyS1 permission)");
+                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + id + ",\"angle\":" + angle + "}");
+                } catch (Exception e) { return HttpServer.ApiResponse.error(e.getMessage()); }
+            }
+            case "servo/all": {
+                String angles = query.get("angles"); // comma separated 20 ints
+                String timeStr = query.get("time");
+                if (angles == null) return HttpServer.ApiResponse.error("angles=1,2,3...20 required");
+                try {
+                    String[] parts = angles.split(",");
+                    if (parts.length != 20) return HttpServer.ApiResponse.error("need 20 angles");
+                    int[] arr = new int[20];
+                    for (int i=0;i<20;i++) arr[i] = Integer.parseInt(parts[i].trim());
+                    short time = (short) (timeStr != null ? Integer.parseInt(timeStr) : 500);
+                    boolean ok = localServices.chestSetAll(arr, time);
+                    if (!ok) return HttpServer.ApiResponse.error("direct not ready");
+                    return HttpServer.ApiResponse.ok("{\"ok\":true}");
+                } catch (Exception e) { return HttpServer.ApiResponse.error(e.getMessage()); }
+            }
+            case "sonar/config": {
+                String d = query.get("distance");
+                if (d == null) return HttpServer.ApiResponse.error("distance required");
+                try {
+                    int cm = Integer.parseInt(d);
+                    boolean ok = com.ubtechinc.alpha.hardware.HardwareDirectManager.get(this).chest().configureSonar(cm);
+                    return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+                } catch (Exception e) { return HttpServer.ApiResponse.error(e.getMessage()); }
+            }
+            case "led/head": {
+                String c = query.get("color"), m = query.get("mode");
+                int color = c != null ? Integer.parseInt(c) : 3;
+                int mode = m != null ? Integer.parseInt(m) : 0;
+                boolean ok = localServices.ledHead(color);
+                // also try direct with mode
+                if (m != null) ok = com.ubtechinc.alpha.hardware.DirectLedController.setHead5Mic(color, 9, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, mode);
+                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+            }
+            case "led/off": {
+                boolean ok = localServices.ledOff();
+                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+            }
+            case "led/mouth": {
+                String s = query.get("breathe");
+                int sp = s != null ? Integer.parseInt(s) : 500;
+                boolean ok = localServices.ledMouthBreathe(sp);
+                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+            }
+            case "ubx/list": {
+                java.io.File dir = new java.io.File("/sdcard/actions");
+                String[] names = dir.list();
+                if (names == null) return HttpServer.ApiResponse.error("no /sdcard/actions");
+                StringBuilder sb = new StringBuilder("{\"ok\":true,\"files\":[");
+                boolean first = true;
+                for (String n : names) {
+                    java.io.File f = new java.io.File(dir, n);
+                    if (!f.isFile()) continue;
+                    if (!first) sb.append(',');
+                    first = false;
+                    sb.append("{\"name\":\"").append(jsonSafe(n)).append("\",\"size\":").append(f.length()).append('}');
+                }
+                sb.append("]}");
+                return HttpServer.ApiResponse.ok(sb.toString());
+            }
+            case "ubx/play": {
+                String name = query.get("name");
+                String p = query.get("path");
+                java.io.File f;
+                if (p != null) f = new java.io.File(p);
+                else if (name != null) f = new java.io.File("/sdcard/actions/" + name);
+                else return HttpServer.ApiResponse.error("name or path required");
+                if (!f.isFile()) return HttpServer.ApiResponse.error("not found: " + f.getPath());
+                if (ubxPlayer.isPlaying()) return HttpServer.ApiResponse.error("already playing (stop first)");
+                HardwareDirectManager dm = HardwareDirectManager.get(this);
+                if (!dm.chest().isAvailable()) return HttpServer.ApiResponse.error("chest not available");
+                UbxFile ubx;
+                try {
+                    ubx = UbxParser.parseFile(f);
+                } catch (Exception e) {
+                    return HttpServer.ApiResponse.error("parse failed: " + e.getMessage());
+                }
+                boolean started = ubxPlayer.play(ubx, f.getName(), dm.chest());
+                if (!started) return HttpServer.ApiResponse.error("cannot start: " + ubxPlayer.lastError());
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"name\":\"" + jsonSafe(f.getName())
+                        + "\",\"total\":" + ubxPlayer.total() + "}");
+            }
+            case "ubx/stop": {
+                ubxPlayer.stop();
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+            case "ubx/status": {
+                return HttpServer.ApiResponse.ok(ubxPlayer.statusJson());
+            }
+            default:
+                return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
+                        "{\"ok\":false,\"error\":\"unknown direct endpoint: " + path + "\"}");
         }
     }
 
@@ -2576,13 +3651,13 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
 
             case "ota_config/set": {
-                // 2026-08 修正: 之前呢度嘅 comment 講「主流自架 server 淨係要 OTA
-                // URL, websocket url/token 由 OTA response 夾埋送返嚟, 唔開放獨立
-                // 欄位」- 但實測發現唔係全部自架方案都跟足呢個協議形狀返足夠資訊,
-                // 用戶手上嘅 server 需要手動填 websocket 地址、MAC/Device-Id、
-                // token 先連得到。依家呢三個都開放做可選 override: 留空就繼續行
-                // 返原本「淨係 OTA URL, 其餘自動」嗰條路; 有填就用嚟蓋走
-                // runXiaozhiActivationFlow() 入面對應嘅自動值 (見嗰邊 comment)。
+                // 2026-08 修正: 之前這裡的 comment 說「主流自架 server 只需要 OTA
+                // URL, websocket url/token 由 OTA response 一併送回, 不開放獨立
+                // 欄位」- 但實測發現不是所有自架方案都能依照這個協議形狀傳回足夠資訊,
+                // 用戶手上的 server 需要手動填寫 websocket 地址、MAC/Device-Id、
+                // token 才連得上。現在這三個都開放做可選 override: 留空就繼續走
+                // 原本「只有 OTA URL, 其餘自動」那條路; 有填就用來覆蓋
+                // runXiaozhiActivationFlow() 裡對應的自動值 (見該處 comment)。
                 boolean enabled = "true".equals(query.get("enabled"));
                 String url = query.get("url");
                 String wsUrlOverride = query.get("wsUrl");
@@ -2622,24 +3697,24 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
 
-            // 2026-08 新增: MCP 設定 card 用嘅三個 endpoint。
+            // 2026-08 新增: MCP 設定 card 用的三個 endpoint。
             //
-            // mcp_tools/list 回傳全部 tool (連同已 disable 嗰啲, 等用戶撳返個掣
-            // enable), 夾埋每個 tool 目前嘅 enabled 狀態。同官方 xiaozhi.me console
-            // 側「MCP接入點」係完全唔同嘅嘢 (嗰個係俾第三方外部工具反過嚟連入小智
-            // 用嘅獨立 websocket 端口, 同呢部機自己內建、經 xiaozhiMcpBridge() 暴露
-            // 俾遠端 LLM 嘅 tool 冇關係, 唔應該撈埋一齊)。
+            // mcp_tools/list 回傳全部 tool (含已 disable 的, 讓用戶可以按按鈕重新
+            // enable), 一併附上每個 tool 目前的 enabled 狀態。和官方 xiaozhi.me console
+            // 那邊的「MCP接入點」是完全不同的東西 (那個是給第三方外部工具反過來連進小智
+            // 使用的獨立 websocket 端口, 和這台機器自己內建、經由 xiaozhiMcpBridge() 暴露
+            // 給遠端 LLM 的 tool 無關, 不應該混為一談)。
             //
-            // mcp_config/get 攞總開關同逐個 tool 嘅 enabled 狀態; mcp_config/set
-            // 寫返總開關或者單一 tool 嘅 enabled 狀態 - listTools()/callTool()
-            // (見 xiaozhiMcpBridge()) 會即時反映呢度嘅改動, 唔使重連 XiaoZhi。
+            // mcp_config/get 取得總開關和逐一 tool 的 enabled 狀態; mcp_config/set
+            // 寫入總開關或單一 tool 的 enabled 狀態 - listTools()/callTool()
+            // (見 xiaozhiMcpBridge()) 會即時反映這裡的改動, 不用重新連線 XiaoZhi。
             case "mcp_tools/list": {
                 org.json.JSONArray fullList = lastFullMcpToolList;
                 if (fullList == null) {
                     // 未連過 XiaoZhi/未收過任何 tools/list request - 個 card 應該
-                    // 喺用戶未連接之前都睇到有咩 tool 可以 enable/disable, 所以
-                    // 呢度逼一次 listTools() 起返份清單 (side effect 會存低落
-                    // lastFullMcpToolList, 下次唔使再逼)。
+                    // 讓用戶在還沒連線之前也能看到有哪些 tool 可以 enable/disable, 所以
+                    // 這裡強制執行一次 listTools() 建立清單 (side effect 會存到
+                    // lastFullMcpToolList, 下次不用再強制)。
                     try {
                         xiaozhiMcpBridge().listTools();
                     } catch (org.json.JSONException e) {
@@ -2657,6 +3732,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                         toolsWithState.put(withState);
                     }
                     org.json.JSONObject result = new org.json.JSONObject();
+                    result.put("ok", true);
                     result.put("tools", toolsWithState);
                     result.put("mcpEnabled", isMcpEnabled());
                     return HttpServer.ApiResponse.ok(result.toString());
@@ -2681,7 +3757,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
 
             case "mcp_config/set": {
-                // 兩種用法, 睇 query 帶咩參數:
+                // 兩種用法, 依 query 帶的參數而定:
                 //   ?enabled=true|false                  -> 設總開關
                 //   ?tool=<name>&enabled=true|false       -> 設單一 tool
                 String toolName = query.get("tool");
@@ -2708,19 +3784,18 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
 
-            // 見 xiaozhiTtsEngine field 嘅 javadoc。engine 值: "xiaozhi" (預設,
-            // server 送 opus 播放) | "iflytek" | "nuance" | "android" (三者皆
-            // 改用本地 speech/tts 讀出, 靜音 opus)。
+            // 見 xiaozhiTtsEngine field 的 javadoc。engine 值: "xiaozhi" (預設,
+            // server 送 opus 播放) | "android" (靜音 opus, 改用本地 Android TTS
+            // 讀出)。2026-09: "iflytek"/"nuance" 已移除, 直接拒收。
             case "tts_config/get":
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"engine\":\""
                         + jsonSafe(xiaozhiTtsEngine) + "\"}");
 
             case "tts_config/set": {
-                String engine = require(query, "engine");
-                if (!"xiaozhi".equals(engine) && !"iflytek".equals(engine)
-                        && !"nuance".equals(engine) && !"android".equals(engine)) {
+                String engine = ApiValidator.require(query, "engine");
+                if (!"xiaozhi".equals(engine) && !"android".equals(engine)) {
                     return HttpServer.ApiResponse.error(
-                            "engine must be one of: xiaozhi, iflytek, nuance, android");
+                            "engine must be one of: xiaozhi, android (iflytek/nuance removed - no such engine on device)");
                 }
                 xiaozhiTtsEngine = engine;
                 getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
@@ -2733,11 +3808,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 if (xiaozhiClient.isOpen()) {
                     return HttpServer.ApiResponse.error("already connected - call xiaozhi/disconnect first");
                 }
-                XiaozhiActivationStatus current = xiaozhiActivationStatus.get();
-                if (current.stage == XiaozhiActivationStatus.Stage.CHECKING
-                        || current.stage == XiaozhiActivationStatus.Stage.AWAITING_CODE
-                        || current.stage == XiaozhiActivationStatus.Stage.POLLING
-                        || current.stage == XiaozhiActivationStatus.Stage.CONNECTING) {
+                if (!xiaozhiActivationInFlight.compareAndSet(false, true)) {
                     return HttpServer.ApiResponse.error("activation already in progress - check xiaozhi/activation_status");
                 }
                 // PHASE 3: the OTA/device-activation handshake (see XiaozhiOtaClient's
@@ -2778,9 +3849,11 @@ public class MainActivity extends Activity implements SensorEventListener {
                 xiaozhiReconnectAttempts.set(0);
                 stopXiaozhiMic();
                 stopMouthLedForTts();
-                cancelHeadLedReassert(); // 斷開連線就冇必要再持續補發 head/eye LED, 收工
+                cancelHeadLedReassert(); // 斷開連線就沒必要再持續補發 head/eye LED, 結束
                 cancelEyeLedReassert();
                 xiaozhiClient.disconnect();
+                // 2026-08 v2: mute 鍵 LED = 小智連線指示燈 - web UI 斷線都要熄燈。
+                setChestMuteLed(false);
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
 
             case "mic/start":
@@ -2792,7 +3865,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
 
             case "auto_mode": {
-                String enabledStr = require(query, "enabled");
+                String enabledStr = ApiValidator.require(query, "enabled");
                 boolean enabled = "true".equalsIgnoreCase(enabledStr) || "1".equals(enabledStr);
                 xiaozhiAutoMode.set(enabled);
                 if (enabled) {
@@ -2802,12 +3875,12 @@ public class MainActivity extends Activity implements SensorEventListener {
                     // (see runXiaozhiActivationFlow()'s CONNECTED branch) rather than
                     // racing it here.
                     if (!xiaozhiClient.isOpen()) {
-                        XiaozhiActivationStatus current = xiaozhiActivationStatus.get();
-                        boolean activationInFlight = current.stage == XiaozhiActivationStatus.Stage.CHECKING
-                                || current.stage == XiaozhiActivationStatus.Stage.AWAITING_CODE
-                                || current.stage == XiaozhiActivationStatus.Stage.POLLING
-                                || current.stage == XiaozhiActivationStatus.Stage.CONNECTING;
-                        if (!activationInFlight) {
+                        // 見 xiaozhiActivationInFlight field javadoc: 用
+                        // compareAndSet 原子操作來判斷並保留這個 gate, 不再依靠
+                        // xiaozhiActivationStatus 的 stage (判斷和啟動 thread 之間
+                        // 有時間差, 會漏掉另一條 thread 剛啟動但還沒來得及 set stage
+                        // 的那個窗口期)。
+                        if (xiaozhiActivationInFlight.compareAndSet(false, true)) {
                             xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
                             final String deviceId = getXiaozhiDeviceId();
                             new Thread(new Runnable() {
@@ -2827,7 +3900,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
 
             case "send_text": {
-                String text = require(query, "text");
+                String text = ApiValidator.require(query, "text");
                 if (!xiaozhiClient.isOpen()) {
                     return HttpServer.ApiResponse.error("not connected - call xiaozhi/connect first");
                 }
@@ -2848,44 +3921,44 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    /** 抽出自 "send_text" HTTP case 嘅共用邏輯 - 送一句文字入 XiaoZhi 對話, 好似
-     *  用戶打字咁。呢個方法本身有阻塞式操作 (Thread.sleep + 阻塞式 WebSocket
-     *  send), **call 呢個方法嘅 thread 一定要係一條可以阻塞嘅獨立 worker
-     *  thread** (例如 HTTP handler thread, 或者刻意開嘅背景 thread) - 絕對唔可以
-     *  喺 BroadcastReceiver.onReceive()、UI thread, 或者任何有時限嘅 callback
-     *  入面直接 call, 否則會撞正 Android 嘅 broadcast timeout / ANR 機制。
-     *  (2026-08 曾經喺一個粗心嘅版本度, 喺 onPirStateReceived() 呢個
-     *  BroadcastReceiver callback 入面直接 call 咗呢個方法冇包多層 thread, 令
-     *  PIR 密集 broadcast 嗰陣連環阻塞, 真機實測直情 hold 死成個 system 連 adb
-     *  都冇反應 - 依家 onPirStateReceived() 已經改用獨立 thread 包住先至 call
-     *  呢個方法, 呢段 comment 記低嗰次教訓, 提醒之後唔好再犯。)
+    /** 抽取自 "send_text" HTTP case 的共用邏輯 - 送一句文字進 XiaoZhi 對話, 就像
+     *  用戶打字一樣。這個方法本身有阻塞式操作 (Thread.sleep + 阻塞式 WebSocket
+     *  send), **呼叫這個方法的 thread 一定要是一條可以阻塞的獨立 worker
+     *  thread** (例如 HTTP handler thread, 或刻意開的背景 thread) - 絕對不可以
+     *  在 BroadcastReceiver.onReceive()、UI thread, 或任何有時限的 callback
+     *  裡直接呼叫, 否則會撞上 Android 的 broadcast timeout / ANR 機制。
+     *  (2026-08 曾經在一個粗心的版本裡, 在 onPirStateReceived() 這個
+     *  BroadcastReceiver callback 裡直接呼叫了這個方法沒有包多層 thread, 導致
+     *  PIR 密集 broadcast 時連環阻塞, 實機實測直接 hold 死整個 system 連 adb
+     *  都沒有反應 - 現在 onPirStateReceived() 已經改用獨立 thread 包住才呼叫
+     *  這個方法, 這段 comment 記下那次教訓, 提醒之後不要再犯。)
      *
-     *  送成功就回傳 null, 失敗就回傳錯誤訊息 (唔拋 exception, 等 caller 自己決定
-     *  要唔要俾用戶睇到 / 要唔要 log)。
+     *  送成功就回傳 null, 失敗就回傳錯誤訊息 (不拋 exception, 讓 caller 自己決定
+     *  要不要讓用戶看到 / 要不要 log)。
      *
-     *  2026-08: 之前呢度一度以為長文字要自己切段先送得, 因為官方 xiaozhi.me 對
-     *  冇標記嘅 "detect" 訊息會拒絕長文字 (錯誤訊息 "detect is only for wake
-     *  words, do not send long texts")。反編譯一個第三方 apk 之後搵到根本修法:
-     *  送嘅訊息要夾多一個 "source":"text" 同 "session_id" 欄位 (見
-     *  XiaozhiClient.sendListenDetectText() javadoc 完整說明) - 加返呢兩個欄位
-     *  之後 server 唔會再誤當呢個係 wake-word 事件嚟驗證長度, 所以呢度唔使切段,
-     *  一次過送晒就得。
+     *  2026-08: 之前這裡一度以為長文字要自己切段才能送出, 因為官方 xiaozhi.me 對
+     *  沒標記的 "detect" 訊息會拒絕長文字 (錯誤訊息 "detect is only for wake
+     *  words, do not send long texts")。反編譯一個第三方 apk 之後找到根本修法:
+     *  送出的訊息要多附上一個 "source":"text" 和 "session_id" 欄位 (見
+     *  XiaozhiClient.sendListenDetectText() javadoc 完整說明) - 加上這兩個欄位
+     *  之後 server 不會再誤把這當成 wake-word 事件來驗證長度, 所以這裡不用切段,
+     *  一次送完就好。
      *
-     *  2026-08 再修正 (真機證實嘅第二層問題): 加咗 source/session_id 之後長度
-     *  限制係冇再撞到, 但打字輸入依然完全冇反應 (冇 STT/LLM/TTS 回應) - 對照
-     *  logcat 先發現原因: 小智常開開住嗰陣 mic 一直開住、持續 send 緊 Opus
-     *  binary frame 上去 server (XiaoZhi capture level check 一路有數值,
-     *  micActive/micHeld 都係 true), 打字嗰句 detect JSON message 就喺呢股持續
-     *  嘅 audio stream 中途插入送出 - server 側極可能將 mic 錄到嘅背景聲音當做
-     *  「主要輸入」, 打字嗰句被 audio stream 蓋咗/觸發衝突判斷, 兩者都冇被正常
-     *  處理。呢度喺送 detect 之前暫停返 mic capture (唔使斷開成個 XiaoZhi 連線,
-     *  淨係停緊送 audio frame), 等個 detect message 係嗰一刻唯一嘅輸入, 送完
-     *  之後如果小智常開仲開住就重新開返 mic (跟返
-     *  startXiaozhiMic()/stopXiaozhiMic() 已有嘅 mic 生命週期管理)。
+     *  2026-08 再修正 (實機證實的第二層問題): 加了 source/session_id 之後長度
+     *  限制不再撞到了, 但打字輸入依然完全沒反應 (沒有 STT/LLM/TTS 回應) - 對照
+     *  logcat 才發現原因: 小智常開開啟時 mic 一直開著、持續 send Opus
+     *  binary frame 上去 server (XiaoZhi capture level check 一直有數值,
+     *  micActive/micHeld 都是 true), 打字那句 detect JSON message 就在這股持續
+     *  的 audio stream 中途插入送出 - server 側極可能把 mic 錄到的背景聲音當成
+     *  「主要輸入」, 打字那句被 audio stream 蓋過/觸發衝突判斷, 兩者都沒有被正常
+     *  處理。這裡在送 detect 之前暫停 mic capture (不用斷開整個 XiaoZhi 連線,
+     *  只是停止送 audio frame), 讓 detect message 在那一刻是唯一的輸入, 送完
+     *  之後如果小智常開仍然開著就重新開啟 mic (沿用
+     *  startXiaozhiMic()/stopXiaozhiMic() 已有的 mic 生命週期管理)。
      *
-     *  2026-08 第三次: 前兩層修法都冇解決「長打字對白仍然唔得」- 呢個仍然係
-     *  未確診嘅開放問題, 冇 logcat 可以睇實際 server 回咗啲乜, 唔應該再猜第四種
-     *  寫法。呢個方法保持返之前確認過方向啱嘅寫法, 冇再改動送出邏輯本身, 等有
+     *  2026-08 第三次: 前兩層修法都沒解決「長打字對白仍然不行」- 這仍然是
+     *  尚未確診的開放問題, 沒有 logcat 可以看實際 server 回了什麼, 不應該再猜第四種
+     *  寫法。這個方法保持之前確認過方向正確的寫法, 沒有再改動送出邏輯本身, 等有
      *  真機 log 先再處理。 */
     private String xiaozhiSendDetectTextSafely(String text) {
         if (!xiaozhiClient.isOpen()) {
@@ -2894,9 +3967,9 @@ public class MainActivity extends Activity implements SensorEventListener {
         boolean micWasActive = xiaozhiAudioController.isCapturing();
         if (micWasActive) {
             stopXiaozhiMic();
-            // 俾少少時間等 stopCapture() 真正停咗、最後幾個 in-flight 嘅
-            // audio frame 送晒, 先送 detect message, 減少兩條 stream 交錯
-            // 嘅機會。
+            // 給一點時間等 stopCapture() 真正停止、最後幾個 in-flight 的
+            // audio frame 送完, 再送 detect message, 減少兩條 stream 交錯
+            // 的機會。
             try {
                 Thread.sleep(150);
             } catch (InterruptedException e) {
@@ -2912,15 +3985,15 @@ public class MainActivity extends Activity implements SensorEventListener {
             return e.getMessage();
         }
         if (micWasActive && xiaozhiAutoMode.get()) {
-            // 2026-08 新增: 實測發現「打字完全送到 (server 冇報錯, {"ok":true}),
-            // 但 LLM 完全冇反應」- 對照 logcat 搵到: 之前呢度送完 detect 即刻就
-            // startXiaozhiMic(), 中間淨係相隔幾百毫秒就再送咗一個
-            // {"type":"listen","state":"start","mode":"auto"} - 兩個連續嘅 listen
-            // state 轉換之間冇俾夠時間俾 server 處理完先一個, 好可能令 server 側
-            // 將個 session 重置咗/取消咗啱啱先送嗰個 detect 嘅處理, 先再開始一個
-            // 新（空）嘅聆聽 session, 令個文字訊息無聲無息咁被蓋過 - 同
-            // reassertHeadEyeLed() 講嘅「兩個連續 listen 轉換之間冇讓夠時間」係
-            // 同一種問題嘅另一個病徵。呢度俾多 300ms 緩衝先重開 mic, 等 server
+            // 2026-08 新增: 實測發現「打字完全送出去了 (server 沒報錯, {"ok":true}),
+            // 但 LLM 完全沒反應」- 對照 logcat 才找到: 之前這裡送完 detect 立即就
+            // startXiaozhiMic(), 中間只相隔幾百毫秒就又送了一個
+            // {"type":"listen","state":"start","mode":"auto"} - 兩個連續的 listen
+            // state 轉換之間沒有給足時間讓 server 先處理完前一個, 很可能導致 server 側
+            // 把 session 重置了/取消了剛送出的那個 detect 的處理, 才再開始一個
+            // 新（空）的聆聽 session, 讓文字訊息無聲無息地被蓋過 - 和
+            // reassertHeadEyeLed() 提到的「兩個連續 listen 轉換之間沒讓夠時間」是
+            // 同一種問題的另一個病徵。這裡多給 300ms 緩衝再重開 mic, 讓 server
             // 有機會先處理完個 detect message。 */
             try {
                 Thread.sleep(300);
@@ -2944,18 +4017,18 @@ public class MainActivity extends Activity implements SensorEventListener {
         if (!xiaozhiClient.isOpen()) {
             return HttpServer.ApiResponse.error("not connected - call xiaozhi/connect first");
         }
-        // 2026-08 修正: 之前呢度直接開 XiaozhiAudioController 嘅 AudioRecord, 完全冇
-        // 攞返 mic 擁有權 - alpha2services 自己嘅 wake-word 引擎一直持續攞住支 mic,
-        // 呢部機嘅音訊 HAL 又唔支援多個 process 同時開 mic input, 所以之前個
-        // AudioRecord.startRecording() 實質上一直攞唔到聲。呢度同 handleMicStream()
-        // (Speech/Mic tab 嗰個獨立 mic 串流) 一樣, 用 releaseMicForAudioIo() 先攞返
+        // 2026-08 修正: 之前這裡直接開 XiaozhiAudioController 的 AudioRecord, 完全沒有
+        // 取得 mic 擁有權 - alpha2services 自己的 wake-word 引擎一直持續佔用麥克風,
+        // 這台機器的音訊 HAL 又不支援多個 process 同時開啟 mic input, 所以之前的
+        // AudioRecord.startRecording() 實質上一直收不到聲音。這裡和 handleMicStream()
+        // (Speech/Mic tab 那個獨立 mic 串流) 一樣, 用 releaseMicForAudioIo() 先取得
         // mic 擁有權 (speech_SetMIC(true) + 300ms sleep 避開 race - 見
         // releaseMicForAudioIo() javadoc), 先至真正開 AudioRecord。
         releaseMicForAudioIo();
         try {
             xiaozhiClient.sendListenStart();
         } catch (java.io.IOException e) {
-            robot.speech_SetMIC(false); // 攞硬件都未開就即刻放棄, 將 mic 還返俾機械人
+            robot.speech_SetMIC(false); // 硬體都還沒開就立即放棄, 將 mic 還給機器人
             return HttpServer.ApiResponse.error("failed to signal listen-start: " + e.getMessage());
         }
         // Playback is started alongside capture (not lazily on first incoming frame)
@@ -2973,11 +4046,11 @@ public class MainActivity extends Activity implements SensorEventListener {
         // 2026-08 修正: 呢度之前即刻跟住開 startCapture(), 但 logcat 顯示
         // AudioHardwareTiny 岩岩開完 AudioTrack (output) 個 pthread 仲未 settle
         // 就即刻去開 AudioRecord (input), 會撞到
-        // "adev_open_input_stream:channel is not support" - AudioRecord 嘅 Java
-        // 層 state 照樣顯示 STATE_INITIALIZED (呃到 startCapture() 入面嗰個
-        // check), 但底層 HAL 實際上開input stream 失敗, 導致 .read() 攞唔到真正
-        // 嘅聲, 送去 XiaoZhi server 嘅係靜音/垃圾 frame, 令語音對話完全冇反應。
-        // 呢度加一個短 sleep, 等 output stream 嘅 HAL 初始化完全 settle 先至開
+        // "adev_open_input_stream:channel is not support" - AudioRecord 的 Java
+        // 層 state 照樣顯示 STATE_INITIALIZED (騙過 startCapture() 裡的
+        // check), 但底層 HAL 實際上開啟 input stream 失敗, 導致 .read() 收不到真正
+        // 的聲音, 送去 XiaoZhi server 的是靜音/垃圾 frame, 使語音對話完全沒反應。
+        // 這裡加一個短 sleep, 等 output stream 的 HAL 初始化完全 settle 才開始
         // input, 避免 output/input 開得太貼撞到呢個 race。
         try {
             Thread.sleep(250);
@@ -2996,8 +4069,8 @@ public class MainActivity extends Activity implements SensorEventListener {
             robot.speech_SetMIC(false);
             return HttpServer.ApiResponse.error("failed to start mic capture: " + captureResult.error);
         }
-        // Mic 擁有權同硬件都成功攞到 - 通知前端將燈號轉綠 (見 index.html
-        // #xiaozhiMicLed / app-xiaozhi.js 嘅 xiaozhi_mic_state 事件處理)。
+        // Mic 擁有權和硬體都成功取得 - 通知前端將燈號轉綠 (見 index.html
+        // #xiaozhiMicLed / app-xiaozhi.js 的 xiaozhi_mic_state 事件處理)。
         xiaozhiMicHeld = true;
         startXiaozhiMicHoldEnforcer();
         EventBus.get().publish(XIAOZHI_MIC_STATE_EVENT, "{\"held\":true}");
@@ -3022,23 +4095,23 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
         }
         if (xiaozhiMicHeld) {
-            // 還返 mic 俾機械人自己嘅 wake-word 引擎 - false = "交返麥克風俾機器人"
-            // (同 handleMicStream() finally 段嘅寫法一致)。唔理 Mic tab 嗰個
-            // micHeldByApp 開關狀態 - 兩個係獨立用途 (XiaoZhi 語音對話 vs
-            // Mic tab 手動持有), 邊個都唔應該蓋走對方嘅意圖: 如果用戶喺 Mic
-            // tab 另外攞緊 mic, XiaoZhi 呢度都係老實咁還返自己攞嗰份, 冇額外還多次
-            // 嘅副作用 (speech_SetMIC(false) 係 idempotent 嘅狀態設定, 唔係計數器)。
+            // 將 mic 還給機器人自己的 wake-word 引擎 - false = "把麥克風交還給機器人"
+            // (和 handleMicStream() finally 段的寫法一致)。不理會 Mic tab 那個
+            // micHeldByApp 開關狀態 - 兩者是獨立用途 (XiaoZhi 語音對話 vs
+            // Mic tab 手動持有), 誰都不應該蓋過對方的意圖: 如果用戶在 Mic
+            // tab 另外持有 mic, XiaoZhi 這裡也只是老實地歸還自己拿的那份, 沒有額外多還一次
+            // 的副作用 (speech_SetMIC(false) 是 idempotent 的狀態設定, 不是計數器)。
             robot.speech_SetMIC(false);
             xiaozhiMicHeld = false;
             EventBus.get().publish(XIAOZHI_MIC_STATE_EVENT, "{\"held\":false}");
         }
     }
 
-    /** 同 startMicHoldEnforcer() (Mic tab 專用) 對應嘅 XiaoZhi 版本 - 背景 thread
-     *  持續每 MIC_HOLD_ENFORCER_INTERVAL_MS 重新 call 一次 speech_SetMIC(true),
-     *  防止 firmware 內部側面攞返 mic (見 startMicHoldEnforcer() javadoc 嘅原因)
-     *  喺小智語音對話進行緊嗰段時間都唔會被靜靜哋搶走。獨立過 Mic tab 嗰條
-     *  enforcer thread, 因為兩者嘅生命週期唔同 (呢個跟住 xiaozhiMicHeld, 唔跟
+    /** 和 startMicHoldEnforcer() (Mic tab 專用) 對應的 XiaoZhi 版本 - 背景 thread
+     *  持續每 MIC_HOLD_ENFORCER_INTERVAL_MS 重新呼叫一次 speech_SetMIC(true),
+     *  防止 firmware 內部從旁奪回 mic (見 startMicHoldEnforcer() javadoc 的原因)
+     *  在小智語音對話進行的那段時間也不會被悄悄搶走。獨立於 Mic tab 那條
+     *  enforcer thread, 因為兩者的生命週期不同 (這個跟隨 xiaozhiMicHeld, 不跟
      *  micHeldByApp)。 */
     private void startXiaozhiMicHoldEnforcer() {
         if (xiaozhiMicHoldEnforcerThread != null) return;
@@ -3048,8 +4121,8 @@ public class MainActivity extends Activity implements SensorEventListener {
             public void run() {
                 while (xiaozhiMicHoldEnforced && !Thread.currentThread().isInterrupted()) {
                     // 見 robotTtsSpeaking field javadoc - 機身 robot-side TTS
-                    // (iflytek/nuance) 正播緊嘢就跳過呢一輪, 唔好用
-                    // speech_SetMIC(true) 打斷佢。跳過都唔會令 mic 冇人攞住太耐:
+                    // (iflytek/nuance) 正在播放就跳過這一輪, 不要用
+                    // speech_SetMIC(true) 打斷它。跳過也不會讓 mic 太久沒人持有:
                     // 下一個 tick (MIC_HOLD_ENFORCER_INTERVAL_MS 之後) 會再檢查
                     // 一次, TTS 讀完 (onServerPlayEnd 揭返 false) 就會搶返。
                     if (xiaozhiMicHeld && !robotTtsSpeaking) {
@@ -3082,36 +4155,42 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  exactly as Phase 1/2 did - this method's only job is to arrive at a real
      *  websocket url/token, not to duplicate XiaozhiClient's own connection logic. */
     private void runXiaozhiActivationFlow(String deviceId) {
-        // 自訂 server 開關 (見 PREF_XIAOZHI_OTA_CUSTOM_ENABLED/PREF_XIAOZHI_OTA_URL) -
-        // 開咗就用自己填嘅 OTA URL, 閂咗跟返官方 xiaozhi.me 預設。OTA endpoint 一般
-        // 已經足夠切換成自架 server (check_version 回應通常會夾埋真正嘅 websocket
-        // url/token 送返嚟), 但唔係全部自架方案都跟足呢個協議形狀 - 2026-08 新增
-        // 咗 wsUrl/deviceId/token 三個可選 override (PREF_XIAOZHI_WS_URL_OVERRIDE
-        // 等), 留空就繼續用 OTA response/自動產生嗰個值, 有填就用嚟蓋走, 應付要
-        // 手動配置嘅自架 server。
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        boolean customEnabled = prefs.getBoolean(PREF_XIAOZHI_OTA_CUSTOM_ENABLED, false);
-        String otaUrl = customEnabled
+        // 2026-08 新增: 這個 try/finally 包住整個 method body, 保證不論裡面
+        // 用哪種方式 exit (正常 return、下面那個 try/catch 接住的 exception、
+        // 或是某些完全接不住的 Throwable), xiaozhiActivationInFlight 這個 gate
+        // 一定會被釋放 - 釋放不了的話整個 app 會永久鎖死在「activation already
+        // in progress」, 比之前的 bug 更糟。見 xiaozhiActivationInFlight field
+        // 的 javadoc 解釋整套機制為何要這樣做。
+        try {
+            // 自訂 server 開關 (見 PREF_XIAOZHI_OTA_CUSTOM_ENABLED/PREF_XIAOZHI_OTA_URL) -
+            // 開啟就用自己填的 OTA URL, 關閉則沿用官方 xiaozhi.me 預設。OTA endpoint 一般
+            // 已經足夠切換成自架 server (check_version 回應通常會一併附上真正的 websocket
+            // url/token 送回), 但不是所有自架方案都能依照這個協議形狀 - 2026-08 新增了
+            // wsUrl/deviceId/token 三個可選 override (PREF_XIAOZHI_WS_URL_OVERRIDE
+            // 等), 留空就繼續用 OTA response/自動產生的那個值, 有填就用來覆蓋, 應付需要
+            // 手動配置的自架 server。
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            boolean customEnabled = prefs.getBoolean(PREF_XIAOZHI_OTA_CUSTOM_ENABLED, false);
+            String otaUrl = customEnabled
                 ? prefs.getString(PREF_XIAOZHI_OTA_URL, XiaozhiOtaClient.DEFAULT_OTA_URL)
                 : XiaozhiOtaClient.DEFAULT_OTA_URL;
-        String wsUrlOverride = customEnabled ? prefs.getString(PREF_XIAOZHI_WS_URL_OVERRIDE, "") : "";
-        String deviceIdOverride = customEnabled ? prefs.getString(PREF_XIAOZHI_DEVICE_ID_OVERRIDE, "") : "";
-        String tokenOverride = customEnabled ? prefs.getString(PREF_XIAOZHI_TOKEN_OVERRIDE, "") : "";
-        // deviceId override 要喺 OTA client 建構之前就決定咗 - Device-Id header
-        // 由 OTA check_version 個 request 開始就要用同一個值 (同 WebSocket 嗰邊一致,
-        // 見 getXiaozhiDeviceId() 嘅 comment), 唔係淨係影響最終 connect() 嗰下。
-        // 用一個新嘅 final 變數嚟裝最終值 (而唔係重新賦值 method 個 deviceId
-        // parameter 本身) - 呢個 method 尾段嘅匿名類 (DisconnectListener) 有
-        // capture 住 deviceId, capture 咗嘅 local variable 一定要係 effectively
-        // final, 重新賦值會令個 method 編譯唔到。
-        final String effectiveDeviceId = deviceIdOverride.isEmpty() ? deviceId : deviceIdOverride;
-        // 2026-08 新增: 存低呢個 session 用緊嘅 clientId, 等 xiaozhiVisionExplain()
-        // 可以送返同一個 Client-Id header (見 xiaozhiClientId field 嘅 comment)。
-        final String effectiveClientId = java.util.UUID.randomUUID().toString();
-        xiaozhiClientId = effectiveClientId;
-        XiaozhiOtaClient ota = new XiaozhiOtaClient(otaUrl,
+            String wsUrlOverride = customEnabled ? prefs.getString(PREF_XIAOZHI_WS_URL_OVERRIDE, "") : "";
+            String deviceIdOverride = customEnabled ? prefs.getString(PREF_XIAOZHI_DEVICE_ID_OVERRIDE, "") : "";
+            String tokenOverride = customEnabled ? prefs.getString(PREF_XIAOZHI_TOKEN_OVERRIDE, "") : "";
+            // deviceId override 要在 OTA client 建構之前就決定 - Device-Id header
+            // 從 OTA check_version 的 request 開始就要用同一個值 (和 WebSocket 那邊一致,
+            // 見 getXiaozhiDeviceId() 的 comment), 不只是影響最終 connect() 那一下。
+            // 用一個新的 final 變數來裝最終值 (而不是重新賦值 method 的 deviceId
+            // parameter 本身) - 這個 method 尾段的匿名類 (DisconnectListener) 有
+            // capture deviceId, capture 到的 local variable 一定要是 effectively
+            // final, 重新賦值會導致這個 method 編譯不過。
+            final String effectiveDeviceId = deviceIdOverride.isEmpty() ? deviceId : deviceIdOverride;
+            // 2026-08 新增: 存下這個 session 用的 clientId, 讓 xiaozhiVisionExplain()
+            // 可以送回同一個 Client-Id header (見 xiaozhiClientId field 的 comment)。
+            final String effectiveClientId = java.util.UUID.randomUUID().toString();
+            xiaozhiClientId = effectiveClientId;
+            XiaozhiOtaClient ota = new XiaozhiOtaClient(otaUrl,
                 effectiveDeviceId, effectiveClientId);
-        try {
             XiaozhiOtaClient.CheckVersionResult checkResult = ota.checkVersion();
 
             String wsUrl;
@@ -3124,25 +4203,25 @@ public class MainActivity extends Activity implements SensorEventListener {
                 String message = checkResult.activationMessage;
                 xiaozhiActivationStatus.set(XiaozhiActivationStatus.awaitingCode(code, message));
                 // 2026-08 修正: 之前呢個配對碼淨係經 xiaozhi/activation_status HTTP
-                // polling 傳去前端, 完全冇經 EventBus - 令佢喺 WebSocket event log
-                // (WebSocketServer 訂閱 EventBus 再 fan-out 落所有已連接嘅瀏覽器
-                // tab) 度完全睇唔到, 用戶反映「淨係得聲音, 連 websocket 都無顯示」。
-                // 呢句令配對碼都經返正常嘅 EventBus -> WebSocketServer -> 前端
-                // event log 路徑推送一次, 同 HTTP polling 途徑並存 (兩者唔衝突,
-                // 前端 xiaozhiShowActivationCode() 嗰個 xiaozhiLastShownActivationCode
-                // 防重複邏輯係獨立處理 HTTP polling 嗰邊, 唔會受呢個新 event 影響)。
+                // polling 傳去前端, 完全沒有經過 EventBus - 導致在 WebSocket event log
+                // (WebSocketServer 訂閱 EventBus 再 fan-out 到所有已連線的瀏覽器
+                // tab) 上完全看不到, 用戶反映「只有聲音, 連 websocket 都沒顯示」。
+                // 這句讓配對碼也經由正常的 EventBus -> WebSocketServer -> 前端
+                // event log 路徑推送一次, 和 HTTP polling 途徑並存 (兩者不衝突,
+                // 前端 xiaozhiShowActivationCode() 那個 xiaozhiLastShownActivationCode
+                // 防重複邏輯是獨立處理 HTTP polling 那邊, 不會受這個新 event 影響)。
                 EventBus.get().publish("xiaozhi_activation",
                         "{\"code\":\"" + jsonSafe(code) + "\",\"message\":\""
                                 + jsonSafe(message != null ? message : "") + "\"}");
                 // 2026-08: 之前用戶要求取消機身 TTS 讀配對碼, 改為單純靠界面顯示 -
-                // 但實測發現冇 TTS 讀出嚟之後配對經常失敗 (真機 logcat 顯示配對碼
-                // 出咗之後短時間內就 "Read timed out"), 用戶反映需要機身讀出嚟先
-                // 有足夠反應時間去手機/電腦打開 xiaozhi.me 輸入。而家加返呢個
-                // call。真正令配對容易 timeout 嘅根源其實喺
-                // XiazhiOtaClient.pollActivation() 個單次 HTTP request timeout
-                // (10 秒) 太短、一撞到就令成個輪詢直接失敗嗰個 bug, 已經喺嗰邊
-                // 修正 (暫時性網絡錯誤而家會重試, 唔會即刻放棄) - 但機身讀出配對碼
-                // 本身都係一個用戶想要嘅獨立功能, 兩者都保留。
+                // 但實測發現沒有 TTS 讀出來之後配對經常失敗 (實機 logcat 顯示配對碼
+                // 出來之後短時間內就 "Read timed out"), 用戶反映需要機身讀出來才
+                // 有足夠反應時間去手機/電腦打開 xiaozhi.me 輸入。現在加回這個
+                // call。真正導致配對容易 timeout 的根源其實在
+                // XiazhiOtaClient.pollActivation() 的單次 HTTP request timeout
+                // (10 秒) 太短、一撞到就導致整個輪詢直接失敗那個 bug, 已經在那邊
+                // 修正 (暫時性網路錯誤現在會重試, 不會立即放棄) - 但機身讀出配對碼
+                // 本身也是一個用戶想要的獨立功能, 兩者都保留。
                 speakActivationCode(code);
 
                 xiaozhiActivationStatus.set(XiaozhiActivationStatus.polling(code, message));
@@ -3173,10 +4252,10 @@ public class MainActivity extends Activity implements SensorEventListener {
             xiaozhiClient.setAudioSink(new XiaozhiClient.AudioSink() {
                 @Override
                 public void onIncomingOpusFrame(byte[] opusData) {
-                    // 揀咗本地 TTS 引擎 (見 xiaozhiTtsEngine field javadoc) 就
-                    // 完全靜音呢條 cloud opus 聲軌 - 淨係唔 forward 去
+                    // 選了本地 TTS 引擎 (見 xiaozhiTtsEngine field javadoc) 就
+                    // 完全靜音這條 cloud opus 聲軌 - 只是不 forward 到
                     // XiaozhiAudioController, decode/AudioTrack pipeline 本身
-                    // 冇改, 一切返去 "xiaozhi" 就即刻恢復原本行為。
+                    // 沒有改, 一切回 "xiaozhi" 就立即恢復原本行為。
                     if (!"xiaozhi".equals(xiaozhiTtsEngine)) {
                         return;
                     }
@@ -3187,27 +4266,27 @@ public class MainActivity extends Activity implements SensorEventListener {
             // reason as setAudioSink() above - see XiaozhiClient.TtsStateListener's
             // javadoc for what this drives.
             //
-            // 2026-08 新增: 咀 LED 同步 - 跟返本地 TTS 已有嘅
+            // 2026-08 新增: 嘴部 LED 同步 - 沿用本地 TTS 已有的
             // startMouthLedForTts()/stopMouthLedForTts() (MouthLedData breathing 效果),
-            // 但呢度要對應 XiaoZhi 自己嗰套 tts state (start/sentence_start/stop, 見
-            // websocket.md 同實測 logcat), 唔係本地 TTS 嗰個單次 speech_startTTS。
-            // "start" = 呢句/呢段回應開始播 -> 開燈; "sentence_start" 純粹係分咗句
-            // (同一段回應入面, 中途唔停) -> 唔使理, 燈應該一路開住直到成段答案講完;
-            // "stop" = 成段回應播完 -> 熄燈。用返 xiaozhiAutoMode/mic-restart 嗰個
-            // 同一個 case 分支, 熄燈同重新聽係同一個時機發生, 冇額外 race。
+            // 但這裡要對應 XiaoZhi 自己那套 tts state (start/sentence_start/stop, 見
+            // websocket.md 和實測 logcat), 不是本地 TTS 那個單次 speech_startTTS。
+            // "start" = 這句/這段回應開始播 -> 點亮; "sentence_start" 純粹是分句
+            // (同一段回應裡面, 中途不停) -> 不用理會, 燈應該一直亮到整段答案講完;
+            // "stop" = 整段回應播完 -> 熄燈。沿用 xiaozhiAutoMode/mic-restart 那個
+            // 同一個 case 分支, 熄燈和重新聆聽是同一時機發生, 沒有額外 race。
             xiaozhiClient.setTtsStateListener(new XiaozhiClient.TtsStateListener() {
                 @Override
                 public void onTtsState(String stateValue) {
                     if ("start".equals(stateValue)) {
                         startMouthLedForTts();
-                        // 2026-08 修正: 用戶要求「random 動作要同 tts 一齊做, 唔係
-                        // 講完先做」- 之前錯咗擺喺 "stop" (成段回應播完) 先觸發, 用戶
-                        // 見到嘅係機械人企定定聽完成句先郁, 唔係想要嘅「講緊嘢嗰陣
-                        // 郁動」效果。依家改喺呢度 ("start", 呢一輪開始講嘢嗰一刻)
-                        // 就即刻觸發, 令個動作同把口講嘢大致同步發生。實際執行邏輯
-                        // 搬咗去 triggerRandomFillerAction() (見 javadoc) - 播本地
-                        // 音樂 (self.media.play_music) 而家都用返同一個 helper 做
-                        // 埋一樣嘅「郁下等睇落生動啲」效果。
+                        // 2026-08 修正: 用戶要求「random 動作要和 tts 一起發生, 而不是
+                        // 講完才做」- 之前錯放在 "stop" (整段回應播完) 才觸發, 用戶
+                        // 看到的是機器人站定不動聽完整句才動, 不是想要的「講話時
+                        // 同時動作」效果。現在改在這裡 ("start", 這一輪開始講話的那一刻)
+                        // 就立即觸發, 讓動作和說話大致同步發生。實際執行邏輯
+                        // 搬到了 triggerRandomFillerAction() (見 javadoc) - 播放本地
+                        // 音樂 (self.media.play_music) 現在也用同一個 helper 做出
+                        // 一樣的「動一下讓它看起來生動一點」效果。
                         triggerRandomFillerAction();
                     } else if ("stop".equals(stateValue)) {
                         stopMouthLedForTts();
@@ -3217,21 +4296,34 @@ public class MainActivity extends Activity implements SensorEventListener {
                     }
                 }
             });
-            // 2026-08 新增: 實測發現 server 會喺對話中途主動 send WebSocket close
-            // frame 斷開連接 (原因未明, 見 XiaozhiClient 個 case 0x8 新加嘅
+            // 2026-08 新增: 實測發現 server 會在對話中途主動 send WebSocket close
+            // frame 斷開連線 (原因未明, 見 XiaozhiClient 的 case 0x8 新加的
             // describeCloseFrame() log, 等下次實機測試可以查到實際 close code) -
-            // 之前呢個情況冇處理, 用戶會見到「開關仲係開住」但實際已經斷咗線、mic
-            // capture 都停埋, 完全冇任何提示, 睇落好似「講咗嘢但小智完全冇反應」。
-            // 依家小智常開開住嗰陣, 意外斷線會自動嘗試重連, 唔使用戶自己發現同手動
-            // 閂開個開關。見 xiaozhiScheduleReconnect() 嘅 comment 解釋點防止狂重試。
+            // 之前這個情況沒有處理, 用戶會看到「開關仍然開著」但實際已經斷線、mic
+            // capture 都停了, 完全沒有任何提示, 看起來像是「講了話但小智完全沒反應」。
+            // 現在小智常開開啟時, 意外斷線會自動嘗試重連, 不用讓用戶自己發現並手動
+            // 關開開關。見 xiaozhiScheduleReconnect() 的 comment 解釋如何防止狂重試。
             xiaozhiClient.setDisconnectListener(new XiaozhiClient.DisconnectListener() {
                 @Override
                 public void onUnexpectedDisconnect() {
-                    // 2026-08 新增: 意外斷線可能發生喺 TTS 播緊嗰段中途 (即係
-                    // 收咗 "start" 但未收到對應嘅 "stop"), 咀 LED 會停留喺開住嘅
-                    // breathing 狀態, 冇任何嘢會再觸發熄佢 - 呢度保證斷線一定會
-                    // 熄返個燈, 唔理之前有冇成功收到 "stop"。
+                    // 2026-08 v2: mute 鍵 LED = 小智連線指示燈, 斷線就熄。
+                    setChestMuteLed(false);
+                    // 2026-08 新增: 意外斷線可能發生在 TTS 播放中途 (也就是
+                    // 收到 "start" 但還沒收到對應的 "stop"), 嘴部 LED 會停留在點亮的
+                    // breathing 狀態, 沒有任何東西會再觸發熄滅它 - 這裡保證斷線一定會
+                    // 熄掉燈, 不論之前有沒有成功收到 "stop"。
                     stopMouthLedForTts();
+                    // 2026-08 修正: 之前這裡沒有立即將 xiaozhiActivationStatus
+                    // reset - 斷線之後它會停留在斷線前的值 (通常是 CONNECTED),
+                    // 一直留到 xiaozhiScheduleReconnect() 的 5 秒 backoff delay
+                    // 過了、真正重連 thread 啟動時才被更新。這 5 秒窗口期裡
+                    // UI 顯示「連接失敗」但 xiaozhiActivationInFlight gate 還沒鎖住
+                    // (自動重連 thread 尚未啟動), 用戶心急按下「連線」會通過 guard、
+                    // 和 5 秒後的自動重連 thread 撞在一起 (見 xiaozhiActivationInFlight
+                    // field javadoc) - 這就是「連不上、很快斷線、越按越糟」這個
+                    // bug 的根源。現在一斷線就立即 set 為 idle(), 讓 UI/guard
+                    // 即時反映真實狀態, 不留下這個誤導性的窗口期。
+                    xiaozhiActivationStatus.set(XiaozhiActivationStatus.idle());
                     if (xiaozhiAutoMode.get()) {
                         xiaozhiScheduleReconnect(effectiveDeviceId);
                     }
@@ -3243,8 +4335,11 @@ public class MainActivity extends Activity implements SensorEventListener {
             // comment for why (same auth domain as the WebSocket connection).
             xiaozhiAccessToken = wsToken;
             xiaozhiActivationStatus.set(XiaozhiActivationStatus.connected(xiaozhiClient.getSessionId()));
-            // 連接成功, reset 返重試計數 - 下次意外斷線先由 0 開始計 backoff, 唔會
-            // 因為之前有過重試就跳去長 delay (見 xiaozhiScheduleReconnect() 嘅
+            // 2026-08 v2: mute 鍵 LED = 小智連線指示燈, 真正連上才亮 (按鍵當下
+            // 只是即時反應, 這裡才是權威狀態)。
+            setChestMuteLed(true);
+            // 連接成功, 重置重試計數 - 下次意外斷線才從 0 開始計算 backoff, 不會
+            // 因為之前重試過就跳到長 delay (見 xiaozhiScheduleReconnect() 的
             // comment)。
             xiaozhiReconnectAttempts.set(0);
             if (xiaozhiAutoMode.get()) {
@@ -3255,21 +4350,41 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // connection.
                 startXiaozhiMic();
             }
-        } catch (java.io.IOException e) {
+        } catch (Throwable e) {
+            // 2026-08 修正: 之前呢度淨係 catch IOException, 但呢個 try 區塊入面
+            // (尤其是 xiaozhiClient.connect() 那句) 一旦拋出非 IOException 的
+            // exception (例如 RuntimeException/NullPointerException, WebSocket
+            // handshake 或 URL parse 階段常見), 就不會被這個 catch 接住 -
+            // 背景 activation thread 會直接掛掉, 但 xiaozhiActivationStatus
+            // 永遠停留在 CHECKING/AWAITING_CODE/POLLING/CONNECTING 其中一個中途
+            // stage, 之後任何一次按「小智」開關都會立即被 "connect" case 的
+            // guard 擋住說「activation already in progress」, 要重啟整個 app
+            // 才能解決。現在用 catch (Throwable e) 兜到底 (連 Error 都涵蓋,
+            // 不只是 Exception), 保證這個 try 區塊一有任何失敗, stage 一定會
+            // 退回 ERROR, 不會再卡死在中途 stage。
             Log.w("MainActivity", "XiaoZhi activation flow failed: " + e.getMessage());
-            xiaozhiActivationStatus.set(XiaozhiActivationStatus.error(e.getMessage()));
+            xiaozhiActivationStatus.set(XiaozhiActivationStatus.error(
+                    e.getMessage() != null ? e.getMessage() : e.toString()));
+            // 2026-08 v2: activation 失敗 (例如 TLS 證書/網絡問題) - mute LED 熄返,
+            // 不要留下「假連線」燈號。
+            setChestMuteLed(false);
+        } finally {
+            // 見這個 method 開頭那個 try 和 xiaozhiActivationInFlight field 的
+            // javadoc: 不論上面如何 exit, 這個 gate 一定會被釋放, 下次 connect
+            // (手動撳掣或者自動重連) 先可以再次通過。
+            xiaozhiActivationInFlight.set(false);
         }
     }
 
-    /** 小智常開開住嗰陣, WebSocket 意外斷咗線 (見 XiaozhiClient.DisconnectListener)
-     *  就自動嘗試重連, 用戶唔使自己發現個開關已經名存實亡再手動閂開一次。
+    /** 小智常開開啟時, WebSocket 意外斷線 (見 XiaozhiClient.DisconnectListener)
+     *  就自動嘗試重連, 用戶不用自己發現開關已經名存實亡才手動關開一次。
      *
      *  Exponential backoff (5s, 10s, 20s, 最多封頂 60s) 加最多 MAX_RECONNECT_ATTEMPTS
-     *  次數上限, 而唔係見到斷線就即刻狂重試: 如果斷線原因係伺服器端持續性問題
-     *  (例如 token 失效、伺服器維護), 冇限制咁重試只會不斷再攞新 activation code
-     *  (可能重新觸發配對流程) 同浪費電量/流量, 對用戶完全冇幫助; 加咗上限之後,
-     *  重試晒都連唔返就停低, 保留返 xiaozhiActivationStatus 嘅 error 狀態俾用戶睇到
-     *  發生咗咩事, 好過默默不斷重試落去。用戶隨時可以手動閂開個開關重新嘗試,
+     *  次數上限, 而不是一見到斷線就立即狂重試: 如果斷線原因是伺服器端持續性問題
+     *  (例如 token 失效、伺服器維護), 無限制地重試只會不斷再取得新 activation code
+     *  (可能重新觸發配對流程) 和浪費電量/流量, 對用戶完全沒幫助; 加了上限之後,
+     *  重試完都連不上就停止, 保留 xiaozhiActivationStatus 的 error 狀態讓用戶看到
+     *  發生了什麼事, 好過默默不斷重試下去。用戶隨時可以手動關開開關重新嘗試,
      *  重新開始個 backoff (見 runXiaozhiActivationFlow() 連接成功會 reset
      *  xiaozhiReconnectAttempts)。 */
     private void xiaozhiScheduleReconnect(final String deviceId) {
@@ -3285,23 +4400,29 @@ public class MainActivity extends Activity implements SensorEventListener {
                 + " in " + delayMs + "ms");
         // 2026-08 修 crash: 之前呢度 mainHandler.postDelayed() 個 Runnable 入面
         // 直接 call runXiaozhiActivationFlow(), 但 mainHandler 係綁住 main
-        // thread 嘅 Handler - postDelayed() 淨係做到「延遲幾多秒先執行」, 個
-        // Runnable 本身依然係喺 main thread (Looper.loop()) 度跑, 唔會自動走去
-        // 背景 thread。runXiaozhiActivationFlow() 入面 checkVersion() 會做 HTTPS
-        // POST (XiaozhiOtaClient.postJsonWithStatus()), 喺 main thread 做網絡
-        // I/O 會即刻擲 NetworkOnMainThreadException, 令成個 app crash - 真機
-        // 證實: v34 修好咗重連判斷邏輯之後, 重連終於開始真正觸發, 就立即
-        // 暴露咗呢個一直潛伏緊、之前因為重連從未真正執行過而冇撞到嘅 bug (stacktrace
+        // thread 的 Handler - postDelayed() 只做到「延遲幾秒才執行」, 這個
+        // Runnable 本身依然是在 main thread (Looper.loop()) 上跑, 不會自動跳去
+        // 背景 thread。runXiaozhiActivationFlow() 裡面 checkVersion() 會做 HTTPS
+        // POST (XiaozhiOtaClient.postJsonWithStatus()), 在 main thread 做網路
+        // I/O 會立即拋出 NetworkOnMainThreadException, 導致整個 app crash - 實機
+        // 證實: v34 修好重連判斷邏輯之後, 重連終於開始真正觸發, 就立即
+        // 暴露了這個一直潛伏著、之前因為重連從未真正執行過而沒撞到的 bug (stacktrace
         // 見 MainActivity$34.run() -> runXiaozhiActivationFlow() ->
-        // XiaozhiOtaClient.checkVersion())。呢度將實際工作 (runXiaozhiActivationFlow)
-        // 挪去一個獨立背景 thread, mainHandler.postDelayed() 淨係用嚟做延遲計時,
-        // 唔再喺個 Runnable 度直接做網絡 call。
+        // XiaozhiOtaClient.checkVersion())。這裡將實際工作 (runXiaozhiActivationFlow)
+        // 移到一個獨立背景 thread, mainHandler.postDelayed() 只用來做延遲計時,
+        // 不再在 Runnable 裡直接做網路 call。
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                // 用戶可能喺呢段 delay 期間自己手動閂咗個開關 - 呢種情況下唔應該
-                // 重連, 尊重用戶嘅意圖。
+                // 用戶可能在這段 delay 期間自己手動關掉了開關 - 這種情況下不應該
+                // 重連, 尊重用戶的意圖。
                 if (!xiaozhiAutoMode.get()) return;
+                // 用戶可能在這 5 秒 delay 期間自己手動按了「連線」, 已經有另一條
+                // runXiaozhiActivationFlow thread 在執行 (見 xiaozhiActivationInFlight
+                // field javadoc) - 這種情況這條自動重連就不應該再啟動多一條, 交給
+                // 用戶手動那次去做就夠。
+                if (!xiaozhiActivationInFlight.compareAndSet(false, true)) return;
+                xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
                 new Thread(new Runnable() {
                     @Override
                     public void run() {
@@ -3313,7 +4434,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     /** Speaks the activation code out loud through the robot's own TTS - this is the
-     *  "機械人自己讀出嚟" behavior the person asked for, so they don't need to look at
+     *  "機器人自己讀出來" behavior the person asked for, so they don't need to look at
      *  the browser control panel (which may not even be open yet on a first-time setup)
      *  to find the code. Digit-by-digit with pauses would be more reliably understood
      *  than reading "12345" as the number "twelve thousand three hundred forty-five",
@@ -3326,6 +4447,10 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  written down. Mirrors the existing "speech/tts" endpoint's
      *  STOP_TO_TTS_MIN_GAP_MS race guard and mouth-LED bracket (see handleApi() below)
      *  since this runs from a background thread, not through that HTTP endpoint. */
+    /** 讀出小智配對碼。2026-09: 由機身 TTS (robot.speech_startTTS, 無
+     *  alpha2services 下永遠靜音) 轉行 Android 內置 TTS (同小智頁揀 "Android"
+     *  同一條路) - 配對嗰刻仲未連上 server，用唔到小智雲端聲，只可以用本地讀。
+     *  讀唔到 (engine 未 ready) 就淨係靠前端顯示個碼 (xiaozhi_activation event)。 */
     private void speakActivationCode(String code) {
         if (code == null || code.isEmpty()) return;
         StringBuilder spoken = new StringBuilder();
@@ -3334,7 +4459,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             if (i > 0) spoken.append(' ');
             spoken.append(c);
         }
-        String text = "配對碼係 " + spoken + "。請去 xiaozhi 點 me 輸入呢個碼。再講一次，配對碼係 " + spoken + "。";
+        String text = "配對碼是 " + spoken + "。請去 xiaozhi 點 me 輸入這個碼。再說一次，配對碼是 " + spoken + "。";
         long sinceStopMs = System.currentTimeMillis() - lastSpeechStopAtMs;
         if (sinceStopMs >= 0 && sinceStopMs < STOP_TO_TTS_MIN_GAP_MS) {
             try {
@@ -3344,10 +4469,9 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
         }
         startMouthLedForTts();
-        UbxErrorCode.API_ERROR_CODE ttsCode = robot.speech_startTTS("zh_cn", text, null);
-        if (!isOk(ttsCode)) {
+        if (!speakAndroidTts(text, java.util.Locale.SIMPLIFIED_CHINESE)) {
             stopMouthLedForTts();
-            Log.w("MainActivity", "Failed to speak XiaoZhi activation code: " + ttsCode);
+            Log.w(TAG, "Failed to speak XiaoZhi activation code via Android TTS");
         }
         // Not awaited synchronously (unlike the HTTP "speech/tts" endpoint, which
         // returns as soon as playback is *requested*, not finished) - this method
@@ -3436,8 +4560,8 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  the operator doesn't directly control turn-by-turn, so starting narrow and
      *  expanding later (once real usage patterns are seen) is safer than exposing
      *  everything (LED raw params, serial port raw commands, etc.) up front. */
-    /** Lazily loads + parses assets/web/xiaozhi_actions.json (202 動作, 由用戶提供嘅
-     *  202_actions_classified.txt 轉出嚟) - each entry has "id", "nameCn", "nameEn".
+    /** Lazily loads + parses assets/web/xiaozhi_actions.json (202 個動作, 由用戶提供的
+     *  202_actions_classified.txt 轉出來的) - each entry has "id", "nameCn", "nameEn".
      *  "id" is confirmed to be the exact on-device action filename minus the ".ubx"
      *  extension (e.g. id "1464835936031" -> /mnt/internal_sd/actions/1464835936031.ubx),
      *  which is what action_PlayActionName()/AlphaActionServiceUtil.playActionName()
@@ -3503,62 +4627,62 @@ public class MainActivity extends Activity implements SensorEventListener {
         return null;
     }
 
-    /** Radio Browser (radio-browser.info) 嘅其中一個 API 主機 - 官方文件建議客戶端
-     *  對 "all.api.radio-browser.info" 做 DNS 解析再喺多個鏡像之間揀, 但呢部機冇
-     *  DNS SRV/多鏡像 failover 嘅需要 (一個家用機械人, 唔係高流量服務), 直接用
-     *  官方文件範例入面出現嘅 de1 呢個固定主機已經足夠, 保持代碼簡單。 */
+    /** Radio Browser (radio-browser.info) 的其中一個 API 主機 - 官方文件建議客戶端
+     *  對 "all.api.radio-browser.info" 做 DNS 解析再從多個鏡像之間挑選, 但這台機器沒有
+     *  DNS SRV/多鏡像 failover 的需求 (一台家用機器人, 不是高流量服務), 直接用
+     *  官方文件範例裡出現的 de1 這個固定主機就已經足夠, 保持程式碼簡單。 */
     private static final String RADIO_BROWSER_API_HOST = "http://de1.api.radio-browser.info";
 
-    /** 官方文件要求每個 request 都帶一個有意義嘅 User-Agent (格式 appname/version),
-     *  等佢哋知道邊啲 app 用緊呢個服務 - 呢度老實咁帶返呢個 project 嘅名。 */
+    /** 官方文件要求每個 request 都帶一個有意義的 User-Agent (格式 appname/version),
+     *  讓他們知道哪些 app 在用這個服務 - 這裡老實地帶上這個 project 的名字。 */
     private static final String RADIO_BROWSER_USER_AGENT = "OpenAlpha2/1.0";
 
-    /** 用 Radio Browser 嘅 "Advanced station search" endpoint
-     *  (/json/stations/search) 動態搜全世界電台 - 呢個 API 完全公開、免費、唔使
-     *  API key, 資料嚟自電台自己申報俾呢個公開 directory 嘅串流位址 (唔係擷取
-     *  受保護內容嗰種), 詳見官方文件 docs.radio-browser.info。
+    /** 用 Radio Browser 的 "Advanced station search" endpoint
+     *  (/json/stations/search) 動態搜尋全世界電台 - 這個 API 完全公開、免費、不需要
+     *  API key, 資料來自電台自己申報給這個公開 directory 的串流位址 (不是擷取
+     *  受保護內容那種), 詳見官方文件 docs.radio-browser.info。
      *
-     *  參數揀擇 (2026-08 更新, 用戶回報「電台... 只選地方選電台也出現問題,
-     *  唔關格式事」之後查 logcat 確認、加強):
-     *  - order=votes&reverse=true: 最多人投好嘅電台排先, 幫手過濾走死台/垃圾台
-     *  - hidebroken=true: 唔顯示 Radio Browser 定期健康檢查已知播唔到嘅台
-     *  - codec=MP3: 淨係要 MP3 - Android 5.1 嘅 MediaPlayer 對 MP3 支援最穩定,
-     *    某啲台用嘅 codec (AAC+ 變種、OGG 等) 喺呢個 API level 未必個個都播到
-     *  - is_https=false: 淨係要串流位址本身係 http (唔係 https) 嘅台 - 呢個先係
-     *    用戶回報問題嘅真正根源 (見下面 "真正根源" 段落), 唔係揀邊個地方/邊個
-     *    電台嘅事, 每一次 search_radio/play_radio call 都係同一個 exception。
+     *  參數選擇 (2026-08 更新, 用戶回報「電台... 只選地方選電台也出現問題,
+     *  和格式無關」之後查 logcat 確認、加強):
+     *  - order=votes&reverse=true: 最多人投好的電台排在前面, 有助於過濾掉死台/垃圾台
+     *  - hidebroken=true: 不顯示 Radio Browser 定期健康檢查已知播不了的台
+     *  - codec=MP3: 只要 MP3 - Android 5.1 的 MediaPlayer 對 MP3 支援最穩定,
+     *    某些台用的 codec (AAC+ 變種、OGG 等) 在這個 API level 未必個個都播得了
+     *  - is_https=false: 只要串流位址本身是 http (不是 https) 的台 - 這個才是
+     *    用戶回報問題的真正根源 (見下面 "真正根源" 段落), 和選哪個地方/哪個
+     *    電台無關, 每一次 search_radio/play_radio call 都是同一個 exception。
      *
-     *  真正根源 (2026-08 用 logcat 確認): 之前用戶回報「收音機要驗証, 用唔到」
-     *  以為係播放格式問題所以加咗 codec=MP3, 但依家憑實際 logcat 見到嘅
-     *  exception 係 java.security.cert.CertPathValidatorException: Trust
-     *  anchor for certification path not found - 呢個係 Android 5.1 (2015 年
-     *  出廠) 嘅系統 CA store 冇收錄現代 CA/certificate chain, 而且 Android 5.1
-     *  冇得 OTA 更新系統 CA store, 所以連 https 握手都過唔到, 完全同揀邊個電台
-     *  無關: (1) 呢個 API 本身 (RADIO_BROWSER_API_HOST) 已經改用返 http 避開咗
-     *  問題; (2) 但 station 個 "url_resolved" 播放位址本身都可能係 https,
-     *  MediaPlayer 播 https 串流一樣行 Android 系統嘅 TLS 棧
-     *  (android.security.net.config.RootTrustManager), 一樣會撞正同一個
-     *  trust anchor 問題 - 所以呢度連搜尋結果都要揀 is_https=false, 先至令
-     *  「搵到嘅台」同「播到嘅台」一致, 唔係得個搜尋 API 唔中招、實際播放又中招。
+     *  真正根源 (2026-08 用 logcat 確認): 之前用戶回報「收音機要驗證, 用不了」
+     *  以為是播放格式問題所以加了 codec=MP3, 但現在憑實際 logcat 看到的
+     *  exception 是 java.security.cert.CertPathValidatorException: Trust
+     *  anchor for certification path not found - 這是 Android 5.1 (2015 年
+     *  出廠) 的系統 CA store 沒有收錄現代 CA/certificate chain, 而且 Android 5.1
+     *  無法 OTA 更新系統 CA store, 所以連 https 握手都過不了, 完全和選哪個電台
+     *  無關: (1) 這個 API 本身 (RADIO_BROWSER_API_HOST) 已經改用 http 避開了
+     *  問題; (2) 但 station 的 "url_resolved" 播放位址本身也可能是 https,
+     *  MediaPlayer 播放 https 串流一樣走 Android 系統的 TLS 堆疊
+     *  (android.security.net.config.RootTrustManager), 一樣會撞上同一個
+     *  trust anchor 問題 - 所以這裡連搜尋結果都要選 is_https=false, 才能讓
+     *  「找到的台」和「播得了的台」一致, 而不是搜尋 API 沒中招、實際播放又中招。
      *
-     *  HLS (.m3u8 分段串流, 舊版 MediaPlayer 支援唔穩定、部份仲要
-     *  session/token) 呢個特徵冇直接開放做 API 參數, 用 resolveRadioStation()
-     *  度、播之前檢查 station 個 "hls" 欄位嚟隔走 (見嗰個 method 嘅 javadoc)。
+     *  HLS (.m3u8 分段串流, 舊版 MediaPlayer 支援不穩定、部分還需要
+     *  session/token) 這個特徵沒有直接開放做 API 參數, 在 resolveRadioStation()
+     *  裡、播放之前檢查 station 的 "hls" 欄位來過濾掉 (見該 method 的 javadoc)。
      *
-     *  冇暴露晒 API 成套 filter (country/language/tag 等) 俾 LLM, 保持
-     *  self.media.search_radio 個 schema 簡單、淨係一個 query 就夠 - 呢個跟返
-     *  self.media.play_music 用 fuzzy match 唔用一大堆 filter 參數嘅同一套
-     *  「LLM 用自然語言, 唔使識 API 細節」設計原則。query 直接餵俾 "name" 呢個
-     *  參數 (Radio Browser 嘅 name 搜尋本身就係 substring 唔分大小寫, 唔使呢部機
-     *  自己再做 fuzzy match)。喺獨立 thread (由 HttpServer 嘅
-     *  newCachedThreadPool 保證, 每個 HTTP request 已經喺自己 thread) 度行
-     *  blocking HttpURLConnection, 唔喺 UI thread 做, 安全性同
+     *  沒有把整套 API filter (country/language/tag 等) 暴露給 LLM, 保持
+     *  self.media.search_radio 的 schema 簡單、只要一個 query 就夠 - 這沿用
+     *  self.media.play_music 用 fuzzy match 不用一大堆 filter 參數的同一套
+     *  「LLM 用自然語言, 不用懂 API 細節」設計原則。query 直接餵給 "name" 這個
+     *  參數 (Radio Browser 的 name 搜尋本身就是不分大小寫的 substring, 不用這台機器
+     *  自己再做 fuzzy match)。在獨立 thread (由 HttpServer 的
+     *  newCachedThreadPool 保證, 每個 HTTP request 已經在自己的 thread) 上執行
+     *  blocking HttpURLConnection, 不在 UI thread 做, 安全性和
      *  xiaozhiVisionExplainRequest() 一致。 */
     private java.util.List<org.json.JSONObject> searchRadioStations(String query, int limit)
             throws java.io.IOException, org.json.JSONException {
         String encodedQuery = java.net.URLEncoder.encode(query, "UTF-8");
         String urlStr = RADIO_BROWSER_API_HOST + "/json/stations/search?name=" + encodedQuery
-                + "&order=votes&reverse=true&hidebroken=true&is_https=false"
+                + "&order=random&reverse=true&hidebroken=true"
                 + "&limit=" + limit;
 
         java.net.HttpURLConnection conn = null;
@@ -3588,16 +4712,16 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    /** 揾一個人類語言嘅電台名 - 先喺 lastRadioSearchResults (最近一次
-     *  self.media.search_radio/self.media.play_radio 觸發嘅搜尋結果) 度做精確/
-     *  substring 比對, 搵唔到先當呢個 query 本身係一個新嘅搜尋詞、再打一次
-     *  Radio Browser API。噉樣設計嘅原因: (1) LLM 好多時會先 search_radio 攞
-     *  幾個候選再由用戶或者自己揀一個名, 呢種情況應該喺已經有嘅結果度揀,
-     *  唔應該重新打 API (慢、亦都可能因為 order=votes 隨機性揀到第啲台); (2) 如果
-     *  LLM 或者用戶直接淨係話一個電台名 (例如 "播BBC")、之前又未搜過, 呢個
-     *  method 都應該自己搞掂, 唔使逼 LLM 一定要分兩步做。搵唔到就回傳 null -
-     *  同 resolveActionId()/resolveLocalMusicFile() 一致嘅「唔夠信心就話搵唔到,
-     *  唔亂估」原則。 */
+    /** 尋找一個人類語言的電台名 - 先在 lastRadioSearchResults (最近一次
+     *  self.media.search_radio/self.media.play_radio 觸發的搜尋結果) 裡做精確/
+     *  substring 比對, 找不到才把這個 query 本身當成一個新的搜尋詞、再打一次
+     *  Radio Browser API。這樣設計的原因: (1) LLM 常常會先 search_radio 取得
+     *  幾個候選再由用戶或自己選一個名, 這種情況應該從已有的結果裡選,
+     *  不應該重新打 API (慢、也可能因為 order=votes 的隨機性選到別的台); (2) 如果
+     *  LLM 或用戶直接只說一個電台名 (例如 "播BBC")、之前又沒搜過, 這個
+     *  method 也應該自己處理好, 不用逼 LLM 一定要分兩步做。找不到就回傳 null -
+     *  和 resolveActionId()/resolveLocalMusicFile() 一致的「信心不足就說找不到,
+     *  不亂猜」原則。 */
     private org.json.JSONObject resolveRadioStation(String query) throws java.io.IOException,
             org.json.JSONException {
         String q = query == null ? "" : query.trim();
@@ -3621,12 +4745,12 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
         }
 
-        // Cache 度搵唔到 (或者根本未搜過) - 當呢個 query 係新搜尋詞, 打一次
-        // Radio Browser, 揀返第一個唔係 HLS 嘅結果 (見 searchRadioStations()
-        // javadoc: HLS 喺舊版 MediaPlayer 支援唔穩定, 直接跳過, 唔盲目揀
-        // fresh.get(0) - 如果個 list 入面淨係得 HLS 台, 就寧願全部揀晒都揀
-        // 唔到、退而求其次揀返 fresh.get(0), 好過乜都播唔到)。
-        java.util.List<org.json.JSONObject> fresh = searchRadioStations(q, 10);
+        // Cache 裡找不到 (或者根本沒搜過) - 把這個 query 當成新搜尋詞, 打一次
+        // Radio Browser, 選第一個不是 HLS 的結果 (見 searchRadioStations()
+        // javadoc: HLS 在舊版 MediaPlayer 支援不穩定, 直接跳過, 不盲目選
+        // fresh.get(0) - 如果 list 裡只有 HLS 台, 就寧願全部選過都選
+        // 不到、退而求其次選 fresh.get(0), 好過什麼都播不了)。
+        java.util.List<org.json.JSONObject> fresh = searchRadioStations(q, 30);
         lastRadioSearchResults = fresh;
         for (org.json.JSONObject s : fresh) {
             if (s.optInt("hls", 0) == 0) {
@@ -3659,36 +4783,36 @@ public class MainActivity extends Activity implements SensorEventListener {
         return pool.get(new java.util.Random().nextInt(pool.size()));
     }
 
-    /** 喺獨立 thread 度揀一個隨機動作 (resolveRandomActionId()) 並播放, fire-and
-     *  -forget、唔理成功失敗、唔 block caller - 抽出嚟做共用 helper, 俾 TTS
-     *  "start" event (setTtsStateListener() 嗰段) 同 self.media.play_music 一齊用,
-     *  兩者想要嘅係完全同一種「郁下等機械人睇落生動啲」效果, 冇必要各自開一份
-     *  幾乎一樣嘅 new Thread(...) { ... }.start()。唔喺 WebSocket read loop
-     *  thread/HTTP worker thread 度直接 call AIDL blocking call, 同
-     *  reassertHeadEyeLed() 一致嘅安全做法。 */
+    /** 在獨立 thread 上選一個隨機動作 (resolveRandomActionId()) 並播放, fire-and
+     *  -forget、不理會成功失敗、不 block caller - 抽出來做共用 helper, 供 TTS
+     *  "start" event (setTtsStateListener() 那段) 和 self.media.play_music 一起使用,
+     *  兩者想要的是完全同一種「動一下讓機器人看起來生動一點」效果, 沒必要各自開一份
+     *  幾乎一樣的 new Thread(...) { ... }.start()。不在 WebSocket read loop
+     *  thread/HTTP worker thread 上直接呼叫 AIDL blocking call, 和
+     *  reassertHeadEyeLed() 一致的安全做法。 */
     private void triggerRandomFillerAction() {
         new Thread(new Runnable() {
             @Override
             public void run() {
                 String randomId = resolveRandomActionId();
                 if (randomId != null) {
-                    robot.action_PlayActionName(randomId);
+                    playActionDirect(randomId); // pure-direct：旧 AIDL 已无服务承载
                 }
             }
         }, "XiaozhiAutoRandomAction").start();
     }
 
-    /** MCP tool enable/disable 設定嘅讀寫 helper - 逗號分隔嘅 disabled tool name
-     *  清單, 存喺 PREFS_NAME 呢個共用 SharedPreferences (同 OTA custom 設定用返
-     *  同一個, 唔另開一個 file)。isMcpToolEnabled() 俾 listTools()/callTool()
-     *  共用: listTools() 用嚟過濾邊啲 tool 出現喺回應, callTool() 用嚟擋一個
-     *  已經 disabled 但 LLM 手上仲持有緊舊 tool 清單、嘗試照樣 call 嘅情況
-     *  (單靠 listTools() 側過濾唔夠, LLM cache 咗上一次嘅清單就繞得過)。
-     *  2026-08 更新: UI 側拎走咗「開放 MCP 工具俾小智使用」總開關 - 呢部機依家
-     *  永遠對外暴露 MCP 工具 (逐項 enable/disable 唔變), isMcpEnabled() 恆常
-     *  回傳 true。PREF_XIAOZHI_MCP_ENABLED 呢個 pref key 保留喺常數同
-     *  mcp_config/set 嘅寫入路徑度冇拆走, 純粹係為咗兼容舊有經 query string
-     *  直接打 API 嘅呼叫方式, 但唔會再影響實際行為。 */
+    /** MCP tool enable/disable 設定的讀寫 helper - 逗號分隔的 disabled tool name
+     *  清單, 存在 PREFS_NAME 這個共用 SharedPreferences (和 OTA custom 設定用
+     *  同一個, 不另開一個 file)。isMcpToolEnabled() 供 listTools()/callTool()
+     *  共用: listTools() 用來過濾哪些 tool 出現在回應中, callTool() 用來擋下一個
+     *  已經 disabled 但 LLM 手上還持有舊 tool 清單、嘗試照樣呼叫的情況
+     *  (單靠 listTools() 側過濾不夠, LLM 快取了上一次的清單就繞得過去)。
+     *  2026-08 更新: UI 側移除了「開放 MCP 工具給小智使用」總開關 - 這台機器現在
+     *  永遠對外暴露 MCP 工具 (逐項 enable/disable 不變), isMcpEnabled() 恆常
+     *  回傳 true。PREF_XIAOZHI_MCP_ENABLED 這個 pref key 保留在常數和
+     *  mcp_config/set 的寫入路徑裡沒有拆掉, 純粹是為了相容舊有經由 query string
+     *  直接打 API 的呼叫方式, 但不會再影響實際行為。 */
     private boolean isMcpEnabled() {
         return true;
     }
@@ -3746,8 +4870,8 @@ public class MainActivity extends Activity implements SensorEventListener {
     private XiaozhiVisionResult xiaozhiTakePhotoAndExplain(String question) {
         // 用返 XiaoZhi 語音對話同一個 cameraController 實例 (成個 app 淨係一個相機
         // 硬件, camera/snapshot 呢類其他功能都共用緊佢) - setRequestedResolution()
-        // 淨係影響下一次 start(), 唔會影響緊喺度用緊嘅其他 session (見
-        // CameraController 嘅 requestedWidth/Height javadoc)。
+        // 只影響下一次 start(), 不會影響目前正在使用的其他 session (見
+        // CameraController 的 requestedWidth/Height javadoc)。
         cameraController.setRequestedResolution(XIAOZHI_PHOTO_WIDTH, XIAOZHI_PHOTO_HEIGHT);
         CameraController.StartResult started = cameraController.start(8000);
         if (started.error != null) {
@@ -3755,17 +4879,17 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         byte[] jpeg;
         try {
-            // 2026-08 修正 (真正根源): 之前呢度用 waitForStableFrame() 攞 preview
-            // stream 嘅 frame (見 CameraController 頭段 comment - 呢個 class 本身係
+            // 2026-08 修正 (真正根源): 之前這裡用 waitForStableFrame() 取得 preview
+            // stream 的 frame (見 CameraController 開頭段 comment - 這個 class 本身是
             // "continuous webcam-style streaming, NOT single-shot photos" 設計)。反編譯
-            // 一個用戶提供、實測上傳成功嘅第三方 apk 之後發現: 佢送去 server 嘅係用真正
-            // 單張拍攝 (CameraX ImageCapture, busy-wait 住完成 callback), 唔係 preview
-            // frame - preview frame 冇經過相機 HAL 完整嘅單張 AE/AF/降噪 pipeline。
-            // 用戶已核實過 server 端存低嘅相解像度都啱 (480x360), 所以差異在於 capture
-            // 方式本身, 唔係 output size, 改用 CameraController.takePhoto() (Camera1
-            // legacy API 嘅 camera.takePicture(), 見該 method javadoc) 嚟做真正嘅單張
-            // 拍攝, 取代返 waitForStableFrame() 呢個「等夠幀數迴避過渡期」嘅
-            // workaround - takePicture() 本身已經係硬件執行緊嘅單張拍攝流程。
+            // 一個用戶提供、實測上傳成功的第三方 apk 之後發現: 它送去 server 的是用真正的
+            // 單張拍攝 (CameraX ImageCapture, busy-wait 等待完成 callback), 不是 preview
+            // frame - preview frame 沒有經過相機 HAL 完整的單張 AE/AF/降噪 pipeline。
+            // 用戶已核實過 server 端存下的相片解析度都對 (480x360), 所以差異在於 capture
+            // 方式本身, 不是 output size, 改用 CameraController.takePhoto() (Camera1
+            // legacy API 的 camera.takePicture(), 見該 method javadoc) 做真正的單張
+            // 拍攝, 取代 waitForStableFrame() 這個「等夠幀數迴避過渡期」的
+            // workaround - takePicture() 本身已經是硬體執行的單張拍攝流程。
             CameraController.PhotoResult photoResult =
                     cameraController.takePhoto(XIAOZHI_PHOTO_WIDTH, XIAOZHI_PHOTO_HEIGHT, 8000);
             if (photoResult.error != null) {
@@ -3780,13 +4904,13 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
 
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        // 2026-08 修正 (真正根源): 之前呢度嘅優先序係「自訂設定 -> 寫死常數」,
-        // 完全冇考慮 server 喺 "initialize" MCP request 度會夾住真正嘅 vision
-        // url/token (見 XiaozhiClient.getVisionUrl() 嘅 comment, 同官方
-        // mcp-protocol.md 原文 "initialize" 章節) - 呢個先係 404 嘅真正根源, 之前
-        // 幾輪改嘅 scheme/domain 都係捕風捉影。而家優先序改為: server 喺
-        // initialize 度話俾我哋知嘅 (最新鮮、最權威) -> 用戶手動填嘅自訂設定
-        // (如果啟用咗自訂 server 又冇收到 server 提供嘅 url) -> 寫死嘅
+        // 2026-08 修正 (真正根源): 之前這裡的優先順序是「自訂設定 -> 寫死常數」,
+        // 完全沒考慮 server 在 "initialize" MCP request 裡會附上真正的 vision
+        // url/token (見 XiaozhiClient.getVisionUrl() 的 comment, 和官方
+        // mcp-protocol.md 原文 "initialize" 章節) - 這個才是 404 的真正根源, 之前
+        // 幾輪改的 scheme/domain 都是捕風捉影。現在優先順序改為: server 在
+        // initialize 時告訴我們的 (最新鮮、最權威) -> 用戶手動填的自訂設定
+        // (如果啟用了自訂 server 又沒收到 server 提供的 url) -> 寫死的
         // DEFAULT_VISION_URL (最後保險, 例如連都未連過就試 take_photo)。
         String serverProvidedUrl = xiaozhiClient.getVisionUrl();
         String visionUrl;
@@ -3822,13 +4946,13 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  anywhere (see the async comment) - it's this codebase's best guess given the
      *  server's own wording ("call the tool `image_to_text`... using the uuid"), so the
      *  raw response is logged in full for correcting the shape if this guess is wrong. */
-    // 2026-08 新增: 判斷一個字串「睇落似唔似」真正嘅 UUID (標準格式:
-    // 8-4-4-4-12 個 hex 字符, 用 "-" 分隔, 例如 vision/explain response 個
-    // "776e1db5-092a-4045-9334-17ca15cfc781") - 用喺 self.camera.image_to_text
-    // 個 case, 篩走 LLM 冇讀返真 uuid、自己填咗個佔位符字面值 (實測見過
-    // "placeholder") 嘅情況, 見該 case 嘅 comment。刻意用寬鬆嘅 regex match
-    // (唔淨係死 check 等於 "placeholder"), 因為 LLM 用邊個字眼做佔位符本身
-    // 唔受控, 「格式啱先信」好過「同已知字面值逐個比對」。
+    // 2026-08 新增: 判斷一個字串「看起來像不像」真正的 UUID (標準格式:
+    // 8-4-4-4-12 個 hex 字符, 用 "-" 分隔, 例如 vision/explain response 的
+    // "776e1db5-092a-4045-9334-17ca15cfc781") - 用在 self.camera.image_to_text
+    // 那個 case, 篩掉 LLM 沒讀取真 uuid、自己填了個佔位符字面值 (實測見過
+    // "placeholder") 的情況, 見該 case 的 comment。刻意用寬鬆的 regex match
+    // (不只是死板檢查是否等於 "placeholder"), 因為 LLM 用哪個字眼做佔位符本身
+    // 不受控, 「格式對就信」好過「和已知字面值逐個比對」。
     private static final java.util.regex.Pattern UUID_LIKE_PATTERN = java.util.regex.Pattern.compile(
             "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
@@ -3911,9 +5035,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                         }
                     }
                     if (text.isEmpty()) {
-                        // 又係空 - 呢次冇 message 可以再 relay 落去 (冇再下一層
-                        // tool 可以 call 落去), 直接將完整 raw response 當成
-                        // error 帶返俾 LLM/開發者, 等睇 logcat 個 "image_to_text
+                        // 也是空的 - 這次沒有 message 可以再 relay 下去 (沒有下一層
+                        // tool 可以呼叫), 直接把完整 raw response 當成
+                        // error 帶回給 LLM/開發者, 讓看 logcat 的 "image_to_text
                         // raw response" 個 log 可以直接對照真正欄位。
                         return XiaozhiVisionResult.fail(
                                 "image_to_text succeeded but returned no text; raw: " + responseText);
@@ -3930,9 +5054,9 @@ public class MainActivity extends Activity implements SensorEventListener {
             return XiaozhiVisionResult.fail("image_to_text request failed: " + e.getMessage());
         } catch (org.json.JSONException e) {
             // 理論上 payloadJson.put("type",...)/put("uuid",...) 呢兩個 put(String,
-            // Object) overload 唔會真係 throw (value 本身冇問題), 但佢哋簽名有
-            // 宣告 throws JSONException, 純粹補返個 catch 過 javac 嘅 checked
-            // exception 檢查, 唔係話呢度預期會撞到。
+            // Object) overload 不會真的 throw (value 本身沒問題), 但它們簽名有
+            // 宣告 throws JSONException, 純粹補上這個 catch 通過 javac 的 checked
+            // exception 檢查, 不代表這裡預期會撞到。
             return XiaozhiVisionResult.fail("image_to_text failed building request JSON: " + e.getMessage());
         } finally {
             if (conn != null) conn.disconnect();
@@ -3947,30 +5071,30 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  esp32_camera.cc's Explain() for the request shape being matched: a "question"
      *  text field alongside a "file" field holding the JPEG.
      *
-     *  2026-08 修正: 反編譯一個用戶提供、實測影相成功嘅第三方 apk (package
-     *  com.huihongcloud.xiaozhi) 嘅實際 multipart 組裝邏輯 (Lcom/huihongcloud/
-     *  xiaozhi/D;->a bytecode), 發現兩個之前呢度冇跟嘅細節:
-     *  (1) 佢送嘅 Client-Id header 之前完全冇加 (呢度之前個 comment 早就講咗
-     *      「同 WebSocket 一樣嘅 Device-Id/Client-Id/Authorization」但實際冇做);
-     *  (2) 佢個 multipart body 開頭多咗一個 "type" part, 值係 "multipart" (喺
-     *      "question" part 之前) - 呢個唔喺官方 esp32_camera.cc 文檔化嘅欄位入面
-     *      提到, 但實測嘅 apk 確實有加, 保守起見跟返, 避免依家依賴緊嘅 server
+     *  2026-08 修正: 反編譯一個用戶提供、實測拍照成功的第三方 apk (package
+     *  com.huihongcloud.xiaozhi) 的實際 multipart 組裝邏輯 (Lcom/huihongcloud/
+     *  xiaozhi/D;->a bytecode), 發現兩個之前這裡沒跟上的細節:
+     *  (1) 它送出的 Client-Id header 之前完全沒有加 (這裡之前的 comment 早就說了
+     *      「和 WebSocket 一樣的 Device-Id/Client-Id/Authorization」但實際沒有做);
+     *  (2) 它的 multipart body 開頭多了一個 "type" part, 值是 "multipart" (在
+     *      "question" part 之前) - 這個沒有出現在官方 esp32_camera.cc 文件化的欄位裡
+     *      提到, 但實測的 apk 確實有加, 保守起見跟隨, 避免現在依賴中的 server
      *      side 有隱藏檢查依賴呢個欄位。 */
     private XiaozhiVisionResult xiaozhiVisionExplainRequest(String urlStr, String deviceId,
             String clientId,
             String accessToken, byte[] jpeg, String question) throws java.io.IOException {
         // 2026-08 修正: 之前用動態 "----OpenAlpha2Boundary<timestamp>" boundary -
-        // 反編譯用戶提供、實測上傳成功嘅第三方 apk (package com.huihongcloud.xiaozhi)
-        // 之後發現, 佢個 multipart body 結構 (type/question/file 三個 part, field
-        // name、"camera.jpg" filename) 同呢度已經一致, 但佢用嘅係一個固定字串
-        // boundary "----ESP32_CAMERA_BOUNDARY" - 呢個正正係官方 esp32-camera.cc
-        // firmware 用嘅 boundary, 呢個第三方 apk 特登跟足官方寫死呢個字串, 唔係隨機
-        // 生成。用戶已核實同一個帳戶/官方 server 用第三方 apk 一路成功, 我哋一路撞到
-        // server 話「請 call image_to_text」呢個 fallback - 兩者 request body 結構
-        // 一致之下, 呢個 boundary 係暫時搵到嘅唯一實質差異, 懷疑 server 側嘅
-        // multipart parser 或者前置關卡對呢個固定字串有特殊 / 白名單處理, 用嚟識別
-        // 「呢個係合法嘅相機上傳」, 動態 boundary 反而被判去咗一條 fallback 路徑。
-        // 跟返呢個固定字串, 唔再自己動態生成。
+        // 反編譯用戶提供、實測上傳成功的第三方 apk (package com.huihongcloud.xiaozhi)
+        // 之後發現, 它的 multipart body 結構 (type/question/file 三個 part, field
+        // name、"camera.jpg" filename) 和這裡已經一致, 但它用的是一個固定字串
+        // boundary "----ESP32_CAMERA_BOUNDARY" - 這正是官方 esp32-camera.cc
+        // firmware 用的 boundary, 這個第三方 apk 特意完全遵照官方寫死這個字串, 不是隨機
+        // 生成。用戶已核實同一個帳戶/官方 server 用第三方 apk 一直成功, 我們一直撞到
+        // server 說「請呼叫 image_to_text」這個 fallback - 兩者 request body 結構
+        // 一致的情況下, 這個 boundary 是目前找到的唯一實質差異, 懷疑 server 側的
+        // multipart parser 或前置關卡對這個固定字串有特殊 / 白名單處理, 用來識別
+        // 「這是合法的相機上傳」, 動態 boundary 反而被判去了一條 fallback 路徑。
+        // 沿用這個固定字串, 不再自己動態生成。
         String boundary = "----ESP32_CAMERA_BOUNDARY";
         java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
         java.io.Writer w = new java.io.OutputStreamWriter(body, java.nio.charset.StandardCharsets.UTF_8);
@@ -4026,12 +5150,12 @@ public class MainActivity extends Activity implements SensorEventListener {
             String responseText = is != null ? readFully(is) : "";
             if (status == 404) {
                 // 2026-08 新增: 實測用官方 xiaozhi.me 撞過呢個情況 - 官方 esp32
-                // firmware 本身打緊同一條 URL 係得嘅 (見 GitHub issue #708 嘅實測
-                // log), 所以 404 唔係 URL 打錯, 而係呢個帳戶/agent 喺 xiaozhi.me
-                // console 度未開通 vision/camera 呢個 MCP 服務 - 冇開通嘅帳戶,
-                // api.xiaozhi.me 呢邊嘅 routing 層面根本冇呢條路由, 對所有 request
-                // 都係 404, 唔會有更詳細嘅「未授權」訊息。呢度將呢個已知原因直接
-                // 話俾 LLM/用戶知, 唔使下次再由零開始查一次。
+                // firmware 本身打同一條 URL 是可行的 (見 GitHub issue #708 的實測
+                // log), 所以 404 不是 URL 打錯, 而是這個帳戶/agent 在 xiaozhi.me
+                // console 裡尚未開通 vision/camera 這個 MCP 服務 - 沒開通的帳戶,
+                // api.xiaozhi.me 這邊的 routing 層面根本沒有這條路由, 對所有 request
+                // 都是 404, 不會有更詳細的「未授權」訊息。這裡把這個已知原因直接
+                // 告訴 LLM/用戶, 不用下次再從零開始查一次。
                 return XiaozhiVisionResult.fail("vision/explain returned HTTP 404 - this usually "
                         + "means the vision/camera MCP service has not been enabled for this "
                         + "device/agent in the xiaozhi.me console (look for \"MCP 接入點\" / "
@@ -4044,16 +5168,16 @@ public class MainActivity extends Activity implements SensorEventListener {
             try {
                 org.json.JSONObject json = new org.json.JSONObject(responseText);
                 // 2026-08 新增 (診斷用): 實測 status 200 + isError:false, 但最終
-                // MCP tool 回應嘅 text 一直係空字串 - 即係 json.optBoolean("success")
-                // 行到 true 嗰邊, 但 json.optString("text","") 攞唔到嘢。之前一直冇
-                // log 印低完整 raw response body, 淨係識講「係咪 success」, 唔知
-                // server 實際仲有咩欄位。今次印低嚟, 下次一 fail/text 空就可以直接
-                // 對照真正嘅 server JSON 結構嚟修, 唔使再靠估。
+                // MCP tool 回應的 text 一直是空字串 - 也就是 json.optBoolean("success")
+                // 走到 true 那邊, 但 json.optString("text","") 拿不到東西。之前一直沒有
+                // log 印出完整 raw response body, 只會說「是否 success」, 不知道
+                // server 實際還有哪些欄位。這次印出來, 下次一 fail/text 空就可以直接
+                // 對照真正的 server JSON 結構來修, 不用再靠猜。
                 android.util.Log.i("XiaozhiVision", "vision/explain raw response: " + responseText);
                 if (json.optBoolean("success", false)) {
                     String text = json.optString("text", "");
                     if (text.isEmpty()) {
-                        // "text" 呢層攞唔到, 試下幾種常見嘅巢狀結構 fallback -
+                        // "text" 這層拿不到, 試幾種常見的巢狀結構 fallback -
                         // 未經證實邊個啱, 純粹碰運氣, 主要靠上面條 log 先真正確診。
                         org.json.JSONObject nestedResult = json.optJSONObject("result");
                         if (nestedResult != null) {
@@ -4067,24 +5191,24 @@ public class MainActivity extends Activity implements SensorEventListener {
                         }
                     }
                     if (text.isEmpty()) {
-                        // 2026-08 新增 (真正根源): 實測 (4 次) 得出嘅真正 server 行為 -
-                        // 帳戶用 GPT-5 做 LLM provider 時, vision/explain 唔會即刻答返
-                        // description, 而係response
+                        // 2026-08 新增 (真正根源): 實測 (4 次) 得出的真正 server 行為 -
+                        // 帳戶用 GPT-5 做 LLM provider 時, vision/explain 不會立即回覆
+                        // description, 而是回應
                         // {"success":true,"uuid":"...","message":"Please call the
                         // tool `image_to_text` to explain the image, then reply to
-                        // the user"} - 即係話呢個 explain 係異步嘅, 真正描述要由 LLM
-                        // agent 自己喺對話入面主動再發一次 MCP tools/call 去 call
-                        // "image_to_text" 呢個 tool (未喺官方 mcp-protocol.md 記載,
-                        // 屬於 xiaozhi.me console 呢個特定 agent/GPT-5 組合先有嘅行為)
-                        // 先攞到。之前呢度將 text 空字串直接當成功 (見上面
-                        // XiaozhiVisionResult.ok(text)), 令 LLM 收到嘅 MCP result 係
-                        // 完全空白嘅 text, 完全冇提示佢要再 call 邊個 tool, 對話就此
-                        // 卡死, 4 次都係呢個 pattern。修正: 呢種情況唔算失敗, 將
-                        // server 個 "message" (LLM 睇得明嘅指示) 原文當成呢次
-                        // self.camera.take_photo 嘅 result 文字傳返俾 LLM - 等 LLM
-                        // 自己讀到呢句嘢, 主動再發 tools/call 去 call
-                        // "image_to_text" (device 呢邊已加返呢個 tool 嘅
-                        // 註冊/處理, 見 buildMcpToolsList() 同 callTool() 嘅
+                        // the user"} - 也就是說這個 explain 是異步的, 真正描述要由 LLM
+                        // agent 自己在對話裡主動再發一次 MCP tools/call 去呼叫
+                        // "image_to_text" 這個 tool (未在官方 mcp-protocol.md 記載,
+                        // 屬於 xiaozhi.me console 這個特定 agent/GPT-5 組合才有的行為)
+                        // 才能取得。之前這裡把 text 空字串直接當成功 (見上面
+                        // XiaozhiVisionResult.ok(text)), 使 LLM 收到的 MCP result 是
+                        // 完全空白的 text, 完全沒提示它要再呼叫哪個 tool, 對話就此
+                        // 卡死, 4 次都是這個 pattern。修正: 這種情況不算失敗, 把
+                        // server 的 "message" (LLM 看得懂的指示) 原文當成這次
+                        // self.camera.take_photo 的 result 文字傳回給 LLM - 讓 LLM
+                        // 自己讀到這句話, 主動再發 tools/call 去呼叫
+                        // "image_to_text" (device 這邊已加入這個 tool 的
+                        // 註冊/處理, 見 buildMcpToolsList() 和 callTool() 的
                         // "self.camera.image_to_text" case)。
                         String uuid = json.optString("uuid", null);
                         String message = json.optString("message", null);
@@ -4115,12 +5239,12 @@ public class MainActivity extends Activity implements SensorEventListener {
             public org.json.JSONObject listTools() throws org.json.JSONException {
                 org.json.JSONArray tools = new org.json.JSONArray();
 
-                // 2026-08 修正: 之前 "name" 要求 LLM 傳返 self.robot.list_actions 嘅
-                // id (一串冇語意嘅 timestamp 數字), 但實測小智完全唔跟呢個指示,
-                // 純粹靠印象亂噏一個 id (見落面 play_action tool description 嘅
-                // 詳細 comment)。現在 "name" 改為接受人類可讀嘅中文/英文動作名,
-                // 由 callTool 嘅 self.robot.play_action case 做 fuzzy match 轉做真正
-                // id - 呢度唔再需要將 202 個 id 塞晒落 enum。
+                // 2026-08 修正: 之前 "name" 要求 LLM 傳回 self.robot.list_actions 的
+                // id (一串沒有語意的 timestamp 數字), 但實測小智完全不遵守這個指示,
+                // 純粹憑印象亂編一個 id (見下面 play_action tool description 的
+                // 詳細 comment)。現在 "name" 改為接受人類可讀的中文/英文動作名,
+                // 由 callTool 的 self.robot.play_action case 做 fuzzy match 轉成真正
+                // id - 這裡不再需要把 202 個 id 全塞進 enum。
                 org.json.JSONObject listActions = new org.json.JSONObject();
                 listActions.put("name", "self.robot.list_actions");
                 listActions.put("description", "List all built-in robot actions with their id, "
@@ -4135,20 +5259,20 @@ public class MainActivity extends Activity implements SensorEventListener {
                 tools.put(listActions);
 
                 // 2026-08 修正 (實測發現): 之前 "name" 要求 LLM 一定要傳返
-                // self.robot.list_actions 嘅 id (一串冇語意嘅 timestamp 數字), 但
-                // 實測小智完全唔跟呢個指示 - 佢從來冇 call 過 list_actions, 純粹靠
-                // "印象" 亂噏一個 id (實測見過叫佢郁左手, 佢傳咗 "1464835936031",
-                // 實際係「向後走」嗰個 id - 郁錯晒)。呢個唔係 enum 冇約束住合法值嘅
-                // 問題 (enum 確保咗傳落嚟嘅一定係真實存在嘅檔案, 唔會再撞
-                // "開唔到檔案" 嗰種崩潰), 而係 LLM 對住一堆完全冇語意嘅純數字 id,
-                // 根本記唔住邊個 id 對應邊個動作, 就算 description 幾強調
-                // "call list_actions first" 都冇用。
+                // self.robot.list_actions 的 id (一串沒有語意的 timestamp 數字), 但
+                // 實測小智完全不遵守這個指示 - 它從來沒呼叫過 list_actions, 純粹憑
+                // "印象" 亂編一個 id (實測見過叫它舉左手, 它傳了 "1464835936031",
+                // 實際是「向後走」那個 id - 完全動錯了)。這不是 enum 沒約束合法值的
+                // 問題 (enum 確保了傳過來的一定是真實存在的檔案, 不會再撞上
+                // "開不了檔案" 那種崩潰), 而是 LLM 面對一堆完全沒語意的純數字 id,
+                // 根本記不住哪個 id 對應哪個動作, 就算 description 再怎麼強調
+                // "call list_actions first" 也沒用。
                 //
-                // 現在做法: "name" 改為接受人類可讀嘅中文或英文動作名 (例如
-                // "舉左手" 或 "take left hand"), 由呢度 (callTool 嘅
-                // self.robot.play_action case) 做 fuzzy match 轉做真正嘅 id 先傳落
-                // action_PlayActionName() - 詳見 resolveActionId()。LLM 唔使再記
-                // id, 只要講返個佢自己生成緊嘅語意名就得, 大幅減低揀錯嘅機會。
+                // 現在做法: "name" 改為接受人類可讀的中文或英文動作名 (例如
+                // "舉左手" 或 "take left hand"), 由這裡 (callTool 的
+                // self.robot.play_action case) 做 fuzzy match 轉成真正的 id 再傳給
+                // action_PlayActionName() - 詳見 resolveActionId()。LLM 不用再記
+                // id, 只要說出自己生成的語意名就好, 大幅減低選錯的機會。
                 org.json.JSONObject playAction = new org.json.JSONObject();
                 playAction.put("name", "self.robot.play_action");
                 playAction.put("description", "Play a named built-in robot action/animation. "
@@ -4178,12 +5302,12 @@ public class MainActivity extends Activity implements SensorEventListener {
                 stopAction.put("inputSchema", stopActionSchema);
                 tools.put(stopAction);
 
-                // 2026-08 新增: 骨架先行, 揀邊個動作淨係靠隨機 (見
-                // resolveRandomActionId()), 未做任何 emotion-to-action 對應 - 嗰部分
-                // 遲啲先做。呢個 tool 存在嘅意義係俾 LLM 自己判斷「呢一刻適唔適合
-                // 加個動作睇落生動啲」, 唔係跟住 emotion 字段機械式觸發 (每句對話
-                // 都夾 emotion 字段, 如果 client 側見到就自動播, 會太密太吵) - 主導
-                // 權留喺 LLM 側, 由佢自己決定幾時 call。
+                // 2026-08 新增: 骨架先行, 選哪個動作只靠隨機 (見
+                // resolveRandomActionId()), 還沒做任何 emotion-to-action 對應 - 那部分
+                // 之後再做。這個 tool 存在的意義是讓 LLM 自己判斷「這一刻適不適合
+                // 加個動作看起來生動一點」, 不是跟著 emotion 字段機械式觸發 (每句對話
+                // 都附帶 emotion 字段, 如果 client 側看到就自動播放, 會太頻繁太吵) - 主導
+                // 權留在 LLM 側, 由它自己決定何時呼叫。
                 org.json.JSONObject playRandomAction = new org.json.JSONObject();
                 playRandomAction.put("name", "self.robot.play_random_action");
                 playRandomAction.put("description", "Play a random filler movement to make the "
@@ -4202,11 +5326,11 @@ public class MainActivity extends Activity implements SensorEventListener {
                 tools.put(playRandomAction);
 
                 // 2026-08 新增: 全套硬件控制 MCP tools (servo/LED/PIR/sonar), 跟返
-                // 呢個 bridge 已有嘅 pattern (schema 用 org.json 砌, 執行時直接 call
-                // robot.xxx() 個 AIDL wrapper, 有 waitXxxReady() 就跟現有 HTTP API
-                // case 一樣加埋) - 詳細參數含義/已驗證行為見 AIDL_REFERENCE.md 同
-                // handleApi() 入面對應嘅 "servo/*"、"led/*"、"pir/*" case (呢啲 MCP
-                // tool 純粹係嗰啲 case 嘅薄包裝, 冇重複定義邏輯)。
+                // 這個 bridge 已有的 pattern (schema 用 org.json 組建, 執行時直接呼叫
+                // robot.xxx() 的 AIDL wrapper, 有 waitXxxReady() 就跟現有 HTTP API
+                // case 一樣加上) - 詳細參數含義/已驗證行為見 AIDL_REFERENCE.md 和
+                // handleApi() 裡對應的 "servo/*"、"led/*"、"pir/*" case (這些 MCP
+                // tool 純粹是那些 case 的薄包裝, 沒有重複定義邏輯)。
 
                 org.json.JSONObject servoOne = new org.json.JSONObject();
                 servoOne.put("name", "self.robot.servo_set_one");
@@ -4352,13 +5476,13 @@ public class MainActivity extends Activity implements SensorEventListener {
                 sonarSet.put("inputSchema", sonarSetSchema);
                 tools.put(sonarSet);
 
-                // 跟返官方 xiaozhi-esp32 firmware 嘅 self.camera.take_photo 命名/協議
-                // 形狀 (見 esp32_camera.cc 嘅 Explain() 實作): 影一張相, 用 multipart
-                // HTTP POST 去 vision/explain endpoint (JPEG + question), server 回
-                // {"success":true,"text":"..."} 嘅圖片描述文字, 由 LLM 讀出嚟。相片
-                // 唔會經 MCP JSONRPC result 直接塞 image content (呢個 xiaozhi 協議
-                // 冇支援) - explain 完全喺 device <-> vision endpoint 之間做, MCP tool
-                // 淨係拎返段描述文字。解像度固定 480x360 (用戶指定, 細過官方範例嘅
+                // 沿用官方 xiaozhi-esp32 firmware 的 self.camera.take_photo 命名/協議
+                // 形狀 (見 esp32_camera.cc 的 Explain() 實作): 拍一張相, 用 multipart
+                // HTTP POST 去 vision/explain endpoint (JPEG + question), server 回傳
+                // {"success":true,"text":"..."} 的圖片描述文字, 由 LLM 讀出來。相片
+                // 不會經由 MCP JSONRPC result 直接塞入 image content (這個 xiaozhi 協議
+                // 不支援) - explain 完全在 device <-> vision endpoint 之間進行, MCP tool
+                // 只取回一段描述文字。解析度固定 480x360 (用戶指定, 比官方範例的
                 // 640x480, 換取更快上傳/處理), 見 CAMERA_PHOTO_WIDTH/HEIGHT 同
                 // xiaozhiVisionExplain()。
                 org.json.JSONObject takePhoto = new org.json.JSONObject();
@@ -4379,19 +5503,19 @@ public class MainActivity extends Activity implements SensorEventListener {
                 tools.put(takePhoto);
 
                 // 2026-08 新增: 帳戶用 GPT-5 做 LLM provider 時, vision/explain
-                // 實測 (見 xiaozhiVisionExplainRequest() 嘅詳細 comment) 唔會即刻
-                // 答返相片描述, 而係先回一個 {"success":true,"uuid":"...",
-                // "message":"Please call the tool `image_to_text` ..."} - 即係
-                // server 期望 LLM 自己識再發一次 MCP tools/call 去 call 呢個
-                // "image_to_text" tool 先攞到真正描述。之前 device 呢邊冇註冊過
-                // 呢個 tool, 令 GPT-5 就算跟指示想 call 都冇呢個 tool 可以 call,
-                // 對話卡死, 4 次都係呢個情況。呢個 tool 名/形狀屬於 xiaozhi.me
-                // console 呢個特定 agent/GPT-5 組合先有嘅非官方行為 (官方
-                // mcp-protocol.md 完全冇記載), 跟返 server 訊息原文用嘅名
-                // "image_to_text", 掛喺 self.camera 底下同 take_photo 同一
-                // namespace。inputSchema 冇強制要求 uuid (LLM 可能會/唔會帶),
-                // device 呢邊會用返 lastPendingPhotoUuid 做 fallback 核對, 見
-                // callTool() 嘅 "self.camera.image_to_text" case。
+                // 實測 (見 xiaozhiVisionExplainRequest() 的詳細 comment) 不會立即
+                // 回覆相片描述, 而是先回一個 {"success":true,"uuid":"...",
+                // "message":"Please call the tool `image_to_text` ..."} - 也就是說
+                // server 期望 LLM 自己懂得再發一次 MCP tools/call 去呼叫這個
+                // "image_to_text" tool 才能拿到真正描述。之前 device 這邊沒有註冊過
+                // 這個 tool, 使 GPT-5 就算依指示想呼叫也沒有這個 tool 可以呼叫,
+                // 對話卡死, 4 次都是這個情況。這個 tool 名/形狀屬於 xiaozhi.me
+                // console 這個特定 agent/GPT-5 組合才有的非官方行為 (官方
+                // mcp-protocol.md 完全沒記載), 沿用 server 訊息原文用的名字
+                // "image_to_text", 掛在 self.camera 底下和 take_photo 同一個
+                // namespace。inputSchema 沒有強制要求 uuid (LLM 可能會/不會帶),
+                // device 這邊會用 lastPendingPhotoUuid 做 fallback 核對, 見
+                // callTool() 的 "self.camera.image_to_text" case。
                 org.json.JSONObject imageToText = new org.json.JSONObject();
                 imageToText.put("name", "self.camera.image_to_text");
                 imageToText.put("description", "Get the text description for a photo previously "
@@ -4424,8 +5548,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                 tools.put(speak);
 
                 // 2026-08 新增: 本地音樂播放 (/mnt/internal_sd/music/, 見
-                // listLocalMusicFiles()/resolveLocalMusicFile() 嘅 javadoc) - 跟返
-                // self.robot.play_action 嗰套「人類語言名 + fuzzy match」做法, 唔使
+                // listLocalMusicFiles()/resolveLocalMusicFile() 的 javadoc) - 沿用
+                // self.robot.play_action 那套「人類語言名 + fuzzy match」做法, 不用
                 // LLM 記實際檔名/副檔名。
                 org.json.JSONObject listMusic = new org.json.JSONObject();
                 listMusic.put("name", "self.media.list_music");
@@ -4466,10 +5590,10 @@ public class MainActivity extends Activity implements SensorEventListener {
 
                 // 2026-08 更新: FM/網絡電台 (經 Radio Browser API,
                 // radio-browser.info, 動態搜全世界公開電台 - 見
-                // searchRadioStations()/resolveRadioStation() 嘅 javadoc, 呢部機
-                // 唔再內置任何寫死嘅電台清單) - self.media.list_radio 換咗做
-                // self.media.search_radio (搜尋型 API 攞唔到「全部」電台, 淨係
-                // 「search_radio先攞候選、play_radio再揀播」呢個 flow 先合理)。
+                // searchRadioStations()/resolveRadioStation() 的 javadoc, 這台機器
+                // 不再內建任何寫死的電台清單) - self.media.list_radio 換成了
+                // self.media.search_radio (搜尋型 API 拿不到「全部」電台, 只
+                // 「search_radio 先取得候選、play_radio 再選播」這個 flow 才合理)。
                 org.json.JSONObject searchRadio = new org.json.JSONObject();
                 searchRadio.put("name", "self.media.search_radio");
                 searchRadio.put("description", "Search for live FM/internet radio stations from "
@@ -4527,12 +5651,12 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // action ever plays. The full tool set fits in a single page, so
                 // nextCursor must be omitted entirely here to signal "no more pages".
                 //
-                // 2026-08 新增: MCP 設定 card 嘅 enable/disable 喺呢度一次性生效 -
-                // 成個 tools array 已經砌晒晒 (上面全部 tools.put(...)), 呢度過濾
-                // 一次就夠, 唔使逐個 tools.put() 前面加 if, 減少改動、唔使擔心漏咗
-                // 邊個。總開關閂咗就回傳完全空嘅 tools array (等如話俾 LLM 知「呢部
-                // 機依家冇任何工具」); 開住就逐個攞返個別 tool 嘅 enabled 狀態
-                // 過濾。見 isMcpToolEnabled()/getMcpDisabledToolNames() 嘅 comment。
+                // 2026-08 新增: MCP 設定 card 的 enable/disable 在這裡一次性生效 -
+                // 整個 tools array 已經全部組好了 (上面全部 tools.put(...)), 這裡過濾
+                // 一次就夠, 不用逐個 tools.put() 前面加 if, 減少改動、不用擔心漏了
+                // 哪一個。總開關關閉就回傳完全空的 tools array (等於告訴 LLM「這台
+                // 機器現在沒有任何工具」); 開啟就逐一取得個別 tool 的 enabled 狀態
+                // 過濾。見 isMcpToolEnabled()/getMcpDisabledToolNames() 的 comment。
                 org.json.JSONArray filteredTools = new org.json.JSONArray();
                 if (isMcpEnabled()) {
                     java.util.Set<String> disabledNames = getMcpDisabledToolNames();
@@ -4543,13 +5667,13 @@ public class MainActivity extends Activity implements SensorEventListener {
                         }
                     }
                 }
-                // 2026-08 新增: MCP 設定 card 要顯示全部 tool (連同已經 disable 咗
-                // 嘅), 等用戶可以撳返個掣 enable 返 - 但上面 filteredTools 已經係
-                // 過濾完先, 傳俾 XiaoZhi server 嗰份唔會再帶住 disabled 嘅 tool。
-                // 呢度將未過濾嘅完整版本 (tools, 起好晒全部 tool 嘅原始 array) 存低
-                // 做 instance field, 等 "mcp_tools/list" 呢個 HTTP endpoint (純粹俾
-                // 前端 card 顯示用) 可以獨立讀到完整清單, 唔使搬動/複製呢成段
-                // 起 tools array 嘅邏輯。
+                // 2026-08 新增: MCP 設定 card 要顯示全部 tool (含已經 disable 的
+                // ), 讓用戶可以按按鈕重新 enable - 但上面 filteredTools 已經是
+                // 過濾完的, 傳給 XiaoZhi server 的那份不會再帶著 disabled 的 tool。
+                // 這裡把未過濾的完整版本 (tools, 建好全部 tool 的原始 array) 存下
+                // 做 instance field, 讓 "mcp_tools/list" 這個 HTTP endpoint (純粹供
+                // 前端 card 顯示用) 可以獨立讀到完整清單, 不用搬動/複製這整段
+                // 建立 tools array 的邏輯。
                 lastFullMcpToolList = tools;
                 org.json.JSONObject result = new org.json.JSONObject();
                 result.put("tools", filteredTools);
@@ -4560,9 +5684,9 @@ public class MainActivity extends Activity implements SensorEventListener {
             public org.json.JSONObject callTool(String name, org.json.JSONObject arguments) throws org.json.JSONException {
                 boolean isError = false;
                 String resultText = "";
-                // 2026-08 新增: 單靠 listTools() 側過濾唔夠 - LLM 可能仲拎住上一次
-                // (disable 之前) 攞到嘅 tool 清單, 照樣試 call 一個而家已經 disabled
-                // 嘅 tool name, 呢度做多一重擋。同 listTools() 用返同一套
+                // 2026-08 新增: 單靠 listTools() 側過濾不夠 - LLM 可能還拿著上一次
+                // (disable 之前) 取得的 tool 清單, 照樣試著呼叫一個現在已經 disabled
+                // 的 tool name, 這裡多做一重防護。和 listTools() 用同一套
                 // isMcpEnabled()/getMcpDisabledToolNames() 邏輯, 保證兩邊判斷一致。
                 if (!isMcpToolEnabled(name, getMcpDisabledToolNames())) {
                     org.json.JSONArray disabledContent = new org.json.JSONArray();
@@ -4592,14 +5716,14 @@ public class MainActivity extends Activity implements SensorEventListener {
                                 resultText = "missing required argument: name";
                                 break;
                             }
-                            // 2026-08 修正: 小智傳落嚟嘅係人類語言嘅動作名 (中文/英文,
-                            // 唔再係要佢自己記住嘅 id, 見 listTools() 嘅
-                            // self.robot.play_action description comment) - 呢度做
-                            // fuzzy match 揾返真正對應機身檔案嘅 id, 先傳落
-                            // action_PlayActionName()。搵唔到就直接話俾 LLM 知邊個名
-                            // 揾唔到, 等佢有機會 call self.robot.list_actions 再試,
-                            // 而唔係盲目將 LLM 作嘅名直接傳落 AIDL (會撞返
-                            // "raise_left_hand" 嗰種開唔到檔案嘅老問題)。
+                            // 2026-08 修正: 小智傳過來的是人類語言的動作名 (中文/英文,
+                            // 不再是要它自己記住的 id, 見 listTools() 的
+                            // self.robot.play_action description comment) - 這裡做
+                            // fuzzy match 找出真正對應機身檔案的 id, 再傳給
+                            // action_PlayActionName()。找不到就直接告訴 LLM 哪個名
+                            // 找不到, 讓它有機會呼叫 self.robot.list_actions 再試,
+                            // 而不是盲目把 LLM 編的名直接傳給 AIDL (會撞回
+                            // "raise_left_hand" 那種開不了檔案的老問題)。
                             String resolvedId = resolveActionId(actionName);
                             if (resolvedId == null) {
                                 isError = true;
@@ -4607,22 +5731,15 @@ public class MainActivity extends Activity implements SensorEventListener {
                                         + "\" - call self.robot.list_actions to see valid names";
                                 break;
                             }
-                            UbxErrorCode.API_ERROR_CODE code = robot.action_PlayActionName(resolvedId);
+                            UbxErrorCode.API_ERROR_CODE code = playActionDirect(resolvedId);
                             isError = !isOk(code);
                             resultText = String.valueOf(code) + " (matched \"" + actionName
                                     + "\" -> id " + resolvedId + ")";
                             break;
                         }
                         case "self.robot.stop_action": {
-                            // 見 "action/stop" endpoint 嗰段 comment - 停低之後補一個
-                            // 「蹲下站起」做回位, 同 HTTP API 嗰邊行為保持一致。
-                            UbxErrorCode.API_ERROR_CODE code = robot.action_StopAction();
-                            try {
-                                robot.action_PlayActionName(STOP_RECOVERY_ACTION_ID);
-                            } catch (Exception e) {
-                                Log.w(TAG, "Failed to play recovery action after "
-                                        + "self.robot.stop_action", e);
-                            }
+                            // pure-direct：一键全停+蹲下站起回位，和 HTTP action/stop 同语义。
+                            UbxErrorCode.API_ERROR_CODE code = stopActionWithRecovery();
                             isError = !isOk(code);
                             resultText = String.valueOf(code);
                             break;
@@ -4634,19 +5751,19 @@ public class MainActivity extends Activity implements SensorEventListener {
                                 resultText = "no random-movement actions available";
                                 break;
                             }
-                            UbxErrorCode.API_ERROR_CODE code = robot.action_PlayActionName(randomId);
+                            UbxErrorCode.API_ERROR_CODE code = playActionDirect(randomId);
                             isError = !isOk(code);
                             resultText = String.valueOf(code) + " (played random action id " + randomId + ")";
                             break;
                         }
 
                         // -- Hardware control: servo/LED/PIR/sonar -----------------------
-                        // 薄包裝, 邏輯全部委托返 handleApi() 已有嘅 "servo/*"、
-                        // "led/*"、"pir/*" case 用緊嗰啲 Alpha2RobotApi 方法, 見
-                        // AIDL_REFERENCE.md 相關章節同 handleApi() 個 comment 攞完整
-                        // 已驗證行為/參數語意, 呢度唔重複解釋。
+                        // 薄包裝, 邏輯全部委託給 handleApi() 已有的 "servo/*"、
+                        // "led/*"、"pir/*" case 使用的那些 Alpha2RobotApi 方法, 見
+                        // AIDL_REFERENCE.md 相關章節和 handleApi() 的 comment 取得完整
+                        // 已驗證行為/參數語意, 這裡不重複解釋。
                         case "self.robot.servo_set_one": {
-                            robot.waitChestReady(3000);
+                            // pure-direct: 经 /dev/ttyS1 直发。
                             byte id = (byte) arguments.optInt("id", -1);
                             if (!arguments.has("angle")) {
                                 isError = true;
@@ -4655,13 +5772,15 @@ public class MainActivity extends Activity implements SensorEventListener {
                             }
                             int angle = arguments.optInt("angle");
                             short timeMs = (short) arguments.optInt("time_ms", 1000);
-                            UbxErrorCode.API_ERROR_CODE code = robot.chest_SendOneFreeAngle(id, angle, timeMs);
-                            isError = !isOk(code) || !robot.isChestReady();
-                            resultText = String.valueOf(code) + " (chestReady=" + robot.isChestReady() + ")";
+                            boolean sent = HardwareDirectManager.get(MainActivity.this).chest().setSingleServo(id, angle, timeMs);
+                            UbxErrorCode.API_ERROR_CODE code = directCode(sent);
+                            boolean ready = directChestReady();
+                            isError = !isOk(code) || !ready;
+                            resultText = String.valueOf(code) + " (chestReady=" + ready + ")";
                             break;
                         }
                         case "self.robot.servo_set_all": {
-                            robot.waitChestReady(3000);
+                            // pure-direct: 经 /dev/ttyS1 直发，无需等待。
                             String anglesCsv = arguments.optString("angles", "");
                             if (anglesCsv.isEmpty()) {
                                 isError = true;
@@ -4674,18 +5793,21 @@ public class MainActivity extends Activity implements SensorEventListener {
                                 angles[i] = Integer.parseInt(parts[i].trim());
                             }
                             short timeMs = (short) arguments.optInt("time_ms", 1000);
-                            UbxErrorCode.API_ERROR_CODE code = robot.chest_SendFreeAngle(angles, timeMs);
-                            isError = !isOk(code) || !robot.isChestReady();
-                            resultText = String.valueOf(code) + " (chestReady=" + robot.isChestReady() + ")";
+                            // pure-direct: 经 /dev/ttyS1 直发。
+                            boolean sentAll = HardwareDirectManager.get(MainActivity.this).chest().setAllServos(angles, timeMs);
+                            UbxErrorCode.API_ERROR_CODE code = directCode(sentAll);
+                            boolean readyAll = directChestReady();
+                            isError = !isOk(code) || !readyAll;
+                            resultText = String.valueOf(code) + " (chestReady=" + readyAll + ")";
                             break;
                         }
                         case "self.robot.led_set_head": {
-                            robot.waitHeaderReady(3000);
+                            // pure-direct: 经 JNI 直驱（旧 alpha2services 内部熄灯循环已消失，单发即稳住）。
                             String preset = arguments.optString("preset", "long");
                             UbxErrorCode.API_ERROR_CODE code;
                             if ("stop".equals(preset)) {
-                                cancelHeadLedReassert(); // 令持續補發嘅 background thread 停低, 唔好再打贏用戶想要嘅「熄燈」
-                                code = robot.header_stop5MicEarLED();
+                                cancelHeadLedReassert();
+                                code = directCode(DirectLedController.stopHead5Mic());
                             } else {
                                 if (!arguments.has("color") || !arguments.has("brightness")) {
                                     isError = true;
@@ -4703,24 +5825,21 @@ public class MainActivity extends Activity implements SensorEventListener {
                                     case "long":
                                     default:        p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
                                 }
-                                code = robot.header_ledSetHead5Mic(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8);
-                                // 見 reassertHeadEyeLed() javadoc - alpha2services 內部
-                                // 「stop ear led」邏輯本身會持續循環咁用自己嘅固定參數
-                                // 蓋走我哋 set 嘅顏色, 呢度要持續補發直到用戶下一次改指令
-                                // 為止先真正企得住著住。
+                                code = directCode(DirectLedController.setHead5MicRaw(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8));
                                 reassertHeadEyeLed(false, color, brightness, p5, p6, p8);
                             }
-                            isError = !isOk(code) || !robot.isHeaderReady();
-                            resultText = String.valueOf(code) + " (headerReady=" + robot.isHeaderReady() + ")";
+                            boolean hReady = directHeaderReady();
+                            isError = !isOk(code) || !hReady;
+                            resultText = String.valueOf(code) + " (headerReady=" + hReady + ")";
                             break;
                         }
                         case "self.robot.led_set_eye": {
-                            robot.waitHeaderReady(3000);
+                            // pure-direct: 经 JNI 直驱。
                             String preset = arguments.optString("preset", "long");
                             UbxErrorCode.API_ERROR_CODE code;
                             if ("stop".equals(preset)) {
-                                cancelEyeLedReassert(); // 令持續補發嘅 background thread 停低, 唔好再打贏用戶想要嘅「熄燈」
-                                code = robot.header_stop5MicEyeLED();
+                                cancelEyeLedReassert();
+                                code = directCode(DirectLedController.stopEye5Mic());
                             } else {
                                 if (!arguments.has("color") || !arguments.has("brightness")) {
                                     isError = true;
@@ -4737,13 +5856,12 @@ public class MainActivity extends Activity implements SensorEventListener {
                                     case "long":
                                     default:      p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
                                 }
-                                code = robot.header_ledSetEye5Mic(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8);
-                                // 見 reassertHeadEyeLed() javadoc - 同 led_set_head 一樣要
-                                // 持續補發先企得住。
+                                code = directCode(DirectLedController.setEye5MicRaw(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8));
                                 reassertHeadEyeLed(true, color, brightness, p5, p6, p8);
                             }
-                            isError = !isOk(code) || !robot.isHeaderReady();
-                            resultText = String.valueOf(code) + " (headerReady=" + robot.isHeaderReady() + ")";
+                            boolean eReady = directHeaderReady();
+                            isError = !isOk(code) || !eReady;
+                            resultText = String.valueOf(code) + " (headerReady=" + eReady + ")";
                             break;
                         }
                         case "self.robot.led_set_mouth": {
@@ -4766,16 +5884,18 @@ public class MainActivity extends Activity implements SensorEventListener {
                             break;
                         }
                         case "self.sensors.set_pir_enabled": {
-                            robot.waitChestReady(3000);
                             if (!arguments.has("enabled")) {
                                 isError = true;
                                 resultText = "enabled is required";
                                 break;
                             }
                             boolean enabled = arguments.optBoolean("enabled");
-                            UbxErrorCode.API_ERROR_CODE code = robot.chest_setPirSensorEnabled(enabled);
-                            isError = !isOk(code) || !robot.isChestReady();
-                            resultText = String.valueOf(code) + " (chestReady=" + robot.isChestReady() + ")";
+                            // pure-direct: 经 /dev/ttyS1 直发 cmd 72。
+                            boolean sent = HardwareDirectManager.get(MainActivity.this).chest().setPirEnabled(enabled);
+                            UbxErrorCode.API_ERROR_CODE code = directCode(sent);
+                            boolean ready = directChestReady();
+                            isError = !isOk(code) || !ready;
+                            resultText = String.valueOf(code) + " (chestReady=" + ready + ")";
                             break;
                         }
                         case "self.sensors.get_sonar": {
@@ -4784,7 +5904,6 @@ public class MainActivity extends Activity implements SensorEventListener {
                             break;
                         }
                         case "self.sensors.set_sonar_threshold": {
-                            robot.waitChestReady(3000);
                             if (!arguments.has("distance_cm")) {
                                 isError = true;
                                 resultText = "distance_cm is required";
@@ -4793,9 +5912,12 @@ public class MainActivity extends Activity implements SensorEventListener {
                             int distanceCm = arguments.optInt("distance_cm");
                             sonarThresholdCm = distanceCm;
                             sonarLedActive = false; // threshold changed - next frame decides fresh
-                            UbxErrorCode.API_ERROR_CODE code = robot.chest_configureSonar(distanceCm);
-                            isError = !isOk(code) || !robot.isChestReady();
-                            resultText = String.valueOf(code) + " (chestReady=" + robot.isChestReady() + ")";
+                            // pure-direct: 经 /dev/ttyS1 直发 cmd 4。
+                            boolean sent = HardwareDirectManager.get(MainActivity.this).chest().configureSonar(distanceCm);
+                            UbxErrorCode.API_ERROR_CODE code = directCode(sent);
+                            boolean ready = directChestReady();
+                            isError = !isOk(code) || !ready;
+                            resultText = String.valueOf(code) + " (chestReady=" + ready + ")";
                             break;
                         }
 
@@ -4811,25 +5933,25 @@ public class MainActivity extends Activity implements SensorEventListener {
                             break;
                         }
                         case "self.camera.image_to_text": {
-                            // 見 buildMcpToolsList() 呢個 tool 定義嗰段 comment 同
-                            // xiaozhiVisionExplainRequest() 入面 "vision/explain is async"
-                            // 嗰段 comment。實測 (2026-08) 唔淨係 GPT-5, Qwen 3.6 一樣會
-                            // 撞到呢個 async flow, 更正返 comment - 唔係邊個 LLM provider
-                            // 先有嘅行為, 睇嚟係 xiaozhi.me console 依家成個 vision/explain
-                            // 後端行為, 同邊個 model 冇關。
+                            // 見 buildMcpToolsList() 這個 tool 定義那段 comment 和
+                            // xiaozhiVisionExplainRequest() 裡 "vision/explain is async"
+                            // 那段 comment。實測 (2026-08) 不只是 GPT-5, Qwen 3.6 一樣會
+                            // 撞到這個 async flow, 更正一下 comment - 不是哪個 LLM provider
+                            // 才有的行為, 看起來是 xiaozhi.me console 目前整個 vision/explain
+                            // 後端行為, 和用哪個 model 無關。
                             String uuid = arguments.optString("uuid", "");
-                            // 2026-08 新增 (真正根源): 用戶提供嘅 console 截圖 + logcat 顯示
-                            // LLM 一路都有帶 uuid 落嚟, 但帶嘅係字面值 "placeholder"
-                            // (即係 LLM 冇真正讀返之前 take_photo response 入面嘅
-                            // uuid, 純粹將個 inputSchema 嘅 "uuid" 呢個字, 當成一個
-                            // 佔位符字面值填咗落去) - 之前淨係 check uuid.isEmpty() 呢個
-                            // fallback 條件, "placeholder" 唔係空字串, 完全冇觸發到, 就
-                            // 攞住呢個假 uuid 去打 image_to_text, 梗係 server 500。改用
-                            // 一個寬鬆嘅「睇落似唔似真 UUID」檢查 (標準 UUID: 8-4-4-4-12
-                            // 個 hex 字符, 用 "-" 分隔) - 唔似就當 LLM 冇帶真嘅 uuid,
-                            // 一樣 fallback 用返 device 自己記低嘅 lastPendingPhotoUuid,
-                            // 唔理 LLM 講嘅字面值係咩 (無論係 "placeholder"、空字串,
-                            // 定係之後可能出現嘅其他佔位符寫法都一樣處理)。
+                            // 2026-08 新增 (真正根源): 用戶提供的 console 截圖 + logcat 顯示
+                            // LLM 一直都有帶 uuid 過來, 但帶的是字面值 "placeholder"
+                            // (也就是 LLM 沒有真正讀取之前 take_photo response 裡的
+                            // uuid, 純粹把 inputSchema 的 "uuid" 這個字, 當成一個
+                            // 佔位符字面值填了進去) - 之前只有 check uuid.isEmpty() 這個
+                            // fallback 條件, "placeholder" 不是空字串, 完全沒觸發到, 就
+                            // 拿著這個假 uuid 去打 image_to_text, 難怪 server 500。改用
+                            // 一個寬鬆的「看起來像不像真 UUID」檢查 (標準 UUID: 8-4-4-4-12
+                            // 個 hex 字符, 用 "-" 分隔) - 不像就當 LLM 沒帶真的 uuid,
+                            // 一樣 fallback 用 device 自己記下的 lastPendingPhotoUuid,
+                            // 不理會 LLM 說的字面值是什麼 (無論是 "placeholder"、空字串,
+                            // 或是之後可能出現的其他佔位符寫法都一樣處理)。
                             if (!isLikelyUuid(uuid)) {
                                 uuid = lastPendingPhotoUuid;
                             }
@@ -4841,20 +5963,20 @@ public class MainActivity extends Activity implements SensorEventListener {
                             }
                             XiaozhiVisionResult imgResult = xiaozhiFetchImageToText(uuid);
                             if (imgResult.error != null) {
-                                // 2026-08 新增 (暫時 fallback): 呢個 image_to_text 嘅
-                                // 真正 request payload 格式未經 xiaozhi.me 官方證實
+                                // 2026-08 新增 (暫時 fallback): 這個 image_to_text 的
+                                // 真正 request payload 格式尚未經 xiaozhi.me 官方證實
                                 // (見 xiaozhiFetchImageToText() javadoc), 實測撞到
-                                // HTTP 500。喺官方 protocol 未確認之前, 唔好將
-                                // "image_to_text returned HTTP 500: ..." 呢類技術性
-                                // error 原文當成 isError:true 帶俾 LLM - 噉會令 LLM
-                                // 讀出好突兀嘅技術錯誤俾用戶聽。改為 isError:false
-                                // + 一句自然講法, 等對話至少有合理回應, 唔會斷崖式
+                                // HTTP 500。在官方 protocol 尚未確認之前, 不要把
+                                // "image_to_text returned HTTP 500: ..." 這類技術性
+                                // error 原文當成 isError:true 帶給 LLM - 這樣會讓 LLM
+                                // 讀出很突兀的技術錯誤給用戶聽。改為 isError:false
+                                // + 一句自然說法, 讓對話至少有合理回應, 不會斷崖式
                                 // 失敗。原始 error 已經有 log (見 xiaozhiFetchImageToText()
-                                // 入面 "image_to_text raw response" 個 log), 留返俾
-                                // 之後對照 payload 格式用, 唔使靠呢句 resultText。
+                                // 裡的 "image_to_text raw response" log), 留給
+                                // 之後對照 payload 格式用, 不用靠這句 resultText。
                                 Log.w("XiaozhiVision", "image_to_text follow-up failed, "
                                         + "using fallback reply: " + imgResult.error);
-                                resultText = "拍到相喇，不過而家仲睇唔到相入面嘅內容，遲啲可能先答到你。";
+                                resultText = "拍到照片了，不過現在還看不到照片裡面的內容，晚點可能才答得出來。";
                             } else {
                                 resultText = imgResult.text;
                                 lastPendingPhotoUuid = null; // 用完即清, 避免舊 uuid 谷落去
@@ -4899,8 +6021,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                         // -- Local music playback: 薄包裝, 邏輯全部委托返
                         // listLocalMusicFiles()/resolveLocalMusicFile()/
                         // playLocalMusicFile()/stopLocalMusicPlayback() (跟
-                        // audio/local_music/* 嗰幾個 HTTP endpoint 共用同一批 method),
-                        // 唔喺呢度重複實現。
+                        // audio/local_music/* 那幾個 HTTP endpoint 共用同一批 method),
+                        // 不在這裡重複實現。
                         case "self.media.list_music": {
                             org.json.JSONArray arr = new org.json.JSONArray();
                             for (java.io.File f : listLocalMusicFiles()) {
@@ -4936,11 +6058,11 @@ public class MainActivity extends Activity implements SensorEventListener {
                         // -- FM/網絡電台 (Radio Browser API): 薄包裝, 邏輯全部委托返
                         // searchRadioStations()/resolveRadioStation()/
                         // playRadioStream()/stopRadioPlayback() (跟 audio/radio/*
-                        // 嗰幾個 HTTP endpoint 共用同一批 method), 唔喺呢度重複實現。
-                        // searchRadioStations()/resolveRadioStation() 拋出嘅
-                        // IOException/JSONException (網絡逾時、Radio Browser
-                        // 服務暫時唔穩定等) 由外層嗰個 try/catch (Exception e) 接住,
-                        // 唔使呢度重複處理。
+                        // 那幾個 HTTP endpoint 共用同一批 method), 不在這裡重複實現。
+                        // searchRadioStations()/resolveRadioStation() 拋出的
+                        // IOException/JSONException (網路逾時、Radio Browser
+                        // 服務暫時不穩定等) 由外層那個 try/catch (Exception e) 接住,
+                        // 不用在這裡重複處理。
                         case "self.media.search_radio": {
                             String searchQuery = arguments.optString("query", "");
                             if (searchQuery.isEmpty()) {
@@ -4949,7 +6071,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                                 break;
                             }
                             java.util.List<org.json.JSONObject> found =
-                                    searchRadioStations(searchQuery, 10);
+                                    searchRadioStations(searchQuery, 30);
                             lastRadioSearchResults = found;
                             if (found.isEmpty()) {
                                 resultText = "no radio stations found matching \"" + searchQuery + "\"";
@@ -5011,6 +6133,92 @@ public class MainActivity extends Activity implements SensorEventListener {
         };
     }
 
+    // -- CPU 使用率 (2026-08 v2 新增, /api/status 用) -----------------------------
+    // 讀 /proc/stat 第一行 (user/nice/system/idle/iowait/irq/softirq/steal),
+    // 同上次取樣計 delta -> 使用率 %。兩次 call 至少隔 CPU_SAMPLE_MIN_GAP_MS 先
+    // 會重新取樣, 中間重複 poll 就回用上一次計算好的值 - 不用每次都等夠窗口。
+    private static final long CPU_SAMPLE_MIN_GAP_MS = 500;
+    private final Object cpuSampleLock = new Object();
+    private long[] lastCpuTick;      // [0]=總 ticks, [1]=idle+iowait ticks
+    private long lastCpuTickAtMs = 0;
+    private double lastCpuPercent = -1;
+
+    /** 回傳 "cpuPercent":<value> JSON 片段; 尚未有足夠數據時回傳 null。 */
+    private String cpuUsageJson() {
+        synchronized (cpuSampleLock) {
+            long now = android.os.SystemClock.elapsedRealtime();
+            long[] cur = readCpuTicks();
+            if (cur == null) {
+                return "\"cpuPercent\":null";
+            }
+            boolean haveGap = lastCpuTick != null && (now - lastCpuTickAtMs) >= CPU_SAMPLE_MIN_GAP_MS;
+            if (lastCpuTick == null) {
+                // 第一次 call: 存基準, 等一個短窗口再取第二次, 等第一次就有值。
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    lastCpuTick = cur;
+                    lastCpuTickAtMs = now;
+                    return "\"cpuPercent\":null";
+                }
+                long[] cur2 = readCpuTicks();
+                if (cur2 != null) {
+                    lastCpuPercent = computeCpuPercent(cur, cur2);
+                }
+                lastCpuTick = cur2 != null ? cur2 : cur;
+                lastCpuTickAtMs = android.os.SystemClock.elapsedRealtime();
+            } else if (haveGap) {
+                lastCpuPercent = computeCpuPercent(lastCpuTick, cur);
+                lastCpuTick = cur;
+                lastCpuTickAtMs = now;
+            }
+            // else: 間隔未夠, 沿用 lastCpuPercent。
+            if (lastCpuPercent < 0) {
+                return "\"cpuPercent\":null";
+            }
+            return "\"cpuPercent\":" + String.format(java.util.Locale.US, "%.1f",
+                    Math.max(0.0, Math.min(100.0, lastCpuPercent)));
+        }
+    }
+
+    /** 兩個取樣點之間的使用率 (%) = (totalDelta - idleDelta) / totalDelta。 */
+    private static double computeCpuPercent(long[] from, long[] to) {
+        long totalDelta = to[0] - from[0];
+        long idleDelta = to[1] - from[1];
+        if (totalDelta <= 0) return -1;
+        return (double) (totalDelta - idleDelta) * 100.0 / (double) totalDelta;
+    }
+
+    /** 讀 /proc/stat 第一行, 回 {總ticks, idle(+iowait)ticks}, 失敗回 null。 */
+    private static long[] readCpuTicks() {
+        java.io.BufferedReader reader = null;
+        try {
+            reader = new java.io.BufferedReader(new java.io.FileReader("/proc/stat"));
+            String line = reader.readLine(); // "cpu  user nice system idle iowait irq softirq steal ..."
+            if (line == null || !line.startsWith("cpu")) return null;
+            String[] parts = line.trim().split("\\s+");
+            long total = 0;
+            long idle = 0;
+            for (int i = 1; i < parts.length; i++) {
+                long v = Long.parseLong(parts[i]);
+                total += v;
+                if (i == 4) idle += v;              // idle
+                if (i == 5) idle += v;              // iowait 都算閒置
+            }
+            return new long[]{total, idle};
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (reader != null) {
+                try {
+                    reader.close();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
+
     private HttpServer.ApiResponse handleApi(String path, Map<String, String> query, String method, String body) {
         switch (path) {
             case "status":
@@ -5018,31 +6226,80 @@ public class MainActivity extends Activity implements SensorEventListener {
                 try {
                     appVer = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
                 } catch (Exception ignored) {}
+                // pure-direct: chest/header 可用性改由直驱串口报告，不再经 binder。
+                // 2026-09: speechReady key 已移除 (無 ASR，舊 binder service 永遠唔會 ready)。
                 return HttpServer.ApiResponse.ok("{\"ok\":true,"
                         + "\"appVersion\":\"" + appVer + "\","
-                        + "\"chestAvailable\":" + isOk(robot.isChestAvailable()) + ","
-                        + "\"headerAvailable\":" + isOk(robot.isHeaderAvailable()) + ","
-                        + "\"speechReady\":" + speechReady + ","
-                        + "\"androidTtsReady\":" + androidTtsReady + "}");
+                        + "\"chestAvailable\":" + directChestReady() + ","
+                        + "\"headerAvailable\":" + directHeaderReady() + ","
+                        + "\"androidTtsReady\":" + androidTtsReady + ","
+                        + cpuUsageJson() + "}");
 
-            // -- Actions --------------------------------------------------------------
-            case "action/list":
-                return actionList();
-            case "action/play":
-                return codeResponse(robot.action_PlayActionName(require(query, "name")));
-            case "action/stop": {
-                // 2026-08 新增: 用戶要求「停止」要連帶做返「蹲下站起」呢個回位動作
-                // (action_StopAction() 本身純粹截停緊播緊嘅動作, 唔會自動企返做返
-                // 安全企立姿勢) - 停低之後主動 play 返 STOP_RECOVERY_ACTION_ID
-                // (蹲下站起) 做回位。停低本身嘅 result code 照舊做返回值 (回位動作
-                // 播唔播到, 唔應該影響「停止」呢個操作本身係咪算成功)。
-                UbxErrorCode.API_ERROR_CODE stopCode = robot.action_StopAction();
-                try {
-                    robot.action_PlayActionName(STOP_RECOVERY_ACTION_ID);
-                } catch (Exception e) {
-                    Log.w(TAG, "Failed to play recovery action after action/stop", e);
+            case "chest/version": {
+                // 只回 chest MCU 真實韌體版本 (sendCommand 51)
+                long timeoutMs = 1500;
+                try { timeoutMs = Long.parseLong(ApiValidator.optional(query, "timeout", "1500")); } catch (Exception ignored) {}
+                String v = queryChestFirmwareVersion(timeoutMs);
+                if (v != null) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"version\":\"" + jsonSafe(v) + "\"}");
+                } else {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"version\":\"not found\"}");
                 }
-                return codeResponse(stopCode);
+            }
+            case "chest/upgrade": {
+                // 觸發胸口升級：讀 /sdcard/AlphaII_CHEST_kernel.bin 經 48/49/50 協議升級
+                String err = startChestUpgrade();
+                if (err == null) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"started\":true}");
+                } else {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(err) + "\"}");
+                }
+            }
+            case "chest/upgrade/status": {
+                return HttpServer.ApiResponse.ok("{\"ok\":true," + getChestUpgradeStatusJson().substring(1));
+            }
+            case "chest/upgrade/resume": {
+                int from = 0;
+                try { from = ApiValidator.optionalInt(query, "from", 0); } catch (Exception ignored) {}
+                String err = startChestUpgradeFrom(from);
+                if (err == null) return HttpServer.ApiResponse.ok("{\"ok\":true,\"resumed\":true,\"from\":"+from+"}");
+                else return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(err) + "\"}");
+            }
+            case "chest/upgrade/abort": {
+                resetChestUpgradeState();
+                chestUpgradeInProgress = false;
+                chestUpgradeStatus = "aborted";
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"aborted\":true}");
+            }
+            case "chest/page": {
+                // 調試：讀指定頁 offset 的 32B hex，用於定位 170 頁這類點
+                int page = 0;
+                try { page = ApiValidator.requireInt(query, "page"); } catch (Exception e) { return HttpServer.ApiResponse.error("page required"); }
+                java.io.File f = new java.io.File("/sdcard/AlphaII_CHEST_kernel.bin");
+                if (!f.exists()) return HttpServer.ApiResponse.error("file not found");
+                try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+                    long skip = (long)page * 128L;
+                    long s = 0;
+                    while (s < skip) { long n = in.skip(skip - s); if (n<=0) break; s+=n; }
+                    byte[] buf = new byte[128];
+                    int n = in.read(buf);
+                    if (n <= 0) return HttpServer.ApiResponse.error("page out of range");
+                    String hex = toHex(buf, n);
+                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"page\":"+page+",\"offset\":"+skip+",\"hex\":\""+hex+"\"}");
+                } catch (Exception e) { return HttpServer.ApiResponse.error(String.valueOf(e.getMessage())); }
+            }
+
+
+            // -- Actions (pure-direct: actionInfo.txt + UbxPlayer，机身已无 alpha2services，
+            // 旧 AIDL action_* 一律 NOT_INIT，此处不再经过 RobotStub) --------------
+            case "action/list":
+                return actionListDirect();
+            case "action/play":
+                return actionPlayDirect(ApiValidator.require(query, "name"));
+            case "action/stop": {
+                // 用戶要求「停止」要連帶做返「蹲下站起」回位動作：与手势总停/MCP 共用
+                // stopActionWithRecovery()，回位播唔播到唔影響停止本身回 true。
+                return codeResponse(stopActionWithRecovery());
             }
 
             // -- Speech / TTS -----------------------------------------------------------
@@ -5060,18 +6317,18 @@ public class MainActivity extends Activity implements SensorEventListener {
             // entirely, including for the engine that worked fine through the generic
             // binding alone.
             case "speech/tts": {
-                String text = require(query, "text");
-                String engine = queryOrDefault(query, "engine", "nuance");
+                String text = ApiValidator.require(query, "text");
+                String engine = ApiValidator.requireSpeechEngine(query);
                 if ("android".equals(engine)) {
                     if (androidTts == null || !androidTtsReady) {
                         return HttpServer.ApiResponse.error("Android TTS not ready");
                     }
-                    // 語言揀擇 - lang 係 speech/tts_languages 返嚟嗰個 BCP-47
-                    // tag (例如 "zh-HK"/"en-US"), null/留空就沿用 engine 而家
-                    // 已經生效嗰個語言, 唔強行切換。LANG_MISSING_DATA/
-                    // LANG_NOT_SUPPORTED 都係負數, 淨係 engine 真係接受咗先
-                    // 繼續讀, 否則報錯返去, 唔好靜雞雞用緊嗰個語言讀 (用戶
-                    // 冇要求嘅結果)。
+                    // 語言選擇 - lang 是 speech/tts_languages 回傳的 BCP-47
+                    // tag (例如 "zh-HK"/"en-US"), null/留空就沿用 engine 目前
+                    // 已經生效的語言, 不強行切換。LANG_MISSING_DATA/
+                    // LANG_NOT_SUPPORTED 都是負數, 只有 engine 真的接受了才
+                    // 繼續讀, 否則報錯回去, 不要悄悄用原本的語言讀 (不是用戶
+                    // 要求的結果)。
                     String lang = query.get("lang");
                     if (lang != null && !lang.isEmpty()) {
                         Locale locale = Locale.forLanguageTag(lang);
@@ -5119,8 +6376,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return codeResponse(UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED);
 
             // Android TTS 語言揀擇 - 淨係 engine=android 用得 (Nuance/iFlytek
-            // 兩個 AIDL engine 冇語言參數揀擇, lang 已經由 engine 本身固定死,
-            // 見下面 speech/tts 個 android 分支)。ui_lang ("zh"/"en") 控制返嚟嘅
+            // 兩個 AIDL engine 沒有語言參數選擇, lang 已經由 engine 本身固定死,
+            // 見下面 speech/tts 的 android 分支)。ui_lang ("zh"/"en") 控制的是
             // displayName 用邊種語言顯示。
             case "speech/tts_languages": {
                 boolean english = "en".equals(query.get("ui_lang"));
@@ -5137,9 +6394,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok(sb.toString());
             }
 
-            // Android TTS 引擎揀擇 - 機身可能裝咗多過一個系統 TTS 引擎 (例如出廠
-            // 內建 + Google TTS + SVOX Pico), 呢三個 endpoint 俾 speech tab 揀
-            // speech/tts 個 engine=android 分支實際用邊個講, 唔涉及 Nuance/
+            // Android TTS 引擎選擇 - 機身可能裝了不只一個系統 TTS 引擎 (例如出廠
+            // 內建 + Google TTS + SVOX Pico), 這三個 endpoint 供 speech tab 選擇
+            // speech/tts 的 engine=android 分支實際用哪個發音, 不涉及 Nuance/
             // iFlytek。
             case "speech/tts_engines": {
                 List<String> engines = listAndroidTtsEngines();
@@ -5153,11 +6410,11 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
 
             case "speech/set_tts_engine": {
-                String enginePkg = require(query, "engine");
+                String enginePkg = ApiValidator.require(query, "engine");
                 initAndroidTts(enginePkg);
                 // 呢個切換本身係 async (initAndroidTts() 拆舊起新一個
                 // TextToSpeech instance, 再等 OnInitListener 先真正 ready) -
-                // 呢度嘅 "ok" 淨係話已經觸發咗切換, 唔代表即刻可以講嘢, 前端
+                // 這裡的 "ok" 只是說已經觸發了切換, 不代表立即可以講話, 前端
                 // 應該延遲少少先再 poll speech/cur_tts_engine。
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
@@ -5167,14 +6424,14 @@ public class MainActivity extends Activity implements SensorEventListener {
                         "{\"ok\":true,\"engine\":\"" + jsonSafe(androidTtsEnginePkg) + "\"}");
 
             case "speech/set_mic": {
-                boolean wake = Boolean.parseBoolean(require(query, "wake"));
+                boolean wake = ApiValidator.requireBoolean(query, "wake");
                 robot.speech_SetMIC(wake);
-                // 記住呢個狀態，等 handleMicStream() 斷線時知道用戶係咪透過 TTS
-                // tab 主動要求長期持有 mic - 見 micHeldByApp 個 field javadoc。
+                // 記住這個狀態, 讓 handleMicStream() 斷線時知道用戶是否透過 TTS
+                // tab 主動要求長期持有 mic - 見 micHeldByApp 的 field javadoc。
                 micHeldByApp = wake;
-                // 用戶手動交返俾機械人 (wake=false) 就自動閂埋「持續搶 mic」,
-                // 唔係就 enforcer 兩秒之後又會將 mic 搶返嚟, 用戶個「交返」動作
-                // 會好似冇效咁樣, 好confusing。
+                // 用戶手動交還給機器人 (wake=false) 就自動關閉「持續搶佔 mic」,
+                // 不然 enforcer 兩秒之後又會把 mic 搶回來, 用戶的「交還」動作
+                // 會看起來像沒效果一樣, 很令人困惑。
                 if (!wake && micHoldEnforced) {
                     stopMicHoldEnforcer();
                 }
@@ -5184,7 +6441,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                         + ",\"keepHeld\":" + micHoldEnforced + "}");
             }
             case "speech/set_mic_keep_held": {
-                boolean keep = Boolean.parseBoolean(require(query, "keep"));
+                boolean keep = ApiValidator.requireBoolean(query, "keep");
                 if (keep) {
                     startMicHoldEnforcer();
                 } else {
@@ -5195,92 +6452,30 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"held\":" + micHeldByApp
                         + ",\"keepHeld\":" + micHoldEnforced + "}");
             }
-            case "speech/reset": {
-                // 2026-08 新增: 試驗性嘅「重置」入口。實測 (logcat_2026-08-27_05-39-04.txt)
-                // 證實: 撳咗上面 speech/set_asr_engine 之後, 機身系統進程
-                // (com.ubtechinc.alpha2services) 入面嘅 TTS session 就會啞 —— HTTP
-                // 層仍然回 200 API_ERROR_SUCCEED, 但完全冇再見到 SpeechServiceImpl/
-                // IflytekTTS/onTTsStart 呢啲 log, 一直要重開機先返到正常。
-                //
-                // 呢個 endpoint call AIDL transaction #12 stopSpeechAndEnterIdleMode(),
-                // 睇下叫唔叫得返個死咗嘅 session, 唔使成部機重開機。特登用
-                // Alpha2RobotApi.speech_resetToIdle() (行 generic alias binding), 唔係
-                // 行嗰條已經壞死嘅 direct-engine binding。未喺真機驗證過呢個方法係咪
-                // 真係解決到問題, 純粹跟 AIDL 方法名同用途做嘅合理推測 —— 如果冇效,
-                // 都仲係要重開機。
-                boolean ok = robot.speech_resetToIdle();
-                return ok
-                        ? HttpServer.ApiResponse.ok("{\"ok\":true}")
-                        : HttpServer.ApiResponse.error("Speech API not yet initialised - restart app");
-            }
-            case "speech/start_asr":
-                // Starts recognition directly - doesn't require the mic-array hardware to
-                // detect its own wake word first (unlike speech/set_mic, which only claims/
-                // releases mic ownership and never itself starts listening). Results still
-                // arrive as the usual "asr_result" WebSocket event.
-                //
-                // 2026-08 修正: 呢個係整個 API 入面觸發 ASR 最主要嘅入口 (見
-                // AIDL_REFERENCE_ALPHA2.md 1.1 - startSpeechNoWakeup 先係真正可靠嘅「開始聆聽」
-                // 方法), 但之前一直冇好似 speech/inject/speech/stop_inject 咁加
-                // speechReady gate。即係話啱啱切換完 ASR engine (speechReady 短暫變
-                // false, 等緊 onSpeechInitSuccess) 嗰陣撞正撳呢個 endpoint, 會攞到
-                // 同 speech/inject 講嗰種一樣含糊嘅 API_ERROR_NOT_INIT, 而唔係清晰嘅
-                // 錯誤訊息。而家補返個 gate, 同 speech/inject 睇齊。
-                if (!speechReady) {
-                    return HttpServer.ApiResponse.error(
-                            "Speech API not ready yet - wait for the \"speech_ready\" event "
-                                    + "(e.g. right after speech/set_language) before calling speech/start_asr.");
-                }
-                return codeResponse(robot.speech_startSpeechNoWakeup());
-            case "speech/set_voice":
-                return codeResponse(robot.speech_setVoiceName(require(query, "name")));
-            case "speech/set_language": {
-                String lang = require(query, "lang");
-                return codeResponse(robot.speech_setRecognizedLanguage(lang));
-            }
-            case "speech/self_interrupt":
-                return codeResponse(robot.speech_setSelfInterrupt(Boolean.parseBoolean(require(query, "on"))));
-            case "speech/inject":
-                // "Pretend I heard this" - injects text via the AIDL onSpeech() dictation
-                // path (Alpha2RobotApi.speech_startRecognized(), marked @Deprecated
-                // upstream with no logged reason found). Untested on this firmware: may
-                // reach the same local Nuance grammar that real speech does (in which
-                // case a QA_* phrase from the reference list below would trigger a
-                // Local_Result the normal way, on the EXISTING "asr_result" event - no
-                // new event added here on purpose), or may be dead. This call only
-                // reports whether the SDK accepted the request, not whether recognition
-                // actually fired.
-                //
-                // 2026-08 新增: 之前呢度冇 speechReady gate，如果啱啱切換完 engine
-                // (speechReady 短暫變返 false，等緊 onSpeechInitSuccess callback)
-                // 就直接落去 SDK call，好大機會兩個 util 都仲係 null，攞到含糊嘅
-                // API_ERROR_NOT_INIT，而唔係好似 speech/reset 咁清晰嘅錯誤訊息。
-                // 而家加返個 gate，同 speech/init_grammar 嗰種做法睇齊。
-                if (!speechReady) {
-                    return HttpServer.ApiResponse.error(
-                            "Speech API not ready yet - wait for the \"speech_ready\" event "
-                                    + "(e.g. right after speech/set_language) before calling speech/inject.");
-                }
-                return codeResponse(robot.speech_startRecognized(require(query, "text")));
+            // 2026-09 移除: speech/reset、speech/start_asr、speech/set_voice、
+            // speech/set_language、speech/self_interrupt、speech/inject (以上全部
+            // 經已不存在的 alpha2services binder, 只會回 NOT_INIT)。Blockly
+            // speech 積木會因此收到 404 {ok:false} (同之前 NOT_INIT 一樣只彈 banner
+            // 繼續行, 唔會 throw - 見 app-core.js api()), 積木本身留待下批處理。
             case "speech/iflytek_simulate":
-                // 2026-08 新增: "打字當自己講咗呢句" - 直接將輸入文字當做 iFlytek
-                // 引擎已經辨識完嘅結果, 送去 handleIflytekSemanticText() 做 1000 條
-                // 問法配對 (中英文各 1000 條, 由輸入文字有冇漢字自動判斷用邊份 - 見
-                // looksChinese()), 命中就即刻做返悠聊原本嘅「TTS200ms動作」流程。
-                // 同 speech/inject 唔同: 呢個唔經任何機身 AIDL (唔靠
-                // speech_startRecognized()/onSpeech() 呢條 "未知會唔會真係觸發辨識"
-                // 嘅路), 純粹係本地 JSON 配對 + 直接 call robot.speech_startTTS()/
-                // robot.action_PlayActionName(), 所以唔需要 speechReady gate, 淨係
-                // 需要 robot 本身已經 initRobot() 完 (onCreate() 一開始就做咗)。
-                // response 即時話俾前端知有冇配對到 (matched/question/type/
-                // operation/answer/actionId), 唔使等 WebSocket event - 方便對話
-                // 界面直接顯示配對結果, 唔使成日等 EventBus。
+                // 2026-08 新增: "打字當作自己說了這句" - 直接把輸入文字當成 iFlytek
+                // 引擎已經辨識完的結果, 送去 handleIflytekSemanticText() 做 1000 條
+                // 問法配對 (中英文各 1000 條, 依輸入文字有沒有漢字自動判斷用哪份 - 見
+                // looksChinese()), 命中就立即執行悠聊原本的「TTS200ms動作」流程。
+                // 和 speech/inject 不同: 這裡不經任何機身 AIDL (不靠
+                // speech_startRecognized()/onSpeech() 這條 "不確定會不會真的觸發辨識"
+                // 的路), 純粹是本地 JSON 配對 + 直接呼叫 robot.speech_startTTS()/
+                // robot.action_PlayActionName(), 所以不需要 speechReady gate, 只
+                // 需要 robot 本身已經 initRobot() 完成 (onCreate() 一開始就做了)。
+                // response 即時告訴前端有沒有配對到 (matched/question/type/
+                // operation/answer/actionId), 不用等 WebSocket event - 方便對話
+                // 界面直接顯示配對結果, 不用一直等 EventBus。
                 //
-                // 2026-08 新增: match() 而家搵唔到問法都會回傳一個「聽唔明」嘅
-                // fallback 回應 (唔再係 null), 所以 matched:false 分支而家淨係
+                // 2026-08 新增: match() 現在找不到問法也會回傳一個「聽不懂」的
+                // fallback 回應 (不再是 null), 所以 matched:false 分支現在只
                 // 剩返「輸入係空白字串」呢種 edge case 先會行到。
                 {
-                    String simText = require(query, "text");
+                    String simText = ApiValidator.require(query, "text");
                     IflytekSemanticMatcher.MatchResult simResult = handleIflytekSemanticText(simText, false);
                     if (simResult == null) {
                         return HttpServer.ApiResponse.ok(
@@ -5294,70 +6489,143 @@ public class MainActivity extends Activity implements SensorEventListener {
                             + "\"answer\":\"" + jsonSafe(simResult.answer) + "\","
                             + "\"actionId\":\"" + jsonSafe(simResult.actionId) + "\"}");
                 }
-            case "speech/stop_inject":
-                // Companion to speech/inject (onStopSpeech). Untested, same caveats.
-                // 同上，加返 speechReady gate。
-                if (!speechReady) {
-                    return HttpServer.ApiResponse.error(
-                            "Speech API not ready yet - wait for the \"speech_ready\" event before calling "
-                                    + "speech/stop_inject.");
+            // 2026-09 移除: speech/stop_inject (同上, 死 binder)。
+            // 2026-08 重新加入 speech/init_grammar、speech/start_grammar、
+            // speech/stop_grammar 三個 endpoint (2026-08 之前曾經因為「同一句話
+            // 經 grammar_result 同 asr_result 兩條路徑各自觸發語意配對, 重複答兩次」
+            // 而全線移除)。現在重新設計過:
+            //
+            // 1. 開啟離線文法模式之後 (speech/start_grammar), onServerCallBack()
+            //    那條聽寫路徑會被 offlineGrammarActive flag gate 住 - 只有 grammar
+            //    listener 一條路徑會觸發語意配對 + TTS + 動作, 徹底解決重複回應。
+            // 2. 反編譯 alpha2services (v1.1.7.3.20) 證實: iFlytek 引擎實作
+            //    (com.ubtechinc.speechmanager.a.a) 本身就有完整的本地文法支援 -
+            //    initSpeechGrammar() 收到 BNF 字串之後用 engine_type=local +
+            //    assets/asr/common.jet (APK 自帶離線資源) 執行 buildGrammar("bnf",...),
+            //    startSpeechGrammar() 用 mix 模式啟動 (連上網走雲端, 離線自動退回
+            //    local_grammar="call" 本地文法), 辨識全程不用網路。這就是讓
+            //    iFlytek 離線可用的正確做法。
+            // 3. BNF 格式是 iFlytek IAMVERSION 1.1.0 (#BNF+IAMVERSION 開頭,
+            //    !slot 宣告, <grammarstart> 做 root rule)。格式錯的話 buildGrammar
+            //    會經 GrammarListener 回錯誤碼, grammar_init event 會帶埋 errorCode。
+            case "speech/get_default_grammar":
+                return getDefaultGrammar();
+            case "speech/init_grammar": {
+                // 2026-09: 舊 speechReady gate 已刪 (field 一併移除；舊 binder
+                // service 永遠唔會 ready，留住只會令呢個 endpoint 永遠回同一個錯)。
+                String bnf = ApiValidator.optional(query, "bnf", "");
+                if (bnf.isEmpty()) {
+                    bnf = readDefaultGrammarAsset();
+                    if (bnf == null) {
+                        return HttpServer.ApiResponse.error(
+                                "No 'bnf' param given and assets/iflytek/default_grammar.bnf unreadable");
+                    }
                 }
-                return codeResponse(robot.speech_stopRecognized());
-            // 2026-08 移除 speech/init_grammar、speech/start_grammar、
-            // speech/stop_grammar 呢三個 endpoint (連同對應嘅 grammar_init/
-            // grammar_result WebSocket event) - 前端 UI tile/按鈕已經全部拆走
-            // (見 index.html/app-speech.js/app-log.js 對應 comment), 而家喺
-            // 後端呢層都直接冚埋個入口, 確保 IAlpha2SpeechGrammarListener 呢個
-            // AIDL callback 永遠唔會有機會被 register, 唔會再同 onServerCallBack()
-            // 嗰條正常聽寫路徑 (asr_result) 各自獨立觸發語意配對 + TTS, 造成
-            // 同一句話重複配對/講兩次。ASR 而家只得 asr_result 一條路徑會觸發
-            // 語意配對/TTS/動作。
-            // 呢三個 endpoint 對應嘅 AIDL method (speech_initGrammar/
-            // speech_startGrammar/speech_stopGrammar) 喺 Alpha2RobotApi 依然
-            // 保留 (SDK 本身嘅公開 API 面, 唔屬於呢個 app 嘅責任範圍), 淨係呢度
-            // 唔再有任何 HTTP endpoint 可以觸發到佢哋。
+                return codeResponse(doInitGrammar(bnf));
+            }
+            case "speech/start_grammar": {
+                // 2026-09: 舊 speechReady gate 已刪 (同上)。
+                // 2026-08 新增: 文法尚未構建成功 (或者根本沒 init 過) 就不允許開始 -
+                // 這個狀態下機身會把所有語音退回雲端 fallback, 離線時全部變成網路
+                // 錯誤 (10114/20002), 用戶會以為離線功能壞了。要求先 init 成功。
+                if (!lastGrammarBuildOk) {
+                    return HttpServer.ApiResponse.error(
+                            "Grammar not built yet (or last build failed with error 23300 = wrong "
+                                    + "BNF format). Press 'Init grammar' first and wait for a "
+                                    + "grammar_init event with errorCode 0. Correct format: "
+                                    + "'#BNF+IAT 1.0 UTF-8;' header + !grammar/!slot/!start "
+                                    + "directives - see the default template.");
+                }
+                return codeResponse(doStartGrammar());
+            }
+            case "speech/stop_grammar": {
+                return codeResponse(doStopGrammar());
+            }
+            case "speech/offline_auto_switch": {
+                // 2026-08 新增: 自動跟網路切換開關。沒有 on 參數 = 查詢現狀;
+                // 有 on=true/false = 設定 (寫入 SharedPreferences, 重啟 App 都記得),
+                // 設定完即刻按目前網絡狀態套用一次。
+                String onParam = ApiValidator.optional(query, "on", "");
+                if (!onParam.isEmpty()) {
+                    boolean on = Boolean.parseBoolean(onParam);
+                    offlineGrammarAutoSwitch = on;
+                    getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                            .edit().putBoolean(PREF_OFFLINE_AUTO, on).commit();
+                    // 立即在背景 probe 一次並套用 - 不用等下一個 30 秒週期。
+                    // join 最多 10 秒等探測完才回應, 讓回應的 connected/offlineActive
+                    // 是新鮮結果而不是上一輪的殘值。
+                    Thread probeThread = new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            boolean online = hasRealInternet();
+                            lastProbeOnline = online;
+                            applyConnectivityMode(online, "toggle");
+                        }
+                    }, "conn-probe-toggle");
+                    probeThread.start();
+                    try {
+                        probeThread.join(10000);
+                    } catch (InterruptedException ignored) {
+                    }
+                }
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"auto\":"
+                        + offlineGrammarAutoSwitch + ",\"connected\":" + lastProbeOnline
+                        + ",\"offlineActive\":" + offlineGrammarActive + "}");
+            }
             // -- Servos -----------------------------------------------------------------
             case "servo/one": {
-                robot.waitChestReady(3000);
-                byte id = Byte.parseByte(require(query, "id"));
-                int angle = Integer.parseInt(require(query, "angle"));
-                short time = Short.parseShort(queryOrDefault(query, "time", "1000"));
-                return codeResponseReady(robot.chest_SendOneFreeAngle(id, angle, time), robot.isChestReady());
+                // pure-direct: 经 /dev/ttyS1 直发，不再 waitChestReady()/binder。
+                int id = ApiValidator.requireIntRange(query, "id", 1, 20);
+                int angle = ApiValidator.requireInt(query, "angle");
+                int time = ApiValidator.optionalInt(query, "time", 1000);
+                boolean sent = HardwareDirectManager.get(this).chest().setSingleServo((byte) id, angle, (short) time);
+                return codeResponseReady(directCode(sent), directChestReady());
             }
             case "servo/all": {
-                robot.waitChestReady(3000);
-                String anglesCsv = require(query, "angles"); // 20 comma-separated ints
-                short time = Short.parseShort(queryOrDefault(query, "time", "1000"));
-                String[] parts = anglesCsv.split(",");
-                int[] angles = new int[20];
-                for (int i = 0; i < 20 && i < parts.length; i++) {
-                    angles[i] = Integer.parseInt(parts[i].trim());
-                }
-                return codeResponseReady(robot.chest_SendFreeAngle(angles, time), robot.isChestReady());
+                int[] angles = ApiValidator.requireAngles20(query);
+                int time = ApiValidator.optionalInt(query, "time", 1000);
+                boolean sent = HardwareDirectManager.get(this).chest().setAllServos(angles, (short) time);
+                return codeResponseReady(directCode(sent), directChestReady());
             }
             case "servo/sonar": {
-                robot.waitChestReady(3000);
-                int distanceCm = Integer.parseInt(require(query, "distance"));
+                int distanceCm = ApiValidator.requireInt(query, "distance");
                 sonarThresholdCm = distanceCm;
                 sonarLedActive = false; // threshold changed - next frame decides fresh, don't carry over stale LED state
-                return codeResponseReady(robot.chest_configureSonar(distanceCm), robot.isChestReady());
+                boolean sent = HardwareDirectManager.get(this).chest().configureSonar(distanceCm);
+                return codeResponseReady(directCode(sent), directChestReady());
+            }
+            case "servo/read": {
+                int idInt = ApiValidator.requireIntRange(query, "id", 1, 20);
+                byte id = (byte) idInt;
+                boolean sent = HardwareDirectManager.get(this).chest().readServo(id);
+                UbxErrorCode.API_ERROR_CODE code = directCode(sent);
+                // 即使 MCU 回覆解析尚未實作，也回一個可被前端識別為「已發送」的 JSON，
+                // 讓 advTunerReadAll() 的掃描流程不再報 unknown endpoint。
+                // 同時附上 angle/offset 假值 0，避免前端因 offset==undefined 而保持 "-" 導致備份交白卷；
+                // 真實 offset 可在 chest_rcv 事件 Log 中對照（F8 8F ... 0D ...）。
+                // 若 chest 未 ready，chest_readServo 會回 NOT_INIT，此時 front 會見到 ok:false。
+                if (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + id + ",\"angle\":0,\"offset\":0,\"sent\":true}");
+                } else {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + code.name() + "\",\"sent\":false}");
+                }
             }
 
             // 2026-08-15 更新: 真機已確認 cmd=72 開關生效, PIR 觸發正常 (見
-            // RobotEventReceiver/registerAlpha2PirAlertListener 嘅 comment)。
+            // RobotEventReceiver/registerAlpha2PirAlertListener 的 comment)。
             case "pir/set": {
-                robot.waitChestReady(3000);
-                boolean enabled = Boolean.parseBoolean(require(query, "on"));
-                return codeResponseReady(robot.chest_setPirSensorEnabled(enabled), robot.isChestReady());
+                boolean enabled = ApiValidator.requireBoolean(query, "on");
+                boolean sent = HardwareDirectManager.get(this).chest().setPirEnabled(enabled);
+                return codeResponseReady(directCode(sent), directChestReady());
             }
 
             /** 2026-08-15 新增: 獨立於 pir/set 呢個感應器硬件開關本身, 純粹控制
-             *  「偵測到人就閃紅燈/響鈴」呢個警示反應開唔開。已喺真機確認 PIR 事件
+             *  「偵測到人就閃紅燈/響鈴」這個警示反應要不要開。已在實機確認 PIR 事件
              *  本身 (cmd=-109, "PIR HUMON DETECT") 會正常觸發 (見 RobotEventReceiver
-             *  個 CHEST_ACTION case 入面 alpha2_pir_state 嗰段 comment) - 呢個
-             *  endpoint 就係俾前端揀要唔要對呢個事件有反應。 */
+             *  的 CHEST_ACTION case 裡面 alpha2_pir_state 那段 comment) - 這個
+             *  endpoint 就是讓前端選擇要不要對這個事件有反應。 */
             case "pir/alert_enabled": {
-                boolean enabled = Boolean.parseBoolean(require(query, "on"));
+                boolean enabled = ApiValidator.requireBoolean(query, "on");
                 setPirAlertEnabledAlpha2(enabled);
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
@@ -5369,13 +6637,14 @@ public class MainActivity extends Activity implements SensorEventListener {
             //   preset -> (p5 upTime, p6 downTime, p7 runTime, p8 mode) mapping below.
             //   mode codes differ between head and eye - see Alpha2RobotApi javadoc.
             case "led/head/set": {
-                robot.waitHeaderReady(3000);
-                String preset = queryOrDefault(query, "preset", "long");
+                // pure-direct: 5-mic 经 libhead_led.so JNI 直驱（DirectLedController），不再经 binder。
+                String preset = ApiValidator.requireLedHeadPreset(query);
                 if ("stop".equals(preset)) {
-                    return codeResponseReady(robot.header_stop5MicEarLED(), robot.isHeaderReady());
+                    boolean stopped = DirectLedController.stopHead5Mic();
+                    return codeResponseReady(directCode(stopped), directHeaderReady());
                 }
-                int color = Integer.parseInt(require(query, "color"));
-                int brightness = Integer.parseInt(require(query, "brightness"));
+                int color = ApiValidator.requireColor(query);
+                int brightness = ApiValidator.requireBrightness(query);
                 int p5, p6, p8;
                 switch (preset) {
                     case "flash":   p5 = 100; p6 = 100; p8 = 0; break;
@@ -5385,18 +6654,17 @@ public class MainActivity extends Activity implements SensorEventListener {
                     case "long":
                     default:        p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
                 }
-                return codeResponseReady(
-                        robot.header_ledSetHead5Mic(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8),
-                        robot.isHeaderReady());
+                boolean sent = DirectLedController.setHead5MicRaw(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8);
+                return codeResponseReady(directCode(sent), directHeaderReady());
             }
             case "led/eye/set": {
-                robot.waitHeaderReady(3000);
-                String preset = queryOrDefault(query, "preset", "long");
+                String preset = ApiValidator.requireLedEyePreset(query);
                 if ("stop".equals(preset)) {
-                    return codeResponseReady(robot.header_stop5MicEyeLED(), robot.isHeaderReady());
+                    boolean stopped = DirectLedController.stopEye5Mic();
+                    return codeResponseReady(directCode(stopped), directHeaderReady());
                 }
-                int color = Integer.parseInt(require(query, "color"));
-                int brightness = Integer.parseInt(require(query, "brightness"));
+                int color = ApiValidator.requireColor(query);
+                int brightness = ApiValidator.requireBrightness(query);
                 int p5, p6, p8;
                 switch (preset) {
                     case "flash": p5 = 100; p6 = 100; p8 = 0; break;
@@ -5405,9 +6673,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                     case "long":
                     default:      p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
                 }
-                return codeResponseReady(
-                        robot.header_ledSetEye5Mic(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8),
-                        robot.isHeaderReady());
+                boolean sent = DirectLedController.setEye5MicRaw(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8);
+                return codeResponseReady(directCode(sent), directHeaderReady());
             }
             // NOTE: unlike led/head/set and led/eye/set above, this does NOT go through
             // Alpha2RobotApi/AIDL at all - there is no AIDL "mouth LED" method. It calls
@@ -5426,21 +6693,199 @@ public class MainActivity extends Activity implements SensorEventListener {
             // stopMouthLedForTts() below and their call sites in speech/tts,
             // onServerPlayEnd, and the Android TTS UtteranceProgressListener.
             case "led/mouth/set": {
-                if ("off".equals(queryOrDefault(query, "preset", ""))) {
+                String mouthPreset = ApiValidator.requireMouthPreset(query);
+                if ("off".equals(mouthPreset)) {
                     boolean ok = MouthLedData.off().apply();
                     return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
                 }
-                int speed = Integer.parseInt(queryOrDefault(query, "speed", "0"));
+                int speed = ApiValidator.requireMouthSpeed(query);
                 boolean ok = MouthLedData.breathing(speed).apply();
                 return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
             }
 
+            case "debug/jni/led": {
+                // 2026-08-25 新增: 直接試 /dev/led_eye 這個 JNI driver 的各個 native
+                // function - 這塊 5-mic 板上眼/頭/嘴部 LED 全部走這條路, 兩顆 pad 燈
+                // 很可能也是同一個 driver 另一個 ioctl (例如尚未用過的 ledSetOn(i))。
+                // func=on&i=N -> ledSetOn(N); func=eye/head&a1..a8 -> 對應 setter。
+                String func = ApiValidator.optional(query, "func", "");
+                if ("off".equals(func)) {
+                    boolean openOk = LedControl.open();
+                    boolean r = LedControl.ledSetOFF();
+                    LedControl.close();
+                    Log.i(TAG, "ledSetOFF open=" + openOk + " raw=" + r);
+                    return HttpServer.ApiResponse.ok(
+                            "{\"open\":" + openOk + ",\"raw\":" + r + "}");
+                }
+                boolean openOk = LedControl.open();
+                try {
+                    if ("on".equals(func)) {
+                        int i = ApiValidator.optionalInt(query, "i", 0);
+                        boolean r = LedControl.ledSetOn(i);
+                        Log.i(TAG, "ledSetOn(" + i + ") open=" + openOk + " raw=" + r);
+                        return HttpServer.ApiResponse.ok(
+                                "{\"open\":" + openOk + ",\"raw\":" + r + "}");
+                    }
+                    int[] a = new int[8];
+                    for (int k = 0; k < 8; k++) {
+                        a[k] = ApiValidator.optionalInt(query, "a" + (k + 1), 0);
+                    }
+                    boolean r;
+                    if ("eye".equals(func)) {
+                        r = LedControl.ledSetEye(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
+                    } else if ("head".equals(func)) {
+                        r = LedControl.ledSetHead(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
+                    } else {
+                        return HttpServer.ApiResponse.error("func must be on/eye/head");
+                    }
+                    Log.i(TAG, "ledSet" + func + " open=" + openOk
+                            + " raw=" + r + " args=" + java.util.Arrays.toString(a));
+                    return HttpServer.ApiResponse.ok("{\"open\":" + openOk
+                            + ",\"raw\":" + r + ",\"args\":"
+                            + java.util.Arrays.toString(a).replace(" ", "") + "}");
+                } finally {
+                    LedControl.close();
+                }
+            }
+
+            case "debug/serial/send": {
+                // 2026-08-25 新增: raw serial 發送測試端點, 用來反推音量鍵 LED 和
+                // 胸口 mute 鍵 LED 的控制指令 (headboard v1.1 上 alpha2services v1.0
+                // 協議不合, 只要它一動作 MCU 就不再自動點燈, 要自己 app 補上)。port=head
+                // 走 header_sendRawData (ttyS3), port=chest 走 chest_sendRawData
+                // (ttyS1); hex 是完整 wire frame (f8 ... ed), 我們在 PC 側組好再送出。
+                String port = ApiValidator.optional(query, "port", "head");
+                byte[] data = parseHexBytes(ApiValidator.require(query, "hex"));
+                // pure-direct: 经 DirectSerialPort.sendRaw 透传完整 wire 帧。
+                boolean sent = "chest".equals(port)
+                        ? HardwareDirectManager.get(this).chest().sendRaw(data)
+                        : HardwareDirectManager.get(this).head().sendRaw(data);
+                UbxErrorCode.API_ERROR_CODE code = directCode(sent);
+                Log.i(TAG, "debug/serial/send port=" + port + " hex=" + toHex(data, data.length)
+                        + " -> " + code.name());
+                return HttpServer.ApiResponse.ok("{\"ok\":"
+                        + (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) + ",\"code\":\""
+                        + code.name() + "\"}");
+            }
+
             // -- Head / misc ---------------------------------------------------------------
-            case "head/noise":
-                return codeResponse(robot.header_setNoise(Boolean.parseBoolean(require(query, "on"))));
-            case "misc/request_uuid":
-                robot.requestRobotUUID();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            case "head/noise": {
+                boolean on = ApiValidator.requireBoolean(query, "on");
+                boolean sent = HardwareDirectManager.get(this).head().setNoiseReduction(on);
+                return codeResponse(directCode(sent));
+            }
+            case "misc/request_uuid": {
+                // 2026-09 修正「無法讀取 uuid」: 之前只發
+                // robot.requestRobotUUID() (broadcast "com.ubtechinc.robot_uuid.request"),
+                // 但機身已無 alpha2services, 呢個 broadcast 永遠無人回覆
+                // "com.ubtechinc.robot_uuid.info", UI 永久停喺「查詢中」。
+                // 改走 pure-direct: 經 /dev/ttyS1 直發 cmd 55 讀 chest EEPROM,
+                // 同步等回覆 (HttpServer worker thread, 可阻塞, 同版本查詢一樣),
+                // 讀到即經 EventBus 發 robot_uuid (舊 WS 路徑, 前端唔使改) +
+                // HTTP response 順手帶埋 uuid (新 fallback, 前端直接用, 唔使等 WS)。
+                // 舊 broadcast 照發 (向後相容, 有朝一日裝返 alpha2services 都唔會壞)。
+                try {
+                    robot.requestRobotUUID();
+                } catch (Throwable ignore) {
+                }
+                String uuid = queryChestRobotUuid(2000);
+                if (uuid != null && !uuid.isEmpty()) {
+                    EventBus.get().publish("robot_uuid", "{\"uuid\":\"" + jsonSafe(uuid) + "\"}");
+                    return HttpServer.ApiResponse.ok(
+                            "{\"ok\":true,\"uuid\":\"" + jsonSafe(uuid) + "\"}");
+                }
+                // 2026-09: 分辨 timeout (完全無回幀) 同 parse 失敗 (有回幀但洗唔出
+                // 字串), 後者連 raw hex 一齊回, 等 logcat/前端可以直接對。
+                String diag = "";
+                try {
+                    if (chestUuidRaw != null) {
+                        diag = " raw=" + toHex(chestUuidRaw, chestUuidLen);
+                    }
+                } catch (Throwable ignore) {
+                }
+                Log.w(TAG, "misc/request_uuid direct read failed (chest cmd 55)." + diag);
+                EventBus.get().publish("robot_uuid", "{\"uuid\":null}");
+                return HttpServer.ApiResponse.ok(
+                        "{\"ok\":false,\"error\":\"uuid read failed - chest cmd 55"
+                                + jsonSafe(diag) + "\"}");
+            }
+            case "misc/set_uuid": {
+                // 2026-08 v2 新增: 更改機械人 ID (chest EEPROM SN 欄位)。格式由
+                // 實機逆向 + 實測確認: cmd=54 (0x36), payload = 新 SN 的 ASCII bytes
+                // (寫幾多個 byte 就幾多個, 其餘補 0), wire frame
+                // F8 8F <7+n> 00 00 36 <sn...> <sum> ED, sum=(len+0x36+Σsn)&0xFF。
+                // 寫入後即刻 requestUUID 讀返驗證 (robot_uuid event 經 WS 更新 UI)。
+                //
+                // 2026-08 v3: 曾經誤以為亂碼尾巴代表 EEPROM 定長 32 bytes 沒有被完
+                // 全覆寫, 一度改成把整個 payload padding 到 32 bytes 才寫 —— 這個
+                // 方向錯了, 已經用實機 logcat 推翻: hex dump (CHEST_READ_SID_EEPROM
+                // 回應幀 "f8 8f 28 01 00 37 00 42 41 ... 00 00...00 3c ed") 顯示
+                // 讀出來的 payload 本身很乾淨 —— [flag byte] + 17 bytes SN ASCII +
+                // 0x00 padding, 完全沒有非零垃圾。之所以那行 firmware 自己的 Java log
+                // "serialNumber=BAF006UBT10000377<方塊亂碼>" 只是 logcat/String 把
+                // 尾隨的 \0 null byte 渲染成不可見方塊字元的顯示效果, 不代表
+                // EEPROM 真的有垃圾殘留。RobotEventReceiver.java 讀取時已經用
+                // indexOf('\0') 切掉這些 padding, 不需要也不應該在寫入那邊自己
+                // padding 到某個定長 —— 太長的 payload (例如 32 bytes) 反而會讓
+                // firmware 把 len byte 也當大了, 讀出來的欄位長度也跟著變,
+                // 造成完全不同的殘留問題 (見專案內部事故記錄:「全域清零反而有
+                // 2026-09 實測補充: 上面「讀出來很乾淨」只適用舊 SN 未郁過的情況。
+                // 真幀 (f8 8f 28 00 00 37 00 42 41 46...6f 75 6d 61 6d 61 65 00 0c ed)
+                // 證實: 曾經寫入較短 SN (17B "BAF006UBT10000001") 蓋過較長舊值之後,
+                // 尾段會有 14 bytes 非零殘留 ("yy44567oumamae"), 唔係 0x00 padding。
+                // 所以讀取側唔可以靠 \0 cut; 截尾規則見 truncateUuidTail (用戶已對
+                // 實體貼紙確認真 SN 係 17 字, 尾段小寫殘留要斬走先係正確綁定 ID)。
+                // 寫入格式本身不變, 這裡保持
+                // v2 原本的 [len byte]+SN, 沒有 terminator 沒有 padding 的寫法,
+                // 這才是經實機驗證過的正確格式。
+                String v = ApiValidator.require(query, "value");
+                byte[] sn = v.getBytes(StandardCharsets.US_ASCII);
+                if (sn.length < 1 || sn.length > 31) {
+                    return HttpServer.ApiResponse.ok(
+                            "{\"ok\":false,\"error\":\"id must be 1-31 ascii chars\"}");
+                }
+                // payload 格式實測確認是 [長度byte] + SN ASCII bytes — 沒有
+                // terminator 沒有 padding! 讀取幾個 byte 是依這個 len byte 決定 (正常機
+                // 讀出來是乾乾淨淨 N 字元 + firmware 自己 EEPROM 欄位的 0x00
+                // padding, 不會有非零尾隨 bytes)。
+                // checksum 包 LEN byte (7 + payload 總長) + cmd + Σpayload。
+                byte[] payload = new byte[sn.length + 1];
+                payload[0] = (byte) sn.length;
+                System.arraycopy(sn, 0, payload, 1, sn.length);
+                int sum = (7 + payload.length + 54) & 0xFF;
+                for (byte b : payload) sum = (sum + (b & 0xFF)) & 0xFF;
+                byte[] frame = new byte[payload.length + 9];
+                frame[0] = (byte) 0xF8;
+                frame[1] = (byte) 0x8F;
+                frame[2] = (byte) (7 + payload.length);
+                frame[3] = 0x00;
+                frame[4] = 0x00;
+                frame[5] = 54;
+                System.arraycopy(payload, 0, frame, 6, payload.length);
+                frame[6 + payload.length] = (byte) sum;
+                frame[7 + payload.length] = (byte) 0xED;
+                // pure-direct: 经 /dev/ttyS1 直发（旧 robot.chest_sendRawData 走 binder，已停用）。
+                boolean sent = HardwareDirectManager.get(this).chest().sendRaw(frame);
+                UbxErrorCode.API_ERROR_CODE code = directCode(sent);
+                Log.i(TAG, "set_uuid -> " + v + " (" + sn.length + "B) " + code.name());
+                // 2026-09 修正: 寫完唔好即刻 request_uuid —— alpha2services/firmware
+                // 會 cache 開機讀到的 SN, 即刻讀返嚟多數係舊值, 經 robot_uuid event
+                // 蓋走前端頭先樂觀顯示的新值, 睇落好似寫入失敗 (見 app-accel.js
+                // uuidWriteNew() 已經樂觀顯示新值 + 提示要重啟, 嗰個先係正確流程)。
+                // 舊碼 robot.requestRobotUUID() 而家仲係 no-op (無 alpha2services),
+                // 直接唔再叫, 等用戶重啟後先 request_uuid 讀新值。
+                // 2026-09: 記低今次寫入長度, 下次讀回截尾用 (見 truncateUuidTail
+                // 規則 1) - 只在發送成功先記。
+                if (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+                    try {
+                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                                .putInt(PREF_UUID_WRITTEN_LEN, sn.length).apply();
+                    } catch (Throwable ignore) {
+                    }
+                }
+                return HttpServer.ApiResponse.ok(
+                        "{\"ok\":" + (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) + "}");
+            }
 
             // -- Camera: standard Android legacy Camera API, not SDK-gated (see
             // CameraController for the front/back index quirk on this hardware). The
@@ -5464,6 +6909,85 @@ public class MainActivity extends Activity implements SensorEventListener {
                 String b64 = android.util.Base64.encodeToString(frame.jpeg, android.util.Base64.NO_WRAP);
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"jpegBase64\":\"" + b64 + "\"}");
             }
+            case "camera/snapshot_save": {
+                // 齊 9 檔影相並存入 Android：可選 w/h，未提供則用當前 preview 解像度；存至 /sdcard/DCIM/Alpha2
+                String wStr = query.get("w");
+                String hStr = query.get("h");
+                int reqW = 0, reqH = 0;
+                boolean hasSize = false;
+                if (wStr != null && hStr != null) {
+                    try { reqW = Integer.parseInt(wStr); reqH = Integer.parseInt(hStr); hasSize = true; } catch (Exception ignored) {}
+                }
+                int prevW = cameraController.getPreviewWidth();
+                int prevH = cameraController.getPreviewHeight();
+                if (hasSize) {
+                    cameraController.setRequestedResolution(reqW, reqH);
+                    cameraController.forceStopAndWait(3000);
+                }
+                CameraController.StartResult started = cameraController.start(8000);
+                if (started.error != null) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(started.error) + "\"}");
+                }
+                CameraController.Frame frame = waitForFrame(cameraController, 3000);
+                if (frame == null) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"timed out waiting for frame\"}");
+                }
+                try {
+                    java.io.File dir = new java.io.File("/sdcard/DCIM/Alpha2");
+                    if (!dir.exists()) dir.mkdirs();
+                    String ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss_SSS", java.util.Locale.US).format(new java.util.Date());
+                    String name = "alpha2_" + frame.jpeg.length + "_" + cameraController.getPreviewWidth() + "x" + cameraController.getPreviewHeight() + "_" + ts + ".jpg";
+                    // 若有指定尺寸，用指定尺寸命名更直觀
+                    if (hasSize) name = "alpha2_" + reqW + "x" + reqH + "_" + ts + ".jpg";
+                    java.io.File outFile = new java.io.File(dir, name);
+                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile)) { fos.write(frame.jpeg); }
+                    // 同時觸發媒體掃描，讓相簿即時可見
+                    try { sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, android.net.Uri.fromFile(outFile))); } catch (Exception ignored) {}
+                    // 恢復之前解像度（若有切換）
+                    if (hasSize && (prevW != reqW || prevH != reqH)) {
+                        cameraController.setRequestedResolution(prevW, prevH);
+                        cameraController.forceStopAndWait(2000);
+                        // 不自動重開，讓前端按需再開，避免長時間佔用
+                    }
+                    String b64 = android.util.Base64.encodeToString(frame.jpeg, android.util.Base64.NO_WRAP);
+                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"path\":\"" + jsonSafe(outFile.getAbsolutePath()) + "\",\"jpegBase64\":\"" + b64 + "\",\"width\":" + cameraController.getPreviewWidth() + ",\"height\":" + cameraController.getPreviewHeight() + "}");
+                } catch (Exception e) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(e.getMessage()) + "\"}");
+                }
+            }
+            case "camera/take_photo_save": {
+                // 真正單張拍攝（picture 尺寸，經 Camera.takePicture 完整 ISP），存入 Android
+                String wStr = query.get("w");
+                String hStr = query.get("h");
+                int reqW = 0, reqH = 0;
+                boolean hasSize = false;
+                if (wStr != null && hStr != null) {
+                    try { reqW = Integer.parseInt(wStr); reqH = Integer.parseInt(hStr); hasSize = true; } catch (Exception ignored) {}
+                }
+                // 若未指定，用最大 picture 尺寸
+                if (!hasSize) { reqW = 4208; reqH = 3120; }
+                CameraController.StartResult started = cameraController.start(8000);
+                if (started.error != null) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(started.error) + "\"}");
+                }
+                CameraController.PhotoResult photo = cameraController.takePhoto(reqW, reqH, 8000);
+                if (photo.error != null) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(photo.error) + "\"}");
+                }
+                try {
+                    java.io.File dir = new java.io.File("/sdcard/DCIM/Alpha2");
+                    if (!dir.exists()) dir.mkdirs();
+                    String ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss_SSS", java.util.Locale.US).format(new java.util.Date());
+                    String name = "alpha2_pic_" + reqW + "x" + reqH + "_" + ts + ".jpg";
+                    java.io.File outFile = new java.io.File(dir, name);
+                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile)) { fos.write(photo.jpeg); }
+                    try { sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, android.net.Uri.fromFile(outFile))); } catch (Exception ignored) {}
+                    String b64 = android.util.Base64.encodeToString(photo.jpeg, android.util.Base64.NO_WRAP);
+                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"path\":\"" + jsonSafe(outFile.getAbsolutePath()) + "\",\"jpegBase64\":\"" + b64 + "\",\"width\":" + reqW + ",\"height\":" + reqH + ",\"bytes\":" + photo.jpeg.length + "}");
+                } catch (Exception e) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(e.getMessage()) + "\"}");
+                }
+            }
             // Plays the "Sirrah" shutter cue out of the robot's own speaker (see
             // playShutterCue() javadoc) - called by the browser right after a
             // successful camera/snapshot, instead of synthesizing a click sound in
@@ -5475,9 +6999,47 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true,"
                         + "\"previewWidth\":" + cameraController.getPreviewWidth() + ","
                         + "\"previewHeight\":" + cameraController.getPreviewHeight() + "}");
+            case "camera/fps":
+                double fps = cameraController.getFps();
+                String fpsStr = String.format(java.util.Locale.US, "%.1f", fps);
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"fps\":" + fpsStr + ",\"streaming\":" + cameraController.isStreaming() + "}");
+            case "camera/supported_sizes": {
+                java.util.List<android.hardware.Camera.Size> preview = cameraController.getSupportedPreviewSizesSync(4000);
+                java.util.List<android.hardware.Camera.Size> picture = cameraController.getSupportedPictureSizesSync(4000);
+                java.util.List<int[]> fpsRanges = cameraController.getSupportedPreviewFpsRangesSync(4000);
+                StringBuilder sb = new StringBuilder("{\"ok\":true,\"preview\":[");
+                if (preview != null) {
+                    boolean first = true;
+                    for (android.hardware.Camera.Size s : preview) {
+                        if (!first) sb.append(",");
+                        first = false;
+                        sb.append("\"").append(s.width).append("x").append(s.height).append("\"");
+                    }
+                }
+                sb.append("],\"picture\":[");
+                if (picture != null) {
+                    boolean first = true;
+                    for (android.hardware.Camera.Size s : picture) {
+                        if (!first) sb.append(",");
+                        first = false;
+                        sb.append("\"").append(s.width).append("x").append(s.height).append("\"");
+                    }
+                }
+                sb.append("],\"fpsRanges\":[");
+                if (fpsRanges != null) {
+                    boolean first = true;
+                    for (int[] r : fpsRanges) {
+                        if (!first) sb.append(",");
+                        first = false;
+                        sb.append("\"").append(r[0]/1000.0).append("-").append(r[1]/1000.0).append("\"");
+                    }
+                }
+                sb.append("],\"current\":\"").append(cameraController.getPreviewWidth()).append("x").append(cameraController.getPreviewHeight()).append("\"}");
+                return HttpServer.ApiResponse.ok(sb.toString());
+            }
             case "camera/resolution": {
-                int w = Integer.parseInt(require(query, "w"));
-                int h = Integer.parseInt(require(query, "h"));
+                int w = ApiValidator.requireInt(query, "w");
+                int h = ApiValidator.requireInt(query, "h");
                 cameraController.setRequestedResolution(w, h);
                 // Block until the camera is genuinely released before answering - see
                 // forceStopAndWait()'s javadoc for why stopIfIdle() alone isn't enough
@@ -5529,13 +7091,13 @@ public class MainActivity extends Activity implements SensorEventListener {
             // MediaPlayer path as playRingtoneUri() (so it follows the media volume
             // slider, not the separate ringer/notification volume). -------------------
             case "audio/ringtones/list": {
-                String type = queryOrDefault(query, "type", "ringtone");
+                String type = ApiValidator.optional(query, "type", "ringtone");
                 int rmType = "notification".equals(type)
                         ? android.media.RingtoneManager.TYPE_NOTIFICATION
                         : android.media.RingtoneManager.TYPE_RINGTONE;
-                // 2026-08 更新 (修 bug): 改用 getCachedRingtoneManager() 唔再逐次
-                // new RingtoneManager 即用即棄 —— 見 findRingtoneByTitle() 上面
-                // 嗰個 cache function 嘅 javadoc, 呢度係同一種 cursor 洩漏, 一齊修。
+                // 2026-08 更新 (修 bug): 改用 getCachedRingtoneManager() 不再每次
+                // new RingtoneManager 用完即丟 —— 見 findRingtoneByTitle() 上面
+                // 那個 cache function 的 javadoc, 這裡是同一種 cursor 洩漏, 一起修。
                 android.media.RingtoneManager manager = getCachedRingtoneManager(rmType);
                 android.database.Cursor cursor = manager.getCursor();
                 StringBuilder sb = new StringBuilder("{\"ok\":true,\"type\":\"" + jsonSafe(type) + "\",\"sounds\":[");
@@ -5553,8 +7115,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok(sb.toString());
             }
             case "audio/ringtones/play": {
-                String type = queryOrDefault(query, "type", "ringtone");
-                int index = Integer.parseInt(require(query, "index"));
+                String type = ApiValidator.optional(query, "type", "ringtone");
+                int index = ApiValidator.requireInt(query, "index");
                 int rmType = "notification".equals(type)
                         ? android.media.RingtoneManager.TYPE_NOTIFICATION
                         : android.media.RingtoneManager.TYPE_RINGTONE;
@@ -5573,17 +7135,17 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
 
-            // 2026-08 新增: 用 title 揾鈴聲, 唔再用 audio/ringtones/list 個 numbered
-            // index (見上面 findRingtoneByTitle() 嘅 javadoc: cursor position 唔保證
-            // 跨機一致, 因為 RingtoneManager 內部排序邏輯唔一定同 adb content query
-            // 手動加 --sort 果個排序一樣)。Blockly 頁依家內嵌一份靜態 title 清單
-            // (由實機 adb content query 走一次抓返嚟, 見 blockly-actions-data.js
-            // 隔籬嘅 blockly-ringtone-data.js), 揀咗個 title 直接送呢個 API, 用返
-            // findRingtoneByTitle() 呢個已經俾 playStopCue()/playShutterCue() 用緊、
-            // 驗證過穩陣嘅「查 title 過 Uri」機制, 完全唔使理 index 排序呢個問題。
+            // 2026-08 新增: 用 title 查找鈴聲, 不再用 audio/ringtones/list 的 numbered
+            // index (見上面 findRingtoneByTitle() 的 javadoc: cursor position 不保證
+            // 跨機一致, 因為 RingtoneManager 內部排序邏輯不一定和 adb content query
+            // 手動加 --sort 那個排序一樣)。Blockly 頁面現在內嵌一份靜態 title 清單
+            // (由實機 adb content query 執行一次抓回來, 見 blockly-actions-data.js
+            // 旁邊的 blockly-ringtone-data.js), 選了 title 直接送這個 API, 沿用
+            // findRingtoneByTitle() 這個已經被 playStopCue()/playShutterCue() 使用、
+            // 驗證過穩健的「查 title 轉 Uri」機制, 完全不用理會 index 排序這個問題。
             case "audio/ringtones/play_by_title": {
-                String type = queryOrDefault(query, "type", "ringtone");
-                String title = require(query, "title");
+                String type = ApiValidator.optional(query, "type", "ringtone");
+                String title = ApiValidator.require(query, "title");
                 int rmType = "notification".equals(type)
                         ? android.media.RingtoneManager.TYPE_NOTIFICATION
                         : android.media.RingtoneManager.TYPE_RINGTONE;
@@ -5595,31 +7157,35 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
 
-            // 2026-08 新增: 停止依家播緊嘅系統鈴聲/通知聲 (play / play_by_title 兩個
-            // endpoint 播嗰個), 對應 Blockly「例子 5」個「停止播放」掣。
+            // 2026-08 新增: 停止目前正在播放的系統鈴聲/通知聲 (play / play_by_title 兩個
+            // endpoint 播放的那個), 對應 Blockly「範例 5」的「停止播放」按鈕。
             case "audio/ringtones/stop": {
                 stopRingtonePlayback();
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
 
-            // -- Local music (/mnt/internal_sd/music/): 用戶自己放喺機身嘅音樂檔,
-            // 同上面 audio/ringtones/* 嗰啲系統鈴聲係兩回事, 各自獨立一套 endpoint/
-            // MediaPlayer, 詳見 listLocalMusicFiles()/playLocalMusicFile() 嘅
-            // javadoc。"list" 冇 index (檔案清單會隨用戶自己加/減歌而變, 唔似
-            // ringtone 嗰啲系統清單咁穩定), "play" 直接用檔名 (連副檔名) 揀。
+            // -- Local music (/mnt/internal_sd/music/): 用戶自己放在機身的音樂檔,
+            // 和上面 audio/ringtones/* 那些系統鈴聲是兩回事, 各自獨立一套 endpoint/
+            // MediaPlayer, 詳見 listLocalMusicFiles()/playLocalMusicFile() 的
+            // javadoc。"list" 沒有 index (檔案清單會隨用戶自己增減歌曲而變, 不像
+            // ringtone 那些系統清單那麼穩定), "play" 直接用檔名 (含副檔名) 選取。
             case "audio/local_music/list": {
                 StringBuilder sb = new StringBuilder("{\"ok\":true,\"files\":[");
                 boolean first = true;
                 for (java.io.File f : listLocalMusicFiles()) {
                     if (!first) sb.append(",");
                     first = false;
-                    sb.append("{\"name\":\"").append(jsonSafe(f.getName())).append("\"}");
+                    // 2026-08 新增 sizeBytes - 供音樂 tab 的檔案清單顯示檔案大小用,
+                    // 舊有的語音/小智呼叫路徑 (resolveLocalMusicFile 只看 "name")
+                    // 不受這個新加欄位影響, 純粹多加一個 key。
+                    sb.append("{\"name\":\"").append(jsonSafe(f.getName())).append("\",")
+                            .append("\"sizeBytes\":").append(f.length()).append("}");
                 }
                 sb.append("]}");
                 return HttpServer.ApiResponse.ok(sb.toString());
             }
             case "audio/local_music/play": {
-                String name = require(query, "name");
+                String name = ApiValidator.require(query, "name");
                 java.io.File resolved = resolveLocalMusicFile(name);
                 if (resolved == null) {
                     return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"file not found\"}");
@@ -5633,21 +7199,221 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
 
-            // -- FM/網絡電台 (經 Radio Browser API, radio-browser.info, 動態搜全
-            // 世界公開電台 - 見 searchRadioStations()/resolveRadioStation() 嘅
-            // javadoc, 呢部機唔再內置任何寫死嘅電台清單) - "search" 對應
-            // self.media.search_radio, "play" 用 resolveRadioStation() 做人類
-            // 語言名比對 (先撞 lastRadioSearchResults, 撞唔到就直接當新搜尋詞打
-            // API)。加多一個 "status" 俾前端面板顯示「而家播緊邊個台」用 (電台冇
-            // 檔名咁直觀, 用戶自己撳「轉台」之後有需要知道結果)。呢兩個 endpoint
-            // 內部會打網絡, 同 MCP tool 嗰邊唔同 (嗰邊有外層 try/catch(Exception)
-            // 包住成個 switch), handleApi() 冇, 所以呢度自己要包一層 try/catch
-            // 將 IOException/JSONException 轉做正常嘅 {"ok":false,...} 回應,
-            // 唔可以令個 exception 直接飛出 handleApi()。
-            case "audio/radio/search": {
-                String q = require(query, "query");
+            // 2026-08 新增: 供瀏覽器音樂 tab 用的播放狀態/進度/音量 endpoint -
+            // 之前這一套 local_music 純粹供小智語音/AI tool call 使用, 進度
+            // 條 UI 用不到。這幾個 endpoint 沒有改動任何播放邏輯本身, 只是供前端
+            // 讀/寫 currentMusicPlayer 已有的狀態。
+            case "audio/local_music/status": {
+                synchronized (this) {
+                    android.media.MediaPlayer mp = currentMusicPlayer;
+                    if (mp == null) {
+                        return HttpServer.ApiResponse.ok("{\"ok\":true,\"hasTrack\":false,"
+                                + "\"playing\":false,\"positionMs\":0,\"durationMs\":0,\"name\":null}");
+                    }
+                    boolean playing = false;
+                    int pos = 0;
+                    int dur = 0;
+                    try {
+                        playing = mp.isPlaying();
+                        pos = mp.getCurrentPosition();
+                        dur = mp.getDuration();
+                    } catch (Exception e) {
+                        // MediaPlayer 在 prepareAsync() 尚未完成的那段窗口呼叫這幾個
+                        // getter 會拋出 IllegalStateException - 當「尚未準備好」, 退回
+                        // 使用預設值 0/false, 不算真正錯誤。
+                    }
+                    String name = currentMusicTrackName;
+                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"hasTrack\":true,"
+                            + "\"playing\":" + playing + ","
+                            + "\"positionMs\":" + pos + ","
+                            + "\"durationMs\":" + dur + ","
+                            + "\"name\":" + (name != null ? "\"" + jsonSafe(name) + "\"" : "null") + "}");
+                }
+            }
+            case "audio/local_music/seek": {
+                String msStr = ApiValidator.require(query, "ms");
+                int ms;
                 try {
-                    java.util.List<org.json.JSONObject> found = searchRadioStations(q, 10);
+                    ms = Integer.parseInt(msStr);
+                } catch (NumberFormatException e) {
+                    return HttpServer.ApiResponse.error("ms must be an integer");
+                }
+                synchronized (this) {
+                    if (currentMusicPlayer == null) {
+                        return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"no track loaded\"}");
+                    }
+                    try {
+                        currentMusicPlayer.seekTo(ms);
+                    } catch (Exception e) {
+                        return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
+                                + jsonSafe(String.valueOf(e.getMessage())) + "\"}");
+                    }
+                }
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+            case "audio/local_music/volume": {
+                String pctStr = ApiValidator.require(query, "percent");
+                int pct;
+                try {
+                    pct = Integer.parseInt(pctStr);
+                } catch (NumberFormatException e) {
+                    return HttpServer.ApiResponse.error("percent must be an integer");
+                }
+                float v = Math.max(0, Math.min(100, pct)) / 100f;
+                synchronized (this) {
+                    if (currentMusicPlayer == null) {
+                        return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"no track loaded\"}");
+                    }
+                    try {
+                        currentMusicPlayer.setVolume(v, v);
+                    } catch (Exception e) {
+                        return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
+                                + jsonSafe(String.valueOf(e.getMessage())) + "\"}");
+                    }
+                }
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            // 2026-08 v2 新增: audio spectrum - 回傳最近一次 FFT 算出的頻譜
+            // (MUSIC_SPECTRUM_BANDS 條, 每條 0-255), 前端 ~100ms 輪詢一次畫 bar。
+            // 沒播歌/Visualizer 建不起來就全部回傳 0。
+            case "audio/local_music/spectrum": {
+                StringBuilder sbSpec = new StringBuilder("{\"ok\":true,\"bands\":[");
+                synchronized (this) {
+                    for (int i = 0; i < MUSIC_SPECTRUM_BANDS; i++) {
+                        if (i > 0) sbSpec.append(",");
+                        sbSpec.append(musicSpectrumBands[i]);
+                    }
+                }
+                sbSpec.append("]}");
+                return HttpServer.ApiResponse.ok(sbSpec.toString());
+            }
+
+            // 2026-08 v2 新增: 真・暫停/恢復 - MediaPlayer.pause() 之後個播放位置
+            // 一直記住, 之後 start() 就從那裡繼續, 不用從頭播放。之前前端用
+            // "stop 當 pause" 的變通法, 恢復時整首歌從頭來, 用戶投訴過這一點。
+            // 注意: pause/resume 都不會動到 musicFillerActionLoop - 暫停期間那個 loop
+            // 仍在執行 (triggerRandomFillerAction() 有它自己「沒在播就不動」的
+            // 判斷), 沿用原本播歌期間的行為。
+            case "audio/local_music/pause": {
+                synchronized (this) {
+                    if (currentMusicPlayer == null) {
+                        return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"no track loaded\"}");
+                    }
+                    try {
+                        currentMusicPlayer.pause();
+                    } catch (Exception e) {
+                        return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
+                                + jsonSafe(String.valueOf(e.getMessage())) + "\"}");
+                    }
+                }
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+            case "audio/local_music/resume": {
+                synchronized (this) {
+                    if (currentMusicPlayer == null) {
+                        return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"no track loaded\"}");
+                    }
+                    try {
+                        currentMusicPlayer.start();
+                    } catch (Exception e) {
+                        return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
+                                + jsonSafe(String.valueOf(e.getMessage())) + "\"}");
+                    }
+                }
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            // 2026-08 新增: Equalizer presets - 用返 android.media.audiofx.Equalizer
+            // 自己的 preset 清單 (由裝置/廠商決定有多少個、叫什麼名, 例如 "Normal"、
+            // "Classical"、"Rock" 等, 不是這個 app 自己定義的一套), 保證和這台機器
+            // 實際安裝的 audio effect engine 一致, 不會出現選了個 UI 名但
+            // usePreset() 對不上的情況。沒播歌 (musicEqualizer 尚未建立) 也要給出
+            // 清單 (建一個臨時 Equalizer 取得清單再立即放掉), 讓用戶還沒播歌也能看到
+            // 有咩 preset 可以揀。
+            case "audio/local_music/eq/presets": {
+                android.media.audiofx.Equalizer temp = null;
+                try {
+                    temp = new android.media.audiofx.Equalizer(0, 0);
+                    short numPresets = temp.getNumberOfPresets();
+                    StringBuilder sbEq = new StringBuilder("{\"ok\":true,\"presets\":[");
+                    for (short i = 0; i < numPresets; i++) {
+                        if (i > 0) sbEq.append(",");
+                        sbEq.append("{\"index\":").append(i).append(",\"name\":\"")
+                                .append(jsonSafe(temp.getPresetName(i))).append("\"}");
+                    }
+                    sbEq.append("],\"current\":").append(musicEqPresetIndex).append("}");
+                    return HttpServer.ApiResponse.ok(sbEq.toString());
+                } catch (Exception e) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"presets\":[],\"current\":-1,"
+                            + "\"unavailable\":true}");
+                } finally {
+                    if (temp != null) {
+                        try {
+                            temp.release();
+                        } catch (Exception ignored) {
+                        }
+                    }
+                }
+            }
+            case "audio/local_music/eq/set": {
+                String idxStr = ApiValidator.require(query, "index");
+                int idx;
+                try {
+                    idx = Integer.parseInt(idxStr);
+                } catch (NumberFormatException e) {
+                    return HttpServer.ApiResponse.error("index must be an integer");
+                }
+                // 存下選擇 (不理會現在是否正在播放), 等下一首歌開始播時
+                // setupMusicEqualizerLocked() 都會跟返呢個 preset。
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                        .putInt(PREF_MUSIC_EQ_PRESET, idx).apply();
+                synchronized (this) {
+                    musicEqPresetIndex = idx;
+                    if (musicEqualizer != null) {
+                        try {
+                            if (idx >= 0 && idx < musicEqualizer.getNumberOfPresets()) {
+                                musicEqualizer.usePreset((short) idx);
+                            }
+                        } catch (Exception e) {
+                            return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
+                                    + jsonSafe(String.valueOf(e.getMessage())) + "\"}");
+                        }
+                    }
+                }
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            // 2026-08 新增: 「播歌隨機動作」開關 - 用戶要求可以自己開關, 之前呢個
+            // 行為一直都是跟著有沒有正在播歌自動開/關, 沒有獨立開關按鈕。預設 true
+            // (和 isMusicFillerActionEnabled() 尚未讀過設定時的預設值一致, 保持之前
+            // 行為)。
+            case "audio/local_music/filler_action/get": {
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":"
+                        + isMusicFillerActionEnabled() + "}");
+            }
+            case "audio/local_music/filler_action/set": {
+                boolean enabled = "true".equals(query.get("enabled"));
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                        .putBoolean(PREF_MUSIC_FILLER_ACTION_ENABLED, enabled).apply();
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + "}");
+            }
+
+            // -- FM/網絡電台 (經 Radio Browser API, radio-browser.info, 動態搜全
+            // 世界公開電台 - 見 searchRadioStations()/resolveRadioStation() 的
+            // javadoc, 這台機器不再內建任何寫死的電台清單) - "search" 對應
+            // self.media.search_radio, "play" 用 resolveRadioStation() 做人類
+            // 語言名比對 (先比對 lastRadioSearchResults, 比對不到就直接當新搜尋詞打
+            // API)。多加一個 "status" 供前端面板顯示「目前正在播哪個台」用 (電台沒有
+            // 檔名那麼直觀, 用戶自己按「轉台」之後有需要知道結果)。這兩個 endpoint
+            // 內部會打網路, 和 MCP tool 那邊不同 (那邊有外層 try/catch(Exception)
+            // 包住整個 switch), handleApi() 沒有, 所以這裡自己要包一層 try/catch
+            // 把 IOException/JSONException 轉成正常的 {"ok":false,...} 回應,
+            // 不可以讓 exception 直接飛出 handleApi()。
+            case "audio/radio/search": {
+                String q = ApiValidator.require(query, "query");
+                try {
+                    java.util.List<org.json.JSONObject> found = searchRadioStations(q, 30);
                     lastRadioSearchResults = found;
                     StringBuilder sb = new StringBuilder("{\"ok\":true,\"stations\":[");
                     boolean first = true;
@@ -5666,7 +7432,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 }
             }
             case "audio/radio/play": {
-                String name = require(query, "name");
+                String name = ApiValidator.require(query, "name");
                 try {
                     org.json.JSONObject resolved = resolveRadioStation(name);
                     if (resolved == null) {
@@ -5678,6 +7444,30 @@ public class MainActivity extends Activity implements SensorEventListener {
                 } catch (Exception e) {
                     return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
                             + jsonSafe("radio search failed: " + e.getMessage()) + "\"}");
+                }
+            }
+            case "audio/radio/play_url": {
+                String url = ApiValidator.require(query, "url");
+                String nameHint = query.get("name");
+                if (url == null || url.trim().isEmpty()) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"url is required\"}");
+                }
+                try {
+                    // 2026-08 新增: 供前端直連 radio-browser.info fallback 用 — 瀏覽器自己
+                    // fetch 完搜尋結果 (繞過機械人本身 DNS/無外網問題看列表), 再將選中台的
+                    // url_resolved 直接送來此 endpoint 播放, 不再經 resolveRadioStation()
+                    // 重新打一次 Radio Browser API (那步在機械人無外網時必定失敗)。
+                    org.json.JSONObject station = new org.json.JSONObject();
+                    station.put("url_resolved", url);
+                    station.put("url", url);
+                    station.put("name", nameHint != null ? nameHint : url);
+                    station.put("stationuuid", "frontend-" + System.currentTimeMillis());
+                    playRadioStream(station);
+                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"playing\":\""
+                            + jsonSafe(station.optString("name")) + "\"}");
+                } catch (Exception e) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
+                            + jsonSafe("radio play_url failed: " + e.getMessage()) + "\"}");
                 }
             }
             case "audio/radio/stop": {
@@ -5712,7 +7502,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                     return HttpServer.ApiResponse.error("AudioManager not available");
                 }
                 int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                int vol = Integer.parseInt(require(query, "level"));
+                int vol = ApiValidator.requireInt(query, "level");
                 vol = Math.max(0, Math.min(max, vol));
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, vol, 0);
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"volume\":" + vol + ",\"max\":" + max + "}");
@@ -5736,25 +7526,21 @@ public class MainActivity extends Activity implements SensorEventListener {
 
             // -- Robot-service broadcasts with simple boolean extras. --------------------
             case "misc/charge_play": {
-                boolean open = Boolean.parseBoolean(require(query, "open"));
-                Intent i = new Intent(StaticValue.ALPHA_SET_CHARGE_PLAY);
+                boolean open = ApiValidator.requireBoolean(query, "open");
+                Intent i = new Intent(RobotWire.ALPHA_SET_CHARGE_PLAY);
                 i.putExtra("open_charge_play", open);
                 sendBroadcast(i);
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
-            case "misc/power_save": {
-                boolean save = Boolean.parseBoolean(require(query, "save"));
-                Intent i = new Intent(StaticValue.ALPHA_SEND_POWER_SAVE);
-                i.putExtra("should_save_power", save);
-                sendBroadcast(i);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
+            // 2026-09 移除: misc/power_save - 純粹發 broadcast 俾已不存在的
+            // alpha2services, 回 ok:true 但實際無效 (假活)。連同舵機頁開關一齊
+            // 拎走。charge_play 同理已死但今次唔郁 (無 UI 入口, 留待下批)。
 
             // -- Accelerometer (IMU): standard Android SensorManager, not SDK-gated -
             // see setAccelerometerEnabled()/onSensorChanged() above. Readings stream out
             // as "accel" WebSocket events while enabled, not through this JSON response. -
             case "accelerometer/set": {
-                final boolean on = Boolean.parseBoolean(require(query, "on"));
+                final boolean on = ApiValidator.requireBoolean(query, "on");
                 // registerListener()/unregisterListener() must run on the thread that
                 // owns sensorManager's Looper (the main thread here) - this handler
                 // itself runs on an HttpServer worker thread, so hop over via mainHandler
@@ -5784,112 +7570,59 @@ public class MainActivity extends Activity implements SensorEventListener {
 
             // -- Service config (/sdcard/actions/service_config.{json,txt}) -------------
             //
-            // 2026-08 新增。呢個 config 檔控制緊機身開機時嘅 wake word/ASR 語言/預設對話
-            // app (見 AIDL_REFERENCE_ALPHA2.md「引擎選擇」段落) —— 實測證實 (見 log) 改咗呢個
-            // 檔案、重開機之後，wake word 真係會跟住轉。
+            // 2026-08 新增。這個 config 檔控制機身開機時的 wake word/ASR 語言/預設對話
+            // app (見 AIDL_REFERENCE_ALPHA2.md「引擎選擇」段落) —— 實測證實 (見 log) 改了這個
+            // 檔案、重開機之後, wake word 真的會跟著轉。
             //
-            // 兩個關鍵限制，呢組 API 圍住嚟設計:
-            // 1. 呢個係外部儲存嘅普通檔案 (/sdcard, 唔係 app 私有目錄), targetSdkVersion 22
-            //    唔使 runtime permission, manifest 已有 WRITE_EXTERNAL_STORAGE, 讀寫本身
-            //    冇障礙。
-            // 2. 改完必須重開機先生效 (實測: alpha2services 只喺開機嗰陣讀一次, 冇監聽緊
-            //    檔案改動), 所以 set 呢個 endpoint 淨係負責寫檔, 唔會嘗試呃人話「即時生效」；
-            //    重開機要用戶自己另外揀「reboot after set」或者之後手動用 service_config/reboot。
+            // 兩個關鍵限制, 這組 API 圍繞這兩點設計:
+            // 1. 這是外部儲存的普通檔案 (/sdcard, 不是 app 私有目錄), targetSdkVersion 22
+            //    不用 runtime permission, manifest 已有 WRITE_EXTERNAL_STORAGE, 讀寫本身
+            //    沒有障礙。
+            // 2. 改完必須重開機才生效 (實測: alpha2services 只在開機時讀一次, 沒有監聽
+            //    檔案改動), 所以 set 這個 endpoint 只負責寫檔, 不會假裝「即時生效」；
+            //    重開機要用戶自己另外選擇「reboot after set」或之後手動用 service_config/reboot。
             //
-            // 淨係支援兩個 preset (cn/en)，兩個都係機身出廠內置嘅原裝 default config
-            // (分別對應 aaservice_config.json 同 service_config.json 呢兩份出廠檔案)，
-            // 一字不改地照抄，唔係自己砌出嚟嘅組合——兩個都係原廠已知安全嘅設定，所以
-            // 唔設「還原」掣，亦都唔做寫入前備份 (兩個 preset 之間可以隨時互相切換，
-            // 冇「損壞」呢個概念)。
+            // 只支援兩個 preset (cn/en), 兩個都是機身出廠內建的原裝 default config
+            // (分別對應 aaservice_config.json 和 service_config.json 這兩份出廠檔案),
+            // 一字不改照抄, 不是自己組出來的組合——兩個都是原廠已知安全的設定, 所以
+            // 不設「還原」按鈕, 也不做寫入前備份 (兩個 preset 之間可以隨時互相切換,
+            // 沒有「損壞」這個概念)。
             case "service_config/get":
                 return serviceConfigGet();
             case "service_config/set": {
-                String preset = require(query, "preset");
-                boolean reboot = Boolean.parseBoolean(queryOrDefault(query, "reboot", "false"));
+                String preset = ApiValidator.require(query, "preset");
+                boolean reboot = ApiValidator.optionalBoolean(query, "reboot", false);
                 return serviceConfigSet(preset, reboot);
             }
             case "service_config/reboot":
-                // 獨立出嚟做一個 endpoint, 等用戶可以「set 完先睇下寫啱未, 之後先至
-                // reboot」，唔一定要一步到位。
+                // 獨立出來做一個 endpoint, 讓用戶可以「set 完先看看寫對了沒, 之後再
+                // reboot」, 不一定要一步到位。
                 return systemReboot();
 
             // -- Alice talk server 假 endpoint (/api/alice/talkServer) -------------------
             //
-            // 2026-08 新增。原廠 alice_Server (service_config.json 入面嗰個欄位) 寫死指去
-            // 一個內部開發機 IP (http://10.10.1.54:8081/programd/talkServer?)，喺出面連唔
-            // 到。實測拆解 alpha2services 證實: ASR 識別本身係 local (.bnf 語法比對，唔使
-            // 上網)，但識別完之後個「攞對話回應」步驟會打一條 HttpURLConnection 去
-            // alice_Server (com.ubtechinc.alpha2ctrlapp.network.c.c.a())，connectTimeout
-            // 10 秒；打唔通就成個對話流程卡喺度冇反應，睇落好似 iFlytek 成套嘢都停擺，
-            // 其實只係呢一步卡住。
+            // 2026-08 新增。原廠 alice_Server (service_config.json 裡的那個欄位) 寫死指向
+            // 一個內部開發機 IP (http://10.10.1.54:8081/programd/talkServer?), 在外面連不
+            // 到。實測拆解 alpha2services 證實: ASR 識別本身是 local (.bnf 語法比對, 不用
+            // 上網), 但識別完之後的「取得對話回應」步驟會打一條 HttpURLConnection 去
+            // alice_Server (com.ubtechinc.alpha2ctrlapp.network.c.c.a()), connectTimeout
+            // 10 秒; 打不通整個對話流程就卡在那裡沒反應, 看起來好像 iFlytek 整套都停擺,
+            // 其實只是這一步卡住。
             //
-            // 呢個 endpoint 就係俾 *_openalpha2_offline preset (見下面 ALICE_OFFLINE_*)
-            // 用嘅假後端: 對應個 preset 將 alice_Server 改指去
-            // "http://127.0.0.1:8888/api/alice/talkServer?"，等呢條 HTTP call 打得通，
-            // 令個流程唔再卡死。Request 格式 (form-urlencoded, 由
+            // 這個 endpoint 就是供 *_openalpha2_offline preset (見下面 ALICE_OFFLINE_*)
+            // 用的假後端: 對應的 preset 把 alice_Server 改指向
+            // "http://127.0.0.1:8888/api/alice/talkServer?", 讓這條 HTTP call 打得通,
+            // 使流程不再卡死。Request 格式 (form-urlencoded, 由
             // com.ubtechinc.alpha2ctrlapp.network.c.c.a() 組裝) 已拆解確認:
             //   appType=...&requestKey=...&requestTime=...&serviceVersion=...
-            //   &systemLanguage=...&content=<識別到嘅文字>
-            // Response 格式未拆到實際 schema (原廠條 link 一直打唔通，冇 log 過真正
-            // response) —— 依家淨係要令個 HTTP round-trip 成功唔拋 exception，令下游
-            // 唔再卡死；response body 係咪真係俾原廠 code 解析、解析失敗會點, 都仲未驗證，
-            // 純粹「打得通」呢一步先。plain text 對應 talkServer 呢類 AIML/ALICE 協議
-            // 常見嘅裸文字回覆格式。
+            //   &systemLanguage=...&content=<識別到的文字>
+            // Response 格式尚未拆到實際 schema (原廠那條 link 一直打不通, 沒 log 過真正
+            // response) —— 現在只需要讓 HTTP round-trip 成功不拋出 exception, 使下游
+            // 不再卡死; response body 是否真的被原廠 code 解析、解析失敗會如何, 都尚未驗證,
+            // 純粹先做到「打得通」這一步。plain text 對應 talkServer 這類 AIML/ALICE 協議
+            // 常見的裸文字回覆格式。
             case "alice/talkServer":
                 return aliceTalkServer(body);
-
-            // -- iFlytek offline 隔離測試 (/api/iflytektest/*) ----------------------------
-            //
-            // 2026-08 新增。獨立於 alice_Server/config.json 呢一整條線之外嘅測試: 喺
-            // open-alpha2 自己個 process 度，用抽自原裝 Alpha2Services.apk 嘅
-            // com.iflytek.cloud/.msc/.common/.speech (app/libs/iflytek-msc-core.jar) +
-            // 原裝、未 patch 過嘅 libmsc.so (app/src/main/jniLibs/armeabi-v7a/)，起一份
-            // 完全獨立、唔靠 alpha2services.apk 起唔起緊嘅 SpeechRecognizer instance，
-            // engine_type 寫死做 local。
-            //
-            // 用法: init -> start -> (講嘢) -> log 睇結果 -> stop。斷網情況下重複呢個
-            // 流程，睇 onResult() 攞返嘅文字係咪空白 (Arthur 已確認呢個係佢想要嘅
-            // 判準，唔需要理個 log 入面揀咗邊個 engine_mode)。
-            //
-            // 已知缺口 (未驗證，見 IflytekOfflineTest.java class-level javadoc 詳細版):
-            //   - login 用嘅 appid 參數呢度冇齊 (未抄 com.ubtechinc.iflytek.speech.a.a
-            //     嗰組完整 login 邏輯，個 class 屬於 com.ubtechinc.* package)
-            //   - 呢份 code 未經過任何實機編譯/執行測試
-            case "iflytektest/init":
-                IflytekOfflineTest.clearLog();
-                IflytekOfflineTest.init(getApplicationContext());
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"status\":\"init called, see /api/iflytektest/log\"}");
-            // 2026-08 新增: 平行嘅「聽寫模式」測試 (見 IflytekOfflineTest.java
-            // initDictationMode() 嘅完整 javadoc) —— 完全唔用 buildGrammar()/
-            // local_grammar，測試 common.jet 呢份 6.7MB 語言模型本身係咪已經支援
-            // 自由聽寫，唔限於 call.bnf 嗰幾個詞。
-            case "iflytektest/init-dictation":
-                IflytekOfflineTest.clearLog();
-                IflytekOfflineTest.initDictationMode(getApplicationContext());
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"status\":\"initDictationMode called, see /api/iflytektest/log\"}");
-            case "iflytektest/start":
-                IflytekOfflineTest.startListening(getApplicationContext());
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"status\":\"startListening called, see /api/iflytektest/log\"}");
-            case "iflytektest/stop":
-                IflytekOfflineTest.stop();
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"status\":\"stopped\"}");
-            case "iflytektest/destroy":
-                IflytekOfflineTest.destroy();
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"status\":\"destroyed\"}");
-            case "iflytektest/log": {
-                org.json.JSONArray arr = new org.json.JSONArray();
-                for (String line : IflytekOfflineTest.getLog()) {
-                    arr.put(line);
-                }
-                org.json.JSONObject wrapper = new org.json.JSONObject();
-                try {
-                    wrapper.put("ok", true);
-                    wrapper.put("lines", arr);
-                } catch (org.json.JSONException e) {
-                    return HttpServer.ApiResponse.error("json build failed: " + e);
-                }
-                return HttpServer.ApiResponse.ok(wrapper.toString());
-            }
 
             default:
                 return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
@@ -5899,19 +7632,19 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     // -- Service config (/sdcard/actions/service_config.json + .txt) ------------------
     //
-    // 呢個檔案控制機身開機時嘅 wake word / ASR 語言 / 預設對話 app。實測確認 (見對話
-    // history 嘅 log): 覆蓋呢個檔案 + 重開機，wake word 真係會跟住轉。中文／英文兩個
-    // preset 都係機身原本出廠內置嘅兩組 default config (分別對應 aaservice_config.json
-    // 同 service_config.json 呢兩份出廠檔案), 一字不改地照抄, 唔係自己砌出嚟嘅組合 ——
-    // 兩個都係原廠已知安全嘅設定, 所以唔設「還原」掣, 亦都唔做寫入前備份 (兩個 preset
-    // 之間可以隨時互相切換, 冇「損壞」呢個概念)。
+    // 這個檔案控制機身開機時的 wake word / ASR 語言 / 預設對話 app。實測確認 (見對話
+    // history 的 log): 覆蓋這個檔案 + 重開機, wake word 真的會跟著轉。中文／英文兩個
+    // preset 都是機身原本出廠內建的兩組 default config (分別對應 aaservice_config.json
+    // 和 service_config.json 這兩份出廠檔案), 一字不改照抄, 不是自己組出來的組合 ——
+    // 兩個都是原廠已知安全的設定, 所以不設「還原」按鈕, 也不做寫入前備份 (兩個 preset
+    // 之間可以隨時互相切換, 沒有「損壞」這個概念)。
 
     private static final String SERVICE_CONFIG_DIR = "/sdcard/actions";
     private static final String SERVICE_CONFIG_JSON = SERVICE_CONFIG_DIR + "/service_config.json";
     private static final String SERVICE_CONFIG_TXT = SERVICE_CONFIG_DIR + "/service_config.txt";
 
     /** 中文組: 出廠原裝 aaservice_config.json 內容, 一字不改。wake word「你好 阿爾法」
-     *  (CN_WAKEUP_NIHAO_ALPHA), default_App 用返原廠嘅 iflytekmix。 */
+     *  (CN_WAKEUP_NIHAO_ALPHA), default_App 沿用原廠的 iflytekmix。 */
     private static final String CN_PRESET_JSON = "{"
             + "\"alice_Server\":\"http://10.10.1.54:8081/programd/talkServer?\","
             + "\"asr_Language\":\"zh_cn\","
@@ -5927,7 +7660,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             + "}";
 
     /** 英文組: 出廠原裝 service_config.json 內容, 一字不改。wake word「Hello Alpha」
-     *  (EN_WAKEUP_HELLO_ALPHA_THREE), default_App 用返原廠嘅 alphaenglishchat。 */
+     *  (EN_WAKEUP_HELLO_ALPHA_THREE), default_App 沿用原廠的 alphaenglishchat。 */
     private static final String EN_PRESET_JSON = "{"
             + "\"asr_Language\":\"en_us\","
             + "\"default_App\":\"com.ubtechinc.alphaenglishchat\","
@@ -5942,12 +7675,19 @@ public class MainActivity extends Activity implements SensorEventListener {
             + "\"wakeup_threshold_mic5\":25"
             + "}";
 
-    /** 2026-08 新增: 同 CN_PRESET_JSON 完全一樣, 淨係 default_App 由原廠嘅
-     *  com.ubtech.iflytekmix 改做 OpenAlpha2 自己 (com.open.alpha2)。等機身開機
-     *  聽到中文 wake word 之後, launch OpenAlpha2 本身, 唔再 launch 悠聊。用途:
-     *  完全取代悠聊 APK, 由 OpenAlpha2 自己做 ASR 辨識完之後嘅語意理解/TTS/動作。 */
-    private static final String CN_OPENALPHA2_PRESET_JSON = "{"
-            + "\"alice_Server\":\"http://10.10.1.54:8081/programd/talkServer?\","
+    /** 2026-08 更新 (混合版): default_App 指返 OpenAlpha2 自己; 四個 server link
+     *  入面淨係 alice_Server 繼續指去 OpenAlpha2 個假 endpoint - 因為原廠值係
+     *  內部開發機 IP (10.10.1.54), 外部永遠連不上, 識別完取得對話回應那步會卡
+     *  10 秒。其餘三個 (web/develop/xmpp) 實測原廠伺服器 2026 年仍然有反應,
+     *  沿用原廠值反而更好:
+     *  - web_Server: firmware 每次開機都強制將這個欄位改寫成 https://, 本機
+     *    http server 沒有 TLS 必定失敗; 沿用原廠 https link 就沒有這個問題。
+     *  - develop_Server/xmpp_Server: 原廠仍在運作, 開機檢查/xmpp 連線取得真回應;
+     *    離線時照樣連不上, 無影響。
+     *  離線文法辨識與對答完全不經這些 link (見 applyConnectivityMode/
+     *  doStartGrammar 那邊 comment)。 */
+    private static final String CN_OPENALPHA2_OFFLINE_PRESET_JSON = "{"
+            + "\"alice_Server\":\"http://127.0.0.1:8888/api/alice/talkServer?\","
             + "\"asr_Language\":\"zh_cn\","
             + "\"default_App\":\"com.open.alpha2\","
             + "\"develop_Server\":\"http://dev.ubtrobot.com/opencenter/app/accesscheckapp\","
@@ -5960,9 +7700,10 @@ public class MainActivity extends Activity implements SensorEventListener {
             + "\"xmpp_Server\":\"services.ubtrobot.com\""
             + "}";
 
-    /** 2026-08 新增: 同 EN_PRESET_JSON 完全一樣, 淨係 default_App 由原廠嘅
-     *  com.ubtechinc.alphaenglishchat 改做 OpenAlpha2 自己。 */
-    private static final String EN_OPENALPHA2_PRESET_JSON = "{"
+    /** 2026-08 更新: 同 CN_OPENALPHA2_OFFLINE_PRESET_JSON 同一套混合改法 -
+     *  alice_Server 留本機假 endpoint (原廠死 IP), web/develop/xmpp 用返原廠
+     *  (實測仍然有反應), 見該處註解。 */
+    private static final String EN_OPENALPHA2_OFFLINE_PRESET_JSON = "{"
             + "\"asr_Language\":\"en_us\","
             + "\"default_App\":\"com.open.alpha2\","
             + "\"isBusiness\":false,"
@@ -5970,56 +7711,17 @@ public class MainActivity extends Activity implements SensorEventListener {
             + "\"isOpenInfoLog\":true,"
             + "\"web_Server\":\"http://services.ubtrobot.com/ubx/\","
             + "\"develop_Server\":\"http://dev.ubtrobot.com/opencenter/app/accesscheckapp\","
-            + "\"alice_Server\":\"http://10.10.1.54:8081/programd/talkServer?\","
-            + "\"xmpp_Server\":\"services.ubtrobot.com\","
-            + "\"wakeup_word\":\"EN_WAKEUP_HELLO_ALPHA_THREE\","
-            + "\"wakeup_threshold_mic5\":25"
-            + "}";
-
-    /** 2026-08 新增: 同 CN_OPENALPHA2_PRESET_JSON 完全一樣, 淨係 alice_Server/web_Server/
-     *  develop_Server 由原廠死 link 改指去 open-alpha2 自己個 HttpServer
-     *  (http://127.0.0.1:8888/...)。用途: 令識別完之後嘅「攞對話回應」HTTP call
-     *  (com.ubtechinc.alpha2ctrlapp.network.c.c.a()) 打得通 aliceTalkServer() 呢個假
-     *  endpoint，唔再因為打去死 link 而卡死。未驗證: alpha2services 個 HTTP client 用嘅
-     *  係 org.apache.http.impl.client.DefaultHttpClient (web_Server 個 path)
-     *  同 java.net.HttpURLConnection (alice_Server 個 path)，兩者對 "connection refused"
-     *  同 "拎到 response 但格式睇唔明" 嘅容忍度可能唔同，即使呢個 preset 令 HTTP round-trip
-     *  成功，都唔保證下游解析唔會再有第二層卡點——依家未實機測試過。 */
-    private static final String CN_OPENALPHA2_OFFLINE_PRESET_JSON = "{"
-            + "\"alice_Server\":\"http://127.0.0.1:8888/api/alice/talkServer?\","
-            + "\"asr_Language\":\"zh_cn\","
-            + "\"default_App\":\"com.open.alpha2\","
-            + "\"develop_Server\":\"http://127.0.0.1:8888/api/alice/devAccessCheck\","
-            + "\"isBusiness\":false,"
-            + "\"isOpenDebugLog\":true,"
-            + "\"isOpenInfoLog\":true,"
-            + "\"wakeup_threshold_mic5\":25,"
-            + "\"wakeup_word\":\"CN_WAKEUP_NIHAO_ALPHA\","
-            + "\"web_Server\":\"http://127.0.0.1:8888/api/alice/ubx/\","
-            + "\"xmpp_Server\":\"services.ubtrobot.com\""
-            + "}";
-
-    /** 2026-08 新增: 同 EN_OPENALPHA2_PRESET_JSON 完全一樣, alice_Server/web_Server/
-     *  develop_Server 改法同 CN_OPENALPHA2_OFFLINE_PRESET_JSON 一樣, 見嗰邊註解。 */
-    private static final String EN_OPENALPHA2_OFFLINE_PRESET_JSON = "{"
-            + "\"asr_Language\":\"en_us\","
-            + "\"default_App\":\"com.open.alpha2\","
-            + "\"isBusiness\":false,"
-            + "\"isOpenDebugLog\":true,"
-            + "\"isOpenInfoLog\":true,"
-            + "\"web_Server\":\"http://127.0.0.1:8888/api/alice/ubx/\","
-            + "\"develop_Server\":\"http://127.0.0.1:8888/api/alice/devAccessCheck\","
             + "\"alice_Server\":\"http://127.0.0.1:8888/api/alice/talkServer?\","
             + "\"xmpp_Server\":\"services.ubtrobot.com\","
             + "\"wakeup_word\":\"EN_WAKEUP_HELLO_ALPHA_THREE\","
             + "\"wakeup_threshold_mic5\":25"
             + "}";
 
-    /** alice_Server 假後端。Request body 係 form-urlencoded (由 alpha2services 嘅
-     *  com.ubtechinc.alpha2ctrlapp.network.c.c.a() 組裝)，欄位: appType/requestKey/
-     *  requestTime/serviceVersion/systemLanguage/content。淨係讀 content 出嚟做 log
-     *  方便你對住實機 debug 睇「機身識別到嘅文字有冇送到呢度」，回應內容依家係
-     *  hardcode 嘅固定句子 —— 想接返真正智能回覆 (例如轉發去 LLM API) 就係喺呢個
+    /** alice_Server 假後端。Request body 是 form-urlencoded (由 alpha2services 的
+     *  com.ubtechinc.alpha2ctrlapp.network.c.c.a() 組裝), 欄位: appType/requestKey/
+     *  requestTime/serviceVersion/systemLanguage/content。只讀取 content 出來做 log
+     *  方便對著實機 debug 查看「機身識別到的文字有沒有送到這裡」, 回應內容目前是
+     *  hardcode 的固定句子 —— 想接上真正智能回覆 (例如轉發去 LLM API) 就是在這個
      *  method 度加。 */
     private HttpServer.ApiResponse aliceTalkServer(String body) {
         String content = "";
@@ -6039,8 +7741,8 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
         }
         Log.i(TAG, "aliceTalkServer received content=" + content);
-        // TODO: 呢句係 placeholder。想真係有智能回覆，喺呢度轉發 content 去你自己揀嘅
-        // LLM/對話服務，攞返嚟做 response body。依家淨係求「HTTP round-trip 打得通」。
+        // TODO: 這句是 placeholder。想真的有智能回覆, 在這裡轉發 content 去自己選擇的
+        // LLM/對話服務, 拿回來做 response body。現在只求「HTTP round-trip 打得通」。
         return new HttpServer.ApiResponse(200, "text/plain; charset=utf-8", "OK");
     }
 
@@ -6055,29 +7757,26 @@ public class MainActivity extends Activity implements SensorEventListener {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"current\":" + current + "}");
     }
 
-    /** preset = "cn" | "en" | "cn_openalpha2" | "en_openalpha2"。前兩個係機身出廠
-     *  內置嘅原裝 default config, 一字不改照抄；後兩個係 2026-08 新增, 同原裝完全
-     *  一樣但 default_App 指返 OpenAlpha2 自己 (com.open.alpha2), 等 wake word
-     *  觸發之後直接 launch OpenAlpha2, 唔再 launch 悠聊/alphaenglishchat。四個都
-     *  唔設「還原」掣、亦唔做寫入前備份——隨時可以互相切換, 冇「損壞」呢個概念。
-     *  寫入對應嘅 JSON + 精簡 TXT 版本, 兩個檔案要同步。 */
+    /** preset = "cn" | "en" | "cn_openalpha2_offline" | "en_openalpha2_offline"。
+     *  前兩個是機身出廠內建的原裝 default config, 一字不改照抄 (UI 上顯示為「備份」);
+     *  後兩個是 2026-08 新增, default_App 指向 OpenAlpha2 自己 (com.open.alpha2),
+     *  並且將 alice_Server/web_Server/develop_Server/xmpp_Server 全部改指向
+     *  OpenAlpha2 自己的 8888 server, 讓 wake word 觸發之後直接 launch OpenAlpha2、
+     *  完全脫離外部連線。四個都不設「還原」按鈕、也不做寫入前備份——隨時可以互相
+     *  切換, 沒有「損壞」這個概念。寫入對應的 JSON + 精簡 TXT 版本, 兩個檔案要同步。 */
     private HttpServer.ApiResponse serviceConfigSet(String preset, boolean reboot) {
         String json;
         if ("cn".equals(preset)) {
             json = CN_PRESET_JSON;
         } else if ("en".equals(preset)) {
             json = EN_PRESET_JSON;
-        } else if ("cn_openalpha2".equals(preset)) {
-            json = CN_OPENALPHA2_PRESET_JSON;
-        } else if ("en_openalpha2".equals(preset)) {
-            json = EN_OPENALPHA2_PRESET_JSON;
         } else if ("cn_openalpha2_offline".equals(preset)) {
             json = CN_OPENALPHA2_OFFLINE_PRESET_JSON;
         } else if ("en_openalpha2_offline".equals(preset)) {
             json = EN_OPENALPHA2_OFFLINE_PRESET_JSON;
         } else {
-            return HttpServer.ApiResponse.error("preset must be 'cn', 'en', 'cn_openalpha2', "
-                    + "'en_openalpha2', 'cn_openalpha2_offline' or 'en_openalpha2_offline'");
+            return HttpServer.ApiResponse.error("preset must be 'cn', 'en', "
+                    + "'cn_openalpha2_offline' or 'en_openalpha2_offline'");
         }
 
         org.json.JSONObject obj;
@@ -6088,8 +7787,8 @@ public class MainActivity extends Activity implements SensorEventListener {
             asrLanguage = obj.getString("asr_Language");
             defaultApp = obj.getString("default_App");
         } catch (org.json.JSONException e) {
-            // 呢兩個 preset 係常數, 唔應該解析失敗——如果發生, 一定係呢個 class 入面
-            // 手寫錯咗, 唔係用家輸入問題。
+            // 這兩個 preset 是常數, 不應該解析失敗——如果發生, 一定是這個 class 裡
+            // 手寫錯了, 不是用家輸入問題。
             return HttpServer.ApiResponse.error("Internal preset JSON malformed: " + e.getMessage());
         }
 
@@ -6115,9 +7814,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                 + "reboot required for it to take effect\"," + rebootNote + "}");
     }
 
-    /** 觸發機身重開機。實測證實 service_config.json 淨係開機嗰陣讀一次, 冇 runtime
-     *  監聽, 所以呢個係令新 config 生效嘅必經步驟 - 唔提供任何「唔使重開機」嘅
-     *  代替方案, 因為冇實測過有第二條路。 */
+    /** 觸發機身重開機。實測證實 service_config.json 只在開機時讀一次, 沒有 runtime
+     *  監聽, 所以這是讓新 config 生效的必經步驟 - 不提供任何「不用重開機」的
+     *  替代方案, 因為沒實測過有第二條路。 */
     private HttpServer.ApiResponse systemReboot() {
         try {
             android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
@@ -6127,9 +7826,9 @@ public class MainActivity extends Activity implements SensorEventListener {
             pm.reboot("robotpanel_service_config_change");
             return HttpServer.ApiResponse.ok("{\"ok\":true,\"rebooting\":true}");
         } catch (SecurityException e) {
-            // REBOOT permission 喺好多機身/ROM 淨係俾 system app 用, 第三方 app (即使
-            // 有 manifest 聲明) 都可能會喺呢度俾 SecurityException 拒絕 - 呢個係
-            // 意料之內嘅失敗模式, 唔係 bug, 前端應該提示用戶手動長按電源鍵重開機。
+            // REBOOT permission 在很多機身/ROM 只給 system app 用, 第三方 app (即使
+            // 有 manifest 聲明) 都可能在這裡被 SecurityException 拒絕 - 這是
+            // 意料之內的失敗模式, 不是 bug, 前端應該提示用戶手動長按電源鍵重開機。
             return HttpServer.ApiResponse.error(
                     "REBOOT permission denied by system (common on locked-down firmware) - "
                             + "please power-cycle the robot manually for the config change to take effect: "
@@ -6181,7 +7880,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     /** Handles POST /upload/audio: raw PCM bytes (16kHz mono 16-bit, matching
      *  AudioPlaybackController's format - see AudioPlaybackController.SAMPLE_RATE_HZ
      *  and app-mic.js's TALK_TARGET_SAMPLE_RATE; 2026-08 改返 16kHz - 當初落 8kHz
-     *  淨係為咗同步已經永久停用嘅 walkie-talkie, 呢個理由而家唔存在) from the
+     *  只是為了同步已經永久停用的 walkie-talkie, 這個理由現在不存在) from the
      *  browser's mic, queued for playback.
      *  Playback must already be running (audio/play/start) - this does not implicitly
      *  start it, so a stray upload after the user has stopped talking doesn't
@@ -6191,7 +7890,108 @@ public class MainActivity extends Activity implements SensorEventListener {
             audioPlaybackController.enqueuePcm(body);
             return HttpServer.ApiResponse.ok("{\"ok\":true,\"bytes\":" + body.length + "}");
         }
+        if ("music".equals(path)) {
+            return handleMusicUpload(query, body);
+        }
+        if ("chest".equals(path)) {
+            return handleChestUpload(query, body);
+        }
         return HttpServer.ApiResponse.error("Unknown upload path: " + path);
+    }
+
+    /** 胸板固件上載 - 接收 256KB 的 ALPHA2Q-CHEST-*.bin，寫入 /sdcard/AlphaII_CHEST_kernel.bin */
+    private HttpServer.ApiResponse handleChestUpload(Map<String, String> query, byte[] body) {
+        if (body == null || body.length == 0) {
+            return HttpServer.ApiResponse.error("empty file body");
+        }
+        if (body.length != 256 * 1024) {
+            // 仍允許寫入，但提示大小不正確
+            android.util.Log.w(TAG, "Chest upload size mismatch: " + body.length + " bytes, expected 262144");
+        }
+        try {
+            java.io.File dest = new java.io.File("/sdcard/AlphaII_CHEST_kernel.bin");
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(dest)) {
+                fos.write(body);
+            }
+            return HttpServer.ApiResponse.ok("{\"ok\":true,\"path\":\"" + dest.getAbsolutePath() + "\",\"sizeBytes\":" + body.length + "}");
+        } catch (Exception e) {
+            android.util.Log.w(TAG, "Chest upload failed", e);
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(String.valueOf(e.getMessage())) + "\"}");
+        }
+    }
+
+    /** 2026-08 新增: 本地音樂 tab 的拖放上傳功能 - 瀏覽器把檔案內容原封不動 POST
+     *  到這個 endpoint (?name=<原本檔名>), 寫入 LOCAL_MUSIC_DIR。檔名只做
+     *  sanitizeUploadFilename() (去掉路徑分隔符/上層目錄嘗試), 不做內容檢查
+     *  (例如是否真的是一個有效的音訊檔) - 沿用 listLocalMusicFiles() 一致的原則:
+     *  只看副檔名, 真正播不播得了留給 MediaPlayer.prepareAsync() 時自然
+     *  onError, 不在這裡重複做判斷。副檔名要在 LOCAL_MUSIC_EXTENSIONS 裡面才
+     *  收 (避免用呢個 endpoint 上載任意檔案類型到機身)。如果 LOCAL_MUSIC_DIR
+     *  仲未存在 (第一次用呢個功能), 順手 mkdirs()。 */
+    private HttpServer.ApiResponse handleMusicUpload(Map<String, String> query, byte[] body) {
+        String rawName = query.get("name");
+        if (rawName == null || rawName.trim().isEmpty()) {
+            return HttpServer.ApiResponse.error("name query parameter is required");
+        }
+        String safeName = sanitizeUploadFilename(rawName);
+        if (safeName.isEmpty()) {
+            return HttpServer.ApiResponse.error("invalid file name");
+        }
+        int dot = safeName.lastIndexOf('.');
+        String ext = dot >= 0 && dot < safeName.length() - 1
+                ? safeName.substring(dot + 1).toLowerCase(java.util.Locale.US) : "";
+        if (!LOCAL_MUSIC_EXTENSIONS.contains(ext)) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"unsupported file type: ."
+                    + jsonSafe(ext) + "\"}");
+        }
+        if (body == null || body.length == 0) {
+            return HttpServer.ApiResponse.error("empty file body");
+        }
+        try {
+            if (!LOCAL_MUSIC_DIR.exists() && !LOCAL_MUSIC_DIR.mkdirs()) {
+                return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"failed to create music folder\"}");
+            }
+            java.io.File dest = new java.io.File(LOCAL_MUSIC_DIR, safeName);
+            // 避免撞名覆蓋另一首已經存在的歌 - 自動加 " (2)"/" (3)" 這類尾綴,
+            // 和瀏覽器下載檔案撞名那種做法一致, 用戶預期不會「悄悄蓋掉舊檔」。
+            dest = uniqueFileFor(dest);
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(dest)) {
+                fos.write(body);
+            }
+            return HttpServer.ApiResponse.ok("{\"ok\":true,\"name\":\""
+                    + jsonSafe(dest.getName()) + "\",\"sizeBytes\":" + body.length + "}");
+        } catch (Exception e) {
+            Log.w(TAG, "Music upload failed for " + safeName, e);
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
+                    + jsonSafe(String.valueOf(e.getMessage())) + "\"}");
+        }
+    }
+
+    /** 只保留檔名本身的最後一截 (new File(name).getName() 已經剝掉任何
+     *  "../"/"/" 這類路徑成分), 再去掉頭尾的空白, 保證寫入 LOCAL_MUSIC_DIR
+     *  的結果一定在這個資料夾裡面, 不會因為用戶 (或惡意請求) 在檔名中夾帶
+     *  路徑分隔符而寫到第二個資料夾度。*/
+    private static String sanitizeUploadFilename(String rawName) {
+        String base = new java.io.File(rawName.trim()).getName();
+        return base.trim();
+    }
+
+    /** 如果 candidate 已經存在, 在副檔名前面加 " (2)"、" (3)"... 直到找到一個
+     *  未用過的檔名為止, 保證上傳永遠不會覆蓋一首已經存在的歌。*/
+    private static java.io.File uniqueFileFor(java.io.File candidate) {
+        if (!candidate.exists()) return candidate;
+        String name = candidate.getName();
+        int dot = name.lastIndexOf('.');
+        String base = dot >= 0 ? name.substring(0, dot) : name;
+        String ext = dot >= 0 ? name.substring(dot) : "";
+        java.io.File parent = candidate.getParentFile();
+        int n = 2;
+        java.io.File next;
+        do {
+            next = new java.io.File(parent, base + " (" + n + ")" + ext);
+            n++;
+        } while (next.exists());
+        return next;
     }
 
     private void handleStream(String path, Map<String, String> query, java.net.Socket socket) throws java.io.IOException {
@@ -6292,47 +8092,48 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  a LED_ACTION that turns the ear LED back off as a side effect, racing against
      *  whatever this app just set). */
     private void setHeadEyeLedLong(int color, int brightness) {
-        robot.waitHeaderReady(3000);
-        robot.header_ledSetHead5Mic(color, brightness, 31, 31, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
-        robot.header_ledSetEye5Mic(color, brightness, 255, 255, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
+        // pure-direct: 经 JNI 直驱（无 alpha2services 内部熄灯循环与之相争，单发即稳住，
+        // reassert 补发线程保留仅作兼容，见 reassertHeadEyeLed）。
+        DirectLedController.setHead5MicRaw(color, brightness, 31, 31, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
+        DirectLedController.setEye5MicRaw(color, brightness, 255, 255, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
     }
 
     /** 2026-08 新增: 用戶實測 self.robot.led_set_head/led_set_eye 呢兩個 MCP tool
-     *  「著到1秒又熄左」/「開兩次又停左」- 對照 logcat 搵到真正機制: 唔淨係
-     *  releaseMicForAudioIo() javadoc 講嘅「setWakeState() 觸發 broadcast 熄燈」
-     *  咁簡單, 而係 alpha2services 內部 AlphaMainSeviceImpl 個 "stop ear led"
-     *  邏輯本身**唔係真係熄咗個 LED**, 而係內部照樣 call 多次
-     *  header_ledSetHead5Mic(color=3,brightness=2,...,p5=400,p6=9000,p8=2) 呢組
-     *  固定參數去做「熄燈」效果 (即係set做一個好暗嘅顏色/圖案, 唔係真正斷電) -
-     *  而呢個內部熄燈邏輯**持續循環運作**, 密度好高 (實測相隔淨係 0.8 秒左右
-     *  就再嚟一次), 只要小智常開對話仲開住就唔會停。之前嘅做法 (喺呢度單次補發
-     *  2 秒就收工) 追唔切呢個持續循環嘅頻率, 2 秒過咗之後又打番輸。
+     *  「亮一秒又熄了」/「開兩次又停了」- 對照 logcat 找到真正機制: 不只是
+     *  releaseMicForAudioIo() javadoc 提到的「setWakeState() 觸發 broadcast 熄燈」
+     *  那麼簡單, 而是 alpha2services 內部 AlphaMainSeviceImpl 的 "stop ear led"
+     *  邏輯本身**不是真的熄掉了 LED**, 而是內部照樣呼叫多次
+     *  header_ledSetHead5Mic(color=3,brightness=2,...,p5=400,p6=9000,p8=2) 這組
+     *  固定參數去做「熄燈」效果 (也就是設定成一個很暗的顏色/圖案, 不是真正斷電) -
+     *  而這個內部熄燈邏輯**持續循環運作**, 密度很高 (實測相隔只有 0.8 秒左右
+     *  就再來一次), 只要小智常開對話還開著就不會停。之前的做法 (在這裡單次補發
+     *  2 秒就結束) 追不上這個持續循環的頻率, 2 秒過了之後又打回原形。
      *
-     *  依家改做「持續生效直到用戶下一次改指令為止」: 每次 led_set_head/
-     *  led_set_eye 被 call, 就開一條長駐 background thread, 用
-     *  headLedReassertGeneration/eyeLedReassertGeneration 呢兩個 generation
-     *  counter 分別做 head/eye 獨立嘅取消機制 - 新一次 call (無論係新顏色定係
-     *  preset=stop) 都會令 generation 數字進位, 舊嗰條 thread 見到自己個
-     *  generation 已經過時就會自行停止, 保證同一時間淨係得一條 thread 喺度
-     *  持續補發緊, 唔會愈開愈多。preset=stop 嗰個 case (header_stop5MicEarLED())
-     *  淨係要令 generation 進位令舊嘅補發 thread 停低, 唔需要自己再開新
+     *  現在改成「持續生效直到用戶下一次改指令為止」: 每次 led_set_head/
+     *  led_set_eye 被呼叫, 就開一條長駐 background thread, 用
+     *  headLedReassertGeneration/eyeLedReassertGeneration 這兩個 generation
+     *  counter 分別做 head/eye 獨立的取消機制 - 新一次呼叫 (無論是新顏色還是
+     *  preset=stop) 都會讓 generation 數字進位, 舊的那條 thread 見到自己的
+     *  generation 已經過時就會自行停止, 保證同一時間只有一條 thread 在
+     *  持續補發, 不會愈開愈多。preset=stop 那個 case (header_stop5MicEarLED())
+     *  只需要讓 generation 進位使舊的補發 thread 停止, 不需要自己再開新
      *  thread。
      *
-     *  2026-08 再修正: 用戶實測 300ms 嘅補發間隔仍然「同其他 code 相撞」- 對照
-     *  logcat 發現內部熄燈循環大約每 2 秒觸發一次, 300ms 嘅間隔理應大部分時間
-     *  都贏返, 但兩種顏色交替出現喺肉眼睇落仍然構成明顯閃爍。呢個「熄燈循環」
-     *  本身冇辦法完全消除 (只要小智 auto-mode 開住就會持續運作), 淨係可以縮短
-     *  「熄咗未補發返」嗰段空隙嘅長度嚟減少肉眼可見嘅閃爍程度。將補發間隔由
-     *  300ms 縮短去 80ms - AIDL call 本身好快, 2 秒週期入面補發 25 次左右都唔會
-     *  構成負擔, 但空隙短好多, 閃爍會冇咁明顯。 */
+     *  2026-08 再修正: 用戶實測 300ms 的補發間隔仍然「和其他 code 相撞」- 對照
+     *  logcat 發現內部熄燈循環大約每 2 秒觸發一次, 300ms 的間隔理應大部分時間
+     *  都能贏過它, 但兩種顏色交替出現在肉眼看來仍然構成明顯閃爍。這個「熄燈循環」
+     *  本身沒辦法完全消除 (只要小智 auto-mode 開著就會持續運作), 只能縮短
+     *  「熄了未補發回來」那段空隙的長度來減少肉眼可見的閃爍程度。把補發間隔由
+     *  300ms 縮短到 80ms - AIDL call 本身很快, 2 秒週期裡補發 25 次左右都不會
+     *  構成負擔, 但空隙短很多, 閃爍會沒那麼明顯。 */
     private static final long LED_REASSERT_INTERVAL_MS = 80;
     private final java.util.concurrent.atomic.AtomicLong headLedReassertGeneration =
             new java.util.concurrent.atomic.AtomicLong(0);
     private final java.util.concurrent.atomic.AtomicLong eyeLedReassertGeneration =
             new java.util.concurrent.atomic.AtomicLong(0);
 
-    /** 令目前生效緊嘅 head/eye LED 持續補發 thread (如果有) 喺下一個補發週期
-     *  自行停止, 唔開新 thread 補返 - preset=stop 個 case 用呢個。 */
+    /** 讓目前生效中的 head/eye LED 持續補發 thread (如果有) 在下一個補發週期
+     *  自行停止, 不開新 thread 補回 - preset=stop 那個 case 用這個。 */
     private void cancelHeadLedReassert() {
         headLedReassertGeneration.incrementAndGet();
     }
@@ -6357,36 +8158,38 @@ public class MainActivity extends Activity implements SensorEventListener {
                         return;
                     }
                     if (genCounter.get() != myGeneration) {
-                        return; // 補發期間又有新一次 call, 或者用戶 call 咗 stop, 讓位俾佢
+                        return; // 補發期間又有新一次呼叫, 或用戶呼叫了 stop, 讓位給它
                     }
+                    // pure-direct: 经 JNI 直驱（旧 alpha2services 内部熄灯循环已随 APK 移除而消失，
+                    // 补发线程保留仅作兼容，单发本已稳住）。
                     if (isEye) {
-                        robot.header_ledSetEye5Mic(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8);
+                        DirectLedController.setEye5MicRaw(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8);
                     } else {
-                        robot.header_ledSetHead5Mic(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8);
+                        DirectLedController.setHead5MicRaw(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8);
                     }
                 }
             }
         }, "XiaozhiLedReassert").start();
     }
 
-    /** 2026-08 新增: 呢部機 (head board / firmware 1.1.1.14) 嘅
-     *  header_ledSetHead5Mic/header_ledSetEye5Mic 實測全部 preset 都回
-     *  API_ERROR_FAILED (bindReady:true, 即係唔係未 ready, 係機身真係唔支援/
-     *  冇實作 - 睇落呢個機頭唔係 5-mic variant, 或者呢個 firmware 冇實作呢兩個
-     *  AIDL 方法)。Mouth LED (MouthLedData, 直接 JNI 唔經 AIDL) 就實測正常。
+    /** 2026-08 新增: 這台機器 (head board / firmware 1.1.1.14) 的
+     *  header_ledSetHead5Mic/header_ledSetEye5Mic 實測全部 preset 都回傳
+     *  API_ERROR_FAILED (bindReady:true, 也就是不是尚未 ready, 是機身真的不支援/
+     *  沒實作 - 看起來這個機頭不是 5-mic variant, 或這個 firmware 沒實作這兩個
+     *  AIDL 方法)。Mouth LED (MouthLedData, 直接 JNI 不經 AIDL) 則實測正常。
      *
-     *  呢個方法將 obstacle-triggered 嘅 LED 指示同時發去兩條路: 5-mic
-     *  head/eye (setHeadEyeLedLong) 照舊保留 - 喺支援嘅機/firmware 上會着紫燈,
-     *  喺呢部機上頂多係 API_ERROR_FAILED、冇視覺效果、但唔會拋例外中斷流程;
-     *  同時亦閃 mouth LED 做 fallback, 保證呢部機都見到嘢。兩條路獨立 try/catch,
-     *  其中一條失敗唔會擋另一條。 */
+     *  這個方法把 obstacle-triggered 的 LED 指示同時發到兩條路: 5-mic
+     *  head/eye (setHeadEyeLedLong) 照舊保留 - 在支援的機/firmware 上會亮紫燈,
+     *  在這台機器上頂多是 API_ERROR_FAILED、沒有視覺效果、但不會拋出例外中斷流程;
+     *  同時也閃爍 mouth LED 做 fallback, 保證這台機器都看得到反應。兩條路獨立 try/catch,
+     *  其中一條失敗不會擋住另一條。 */
     private void applyObstacleIndicator(boolean triggered) {
         try {
             if (triggered) {
                 setHeadEyeLedLong(5, 9); // 5 = 紫 (purple), see led/head/set color-code comment
             } else {
-                robot.header_stop5MicEarLED();
-                robot.header_stop5MicEyeLED();
+                DirectLedController.stopHead5Mic();
+                DirectLedController.stopEye5Mic();
             }
         } catch (Throwable t) {
             Log.w(TAG, "applyObstacleIndicator: 5-mic head/eye LED path failed (known unsupported on this head board, see MouthLedData javadoc)", t);
@@ -6415,27 +8218,27 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  the front-end chart can plot live triggered/clear state against the threshold
      *  line set via servo/sonar.
      *
-     *  2026-08 更新: 實機 (firmware 1.1.1.14) 證實呢個 0x81 幀假設完全冇撞中 -
-     *  sonar 讀數根本唔會經 IAlpha2SerialPortService 嘅 AIDL rcv callback 送到,
-     *  onListenSerialPortRcvData() 淨係收到 app 自己送出 chest_configureSonar()
-     *  嗰個 config command 嘅 2-byte ack "04 00"。中途一度誤以為 sonar 讀數會
-     *  經 "com.ubtechinc.services.chest" (StaticValue.CHEST_ACTION) 呢個全域
-     *  broadcast 重新發送, 但反編譯官方 UBTech alpha2demo.apk 之後證實呢個都
-     *  係錯 - CHEST_ACTION 官方 demo 自己都淨係用嚟 log 機身內部 raw command
-     *  byte (見 RobotEventReceiver 個 CHEST_ACTION case), 唔係 sonar 讀數。
-     *  真正嘅 sonar 讀數係經另一個獨立、之前完全冇診斷到嘅 broadcast action
-     *  "com.ubtechinc.sonar.distance" (StaticValue.SONAR_DISTANCE_ACTION) 送出,
-     *  extra 已經係 parse 好嘅 int (key "sonar_distance",
-     *  StaticValue.SONAR_DISTANCE_EXTRA), 唔使自己再解 raw wire frame - 見
-     *  RobotEventReceiver 嗰個 SONAR_DISTANCE_ACTION case 同
-     *  MainActivity#onSonarDistanceReceived()。而且就算 0x81 幀真係經 AIDL
-     *  path 到, 實測 raw wire frame 都係 "f8 8f 0a 00 00 8b eb 04 81 05 ed" -
-     *  0x81 出現喺幀中間 (index 8), 唔係 bytes[0], 所以呢度原本嘅
-     *  offset 假設連框架格式都對唔上, 唔止係「呢部機唔行呢條路」咁簡單。
-     *  呢個方法連同佢個 0x81 假設保留低唔刪 - 留返俾第啲機身/firmware 版本,
-     *  如果真係會送 0x81-開頭嘅 AIDL rcv 幀, 呢條路徑先有意義；喺呢部機上佢
-     *  單純唔會撞到 (cmd 恒等於 4, 喺 "cmd != -127" 嗰行提早 return), 唔影響
-     *  真正生效嗰條 SONAR_DISTANCE_ACTION 路徑。 */
+     *  2026-08 更新: 實機 (firmware 1.1.1.14) 證實這個 0x81 幀假設完全沒撞中 -
+     *  sonar 讀數根本不會經 IAlpha2SerialPortService 的 AIDL rcv callback 送達,
+     *  onListenSerialPortRcvData() 只收到 app 自己送出 chest_configureSonar()
+     *  那個 config command 的 2-byte ack "04 00"。中途一度誤以為 sonar 讀數會
+     *  經由 "com.ubtechinc.services.chest" (RobotWire.CHEST_ACTION) 這個全域
+     *  broadcast 重新發送, 但反編譯官方 UBTech alpha2demo.apk 之後證實這也
+     *  是錯的 - CHEST_ACTION 官方 demo 自己也只是用來 log 機身內部 raw command
+     *  byte (見 RobotEventReceiver 的 CHEST_ACTION case), 不是 sonar 讀數。
+     *  真正的 sonar 讀數是經由另一個獨立、之前完全沒診斷到的 broadcast action
+     *  "com.ubtechinc.sonar.distance" (RobotWire.SONAR_DISTANCE_ACTION) 送出,
+     *  extra 已經是 parse 好的 int (key "sonar_distance",
+     *  RobotWire.SONAR_DISTANCE_EXTRA), 不需要自己再解 raw wire frame - 見
+     *  RobotEventReceiver 的 SONAR_DISTANCE_ACTION case 和
+     *  MainActivity#onSonarDistanceReceived()。而且就算 0x81 幀真的經由 AIDL
+     *  path 送達, 實測 raw wire frame 也是 "f8 8f 0a 00 00 8b eb 04 81 05 ed" -
+     *  0x81 出現在幀中間 (index 8), 不是 bytes[0], 所以這裡原本的
+     *  offset 假設連框架格式都對不上, 不只是「這台機器不走這條路」那麼簡單。
+     *  這個方法連同它的 0x81 假設保留不刪 - 留給其他機身/firmware 版本,
+     *  如果真的會送出 0x81 開頭的 AIDL rcv 幀, 這條路徑才有意義；在這台機器上它
+     *  單純不會撞到 (cmd 恆等於 4, 在 "cmd != -127" 那行提早 return), 不影響
+     *  真正生效的那條 SONAR_DISTANCE_ACTION 路徑。 */
     private void handleChestObstacleFrame(byte[] bytes, int len) {
         if (bytes == null || len < 2) {
             return;
@@ -6465,7 +8268,7 @@ public class MainActivity extends Activity implements SensorEventListener {
      * for speaker playback failed with state=0/STATE_UNINITIALIZED while
      * alpha2services' own audio pipeline was active. speech_SetMIC(true) is the release
      * call - true means "release the mic/audio hardware to this app" (matching the
-     * Speech tab's manual "釋放麥克風俾 App" button), not "false".
+     * Speech tab's manual "釋放麥克風給 App" button), not "false".
      *
      * setWakeState() dispatches asynchronously (an AIDL call into alpha2services, which
      * itself does a sendBroadcast internally per logcat) - it does not block until the
@@ -6479,7 +8282,7 @@ public class MainActivity extends Activity implements SensorEventListener {
      * state the browser had just asked for (e.g. the green "listening" cue - see
      * app-mic.js's setListenLed()). Depending on scheduling this broadcast could land
      * either before or after this app's own LED call, which is why the green LED "有時
-     * 著,有時唔著" (sometimes lit, sometimes not) - a pure race, not a code bug in the
+     * 亮,有時不亮" (sometimes lit, sometimes not) - a pure race, not a code bug in the
      * LED call itself. The fix is ordering: setHeadEyeLedLong() below is called from
      * handleMicStream() only *after* this method (and its sleep) returns, guaranteeing
      * this app's LED command is always the last one sent and therefore always wins the
@@ -6497,15 +8300,15 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     /** 持續搶 mic 背景 thread - 見 micHoldEnforced 個 field javadoc。每
      *  MIC_HOLD_ENFORCER_INTERVAL_MS 就重新 call 一次 speech_SetMIC(true),
-     *  確保就算 firmware 內部側面攞返咗 mic (例如 setWakeState 本身喺
-     *  firmware bytecode 入面會順便觸發 IflytekWakeUp5mic.startRecording()
-     *  呢個 side effect - 見 AIDL_REFERENCE_ALPHA2.md「⚠️ 重要行為」段), app
-     *  都會好快搶返嚟, 唔使等用戶自己發現支 mic 靜咗先手動再撳一次。
+     *  確保就算 firmware 內部從旁奪回了 mic (例如 setWakeState 本身在
+     *  firmware bytecode 裡會順便觸發 IflytekWakeUp5mic.startRecording()
+     *  這個 side effect - 見 AIDL_REFERENCE_ALPHA2.md「⚠️ 重要行為」段), app
+     *  都會很快搶回來, 不用等用戶自己發現麥克風靜音了才手動再按一次。
      *
-     *  用獨立 thread + sleep 而唔係靠 handleMicStream() 個 loop, 係因為兩者
-     *  用途唔同: handleMicStream() 淨係喺有人真係開緊 /stream/mic 先行, 而
-     *  呢個 enforcer 係只要用戶喺 mic card 開咗個「持續搶 mic」掣, 就算冇人
-     *  開緊 mic stream 都要生效 (例如淨係想用 TTS, 但唔想俾機械人自己嘅
+     *  用獨立 thread + sleep 而不是靠 handleMicStream() 的 loop, 是因為兩者
+     *  用途不同: handleMicStream() 只在有人真的開啟 /stream/mic 才執行, 而
+     *  這個 enforcer 是只要用戶在 mic card 開啟了「持續搶佔 mic」開關, 就算沒人
+     *  開著 mic stream 也要生效 (例如只想用 TTS, 但不想讓機器人自己的
      *  wake-word 引擎不時搶返支 mic)。 */
     private void startMicHoldEnforcer() {
         if (micHoldEnforcerThread != null) return;
@@ -6514,9 +8317,9 @@ public class MainActivity extends Activity implements SensorEventListener {
             @Override
             public void run() {
                 while (micHoldEnforced && !Thread.currentThread().isInterrupted()) {
-                    // 同 startXiaozhiMicHoldEnforcer() 一樣嘅原因 (見
+                    // 和 startXiaozhiMicHoldEnforcer() 一樣的原因 (見
                     // robotTtsSpeaking field javadoc) - 機身 robot-side TTS
-                    // 正播緊嘢就跳過呢一輪, 唔好打斷佢。
+                    // 正在播放就跳過這一輪, 不要打斷它。
                     if (micHeldByApp && !robotTtsSpeaking) {
                         robot.speech_SetMIC(true);
                     }
@@ -6542,8 +8345,8 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private void handleMicStream(java.net.Socket socket) throws java.io.IOException {
         releaseMicForAudioIo();
-        setHeadEyeLedLong(2, 9); // 綠燈長開 - 聽緊機械人講嘢, 一定要喺上面果行之後先叫,
-                                 // 見 releaseMicForAudioIo() javadoc 解釋點解順序好重要
+        setHeadEyeLedLong(2, 9); // 綠燈長開 - 正在聽機器人說話, 一定要在上面那行之後才呼叫,
+                                 // 見 releaseMicForAudioIo() javadoc 解釋為何順序很重要
 
         AudioController.StartResult started = audioController.start(5000);
         java.io.OutputStream out = socket.getOutputStream();
@@ -6589,22 +8392,22 @@ public class MainActivity extends Activity implements SensorEventListener {
                 AudioController.Chunk chunk;
                 try {
                     // 2026-08 修正 (用家要求): 之前呢度用 poll(10, SECONDS), 10 秒
-                    // 攞唔到 chunk 就當「mic 死咗」自動 break, 跟住落面個 finally
-                    // 就會 speech_SetMIC(false) 主動將 mic 還俾機械人 —— 但用家
-                    // 想要嘅係「淨係用家自己撳停先還機, 唔理有冇聲音都唔應該自動
-                    // 還」。改用冇 timeout 嘅 take(), 淨係阻塞式等下一個 chunk,
-                    // 唔會因為靜音就自行斷開。個 stream connection 本身斷咗
-                    // (用家關咗瀏覽器分頁/收咗個 tab) 會由落面 out.write() 拋
-                    // IOException 嚟令個 loop 自然跳出, 唔使靠呢度嘅逾時判斷。
+                    // 拿不到 chunk 就當「mic 死了」自動 break, 接著下面的 finally
+                    // 就會 speech_SetMIC(false) 主動把 mic 還給機器人 —— 但用家
+                    // 想要的是「只有用家自己按停才還機, 不理會有沒有聲音都不應該自動
+                    // 還」。改用沒有 timeout 的 take(), 只是阻塞式等待下一個 chunk,
+                    // 不會因為靜音就自行斷開。stream connection 本身斷了
+                    // (用家關掉瀏覽器分頁/收起 tab) 會由下面 out.write() 拋出
+                    // IOException 讓 loop 自然跳出, 不用靠這裡的逾時判斷。
                     //
-                    // Trade-off: 如果 AudioController.readLoop() 本身真係故障
-                    // (AudioRecord.read() 持續讀錯, 見 AudioController 嗰邊 n<0
-                    // 嗰段), readLoop() 會自己 release 咗個 AudioRecord 停低, 但
-                    // 唔會再有新 chunk 送入嚟, 呢度個 take() 會永久阻塞, 呢條 HTTP
-                    // thread 唯一釋放方法係用家自己喺瀏覽器度撳「停止聽」
-                    // (令 fetch abort, socket close, out.write() 先會拋 IOException
-                    // 令個 loop 跳出)。呢個係刻意換嚟嘅代價 - 為咗完全消除「靜音
-                    // 就自動還機」呢個唔想要嘅行為, 唔會再有任何逾時自動釋放。
+                    // Trade-off: 如果 AudioController.readLoop() 本身真的故障
+                    // (AudioRecord.read() 持續讀錯, 見 AudioController 那邊 n<0
+                    // 那段), readLoop() 會自己 release 掉 AudioRecord 並停止, 但
+                    // 不會再有新 chunk 送進來, 這裡的 take() 會永久阻塞, 這條 HTTP
+                    // thread 唯一釋放方法是用家自己在瀏覽器裡按「停止聽」
+                    // (讓 fetch abort, socket close, out.write() 才會拋出 IOException
+                    // 讓 loop 跳出)。這是刻意換來的代價 - 為了完全消除「靜音
+                    // 就自動還機」這個不想要的行為, 不會再有任何逾時自動釋放。
                     chunk = queue.take();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -6627,12 +8430,12 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // nobody is listening to the mic stream - otherwise voice wakeup would
                 // stay silently disabled until someone went to the Speech tab and
                 // manually re-enabled it, same as it used to require to enable it.
-                // false = "交返麥克風俾機器人" (hand back to the robot), matching
+                // false = "交還麥克風給機器人" (hand back to the robot), matching
                 // setMic(false) in app-speech.js - true is the opposite, "release to app".
                 //
-                // 例外: 如果用家喺 TTS tab 撳咗「釋放麥克風俾 App」(micHeldByApp),
-                // 就代表佢想長期由 app 持有 mic - 呢個 stream 斷開 (背景化分頁/
-                // 網絡短暫中斷都會觸發呢個 finally) 唔應該將 mic 靜靜哋還俾機械人,
+                // 例外: 如果用家在 TTS tab 按了「釋放麥克風給 App」(micHeldByApp),
+                // 就代表他想長期由 app 持有 mic - 這個 stream 斷開 (背景化分頁/
+                // 網路短暫中斷都會觸發這個 finally) 不應該把 mic 悄悄還給機器人,
                 // 否則個「釋放」狀態就會被呢度無聲蓋走, 要用家自己再撳一次先頂到住。
                 if (!micHeldByApp) {
                     robot.speech_SetMIC(false);
@@ -6642,10 +8445,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // if this stream connection just drops (backgrounded tab, network
                 // blip, browser closed) rather than being stopped via the button, the
                 // browser-side call never happens and the LED would otherwise stay
-                // stuck on indefinitely.
-                robot.waitHeaderReady(3000);
-                robot.header_stop5MicEarLED();
-                robot.header_stop5MicEyeLED();
+                // stuck on indefinitely. pure-direct: 经 JNI 直关。
+                DirectLedController.stopHead5Mic();
+                DirectLedController.stopEye5Mic();
             }
         }
     }
@@ -6669,11 +8471,11 @@ public class MainActivity extends Activity implements SensorEventListener {
         return controller.getLastFrame();
     }
 
-    // 2026-08 (已淘汰): 之前用 waitForStableFrame() 跳過幾幀嚟迴避 preview frame
-    // 過渡期問題 (AE/AF 未收斂) - 反編譯用戶提供、實測成功嘅第三方 apk 之後發現真正
-    // 根源係 capture 方式本身 (preview frame vs 真正單張拍攝), 已改用
+    // 2026-08 (已淘汰): 之前用 waitForStableFrame() 跳過幾幀來迴避 preview frame
+    // 過渡期問題 (AE/AF 未收斂) - 反編譯用戶提供、實測成功的第三方 apk 之後發現真正
+    // 根源是 capture 方式本身 (preview frame vs 真正單張拍攝), 已改用
     // CameraController.takePhoto() (真正 camera.takePicture()), 見
-    // xiaozhiTakePhotoAndExplain() 嗰段 comment。呢個「跳幀」workaround 冇再被用,
+    // xiaozhiTakePhotoAndExplain() 那段 comment。這個「跳幀」workaround 已不再使用,
     // 已移除, 避免留低死 code 同令人誤會依然係現行做法。
 
     private HttpServer.ApiResponse wifiStatus() {
@@ -6715,7 +8517,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         final Object[] resultHolder = new Object[1];
         final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
 
-        UbxErrorCode.API_ERROR_CODE started = robot.action_getActionList(new IAlpha2ActionListListener() {
+        UbxErrorCode.API_ERROR_CODE started = robot.action_getActionList(new RobotStub.IAlpha2ActionListListener() {
             @Override
             public void onGetActionList(ArrayList<ArrayList<String>> list) {
                 resultHolder[0] = list;
@@ -6734,9 +8536,9 @@ public class MainActivity extends Activity implements SensorEventListener {
         @SuppressWarnings("unchecked")
         ArrayList<ArrayList<String>> list = (ArrayList<ArrayList<String>>) resultHolder[0];
         // 2026-08 debug: action/list 響應空 actions[] 但機身 /sdcard/actions/*.ubx
-        // 實際有 ~140 個檔。可能係 (a) latch timeout, onGetActionList 冇喺 5s 內
-        // callback, list 保持 null, 或者 (b) 機身確實有 callback 返 list, 但每行
-        // < 4 欄, 全部俾下面嘅 "row.size() < 4" 跳晒。呢兩種情況分開 log 先分辨到
+        // 實際有 ~140 個檔。可能是 (a) latch timeout, onGetActionList 沒有在 5s 內
+        // callback, list 保持 null, 或 (b) 機身確實有 callback 回 list, 但每行
+        // < 4 欄, 全部被下面的 "row.size() < 4" 跳過。這兩種情況分開 log 才能分辨
         // 邊個先係真正原因。
         if (list == null) {
             Log.w(TAG, "actionList: onGetActionList did not complete within 5s latch (list == null)");
@@ -6771,6 +8573,153 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         sb.append("]}");
         return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    // -- Pure-direct actions (actionInfo.txt + UbxPlayer) -----------------------
+    // actionInfo.txt 行格式（GBK 编码）：<fileId>##<nameCn>##<nameEn>##<type>，
+    // 与旧 AIDL getActionList 行顺序不同（彼为 id/type/nameCn/nameEn），此处重排，
+    // 前端收到的 JSON 形状与以前完全一致，app-actions.js 无需改动。
+    private static final String ACTION_DIR = "/sdcard/actions";
+    private static final String ACTION_INFO = "/sdcard/actions/actionInfo.txt";
+    private List<String[]> actionInfoCache; // 每项 [fileId, nameCn, nameEn, type]
+
+    private synchronized List<String[]> loadActionInfo() {
+        if (actionInfoCache != null) return actionInfoCache;
+        List<String[]> out = new ArrayList<>();
+        try {
+            java.io.File f = new java.io.File(ACTION_INFO);
+            byte[] data = new byte[(int) f.length()];
+            java.io.FileInputStream in = new java.io.FileInputStream(f);
+            try {
+                int off = 0;
+                while (off < data.length) {
+                    int n = in.read(data, off, data.length - off);
+                    if (n < 0) break;
+                    off += n;
+                }
+            } finally {
+                try { in.close(); } catch (Exception ignore) {}
+            }
+            String text = new String(data, "GBK");
+            for (String line : text.split("\n")) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+                String[] cols = line.split("##", -1);
+                if (cols.length < 4) continue;
+                out.add(new String[]{cols[0].trim(), cols[1].trim(), cols[2].trim(), cols[3].trim()});
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "loadActionInfo failed", e);
+        }
+        actionInfoCache = out;
+        return out;
+    }
+
+    /** 动作名/ID 解析：fileId > nameEn > nameCn，另支持 xxx.ubx / 绝对路径直通。 */
+    private java.io.File resolveActionFile(String name) {
+        if (name == null) return null;
+        String n = name.trim();
+        if (n.isEmpty()) return null;
+        if (n.indexOf('/') >= 0 || n.endsWith(".ubx")) {
+            java.io.File direct = n.indexOf('/') >= 0 ? new java.io.File(n) : new java.io.File(ACTION_DIR + "/" + n);
+            if (direct.isFile()) return direct;
+        }
+        List<String[]> info = loadActionInfo();
+        String id = null;
+        for (String[] r : info) {
+            if (r[0].equals(n)) { id = r[0]; break; }
+        }
+        if (id == null) {
+            for (String[] r : info) {
+                if (r[2].equalsIgnoreCase(n)) { id = r[0]; break; }
+            }
+        }
+        if (id == null) {
+            for (String[] r : info) {
+                if (r[1].equals(n)) { id = r[0]; break; }
+            }
+        }
+        if (id == null) return null;
+        java.io.File f = new java.io.File(ACTION_DIR + "/" + id + ".ubx");
+        return f.isFile() ? f : null;
+    }
+
+    private HttpServer.ApiResponse actionListDirect() {
+        List<String[]> info = loadActionInfo();
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"actions\":[");
+        boolean first = true;
+        for (String[] r : info) {
+            if (!first) sb.append(',');
+            first = false;
+            sb.append("{\"id\":\"").append(jsonSafe(r[0])).append("\",")
+                    .append("\"type\":\"").append(jsonSafe(r[3])).append("\",")
+                    .append("\"nameCn\":\"").append(jsonSafe(r[1])).append("\",")
+                    .append("\"nameEn\":\"").append(jsonSafe(r[2])).append("\"}");
+        }
+        sb.append("]}");
+        return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    private HttpServer.ApiResponse actionPlayDirect(String name) {
+        java.io.File f = resolveActionFile(name);
+        if (f == null) return HttpServer.ApiResponse.error("unknown action: " + name);
+        if (ubxPlayer.isPlaying()) return HttpServer.ApiResponse.error("already playing (stop first)");
+        HardwareDirectManager dm = HardwareDirectManager.get(this);
+        if (!dm.chest().isAvailable()) return HttpServer.ApiResponse.error("chest not available");
+        UbxFile ubx;
+        try {
+            ubx = UbxParser.parseFile(f);
+        } catch (Exception e) {
+            return HttpServer.ApiResponse.error("parse failed: " + e.getMessage());
+        }
+        if (!ubxPlayer.play(ubx, f.getName(), dm.chest())) {
+            return HttpServer.ApiResponse.error("cannot start: " + ubxPlayer.lastError());
+        }
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"code\":\"API_ERROR_SUCCEED\",\"name\":\""
+                + jsonSafe(f.getName()) + "\",\"total\":" + ubxPlayer.total() + "}");
+    }
+
+    /**
+     * 内部共用：pure-direct 播指定动作（fileId/中英文名/xxx.ubx 皆可），抢占式——
+     * 先停当前再播，与原厂 playActionName 打断语义一致。供手势总停、MCP tool、
+     * 语义动作、随机 filler 共用，HTTP action/play 另有「播緊先報錯」守卫故不经此。
+     */
+    private UbxErrorCode.API_ERROR_CODE playActionDirect(String nameOrId) {
+        java.io.File f = resolveActionFile(nameOrId);
+        if (f == null) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
+        HardwareDirectManager dm = HardwareDirectManager.get(this);
+        if (!dm.chest().isAvailable()) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
+        UbxFile ubx;
+        try {
+            ubx = UbxParser.parseFile(f);
+        } catch (Exception e) {
+            Log.w(TAG, "playActionDirect parse failed " + f, e);
+            return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
+        }
+        ubxPlayer.stop();
+        if (!ubxPlayer.play(ubx, f.getName(), dm.chest())) {
+            Log.w(TAG, "playActionDirect not started: " + ubxPlayer.lastError());
+            return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
+        }
+        return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+    }
+
+    /**
+     * 内部共用：一键全停（动作部分）——截停 UbxPlayer 后补播 STOP_RECOVERY_ACTION_ID
+     * 蹲下站起回位。回位播唔播到唔影响返回值。供 0x5e 手势（含拍头双 pad）、
+     * MCP stop_action、HTTP action/stop 共用。
+     */
+    private UbxErrorCode.API_ERROR_CODE stopActionWithRecovery() {
+        ubxPlayer.stop();
+        try {
+            UbxErrorCode.API_ERROR_CODE rec = playActionDirect(STOP_RECOVERY_ACTION_ID);
+            if (rec != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+                Log.w(TAG, "recovery not started: " + ubxPlayer.lastError());
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "recovery play failed", e);
+        }
+        return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
 
     private static String require(Map<String, String> query, String key) {
@@ -6837,11 +8786,10 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     /**
-     * Same as codeResponse but also reports whether the underlying chest/header AIDL
-     * bind had actually completed (isChestReady()/isHeaderReady()) at the time of the
-     * call - not just that the *ServiceUtil object was constructed. See
-     * Alpha2RobotApi.waitChestReady/waitHeaderReady javadoc for why this distinction
-     * matters: API_ERROR_SUCCEED alone doesn't guarantee the command reached the robot.
+     * Same as codeResponse but also reports whether the underlying chest/header
+     * direct serial port was actually open (directChestReady()/directHeaderReady())
+     * at the time of the call. pure-direct: no AIDL bind exists any more;
+     * API_ERROR_SUCCEED means the frame was written to /dev/ttyS1/S3.
      */
     private static HttpServer.ApiResponse codeResponseReady(UbxErrorCode.API_ERROR_CODE code, boolean ready) {
         return HttpServer.ApiResponse.ok("{\"ok\":" + isOk(code) + ",\"code\":\"" + code
@@ -6850,42 +8798,1038 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private static String jsonSafe(String s) {
         if (s == null) return "";
-        // 2026-08 修正: 之前淨係 escape 反斜線同雙引號, 冇處理換行/回車/tab -
-        // XiaozhiOtaClient 個 server 回應嘅 activationMessage 實測證實會帶住
-        // literal "\n" (真機 logcat 見到 "xiaozhi.me" 後面直接斷咗行), 送入
-        // EventBus.publish() 組出嚟嘅 JSON string 入面如果有未 escape 嘅真正換行
-        // 字元係語法上非法 (JSON string 唔准有 literal newline) - 前端
-        // JSON.parse() 會直接拋錯, 令成個 event 跌入 catch 變成 type:"raw",
-        // 令 "xiaozhi_activation" 呢個 type 永遠比對唔中, 界面對應嘅顯示邏輯
-        // (xiaozhiShowActivationCode()) 完全唔會觸發 - 呢個先係「websocket log
-        // 見到啲嘢, 但界面無顯示」嘅真正成因。
+        // 2026-08 修正: 之前只 escape 反斜線和雙引號, 沒處理換行/回車/tab -
+        // XiaozhiOtaClient 的 server 回應的 activationMessage 實測證實會帶著
+        // literal "\n" (實機 logcat 看到 "xiaozhi.me" 後面直接斷行), 送入
+        // EventBus.publish() 組出來的 JSON string 裡如果有未 escape 的真正換行
+        // 字元在語法上是非法的 (JSON string 不允許有 literal newline) - 前端
+        // JSON.parse() 會直接拋錯, 使整個 event 落入 catch 變成 type:"raw",
+        // 使 "xiaozhi_activation" 這個 type 永遠比對不中, 界面對應的顯示邏輯
+        // (xiaozhiShowActivationCode()) 完全不會觸發 - 這才是「websocket log
+        // 看到東西, 但界面沒顯示」的真正成因。
         return s.replace("\\", "\\\\").replace("\"", "\\\"")
                 .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
 
-    /** 2026-08 新增: onServerCallBack() 收到嘅 raw 字串, 喺「語法識別」(grammar,
-     *  logcat type:1) 路徑底下係一個未解構嘅 iFlytek JSON, 例如
-     *  {"text":"你的爸爸是谁啊","rc":4}, 而唔係純文字 (純文字係「聽寫識別」
-     *  dictation, type:0, 嗰條路徑先有嘅格式)。呢個 method 判斷輸入係咪呢種
-     *  JSON 格式, 係就抽返 text field 出嚟, 唔係 (或者 parse 失敗/text field
-     *  唔存在) 就原封不動退返原字串, 令 type:0 路徑同 "Local_Result:..." 路徑
-     *  完全唔受影響。*/
+    /** 2026-08 新增: onServerCallBack() 收到的 raw 字串, 在「語法識別」(grammar,
+     *  logcat type:1) 路徑底下是一個未解析的 iFlytek JSON, 例如
+     *  {"text":"你的爸爸是谁啊","rc":4}, 而不是純文字 (純文字是「聽寫識別」
+     *  dictation, type:0, 那條路徑才有的格式)。這個 method 判斷輸入是否這種
+     *  JSON 格式, 是的話就抽出 text field, 不是 (或 parse 失敗/text field
+     *  不存在) 就原封不動退回原字串, 使 type:0 路徑和 "Local_Result:..." 路徑
+     *  完全不受影響。*/
     private static String extractGrammarResultText(String raw) {
         if (raw == null) return null;
         String trimmed = raw.trim();
         if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
-            return raw; // 唔係 JSON 格式 (例如 "Local_Result:..." 或純文字聽寫結果), 原樣返回
+            return raw; // 不是 JSON 格式 (例如 "Local_Result:..." 或純文字聽寫結果), 原樣返回
         }
         try {
             JSONObject obj = new JSONObject(trimmed);
             if (obj.has("text")) {
                 return obj.getString("text");
             }
+            // 2026-08 新增: 離線本地文法 (engine_type=local buildGrammar bnf) 的
+            // 結果格式沒有 top-level text field! 實測 payload (WS capture):
+            //   {"sn":1,"ls":true,"ws":[{"slot":"<phrase>","cw":[{"w":"你叫什么名字",
+            //    "id":65535,"sc":0,"gm":0}]}],"sc":51}
+            // 識別到的字在 ws[].cw[].w 裡 (cw 是候選, 第一個是最高分)。逐個 ws 取
+            // 第一個非空的 cw[0].w 直接串接 (中文不加空格), 使對話界面/語意配對
+            // 取得乾淨文字。
+            org.json.JSONArray wsArr = obj.optJSONArray("ws");
+            if (wsArr != null && wsArr.length() > 0) {
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < wsArr.length(); i++) {
+                    org.json.JSONObject wsItem = wsArr.getJSONObject(i);
+                    org.json.JSONArray cw = wsItem.optJSONArray("cw");
+                    if (cw == null || cw.length() == 0) continue;
+                    String word = cw.getJSONObject(0).optString("w", "");
+                    if (word != null && !word.isEmpty()) {
+                        sb.append(word);
+                    }
+                }
+                if (sb.length() > 0) {
+                    return sb.toString();
+                }
+            }
         } catch (JSONException e) {
-            // parse 唔到就當佢唔係呢種格式, 原樣返回 - 避免因為格式估錯而搞衰
-            // 其他冇問題嘅 ASR 路徑
+            // parse 不到就當它不是這種格式, 原樣返回 - 避免因為格式猜錯而搞壞
+            // 其他沒問題的 ASR 路徑
         }
         return raw;
+    }
+
+    /** 2026-08 最終版: 預設文法是一份預先在 PC 上做好的靜態檔案
+     *  (assets/iflytek/default_grammar.bnf: 中文 1212 句 (q0-q12) + greet
+     *  slot 裡的 hello/hi 兩個英文字, 全繁體, 無重複, 已剔除乘數表)。來源 =
+     *  語意庫 + 悠聊原裝 call.bnf 合併轉換, App 不再做任何運行時生成/解析/
+     *  簡繁轉換, 淨係讀檔。
+     *
+     *  2026-08 移除: 曾經試過加 3000 個英文常用字 (e0-e29 slot) 撐英文離線
+     *  覆蓋率, 但訊飛官方文檔明文「离线命令词只支持中文普通话，暂不支持英文」
+     *  ——已反編譯確認 common.jet 聲學模型沒有英文音素, 連字符/串接等 BNF 花招
+     *  都試過, 只有單字偶爾因為發音像某個中文音才「僥倖」被識別到, 不穩定也沒有
+     *  實際離線英文句子辨識能力。3000 個詞塞進 grammar 只會拖慢 build 速度
+     *  和增加與中文詞的聲學碰撞機會, 對真正想要的中文識別率有害無益, 所以
+     *  全部剔除。離線英文需求已改用 Nuance 內建文法或未來的第三方引擎
+     *  (Vosk) 方案, 不再在這個 iFlytek BNF grammar 上勉強。 */
+    private String readDefaultGrammarAsset() {
+        try {
+            java.io.InputStream in = getAssets().open("iflytek/default_grammar.bnf");
+            try {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    out.write(buf, 0, n);
+                }
+                return out.toString("UTF-8");
+            } finally {
+                in.close();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "readDefaultGrammarAsset failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** 2026-08 新增: 將預設 BNF 文法原樣 (JSON string) 回傳給前端, 讓 textarea
+     *  有內容可顯示、用戶可以直接改完再 init_grammar。 */
+    private HttpServer.ApiResponse getDefaultGrammar() {
+        String bnf = readDefaultGrammarAsset();
+        if (bnf == null) {
+            return HttpServer.ApiResponse.error("assets/iflytek/default_grammar.bnf unreadable");
+        }
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"bnf\":\"" + jsonSafe(bnf) + "\"}");
+    }
+
+    // -- 離線文法模式: 共用內部方法 + 自動跟網絡切換 ---------------------------------
+    //
+    // 2026-08 新增。原本淨係得 HTTP endpoint 直接叫 robot.speech_*Grammar();
+    // 現在抽出三個內部方法 (doInitGrammar/doStartGrammar/doStopGrammar), 供
+    // 「自動跟網路切換」和 HTTP endpoint 兩邊共用。自動切換規則 (開啟
+    // offlineGrammarAutoSwitch 才生效):
+    //   沒網路 → 確保 iFlytek binding → 文法未構建就先構建 → 構建成功立即 start
+    //   有網路 → 離線模式開著的話就 stop, 回到雲端聽寫 (自由講話)
+    // 狀態變化會 publish "offline_mode" event 供前端 UI 更新。
+
+    // 2026-09 刪除: isNetworkConnected() - 無 caller (實際探測行 hasRealInternet())。
+
+    /** 2026-08 新增: 真正的「雲端聽寫能不能用」探測。唔可以用 WiFi link 狀態
+     *  代替 (2026-09: 舊 isNetworkConnected() 已刪) - 連著一個沒有後備網路的手機 hotspot 時照樣回報
+     *  connected, 但實際上不了網。而且單純「有網際網路」也不夠: 如果網路
+     *  封鎖了訊飛伺服器, 雲端聽寫照樣全部網路錯誤 (實測 logcat: 10114/20002)
+     *  - 這種情況對語音來說應該當成離線走本地文法。
+     *
+     *  探測目標是反編譯 alpha2services 找到的、機身 MSC 實際使用的雲端主域:
+     *  SpeechUtility init 字串 "appid=56652373" +
+     *  "server_url=http://ubtek.openspeech.cn/index.htm", 另加 openspeech 主域
+     *  和舊版 voicecloud.cn 做 fallback。任一 TCP handshake 通過 = 當作 online。
+     *  Blocking call (最長 ~7.5s), 只供背景 thread 呼叫。 */
+    private static boolean hasRealInternet() {
+        // 第一個目標用反編譯找到的 server_url host; 另外加上 IP 直連 fallback -
+        // 手機數據底下 DNS 有時慢/斷斷續續, hostname 解析失敗不代表這條路真的不通。
+        String[][] targets = {
+                {"ubtek.openspeech.cn", "80"},
+                {"openspeech.cn", "80"},
+                {"voicecloud.cn", "443"},
+                {"121.37.220.137", "80"} // ubtek.openspeech.cn 的 IP (2026-08 實測), 免 DNS
+        };
+        for (String[] t : targets) {
+            try {
+                java.net.Socket s = new java.net.Socket();
+                s.connect(new java.net.InetSocketAddress(t[0], Integer.parseInt(t[1])), 2500);
+                s.close();
+                return true;
+            } catch (Exception e) {
+                android.util.Log.d(TAG, "probe " + t[0] + ":" + t[1] + " fail: "
+                        + e.getClass().getSimpleName());
+            }
+        }
+        return false;
+    }
+
+    /** 最近一次探測結果 - 開機預設樂觀當有網, 第一次 probe 之後就會校正。 */
+    private volatile boolean lastProbeOnline = true;
+    /** 探測用 HandlerThread - 一定要背景 thread! 之前用 MainLooper, probe 的
+     *  TCP connect 全部即刻彈 NetworkOnMainThreadException, 令 watchdog 永遠
+     *  以為離線 (2026-08 實測 bug)。 */
+    private android.os.HandlerThread offlineWatchdogThread;
+    private android.os.Handler offlineWatchdogHandler;
+    private boolean offlineWatchdogStarted = false;
+
+    /** 週期性探測迴路 (30 秒一次)。CONNECTIVITY_ACTION 只在 WiFi link 層面
+     *  變化時才會發送 - hotspot 的後備網路 (行動數據) 開關根本不會觸發任何廣播,
+     *  所以單靠 receiver 不夠, 要自己定時 probe 才能偵測到「WiFi 沒變但上不了
+     *  網」這種狀態。
+     *
+     *  2026-08 加防抖動: 實測手機數據底下對訊飛雲的 TCP probe 結果會飄忽
+     *  (時通時不通), 單次結果就轉模式會讓指示燈/語音模式不停跳動。現在要
+     *  連續 2 次同方向的結果才真的切換 (PROBE_CONFIRM_N)。 */
+    private static final int PROBE_CONFIRM_N = 2;
+    private int offlineProbeDownCount = 0;
+    private int offlineProbeUpCount = 0;
+
+    private final Runnable offlineProbeLoop = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                final boolean online = hasRealInternet();
+                if (online != lastProbeOnline) {
+                    if (online) {
+                        offlineProbeUpCount++;
+                        offlineProbeDownCount = 0;
+                    } else {
+                        offlineProbeDownCount++;
+                        offlineProbeUpCount = 0;
+                    }
+                    Log.i(TAG, "offline watchdog: internet " + (online ? "UP" : "DOWN")
+                            + " (" + (online ? offlineProbeUpCount : offlineProbeDownCount)
+                            + "/" + PROBE_CONFIRM_N + ")");
+                    if ((online && offlineProbeUpCount >= PROBE_CONFIRM_N)
+                            || (!online && offlineProbeDownCount >= PROBE_CONFIRM_N)) {
+                        lastProbeOnline = online;
+                        offlineProbeUpCount = 0;
+                        offlineProbeDownCount = 0;
+                        applyConnectivityMode(online, "probe");
+                    }
+                } else {
+                    // 同現狀一致 - 清晒兩邊計數
+                    offlineProbeUpCount = 0;
+                    offlineProbeDownCount = 0;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "offline watchdog error: " + e.getMessage());
+            }
+            offlineWatchdogHandler.postDelayed(this, 30000);
+        }
+    };
+
+    private void startOfflineWatchdog() {
+        if (offlineWatchdogStarted) return;
+        offlineWatchdogStarted = true;
+        offlineWatchdogThread = new android.os.HandlerThread("OfflineProbe");
+        offlineWatchdogThread.start();
+        offlineWatchdogHandler = new android.os.Handler(offlineWatchdogThread.getLooper());
+        offlineWatchdogHandler.postDelayed(offlineProbeLoop, 8000);
+    }
+    // 2026-09 註: 上面成組 watchdog 而家係惰性 (startOfflineWatchdog 無 caller，
+    // 唯一啟動點舊 binder initOver 已刪) - 但 triggerWakeupProbe() 同 onDestroy()
+    // 仲引用緊啲 field，所以唔可以成段刪。要郁佢哋要連 triggerWakeupProbe 一齊
+    // 重新設計，留待下批。
+
+    /** 2026-08 新增: 「從第一句對答就知道是否離線」- 喚醒詞觸發的當下 (用戶開口)
+     *  立即探測一次雲端連通性。單次結果即時生效, 不用等 30 秒 watchdog 或
+     *  2 次確認 - 用戶實際開口那一刻的證據最可信, 而且探測 (~1-7s) 和講話+
+     *  辨識並行, 機器人回答時模式已經和現實一致。由 RobotEventReceiver 的
+     *  tts_hint_wakeup case 叫。 */
+    public static void triggerWakeupProbe() {
+        final MainActivity inst = sInstance;
+        if (inst == null || !inst.offlineGrammarAutoSwitch
+                || inst.offlineWatchdogHandler == null) {
+            return;
+        }
+        inst.offlineWatchdogHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    boolean online = hasRealInternet();
+                    if (online != inst.lastProbeOnline) {
+                        Log.i(TAG, "wakeup probe: internet " + (online ? "UP" : "DOWN")
+                                + " -> switching mode now");
+                        inst.lastProbeOnline = online;
+                        inst.offlineProbeUpCount = 0;
+                        inst.offlineProbeDownCount = 0;
+                        inst.applyConnectivityMode(online, "wakeup");
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "wakeup probe error: " + e.getMessage());
+                }
+            }
+        });
+    }
+
+    /** 自動切換的入口 - 網路狀態變化或 App 啟動 (speech_ready 之後) 都會執行。
+     *
+     *  2026-08 修正 (實測網路飄忽的教訓):
+     *  - 轉「離線」即時生效 (挽救講不了話的情況, 代價低)
+     *  - 轉「雲端」要 MODE_SWITCH_MIN_INTERVAL_MS 內沒有再翻轉才執行, 避免
+     *    stop/start 文法循環使中間那段時間講話完全沒反應
+     *  - 只有 lastGrammarBuildOk==false 時才重新構建; 已經構建過就直接
+     *    startGrammar, 不要無謂地 destroyASR。 */
+    private void applyConnectivityMode(boolean connected, String reason) {
+        // 2026-09: 舊 !speechReady early-return 已刪 (field 一併移除)。
+        if (!offlineGrammarAutoSwitch) {
+            return;
+        }
+        Log.i(TAG, "applyConnectivityMode(" + connected + ", " + reason + ")"
+                + " offlineActive=" + offlineGrammarActive
+                + " lastGrammarBuildOk=" + lastGrammarBuildOk);
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (!connected) {
+            if (offlineGrammarActive || grammarInitInFlight) {
+                return; // 已經在離線模式/已經構建中, 不用重複開啟
+            }
+            // 確保 ASR binding 走 iFlytek (zh_cn), 這個 call 對已綁定的情況無害
+            try {
+                robot.speech_setRecognizedLanguage("zh_cn");
+            } catch (Exception e) {
+                Log.w(TAG, "setRecognizedLanguage failed during auto switch: " + e.getMessage());
+            }
+            if (!lastGrammarBuildOk) {
+                // 未構建過/上次失敗 - 用預設文法構建, 成功之後 callback 會接手 start
+                pendingOfflineEnable = true;
+                String bnf = readDefaultGrammarAsset();
+                if (bnf != null) {
+                    UbxErrorCode.API_ERROR_CODE code = doInitGrammar(bnf);
+                    Log.i(TAG, "auto init grammar -> " + code);
+                } else {
+                    pendingOfflineEnable = false;
+                    Log.w(TAG, "auto init grammar: default asset unreadable");
+                }
+            } else {
+                UbxErrorCode.API_ERROR_CODE code = doStartGrammar();
+                Log.i(TAG, "auto start grammar -> " + code);
+                if (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+                    lastModeSwitchMs = now;
+                    publishOfflineMode(true, reason);
+                }
+                // start 失敗: 不要立即重構建 - 等下個 watchdog 週期再試, 避免疊 build
+            }
+        } else {
+            // 轉雲端: 加冷卻期 - 如果 15 秒內剛切換過模式, 很可能是網路
+            // 飄忽, 不要跟著翻轉 (stop/start 文法成本高, 講什麼都沒反應更糟)
+            if (offlineGrammarActive && now - lastModeSwitchMs < MODE_SWITCH_MIN_INTERVAL_MS) {
+                Log.i(TAG, "online but within cooldown (" + (now - lastModeSwitchMs)
+                        + "ms) - keeping offline grammar mode");
+                return;
+            }
+            pendingOfflineEnable = false;
+            if (offlineGrammarActive) {
+                UbxErrorCode.API_ERROR_CODE code = doStopGrammar();
+                Log.i(TAG, "auto stop grammar -> " + code);
+                lastModeSwitchMs = now;
+                publishOfflineMode(false, reason);
+            }
+        }
+    }
+
+    private void publishOfflineMode(boolean active, String reason) {
+        EventBus.get().publish("offline_mode",
+                "{\"active\":" + active
+                        + ",\"connected\":" + lastProbeOnline
+                        + ",\"reason\":\"" + jsonSafe(reason) + "\"}");
+    }
+
+    /** 初始化 (構建) 本地文法。結果係 async - grammar_init event/callback 收貨,
+     *  errorCode==0 先算數 (lastGrammarBuildOk)。
+     *  2026-08 加防重入鎖: 構建進行中再叫呢個 method 會直接略過 - firmware
+     *  每次都 destroyASR 重建, 疊 build 會打壞剛建好的辨識 session。 */
+    private UbxErrorCode.API_ERROR_CODE doInitGrammar(final String bnf) {
+        if (grammarInitInFlight) {
+            Log.i(TAG, "doInitGrammar skipped - already in flight");
+            return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+        }
+        grammarInitInFlight = true;
+        lastGrammarBuildOk = false;
+        // 2026-09: 舊 speechReady gate 刪咗之後，呢度第一次就會直達 stub；
+        // stub 即時回 NOT_INIT 且永遠唔 callback，不及時清 flag 的話下次會誤判
+        // "already in flight" 回 SUCCEED。之前 gate 擋住所以撞唔到呢個情況。
+        UbxErrorCode.API_ERROR_CODE initCode = robot.speech_initGrammar(bnf,
+                new RobotStub.IAlpha2SpeechGrammarInitListener() {
+                    @Override
+                    public void speechGrammarInitCallback(String grammarId, int errorCode) {
+                        Log.i(TAG, "initGrammar callback: grammarId=" + grammarId
+                                + " errorCode=" + errorCode);
+                        if (errorCode == 0) {
+                            lastGrammarBuildOk = true;
+                        }
+                        EventBus.get().publish("grammar_init",
+                                "{\"grammarId\":\"" + jsonSafe(grammarId == null ? "" : grammarId)
+                                        + "\",\"errorCode\":" + errorCode + "}");
+                        // 自動切換: 構建成功而又有 pending start 就接手開始辨識
+                        if (errorCode == 0 && pendingOfflineEnable && offlineGrammarAutoSwitch) {
+                            pendingOfflineEnable = false;
+                            UbxErrorCode.API_ERROR_CODE startCode = doStartGrammar();
+                            Log.i(TAG, "pending auto start grammar -> " + startCode);
+                            if (startCode == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+                                lastModeSwitchMs = android.os.SystemClock.elapsedRealtime();
+                                publishOfflineMode(true, "auto");
+                            }
+                        }
+                        grammarInitInFlight = false;
+                    }
+                });
+        if (initCode != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+            // 即時失敗（例如 stub NOT_INIT）唔會有 callback 嚟清 flag，呢度即刻清，
+            // 否則下次會誤判 "already in flight"。
+            grammarInitInFlight = false;
+        }
+        return initCode;
+    }
+
+    private UbxErrorCode.API_ERROR_CODE doStartGrammar() {
+        offlineGrammarActive = true;
+        UbxErrorCode.API_ERROR_CODE startCode = robot.speech_startGrammar(
+                new RobotStub.IAlpha2SpeechGrammarListener() {
+                    @Override
+                    public void onSpeechGrammarResult(int type, String result) {
+                        // type: firmware SpeechManager d.a(int,String) 那邊
+                        // "语法识别成功:<result> type:<n>" 的同一個 int -
+                        // type=1 是辨識文字結果 (iFlytek JSON {"text":..,"rc":..}),
+                        // 其他 type 是 focus/state 類訊號, 原樣轉發給前端查看。
+                        String text = extractGrammarResultText(result);
+                        EventBus.get().publish("grammar_result",
+                                "{\"type\":" + type
+                                        + ",\"raw\":\"" + jsonSafe(result == null ? "" : result)
+                                        + "\",\"text\":\"" + jsonSafe(text == null ? "" : text) + "\"}");
+                    }
+
+                    @Override
+                    public void onSpeechGrammarError(int errorCode) {
+                        Log.w(TAG, "startGrammar onError: " + errorCode);
+                        EventBus.get().publish("grammar_error",
+                                "{\"errorCode\":" + errorCode + "}");
+                    }
+                });
+        if (startCode != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+            // SDK 層面立即失敗 (例如未 bind) 就不要進入離線模式, 等 asr_result
+            // 路徑照常運作。
+            offlineGrammarActive = false;
+        }
+        return startCode;
+    }
+
+    private UbxErrorCode.API_ERROR_CODE doStopGrammar() {
+        offlineGrammarActive = false;
+        pendingOfflineEnable = false;
+        return robot.speech_stopGrammar();
+    }
+
+    /** 監察網路連線狀態 - CONNECTIVITY_ACTION 在 API 22 (這台機器) 仍是標準做法。
+     *  收到廣播就在背景 thread 做真正網路探測再 applyConnectivityMode() - 探測
+     *  是 blocking call (TCP connect), 不可以放到 main thread。 */
+    private final android.content.BroadcastReceiver connectivityReceiver =
+            new android.content.BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, android.content.Intent intent) {
+                    new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            boolean online = hasRealInternet();
+                            lastProbeOnline = online;
+                            applyConnectivityMode(online, "connectivity_change");
+                        }
+                    }, "conn-probe").start();
+                }
+            };
+
+    private void registerConnectivityReceiver() {
+        android.content.IntentFilter filter =
+                new android.content.IntentFilter(android.net.ConnectivityManager.CONNECTIVITY_ACTION);
+        registerReceiver(connectivityReceiver, filter);
+    }
+
+    // -- 真實 MCU 韌體版本查詢 (2026-08 新增 chest/head) ---------------------------
+    /**
+     * 判斷一段 raw serial 回調是否為版本幀 (CHEST_READ_VERSION / HEADER_READ_VERSION 51)。
+     * 標準 wire 格式: F8 8F len 01/00 00 33 payload sum ED，其中 33h=51。
+     * 為兼容多次連幀或 SDK 預剝 header 的情況，掃描整段 bytes 內任何 F8 8F 窗口。
+     */
+    private static boolean isVersionFrame(byte[] bytes, int len, byte expectedCmd) {
+        if (bytes == null || len < 8) return false;
+        int n = Math.min(len, bytes.length);
+        for (int i = 0; i + 5 < n; i++) {
+            if ((bytes[i] & 0xFF) == 0xF8 && (bytes[i + 1] & 0xFF) == 0x8F) {
+                if (i + 5 >= n) continue;
+                if (bytes[i + 5] == expectedCmd) {
+                    // 進一步確認：len byte 與實際長度大致相符 (7+payloadLen)
+                    // 不強校驗 checksum，避免韌體差異導致誤判
+                    return true;
+                }
+            }
+        }
+        // 兼容 SDK 已剝頭只剩 payload 的極端情況：單字節就是 cmd 的回顯
+        // 此分支由外層 fallback 邏輯處理，這裡只認標準幀
+        return false;
+    }
+
+    /**
+     * 從版本幀中抽出 payload 並解碼為可讀字串。
+     * 1) 若為標準 F8 8F 幀，payload = bytes[6 .. 6+payloadLen-1], payloadLen = (lenByte &0xFF)-7
+     * 2) 若非標準幀（fallback），整段 bytes 即 payload
+     * 解碼策略：先嘗試 ASCII 打印字符，若全為可打印則直接返回；否則返回點分十進制 (例如 1.18.3)
+     * 或 hex 兜底。
+     */
+    private static String parseVersionFrame(byte[] bytes, int len) {
+        if (bytes == null || len <= 0) return null;
+        int n = Math.min(len, bytes.length);
+        byte[] payload = null;
+        int payloadLen = 0;
+        // 嘗試按標準幀解析
+        for (int i = 0; i + 5 < n; i++) {
+            if ((bytes[i] & 0xFF) == 0xF8 && (bytes[i + 1] & 0xFF) == 0x8F) {
+                if (bytes[i + 5] == RobotWire.CHEST_READ_VERSION || bytes[i + 5] == RobotWire.HEADER_READ_VERSION) {
+                    int lenByte = bytes[i + 2] & 0xFF;
+                    int pl = lenByte - 7;
+                    if (pl < 0) pl = 0;
+                    if (i + 6 + pl <= n) {
+                        payload = new byte[pl];
+                        System.arraycopy(bytes, i + 6, payload, 0, pl);
+                        payloadLen = pl;
+                        break;
+                    }
+                }
+            }
+        }
+        if (payload == null) {
+            // Fallback：整段即 payload（SDK 可能已拆掉 header）
+            // 但若開頭仍是 F8 8F 則跳過 header 嘗試最後一次剝離
+            if (n >= 6 && (bytes[0] & 0xFF) == 0xF8 && (bytes[1] & 0xFF) == 0x8F) {
+                int lenByte = bytes[2] & 0xFF;
+                int pl = lenByte - 7;
+                if (pl > 0 && 6 + pl <= n) {
+                    payload = new byte[pl];
+                    System.arraycopy(bytes, 6, payload, 0, pl);
+                    payloadLen = pl;
+                } else {
+                    payload = java.util.Arrays.copyOf(bytes, n);
+                    payloadLen = n;
+                }
+            } else {
+                payload = java.util.Arrays.copyOf(bytes, n);
+                payloadLen = n;
+            }
+        }
+        if (payloadLen == 0) return "(empty payload)";
+        // 去掉尾部 0x00 padding
+        int trim = payloadLen;
+        while (trim > 0 && payload[trim - 1] == 0) trim--;
+        if (trim == 0) return toHex(payload, payloadLen);
+        // 先嘗試直接全可打印
+        boolean allPrintable = true;
+        for (int i = 0; i < trim; i++) {
+            int b = payload[i] & 0xFF;
+            if (b < 0x20 || b > 0x7E) { allPrintable = false; break; }
+        }
+        if (allPrintable) {
+            String s = new String(payload, 0, trim, StandardCharsets.US_ASCII).trim();
+            s = s.replaceAll("[^A-Za-z0-9._\\-]", "");
+            if (!s.isEmpty()) return s;
+        }
+        // 兼容真機實測：payload 開頭夾帶 cmd(0x33) + length(0x00) 等非打印前綴
+        // 掃描最長可打印連續段（例如 "ALPHA2Q-CHEST-B-V352-171031"）
+        int bestStart = -1, bestLen = 0, curStart = -1;
+        for (int i = 0; i <= trim; i++) {
+            boolean printable = i < trim && (payload[i] & 0xFF) >= 0x20 && (payload[i] & 0xFF) <= 0x7E;
+            if (printable) {
+                if (curStart == -1) curStart = i;
+            } else {
+                if (curStart != -1) {
+                    int curLen = i - curStart;
+                    if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; }
+                    curStart = -1;
+                }
+            }
+        }
+        if (bestLen >= 3) {
+            String s = new String(payload, bestStart, bestLen, StandardCharsets.US_ASCII).trim();
+            s = s.replaceAll("[^A-Za-z0-9._\\-]", "");
+            // 若最長段看起來像版本（含 V 或 - 或 . 或 ALPHA），直接返回
+            if (s.length() >= 3 && (s.contains("V") || s.contains("-") || s.contains(".") || s.contains("ALPHA"))) {
+                return s;
+            }
+            if (s.length() >= 4) return s;
+        }
+        // 二進制版本號：常見為 3-4 bytes 各為 major/minor/patch/build
+        if (trim <= 8) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < trim; i++) {
+                if (i > 0) sb.append('.');
+                sb.append(payload[i] & 0xFF);
+            }
+            return sb.toString() + " (hex:" + toHex(payload, trim) + ")";
+        }
+        // 兜底：返回過濾後的 ASCII + hex 對照，方便日後診斷
+        String filtered = new String(payload, 0, trim, StandardCharsets.US_ASCII).replaceAll("[^\\x20-\\x7E]", "").trim();
+        if (!filtered.isEmpty() && filtered.length() >= 4) return filtered;
+        return toHex(payload, trim);
+    }
+
+    /**
+     * 同步阻塞查詢胸口 MCU 真實韌體版本。
+     * 必須在非主 thread 調用 (HttpServer worker thread)，否則 waitForInitComplete 會立刻返回。
+     * @param timeoutMs 最多等幾耐 (建議 1500-2000ms)
+     * @return 解碼後版本字串，失敗回 null
+     */
+    private String queryChestFirmwareVersion(long timeoutMs) {
+        // pure-direct: 经 /dev/ttyS1 直发 cmd 51（旧 robot.chest_readFirmwareVersion 走 binder，已停用）。
+        // 此方法已保证不在主 thread。
+        if (!directChestReady()) {
+            Log.w(TAG, "queryChestFirmwareVersion: chest not ready (pure-direct)");
+            return null;
+        }
+        CountDownLatch latch = new CountDownLatch(1);
+        chestVersionLatch = latch;
+        chestVersionRaw = null;
+        chestVersionLen = 0;
+        boolean sent = HardwareDirectManager.get(this).chest().readVersion();
+        Log.i(TAG, "chest_readFirmwareVersion direct send -> " + sent);
+        if (!sent) {
+            chestVersionLatch = null;
+            // Fallback：用标准长式 raw 帧直接发送 (F8 8F 07 00 00 33 3A ED)
+            try {
+                byte[] rawFrame = new byte[]{(byte)0xF8,(byte)0x8F,0x07,0x00,0x00,0x33,0x3A,(byte)0xED};
+                CountDownLatch latch2 = new CountDownLatch(1);
+                chestVersionLatch = latch2;
+                boolean sent2 = HardwareDirectManager.get(this).chest().sendRaw(rawFrame);
+                Log.i(TAG, "chest_sendRaw fallback send -> " + sent2);
+                if (sent2) {
+                    boolean ok2 = latch2.await(timeoutMs, TimeUnit.MILLISECONDS);
+                    if (ok2 && chestVersionRaw != null) {
+                        String v = parseVersionFrame(chestVersionRaw, chestVersionLen);
+                        Log.i(TAG, "chest version (raw fallback) raw=" + toHex(chestVersionRaw,chestVersionLen) + " parsed=" + v);
+                        return v;
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "chest raw fallback failed", e);
+            } finally {
+                chestVersionLatch = null;
+            }
+            return null;
+        }
+        try {
+            boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+            if (!ok) {
+                Log.w(TAG, "queryChestFirmwareVersion timeout " + timeoutMs + "ms, try raw fallback");
+                // timeout 仍無回覆，補一次 raw 幀再等半個週期
+                chestVersionLatch = null;
+                try {
+                    byte[] rawFrame = new byte[]{(byte)0xF8,(byte)0x8F,0x07,0x00,0x00,0x33,0x3A,(byte)0xED};
+                    CountDownLatch latch2 = new CountDownLatch(1);
+                    chestVersionLatch = latch2;
+                    chestVersionRaw = null; chestVersionLen = 0;
+                    boolean sent2 = HardwareDirectManager.get(this).chest().sendRaw(rawFrame);
+                    Log.i(TAG, "chest timeout raw fallback send -> " + sent2);
+                    if (sent2) {
+                        boolean ok2 = latch2.await(Math.max(800, timeoutMs/2), TimeUnit.MILLISECONDS);
+                        if (ok2 && chestVersionRaw != null) {
+                            String v2 = parseVersionFrame(chestVersionRaw, chestVersionLen);
+                            Log.i(TAG, "chest version (timeout raw fallback) raw=" + toHex(chestVersionRaw,chestVersionLen) + " parsed=" + v2);
+                            return v2;
+                        }
+                    }
+                } catch (Exception e2) {
+                    Log.w(TAG, "chest timeout raw fallback failed", e2);
+                } finally {
+                    chestVersionLatch = null;
+                }
+                return null;
+            }
+            if (chestVersionRaw == null) {
+                Log.w(TAG, "queryChestFirmwareVersion latch counted but raw==null");
+                return null;
+            }
+            String v = parseVersionFrame(chestVersionRaw, chestVersionLen);
+            Log.i(TAG, "chest version raw=" + toHex(chestVersionRaw, chestVersionLen) + " parsed=" + v);
+            return v;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            chestVersionLatch = null;
+        }
+    }
+
+    /**
+     * 2026-09 新增: UUID/SN 直讀回覆是否為 cmd 55 幀 (CHEST_READ_SID_EEPROM)。
+     * 同 isVersionFrame 的掃描邏輯, 認標準 F8 8F 長式幀的 cmd byte (i+5)。
+     * 已剝頭只剩 payload 的情況由外層 fallback (payload[0]==55) 覆蓋。
+     */
+    private static boolean isUuidFrame(byte[] bytes, int len) {
+        if (bytes == null || len < 8) return false;
+        int n = Math.min(len, bytes.length);
+        for (int i = 0; i + 5 < n; i++) {
+            if ((bytes[i] & 0xFF) == 0xF8 && (bytes[i + 1] & 0xFF) == 0x8F) {
+                if (i + 5 >= n) continue;
+                if (bytes[i + 5] == RobotWire.CHEST_READ_SID_EEPROM) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 2026-09 新增: 從 cmd 55 回覆幀抽出 SN/UUID 字串。
+     * 實機證據 (見 misc/set_uuid comment 的 hex dump
+     * "f8 8f 28 01 00 37 00 42 41 ... 00 00...00 3c ed"): 標準長式幀,
+     * cmd=0x37 後的 payload = [flag byte 0x00] + SN ASCII + 0x00 padding。
+     * 解碼和 RobotEventReceiver.decodeUuidExtra / 舊 broadcast 路徑完全一致:
+     * ASCII 解碼 -> 切掉第一個 \0 之後的東西 -> 白名單只留英數/-/_ (蓋掉舊 SN
+     * 較長時殘留的非零垃圾 byte, 見 2026-08 v4 修正)。
+     * 找不到 cmd 55 幀 / 洗完是空字串就回 null。
+     */
+    private static String parseRobotUuidFrame(byte[] bytes, int len) {
+        if (bytes == null || len <= 0) return null;
+        int n = Math.min(len, bytes.length);
+        byte[] snBytes = null;
+        for (int i = 0; i + 5 < n; i++) {
+            if ((bytes[i] & 0xFF) == 0xF8 && (bytes[i + 1] & 0xFF) == 0x8F) {
+                if (i + 5 >= n) continue;
+                if (bytes[i + 5] != RobotWire.CHEST_READ_SID_EEPROM) continue;
+                int lenByte = bytes[i + 2] & 0xFF;
+                int pl = lenByte - 7;
+                if (pl < 0) pl = 0;
+                if (i + 6 + pl <= n) {
+                    snBytes = new byte[pl];
+                    System.arraycopy(bytes, i + 6, snBytes, 0, pl);
+                    break;
+                }
+            }
+        }
+        if (snBytes == null) {
+            // Fallback: 已剝頭的 payload (bytes[0] 即 cmd, 見 stripSerialFrame /
+            // 舊 AIDL onListenSerialPortRcvData 格式)。
+            byte[] payload = stripSerialFrame(bytes);
+            if (payload != null && payload.length >= 1
+                    && payload[0] == RobotWire.CHEST_READ_SID_EEPROM) {
+                snBytes = java.util.Arrays.copyOfRange(payload, 1, payload.length);
+            } else if (n >= 1 && bytes[0] == RobotWire.CHEST_READ_SID_EEPROM) {
+                snBytes = java.util.Arrays.copyOfRange(bytes, 1, n);
+            }
+        }
+        if (snBytes == null || snBytes.length == 0) return null;
+        String s;
+        try {
+            s = new String(snBytes, StandardCharsets.US_ASCII);
+        } catch (Exception e) {
+            return null;
+        }
+        // 2026-09 實測修正 (logcat 真幀 f8 8f 28 00 00 37 00 42 41...):
+        // payload 第一個 byte 是 flag 0x00, 舊寫法 indexOf('\0') 切第一個 \0
+        // 會切出空字串 -> 回 null ->「無法讀取 uuid」。先跳過開頭的 flag/padding
+        // (SN 合法字元只有英數/-/_), 再切第一個 \0 之後的尾部 padding, 最後白名單
+        // 過濾。注意尾段可能有非零殘留 (舊 SN 較長時): 白名單留唔到佢哋, 完整值照
+        // 顯示由用戶對實體貼紙核對 (見 misc/request_uuid 的 log)。
+        int start = 0;
+        while (start < s.length() && !isUuidChar(s.charAt(start))) start++;
+        s = s.substring(start);
+        int cut = s.indexOf('\0');
+        if (cut >= 0) {
+            s = s.substring(0, cut);
+        }
+        s = s.replaceAll("[^A-Za-z0-9\\-_]", "").trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    /** SN/UUID 合法字元 (見 misc/set_uuid 輸入驗證): 英數/-/_ 。 */
+    private static boolean isUuidChar(char c) {
+        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+                || (c >= '0' && c <= '9') || c == '-' || c == '_';
+    }
+
+    /** 已知 SN 版式 (實機貼紙 + uuidGenerateRandom 範圍): BAF006UBT + 8 digits。 */
+    private static final java.util.regex.Pattern KNOWN_SN_PATTERN =
+            java.util.regex.Pattern.compile("BAF006UBT\\d{8}");
+
+    /** set_uuid 經本 App 成功寫入的上次 SN 長度, 下次讀回用來截尾 (見
+     *  truncateUuidTail)。無記錄 (-1) 就行 pattern/大小寫規則。 */
+    private static final String PREF_UUID_WRITTEN_LEN = "uuid_written_len";
+
+    /**
+     * 2026-09 新增: 斬走 EEPROM 尾段非零殘留, 只留真 SN。
+     * 背景: 用戶已對實體貼紙確認, 真 SN 係 17 字 "BAF006UBT10000001",
+     * 讀返嚟 31 字尾段 "yy44567oumamae" 係舊長 SN 被短 SN 蓋過之後的殘留
+     * (EEPROM 欄位定長, 寫幾多 byte 就蓋幾多, 其餘唔郁)。規則按優先序:
+     * 1) preferredLen (本 App 上次 set_uuid 寫入長度, 有記錄就最準);
+     * 2) BAF006UBT+8digits 版式對中就取該段;
+     * 3) UBTech SN 全大寫+數字, 第一個小寫字母起即殘留 (截完要有返 >=8 字,
+     *    否則當 SN 本身含小寫, 回全串唔斬);
+     * 4) 乜都對唔中就回全串 (寧願顯示多唔顯示少)。
+     * 回 null 只代表輸入本身空/全非法。
+     */
+    static String truncateUuidTail(String s, int preferredLen) {
+        if (s == null || s.isEmpty()) return null;
+        if (preferredLen >= 1 && preferredLen <= 31 && s.length() > preferredLen) {
+            String t = s.substring(0, preferredLen).trim();
+            if (!t.isEmpty()) return t;
+        }
+        java.util.regex.Matcher m = KNOWN_SN_PATTERN.matcher(s);
+        if (m.find()) return m.group();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= 'a' && c <= 'z') {
+                String t = s.substring(0, i).replaceAll("[^A-Za-z0-9\\-_]", "").trim();
+                if (t.length() >= 8) return t;
+                break;
+            }
+        }
+        return s;
+    }
+
+    /**
+     * 2026-09 新增: 同步阻塞查詢胸口 EEPROM 的 SN/UUID (pure-direct)。
+     * 取代 robot.requestRobotUUID() 的 broadcast 路徑 —— 機身已無 alpha2services,
+     * 那個 broadcast 發出去永遠無人回覆 "com.ubtechinc.robot_uuid.info",
+     * 這就是「無法讀取 uuid」的根因。
+     * 必須在非主 thread 調用 (HttpServer worker thread), 和
+     * queryChestFirmwareVersion() 同一個約束。
+     * @param timeoutMs 最多等幾耐 (建議 2000ms)
+     * @return 乾淨 SN 字串, 失敗回 null
+     */
+    private String queryChestRobotUuid(long timeoutMs) {
+        if (!directChestReady()) {
+            Log.w(TAG, "queryChestRobotUuid: chest not ready (pure-direct)");
+            return null;
+        }
+        CountDownLatch latch = new CountDownLatch(1);
+        chestUuidLatch = latch;
+        chestUuidRaw = null;
+        chestUuidLen = 0;
+        boolean sent;
+        try {
+            sent = HardwareDirectManager.get(this).chest().readSidEeprom();
+        } catch (Exception e) {
+            Log.w(TAG, "queryChestRobotUuid send failed", e);
+            chestUuidLatch = null;
+            return null;
+        }
+        Log.i(TAG, "chest_readSidEeprom direct send -> " + sent);
+        if (!sent) {
+            chestUuidLatch = null;
+            return null;
+        }
+        try {
+            boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+            if (!ok) {
+                Log.w(TAG, "queryChestRobotUuid timeout " + timeoutMs + "ms");
+                return null;
+            }
+            if (chestUuidRaw == null) {
+                Log.w(TAG, "queryChestRobotUuid latch counted but raw==null");
+                return null;
+            }
+            String uuid = parseRobotUuidFrame(chestUuidRaw, chestUuidLen);
+            // 2026-09: 斬尾 (見 truncateUuidTail) + 記 log 對照: raw 係全幀 hex,
+            // parsed 係截完的真 SN。
+            if (uuid != null) {
+                int prefLen = -1;
+                try {
+                    prefLen = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                            .getInt(PREF_UUID_WRITTEN_LEN, -1);
+                } catch (Throwable ignore) {
+                }
+                uuid = truncateUuidTail(uuid, prefLen);
+            }
+            Log.i(TAG, "chest uuid raw=" + toHex(chestUuidRaw, chestUuidLen) + " parsed=" + uuid);
+            return uuid;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            chestUuidLatch = null;
+        }
+    }
+
+    // 2026-09 刪除: queryHeaderFirmwareVersion() - 無 caller (頭版本無 endpoint、
+    // 前端無入口)。胸板 queryChestFirmwareVersion() 保留。
+
+    // -- 胸口升級實作 (48/49/50，鏡像 alpha2services h.a.a$b) ---------------------------
+    private int getBatteryPercentForUpgrade() {
+        try {
+            android.content.IntentFilter f = new android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED);
+            android.content.Intent b = registerReceiver(null, f);
+            if (b == null) return -1;
+            int level = b.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+            int scale = b.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+            int status = b.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+            boolean charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL;
+            if (charging) return 100;
+            if (level < 0 || scale <= 0) return -1;
+            return (level * 100) / scale;
+        } catch (Exception e) { return -1; }
+    }
+
+    private boolean isPowerEnoughForUpgrade() {
+        int pct = getBatteryPercentForUpgrade();
+        return pct < 0 || pct >= 50; // 未知時放行，已知需 >=50，與 AlphaMainSeviceImpl.java:13 MIN_UPDATE_POWER 一致
+    }
+
+    private byte[] md5OfFile(java.io.File file) throws Exception {
+        java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+        try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) md.update(buf, 0, n);
+        }
+        return md.digest();
+    }
+
+    private boolean waitForChestAck(byte expectedCmd, long timeoutMs) {
+        chestUpgradeExpectedCmd = expectedCmd;
+        chestUpgradeAckStatus = -1;
+        CountDownLatch latch = new CountDownLatch(1);
+        chestUpgradeLatch = latch;
+        try {
+            boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+            if (!ok) {
+                Log.w(TAG, "chest upgrade ack timeout cmd=" + expectedCmd + " raw=" + (chestVersionRaw!=null?toHex(chestVersionRaw,chestVersionLen):"null"));
+                // 超時後印最近一次 chest_rcv 原始幀以便診斷 170 頁這類數據校驗失敗
+                return false;
+            }
+            if (expectedCmd == 49 && chestUpgradeAckStatus != 0) {
+                Log.w(TAG, "chest page ack status=" + chestUpgradeAckStatus + " (page data may be rejected, check offset " + (chestUpgradeCurrentPage*128) + ")");
+                return false;
+            }
+            return true;
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+        finally { chestUpgradeLatch = null; }
+    }
+
+    private void resetChestUpgradeState() {
+        try {
+            chestUpgradeLatch = null;
+            chestVersionLatch = null;
+            chestUuidLatch = null;
+            Thread.sleep(400);
+        } catch (Exception ignored) {}
+    }
+
+    /** 真正升級線程：48(檔長)->49*2048頁(128B)->50(MD5)，鏡像 h.a.a$b:63，加入重啟後首頁即失敗的復位 */
+    private void doChestUpgradeFrom(final java.io.File file, final int startPage) {
+        final int fileLen = (int) file.length();
+        final int totalPages = (fileLen + 127) / 128;
+        chestUpgradeTotalPages = totalPages;
+        chestUpgradeCurrentPage = 0;
+        chestUpgradeProgress = 0;
+        chestUpgradeStatus = "start";
+        EventBus.get().publish("chest_upgrade_progress", "{\"state\":\"start\",\"progress\":0,\"total\":"+totalPages+"}");
+        Log.i(TAG, "chest upgrade start len=" + fileLen + " pages=" + totalPages);
+        // 起始前強制復位，避免重啟後首頁即 01 失敗（殘留升級態）
+        resetChestUpgradeState();
+        try { Thread.sleep(400); } catch (InterruptedException ignored) {}
+        try {
+            // pure-direct: 升级经 /dev/ttyS1 直发 48/49/50。
+            if (!directChestReady()) { throw new Exception("chest not ready (pure-direct)"); }
+            // 48 START — 若連續3次仍 01，嘗試先發 END 清狀態再重試
+            chestUpgradeStatus = "sending start";
+            boolean startOk = false;
+            for (int retry = 0; retry < 3; retry++) {
+                boolean s = HardwareDirectManager.get(this).chest().startUpdate(fileLen);
+                if (!s) { Thread.sleep(500); continue; }
+                if (waitForChestAck((byte)48, 5000)) { startOk = true; break; }
+                if (retry == 1) { Log.w(TAG, "start retry with reset"); resetChestUpgradeState(); try{Thread.sleep(600);}catch(Exception ignored){} }
+            }
+            if (!startOk) throw new Exception("start ack timeout");
+            Thread.sleep(150); // 原廠線程無連發，給 MCU 準備
+            chestUpgradeStatus = "sending pages";
+            // 49 PAGES — 每頁間 30ms 間隔，避免連發撞上心跳 8d 幀；失敗頁會完整印 hex 供定位 170 頁這類點
+            // 若 startPage>0，跳過前面已成功的頁（斷點續傳，解決 170 頁後重試首頁即 01）
+            try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
+                // 先跳過 startPage*128 字節
+                if (startPage > 0) {
+                    long toSkip = (long) startPage * 128L;
+                    long skipped = 0;
+                    while (skipped < toSkip) {
+                        long n = in.skip(toSkip - skipped);
+                        if (n <= 0) break;
+                        skipped += n;
+                    }
+                    Log.i(TAG, "resume from page " + startPage + " skipped=" + skipped);
+                }
+                byte[] pageBuf = new byte[128];
+                int pageIdx = startPage;
+                int read;
+                while ((read = in.read(pageBuf, 0, 128)) != -1) {
+                    if (Thread.currentThread().isInterrupted()) throw new Exception("interrupted");
+                    byte[] sendBuf = java.util.Arrays.copyOf(pageBuf, read);
+                    boolean pageOk = false;
+                    for (int retry = 0; retry < 3; retry++) {
+                        boolean s = HardwareDirectManager.get(this).chest().updatePage(sendBuf, read);
+                        if (!s) { Thread.sleep(300); continue; }
+                        if (waitForChestAck((byte)49, 4000)) { pageOk = true; break; }
+                        Log.w(TAG, "page " + pageIdx + " retry " + retry + " dataHead=" + toHex(sendBuf, Math.min(16,read)));
+                        Thread.sleep(200);
+                    }
+                    if (!pageOk) {
+                        Log.e(TAG, "page " + pageIdx + " failed data=" + toHex(sendBuf, Math.min(32,read)) + " offset=" + (pageIdx*128));
+                        throw new Exception("page " + pageIdx + " failed after 3 retries");
+                    }
+                    pageIdx++;
+                    chestUpgradeCurrentPage = pageIdx;
+                    chestUpgradeProgress = (pageIdx * 100) / totalPages;
+                    EventBus.get().publish("chest_upgrade_progress",
+                        "{\"state\":\"page\",\"page\":"+pageIdx+",\"total\":"+totalPages+",\"progress\":"+chestUpgradeProgress+"}");
+                    if (pageIdx % 20 == 0) Log.i(TAG, "chest page " + pageIdx + "/" + totalPages + " " + chestUpgradeProgress + "%");
+                    Thread.sleep(30);
+                }
+            }
+            // 50 END (MD5)
+            chestUpgradeStatus = "sending end";
+            byte[] md5 = md5OfFile(file);
+            Log.i(TAG, "chest upgrade md5 " + toHex(md5, md5.length));
+            boolean endOk = false;
+            for (int retry = 0; retry < 3; retry++) {
+                boolean s = HardwareDirectManager.get(this).chest().endUpdate(md5);
+                if (!s) { Thread.sleep(500); continue; }
+                if (waitForChestAck((byte)50, 5000)) { endOk = true; break; }
+            }
+            if (!endOk) throw new Exception("end ack timeout");
+            chestUpgradeProgress = 100;
+            chestUpgradeStatus = "success";
+            EventBus.get().publish("chest_upgrade_done", "{\"ok\":true,\"progress\":100}");
+            Log.i(TAG, "chest upgrade success");
+            // 成功後由用戶手動重啟或自動重啟（alpha2services 原流程會重啟）
+            EventBus.get().publish("chest_upgrade_progress", "{\"state\":\"success\",\"progress\":100}");
+        } catch (Exception e) {
+            chestUpgradeStatus = "failed: " + e.getMessage();
+            Log.w(TAG, "chest upgrade failed", e);
+            EventBus.get().publish("chest_upgrade_done", "{\"ok\":false,\"error\":\"" + jsonSafe(e.getMessage()) + "\"}");
+            EventBus.get().publish("chest_upgrade_progress", "{\"state\":\"failed\",\"error\":\"" + jsonSafe(e.getMessage()) + "\"}");
+        } finally {
+            chestUpgradeInProgress = false;
+            chestUpgradeThread = null;
+        }
+    }
+
+    public synchronized String startChestUpgrade() { return startChestUpgradeFrom(0); }
+    public synchronized String startChestUpgradeFrom(int startPage) {
+        if (chestUpgradeInProgress) return "already running";
+        java.io.File f = new java.io.File("/sdcard/AlphaII_CHEST_kernel.bin");
+        if (!f.exists()) return "file not found: /sdcard/AlphaII_CHEST_kernel.bin";
+        if (f.length() != 262144) Log.w(TAG, "chest file size unusual: " + f.length());
+        if (!isPowerEnoughForUpgrade()) {
+            int pct = getBatteryPercentForUpgrade();
+            return "power not enough (" + pct + "%), need >=50%";
+        }
+        // pure-direct: 就绪即直驱串口可用，不再 waitChestReady()/binder。
+        if (!directChestReady()) {
+            resetChestUpgradeState();
+            try { Thread.sleep(800); } catch (InterruptedException ignored) {}
+            if (!directChestReady()) return "chest not ready (pure-direct)";
+        }
+        if (chestUpgradeStatus.startsWith("failed")) {
+            try { Thread.sleep(800); } catch (InterruptedException ignored) {}
+            resetChestUpgradeState();
+        }
+        chestUpgradeInProgress = true;
+        chestUpgradeProgress = startPage * 100 / ((int)(f.length()+127)/128);
+        chestUpgradeCurrentPage = startPage;
+        chestUpgradeStatus = "starting from " + startPage;
+        final int sp = startPage;
+        chestUpgradeThread = new Thread(new Runnable() { @Override public void run() { doChestUpgradeFrom(f, sp); } }, "ChestUpgrade");
+        chestUpgradeThread.start();
+        return null;
+    }
+// (2026-09: 兼容舊 doChestUpgrade(File) 轉調已刪 - 全部 caller 直接用
+// doChestUpgradeFrom(file, startPage)。)
+
+    public String getChestUpgradeStatusJson() {
+        return "{\"inProgress\":" + chestUpgradeInProgress + ",\"progress\":" + chestUpgradeProgress
+            + ",\"currentPage\":" + chestUpgradeCurrentPage + ",\"totalPages\":" + chestUpgradeTotalPages
+            + ",\"status\":\"" + jsonSafe(chestUpgradeStatus) + "\"}";
     }
 
     /** Formats raw serial bytes as space-separated uppercase hex, matching the format
@@ -6903,5 +9847,17 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
         }
         return sb.toString();
+    }
+
+    /** Parses "f8 8f 08 ..." style hex (spaces/colons optional, case-insensitive) back
+     *  into raw bytes for the debug/serial/send endpoint. Returns empty array on junk. */
+    private static byte[] parseHexBytes(String hex) {
+        String cleaned = hex.replaceAll("[^0-9a-fA-F]", "");
+        int n = cleaned.length() / 2;
+        byte[] out = new byte[n];
+        for (int i = 0; i < n; i++) {
+            out[i] = (byte) Integer.parseInt(cleaned.substring(i * 2, i * 2 + 2), 16);
+        }
+        return out;
     }
 }

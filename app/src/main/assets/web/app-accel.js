@@ -44,7 +44,7 @@ function toggleAccelerometer() {
   hint.textContent = on ? t("accel_turning_on_hint") : "";
   // Plain Android SensorManager, not implemented by the AIDL backend itself - same
   // single physical IMU regardless of robot SDK version.
-  return hwApi("accelerometer/set", { on: String(on) }).then(function (json) {
+  return Alpha2Api.accelerometerSet( { on: String(on) }).then(function (json) {
     if (!json.ok) {
       document.getElementById("accelToggle").checked = false;
       hint.textContent = json.error || t("accel_turn_on_failed_hint");
@@ -200,8 +200,198 @@ function drawAccelChart() {
 
 function requestUuid() {
   document.getElementById("uuidOut").innerHTML = t("uuid_querying_hint");
-  return api("misc/request_uuid");
-  // Result arrives asynchronously via the "robot_uuid" WebSocket event (see appendLog's
-  // companion handler below) rather than in this HTTP response.
+  // 2026-09 修正: 後端 misc/request_uuid 而家經 chest cmd55 直讀, HTTP response
+  // 會順手帶埋 {"ok":true,"uuid":"..."} (見 MainActivity), 不再純靠 WebSocket
+  // robot_uuid event。呢度兩個都接: HTTP 有 uuid 就即刻顯示 (唔使等 WS);
+  // WS event 照舊經 appendLog() -> uuidUpdateCard() 更新一次 (同一個值, 冪等)。
+  // HTTP ok:false 就顯示錯誤, 唔再永久停喺「查詢中」。
+  return Alpha2Api.miscRequestUuid().then(function (res) {
+    if (res && res.uuid) {
+      var clean = String(res.uuid).replace(/[^A-Za-z0-9\-_]/g, "").trim();
+      if (clean) {
+        document.getElementById("uuidOut").textContent = clean;
+        if (typeof uuidUpdateCard === "function") uuidUpdateCard(clean);
+        return res;
+      }
+    }
+    if (res && res.ok === false && res.error) {
+      document.getElementById("uuidOut").textContent = "❌ " + res.error;
+    }
+    // ok:true 但冇 uuid (舊版後端) / 仲等緊 WS event: 保持「查詢中」,
+    // WS event 到咗 appendLog 會更新。
+    return res;
+  });
 }
 
+// ---------------- UUID card 開關 (2026-08 v5 新增) ---------------------------
+// 高風險操作 (直接寫 chest EEPROM), 預設收埋內容, 用戶要自己揭開先睇到/用到。
+// 冇用 localStorage 記住狀態 — 每次入返呢個 tab / 重新整頁都預設關閉, 避免
+// 手快快留咗開住冇為意。
+
+function uuidCardToggle() {
+  const enabled = document.getElementById("uuidCardEnabled");
+  const body = document.getElementById("uuidCardBody");
+  const hint = document.getElementById("uuidCardDisabledHint");
+  const on = !!(enabled && enabled.checked);
+  if (body) body.style.display = on ? "block" : "none";
+  if (hint) hint.style.display = on ? "none" : "block";
+}
+
+// ---------------- UUID card (2026-08 v2 新增, v4 簡化做單一 card flow) -------
+// 顯示 UUID + QR code (離線生成, app-qr.js) + 更改 ID (cmd54 寫入 chest EEPROM,
+// server 端 misc/set_uuid)。QR 內容就係 robotSeq=<ID>, 同官方 app 個 bind QR
+// 一致。
+//
+// v4: 三張 card (顯示/複製/更改, 新 QR 預覽, reboot) 合併做一張, 輸入框常駐
+// 唔使再撳「更改 ID」先出現, 打字時 (oninput) 就即時喺同一個 uuidQrCanvas 換上
+// 新 QR 做預覽 (未寫入 EEPROM); 撳「寫入 EEPROM」先真係落 cmd54。輸入框留空
+// 時, canvas 顯示返現有已知嘅 UUID (uuidCardLast)。
+
+let uuidCardLast = null;
+
+function uuidUpdateCard(uuid) {
+  uuidCardLast = uuid;
+  const val = document.getElementById("uuidCardValue");
+  if (val) val.textContent = uuid || "-";
+  const status = document.getElementById("uuidWriteStatus");
+  if (status && uuid) status.textContent = t("uuid_write_done_prefix") + uuid;
+  // 輸入框有內容時代表用戶正打緊新 ID 做預覽 — 唔好用查詢返嚟嘅舊值蓋走個
+  // 預覽 QR; 輸入框空白先顯示返現有 UUID 個 QR。
+  const input = document.getElementById("uuidNewInput");
+  if (!input || !input.value.trim()) {
+    uuidDrawQr(uuid);
+  }
+}
+
+// 純畫 QR, 唔改 uuidCardLast/status — 俾 uuidUpdateCard() 同
+// uuidOnInputChange() 共用。
+function uuidDrawQr(uuid) {
+  const canvas = document.getElementById("uuidQrCanvas");
+  if (canvas && uuid) {
+    try {
+      // 2026-08 v2 修正: QR 內容係 robotSeq=<ID> 唔係淨 ID (用戶實測官方格式)。
+      qrDrawToCanvas(canvas, "robotSeq=" + uuid);
+    } catch (e) {
+      showError("QR", e);
+    }
+  }
+}
+
+// 打新 ID 時即時預覽新 QR (2026-08 v3 新增, v4 併入主 card 同一個
+// uuidQrCanvas)。純前端運算, 未寫入 EEPROM — 落 EEPROM 要另外撳
+// 「寫入 EEPROM」(uuidWriteNew())。輸入清空返顯示現有 UUID。
+function uuidOnInputChange() {
+  const input = document.getElementById("uuidNewInput");
+  const hint = document.getElementById("uuidQrHint");
+  const v = input ? input.value.trim() : "";
+  if (!v) {
+    uuidDrawQr(uuidCardLast);
+    if (hint) hint.setAttribute("data-i18n", "uuid_qr_hint"), hint.textContent = t("uuid_qr_hint");
+    return;
+  }
+  if (!/^[A-Za-z0-9\-_]{1,31}$/.test(v)) {
+    if (hint) hint.removeAttribute("data-i18n"), hint.textContent = t("uuid_preview_invalid");
+    return;
+  }
+  uuidDrawQr(v);
+  if (hint) hint.removeAttribute("data-i18n"), hint.textContent = t("uuid_preview_hint_short");
+}
+
+// 隨機碼產生器 (2026-08 v13 新增)。在已知合法的編號範圍
+// BAF006UBT10000001 ~ BAF006UBT10000504 之間隨機選一個, 填入輸入框並觸發
+// QR 預覽 — 只填好輸入框, 不會自動寫入, 用戶要自己按「寫入 EEPROM」
+// 確認才會真正寫入 EEPROM。
+function uuidGenerateRandom() {
+  const min = 10000001;
+  const max = 10000504;
+  const n = min + Math.floor(Math.random() * (max - min + 1));
+  const id = "BAF006UBT" + String(n);
+  const input = document.getElementById("uuidNewInput");
+  if (input) {
+    input.value = id;
+    uuidOnInputChange();
+  }
+}
+
+function uuidWriteNew() {
+  const input = document.getElementById("uuidNewInput");
+  const status = document.getElementById("uuidWriteStatus");
+  const v = input ? input.value.trim() : "";
+  if (!/^[A-Za-z0-9\-_]{1,31}$/.test(v)) {
+    if (status) status.textContent = t("uuid_write_invalid");
+    return;
+  }
+  if (!confirm(t("uuid_write_confirm") + "\n\n" + v)) return;
+  if (status) status.textContent = t("uuid_write_writing");
+  Alpha2Api.miscSetUuid( { value: v }).then(function (res) {
+    if (!res.ok) {
+      if (status) status.textContent = t("uuid_write_failed") + ": " + (res.error || "?");
+      return;
+    }
+    if (status) status.textContent = t("uuid_write_wrote") + v +
+        " — " + t("uuid_write_restart_hint");
+    // 寫入成功即刻將輸入框清空, 主顯示/QR 轉返做「已寫入嘅新值」— 等用戶睇到
+    // 個 flow 已經去到下一步 (reboot), 而唔係仲停喺「預覽緊」嘅狀態。
+    if (input) input.value = "";
+    const hint = document.getElementById("uuidQrHint");
+    if (hint) hint.setAttribute("data-i18n", "uuid_qr_hint"), hint.textContent = t("uuid_qr_hint");
+    uuidCardLast = v;
+    const val = document.getElementById("uuidCardValue");
+    if (val) val.textContent = v;
+    uuidDrawQr(v);
+    // 注意: alpha2services 會 cache 開機時讀到嘅 SN, 即刻 request_uuid 可能仲
+    // 顯示舊值 — 要重啟 alpha2services (或者重開機) 先會由 EEPROM 重新讀。
+  });
+}
+
+function uuidCopyId() {
+  const v = uuidCardLast || "";
+  const status = document.getElementById("uuidWriteStatus");
+  if (!v) return;
+  function done() {
+    if (status) {
+      status.textContent = t("uuid_copied");
+      setTimeout(function () {
+        if (status) status.textContent = t("uuid_write_done_prefix") + uuidCardLast;
+      }, 1500);
+    }
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(v).then(done).catch(function () { uuidCopyFallback(v, done); });
+  } else {
+    uuidCopyFallback(v, done);
+  }
+}
+
+function uuidCopyFallback(text, done) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand("copy");
+    done();
+  } catch (e) {
+    showError("copy", e);
+  }
+  document.body.removeChild(ta);
+}
+
+// UUID 卡個獨立重開機掣 (2026-09: speech tab 個 rebootRobot() 已隨離線對話卡
+// 一齊移除, 得返呢個), 用 service_config/reboot API。
+function advancedRebootRobot() {
+  const status = document.getElementById("advancedRebootStatus");
+  if (!confirm(t("service_config_reboot_confirm"))) return Promise.resolve();
+  if (status) status.textContent = t("service_config_rebooting");
+  return Alpha2Api.serviceConfigReboot().then(function (res) {
+    if (!status) return;
+    if (res && res.ok) {
+      status.textContent = t("service_config_reboot_ok");
+    } else {
+      status.textContent = t("service_config_reboot_failed_prefix") +
+        (res && res.error ? res.error : t("asr_reset_failed_unknown")) + t("service_config_reboot_failed_suffix");
+    }
+  });
+}

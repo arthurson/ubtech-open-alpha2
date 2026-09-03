@@ -172,11 +172,11 @@ function setListenLed(on) {
   if (on) {
     const headBrightness = document.getElementById("headBrightness").value;
     const eyeBrightness = document.getElementById("eyeBrightness").value;
-    api("led/head/set", { preset: "long", color: 2, brightness: headBrightness });
-    api("led/eye/set", { preset: "long", color: 2, brightness: eyeBrightness });
+    Alpha2Api.ledHeadSet( { preset: "long", color: 2, brightness: headBrightness });
+    Alpha2Api.ledEyeSet( { preset: "long", color: 2, brightness: eyeBrightness });
   } else {
-    api("led/head/set", { preset: "stop" });
-    api("led/eye/set", { preset: "stop" });
+    Alpha2Api.ledHeadSet( { preset: "stop" });
+    Alpha2Api.ledEyeSet( { preset: "stop" });
   }
 }
 
@@ -385,7 +385,7 @@ async function playTestTone() {
     btn.disabled = true;
   }
   try {
-    const resp = await hwApi("audio/testtone", {});
+    const resp = await Alpha2Api.audioTesttone( {});
     if (!resp || resp.ok === false) {
       alert("測試喇叭失敗: " + (resp && resp.error ? resp.error : "未知錯誤"));
     }
@@ -407,11 +407,11 @@ async function runAudioDiagnose() {
     btn.disabled = true;
   }
   try {
-    const resp = await hwApi("audio/diagnose", {});
+    const resp = await Alpha2Api.audioDiagnose( {});
     if (resp && resp.results) {
       alert("音頻參數掃描結果:\n\n" + resp.results);
     } else {
-      alert("音頻診斷失敗,冧唔到結果");
+      alert("音訊診斷失敗,得不到結果");
     }
   } finally {
     if (btn) {
@@ -439,9 +439,9 @@ async function startTalkDisabled_unused() {
     // origin like this panel's. There is no way to work around this in JS; the fix
     // has to be at the transport level (e.g. accessing this page via a tunnel/port
     // forward that presents as localhost to the browser, or serving over HTTPS).
-    alert("呢個瀏覽器唔俾用麥克風功能,因為呢版面用緊 http:// (非安全來源)。"
-        + "瀏覽器安全限制:麥克風/攝像頭錄音 API 只喺 https:// 或者 localhost 先開放,"
-        + "呢個係瀏覽器本身嘅政策,呢個頁面做極都繞唔過。");
+    alert("這個瀏覽器不允許使用麥克風功能,因為這個頁面用的是 http:// (非安全來源)。"
+        + "瀏覽器安全限制:麥克風/攝影機錄音 API 只有在 https:// 或者 localhost 才開放,"
+        + "這是瀏覽器本身的政策,這個頁面怎麼做都繞不過。");
     return;
   }
 
@@ -457,7 +457,7 @@ async function startTalkDisabled_unused() {
   try {
     talkStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e) {
-    alert("攞唔到麥克風權限: " + e.message);
+    alert("取得不到麥克風權限: " + e.message);
     talkActive = false;
     micMuted = false;
     if (fab) fab.classList.remove("talking");
@@ -475,7 +475,7 @@ async function startTalkDisabled_unused() {
   // too. Any failure here now falls through to the same full cleanup stopTalk() does,
   // so the FAB/state always recovers to a normal "off" state instead of wedging.
   try {
-    await hwApi("audio/play/start", {});
+    await Alpha2Api.audioPlayStart( {});
 
     talkAudioContext = new (window.AudioContext || window.webkitAudioContext)();
     talkSourceNode = talkAudioContext.createMediaStreamSource(talkStream);
@@ -548,7 +548,7 @@ function stopTalk() {
     talkStream.getTracks().forEach(function (t) { t.stop(); });
     talkStream = null;
   }
-  hwApi("audio/play/stop", {});
+  Alpha2Api.audioPlayStop( {});
 }
 
 /** Downsamples Float32 PCM from the browser's native mic sample rate to

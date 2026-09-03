@@ -34,22 +34,22 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class AudioController {
     private static final String TAG = "AudioController";
-    // 2026-08 改返 16000 (由 8000 升返上): 當初落去 8000 淨係為咗同已經永久停用
-    // 咗嘅 walkie-talkie (startTalk() 而家已經無條件直接 return, 見 app-mic.js)
-    // 上傳嗰條路對齊 sample rate - 而家嗰個理由已經唔存在, 用戶指定連埋
-    // walkie-talkie 嗰兩個檔案 (AudioPlaybackController.java, app-mic.js 嘅
-    // TALK_TARGET_SAMPLE_RATE) 都一齊拉返上 16000, 保持三腳一致, 即使
-    // walkie-talkie 依家實際用唔到。
+    // 2026-08 改回 16000 (由 8000 升回上): 當初改成 8000 只是為了和已經永久停用
+    // 的 walkie-talkie (startTalk() 現在已經無條件直接 return, 見 app-mic.js)
+    // 上傳那條路對齊 sample rate - 現在那個理由已經不存在, 用戶指定連
+    // walkie-talkie 那兩個檔案 (AudioPlaybackController.java, app-mic.js 的
+    // TALK_TARGET_SAMPLE_RATE) 都一起拉回 16000, 保持三方一致, 即使
+    // walkie-talkie 現在實際用不到。
     //
-    // 注意: 8000 嗰陣仲有第二個理由 - decodeAudioData() 喺呢部機 (RK3288) CPU
-    // 嘅逐 chunk decode 負擔, 同「越聽越慢」個歷史 bug 有關 (見
-    // MIC_MAX_PENDING_CHUNKS/micDrainLoop 嗰輪修法)。16000 嘅 bytes/sec 係
-    // 8000 嘅兩倍, decodeAudioData() 要處理嘅 payload 都大咗兩倍 - 如果日後
-    // 喺呢部機實測又見到聽聲越聽越慢/斷斷續續, 呢個係第一個要懷疑嘅方向,
-    // 到時可以諗縮短 CHUNK_MS 嚟抵消 (細啲嘅 chunk, 但更頻密嘅 decode 調用),
-    // 或者退返做 8000。(2026-08 後續: 而家已經冧咗成套 decodeAudioData()
-    // 播放機制, 改用 ScriptProcessorNode, 呢個顧慮已經唔再適用 - 見
-    // app-mic.js 開頭嗰段 comment。)
+    // 注意: 8000 那時還有第二個理由 - decodeAudioData() 在這台機 (RK3288) CPU
+    // 的逐 chunk decode 負擔, 和「越聽越慢」的歷史 bug 有關 (見
+    // MIC_MAX_PENDING_CHUNKS/micDrainLoop 那輪修法)。16000 的 bytes/sec 是
+    // 8000 的兩倍, decodeAudioData() 要處理的 payload 都大了兩倍 - 如果日後
+    // 在這台機實測又見到聽聲越聽越慢/斷斷續續, 這是第一個要懷疑的方向,
+    // 到時可以考慮縮短 CHUNK_MS 來抵消 (較小的 chunk, 但更頻繁的 decode 調用),
+    // 或者退回做 8000。(2026-08 後續: 現在已經拿掉整套 decodeAudioData()
+    // 播放機制, 改用 ScriptProcessorNode, 這個顧慮已經不再適用 - 見
+    // app-mic.js 開頭那段 comment。)
     private static final int SAMPLE_RATE_HZ = 16000;
     private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO;
     private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
@@ -118,24 +118,24 @@ public class AudioController {
      * the main thread) until recording has either started or failed.
      */
     public StartResult start(long timeoutMs) {
-        // 2026-08 修正: 之前呢度淨係 check audioRecord != null 就當「已經開緊」return
-        // ok - 但 stopIfIdle()/shutdown() 一開始就即刻 recording=false, audioRecord
-        // 要等 readLoop() 嗰個 blocking read() (最耐等成個 CHUNK_MS) 完成先會真正
-        // release 做返 null。喺呢段「recording 已經 false, 但 audioRecord 仲未
-        // null」嘅窗口, 如果新一輪 handleMicStream() 撞正嚟 call start(), 呢度會
-        // 見到 audioRecord != null 就即刻假裝成功 - 但實際上冇再開新一輪
-        // readLoop(), 舊嗰個 readLoop() 好快就會發現 recording==false 自行完結、
-        // release 咗個 audioRecord。結果新嘅 HTTP client 雖然 subscribe() 咗
-        // listener, 但永遠冇 onChunk() 被 call, handleMicStream() 嗰個
-        // queue.take() 就會永久阻塞 - 前端表現為撳咗聽但完全靜音、都唔會有任何
-        // error/reconnect (因為 HTTP response 一早已經 200 OK 咗)。
+        // 2026-08 修正: 之前這裡只 check audioRecord != null 就當「已經開著」return
+        // ok - 但 stopIfIdle()/shutdown() 一開始就立刻 recording=false, audioRecord
+        // 要等 readLoop() 那個 blocking read() (最久等整個 CHUNK_MS) 完成才會真正
+        // release 成 null。在這段「recording 已經 false, 但 audioRecord 還未
+        // null」的窗口, 如果新一輪 handleMicStream() 剛好進來 call start(), 這裡會
+        // 見到 audioRecord != null 就立刻假裝成功 - 但實際上沒有再開新一輪
+        // readLoop(), 舊那個 readLoop() 很快就會發現 recording==false 自行結束、
+        // release 掉 audioRecord。結果新的 HTTP client 雖然 subscribe() 了
+        // listener, 但永遠沒有 onChunk() 被 call, handleMicStream() 那個
+        // queue.take() 就會永久阻塞 - 前端表現為按了聽但完全靜音、都不會有任何
+        // error/reconnect (因為 HTTP response 一早已經 200 OK 了)。
         //
-        // 加返 recording 呢個 flag 一齊 check: 淨係兩者都仲成立先當「已經開緊,
-        // 唔使再開一次」, 否則就算 audioRecord 仲未 null 都應該行落去 - 落面
-        // audioHandler.post() 嗰個 Runnable 會排喺 stopIfIdle()/shutdown() 早前
-        // post 落嚟嗰個 release Runnable 之後先執行 (同一條 HandlerThread, FIFO
-        // queue), 所以到真正執行嗰陣舊嘅 audioRecord 實際上一定已經 release 晒,
-        // 唔會撞到「同一時間兩個 AudioRecord 並存」。
+        // 加上 recording 這個 flag 一起 check: 只有兩者都還成立才當「已經開著,
+        // 不用再開一次」, 否則就算 audioRecord 還未 null 都應該走下去 - 下面
+        // audioHandler.post() 那個 Runnable 會排在 stopIfIdle()/shutdown() 早前
+        // post 過來那個 release Runnable 之後才執行 (同一條 HandlerThread, FIFO
+        // queue), 所以到真正執行的時候舊的 audioRecord 實際上一定已經 release 完,
+        // 不會撞到「同一時間兩個 AudioRecord 並存」。
         if (audioRecord != null && recording) {
             return StartResult.ok();
         }
@@ -146,18 +146,18 @@ public class AudioController {
         audioHandler.post(new Runnable() {
             @Override
             public void run() {
-                // 呢度要再驗一次 recording (唔淨係 audioRecord != null) - 原因同
-                // start() 頭段個 comment 一樣: 呢個 Runnable 排喺 audioHandler 個
-                // queue 尾, 前面可能仲有 stopIfIdle()/shutdown() 早前 post 落嚟嗰個
-                // 「等 readLoop 完結」嘅 Runnable 未執行完 (readLoop() 本身都係喺
-                // 呢條 thread 度行緊 blocking read(), 要等佢完成先會執行到後面排緊
-                // 隊嘅 Runnable)。行到呢一刻如果 audioRecord 仲未 null 但
-                // recording 已經係 false, 即係代表舊嘅 recording session 快將完結
-                // 但仲未真正 release - 呢個時候唔應該假裝「已經開緊」就走人, 否則
-                // 好快 audioRecord 就會被舊 readLoop() release 做 null, 而呢一次
-                // start() 嘅 caller 完全唔知道, 冇再開新一輪 readLoop() 之下,
-                // subscribe() 咗嘅 listener 就永遠收唔到任何 chunk。應該落去重新
-                // 開一個新嘅 AudioRecord + readLoop()。
+                // 這裡要再驗一次 recording (不只是 audioRecord != null) - 原因和
+                // start() 頭段的 comment 一樣: 這個 Runnable 排在 audioHandler 的
+                // queue 尾, 前面可能還有 stopIfIdle()/shutdown() 早前 post 過來那個
+                // 「等 readLoop 結束」的 Runnable 還沒執行完 (readLoop() 本身也是在
+                // 這條 thread 上跑著 blocking read(), 要等它完成才會執行到後面排著
+                // 隊的 Runnable)。走到這一刻如果 audioRecord 還未 null 但
+                // recording 已經是 false, 就代表舊的 recording session 快要結束
+                // 但還沒真正 release - 這時候不應該假裝「已經開著」就走人, 否則
+                // 很快 audioRecord 就會被舊 readLoop() release 成 null, 而這一次
+                // start() 的 caller 完全不知道, 沒有再開新一輪 readLoop() 之下,
+                // subscribe() 了的 listener 就永遠收不到任何 chunk。應該走下去重新
+                // 開一個新的 AudioRecord + readLoop()。
                 if (audioRecord != null && recording) {
                     latch.countDown();
                     return;
@@ -299,22 +299,22 @@ public class AudioController {
      * schedule, so one browser tab closing doesn't cut the stream out from under
      * another that's still listening.
      *
-     * 2026-08 修正: 之前呢度冇同步等待 readLoop() 真正 release 咗 audioRecord 就即刻
-     * return - 同 shutdown() 之前嗰個 bug 一模一樣, 但 shutdown() 早前已經修正咗,
-     * 呢個 method 執漏咗。readLoop() 本身喺 audioHandler 嗰條 background thread 度
-     * 阻塞式行緊 audioRecord.read(...), 呢個係一個 blocking call, 會等到有下一個
-     * audio buffer 先返 (睇 CHUNK_MS, 有排). recording=false 之後, readLoop() 要
-     * 等嗰次 read() 完成先會發現、跟住先 audioRecord.release()/audioRecord=null。
+     * 2026-08 修正: 之前這裡沒有同步等待 readLoop() 真正 release 掉 audioRecord 就立刻
+     * return - 和 shutdown() 之前那個 bug 一模一樣, 但 shutdown() 早前已經修正了,
+     * 這個 method 漏改了。readLoop() 本身在 audioHandler 那條 background thread 上
+     * 阻塞式跑著 audioRecord.read(...), 這是一個 blocking call, 會等到有下一個
+     * audio buffer 才返回 (看 CHUNK_MS, 要一陣). recording=false 之後, readLoop() 要
+     * 等那次 read() 完成才會發現、接著才 audioRecord.release()/audioRecord=null。
      *
-     * 呢段「等緊 read() 完成」嘅時間窗口, 加埋前端 app-mic.js 嘅 auto-reconnect
-     * (10 秒靜音逾時 -> HTTP stream 斷開 -> 1 秒後重連) 令問題實際可見: 如果新一輪
-     * handleMicStream() (新 HTTP thread) 撞正呢個窗口 call audioController.start(),
-     * start() 見到 audioRecord 仲未係 null 就即刻 "return StartResult.ok()" 假裝
-     * 開咗新一輪 recording, 但實際上冇 subscribe 到新一輪 read loop - 舊嗰個
-     * readLoop() 好快就會 release 咗個 audioRecord, 令個新 HTTP stream 之後完全
-     * 收唔到任何 chunk, 觸發下一次 10 秒逾時, 令 mic 好似「反反覆覆被 alpha2
-     * 自己攞返」。跟 shutdown() 嘅做法睇齊: 用一個 post 落 audioHandler 嘅
-     * Runnable + CountDownLatch, 等實際 release 完成先返。
+     * 這段「等 read() 完成」的時間窗口, 加上前端 app-mic.js 的 auto-reconnect
+     * (10 秒靜音逾時 -> HTTP stream 斷開 -> 1 秒後重連) 讓問題實際可見: 如果新一輪
+     * handleMicStream() (新 HTTP thread) 剛好撞到這個窗口 call audioController.start(),
+     * start() 見到 audioRecord 還不是 null 就立刻 "return StartResult.ok()" 假裝
+     * 開了新一輪 recording, 但實際上沒有 subscribe 到新一輪 read loop - 舊那個
+     * readLoop() 很快就會 release 掉 audioRecord, 讓新 HTTP stream 之後完全
+     * 收不到任何 chunk, 觸發下一次 10 秒逾時, 讓 mic 好像「反反覆覆被 alpha2
+     * 自己拿回」。跟 shutdown() 的做法看齊: 用一個 post 到 audioHandler 的
+     * Runnable + CountDownLatch, 等實際 release 完成才返回。
      */
     public void stopIfIdle() {
         if (!listeners.isEmpty()) {
@@ -328,10 +328,10 @@ public class AudioController {
         audioHandler.post(new Runnable() {
             @Override
             public void run() {
-                // readLoop() 本身跑緊喺呢條 audio thread, 佢個 while 循環一見到
-                // recording=false 就會自然完成同做埋 release() —— 呢個 Runnable
-                // post 落同一條 handler 嘅 queue, 保證喺 readLoop() 嗰個 Runnable
-                // 之後先執行, 所以行到呢度嗰陣 audioRecord 一定已經 release 咗。
+                // readLoop() 本身跑在這條 audio thread, 它的 while 循環一見到
+                // recording=false 就會自然完成並做完 release() —— 這個 Runnable
+                // post 到同一條 handler 的 queue, 保證在 readLoop() 那個 Runnable
+                // 之後才執行, 所以走到這裡的時候 audioRecord 一定已經 release 了。
                 latch.countDown();
             }
         });
@@ -349,17 +349,17 @@ public class AudioController {
     }
 
     public void shutdown() {
-        // 2026-08 修正: 之前呢度冇同步等待 readLoop() 收尾就即刻 quitSafely()。
-        // recording=false 之後, readLoop() 要行多一個 loop iteration 先會發現、
-        // 跟住先做 audioRecord.release() —— 呢個 release 本身係喺 audioHandler
-        // 嗰條 audio thread 度做嘅 posted Runnable 入面行緊, quitSafely() 唔會
-        // 中斷佢, 但如果 shutdown() 之後好快又有人 start(), 新一輪
-        // startAudioThreadIfNeeded() 會開一條新 HandlerThread, 有機會同舊嗰條
-        // 仲喺度做緊 release() 嘅 audio thread 短暫並行, 兩邊都摞住
-        // AudioRecord/audioRecord 呢個共享狀態。跟 CameraController.shutdown()/
-        // forceStopAndWait() 嘅做法睇齊: 用一個 post 落 audioHandler 嘅
-        // Runnable + CountDownLatch, 等實際 release 完成先返, 等 caller 唔使自己
-        // 記得留返時間差。
+        // 2026-08 修正: 之前這裡沒有同步等待 readLoop() 收尾就立刻 quitSafely()。
+        // recording=false 之後, readLoop() 要多跑一個 loop iteration 才會發現、
+        // 接著才做 audioRecord.release() —— 這個 release 本身是在 audioHandler
+        // 那條 audio thread 上做的 posted Runnable 裡跑著, quitSafely() 不會
+        // 中斷它, 但如果 shutdown() 之後很快又有人 start(), 新一輪
+        // startAudioThreadIfNeeded() 會開一條新 HandlerThread, 有機會和舊那條
+        // 還在做 release() 的 audio thread 短暫並行, 兩邊都拿著
+        // AudioRecord/audioRecord 這個共享狀態。跟 CameraController.shutdown()/
+        // forceStopAndWait() 的做法看齊: 用一個 post 到 audioHandler 的
+        // Runnable + CountDownLatch, 等實際 release 完成才返回, 讓 caller 不用自己
+        // 記得留時間差。
         if (audioHandler == null) {
             recording = false;
             if (audioThread != null) {
@@ -372,10 +372,10 @@ public class AudioController {
         audioHandler.post(new Runnable() {
             @Override
             public void run() {
-                // readLoop() 本身跑緊喺呢條 audio thread, 佢個 while 循環一見到
-                // recording=false 就會自然完成同做埋 release() —— 呢個 Runnable
-                // post 落同一條 handler 嘅 queue, 保證喺 readLoop() 嗰個 Runnable
-                // 之後先執行, 所以行到呢度嗰陣 audioRecord 一定已經 release 咗。
+                // readLoop() 本身跑在這條 audio thread, 它的 while 循環一見到
+                // recording=false 就會自然完成並做完 release() —— 這個 Runnable
+                // post 到同一條 handler 的 queue, 保證在 readLoop() 那個 Runnable
+                // 之後才執行, 所以走到這裡的時候 audioRecord 一定已經 release 了。
                 latch.countDown();
             }
         });

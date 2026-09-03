@@ -85,11 +85,12 @@ function buildEyeColorPicker() {
  *  @param brightnessElId 亮度滑桿嘅 id
  */
 function ledPresetApply(apiPath, preset, color, brightnessElId) {
-  if (preset === "stop") {
-    return api(apiPath, { preset: "stop" });
-  }
   const brightness = document.getElementById(brightnessElId).value;
-  return api(apiPath, { preset: preset, color: color, brightness: brightness });
+  // 已切 Alpha2Api (對應 openapi /api/led/head/set /api/led/eye/set) - apiPath 動態故用條件分流
+  if (preset === "stop") {
+    return apiPath === "led/head/set" ? Alpha2Api.ledHeadSet({preset: "stop"}) : Alpha2Api.ledEyeSet({preset: "stop"});
+  }
+  return apiPath === "led/head/set" ? Alpha2Api.ledHeadSet({preset: preset, color: color, brightness: brightness}) : Alpha2Api.ledEyeSet({preset: preset, color: color, brightness: brightness});
 }
 
 // Re-sends whatever preset was last active, using the current colour/brightness.
@@ -115,7 +116,7 @@ function eyeLedPreset(preset) {
 // hardware; see README "咀部 LED" section for what was tried and ruled out).
 function mouthLedApply() {
   const speed = document.getElementById("mouthSpeed").value;
-  return api("led/mouth/set", { speed: speed }).then(function (json) {
+  return Alpha2Api.ledMouthSet( { speed: speed }).then(function (json) {
     document.getElementById("mouthLedResult").textContent =
       json.ok ? "ok=true" : "ok=false" + (json.error ? " (" + json.error + ")" : "");
     return json;
@@ -123,7 +124,7 @@ function mouthLedApply() {
 }
 
 function mouthLedOff() {
-  return api("led/mouth/set", { preset: "off" }).then(function (json) {
+  return Alpha2Api.ledMouthSet( { preset: "off" }).then(function (json) {
     document.getElementById("mouthLedResult").textContent =
       json.ok ? "ok=true (off)" : "ok=false" + (json.error ? " (" + json.error + ")" : "");
     return json;

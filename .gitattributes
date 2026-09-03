@@ -1,0 +1,16 @@
+# 防止 Windows 上 CRLF 導致 CI (Ubuntu) 的 api-client.js drift 誤判
+# logs_91129359938.zip 顯示整個檔案被視為 758 行全改，實為 CRLF vs LF + 缺尾換行
+# 此檔案由 scripts/generate-api-client.py 自動產生，強制 LF。
+
+app/src/main/assets/web/api-client.js text eol=lf
+openapi/*.yml text eol=lf
+*.py text eol=lf
+*.js text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.gradle text eol=lf
+*.java text eol=lf
+*.xml text eol=lf
+gradlew text eol=lf

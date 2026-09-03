@@ -15,4 +15,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "open-alpha2"
 include ':app'
-include ':sdk-module:ubtechalpha2robot'
+include ':sdk-module:hardware-direct'
+// 2026-09: ':sdk-module:ubtechalpha2robot' (Alpha2OpenSdk binder) 已刪除 ——
+// 機身無 alpha2services，全部 binder 調用註定失敗；wire 常數已搬入 hardware-direct
+// (RobotWire/DeveloperPacketData)，UbxErrorCode 搬入 app，binder facade 由
+// app 的 RobotStub (no-op) 取代。

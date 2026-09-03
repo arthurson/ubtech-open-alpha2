@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #f5f7fa;
   --card-bg: #ffffff;
   --border: #e2e6ec;
@@ -84,7 +84,11 @@ body {
   border-bottom: 1px solid var(--border);
   display: flex;
   gap: 4px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .tab-btn {
@@ -95,6 +99,8 @@ body {
   padding: 12px 16px;
   font-size: 14px;
   cursor: pointer;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .tab-btn:hover {
   color: var(--text);
@@ -108,6 +114,8 @@ body {
 .tab-btn-link {
   text-decoration: none;
   display: inline-block;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /* The scrolling region: everything below header+tab-bar. Only this element
@@ -545,6 +553,20 @@ input[type="range"] {
 .log-time { color: var(--muted); }
 .log-type-head_key { color: #b45309; }
 .log-type-asr_result { color: #3b7dff; }
+.log-type-grammar_init { color: #9333ea; }
+.log-type-grammar_result { color: #d97706; }
+.log-type-grammar_error { color: #dc2626; }
+.log-type-offline_mode { color: #9333ea; }
+
+/* 2026-09: .asr-mode-dot 指示燈已移除 (離線文法卡一齊拎走, 見 index.html)。
+   .log-type-* 顏色保留 (Event Log 照樣顯示呢啲 type, 唔影響)。 */
+.asr-mode-label {
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--muted);
+  margin-left: 4px;
+  vertical-align: middle;
+}
 .log-type-tts_end { color: #16a34a; }
 .log-type-action_stop { color: #16a34a; }
 .log-type-wakeup { color: #dc2626; }
@@ -627,6 +649,24 @@ input[type="range"] {
   border-radius: 50%;
   background: white;
 }
+
+.camera-viewport .camera-fps-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #7CFF7C;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  padding: 3px 8px;
+  border-radius: 10px;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+.camera-viewport .camera-fps-badge.on { display: flex; }
 
 /* Fullscreen mode (double-click / double-tap toggles this). Reuses the
    Fullscreen API on the viewport element itself, so the browser chrome
@@ -790,6 +830,27 @@ input[type="range"] {
 }
 .capture-item a:hover { text-decoration: underline; }
 
+.photo-9-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.photo-9-btn {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  user-select: none;
+}
+.photo-9-btn:hover { border-color: var(--accent); background: #eef2ff; }
+.photo-9-btn:active { transform: translateY(1px); }
+.photo-9-btn small { display: block; font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+
 /* ---------------- Media volume slider ---------------- */
 
 .volume-row {
@@ -919,33 +980,176 @@ input[type="range"] {
   box-shadow: 0 0 12px 2px rgba(220, 38, 38, 0.55);
 }
 
-/* 麥克風擁有權指示燈 - 綠 = app 攞緊, 灰 = 已交返俾機械人。跟 pir-indicator
-   同一套 transition/box-shadow pattern, 但做圓形 dot 唔係長方形 bar, 因為呢
-   度只需要一個簡單嘅開/關狀態, 唔似 PIR 咁需要成條 bar 嘅視覺重量。 */
-.mic-state-dot {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
+/* 2026-09: mic-state-dot / mic-state-label 已移除 (MIC 卡一齊拎走)。 */
+
+/* ---------------- Music tab: track list, drag-drop import, equalizer ---------------- */
+
+.music-drop-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 22px 12px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.music-drop-zone:hover {
+  border-color: var(--accent);
+}
+.music-drop-zone.dragover {
+  border-color: var(--accent);
+  background: #eef2ff;
+  color: var(--text);
+}
+
+.music-list {
+  /* 2026-08 v2: 一行三排 (3-column grid) - 歌多的時候掃得快一點 */
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.music-track-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  background: #f8fafc;
   border: 1px solid var(--border);
-  flex-shrink: 0;
-  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  user-select: none;
 }
-.mic-state-dot-on {
-  background: #16a34a;
-  box-shadow: 0 0 8px 2px rgba(22, 163, 74, 0.55);
+.music-track-row.active {
+  border-color: var(--accent);
+  background: #eef2ff;
 }
-.mic-state-dot-off {
-  background: #9ca3af;
+.music-track-name {
+  flex: 1 1 auto;
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.mic-state-label {
-  font-size: 14px;
+.music-track-size {
+  flex: 0 0 auto;
+  font-size: 11px;
   color: var(--muted);
 }
 
+.music-progress-row {
+  gap: 10px;
+}
+
+/* 2026-08 v2: UUID card QR code */
+.uuid-qr {
+  display: block;
+  margin: 10px auto;
+  width: 240px;
+  height: 240px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+/* 2026-08 v2: audio spectrum 顯示區 - 深色底令 bar 更搶眼 */
+.music-spectrum {
+  width: 100%;
+  height: 72px;
+  background: #10141c;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 6px 0;
+  display: block;
+}
+.music-progress-row input[type="range"] {
+  flex: 1 1 160px;
+  min-width: 120px;
+  accent-color: var(--accent);
+}
+.music-progress-row span {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 36px;
+  text-align: center;
+}
+
+.music-eq-presets {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.music-eq-presets button.active {
+  background: var(--accent);
+  color: white !important;
+  border-color: var(--accent);
+}
+
+/* ---------------- Radio (radio-browser.info) ---------------- */
+.radio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.radio-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.12s, background 0.12s;
+}
+.radio-row:hover { border-color: var(--accent); }
+.radio-row.active {
+  border-color: var(--accent);
+  background: #eef2ff;
+}
+.radio-play-icon {
+  font-size: 13px;
+  text-align: center;
+}
+.radio-name {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.radio-country {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2px 8px;
+}
+#radioNowPlaying.radio-playing {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ---------------- Responsive: phones / narrow viewports ---------------- */
-/* No breakpoint existed before this - the whole panel was desktop-only sizing.
-   Everything above degrades acceptably down to this width via flex-wrap already;
-   this section only tightens spacing/touch targets for small screens. */
+/* Tab bar scrolls horizontally (nowrap + overflow-x, see .tab-bar above)
+   instead of wrapping to a second row - this section only tightens
+   spacing/touch targets for small screens. */
 @media (max-width: 640px) {
   .tab-bar {
     padding: 0 8px;
@@ -992,5 +1196,9 @@ input[type="range"] {
   }
   .volume-row input[type="range"] {
     flex-basis: 100%;
+  }
+  .music-progress-row input[type="range"] {
+    flex-basis: 100%;
+    order: 3;
   }
 }

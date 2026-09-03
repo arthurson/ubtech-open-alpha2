@@ -701,6 +701,23 @@
     }
   };
 
+  // PIR 人體感應器開關 —— 對應 /api/alpha2/pir/set?on=true|false (chest_setPirSensorEnabled(),
+  // 真機已確認 cmd=72 生效, 見 AIDL_REFERENCE_ALPHA2.md)。冇距離門檻可以設 (硬件本身
+  // 淨係俾開/關, 冇 sonar 嗰種 distance 參數), 所以呢粒掣淨係一個 dropdown, 比
+  // sonar toggle 簡單。同 sonar 一樣, 一定要先開咗呢個, 落面「當PIR偵測到...」
+  // 個 hat block 先會收到 alpha2_pir_state 事件。
+  Blockly.Blocks['alpha_sensor_pir_toggle'] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField(t('sensor_pir_toggle__label'))
+        .appendField(new Blockly.FieldDropdown([[t('toggle_on'), 'true'], [t('toggle_off'), 'false']]), 'ON');
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(clr.sensor);
+      this.setTooltip(t('sensor_pir_toggle__tooltip'));
+    }
+  };
+
   // 加速度計 / 聲納「觸發」專用 hat block —— 直接俾用家設門檻, 貼近「觸發」呢個
   // 語意 (唔係「事件一到就執行」, 而係「事件到咗、但要數值過咗門檻先執行」),
   // 所以邏輯喺 blockly-run.js 用獨立嘅 accelHandlers/sonarHandlers 處理。
@@ -756,6 +773,31 @@
       this.appendStatementInput('DO');
       this.setColour(clr.sensor);
       this.setTooltip(t('event_sonar__tooltip'));
+    }
+  };
+
+  // PIR「觸發」hat block —— 對應 alpha2_pir_state 事件 (payload 淨係
+  // {triggered: true/false}, 見 RobotEventReceiver/registerAlpha2PirAlertListener
+  // 嘅 comment)。同 sonar 個「由遠變近先觸發」單一方向唔同, PIR 用戶要求
+  // 「偵測到/偵測唔到」兩個方向都要俾用家揀 (STATE dropdown), 邏輯上都係
+  // 邊緣觸發 (由上次唔同嘅狀態變過嚟先算一次, 唔會物件持續喺同一狀態就不斷
+  // 重複執行), 跟 blockly-run.js 個 pirHandlers 實現。
+  Blockly.Blocks['alpha_event_pir_triggered'] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField(t('event_pir__label'))
+        .appendField(new Blockly.FieldDropdown([
+          [t('event_pir__state_detected'), 'detected'],
+          [t('event_pir__state_cleared'), 'cleared'],
+        ]), 'STATE');
+      this.appendDummyInput()
+        .appendField(t('event_pir__store_prefix'))
+        // 同 event_sonar__var 一樣道理, 見上面嗰段 comment。
+        // ⚠️ i18n 刻意跳過, 原因同上。
+        .appendField(new Blockly.FieldLabelSerializable('PIR資料'), 'VAR');
+      this.appendStatementInput('DO');
+      this.setColour(clr.sensor);
+      this.setTooltip(t('event_pir__tooltip'));
     }
   };
 

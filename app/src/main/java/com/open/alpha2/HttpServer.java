@@ -89,6 +89,11 @@ public class HttpServer implements Runnable {
             return new ApiResponse(500, "application/json; charset=utf-8",
                     "{\"ok\":false,\"error\":\"" + message.replace("\"", "'") + "\"}");
         }
+
+        public static ApiResponse badRequest(String message) {
+            return new ApiResponse(400, "application/json; charset=utf-8",
+                    "{\"ok\":false,\"error\":\"" + message.replace("\"", "'") + "\"}");
+        }
     }
 
     private final AssetManager assets;
@@ -299,7 +304,15 @@ public class HttpServer implements Runnable {
             try {
                 streamHandler.handle(path.substring(8), query, socket);
             } catch (IOException e) {
-                Log.i(TAG, "Stream connection closed: " + e.getMessage());
+                // Expected, routine noise, not a bug: fires every time a browser tab
+                // navigates away, refreshes, or is closed while an MJPEG/mic stream is
+                // still writing to it (typically surfaces as "Broken pipe"/EPIPE) -
+                // confirmed from logcat_2026-07-27 that the stream handler's own
+                // finally block (see handleCameraStream()/handleMicStream()) already
+                // unsubscribes and releases the camera/mic correctly whenever this
+                // fires, so there is nothing left to clean up here. Logged at debug
+                // rather than info so it doesn't read like a warning worth chasing.
+                Log.d(TAG, "Stream connection closed: " + e.getMessage());
             }
             return false; // streamHandler owns the socket lifecycle from here on.
         }
@@ -316,13 +329,13 @@ public class HttpServer implements Runnable {
                 // connection instead of trying to guess/recover.
                 return false;
             }
-            // 2026-08 新增: 之前呢度冇上限, len 直接嚟自客戶端嘅 Content-Length 個
-            // header, 一個惡意或者損壞嘅請求 (例如 Content-Length: 2000000000) 會令
-            // `new byte[len]` 即刻拋 OutOfMemoryError —— OOM Error 唔係 Exception,
-            // handleClient() 嗰個 catch (Exception e) 接唔住, 個 pool thread 會直接
-            // 死咗, connection 都唔會 close。呢個上限要夠大唔可以誤傷正常請求 (最大
-            // 嘅正常 body 係 /upload/audio 嗰啲 walkie-talkie PCM chunk, 睇
-            // AudioController/app-mic.js 都係幾十 KB 級別), 但要細過任何合理嘅單一
+            // 2026-08 新增: 之前這裡沒有上限, len 直接來自客戶端的 Content-Length 這個
+            // header, 一個惡意或者損壞的請求 (例如 Content-Length: 2000000000) 會讓
+            // `new byte[len]` 立刻拋 OutOfMemoryError —— OOM Error 不是 Exception,
+            // handleClient() 那個 catch (Exception e) 接不住, 這個 pool thread 會直接
+            // 死掉, connection 也不會 close。這個上限要夠大不能誤傷正常請求 (最大
+            // 的正常 body 是 /upload/audio 那種 walkie-talkie PCM chunk, 看
+            // AudioController/app-mic.js 都是幾十 KB 級別), 但要小於任何合理的單一
             // request body, 32MB 留有幾百倍餘裕。
             final int MAX_BODY_BYTES = 32 * 1024 * 1024;
             if (len < 0 || len > MAX_BODY_BYTES) {
@@ -365,6 +378,10 @@ public class HttpServer implements Runnable {
             try {
                 resp = apiHandler.handle(path.substring(5), query, method, body);
                 Log.i(TAG, "API response [" + resp.status + "]: " + path + " -> " + resp.body);
+            } catch (IllegalArgumentException e) {
+                // 1+2 OpenAPI 校驗失敗 → 400 而非 500 (對應 ApiValidator 拋出的參數錯誤)
+                Log.w(TAG, "API bad request for " + path + ": " + e.getMessage());
+                resp = ApiResponse.badRequest(String.valueOf(e.getMessage()));
             } catch (Exception e) {
                 Log.e(TAG, "API handler error for " + path, e);
                 resp = ApiResponse.error(String.valueOf(e.getMessage()));
@@ -379,6 +396,29 @@ public class HttpServer implements Runnable {
     private void serveStatic(OutputStream out, String path, boolean keepAlive) throws IOException {
         if (path.equals("/") || path.isEmpty()) {
             path = "/index.html";
+        }
+        // 1+2: handle directory index for /docs and /.well-known alias (dotfiles are stripped by aapt, so fallback to well-known without dot)
+        if (path.equals("/docs") || path.equals("/docs/")) {
+            path = "/docs/index.html";
+        }
+        if (path.startsWith("/.well-known/")) {
+            // try dot path first, fallback to non-dot well-known (aapt ignores dotfiles)
+            String dotAsset = "web" + path;
+            try (InputStream probe = assets.open(dotAsset)) {
+                // exists, use dot path
+                probe.close();
+            } catch (IOException e) {
+                // fallback to well-known without dot
+                String fallback = "web/well-known" + path.substring("/.well-known".length());
+                try (InputStream is2 = assets.open(fallback)) {
+                    ByteArrayOutputStream buffer2 = new ByteArrayOutputStream();
+                    byte[] chunk2 = new byte[8192];
+                    int n2;
+                    while ((n2 = is2.read(chunk2)) != -1) buffer2.write(chunk2, 0, n2);
+                    writeResponse(out, 200, mimeType(path), buffer2.toByteArray(), keepAlive, true);
+                    return;
+                } catch (IOException ignored) {}
+            }
         }
         String assetPath = "web" + path;
         try (InputStream is = assets.open(assetPath)) {
@@ -412,6 +452,7 @@ public class HttpServer implements Runnable {
         if (path.endsWith(".js")) return "application/javascript; charset=utf-8";
         if (path.endsWith(".css")) return "text/css; charset=utf-8";
         if (path.endsWith(".json")) return "application/json; charset=utf-8";
+        if (path.endsWith(".yml") || path.endsWith(".yaml")) return "text/yaml; charset=utf-8";
         if (path.endsWith(".png")) return "image/png";
         if (path.endsWith(".svg")) return "image/svg+xml";
         return "application/octet-stream";

@@ -245,13 +245,13 @@ public class XiaozhiAudioController {
      *  must not be split/merged. */
     private void captureLoop() {
         short[] pcmBuf = new short[SAMPLES_PER_FRAME];
-        // 2026-08 診斷: 用嚟查「講嘢完全冇反應」係咪因為 mic 實際錄到嘅係靜音/垃圾
-        // 數據 (例如 adev_open_input_stream HAL 層 fallback 開到嘅 stream 冇真正
-        // 駁到硬件), 定係聲音本身冇問題、只係протокол/server 側嘅事。每大概 2 秒
-        // (約 33 個 60ms frame) print 一次呢個 frame 嘅 RMS 同 peak amplitude,
-        // 唔會 flood log 但足夠喺下次錄音時直接由 log 睇到有冇真正錄到聲 - 如果一路
-        // 都係 0 或者接近 0, 就證明係 HAL/mic 層問題; 如果講嘢嗰陣數值有明顯升,
-        // 就證明錄音正常, 問題喺 server/協議層。
+        // 2026-08 診斷: 用來查「說話完全沒反應」是否因為 mic 實際錄到的是靜音/垃圾
+        // 數據 (例如 adev_open_input_stream HAL 層 fallback 開到的 stream 沒真正
+        // 接到硬體), 還是聲音本身沒問題、只是協議/server 側的事。每大概 2 秒
+        // (約 33 個 60ms frame) print 一次這個 frame 的 RMS 和 peak amplitude,
+        // 不會 flood log 但足夠在下次錄音時直接從 log 看到有沒有真正錄到聲 - 如果一直
+        // 都是 0 或者接近 0, 就證明是 HAL/mic 層問題; 如果說話的時候數值有明顯升,
+        // 就證明錄音正常, 問題在 server/協議層。
         int frameCounter = 0;
         final int LOG_EVERY_N_FRAMES = 33;
 
@@ -469,23 +469,23 @@ public class XiaozhiAudioController {
      *  (startPlayback() not called yet, or already stopped) rather than buffering
      *  audio nobody will play.
      *
-     *  2026-08 修正 (真機證實嘅 bug, 表現為大量 "E/CodecOpus [decode] error:
-     *  corrupted stream", 307 次一個 session): 之前呢度用 bytesToShorts(opusData)
-     *  將收到嘅壓縮 Opus bytes 轉做 short[] 先傳落 decode(short[], FrameSize) 呢個
-     *  overload。問題喺 bytesToShorts() 用 "bytes.length / 2" 嚟決定輸出
-     *  short[] 嘅長度 - 呢個假設咗 opusData 長度一定係雙數, 但 Opus 係
-     *  variable-length codec, 每個 encoded frame 嘅實際 byte 數會隨音頻內容/
-     *  bitrate 浮動, 完全可能係單數。單數長度嗰陣, 整數除法會靜靜哋截斷咗最後
-     *  一個 byte, 令 decoder 收到一個少咗一個 byte、唔完整嘅 compressed
+     *  2026-08 修正 (真機證實的 bug, 表現為大量 "E/CodecOpus [decode] error:
+     *  corrupted stream", 307 次一個 session): 之前這裡用 bytesToShorts(opusData)
+     *  將收到的壓縮 Opus bytes 轉成 short[] 再傳到 decode(short[], FrameSize) 這個
+     *  overload。問題在 bytesToShorts() 用 "bytes.length / 2" 來決定輸出
+     *  short[] 的長度 - 這假設了 opusData 長度一定是雙數, 但 Opus 是
+     *  variable-length codec, 每個 encoded frame 的實際 byte 數會隨音頻內容/
+     *  bitrate 浮動, 完全可能是單數。單數長度的時候, 整數除法會靜靜地截斷最後
+     *  一個 byte, 讓 decoder 收到一個少了一個 byte、不完整的 compressed
      *  bitstream, 觸發 corrupted stream (Opus 用 range coder, 對 bitstream
-     *  完整性好敏感, 少一個 byte 就足以令成個 frame decode 失敗) - 呢個亦解釋咗
-     *  點解唔係每個 frame 都撞到 (取決於嗰個 frame 啱啱好係咪單數長度, 機率上
+     *  完整性很敏感, 少一個 byte 就足以讓整個 frame decode 失敗) - 這也解釋了
+     *  為什麼不是每個 frame 都撞到 (取決於那個 frame 剛好是不是單數長度, 機率上
      *  接近一半)。Opus class (見 com.theeasiestway.opus.Opus) 本身其實已經有
-     *  真正接受/回傳 byte[] 嘅 decode(byte[], FrameSize) overload, 完全唔使呢層
-     *  byte[]<->short[] 轉換, 亦冇任何長度奇偶問題 - 呢度改用返呢個, 連
-     *  bytesToShorts() 呢個 helper 都唔再需要 (shortsToBytes() 仍然用於 encode
-     *  嗰邊, 冇呢個 bug: 個轉換方向係 short[]->byte[], long度由 short[].length*2
-     *  決定, 保證係雙數, 冇截斷風險)。 */
+     *  真正接受/回傳 byte[] 的 decode(byte[], FrameSize) overload, 完全不用這層
+     *  byte[]<->short[] 轉換, 也沒有任何長度奇偶問題 - 這裡改用這個, 連
+     *  bytesToShorts() 這個 helper 都不再需要 (shortsToBytes() 仍然用於 encode
+     *  那邊, 沒有這個 bug: 轉換方向是 short[]->byte[], 長度由 short[].length*2
+     *  決定, 保證是雙數, 沒截斷風險)。 */
     public void onIncomingOpusFrame(byte[] opusData) {
         Opus dec = decoder;
         if (dec == null || !playing) return;
@@ -655,23 +655,23 @@ public class XiaozhiAudioController {
 
     // ================= PCM/Opus <-> byte[] conversion =================
 
-    /** encode() 個 short[] overload 用嚟編碼 PCM 樣本 (short[] 天生就係 16-bit
-     *  audio sample 嘅原生表達方式, 同 AudioRecord/AudioTrack 一致, 唔使額外
-     *  byte-order 轉換), 但 encode() 嘅輸出 (壓縮 Opus payload) 冇任何 16-bit
-     *  sample 語意, 淨係借用返呢個 library 通用嘅 "array of 16-bit units"
-     *  return type - 所以要用呢個 helper 轉做扁平 byte[] 先可以塞入 WebSocket
-     *  binary frame。Little-endian, 同 AudioController.wrapPcmAsWav 用嘅
+    /** encode() 的 short[] overload 用來編碼 PCM 樣本 (short[] 天生就是 16-bit
+     *  audio sample 的原生表達方式, 和 AudioRecord/AudioTrack 一致, 不用額外
+     *  byte-order 轉換), 但 encode() 的輸出 (壓縮 Opus payload) 沒有任何 16-bit
+     *  sample 語意, 只是借用這個 library 通用的 "array of 16-bit units"
+     *  return type - 所以要用這個 helper 轉成扁平 byte[] 才能塞進 WebSocket
+     *  binary frame。Little-endian, 和 AudioController.wrapPcmAsWav 用的
      *  ByteOrder.LITTLE_ENDIAN 一致。
      *
-     *  呢度個轉換方向 (short[] -> byte[]) 長度一定係 shorts.length*2, 保證係
-     *  雙數, 冇截斷風險 - 對稱嘅反方向 (byte[] -> short[], 曾經叫
-     *  bytesToShorts()) 就唔係咁, 因為 Opus 係 variable-length codec, 收到嘅
-     *  壓縮 byte[] 長度可能係單數, "/2" 整數除法會靜靜哋截斷最後一個 byte, 導致
-     *  真機證實嘅 "corrupted stream" decode error (307 次一個 session) - 2026-08
+     *  這裡的轉換方向 (short[] -> byte[]) 長度一定是 shorts.length*2, 保證是
+     *  雙數, 沒截斷風險 - 對稱的反方向 (byte[] -> short[], 曾經叫
+     *  bytesToShorts()) 就不是這樣, 因為 Opus 是 variable-length codec, 收到的
+     *  壓縮 byte[] 長度可能是單數, "/2" 整數除法會靜靜地截斷最後一個 byte, 導致
+     *  真機證實的 "corrupted stream" decode error (307 次一個 session) - 2026-08
      *  已經將 onIncomingOpusFrame() 改用 Opus class 本身提供、真正接受/回傳
-     *  byte[] 嘅 decode(byte[], FrameSize) overload, 完全繞過呢個轉換, 所以
-     *  bytesToShorts() 呢個 helper 已經刪走, 唔留低一個「睇落啱用但實際有 bug」
-     *  嘅方法引誘之後嘅人手多用返佢。 */
+     *  byte[] 的 decode(byte[], FrameSize) overload, 完全繞過這個轉換, 所以
+     *  bytesToShorts() 這個 helper 已經刪掉, 不留下一個「看起來對但實際有 bug」
+     *  的方法引誘之後的人再用它。 */
     private static byte[] shortsToBytes(short[] shorts) {
         byte[] bytes = new byte[shorts.length * 2];
         for (int i = 0; i < shorts.length; i++) {

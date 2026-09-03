@@ -1,0 +1,51 @@
+name: check-openapi
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'openapi/**'
+      - 'app/src/main/java/com/open/alpha2/MainActivity.java'
+      - 'app/src/main/java/com/open/alpha2/ApiValidator.java'
+      - 'app/src/main/assets/web/api-client.js'
+      - 'scripts/**'
+      - '.github/workflows/check-openapi.yml'
+  pull_request:
+    paths:
+      - 'openapi/**'
+      - 'app/src/main/java/com/open/alpha2/MainActivity.java'
+      - 'app/src/main/java/com/open/alpha2/ApiValidator.java'
+      - 'app/src/main/assets/web/api-client.js'
+      - 'scripts/**'
+  workflow_dispatch:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: pip install pyyaml
+      - name: Check openapi drift (code ↔ spec)
+        run: python scripts/check-openapi-drift.py
+      - name: Check api-client.js is up-to-date
+        run: |
+          python scripts/generate-api-client.py
+          git diff --exit-code -- app/src/main/assets/web/api-client.js || (echo "::error::api-client.js drift - run python scripts/generate-api-client.py and commit"; git diff -- app/src/main/assets/web/api-client.js; exit 1)
+      - name: Validate openapi yaml
+        run: python -c "import yaml, pathlib; yaml.safe_load(open('openapi/open-alpha2-openapi.yml', encoding='utf-8')); print('openapi.yml OK')"
+      - name: Validate asyncapi yaml
+        run: python -c "import yaml, pathlib; yaml.safe_load(open('openapi/asyncapi.yml', encoding='utf-8')); print('asyncapi.yml OK')"
+      - name: Check version sync (build.gradle vs openapi)
+        run: |
+          GRADLE_VER=$(grep -oP 'versionName\s*"\K[^"]+' app/build.gradle)
+          SPEC_VER=$(python -c "import yaml; print(yaml.safe_load(open('openapi/open-alpha2-openapi.yml', encoding='utf-8'))['info']['version'])")
+          echo "gradle: $GRADLE_VER  spec: $SPEC_VER"
+          if [ "$GRADLE_VER" != "$SPEC_VER" ]; then
+            echo "::error::versionName ($GRADLE_VER) != openapi info.version ($SPEC_VER)"
+            exit 1
+          fi
+          echo "✅ version sync $GRADLE_VER"

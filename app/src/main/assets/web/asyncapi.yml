@@ -1,0 +1,107 @@
+asyncapi: 2.6.0
+info:
+  title: Open Alpha2 WebSocket Events
+  version: beta 4
+  description: |
+    WebSocket 即時事件總線 (RFC6455) `GET /ws`，由 `WebSocketServer.java:34` + `EventBus.java` + `RobotEventReceiver.java` 驅動。
+    所有 HTTP `/api/*` 操作的非同步結果皆經此推送，無需輪詢。前端 `app-log.js` 全量訂閱。
+  contact:
+    name: Open Alpha2
+    url: https://github.com/arthurson/ubtech-open-alpha2
+  license:
+    name: GPL-3.0-only
+    url: https://www.gnu.org/licenses/gpl-3.0.html
+servers:
+  alpha2:
+    url: ws://{robotIp}:8888/ws
+    protocol: websocket
+    description: 機械人本機 WebSocket
+    variables:
+      robotIp:
+        default: 192.168.43.185
+        description: 機械人 IP
+
+channels:
+  /ws:
+    subscribe:
+      summary: 訂閱全部即時事件
+      operationId: wsSubscribe
+      message:
+        $ref: '#/components/messages/EventEnvelope'
+    publish:
+      summary: 客戶端發送 (目前僅用於 ping/keepalive，業務下行由 server 推送)
+      operationId: wsPublish
+      message:
+        $ref: '#/components/messages/ClientPing'
+
+components:
+  messages:
+    EventEnvelope:
+      name: EventEnvelope
+      title: 通用事件外殼
+      payload:
+        type: object
+        required: [type, data]
+        properties:
+          type:
+            type: string
+            description: 事件類型
+            enum:
+              - asr_result
+              - grammar_result
+              - speech_ready
+              - grammar_init
+              - mic_state
+              - mic_broadcast_debug
+              - accel
+              - sonar_distance
+              - alpha2_pir_state
+              - robot_uuid
+              - gesture
+              - action_stop
+              - robot_interrupted
+              - xiaozhi_status
+              - xiaozhi_activation
+              - xiaozhi_mic_state
+              - xiaozhi_chat
+              - mcp_tool_call
+              - battery
+              - wifi
+              - bt
+              - chest_rcv
+              - head_rcv
+          data:
+            type: object
+            description: 事件負載，依 type 而異
+          ts:
+            type: integer
+            format: int64
+            description: Unix ms
+      examples:
+        - name: asr
+          payload:
+            type: asr_result
+            data: { text: "你好" }
+            ts: 1725710000000
+        - name: sonar
+          payload:
+            type: sonar_distance
+            data: { distanceCm: 25 }
+        - name: pir
+          payload:
+            type: alpha2_pir_state
+            data: { triggered: true, raw: -109 }
+    ClientPing:
+      name: ClientPing
+      payload:
+        type: object
+        properties:
+          type: { type: string, enum: [ping] }
+          ts: { type: integer }
+
+  schemas:
+    AsrResult:
+      type: object
+      properties:
+        text: { type: string }
+        type: { type: integer, description: "1=grammar, 0=dictation" }

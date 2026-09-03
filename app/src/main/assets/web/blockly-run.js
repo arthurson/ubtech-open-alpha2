@@ -7,8 +7,9 @@
 //  2. 每個「動作類」block (播放動作/TTS/LED/伺服...) 對應現有已驗證嘅 /api/* 端點,
 //     直接 fetch, 唔重新定義呢層 API — 呼叫嘅係 index.html 已經有嘅 api() helper
 //     (由 app-core.js 提供), 保證同「面板」分頁行為完全一致。
-//  3. 事件 block (alpha_event_accel_threshold / alpha_event_sonar_triggered) 唔喺
-//     主程式流程之內執行, 而係喺 workspace load 嗰陣就註冊做 WebSocket listener,
+//  3. 事件 block (alpha_event_accel_threshold / alpha_event_sonar_triggered /
+//     alpha_event_pir_triggered) 唔喺主程式流程之內執行, 而係喺 workspace
+//     load 嗰陣就註冊做 WebSocket listener,
 //     常駐監聽 — 呢個係事件驅動模型, 同「按 ▶ 執行」嗰個線性 program 係兩回事,
 //     可以同時存在。
 
@@ -23,6 +24,7 @@
   const variables = new Map(); // 變數名稱 -> 值 (直譯器自己嘅 scope, 唔用 Blockly 內建 code-gen 嘅變數系統)
   const accelHandlers = []; // { axis, cmp, threshold, varName, bodyBlock, hatBlock }
   const sonarHandlers = []; // { varName, bodyBlock, hatBlock, wasTriggered }
+  const pirHandlers = []; // { state: 'detected'|'cleared', varName, bodyBlock, hatBlock, wasTriggered }
 
   function logLine(text, cls) {
     const out = document.getElementById('runLog');
@@ -584,6 +586,12 @@
         await window.api('servo/sonar', { distance: dist });
         return;
       }
+      case 'alpha_sensor_pir_toggle': {
+        const on = block.getFieldValue('ON');
+        logLine(t('run_pir_toggle', { on: on }));
+        await window.api('pir/set', { on: on });
+        return;
+      }
 
       // ---------------- 流程控制 ----------------
       case 'alpha_wait_seconds': {
@@ -767,11 +775,12 @@
 
   // ------------------------------------------------------------------
   // 事件驅動：掃描 workspace 入面所有 alpha_event_accel_threshold /
-  // alpha_event_sonar_triggered, 註冊做 WS listener
+  // alpha_event_sonar_triggered / alpha_event_pir_triggered, 註冊做 WS listener
   // ------------------------------------------------------------------
   function rewireEventHandlers() {
     accelHandlers.length = 0;
     sonarHandlers.length = 0;
+    pirHandlers.length = 0;
     if (!workspace) return;
     workspace.getTopBlocks(true).forEach(function (b) {
       if (b.type === 'alpha_event_accel_threshold' && !b.disabled) {
@@ -792,9 +801,18 @@
           wasTriggered: false, // 邊緣觸發用: 上次收到嘅 triggered 狀態
           running: false, // re-entrancy guard: 呢個 handler 嘅 DO 序列係咪跑緊
         });
+      } else if (b.type === 'alpha_event_pir_triggered' && !b.disabled) {
+        pirHandlers.push({
+          state: b.getFieldValue('STATE'), // 'detected' 或 'cleared' —— 用戶揀邊個方向先觸發
+          varName: b.getFieldValue('VAR'),
+          bodyBlock: b.getInputTargetBlock('DO'),
+          hatBlock: b,
+          wasTriggered: null, // 邊緣觸發用: 上次收到嘅 triggered 狀態; null=未收過任何 PIR 事件, 唔算邊緣
+          running: false, // re-entrancy guard: 呢個 handler 嘅 DO 序列係咪跑緊
+        });
       }
     });
-    logLine(t('run_handlers_registered', { accel: accelHandlers.length, sonar: sonarHandlers.length }), 'sys');
+    logLine(t('run_handlers_registered', { accel: accelHandlers.length, sonar: sonarHandlers.length, pir: pirHandlers.length }), 'sys');
   }
 
   async function onWsEvent(evt) {
@@ -859,6 +877,43 @@
         } catch (e) {
           if (!(e && e.__alphaFlow)) {
             logLine(t('run_sonar_trigger_error', { err: (e && e.message ? e.message : String(e)) }), 'err');
+          }
+        } finally {
+          h.running = false;
+        }
+      }
+    }
+    // PIR 人體感應器: alpha2_pir_state 事件 payload 淨係 {triggered: true/false}
+    // (true=偵測到人, false=偵測唔到人/離開), 見 RobotEventReceiver 個
+    // registerAlpha2PirAlertListener 附近 comment。同 sonar 一樣用邊緣偵測,
+    // 但用戶要求「偵測到/偵測唔到」兩個方向都要俾用家獨立揀 (STATE 欄位),
+    // 唔似 sonar 淨係「由遠變近」一個方向 —— 所以呢度要分開睇 detected
+    // (false→true 嘅邊) 定 cleared (true→false 嘅邊) 先啱嗰粒 hat block
+    // 自己揀嘅方向。
+    //
+    // wasTriggered 初始值用 null (唔係 false), 用嚟分辨「呢個 handler 啱啱
+    // 先註冊, 仲未收過任何 PIR 事件」同「上次收到嘅係『冇人』狀態」—— 如果
+    // 唔咁做, 第一個收到嘅事件假如啱啱好係 triggered=false, 會被誤判做一次
+    // 「由 undefined 變 false」嘅 cleared 邊緣, 一開始執行就無啦啦觸發一次
+    // 「偵測唔到人」個 block, 用家會覺得莫名其妙。
+    if (evt.type === 'alpha2_pir_state' && evt.data) {
+      const triggeredNow = !!evt.data.triggered;
+      for (const h of pirHandlers) {
+        if (!h.bodyBlock) continue;
+        const hadPrior = h.wasTriggered !== null;
+        const edgeDetected = h.state === 'detected' && triggeredNow && hadPrior && !h.wasTriggered;
+        const edgeCleared = h.state === 'cleared' && !triggeredNow && hadPrior && h.wasTriggered;
+        h.wasTriggered = triggeredNow;
+        if (!edgeDetected && !edgeCleared) continue;
+        if (h.running) continue; // 上一輪 DO 仲未跑完, 呢次觸發直接跳過
+        variables.set(h.varName, evt.data);
+        highlight(h.hatBlock.id);
+        h.running = true;
+        try {
+          await runSequence(h.bodyBlock);
+        } catch (e) {
+          if (!(e && e.__alphaFlow)) {
+            logLine(t('run_pir_trigger_error', { err: (e && e.message ? e.message : String(e)) }), 'err');
           }
         } finally {
           h.running = false;
@@ -1089,12 +1144,14 @@
       this.id = 'alphaEditFabControls';
       this.top = 0;
       this.left = 0;
-      // 版面: 圓形掣直徑 28px, 分隔線 6px, 兩個分隔線分 3 組 (復原/取消復原 ｜
-      // 剪/copy/貼 ｜ 刪除), 橫向排晒一行, 抄 Code Lab 個排位 (一行, 唔係
-      // 分兩行/直排)。
-      this.BUTTON_SIZE = 28;
-      this.GAP = 4;
-      this.SEP_WIDTH = 9; // 分隔線本身 1px + 兩邊留白
+      // 版面: 每粒掣係獨立嘅圓形按鈕 (直徑 32px), 自己一個圓圈背景, 掣與掣之間
+      // 淨係用間距分隔 (冇連埋一條 pill, 冇分隔線), 橫向排晒一行, 抄 Code Lab
+      // 個排位 (六粒獨立圓形掣, 一行, 唔係分兩行/直排)。分組之間 (復原/取消
+      // 復原 ｜ 剪/copy/貼 ｜ 刪除) 用較大嘅 GROUP_GAP 帶出視覺分隔, 唔再靠
+      // 實體分隔線。
+      this.BUTTON_SIZE = 36;
+      this.GAP = 8;
+      this.GROUP_GAP = 16; // 分組之間嘅額外間距 (取代之前嘅分隔線)
       this.MARGIN_HORIZONTAL = 12;
       this.MARGIN_VERTICAL = 12;
       this.buttons = [
@@ -1104,8 +1161,6 @@
         { action: 'cut', icon: 'cut', titleKey: 'page_edit_cut_title' },
         { action: 'copy', icon: 'copy', titleKey: 'page_edit_copy_title' },
         { action: 'paste', icon: 'paste', titleKey: 'page_edit_paste_title' },
-        { sep: true },
-        { action: 'delete', icon: 'delete', titleKey: 'page_edit_delete_title', danger: true },
       ];
       this.buttonEls = {}; // action -> { group, circle, titleEl }
       this.createDom();
@@ -1129,7 +1184,7 @@
       let lastButtonEnd = 0;
       for (const b of this.buttons) {
         if (b.sep) {
-          x += this.SEP_WIDTH + this.GAP;
+          x += this.GROUP_GAP;
         } else {
           lastButtonEnd = x + this.BUTTON_SIZE;
           x += this.BUTTON_SIZE + this.GAP;
@@ -1141,36 +1196,27 @@
     createDom() {
       const svg = this.workspace.getParentSvg();
       this.svgGroup = Blockly.utils.dom.createSvgElement('g', { class: 'bk-svg-fab-bar' }, null);
-      // 成組掣底下鋪一塊圓角背景 (等視覺上似返之前 HTML 版嗰個「浮動 pill」,
-      // 抄 Code Lab 個做法), 闊度/高度要喺全部掣起晒之後先知, 所以呢度先起
-      // 個 placeholder, 尾段先補返啱嘅 width/height (見底下 svg.appendChild
-      // 之前嗰段)。
-      this.bgRect = Blockly.utils.dom.createSvgElement('rect', {
-        class: 'bk-svg-fab-bg', x: -8, y: -6, rx: 20, ry: 20, height: this.BUTTON_SIZE + 12,
-      }, this.svgGroup);
+      // 冇連埋一條嘅背景 pill —— 每粒掣自己嘅 circle 就係佢個背景 (獨立圓形
+      // 按鈕, 掣與掣之間有留白, 抄 Code Lab 個排位)。分組之間 (sep 位置) 淨係
+      // 加大間距 (GROUP_GAP), 唔畫實體分隔線。
       let x = 0;
       for (const b of this.buttons) {
         if (b.sep) {
-          Blockly.utils.dom.createSvgElement('line', {
-            class: 'bk-svg-fab-sep',
-            x1: x + this.SEP_WIDTH / 2, x2: x + this.SEP_WIDTH / 2,
-            y1: 3, y2: this.BUTTON_SIZE - 3,
-          }, this.svgGroup);
-          x += this.SEP_WIDTH + this.GAP;
+          x += this.GROUP_GAP;
           continue;
         }
         const group = Blockly.utils.dom.createSvgElement('g', {
           class: 'bk-svg-fab-group', transform: `translate(${x}, 0)`,
         }, this.svgGroup);
         const circle = Blockly.utils.dom.createSvgElement('circle', {
-          class: 'bk-svg-fab-circle' + (b.danger ? ' bk-svg-fab-circle-danger' : ''),
+          class: 'bk-svg-fab-circle',
           cx: this.BUTTON_SIZE / 2, cy: this.BUTTON_SIZE / 2, r: this.BUTTON_SIZE / 2 - 1,
         }, group);
         const iconGroup = Blockly.utils.dom.createSvgElement('g', {
           transform: `translate(${(this.BUTTON_SIZE - 20) / 2}, ${(this.BUTTON_SIZE - 20) / 2}) scale(0.72)`,
         }, group);
         Blockly.utils.dom.createSvgElement('path', {
-          class: 'bk-svg-fab-icon' + (b.danger ? ' bk-svg-fab-icon-danger' : ''),
+          class: 'bk-svg-fab-icon',
           d: EDIT_FAB_ICON_PATHS[b.icon],
         }, iconGroup);
         const titleEl = Blockly.utils.dom.createSvgElement('title', {}, group);
@@ -1188,23 +1234,15 @@
         this.buttonEls[b.action] = { group, circle, titleEl };
         x += this.BUTTON_SIZE + this.GAP;
       }
-      // 而家知道晒成組掣真正用咗幾闊, 補返個背景 pill 嘅闊度 (x 呢個時候已經
-      // 行到最尾一個掣嘅右邊, 扣返最後嗰個 GAP 先係實際內容闊度, 再加返兩邊
-      // 嘅內邊距)。
-      const contentWidth = x - this.GAP;
-      this.bgRect.setAttribute('width', contentWidth + 16);
-      // 背景 pill 一定要係呢個 group 入面第一個子元素 (SVG 冇 z-index, 靠 DOM
-      // 順序決定邊個喺上面), 先可以擺喺全部掣個底層唔會擋住佢哋嘅 click ——
-      // 起嘅時候已經係第一個 appendChild (bgRect 響 loop 之前起), 呢度唔使
-      // 再郁佢個順序。
       svg.appendChild(this.svgGroup);
     }
 
-    // 更新複製/剪下/刪除三粒掣嘅 disabled 狀態 (同之前 HTML 版一樣邏輯: 冇
-    // 揀緊 block 就 disable 呢三粒, 復原/取消復原一路留低俾用家自己試)。
+    // 更新複製/剪下兩粒掣嘅 disabled 狀態 (同之前 HTML 版一樣邏輯: 冇揀緊
+    // block 就 disable 呢兩粒, 復原/取消復原一路留低俾用家自己試; 刪除功能
+    // 已經冇獨立掣, 由垃圾桶本身負責, 唔關呢度事)。
     updateButtonStates() {
       const hasSelection = !!currentSelectedBlock();
-      for (const action of ['cut', 'copy', 'delete']) {
+      for (const action of ['cut', 'copy']) {
         const el = this.buttonEls[action];
         if (el) el.group.classList.toggle('bk-svg-fab-disabled', !hasSelection);
       }
@@ -1229,15 +1267,31 @@
     position(uiMetrics, savedPositions) {
       const width = this.getGroupWidth();
       const size = new Blockly.utils.Size(width, this.BUTTON_SIZE);
-      const corner = Blockly.uiPosition.getCornerOppositeToolbox(this.workspace, uiMetrics);
-      let rect = Blockly.uiPosition.getStartPositionRect(
-        corner, size, this.MARGIN_HORIZONTAL, this.MARGIN_VERTICAL, uiMetrics, this.workspace);
-      const bumpDir = corner.vertical === Blockly.uiPosition.verticalPosition.TOP
-        ? Blockly.uiPosition.bumpDirection.DOWN
-        : Blockly.uiPosition.bumpDirection.UP;
-      rect = Blockly.uiPosition.bumpPositionRect(rect, this.MARGIN_VERTICAL, bumpDir, savedPositions);
-      this.top = rect.top;
-      this.left = rect.left;
+      const trashcan = this.workspace.trashcan;
+      if (trashcan && typeof trashcan.getBoundingRectangle === 'function') {
+        // 直接貼住垃圾桶個左邊, 垂直同垃圾桶中心對齊 —— 呢個先係 Code Lab
+        // 個排位 (掣組同垃圾桶企埋一行, 唔係分開喺畫布另一角)。之前用
+        // getCornerOppositeToolbox + bumpPositionRect 嗰套「自動避讓」邏輯,
+        // 喺呢個 toolbox 唔喺角落嘅 layout 度計錯咗位, 令成組掣跑出畫布外
+        // 完全冇顯示, 所以改用返最直接可靠嘅做法: 讀垃圾桶自己嘅
+        // getBoundingRectangle() 嚟計。
+        const tRect = trashcan.getBoundingRectangle();
+        const tHeight = tRect.bottom - tRect.top;
+        this.left = tRect.left - this.MARGIN_HORIZONTAL - width;
+        this.top = tRect.top + (tHeight - this.BUTTON_SIZE) / 2;
+      } else {
+        // fallback: 垃圾桶未起好 (理論上唔應該發生, addTrashcan() 一定早過
+        // 呢個 component 註冊), 保留原本嘅角落定位邏輯做保險。
+        const corner = Blockly.uiPosition.getCornerOppositeToolbox(this.workspace, uiMetrics);
+        let rect = Blockly.uiPosition.getStartPositionRect(
+          corner, size, this.MARGIN_HORIZONTAL, this.MARGIN_VERTICAL, uiMetrics, this.workspace);
+        const bumpDir = corner.vertical === Blockly.uiPosition.verticalPosition.TOP
+          ? Blockly.uiPosition.bumpDirection.DOWN
+          : Blockly.uiPosition.bumpDirection.UP;
+        rect = Blockly.uiPosition.bumpPositionRect(rect, this.MARGIN_VERTICAL, bumpDir, savedPositions);
+        this.top = rect.top;
+        this.left = rect.left;
+      }
       this.svgGroup.setAttribute('transform', `translate(${this.left}, ${this.top})`);
     }
 
@@ -1437,7 +1491,7 @@
     exportXmlFile: exportXmlFile,
     importXmlFile: importXmlFile,
     refreshActionDropdown: refreshActionDropdown,
-    refreshSavedProgramDropdown: refreshSavedProgramDropdown, // 俾 blockly-i18n.js 切語言嗰陣攞返嚟用, 令 "-- 已儲存嘅程式 --" placeholder 跟住重新 render
+    refreshSavedProgramDropdown: refreshSavedProgramDropdown, // 俾 blockly-i18n.js 切語言嗰陣攞返嚟用, 令 "-- 已儲存的程式 --" placeholder 跟住重新 render
     editAction: editAction,
     // 語言切換後 (blockly-i18n.js setUiLanguage()) 要跟住換返呢兩組 SVG
     // component 嘅 <title> tooltip 文字, HTML 版 data-i18n 呢套機制淨係識

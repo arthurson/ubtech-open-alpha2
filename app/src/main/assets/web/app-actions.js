@@ -44,7 +44,7 @@ function loadActionClassification() {
   }).catch(function (e) {
     // 冇呢個檔案或者讀取失敗都唔應該累到成個動作 tab 用唔到 - 淨係冇子分類 tab,
     // 主分類(基本/跳舞/故事/瑜伽/其他)照舊運作。
-    console.warn("action_classification.json 讀取失敗, 子分類 tab 將唔會出現:", e);
+    console.warn("action_classification.json 讀取失敗, 子分類 tab 將不會出現:", e);
     actionClassification = {};
   });
 }
@@ -71,7 +71,7 @@ function displayNameOf(action) {
 function loadActionList() {
   const listEl = document.getElementById("actionList");
   listEl.textContent = "載入中…";
-  return Promise.all([api("action/list"), loadActionClassification()]).then(function (results) {
+  return Promise.all([Alpha2Api.actionList(), loadActionClassification()]).then(function (results) {
     const data = results[0];
     if (!data.ok) {
       listEl.textContent = "錯誤: " + (data.error || data.code);
@@ -257,7 +257,7 @@ function renderActionList() {
   renderActionChips("actionList", filtered, displayNameOf, function (a) {
     document.getElementById("actionName").value = a.nameEn || a.nameCn;
     playAction();
-  }, "(冇動作 / 服務未初始化)");
+  }, "(沒有動作 / 服務未初始化)");
 }
 
 function typeLabel(t) {
@@ -268,10 +268,10 @@ function typeLabel(t) {
 function playAction() {
   const name = document.getElementById("actionName").value.trim();
   if (!name) return alert("請輸入動作名稱");
-  return api("action/play", { name: name });
+  return Alpha2Api.actionPlay( { name: name });
 }
 
 function stopAction() {
-  return api("action/stop");
+  return Alpha2Api.actionStop();
 }
 

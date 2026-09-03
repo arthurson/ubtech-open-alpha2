@@ -30,8 +30,12 @@ import java.util.concurrent.atomic.AtomicReference;
  * here, not android.hardware.camera2.
  *
  * Camera indices are NOT the usual 0=back/1=front - the robot documents 98/99 for
- * front/back. CAMERA_INDEX_CANDIDATES tries the documented indices first and falls back
- * to 0/1 in case a given firmware build differs, rather than hardcoding one guess.
+ * front/back, but real-device testing (firmware v1.1.7.3.20, logcat_2026-07-27) shows
+ * 98/99 both fail immediately with "invalid cameraId" and 0 is what actually opens on
+ * this hardware. CAMERA_INDEX_CANDIDATES therefore tries 0/1 first - the two guaranteed-
+ * fail attempts otherwise cost a CameraService round trip on every single stream start
+ * for no benefit on this firmware - and keeps 98/99 as a fallback for any other
+ * firmware build where the documented indices turn out to be the real ones.
  *
  * Continuous webcam-style streaming, NOT single-shot photos: the camera is opened ONCE
  * and left in preview mode. Every preview frame is delivered to
@@ -50,14 +54,10 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class CameraController {
     private static final String TAG = "CameraController";
-    private static final int[] CAMERA_INDEX_CANDIDATES = {98, 99, 0, 1};
+    private static final int[] CAMERA_INDEX_CANDIDATES = {0, 1, 98, 99};
     private static final int JPEG_QUALITY = 60;
-    // Requested preview size; actual size is clamped to the closest supported size the
-    // camera reports (see startPreviewLocked()). 800x600 is the default - settable via
-    // setRequestedResolution() before start(), since the desired resolution may differ
-    // per session (higher res costs more per-frame JPEG encode time, trading off fps).
-    private static final int DEFAULT_PREVIEW_WIDTH = 800;
-    private static final int DEFAULT_PREVIEW_HEIGHT = 600;
+    private static final int DEFAULT_PREVIEW_WIDTH = 1280;
+    private static final int DEFAULT_PREVIEW_HEIGHT = 720;
     private volatile int requestedWidth = DEFAULT_PREVIEW_WIDTH;
     private volatile int requestedHeight = DEFAULT_PREVIEW_HEIGHT;
     // Two buffers cycled through addCallbackBuffer() so the camera driver can be filling
@@ -92,6 +92,9 @@ public class CameraController {
     private volatile long frameSeq = 0;
     private volatile Frame lastFrame;
     private final Set<FrameListener> listeners = new CopyOnWriteArraySet<>();
+    // FPS 計算：滑動窗口記錄最近幀的時間戳（nanoTime），用於計算實時 FPS
+    private final java.util.ArrayDeque<Long> fpsTimestamps = new java.util.ArrayDeque<>();
+    private static final int FPS_WINDOW_SIZE = 30;
 
     /** The actual preview resolution in use (may differ from the requested size - see
      *  closestSupportedPreviewSize()). Valid once the camera has been opened at least
@@ -111,6 +114,90 @@ public class CameraController {
     public void setRequestedResolution(int width, int height) {
         requestedWidth = width;
         requestedHeight = height;
+    }
+
+    /** 取回相機硬件報告的全部支援 preview/picture 尺寸（需在 camera 線程上讀取參數） */
+    public java.util.List<android.hardware.Camera.Size> getSupportedPreviewSizesSync(long timeoutMs) {
+        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.atomic.AtomicReference<java.util.List<android.hardware.Camera.Size>> result = new java.util.concurrent.atomic.AtomicReference<>();
+        final java.util.concurrent.atomic.AtomicReference<String> err = new java.util.concurrent.atomic.AtomicReference<>();
+        startCameraThreadIfNeeded();
+        cameraHandler.post(new Runnable() {
+            @Override public void run() {
+                android.hardware.Camera tmp = null;
+                boolean openedHere = false;
+                try {
+                    if (camera != null) {
+                        result.set(camera.getParameters().getSupportedPreviewSizes());
+                    } else {
+                        for (int idx : CAMERA_INDEX_CANDIDATES) {
+                            try { tmp = android.hardware.Camera.open(idx); break; } catch (Exception ignored) {}
+                        }
+                        if (tmp == null) { err.set("Camera.open failed for all indices"); }
+                        else { result.set(tmp.getParameters().getSupportedPreviewSizes()); }
+                    }
+                } catch (Exception e) { err.set(e.getMessage()); }
+                finally {
+                    if (tmp != null) { try { tmp.release(); } catch (Exception ignored) {} }
+                    latch.countDown();
+                }
+            }
+        });
+        try { latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        if (err.get() != null) return null;
+        return result.get();
+    }
+    public java.util.List<android.hardware.Camera.Size> getSupportedPictureSizesSync(long timeoutMs) {
+        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.atomic.AtomicReference<java.util.List<android.hardware.Camera.Size>> result = new java.util.concurrent.atomic.AtomicReference<>();
+        startCameraThreadIfNeeded();
+        cameraHandler.post(new Runnable() {
+            @Override public void run() {
+                android.hardware.Camera tmp = null;
+                try {
+                    if (camera != null) {
+                        result.set(camera.getParameters().getSupportedPictureSizes());
+                    } else {
+                        for (int idx : CAMERA_INDEX_CANDIDATES) {
+                            try { tmp = android.hardware.Camera.open(idx); break; } catch (Exception ignored) {}
+                        }
+                        if (tmp != null) result.set(tmp.getParameters().getSupportedPictureSizes());
+                    }
+                } catch (Exception ignored) { result.set(null); }
+                finally {
+                    if (tmp != null) { try { tmp.release(); } catch (Exception ignored) {} }
+                    latch.countDown();
+                }
+            }
+        });
+        try { latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        return result.get();
+    }
+    public java.util.List<int[]> getSupportedPreviewFpsRangesSync(long timeoutMs) {
+        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.atomic.AtomicReference<java.util.List<int[]>> result = new java.util.concurrent.atomic.AtomicReference<>();
+        startCameraThreadIfNeeded();
+        cameraHandler.post(new Runnable() {
+            @Override public void run() {
+                android.hardware.Camera tmp = null;
+                try {
+                    if (camera != null) {
+                        result.set(camera.getParameters().getSupportedPreviewFpsRange());
+                    } else {
+                        for (int idx : CAMERA_INDEX_CANDIDATES) {
+                            try { tmp = android.hardware.Camera.open(idx); break; } catch (Exception ignored) {}
+                        }
+                        if (tmp != null) result.set(tmp.getParameters().getSupportedPreviewFpsRange());
+                    }
+                } catch (Exception ignored) {}
+                finally {
+                    if (tmp != null) { try { tmp.release(); } catch (Exception ignored) {} }
+                    latch.countDown();
+                }
+            }
+        });
+        try { latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        return result.get();
     }
 
     /** Result of opening the camera: null means success. */
@@ -314,6 +401,14 @@ public class CameraController {
                     byte[] jpeg = nv21ToJpeg(data, previewWidth, previewHeight);
                     Frame frame = new Frame(jpeg, ++frameSeq);
                     lastFrame = frame;
+                    // 記錄 FPS 時間戳
+                    synchronized (CameraController.this) {
+                        long now = System.nanoTime();
+                        fpsTimestamps.addLast(now);
+                        while (fpsTimestamps.size() > FPS_WINDOW_SIZE) {
+                            fpsTimestamps.removeFirst();
+                        }
+                    }
                     for (FrameListener l : listeners) {
                         try {
                             l.onFrame(frame);
@@ -403,34 +498,34 @@ public class CameraController {
         static PhotoResult fail(String error) { return new PhotoResult(null, error); }
     }
 
-    // 2026-08 新增 (真正根源修正): 之前 self.camera.take_photo 一直複用緊
-    // getLastFrame() 攞preview stream 嘅 frame (即係呢個 class 頭段 comment 講嘅
-    // "continuous webcam-style streaming, NOT single-shot photos" 嗰套 pipeline) -
-    // 反編譯一個用戶提供、實測上傳成功嘅第三方 apk (package com.huihongcloud.xiaozhi,
-    // 用 androidx.camera CameraX 嘅 ImageCapture) 之後發現: 佢送去 server 嘅相片係
-    // 用真正嘅單張拍攝 (busy-wait poll 住 ImageCapture 完成 callback 嘅
-    // photoBytes/doneFlag, 每 10ms check 一次), 唔係 preview frame。preview frame
-    // 冇經過相機 HAL 完整嘅單張 AE/AF/降噪 pipeline, 用戶已經核實過 server 端存低嘅相
-    // 解像度都啱 (480x360, 唔係解像度太細嘅問題), 所以真正差異在於 capture 方式
-    // 本身, 唔係 output size。
+    // 2026-08 新增 (真正根源修正): 之前 self.camera.take_photo 一直複用
+    // getLastFrame() 取的 preview stream frame (也就是這個 class 頭段 comment 說的
+    // "continuous webcam-style streaming, NOT single-shot photos" 那套 pipeline) -
+    // 反編譯一個用戶提供、實測上傳成功的第三方 apk (package com.huihongcloud.xiaozhi,
+    // 用 androidx.camera CameraX 的 ImageCapture) 之後發現: 它送去 server 的照片是
+    // 用真正的單張拍攝 (busy-wait poll 著 ImageCapture 完成 callback 的
+    // photoBytes/doneFlag, 每 10ms check 一次), 不是 preview frame。preview frame
+    // 沒經過相機 HAL 完整的單張 AE/AF/降噪 pipeline, 用戶已經核實過 server 端存下的照片
+    // 解析度都對 (480x360, 不是解析度太小的問題), 所以真正差異在於 capture 方式
+    // 本身, 不是 output size。
     //
-    // 呢個 method 用返呢個 class 現有嘅 camera 實例 (要求 start() 已經成功先可以
-    // call), 用 Camera1 legacy API 嘅 camera.takePicture(shutter, raw, jpeg)
-    // 做一次真正嘅單張拍攝, jpeg callback 攞到嘅先係 driver 真正做完 AE/AF 收斂、完整
-    // ISP pipeline 之後嘅相片, 唔再靠 waitForStableFrame() 噉單純等夠幀數嚟迴避
-    // preview frame 過渡期問題 - takePicture() 本身就已經係硬件執行緊嘅單張拍攝
-    // 流程, 呢個 workaround 就唔再需要。
+    // 這個 method 用回這個 class 現有的 camera 實例 (要求 start() 已經成功才可以
+    // call), 用 Camera1 legacy API 的 camera.takePicture(shutter, raw, jpeg)
+    // 做一次真正的單張拍攝, jpeg callback 拿到的才是 driver 真正做完 AE/AF 收斂、完整
+    // ISP pipeline 之後的照片, 不再靠 waitForStableFrame() 那樣單純等夠幀數來迴避
+    // preview frame 過渡期問題 - takePicture() 本身就已經是硬體執行中的單張拍攝
+    // 流程, 這個 workaround 就不再需要。
     //
-    // Camera1 API 嘅 takePicture() 會令 driver 自動 stopPreview() (拍完相唔會自動
-    // 繼續 preview) - 呢個 method 完成之後會重新 startPreview(), 保持返
-    // camera/snapshot MJPEG streaming 嘅其他 subscriber 唔受影響 (只係拍相嗰陣有
-    // 一嗰瞬間嘅 streaming 中斷, 對單一 take_photo call 嚟講可接受)。
+    // Camera1 API 的 takePicture() 會讓 driver 自動 stopPreview() (拍完照不會自動
+    // 繼續 preview) - 這個 method 完成之後會重新 startPreview(), 保持
+    // camera/snapshot MJPEG streaming 的其他 subscriber 不受影響 (只是拍照時有
+    // 一瞬間的 streaming 中斷, 對單一 take_photo call 來說可接受)。
     //
-    // 解像度: 沿用 closestSupportedPreviewSize() 一樣嘅「最接近所求 area」揀法, 但
-    // 呢度改用 getSupportedPictureSizes() (真正拍攝解像度清單), 唔再用
-    // getSupportedPreviewSizes() (streaming 用嘅細解像度清單, 通常揀擇範圍細過拍攝
-    // 清單好多) - 保留返用戶已核實過啱嘅 480x360 request size, 純粹換一個更啱嘅
-    // supported-sizes 來源嚟揀。
+    // 解析度: 沿用 closestSupportedPreviewSize() 一樣的「最接近所求 area」選法, 但
+    // 這裡改用 getSupportedPictureSizes() (真正拍攝解析度清單), 不再用
+    // getSupportedPreviewSizes() (streaming 用的小解析度清單, 通常選擇範圍小於拍攝
+    // 清單很多) - 保留用戶已核實過對的 480x360 request size, 純粹換一個更對的
+    // supported-sizes 來源來選。
     public PhotoResult takePhoto(final int wantWidth, final int wantHeight, long timeoutMs) {
         if (camera == null) {
             return PhotoResult.fail("camera not started - call start() first");
@@ -554,6 +649,16 @@ public class CameraController {
         return camera != null;
     }
 
+    /** 計算最近 FPS（基於滑動窗口內幀間隔），無幀或窗口不足回 0 */
+    public synchronized double getFps() {
+        if (fpsTimestamps.size() < 2) return 0;
+        long first = fpsTimestamps.peekFirst();
+        long last = fpsTimestamps.peekLast();
+        double seconds = (last - first) / 1_000_000_000.0;
+        if (seconds <= 0) return 0;
+        return (fpsTimestamps.size() - 1) / seconds;
+    }
+
     private void safeReleaseOnCameraThread() {
         if (camera != null) {
             try {
@@ -571,6 +676,9 @@ public class CameraController {
             camera = null;
             openedIndex = -1;
             lastFrame = null;
+            synchronized (this) {
+                fpsTimestamps.clear();
+            }
         }
     }
 

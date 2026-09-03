@@ -14,8 +14,8 @@ android {
         // try-with-resources is a javac/D8 language-level rewrite, not a runtime API,
         // so it works unchanged down to API 19).
         targetSdkVersion 22
-        versionCode 1
-        versionName "beta 3"
+        versionCode 4
+        versionName "beta 4"
 
         // 2026-08: 呢部機淨係 armeabi-v7a (RK3288, 32-bit ARM) - 其他 ABI 完全用唔
         // 到, 亦唔應該出現喺呢個專案任何一部分。opus.aar 已經喺呢個修訂移除咗,
@@ -44,15 +44,6 @@ android {
             // cmake_minimum_required(VERSION 3.10.2)。
         }
     }
-
-    // 2026-08 新增: iflytek-msc-core.jar (見 dependencies block 詳細註解) 用緊
-    // org.apache.http.* (Apache HttpClient) —— 呢個 API 喺 Android 6.0 (API 23)
-    // 開始由 Android SDK 主體移走, 改做一個要顯式 opt-in 嘅 legacy library。
-    // 呢部機本身 targetSdkVersion 22 (Android 5.1), runtime 一定有呢個 API,
-    // 但 compileSdkVersion 25 意味住 compile-time classpath 未必預設攞得到,
-    // 所以顯式加返 useLibrary 先，避免編譯時 "package org.apache.http.* does
-    // not exist" 呢類 error。
-    useLibrary 'org.apache.http.legacy'
 
     // 2026-08-14 更新: 上面加 sourceSets.jniLibs 去手動打包 libopus.so 呢個
     //做法喺呢部機嘅 AGP 版本 (4.2.2) 度撞咗版 - CI build 報:
@@ -92,10 +83,18 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+
+    lintOptions {
+        // 機械人跑 Android 5.1 (API 22)，targetSdk 22 係刻意為之（非上架 Play Store，用 adb sideload 直裝）
+        // Release lint 會因 ExpiredTargetSdkVersion 報錯阻斷 assembleRelease，關掉檢查
+        checkReleaseBuilds false
+        abortOnError false
+    }
 }
 
 dependencies {
-    implementation project(':sdk-module:ubtechalpha2robot')
+    // 2026-09: ubtechalpha2robot (Alpha2OpenSdk binder) 已刪除，脫離上游。
+    implementation project(':sdk-module:hardware-direct')
     // 2026-08: opus.aar (theeasiestway/android-opus-codec 嘅預編譯版本) 已經
     // 喺呢個修訂移除。原本嘅 aar 內含 classes.jar (Kotlin 編譯出嚟嘅
     // com.theeasiestway.opus.Opus/Constants) + libeasyopus.so + libopus.so +
@@ -112,46 +111,4 @@ dependencies {
     //     link opusenc, 因為 CodecOpus.cpp 完全冇用到 libopusenc 嘅任何
     //     API (見 app/src/main/cpp/CMakeLists.txt 嘅 comment)。
     // 見 app/src/main/cpp/CMakeLists.txt 同 externalNativeBuild block。
-
-    // 2026-08 新增: iFlytek MSC SDK (com.iflytek.cloud/.msc/.common/.speech)。
-    //
-    // 呢份 jar 唔係官方 SDK 下載，係由原廠 Alpha2Services-v1.1.7.3.20.apk 嘅
-    // classes.dex 用 baksmali 反組譯、抽走 com/iflytek/{cloud,msc,common,speech}
-    // 四個 package (215+2+18+75 = 310 個 .smali 檔，已核實呢個組合冇缺
-    // reference — cloud/msc/common 有依賴 speech，但冇依賴 alsa/cae，
-    // 所以呢兩個冇帶)，再用 smali assemble 做返一份獨立 .dex，最後用
-    // dex2jar 轉成呢份 .class jar。目的: 令 open-alpha2 自己 process 入面
-    // 有一份完全獨立、唔依賴 alpha2services.apk 起唔起緊嘅 iFlytek MSC
-    // instance —— System.loadLibrary("msc") 呢個標準 JNI 機制淨係識搵
-    // 調用緊嘅 app 自己個 apk 入面嘅 .so，同 alpha2services 裝唔裝、
-    // 行唔行緊完全冇關係。
-    //
-    // 對應嘅 lib/armeabi-v7a/libmsc.so 一樣係由原廠 apk 原封不動抽出 (MD5
-    // e558019e478d4e0bd2d5e81e22c55e56，未經任何 patch)，放喺
-    // app/src/main/jniLibs/armeabi-v7a/。
-    //
-    // 未驗證/已知缺口:
-    //   1. 呢個做法本身唔會解決我哋一路實測見到嘅「識別完成但結果空白」
-    //      問題 (com.ubtechinc.speechmanager.b.a 嗰層 UBTech 自己嘅過濾
-    //      邏輯冇帶埋，因為佢唔屬於 com.iflytek.* 呢四個 package) —— 換咗
-    //      個 app 承載呢份 SDK，如果原本個限制係喺 libmsc.so native 內部，
-    //      一樣會遇到。呢個 module 純粹用嚟做「淨係 libmsc.so +
-    //      engine_type=local，完全獨立、乾淨」嘅隔離測試環境。
-    //   2. QMSPLogin 用嘅 appid=56652373 同相關 login 參數組裝邏輯
-    //      (com.ubtechinc.iflytek.speech.a.a) 屬於 com.ubtechinc.* package，
-    //      未包含喺呢份 jar 入面 —— 要自己攞返嗰組 login 參數，或者自己
-    //      重寫一份，先可以真正 QMSPLogin 成功。
-    //   3. [2026-08 更新, 第一次實機測試發現] 第一版 jar 淨係抽咗
-    //      com/iflytek/{cloud,msc,common,speech} 四個 package, 漏咗
-    //      com.iflytek.common.a.* (LaunchService 嗰組) 反過嚟依賴嘅
-    //      com.b.a (MobileAgent) + com.a.a.a + com.a.b.{a..g} 呢 9 個
-    //      class —— 實機一 call SpeechUtility.createUtility() 就
-    //      NoClassDefFoundError: Lcom/b/a; ，個 constructor 中斷。已經用
-    //      一個遞歸依賴掃描腳本 (find_deps.py) 由呢 9 個做 seed 追多一層,
-    //      確認冚唪唥剩低嘅缺口都係 org.apache.http.*/org.json.*/
-    //      org.w3c.dom.*/org.xmlpull.* 呢啲 Android platform 自帶嘅框架
-    //      class (唔使打包，但 org.apache.http.* 呢個要留意 —— 見上面
-    //      android { useLibrary 'org.apache.http.legacy' } 嗰句)，依賴
-    //      閉包已經封閉。而家份 jar 係 319 個 class (310+9)。
-    implementation files('libs/iflytek-msc-core.jar')
 }

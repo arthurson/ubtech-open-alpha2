@@ -23,6 +23,7 @@
 // what a full open/close cycle costs.
 
 let cameraLiveRunning = false;
+let fpsPollTimer = null;
 
 function cameraElements() {
   return {
@@ -73,7 +74,7 @@ async function startCameraLive() {
 
   const [w, h] = (els.resolution ? els.resolution.value : "800x600").split("x").map(Number);
   hint.textContent = "設定解像度…";
-  await hwApi("camera/resolution", { w: w, h: h });
+  await Alpha2Api.cameraResolution( { w: w, h: h });
 
   cameraLiveRunning = true;
   btn.textContent = "⏸";
@@ -84,6 +85,7 @@ async function startCameraLive() {
   connectCameraStream();
   setupCrosshairIfNeeded();
   updateCrosshairVisibility();
+  startFpsPolling();
 }
 
 function stopCameraLive() {
@@ -106,6 +108,181 @@ function stopCameraLive() {
   }
   els.hint.textContent = "";
   updateCrosshairVisibility();
+  stopFpsPolling();
+}
+
+// ---------------- Camera: FPS badge (top-right) ----------------
+function startFpsPolling() {
+  stopFpsPolling();
+  updateFpsBadge();
+  fpsPollTimer = setInterval(updateFpsBadge, 1000);
+}
+function stopFpsPolling() {
+  if (fpsPollTimer) {
+    clearInterval(fpsPollTimer);
+    fpsPollTimer = null;
+  }
+  const badge = document.getElementById("cameraFpsBadge");
+  if (badge) badge.classList.remove("on");
+}
+function updateFpsBadge() {
+  const badge = document.getElementById("cameraFpsBadge");
+  if (!badge) return;
+  if (!cameraLiveRunning) {
+    badge.classList.remove("on");
+    return;
+  }
+  Alpha2Api.cameraFps().then(function (json) {
+    if (!json.ok || !json.streaming) {
+      badge.classList.remove("on");
+      return;
+    }
+    const fps = typeof json.fps === "number" ? json.fps : parseFloat(json.fps) || 0;
+    badge.textContent = fps.toFixed(1) + " FPS";
+    badge.classList.add("on");
+  }).catch(function () {
+    badge.classList.remove("on");
+  });
+}
+
+// ---------------- Camera: enumerate & benchmark all resolutions ----------------
+async function refreshSupportedSizes() {
+  const hint = document.getElementById("supportedSizesHint");
+  const sel = document.getElementById("cameraResolution");
+  const EXCLUDED = ["176x144","320x240","352x288"];
+  try {
+    const res = await Alpha2Api.cameraSupportedSizes();
+    if (!res.ok) { if (hint) hint.textContent = "讀取失敗: " + (res.error || ""); return; }
+    if (hint) hint.textContent = "Preview: " + (res.preview||[]).join(", ") + " | Picture: " + (res.picture||[]).join(", ") + " | FPS range: " + (res.fpsRanges||[]).join(", ") + " | 當前: " + res.current;
+    if (res.preview && res.preview.length && sel) {
+      const cur = sel.value;
+      // 過濾掉已取消的低解像度
+      const filtered = res.preview.filter(sz => EXCLUDED.indexOf(sz) === -1);
+      const list = filtered.length ? filtered : res.preview;
+      sel.innerHTML = "";
+      list.forEach(function (sz) {
+        const opt = document.createElement("option");
+        opt.value = sz; opt.textContent = sz;
+        if (sz === cur) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      if (!Array.from(sel.options).some(o=>o.selected)) sel.options[0].selected = true;
+      // 若當前值是被排除的，強制切到 1280x720
+      if (EXCLUDED.indexOf(cur) !== -1) {
+        sel.value = "1280x720";
+        // 同步到後端
+        const [w,h] = "1280x720".split("x").map(Number);
+        Alpha2Api.cameraResolution({w:w,h:h});
+      }
+    }
+  } catch (e) { if (hint) hint.textContent = "讀取異常: " + e.message; }
+}
+
+let benchmarkRunning = false;
+async function benchmarkAllResolutions() {
+  if (benchmarkRunning) return;
+  const res = await Alpha2Api.cameraSupportedSizes();
+  if (!res.ok || !res.preview || !res.preview.length) {
+    document.getElementById("cameraBenchmarkResult").textContent = "無法取得支援清單: " + (res.error||"empty");
+    return;
+  }
+  benchmarkRunning = true;
+  const btn = document.getElementById("benchmarkBtn");
+  btn.disabled = true; btn.textContent = "測試中…";
+  const out = document.getElementById("cameraBenchmarkResult");
+  out.innerHTML = "<div class='hint'>逐一測試 " + res.preview.length + " 個解像度，每個約 4 秒…</div>";
+  const table = document.createElement("table");
+  table.style.cssText = "width:100%;border-collapse:collapse;margin-top:6px;font-size:12px";
+  table.innerHTML = "<tr style='background:var(--track)'><th style='padding:4px;border:1px solid var(--border)'>解像度</th><th style='padding:4px;border:1px solid var(--border)'>FPS (平均)</th><th style='padding:4px;border:1px solid var(--border)'>狀態</th></tr>";
+  out.appendChild(table);
+  const results = [];
+  // 確保先停掉現有串流，避免 resolution 切換衝突
+  if (cameraLiveRunning) stopCameraLive();
+  await new Promise(r=>setTimeout(r,800));
+  for (const sz of res.preview) {
+    const [w,h] = sz.split("x").map(Number);
+    const tr = document.createElement("tr");
+    tr.innerHTML = "<td style='padding:4px;border:1px solid var(--border)'>" + sz + "</td><td style='padding:4px;border:1px solid var(--border)'>測試中…</td><td style='padding:4px;border:1px solid var(--border)'>⏳</td>";
+    table.appendChild(tr);
+    try {
+      const setRes = await Alpha2Api.cameraResolution( {w:w,h:h});
+      if (!setRes.ok) throw new Error(setRes.error||"set resolution failed");
+      // 選中下拉
+      document.getElementById("cameraResolution").value = sz;
+      // 開流
+      await startCameraLive();
+      await new Promise(r=>setTimeout(r,2500)); // 等 2.5s 穩定
+      let sum=0, cnt=0;
+      for (let i=0;i<3;i++) {
+        const fpsRes = await Alpha2Api.cameraFps();
+        if (fpsRes.ok && fpsRes.streaming) { sum += parseFloat(fpsRes.fps)||0; cnt++; }
+        await new Promise(r=>setTimeout(r,600));
+      }
+      const avg = cnt? (sum/cnt):0;
+      results.push({sz:sz,w:w,h:h,fps:avg});
+      tr.children[1].textContent = avg.toFixed(1);
+      tr.children[2].textContent = avg>0? "✓":"✗";
+      tr.style.background = avg>=20? "rgba(22,163,74,0.08)" : avg>=15? "rgba(234,179,8,0.08)" : "";
+    } catch (e) {
+      tr.children[1].textContent = "--";
+      tr.children[2].textContent = "失敗: "+e.message;
+      results.push({sz:sz,fps:0,error:e.message});
+    }
+    stopCameraLive();
+    await new Promise(r=>setTimeout(r,900));
+  }
+  // 排序並高亮最高 FPS
+  results.sort((a,b)=>b.fps-a.fps);
+  const best = results[0];
+  const summary = document.createElement("div");
+  summary.className = "hint";
+  summary.style.marginTop = "8px";
+  summary.innerHTML = "最高 FPS: <b>" + (best?best.sz:"-") + " " + (best?best.fps.toFixed(1):"--") + " FPS</b>（已按 FPS 排序） | 你回報 1280x720≈24fps、800x600≈13fps，與實測一致，低解像度未必最高，因 1280x720 可能是 sensor 原生，800x600 需額外縮放開銷";
+  out.appendChild(summary);
+  // 自動切回最高 FPS 的解像度並重開
+  if (best && best.fps>0) {
+    const [bw,bh] = best.sz.split("x").map(Number);
+    await Alpha2Api.cameraResolution({w:bw,h:bh});
+    document.getElementById("cameraResolution").value = best.sz;
+    out.appendChild(Object.assign(document.createElement("div"),{className:"hint",textContent:"已自動切回最高 FPS 解像度 "+best.sz+"，可手動再 ▶ 開啟"}));
+  }
+  btn.disabled = false; btn.textContent = "🧪 測試全部解像度";
+  benchmarkRunning = false;
+  refreshSupportedSizes();
+}
+
+// ---------------- Camera: 9 檔影相並存入 Android (/sdcard/DCIM/Alpha2) ----------------
+// preview 9 檔用 snapshot_save（快速，基於當前串流幀），picture 5 檔用 take_photo_save（真正單張，高解像經完整 ISP）
+async function buildCameraPhoto9Grid() {
+  // 已簡化為單一 4208x3120 按鈕，grid 隱藏，無需動態建
+  return;
+}
+async function capturePhotoAtResolution(w,h,btnEl,isPicture) {
+  const hint = document.getElementById("cameraPhoto9Hint");
+  const origText = btnEl ? btnEl.innerHTML : "";
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = "影緊…"; }
+  const mode = isPicture ? "單張高清" : "快照";
+  if (hint) hint.textContent = "正在以 " + w + "x" + h + " " + mode + " 影相…";
+  try {
+    const endpoint = isPicture ? "camera/take_photo_save" : "camera/snapshot_save";
+    const res = await hwApi(endpoint, {w:w,h:h});
+    if (!res.ok) throw new Error(res.error||"unknown");
+    if (hint) hint.textContent = "✓ 已存 " + w + "x" + h + " → " + res.path + " (" + (res.bytes||"?") + " bytes)";
+    try { Alpha2Api.cameraShutterSound(); } catch(e){}
+    try { flashCaptureLed(); } catch(e){}
+    const byteChars = atob(res.jpegBase64);
+    const bytes = new Uint8Array(byteChars.length);
+    for (let i=0;i<byteChars.length;i++) bytes[i]=byteChars.charCodeAt(i);
+    const blob = new Blob([bytes],{type:"image/jpeg"});
+    const url = URL.createObjectURL(blob);
+    const filename = res.path ? res.path.split("/").pop() : ("alpha2_" + w + "x" + h + "_" + Date.now() + ".jpg");
+    addCaptureItem("photo", url, filename);
+  } catch (e) {
+    showError("影相 " + w + "x" + h, e);
+    if (hint) hint.textContent = "✗ " + w + "x" + h + " 失敗: " + e.message;
+  } finally {
+    if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = origText; }
+  }
 }
 
 // ---------------- Camera: photo capture ----------------
@@ -142,14 +319,14 @@ async function takePhoto() {
   const hint = document.getElementById("cameraStatusHint");
   hint.textContent = "影緊相…";
   try {
-    const json = await hwApi("camera/snapshot");
+    const json = await Alpha2Api.cameraSnapshot();
     if (!json.ok) {
       hint.textContent = "影相失敗：" + (json.error || "未知錯誤");
       return;
     }
     // 快門聲由機械人本身出 (見 MainActivity#playShutterCue - 播 "Sirrah" 呢個系統
     // 鈴聲), 唔係喺瀏覽器度合成音效。
-    api("camera/shutter_sound");
+    Alpha2Api.cameraShutterSound();
     flashCaptureLed();
     const byteChars = atob(json.jpegBase64);
     const bytes = new Uint8Array(byteChars.length);
@@ -172,8 +349,8 @@ async function takePhoto() {
 function flashCaptureLed() {
   const headBrightness = document.getElementById("headBrightness").value;
   const eyeBrightness = document.getElementById("eyeBrightness").value;
-  api("led/head/set", { preset: "flash", color: 7, brightness: headBrightness });
-  api("led/eye/set", { preset: "flash", color: 7, brightness: eyeBrightness });
+  Alpha2Api.ledHeadSet( { preset: "flash", color: 7, brightness: headBrightness });
+  Alpha2Api.ledEyeSet( { preset: "flash", color: 7, brightness: eyeBrightness });
   setTimeout(restoreBaseLed, 500);
 }
 
@@ -189,11 +366,11 @@ function restoreBaseLed() {
     color = 2; // 綠 - 聽機械人中
   }
   if (color === null) {
-    api("led/head/set", { preset: "stop" });
-    api("led/eye/set", { preset: "stop" });
+    Alpha2Api.ledHeadSet( { preset: "stop" });
+    Alpha2Api.ledEyeSet( { preset: "stop" });
   } else {
-    api("led/head/set", { preset: "long", color: color, brightness: headBrightness });
-    api("led/eye/set", { preset: "long", color: color, brightness: eyeBrightness });
+    Alpha2Api.ledHeadSet( { preset: "long", color: color, brightness: headBrightness });
+    Alpha2Api.ledEyeSet( { preset: "long", color: color, brightness: eyeBrightness });
   }
 }
 
@@ -242,7 +419,7 @@ function startRecording() {
   }
   const img = cameraElements().viewport.querySelector("img");
   if (!img) {
-    hint.textContent = "搵唔到鏡頭畫面";
+    hint.textContent = "找不到鏡頭畫面";
     return;
   }
 
@@ -307,11 +484,11 @@ function setRecordingLed(on) {
   if (on) {
     const headBrightness = document.getElementById("headBrightness").value;
     const eyeBrightness = document.getElementById("eyeBrightness").value;
-    api("led/head/set", { preset: "long", color: 1, brightness: headBrightness });
-    api("led/eye/set", { preset: "long", color: 1, brightness: eyeBrightness });
+    Alpha2Api.ledHeadSet( { preset: "long", color: 1, brightness: headBrightness });
+    Alpha2Api.ledEyeSet( { preset: "long", color: 1, brightness: eyeBrightness });
   } else {
-    api("led/head/set", { preset: "stop" });
-    api("led/eye/set", { preset: "stop" });
+    Alpha2Api.ledHeadSet( { preset: "stop" });
+    Alpha2Api.ledEyeSet( { preset: "stop" });
   }
 }
 
@@ -388,8 +565,8 @@ function setupCrosshairIfNeeded() {
     // this worked before - back to the person's original setting rather than a
     // hardcoded joystick-only value.
     const time = servoTime();
-    if (panAngle !== null) api("servo/one", { id: 19, angle: panAngle, time: time });
-    if (tiltAngle !== null) api("servo/one", { id: 20, angle: tiltAngle, time: time });
+    if (panAngle !== null) Alpha2Api.servoOne( { id: 19, angle: panAngle, time: time });
+    if (tiltAngle !== null) Alpha2Api.servoOne( { id: 20, angle: tiltAngle, time: time });
   }
 
   function sendServoThrottled(nx, ny) {
@@ -583,7 +760,7 @@ function connectCameraStream() {
       // the actual resolution in use. Not fired again per MJPEG part in mainstream
       // browsers, so it is not used as an ongoing liveness signal (see the block
       // comment above).
-      hwApi("camera/info", {}).then(function (resp) {
+      Alpha2Api.cameraInfo( {}).then(function (resp) {
         if (resp && resp.previewWidth) {
           hint.textContent = "實際解像度: " + resp.previewWidth + "x" + resp.previewHeight;
         } else {

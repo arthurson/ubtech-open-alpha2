@@ -37,9 +37,11 @@ window.buildAlphaToolbox = function () {
       contents: [
         { kind: 'block', type: 'alpha_sensor_accel_toggle', fields: { ON: 'true' } },
         { kind: 'block', type: 'alpha_sensor_sonar_toggle', fields: { ON: 'true' } },
+        { kind: 'block', type: 'alpha_sensor_pir_toggle', fields: { ON: 'true' } },
         { kind: 'sep' },
         { kind: 'block', type: 'alpha_event_accel_threshold' },
         { kind: 'block', type: 'alpha_event_sonar_triggered' },
+        { kind: 'block', type: 'alpha_event_pir_triggered' },
       ]
     },
     {

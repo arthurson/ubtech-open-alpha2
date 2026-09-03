@@ -1,0 +1,2729 @@
+openapi: 3.0.3
+info:
+  title: Open Alpha2 API
+  description: '`com.open.alpha2` 裝在 UBTECH Alpha2 機械人 (Android 5.1.1, API 22) 上的本地控制面板
+    HTTP + WebSocket API。
+
+    依 `MainActivity.java:6079 handleApi()` / `HttpServer.java:34` 反向生成，
+
+    覆蓋 17 個 AIDL interface (`AIDL_REFERENCE_ALPHA2.md`) 的全部 HTTP 映射，加上獨立的 system/xiaozhi/stream/upload
+    命名空間。
+
+    預設由 `HttpServer.PORT = 8888` 以純 HTTP 提供 (`http://<robot-ip>:8888/`)，同 WiFi 任何瀏覽器可直接訪問。
+
+    所有 `/api/*` 回應皆為 `application/json; charset=utf-8` 的 `{ok: boolean, ...}` 形狀，失敗時帶
+    `error` 欄位。
+
+    即時事件 (觸摸/ASR/電池/跌落/PIR 等) 經 `GET /ws` (RFC6455 WebSocket) 推送，非輪詢。
+
+    '
+  version: beta 4
+  contact:
+    name: Open Alpha2
+    url: https://github.com/arthurson/ubtech-open-alpha2
+  license:
+    name: GPL-3.0-only
+    url: https://www.gnu.org/licenses/gpl-3.0.html
+  x-generated: '2026-09-02'
+servers:
+- url: http://{robotIp}:8888
+  description: 機械人本機 HTTP Server (同 WiFi 直連)
+  variables:
+    robotIp:
+      default: 192.168.1.100
+      description: 機械人 WiFi IP (App 螢幕會顯示 `http://<ip>:8888/`)
+tags:
+- name: core
+  description: 基礎狀態與升級
+- name: action
+  description: 內建動作播放 (AIDL IAlphaActionService)
+- name: speech
+  description: 語音 / TTS / ASR / iFlytek 離線文法
+- name: servo
+  description: 20 軸舵機與聲納
+- name: sensor
+  description: PIR / 加速度計 等感測器
+- name: led
+  description: 頭部/眼部 5-mic LED 與嘴部 LED
+- name: camera
+  description: 相機串流、拍照、錄影
+- name: audio
+  description: 本地音樂、系統鈴聲、音量、頻譜、EQ
+- name: radio
+  description: 網絡電台 (Radio Browser API)
+- name: system
+  description: 獨立於 AIDL 的系統功能 (/api/system/*)
+- name: xiaozhi
+  description: 小智 AI 對話橋接 (xiaozhi.me) 與 MCP 工具 (/api/xiaozhi/*)
+- name: upload
+  description: 原始二進制上載 (/upload/*)
+- name: stream
+  description: 長連接串流 (/stream/*, MJPEG / 音頻)
+- name: websocket
+  description: 即時事件推送 (WebSocket /ws)
+paths:
+  /api/status:
+    get:
+      tags:
+      - core
+      summary: 取得 App 與各 Service 綁定狀態
+      operationId: getStatus
+      responses:
+        '200':
+          description: 狀態 JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+              example:
+                ok: true
+                appVersion: 1.0.0
+                chestAvailable: true
+                headerAvailable: true
+                speechReady: true
+                androidTtsReady: true
+  /api/chest/version:
+    get:
+      tags:
+      - core
+      summary: 讀胸口 MCU 韌體版本 (sendCommand 51)
+      parameters:
+      - $ref: '#/components/parameters/TimeoutMs'
+      responses:
+        '200':
+          description: 版本字串
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    version:
+                      type: string
+                      example: 1.1.7.3.20
+      operationId: chestVersion_get
+  /api/chest/upgrade:
+    post:
+      tags:
+      - core
+      summary: 觸發胸口升級 (讀 /sdcard/AlphaII_CHEST_kernel.bin, 48/49/50 協議)
+      responses:
+        '200':
+          description: 是否已開始
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: chestUpgrade_post
+  /api/chest/upgrade/status:
+    get:
+      tags:
+      - core
+      summary: 查詢胸口升級進度
+      responses:
+        '200':
+          description: 進度 JSON (由 getChestUpgradeStatusJson 提供)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: chestUpgradeStatus_get
+  /api/chest/upgrade/resume:
+    post:
+      tags:
+      - core
+      summary: 從指定頁恢復升級
+      parameters:
+      - name: from
+        in: query
+        schema:
+          type: integer
+          default: 0
+        description: 起始頁 index
+      responses:
+        '200':
+          description: 已恢復
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: chestUpgradeResume_post
+  /api/chest/upgrade/abort:
+    post:
+      tags:
+      - core
+      summary: 中止胸口升級
+      responses:
+        '200':
+          description: 已中止
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: chestUpgradeAbort_post
+  /api/chest/page:
+    get:
+      tags:
+      - core
+      summary: 讀取指定頁的 128B hex (除錯用)
+      parameters:
+      - name: page
+        in: query
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 頁內容
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: chestPage_get
+  /api/action/list:
+    get:
+      tags:
+      - action
+      summary: 取回機身內建動作清單 (每 5 秒 blocking wait, 透過 IAlphaActionListListener)
+      responses:
+        '200':
+          description: '## 分隔四元組 (id##type##中文名##英文名) 已拆為陣列'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    actions:
+                      type: array
+                      items:
+                        type: array
+                        items:
+                          type: string
+      operationId: actionList_get
+  /api/action/play:
+    get:
+      tags:
+      - action
+      summary: 按名稱播放內建動作
+      parameters:
+      - name: name
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 動作中/英文名 (fuzzy match 亦支援於 MCP 層)
+      responses:
+        '200':
+          description: UbxErrorCode 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: actionPlay_get
+  /api/action/stop:
+    post:
+      tags:
+      - action
+      summary: 停止當前動作並自動播放回位動作 (STOP_RECOVERY_ACTION_ID)
+      responses:
+        '200':
+          description: 停止結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: actionStop_post
+  /api/speech/tts:
+    get:
+      tags:
+      - speech
+      summary: 播 TTS (Nuance / iFlytek / Android 三引擎)
+      parameters:
+      - name: text
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: engine
+        in: query
+        schema:
+          type: string
+          enum:
+          - nuance
+          - iflytek
+          - android
+          default: nuance
+        description: nuance=英文, iflytek=中文, android=系統 TTS
+      - name: voice
+        in: query
+        schema:
+          type: string
+        description: 僅 iflytek 有效 (catherine/john/xiaofeng/xiaoyan)
+      - name: lang
+        in: query
+        schema:
+          type: string
+          example: en-US
+        description: 僅 engine=android 有效，BCP-47 tag (speech/tts_languages 回傳)
+      responses:
+        '200':
+          description: 是否已入列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: speechTts_get
+  /api/speech/stop:
+    get:
+      tags:
+      - speech
+      summary: 停止所有 TTS 播放
+      responses:
+        '200':
+          description: 已停止
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: speechStop_get
+  /api/speech/tts_languages:
+    get:
+      tags:
+      - speech
+      summary: 列出 Android TTS 可用語言
+      parameters:
+      - name: ui_lang
+        in: query
+        schema:
+          type: string
+          enum:
+          - zh
+          - en
+          default: zh
+      responses:
+        '200':
+          description: 語言清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    languages:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          tag:
+                            type: string
+                            example: en-US
+                          name:
+                            type: string
+                            example: English (United States)
+      operationId: speechTtsLanguages_get
+  /api/speech/tts_engines:
+    get:
+      tags:
+      - speech
+      summary: 列出系統安裝的 Android TTS 引擎包名
+      responses:
+        '200':
+          description: 引擎清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    engines:
+                      type: array
+                      items:
+                        type: string
+      operationId: speechTtsEngines_get
+  /api/speech/set_tts_engine:
+    get:
+      tags:
+      - speech
+      summary: 切換 Android TTS 引擎 (async, 需 poll cur_tts_engine)
+      parameters:
+      - name: engine
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 引擎包名 (如 com.google.android.tts)
+      responses:
+        '200':
+          description: 已觸發切換
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: speechSetTtsEngine_get
+  /api/speech/cur_tts_engine:
+    get:
+      tags:
+      - speech
+      summary: 查詢當前 Android TTS 引擎
+      responses:
+        '200':
+          description: 當前引擎包名
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    engine:
+                      type: string
+      operationId: speechCurTtsEngine_get
+  /api/speech/set_mic:
+    get:
+      tags:
+      - speech
+      summary: 轉移麥克風擁有權 (setWakeState)
+      description: true=App 拿回 mic (供錄音), false=交還給 alpha2services 的 wake-word 引擎
+      parameters:
+      - name: wake
+        in: query
+        required: true
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: mic 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    held:
+                      type: boolean
+                    keepHeld:
+                      type: boolean
+      operationId: speechSetMic_get
+  /api/speech/set_mic_keep_held:
+    get:
+      tags:
+      - speech
+      summary: 持續搶佔麥克風開關 (每 2 秒補發 setWakeState)
+      parameters:
+      - name: keep
+        in: query
+        required: true
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: keepHeld 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    held:
+                      type: boolean
+                    keepHeld:
+                      type: boolean
+      operationId: speechSetMicKeepHeld_get
+  /api/speech/iflytek_simulate:
+    get:
+      tags:
+      - speech
+      summary: 本地語意配對模擬 (不經 AIDL，直接 IflytekSemanticMatcher.match)
+      description: 依有無漢字自動選中/英文庫，回 matched/question/type/operation/answer/actionId，命中即執行
+        TTS+動作
+      parameters:
+      - name: text
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 配對結果
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    matched:
+                      type: boolean
+                    input:
+                      type: string
+                    question:
+                      type: string
+                    type:
+                      type: string
+                    operation:
+                      type: string
+                    answer:
+                      type: string
+                    actionId:
+                      type: string
+      operationId: speechIflytekSimulate_get
+  /api/speech/get_default_grammar:
+    get:
+      tags:
+      - speech
+      summary: 取得預設 BNF 文法檔內容 (assets/iflytek/default_grammar.bnf)
+      responses:
+        '200':
+          description: BNF 文本
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    bnf:
+                      type: string
+      operationId: speechGetDefaultGrammar_get
+  /api/speech/init_grammar:
+    get:
+      tags:
+      - speech
+      summary: 初始化離線文法 (speech_initGrammar, BNF 格式
+      parameters:
+      - name: bnf
+        in: query
+        schema:
+          type: string
+        description: 留空則用 default_grammar.bnf
+      responses:
+        '200':
+          description: 是否已提交，結果經 WebSocket grammar_init (errorCode 0=成功, 23300=格式錯)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: speechInitGrammar_get
+  /api/speech/start_grammar:
+    get:
+      tags:
+      - speech
+      summary: 啟動離線文法辨識 (speech_startGrammar, 需先 init 成功)
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: speechStartGrammar_get
+  /api/speech/stop_grammar:
+    get:
+      tags:
+      - speech
+      summary: 停止離線文法辨識
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: speechStopGrammar_get
+  /api/speech/offline_auto_switch:
+    get:
+      tags:
+      - speech
+      summary: 查詢或設定離線自動切換 (依 hasRealInternet() 探測)
+      parameters:
+      - name: 'on'
+        in: query
+        schema:
+          type: boolean
+        description: 不帶=查詢，帶 true/false=設定並立即探測套用 (寫 SharedPreferences)
+      responses:
+        '200':
+          description: 自動切換狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    auto:
+                      type: boolean
+                    connected:
+                      type: boolean
+                    offlineActive:
+                      type: boolean
+      operationId: speechOfflineAutoSwitch_get
+  /api/servo/one:
+    get:
+      tags:
+      - servo
+      summary: 控制單顆舵機角度
+      parameters:
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 20
+      - name: angle
+        in: query
+        required: true
+        schema:
+          type: integer
+      - name: time
+        in: query
+        schema:
+          type: integer
+          default: 1000
+        description: 執行時間 ms
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: servoOne_get
+  /api/servo/all:
+    get:
+      tags:
+      - servo
+      summary: 同時控制 20 顆舵機
+      parameters:
+      - name: angles
+        in: query
+        required: true
+        schema:
+          type: string
+          example: 90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90
+        description: 20 個逗號分隔角度
+      - name: time
+        in: query
+        schema:
+          type: integer
+          default: 1000
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: servoAll_get
+  /api/servo/read:
+    get:
+      tags:
+      - servo
+      summary: 讀取單顆舵機角度/偏移 (chest_readServo, cmd 6)
+      description: 即使 MCU 回覆解析尚未實作，仍回 {ok, sent, angle:0, offset:0} 供前端掃描流程使用
+      parameters:
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 20
+      responses:
+        '200':
+          description: 已發送讀取請求 (angle/offset 暫為 0，真值見 chest_rcv Log)
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    id:
+                      type: integer
+                    angle:
+                      type: integer
+                    offset:
+                      type: integer
+                    sent:
+                      type: boolean
+      operationId: servoRead_get
+  /api/servo/sonar:
+    get:
+      tags:
+      - servo
+      summary: 設定聲納觸發距離閾值 (chest_configureSonar, cmd 4 sub 10)
+      parameters:
+      - name: distance
+        in: query
+        required: true
+        schema:
+          type: integer
+        description: cm
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: servoSonar_get
+  /api/pir/set:
+    get:
+      tags:
+      - sensor
+      summary: 開關 PIR 人體感應器 (chest cmd 72)
+      parameters:
+      - name: 'on'
+        in: query
+        required: true
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: pirSet_get
+  /api/pir/alert_enabled:
+    get:
+      tags:
+      - sensor
+      summary: 開關 PIR 警示反應 (紅燈+鈴聲)
+      parameters:
+      - name: 'on'
+        in: query
+        required: true
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: 已設定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: pirAlertEnabled_get
+  /api/accelerometer/set:
+    get:
+      tags:
+      - sensor
+      summary: 開關加速度計串流 (SensorManager)
+      parameters:
+      - name: 'on'
+        in: query
+        required: true
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    enabled:
+                      type: boolean
+      operationId: accelerometerSet_get
+  /api/accelerometer/get:
+    get:
+      tags:
+      - sensor
+      summary: 查詢加速度計開關與可用性
+      responses:
+        '200':
+          description: 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    available:
+                      type: boolean
+      operationId: accelerometerGet_get
+  /api/led/head/set:
+    get:
+      tags:
+      - led
+      summary: 設定頭部 5-mic LED (ledSetHead5Mic)
+      parameters:
+      - name: color
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 7
+        description: 1=紅 2=綠 3=藍 4=黃 5=紫 6=青 7=白
+      - name: brightness
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 9
+      - name: preset
+        in: query
+        schema:
+          type: string
+          enum:
+          - long
+          - flash
+          - breathe
+          - chase
+          - dual
+          - stop
+          default: long
+        description: long=常亮 flash=閃 breathe=呼吸 chase=跑馬 dual=雙色 stop=熄
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: ledHeadSet_get
+  /api/led/eye/set:
+    get:
+      tags:
+      - led
+      summary: 設定眼部 5-mic LED (ledSetEye5Mic)
+      parameters:
+      - name: color
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 7
+      - name: brightness
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 9
+      - name: preset
+        in: query
+        schema:
+          type: string
+          enum:
+          - long
+          - flash
+          - chase
+          - dual
+          - stop
+          default: long
+        description: 眼部無呼吸模式
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: ledEyeSet_get
+  /api/led/mouth/set:
+    get:
+      tags:
+      - led
+      summary: 設定嘴部 LED (LedControl JNI, 非 AIDL)
+      parameters:
+      - name: preset
+        in: query
+        schema:
+          type: string
+          enum:
+          - breathing
+          - false
+          default: breathing
+      - name: speed
+        in: query
+        schema:
+          type: integer
+          default: 0
+        description: 呼吸速度 ms (0-5000)
+      responses:
+        '200':
+          description: 是否成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    ok:
+                      type: boolean
+      operationId: ledMouthSet_get
+  /api/debug/jni/led:
+    get:
+      tags:
+      - led
+      summary: 原始 JNI LED 測試 (LedControl.open/ledSetOn/ledSetEye/ledSetHead)
+      parameters:
+      - name: func
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - true
+          - eye
+          - head
+          - false
+      - name: i
+        in: query
+        schema:
+          type: integer
+        description: func=on 時的索引
+      - name: a1
+        in: query
+        schema:
+          type: integer
+      - name: a2
+        in: query
+        schema:
+          type: integer
+      - name: a3
+        in: query
+        schema:
+          type: integer
+      - name: a4
+        in: query
+        schema:
+          type: integer
+      - name: a5
+        in: query
+        schema:
+          type: integer
+      - name: a6
+        in: query
+        schema:
+          type: integer
+      - name: a7
+        in: query
+        schema:
+          type: integer
+      - name: a8
+        in: query
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: JNI 回傳
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: debugJniLed_get
+  /api/debug/serial/send:
+    get:
+      tags:
+      - led
+      summary: 原始序列埠發送測試
+      parameters:
+      - name: port
+        in: query
+        schema:
+          type: string
+          enum:
+          - head
+          - chest
+          default: head
+      - name: hex
+        in: query
+        required: true
+        schema:
+          type: string
+          example: f88f08000091019aed
+        description: 完整 wire frame hex
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: debugSerialSend_get
+  /api/head/noise:
+    get:
+      tags:
+      - led
+      summary: 頭部降噪開關 (HEADER_SEND_NOISE, 0=開 1=關)
+      parameters:
+      - name: 'on'
+        in: query
+        required: true
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeResponse'
+      operationId: headNoise_get
+  /api/camera/snapshot:
+    get:
+      tags:
+      - camera
+      summary: 擷取單幀預覽圖 (base64 JPEG)
+      responses:
+        '200':
+          description: 單幀
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    jpegBase64:
+                      type: string
+                      format: byte
+      operationId: cameraSnapshot_get
+  /api/camera/snapshot_save:
+    get:
+      tags:
+      - camera
+      summary: 擷取預覽幀並存至 /sdcard/DCIM/Alpha2
+      parameters:
+      - name: w
+        in: query
+        schema:
+          type: integer
+      - name: h
+        in: query
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 路徑與 base64
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    path:
+                      type: string
+                    jpegBase64:
+                      type: string
+                    width:
+                      type: integer
+                    height:
+                      type: integer
+      operationId: cameraSnapshotSave_get
+  /api/camera/take_photo_save:
+    get:
+      tags:
+      - camera
+      summary: 完整拍照 (Camera.takePicture, 存檔)
+      parameters:
+      - name: w
+        in: query
+        schema:
+          type: integer
+          default: 4208
+      - name: h
+        in: query
+        schema:
+          type: integer
+          default: 3120
+      responses:
+        '200':
+          description: 路徑與 base64
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    path:
+                      type: string
+                    jpegBase64:
+                      type: string
+                    width:
+                      type: integer
+                    height:
+                      type: integer
+                    bytes:
+                      type: integer
+      operationId: cameraTakePhotoSave_get
+  /api/camera/shutter_sound:
+    get:
+      tags:
+      - camera
+      summary: 播放快門提示音 (機器人喇叭)
+      responses:
+        '200':
+          description: 已播放
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: cameraShutterSound_get
+  /api/camera/info:
+    get:
+      tags:
+      - camera
+      summary: 查詢當前預覽解像度
+      responses:
+        '200':
+          description: 寬高
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    previewWidth:
+                      type: integer
+                    previewHeight:
+                      type: integer
+      operationId: cameraInfo_get
+  /api/camera/fps:
+    get:
+      tags:
+      - camera
+      summary: 查詢相機 FPS 與是否串流中
+      responses:
+        '200':
+          description: FPS
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    fps:
+                      type: number
+                    streaming:
+                      type: boolean
+      operationId: cameraFps_get
+  /api/camera/supported_sizes:
+    get:
+      tags:
+      - camera
+      summary: 列出支援的預覽/拍照尺寸與 FPS 範圍
+      responses:
+        '200':
+          description: 尺寸清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    preview:
+                      type: array
+                      items:
+                        type: string
+                        example: 640x480
+                    picture:
+                      type: array
+                      items:
+                        type: string
+                    fpsRanges:
+                      type: array
+                      items:
+                        type: string
+                    current:
+                      type: string
+      operationId: cameraSupportedSizes_get
+  /api/camera/resolution:
+    get:
+      tags:
+      - camera
+      summary: 設定預覽解像度並重啟相機
+      parameters:
+      - name: w
+        in: query
+        required: true
+        schema:
+          type: integer
+      - name: h
+        in: query
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 已設定
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    requestedWidth:
+                      type: integer
+                    requestedHeight:
+                      type: integer
+      operationId: cameraResolution_get
+  /api/audio/testtone:
+    get:
+      tags:
+      - audio
+      summary: 播放測試音 (AudioPlaybackController.playTestTone)
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: audioTesttone_get
+  /api/audio/diagnose:
+    get:
+      tags:
+      - audio
+      summary: AudioTrack 診斷掃描
+      responses:
+        '200':
+          description: 掃描結果字串
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    results:
+                      type: string
+      operationId: audioDiagnose_get
+  /api/audio/play/start:
+    get:
+      tags:
+      - audio
+      summary: 開啟 AudioTrack 播放器
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: audioPlayStart_get
+  /api/audio/play/stop:
+    get:
+      tags:
+      - audio
+      summary: 關閉 AudioTrack 播放器
+      responses:
+        '200':
+          description: 已關閉
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: audioPlayStop_get
+  /api/audio/ringtones/list:
+    get:
+      tags:
+      - audio
+      summary: 列出系統鈴聲/通知聲
+      parameters:
+      - name: type
+        in: query
+        schema:
+          type: string
+          enum:
+          - ringtone
+          - notification
+          default: ringtone
+      responses:
+        '200':
+          description: 清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    type:
+                      type: string
+                    sounds:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          index:
+                            type: integer
+                          title:
+                            type: string
+      operationId: audioRingtonesList_get
+  /api/audio/ringtones/play:
+    get:
+      tags:
+      - audio
+      summary: 按 index 播放系統鈴聲
+      parameters:
+      - name: type
+        in: query
+        schema:
+          type: string
+          enum:
+          - ringtone
+          - notification
+          default: ringtone
+      - name: index
+        in: query
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 已播放
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: audioRingtonesPlay_get
+  /api/audio/ringtones/play_by_title:
+    get:
+      tags:
+      - audio
+      summary: 按 title 播放系統鈴聲 (跨機穩定)
+      parameters:
+      - name: type
+        in: query
+        schema:
+          type: string
+          enum:
+          - ringtone
+          - notification
+          default: ringtone
+      - name: title
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 已播放
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: audioRingtonesPlayByTitle_get
+  /api/audio/ringtones/stop:
+    get:
+      tags:
+      - audio
+      summary: 停止系統鈴聲播放
+      responses:
+        '200':
+          description: 已停止
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: audioRingtonesStop_get
+  /api/audio/local_music/list:
+    get:
+      tags:
+      - audio
+      summary: 列出本地音樂檔 (LOCAL_MUSIC_DIR)
+      responses:
+        '200':
+          description: 檔案清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    files:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          sizeBytes:
+                            type: integer
+                            format: int64
+      operationId: audioLocalMusicList_get
+  /api/audio/local_music/play:
+    get:
+      tags:
+      - audio
+      summary: 播放本地音樂檔
+      parameters:
+      - name: name
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 檔名含副檔名
+      responses:
+        '200':
+          description: 已開始
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    playing:
+                      type: string
+      operationId: audioLocalMusicPlay_get
+  /api/audio/local_music/stop:
+    get:
+      tags:
+      - audio
+      summary: 停止本地音樂
+      responses:
+        '200':
+          description: 已停止
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: audioLocalMusicStop_get
+  /api/audio/local_music/status:
+    get:
+      tags:
+      - audio
+      summary: 查詢本地音樂播放狀態與進度
+      responses:
+        '200':
+          description: 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    hasTrack:
+                      type: boolean
+                    playing:
+                      type: boolean
+                    positionMs:
+                      type: integer
+                    durationMs:
+                      type: integer
+                    name:
+                      type: string
+                      nullable: true
+      operationId: audioLocalMusicStatus_get
+  /api/audio/local_music/seek:
+    get:
+      tags:
+      - audio
+      summary: 跳轉本地音樂進度
+      parameters:
+      - name: ms
+        in: query
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 已跳轉
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: audioLocalMusicSeek_get
+  /api/audio/local_music/volume:
+    get:
+      tags:
+      - audio
+      summary: 設定本地音樂音量 (0-100%)
+      parameters:
+      - name: percent
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 100
+      responses:
+        '200':
+          description: 已設定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: audioLocalMusicVolume_get
+  /api/audio/local_music/spectrum:
+    get:
+      tags:
+      - audio
+      summary: 取得音樂頻譜 (FFT, MUSIC_SPECTRUM_BANDS 條 0-255)
+      responses:
+        '200':
+          description: 頻譜
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    bands:
+                      type: array
+                      items:
+                        type: integer
+                        minimum: 0
+                        maximum: 255
+      operationId: audioLocalMusicSpectrum_get
+  /api/audio/local_music/pause:
+    get:
+      tags:
+      - audio
+      summary: 暫停本地音樂 (可 resume)
+      responses:
+        '200':
+          description: 已暫停
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: audioLocalMusicPause_get
+  /api/audio/local_music/resume:
+    get:
+      tags:
+      - audio
+      summary: 恢復本地音樂播放
+      responses:
+        '200':
+          description: 已恢復
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: audioLocalMusicResume_get
+  /api/audio/local_music/eq/presets:
+    get:
+      tags:
+      - audio
+      summary: 列出 Equalizer 預設等化器
+      responses:
+        '200':
+          description: 清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    presets:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          index:
+                            type: integer
+                          name:
+                            type: string
+                    current:
+                      type: integer
+      operationId: audioLocalMusicEqPresets_get
+  /api/audio/local_music/eq/set:
+    get:
+      tags:
+      - audio
+      summary: 設定 Equalizer preset
+      parameters:
+      - name: index
+        in: query
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 已設定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: audioLocalMusicEqSet_get
+  /api/audio/local_music/filler_action/get:
+    get:
+      tags:
+      - audio
+      summary: 查詢播歌隨機動作開關
+      responses:
+        '200':
+          description: 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    enabled:
+                      type: boolean
+      operationId: audioLocalMusicFillerActionGet_get
+  /api/audio/local_music/filler_action/set:
+    get:
+      tags:
+      - audio
+      summary: 設定播歌隨機動作開關
+      parameters:
+      - name: enabled
+        in: query
+        required: true
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: 已設定
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    enabled:
+                      type: boolean
+      operationId: audioLocalMusicFillerActionSet_get
+  /api/audio/volume/get:
+    get:
+      tags:
+      - audio
+      summary: 取得媒體音量 (STREAM_MUSIC)
+      responses:
+        '200':
+          description: 音量
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    volume:
+                      type: integer
+                    max:
+                      type: integer
+      operationId: audioVolumeGet_get
+  /api/audio/volume/set:
+    get:
+      tags:
+      - audio
+      summary: 設定媒體音量
+      parameters:
+      - name: level
+        in: query
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 已設定
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    volume:
+                      type: integer
+                    max:
+                      type: integer
+      operationId: audioVolumeSet_get
+  /api/audio/radio/search:
+    get:
+      tags:
+      - radio
+      summary: 搜尋網絡電台 (Radio Browser API)
+      parameters:
+      - name: query
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 電台清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    stations:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          country:
+                            type: string
+      operationId: audioRadioSearch_get
+  /api/audio/radio/play:
+    get:
+      tags:
+      - radio
+      summary: 按名稱播放電台 (經 resolveRadioStation)
+      parameters:
+      - name: name
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 已播放
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    playing:
+                      type: string
+      operationId: audioRadioPlay_get
+  /api/audio/radio/play_url:
+    get:
+      tags:
+      - radio
+      summary: 按直鏈 URL 播放電台 (供瀏覽器 fallback)
+      parameters:
+      - name: url
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uri
+      - name: name
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 已播放
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    playing:
+                      type: string
+      operationId: audioRadioPlayUrl_get
+  /api/audio/radio/stop:
+    get:
+      tags:
+      - radio
+      summary: 停止電台
+      responses:
+        '200':
+          description: 已停止
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: audioRadioStop_get
+  /api/audio/radio/status:
+    get:
+      tags:
+      - radio
+      summary: 查詢電台播放狀態
+      responses:
+        '200':
+          description: 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    playing:
+                      type: boolean
+                    id:
+                      type: string
+                    name:
+                      type: string
+      operationId: audioRadioStatus_get
+  /api/battery/status:
+    get:
+      tags:
+      - core
+      summary: 查詢電池狀態 (BatteryManager broadcast 緩存)
+      responses:
+        '200':
+          description: 電量
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    level:
+                      type: integer
+                    scale:
+                      type: integer
+                    charging:
+                      type: boolean
+                    status:
+                      type: string
+      operationId: batteryStatus_get
+  /api/wifi/status:
+    get:
+      tags:
+      - core
+      summary: 查詢 WiFi 狀態
+      responses:
+        '200':
+          description: WiFi JSON (wifiStatus)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: wifiStatus_get
+  /api/bt/status:
+    get:
+      tags:
+      - core
+      summary: 查詢藍牙狀態
+      responses:
+        '200':
+          description: BT JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: btStatus_get
+  /api/misc/charge_play:
+    get:
+      tags:
+      - core
+      summary: 設定充電同時播放開關
+      parameters:
+      - name: open
+        in: query
+        required: true
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: 已設定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: miscChargePlay_get
+  /api/misc/request_uuid:
+    get:
+      tags:
+      - core
+      summary: 請求機械人 UUID (觸發 broadcast, 結果經 WebSocket robot_uuid)
+      responses:
+        '200':
+          description: 已請求
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: miscRequestUuid_get
+  /api/misc/set_uuid:
+    get:
+      tags:
+      - core
+      summary: 修改機械人 UUID (寫 chest EEPROM, cmd 54)
+      parameters:
+      - name: value
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 31
+        description: 1-31 ASCII 字元
+      responses:
+        '200':
+          description: 是否成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: miscSetUuid_get
+  /api/service_config/get:
+    get:
+      tags:
+      - core
+      summary: 讀取 /sdcard/actions/service_config.json
+      responses:
+        '200':
+          description: 配置內容
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: serviceConfigGet_get
+  /api/service_config/set:
+    get:
+      tags:
+      - core
+      summary: 寫入 service_config 預設 (cn/en/offline, 需重開機生效)
+      parameters:
+      - name: preset
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - cn
+          - en
+          - cn_offline
+          - en_offline
+      - name: reboot
+        in: query
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: 已寫入
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: serviceConfigSet_get
+  /api/service_config/reboot:
+    get:
+      tags:
+      - core
+      summary: 重開機 (PowerManager reboot)
+      responses:
+        '200':
+          description: 已觸發
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: serviceConfigReboot_get
+  /api/alice/talkServer:
+    post:
+      tags:
+      - core
+      summary: 假 ALICE talkServer 後端 (供 offline preset 指向 127.0.0.1:8888)
+      description: 接收 form-urlencoded `content=<識別文字>`, 回 plain text 使流程不卡死
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                appType:
+                  type: string
+                requestKey:
+                  type: string
+                systemLanguage:
+                  type: string
+      responses:
+        '200':
+          description: 裸文字回覆
+          content:
+            text/plain:
+              schema:
+                type: string
+      operationId: aliceTalkserver_post
+  /api/system/music/list:
+    get:
+      tags:
+      - system
+      summary: (system) 列出 /sdcard/Music 音樂清單 (MusicController)
+      responses:
+        '200':
+          description: 清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    tracks:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          path:
+                            type: string
+                          name:
+                            type: string
+                          sizeBytes:
+                            type: integer
+      operationId: systemMusicList_get
+  /api/system/music/play:
+    get:
+      tags:
+      - system
+      summary: (system) 播放指定路徑音樂
+      parameters:
+      - name: path
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: systemMusicPlay_get
+  /api/system/music/pause:
+    get:
+      tags:
+      - system
+      summary: (system) 暫停音樂
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: systemMusicPause_get
+  /api/system/music/resume:
+    get:
+      tags:
+      - system
+      summary: (system) 恢復音樂
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: systemMusicResume_get
+  /api/system/music/stop:
+    get:
+      tags:
+      - system
+      summary: (system) 停止音樂
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: systemMusicStop_get
+  /api/system/music/seek:
+    get:
+      tags:
+      - system
+      summary: (system) 跳轉進度
+      parameters:
+      - name: ms
+        in: query
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: systemMusicSeek_get
+  /api/system/music/volume:
+    get:
+      tags:
+      - system
+      summary: (system) 設定音量 0-100%
+      parameters:
+      - name: percent
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 100
+      responses:
+        '200':
+          description: 結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: systemMusicVolume_get
+  /api/system/music/status:
+    get:
+      tags:
+      - system
+      summary: (system) 查詢播放狀態
+      responses:
+        '200':
+          description: 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    hasTrack:
+                      type: boolean
+                    playing:
+                      type: boolean
+                    prepared:
+                      type: boolean
+                    path:
+                      type: string
+                      nullable: true
+                    positionMs:
+                      type: integer
+                    durationMs:
+                      type: integer
+      operationId: systemMusicStatus_get
+  /api/xiaozhi/supported:
+    get:
+      tags:
+      - xiaozhi
+      summary: 查詢小智語音支援 (sdkInt / audioSupported)
+      responses:
+        '200':
+          description: 支援度
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    sdkInt:
+                      type: integer
+                    audioSupported:
+                      type: boolean
+      operationId: xiaozhiSupported_get
+  /api/xiaozhi/status:
+    get:
+      tags:
+      - xiaozhi
+      summary: 查詢小智連線狀態
+      responses:
+        '200':
+          description: 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    connected:
+                      type: boolean
+                    autoMode:
+                      type: boolean
+                    micActive:
+                      type: boolean
+                    micHeld:
+                      type: boolean
+                    sessionId:
+                      type: string
+                      nullable: true
+      operationId: xiaozhiStatus_get
+  /api/xiaozhi/activation_status:
+    get:
+      tags:
+      - xiaozhi
+      summary: 查詢配對/啟用流程狀態 (輪詢)
+      responses:
+        '200':
+          description: 階段 (checking / code / polling / connected / error)
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    stage:
+                      type: string
+                    code:
+                      type: string
+                    message:
+                      type: string
+                    error:
+                      type: string
+                    sessionId:
+                      type: string
+      operationId: xiaozhiActivationStatus_get
+  /api/xiaozhi/ota_config/get:
+    get:
+      tags:
+      - xiaozhi
+      summary: 取得 OTA / 自架 Server 配置
+      responses:
+        '200':
+          description: 配置
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    customEnabled:
+                      type: boolean
+                    customUrl:
+                      type: string
+                    defaultUrl:
+                      type: string
+                    wsUrlOverride:
+                      type: string
+                    deviceIdOverride:
+                      type: string
+                    tokenOverride:
+                      type: string
+      operationId: xiaozhiOtaConfigGet_get
+  /api/xiaozhi/ota_config/set:
+    get:
+      tags:
+      - xiaozhi
+      summary: 設定自架 Server (需先 disconnect)
+      parameters:
+      - name: enabled
+        in: query
+        required: true
+        schema:
+          type: boolean
+      - name: url
+        in: query
+        schema:
+          type: string
+          format: uri
+      - name: wsUrl
+        in: query
+        schema:
+          type: string
+        description: ws:// 或 wss://
+      - name: deviceId
+        in: query
+        schema:
+          type: string
+          example: aa:bb:cc:dd:ee:ff
+      - name: token
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 已寫入
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: xiaozhiOtaConfigSet_get
+  /api/xiaozhi/mcp_tools/list:
+    get:
+      tags:
+      - xiaozhi
+      summary: 列出全部 MCP 工具含 enabled 狀態
+      responses:
+        '200':
+          description: 工具清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    tools:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            example: self.robot.play_action
+                          description:
+                            type: string
+                          enabled:
+                            type: boolean
+                          inputSchema:
+                            type: object
+                    mcpEnabled:
+                      type: boolean
+      operationId: xiaozhiMcpToolsList_get
+  /api/xiaozhi/mcp_config/get:
+    get:
+      tags:
+      - xiaozhi
+      summary: 取得 MCP 總開關與 disabled 清單
+      responses:
+        '200':
+          description: 配置
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    mcpEnabled:
+                      type: boolean
+                    disabledTools:
+                      type: array
+                      items:
+                        type: string
+      operationId: xiaozhiMcpConfigGet_get
+  /api/xiaozhi/mcp_config/set:
+    get:
+      tags:
+      - xiaozhi
+      summary: 設定 MCP 總開關或單一工具開關
+      parameters:
+      - name: tool
+        in: query
+        schema:
+          type: string
+        description: 留空=設總開關，填 name=設單一工具
+      - name: enabled
+        in: query
+        required: true
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: 已寫入
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: xiaozhiMcpConfigSet_get
+  /api/xiaozhi/tts_config/get:
+    get:
+      tags:
+      - xiaozhi
+      summary: 取得小智 TTS 引擎選擇
+      responses:
+        '200':
+          description: 引擎
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    engine:
+                      type: string
+                      enum:
+                      - xiaozhi
+                      - iflytek
+                      - nuance
+                      - android
+      operationId: xiaozhiTtsConfigGet_get
+  /api/xiaozhi/tts_config/set:
+    get:
+      tags:
+      - xiaozhi
+      summary: 設定小智 TTS 引擎
+      parameters:
+      - name: engine
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - xiaozhi
+          - iflytek
+          - nuance
+          - android
+      responses:
+        '200':
+          description: 已設定
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    engine:
+                      type: string
+      operationId: xiaozhiTtsConfigSet_get
+  /api/xiaozhi/connect:
+    get:
+      tags:
+      - xiaozhi
+      summary: 啟動 OTA 啟用與 WebSocket 連線 (背景線程，需輪詢 activation_status)
+      responses:
+        '200':
+          description: 已開始
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    message:
+                      type: string
+      operationId: xiaozhiConnect_get
+  /api/xiaozhi/disconnect:
+    get:
+      tags:
+      - xiaozhi
+      summary: 斷開小智連線並釋放 mic
+      responses:
+        '200':
+          description: 已斷開
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: xiaozhiDisconnect_get
+  /api/xiaozhi/mic/start:
+    get:
+      tags:
+      - xiaozhi
+      summary: 開啟小智麥克風採集與 Opus 上行 + 播放下行
+      responses:
+        '200':
+          description: 已開啟
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: xiaozhiMicStart_get
+  /api/xiaozhi/mic/stop:
+    get:
+      tags:
+      - xiaozhi
+      summary: 關閉小智麥克風並交還給 wake-word 引擎
+      responses:
+        '200':
+          description: 已關閉
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: xiaozhiMicStop_get
+  /api/xiaozhi/auto_mode:
+    get:
+      tags:
+      - xiaozhi
+      summary: 一鍵全自動 (連線+常開麥克風)
+      parameters:
+      - name: enabled
+        in: query
+        required: true
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: 已切換
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    enabled:
+                      type: boolean
+      operationId: xiaozhiAutoMode_get
+  /api/xiaozhi/send_text:
+    get:
+      tags:
+      - xiaozhi
+      summary: 發送文字對話 (不經麥克風，source=text + session_id)
+      parameters:
+      - name: text
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 已發送
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: xiaozhiSendText_get
+  /upload/audio:
+    post:
+      tags:
+      - upload
+      summary: 走廊對講上行 PCM (16kHz mono 16-bit raw bytes)
+      description: 不經 UTF-8 解碼，直接 enqueuePcm(body)
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: 已入列
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    bytes:
+                      type: integer
+      operationId: uploadAudio_post
+  /upload/music:
+    post:
+      tags:
+      - upload
+      summary: 上載本地音樂檔至 LOCAL_MUSIC_DIR
+      parameters:
+      - name: name
+        in: query
+        required: true
+        schema:
+          type: string
+        description: 原始檔名 (經 sanitize，自動加 (2) 防覆蓋)
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: 已儲存
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    name:
+                      type: string
+                    sizeBytes:
+                      type: integer
+      operationId: uploadMusic_post
+  /upload/chest:
+    post:
+      tags:
+      - upload
+      summary: 上載胸口固件 256KB bin 至 /sdcard/AlphaII_CHEST_kernel.bin
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: 已寫入
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    path:
+                      type: string
+                    sizeBytes:
+                      type: integer
+      operationId: uploadChest_post
+  /stream/camera:
+    get:
+      tags:
+      - stream
+      summary: MJPEG 相機串流 (multipart/x-mixed-replace)
+      description: 每 part 為單張 JPEG，boundary 隨機，10 秒無幀自動斷開
+      responses:
+        '200':
+          description: MJPEG 流
+          content:
+            multipart/x-mixed-replace:
+              schema:
+                type: string
+                format: binary
+        '503':
+          description: 相機不可用
+          content:
+            text/plain:
+              schema:
+                type: string
+      operationId: streamCamera_get
+  /stream/mic:
+    get:
+      tags:
+      - stream
+      summary: 麥克風 WAV 分片串流 (multipart/mixed, boundary=opensdktestpanelaudio)
+      description: 需先取得 mic 擁有權 (releaseMicForAudioIo)，每 part 為獨立 WAV
+      responses:
+        '200':
+          description: 音頻流
+          content:
+            multipart/mixed:
+              schema:
+                type: string
+                format: binary
+      operationId: streamMic_get
+  /ws:
+    get:
+      tags:
+      - websocket
+      summary: WebSocket 即時事件總線 (RFC6455)
+      description: '升級至 WebSocket 後推送 JSON 事件，type 欄位區分：
+
+        `asr_result`/`grammar_result`/`speech_ready`/`grammar_init`/`mic_state`/`accel`/`sonar_distance`/`pir_state`/`robot_uuid`/`xiaozhi_status`/`mcp_tool_call`
+        等。
+
+        前端 `app-log.js` 與 `EventBus.java` 全量訂閱，無需輪詢。
+
+        '
+      responses:
+        '101':
+          description: Switching Protocols
+          content:
+            text/plain:
+              schema:
+                type: string
+      operationId: ws_get
+  /:
+    get:
+      tags:
+      - core
+      summary: 主控制面板 (assets/web/index.html)
+      responses:
+        '200':
+          description: HTML
+          content:
+            text/html:
+              schema:
+                type: string
+      operationId: root_get
+  /blockly.html:
+    get:
+      tags:
+      - core
+      summary: Blockly 積木編程頁
+      responses:
+        '200':
+          description: HTML
+          content:
+            text/html:
+              schema:
+                type: string
+      operationId: blocklyhtml_get
+components:
+  parameters:
+    TimeoutMs:
+      name: timeout
+      in: query
+      schema:
+        type: integer
+        default: 1500
+      description: 逾時 ms
+  schemas:
+    OkWrapper:
+      type: object
+      required:
+      - ok
+      properties:
+        ok:
+          type: boolean
+          example: true
+        error:
+          type: string
+          example: file not found
+    CodeResponse:
+      allOf:
+      - $ref: '#/components/schemas/OkWrapper'
+      - type: object
+        properties:
+          code:
+            type: string
+            example: API_ERROR_SUCCEED
+          msg:
+            type: string
+            example: Success
+    StatusResponse:
+      allOf:
+      - $ref: '#/components/schemas/OkWrapper'
+      - type: object
+        properties:
+          appVersion:
+            type: string
+          chestAvailable:
+            type: boolean
+          headerAvailable:
+            type: boolean
+          speechReady:
+            type: boolean
+          androidTtsReady:
+            type: boolean
+    ErrorResponse:
+      type: object
+      required:
+      - ok
+      - error
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: 'unknown endpoint: foo'
+  securitySchemes:
+    none:
+      type: http
+      scheme: bearer
+      bearerFormat: none
+security: []
+externalDocs:
+  description: AIDL 完整參考 (17 interfaces, transaction id 驗證)
+  url: ./AIDL_REFERENCE_ALPHA2.md

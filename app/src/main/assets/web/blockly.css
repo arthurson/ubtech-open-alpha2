@@ -223,16 +223,14 @@
 .bk-svg-fab-group {
   cursor: pointer;
 }
-.bk-svg-fab-bg {
-  fill: rgba(255, 255, 255, 0.95);
-  stroke: var(--border);
-  stroke-width: 1;
-}
+/* 2026-08: 跟 Code Lab 個風格 —— 平時透明底、冇邊框, 純線條圖示浮喺畫布
+   之上; hover 先出返淺灰圓底 (提示可以撳)。唔再有連埋一整條嘅 pill 背景
+   (.bk-svg-fab-bg 已拆走), 每粒掣係獨立一個透明區域。 */
 .bk-svg-fab-circle {
-  fill: #eef1f5;
+  fill: transparent;
 }
 .bk-svg-fab-group:hover .bk-svg-fab-circle {
-  fill: #dde3ec;
+  fill: var(--track);
 }
 .bk-svg-fab-group.bk-svg-fab-disabled {
   cursor: default;
@@ -241,12 +239,6 @@
 .bk-svg-fab-group.bk-svg-fab-disabled .bk-svg-fab-circle {
   fill: transparent;
 }
-.bk-svg-fab-circle-danger {
-  fill: #fde8e8;
-}
-.bk-svg-fab-group:hover .bk-svg-fab-circle-danger {
-  fill: #fbd5d5;
-}
 .bk-svg-fab-icon {
   fill: none;
   stroke: var(--text);
@@ -254,9 +246,6 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   pointer-events: none;
-}
-.bk-svg-fab-icon-danger {
-  stroke: #c0392b;
 }
 .bk-svg-fab-sep {
   stroke: var(--border);

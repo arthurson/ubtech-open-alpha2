@@ -1,0 +1,35 @@
+aid: ubtech-open-alpha2
+name: Open Alpha2
+description: UBTECH Alpha2 本地控制面板 HTTP+WebSocket API (port 8888)，基於 17 個 AIDL 的完整映射，含動作/舵機/語音/LED/相機/音樂/小智MCP。
+url: https://github.com/arthurson/ubtech-open-alpha2
+image: https://avatars.githubusercontent.com/u/32864785
+tags:
+  - Robotics
+  - Humanoid
+  - Alpha2
+  - UBTECH
+apis:
+  - aid: ubtech-open-alpha2:core
+    name: Open Alpha2 Core API
+    baseURL: http://{robotIp}:8888
+    humanURL: http://{robotIp}:8888/
+    tags: [Robotics]
+    properties:
+      - type: OpenAPI
+        url: /openapi.yml
+      - type: Documentation
+        url: /docs/
+      - type: AsyncAPI
+        url: /asyncapi.yml
+maintainers:
+  - FN: arthurson
+    url: https://github.com/arthurson/ubtech-open-alpha2
+common:
+  - type: OpenAPI
+    url: /openapi.yml
+  - type: AsyncAPI
+    url: /asyncapi.yml
+  - type: Documentation
+    url: /docs/
+  - type: Repository
+    url: https://github.com/arthurson/ubtech-open-alpha2

@@ -38,19 +38,31 @@ function nowTimeStr() {
  *  同 sendSpeechChatText() 嘅後半段邏輯一致。 */
 function triggerIflytekSimulate(text) {
   if (!text) return;
-  api("speech/iflytek_simulate", { text: text }).then(function (res) {
+  Alpha2Api.speechIflytekSimulate( { text: text }).then(function (res) {
     if (!res || !res.ok) return;
     if (!res.matched) {
       appendSpeechChatLine("xiaozhi-msg-system", t("speech_chat_simulate_no_match"));
       return;
     }
+    // 2026-08 清理: 對話界面淨係顯示中英文對白 - 條 [TYPE operation] 動作ID
+    // detail 行已經搬走 (Event Log 有齊同樣資訊, 唔使喺對話流度重複)。
     if (res.answer) {
       appendSpeechChatLine("xiaozhi-msg-assistant", res.answer);
     }
-    const detail = "[" + res.type + (res.operation ? " " + res.operation : "") + "]"
-        + (res.actionId ? " " + t("speech_chat_simulate_action_prefix") + res.actionId : "");
-    appendSpeechChatLine("xiaozhi-msg-system", detail);
   });
+}
+
+/** 2026-08 新增: 對話界面用嘅文字過濾 - 如果辨識結果其實仲係 JSON 字串
+ *  (例如 {"text":"你好","rc":4}), 抽返個 text 出嚟; 抽唔到就返回空字串,
+ *  咁樣 user 氣泡永遠唔會出現大括號/引號呢啲「代碼」。 */
+function cleanChatText(s) {
+  if (!s) return "";
+  const t = String(s).trim();
+  if (t.indexOf("{") === 0 && t.indexOf("}") > 0) {
+    const m = t.match(/"text"\s*:\s*"([^"]*)"/);
+    return m ? m[1] : "";
+  }
+  return t;
 }
 
 const MAX_LOG_LINES = 200;
@@ -85,9 +97,22 @@ function appendLog(msg) {
   // A couple of event types also update a dedicated tile, not just the scrolling log,
   // since the HTTP call that triggered them (requestRobotUUID(), the battery receiver)
   // doesn't carry the actual result back in its own response.
-  if (msg.type === "robot_uuid" && msg.data && msg.data.uuid) {
+  if (msg.type === "robot_uuid" && msg.data) {
     const el = document.getElementById("uuidOut");
-    if (el) el.textContent = msg.data.uuid;
+    // 2026-09: 後端讀唔到 (timeout/空) 會 publish {"uuid":null}, 之前個
+    // `msg.data.uuid` truthy check 會成個 event 跳過, UI 永久停喺「查詢中」。
+    // 而家 uuid:null 就顯示讀取失敗, 有 uuid 先走原本的清洗+顯示流程。
+    if (!msg.data.uuid) {
+      if (el) el.textContent = "❌ 讀取失敗 (chest cmd55 無回覆, 見 logcat)";
+      return;
+    }
+    // 2026-08 v2: SN 欄位可能帶 \0 padding — 剝走控制字元先顯示。
+    // 2026-08 v4: 單淨 \x00-\x1f 唔夠 — EEPROM 尾段殘留可能係非零垃圾 byte,
+    // 令顯示出現方塊/亂碼字元 (Java 端 RobotEventReceiver 已經加咗白名單過濾,
+    // 呢度係第二重保障, 以防萬一)。SN 合法字元集只有英數/-/_。
+    const clean = String(msg.data.uuid).replace(/[^A-Za-z0-9\-_]/g, "").trim();
+    if (el) el.textContent = clean;
+    uuidUpdateCard(clean);
   }
   // 2026-08 新增: 配對碼之前淨係經 xiaozhi/activation_status HTTP polling
   // 傳去前端 (見 app-xiaozhi.js xiaozhiPollActivationStatus()), 完全冇經
@@ -108,42 +133,20 @@ function appendLog(msg) {
     const el = document.getElementById("batteryOut");
     if (el) el.textContent = msg.data.level + "/" + msg.data.scale + " " + (msg.data.charging ? "⚡充電中" : "") + " (" + msg.data.status + ")";
   }
-  // mic_state 由 server 端喺 speech/set_mic 同 speech/set_mic_keep_held 兩個
-  // endpoint 都會 publish (見 MainActivity), 令指示燈可以即時反映最新狀態,
-  // 唔使靠前端自己記住個 boolean - 例如用戶開咗「持續搶 mic」之後 enforcer
-  // thread 自動搶返 mic, 呢個變化都會經呢條 event 反映返上 UI, 唔會停留喺
-  // 舊狀態。
-  if (msg.type === "mic_state" && msg.data) {
-    updateMicStateUi(msg.data.held, msg.data.keepHeld);
-  }
+  // 2026-09 移除: mic_state handler - MIC 卡已拎走, 指示燈元素唔存在;
+  // event 本身仲會喺 Event Log 照常顯示, 唔影響。
   if (msg.type === "asr_result" && msg.data) {
-    // 對話界面: 辨識到嘅嘢顯示做 user 氣泡
-    if (msg.data.text && typeof appendSpeechChatLine === "function") {
-      appendSpeechChatLine("xiaozhi-msg-user", msg.data.text);
-    }
-    // 觸發語意配對 + TTS + 動作（同文字輸入一致）
-    if (msg.data.text) {
-      triggerIflytekSimulate(msg.data.text);
-    }
-  }
-  if (msg.type === "speech_ready" && msg.data) {
-    // 2026-08 更正: 之前呢度講「speech/set_asr_engine() 觸發嘅 rebind」——
-    // set_asr_engine 呢個 endpoint 已經確認會整死 TTS session, 已經改用
-    // speech/set_language (call speech_setRecognizedLanguage(), 唔需要
-    // unbind/rebind) 嚟切換引擎。呢個 event 而家係 speech/set_language 完成
-    // (或者一開機嘅初始 bind 完成) 都會經呢度返嚟。ready=false 期間 (切換
-    // 進行緊) 擋住撳「開始聆聽」, 避免喺 speech service 狀態未穩定嗰陣撞
-    // race condition。
-    // 2026-08 清理: 之前呢度仲有 document.getElementById("asrOut") 嘅
-    // dataset.state 更新邏輯, 對應嘅 "asrOut" element 已經喺 index.html
-    // 完全移除, 屬於死 code, 已刪走。
-    speechReadyForAsr = !!msg.data.ready;
-    if (speechReadyForAsr) {
-      if (typeof appendSpeechChatLine === "function") {
-        appendSpeechChatLine("xiaozhi-msg-system", t("asr_engine_ready_hint"));
-      }
+    // 對話界面: 辨識到嘅嘢顯示做 user 氣泡 (2026-08: 經 cleanChatText 過濾,
+    // JSON 碎片唔會出現喺對話流度)
+    const cleanAsr = cleanChatText(msg.data.text);
+    if (cleanAsr && typeof appendSpeechChatLine === "function") {
+      appendSpeechChatLine("xiaozhi-msg-user", cleanAsr);
+      triggerIflytekSimulate(cleanAsr);
     }
   }
+  // 2026-09 移除: speech_ready handler - 事件本身來自已不存在的機身 speech
+  // service bind, 加上對應嘅「開始聆聽」按鈕同 speechReadyForAsr 變量已經一齊
+  // 拎走, 留返都唔會再觸發。
   // 真正 online iFlytek ASR 認到之後嘅語意配對結果 (由 MainActivity
   // handleIflytekSemanticText() publish) — 之前淨係 speech/iflytek_simulate
   // (打字模擬) 嗰條路徑先會喺 sendSpeechChatText() 度即時攞 HTTP response
@@ -152,20 +155,16 @@ function appendLog(msg) {
   // user 氣泡會顯示)。呢度補返, 令兩條路徑 (真人講嘢 / 打字模擬) 喺對話
   // 界面出返一致嘅 assistant 氣泡 + detail 提示。
   if (msg.type === "iflytek_match" && msg.data) {
+    // 2026-08 清理: 對話界面淨係出 assistant 答案氣泡; 條 [TYPE operation]
+    // 動作ID detail 行已經移除 - 呢啲技術代碼喺 Event Log 度睇得到。
     if (msg.data.answer && typeof appendSpeechChatLine === "function") {
       appendSpeechChatLine("xiaozhi-msg-assistant", msg.data.answer);
     }
-    if (typeof appendSpeechChatLine === "function") {
-      const detail = "[" + msg.data.type + (msg.data.operation ? " " + msg.data.operation : "") + "]"
-          + (msg.data.actionId ? " " + t("speech_chat_simulate_action_prefix") + msg.data.actionId : "");
-      appendSpeechChatLine("xiaozhi-msg-system", detail);
-    }
   }
-  // 2026-08 grammar 系列 (init_grammar/start_grammar/stop_grammar) 已經
-  // 全線移除 (index.html UI tile/按鈕、後端 API case、呢度嘅 event handler) -
-  // 見 MainActivity.java 對應 case 個 comment。ASR 而家只得 asr_result
-  // 一條路徑會觸發語意配對 + TTS + 動作, 唔會再有 grammar_result 呢個
-  // 額外途徑令同一句話重複觸發。
+  // 2026-09 移除: grammar_init/grammar_result/offline_mode 三組 handler -
+  // 離線文法卡已拎走 (見 index.html), 呢啲 event 唔會再有後端發出; 指示燈
+  // (asrModeDot) 同狀態行 (grammarStatusOut) 元素都已刪除。asr_result 同
+  // iflytek_match 上面兩個 handler 保留 (dead-safe: 有 event 先顯示, 無就無)。
   if (msg.type === "sonar_obstacle" && msg.data) {
     sonarThresholdCm = msg.data.thresholdCm;
     sonarHistory.push({ triggered: !!msg.data.triggered });
@@ -203,6 +202,9 @@ function clearLog() {
   document.getElementById("eventLog").innerHTML = "";
 }
 
+// 2026-09 移除: updateAsrModeIndicator/refreshAsrModeIndicator - 離線/雲端
+// 模式指示燈 (asrModeDot) 已隨離線文法卡一齊拎走 (見 index.html)。
+
 function escapeHtml(s) {
   const div = document.createElement("div");
   div.textContent = s;
@@ -215,19 +217,19 @@ window.addEventListener("DOMContentLoaded", function () {
   buildServoGrid();
   buildHeadColorPicker();
   buildEyeColorPicker();
-  setTtsEngine("nuance"); // 初始化引擎/聲音按鈕嘅 active 狀態、隱藏聲音嗰行 (預設 nuance)
-  // 麥克風指示燈初始狀態 - app 啱啱起身嗰陣 MainActivity 嘅 micHeldByApp/
-  // micHoldEnforced 兩個 field 都係預設 false (機械人持有 mic), 呢度令 UI
-  // 一開始就同 server 端一致, 唔使等第一個 mic_state event 先顯示啱嘅狀態。
-  // 如果之前個 session 已經攞咗 mic (例如撳完掣之後 reload 個頁), 之後嗰句
-  // speech/set_mic 或者 mic_state event 一樣會即時更新返嚟。
-  updateMicStateUi(false, false);
+  setTtsEngine("android"); // 2026-09: 得返 Android 內置 TTS, 載入引擎/語言清單
+  // 2026-09 移除: MIC 指示燈初始化 (卡已拎走, 見 index.html)。
   refreshStatus();
   refreshDeviceInfo();
   applyUiLanguage();
   refreshVolume();
   disableTalkFabIfInsecureContext();
+  // 2026-09 移除: 離線文法/模式指示燈初始化 (卡已拎走, 見 index.html)。
   connectWs();
+  musicInit();
+  if (typeof radioInit === "function") radioInit();
+  if (typeof refreshSupportedSizes === "function") refreshSupportedSizes();
+  if (typeof buildCameraPhoto9Grid === "function") buildCameraPhoto9Grid();
 });
 
 /**

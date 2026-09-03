@@ -3,25 +3,14 @@
 // 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
 // <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
 
-// ---------------- Speech / TTS ----------------
+// ---------------- Speech / TTS (Android 內置 only) ----------------
 //
-// The robot runs two distinct on-device services - com.ubtechinc.services.
-// NuanceSpeeckServices and .IflytekSpeeckServices (see Alpha2Intent.java in the SDK) -
-// both genuinely functional. Alpha2RobotApi itself has no separate "engine" parameter
-// though: engine selection happens implicitly through which language code you send
-// (en_us / zh_cn). Nuance only has an English grammar/voice set on this firmware;
-// iFlytek covers both. So "engine" here is a UI-level grouping that filters which
-// language options make sense, not a value sent to the robot on its own - only the
-// Voice selection only applies to iFlytek's named voices - Nuance and Android's
-// system TTS each use their own single default voice with no picker.
-//
-// 2026-08 更新: 引擎/聲音由 <select> 改做按鈕組 (同 switchAsrEngine 嗰邊嘅
-// .lang-toggle 樣式一致) —— 3 個引擎鍵常駐, 聲音嗰 5 個鍵獨立一行, 淨係
-// currentTtsEngine === "iflytek" 先顯示 (揀 Nuance/Android 預設嗰行會完全
-// 消失, 唔淨係 disable)。用返 currentTtsEngine/currentTtsVoice 呢兩個模組
-// 層變數記住目前揀緊乜, 唔再靠 <select>.value 讀。
-let currentTtsEngine = "nuance"; // 預設同舊 <select> 個第一個 option 一致
-let currentTtsVoice = "";
+// 2026-09: 機身已無 alpha2services, Nuance/iFlytek 兩個機身引擎唔存在,
+// 語音 tab 得返 Android 系統 TTS。之前個三引擎按鈕組 + iFlytek 聲音揀擇已
+// 移除 (見 index.html), 呢度 currentTtsEngine 恆等於 "android", setTtsEngine()
+// 只做 Android 引擎/語言列載入 (開頁初始化用, 保留個名唔改, 免得 app-log.js
+// 個 init call 要一齊改名)。
+let currentTtsEngine = "android";
 
 // ---------------- Speech / 對話界面 (全抄小智 tab 做法) ----------------
 //
@@ -59,8 +48,9 @@ function clearSpeechChatLog() {
   if (log) log.innerHTML = "";
 }
 
-/** 文字輸入框「送出」— 2026-08 改用 speech/iflytek_simulate: 打字入嘅文字當做
- *  「iFlytek 引擎已經辨識完嘅結果」直接送去 1000 條問法配對引擎 (中英文各 1000 條,
+/** 文字輸入框「送出」— 打字入嘅文字當做已經辨識完嘅結果 (2026-09: 之前寫
+ *  「iFlytek 引擎已經辨識完」, 依家機身已無 iFlytek, 去掉個引擎名 — 純粹本地
+ *  文字配對, 同任何機身引擎無關), 直接送去問法配對引擎 (中英文各 1000 條,
  *  IflytekSemanticMatcher/IflytekSemanticMatcherEn, 按輸入有冇漢字自動判斷用邊份),
  *  命中就即時做 TTS + (可能有嘅) 動作 - 唔使真係郁把口, 都可以測到「聽到 -> 講嘢/
  *  做動作」成條 pipeline。
@@ -78,7 +68,7 @@ function sendSpeechChatText() {
   const btn = document.getElementById("speechChatSendBtn");
   if (btn) btn.disabled = true;
   appendSpeechChatLine("xiaozhi-msg-user", text);
-  return api("speech/iflytek_simulate", { text: text }).then(function (res) {
+  return Alpha2Api.speechIflytekSimulate( { text: text }).then(function (res) {
     if (input) input.value = "";
     if (!res || !res.ok) {
       appendSpeechChatLine("xiaozhi-msg-system",
@@ -101,34 +91,11 @@ function sendSpeechChatText() {
 }
 
 function setTtsEngine(engine) {
-  currentTtsEngine = engine;
-  document.getElementById("ttsEngineNuanceBtn").classList.toggle("active", engine === "nuance");
-  document.getElementById("ttsEngineIflytekBtn").classList.toggle("active", engine === "iflytek");
-  document.getElementById("ttsEngineAndroidBtn").classList.toggle("active", engine === "android");
-
-  const voiceRow = document.getElementById("ttsVoiceRow");
-  if (engine === "iflytek") {
-    voiceRow.style.display = "";
-  } else {
-    voiceRow.style.display = "none";
-    currentTtsVoice = "";
-    setTtsVoice("");
-  }
-
-  // Android TTS 引擎揀擇/語言揀擇 - 淨係 engine === "android" 先顯示同載入
-  // 清單, 對照上面 voiceRow (iflytek 專屬) 嘅做法。
-  const androidEngineRow = document.getElementById("ttsAndroidEngineRow");
-  const androidLangRow = document.getElementById("ttsAndroidLangRow");
-  if (engine === "android") {
-    androidEngineRow.style.display = "";
-    androidLangRow.style.display = "";
-    loadAndroidTtsEngines();
-    loadAndroidTtsLanguages();
-  } else {
-    androidEngineRow.style.display = "none";
-    androidLangRow.style.display = "none";
-    currentAndroidTtsLang = "";
-  }
+  // 2026-09: 得返 "android" 一個引擎, 參數照收 (開頁 init 會傳 "android" 入嚟),
+  // 傳其他值都當 android 處理。直接載入 Android 引擎/語言清單。
+  currentTtsEngine = "android";
+  loadAndroidTtsEngines();
+  loadAndroidTtsLanguages();
 }
 
 /** 揀 Android TTS 引擎 (speech/tts engine=android 分支實際講嘢用嗰個系統
@@ -141,7 +108,9 @@ function setAndroidTtsEngine() {
   const select = document.getElementById("ttsAndroidEngineSelect");
   const enginePkg = select ? select.value : "";
   if (!enginePkg) return;
-  api("speech/set_tts_engine", { engine: enginePkg }).then(function () {
+  // 2026-09: 轉咗引擎, 舊語言選擇未必啱用, 重置返等語言清單載入後用戶再揀。
+  currentAndroidTtsLang = "";
+  Alpha2Api.speechSetTtsEngine( { engine: enginePkg }).then(function () {
     setTimeout(function () {
       loadCurAndroidTtsEngine();
       loadAndroidTtsLanguages();
@@ -152,7 +121,7 @@ function setAndroidTtsEngine() {
 /** 載入機身裝咗嘅全部 Android TTS 引擎, 填入 <select>, 再讀返而家實際揀緊
  *  邊個, 揀返佢做已選項。 */
 function loadAndroidTtsEngines() {
-  api("speech/tts_engines").then(function (res) {
+  Alpha2Api.speechTtsEngines().then(function (res) {
     const select = document.getElementById("ttsAndroidEngineSelect");
     if (!select || !res || !res.ok || !res.engines) return;
     select.innerHTML = "";
@@ -167,7 +136,7 @@ function loadAndroidTtsEngines() {
 }
 
 function loadCurAndroidTtsEngine() {
-  api("speech/cur_tts_engine").then(function (res) {
+  Alpha2Api.speechCurTtsEngine().then(function (res) {
     const select = document.getElementById("ttsAndroidEngineSelect");
     if (!select || !res || !res.ok || !res.engine) return;
     select.value = res.engine;
@@ -184,7 +153,7 @@ let currentAndroidTtsLang = "";
  *  javadoc), displayName 已經係 server 揀好 ui_lang 嗰種語言嘅顯示名, 前端
  *  唔使自己維護 tag->name 對照表。 */
 function loadAndroidTtsLanguages() {
-  api("speech/tts_languages", { ui_lang: uiLang }).then(function (res) {
+  Alpha2Api.speechTtsLanguages( { ui_lang: uiLang }).then(function (res) {
     const select = document.getElementById("ttsAndroidLangSelect");
     if (!select || !res || !res.ok || !res.languages) return;
     select.innerHTML = "";
@@ -209,25 +178,13 @@ function setAndroidTtsLang() {
   currentAndroidTtsLang = select ? select.value : "";
 }
 
-function setTtsVoice(voice) {
-  currentTtsVoice = voice;
-  document.getElementById("ttsVoiceDefaultBtn").classList.toggle("active", voice === "");
-  document.getElementById("ttsVoiceCatherineBtn").classList.toggle("active", voice === "catherine");
-  document.getElementById("ttsVoiceJohnBtn").classList.toggle("active", voice === "john");
-  document.getElementById("ttsVoiceXiaofengBtn").classList.toggle("active", voice === "xiaofeng");
-  document.getElementById("ttsVoiceXiaoyanBtn").classList.toggle("active", voice === "xiaoyan");
-}
-
 function speakTts() {
   const text = document.getElementById("ttsText").value.trim();
   if (!text) return alert(t("speech_test_enter_text_alert"));
-  const params = { text: text, engine: currentTtsEngine };
-  if (currentTtsEngine === "iflytek" && currentTtsVoice) {
-    params.voice = currentTtsVoice;
-  }
-  // Android TTS 語言揀擇 - 空字串代表沿用引擎目前語言, 唔帶 lang 參數
-  // (見後端 speech/tts 個 android 分支 comment)。
-  if (currentTtsEngine === "android" && currentAndroidTtsLang) {
+  // 2026-09: 恆行 Android TTS。lang 有揀先帶 (空字串=沿用引擎目前語言)。
+  const params = { text: text, engine: "android" };
+  // 空字串=沿用引擎目前語言 (見後端 speech/tts 個 android 分支 comment)。
+  if (currentAndroidTtsLang) {
     params.lang = currentAndroidTtsLang;
   }
   // 對話界面: 機械人「講嘢」即刻顯示做 assistant 氣泡 — 呢度同小智唔同嘅係
@@ -239,227 +196,33 @@ function speakTts() {
   // 播放新嘅 (例如冧巴一次冇嘢正播緊, stop 本身可能會 error/no-op, 唔應該
   // 因為咁就唔畀用家繼續講嘢)。
   return stopTts().catch(function () {}).then(function () {
-    return api("speech/tts", params);
+    return Alpha2Api.speechTts( params);
   });
 }
 
 function stopTts() {
-  return api("speech/stop");
+  return Alpha2Api.speechStop();
 }
 
-// 麥克風擁有權指示燈 + 「持續搶 mic」card - 由原本 TTS card 入面嗰兩粒掣同
-// micStateHint 抽出嚟做獨立 section (見 index.html), 加返 mic_state WebSocket
-// event 令狀態可以即時反映, 唔淨係靠呢度手動 call 完 api() 先更新一次。
-//
-// updateMicStateUi() 同時處理兩個 UI 更新入口: 1) 用戶自己撳掣 (setMic()/
-// setMicKeepHeld() 嘅 .then()), 2) server 端 mic_state event 推送過嚟 (見
-// app-log.js 嘅 appendLog()) - 兩者都經過呢個 function, 保證指示燈、hint
-// 文字、keep-held checkbox 三者永遠同步, 唔會因為淨係更新其中一個入口就走樣。
-function updateMicStateUi(held, keepHeld) {
-  const dot = document.getElementById("micStateDot");
-  const label = document.getElementById("micStateLabel");
-  const keepCheckbox = document.getElementById("micKeepHeld");
-  if (dot) {
-    dot.classList.toggle("mic-state-dot-on", !!held);
-    dot.classList.toggle("mic-state-dot-off", !held);
-  }
-  if (label) {
-    label.textContent = t(held ? "mic_state_on" : "mic_state_off");
-  }
-  if (keepCheckbox) {
-    keepCheckbox.checked = !!keepHeld;
-  }
-}
-
-function setMic(wake) {
-  return api("speech/set_mic", { wake: String(wake) }).then(function (res) {
-    updateMicStateUi(res.held, res.keepHeld);
-    return res;
-  });
-}
-
-function setMicKeepHeld(keep) {
-  return api("speech/set_mic_keep_held", { keep: String(keep) }).then(function (res) {
-    updateMicStateUi(res.held, res.keepHeld);
-    return res;
-  });
-}
-
-// ---------------- Speech / ASR (manual) ----------------
-//
-// 2026-08-22 更新: logcat 證實 setRecognizedLanguage() 本身就觸發引擎切換:
-// - setRecognizedLanguage("en_us") → SpeechManager 切換語音引擎到 nuance
-// - setRecognizedLanguage("zh_cn") 或空值 → SpeechManager 切換語音引擎到 iflytek
-// 呢個方法唔需要 unbind/rebind, 所以唔會破壞 TTS session。曾經用過另一個
-// (已經拎走嘅) speech/set_asr_engine endpoint 做真正 unbind/rebind 式切換,
-// 但已經確認會整死 TTS session (要重開機先返到正常), 而家統一改用
-// speech/set_language API 觸發切換, 效果同 logcat 完全一致。
-//
-// Results don't come back from this call itself: they arrive later, asynchronously,
-// as an "asr_result" WebSocket event (published from MainActivity's onServerCallBack)
-// and are shown by appendLog() below.
-//
-// start_asr (speech_startSpeechNoWakeup) was added to trigger recognition without
-// waiting for the mic-array hardware's own wake word - see logcat_2026-07-30_07-53-50.txt
-// for why set_mic(true) alone couldn't do that. But logcat_2026-07-02_13-38-32.txt (a
-// later on-robot test of start_asr itself, done against the Nuance binding) shows it only
-// moves the speech engine into SPEECH_STATE_WAKEUP internally (SpeechManager "what:3",
-// IflytekWakeUp5mic.startRecording) - actual recognition (IflyteckASR5mic
-// "startSpeechASR type:0", "Listening...") still didn't begin until a hardware "MicArray
-// wakeup" fired independently, ~20s later. So start_asr does put the robot in a more
-// wake-word-receptive state than doing nothing, but it is not the direct trigger this
-// button's label implies - hence the phrasing below. This was tested against Nuance;
-// whether iFlytek's own wake-word path behaves the same way is still unconfirmed.
-let speechReadyForAsr = true; // set false while switchAsrEngine() 嘅切換進行緊
-
-function switchAsrEngine(engine) {
-  const label = engine === "iflytek" ? "iFlytek" : "Nuance";
-  const lang = engine === "iflytek" ? "zh_cn" : "en_us";
-  document.getElementById("asrSwitchZhBtn").classList.toggle("active", engine === "iflytek");
-  document.getElementById("asrSwitchEnBtn").classList.toggle("active", engine === "nuance");
-  document.getElementById("asrCurrentEngineHint").textContent = t("asr_current_engine_switching").replace("{label}", label);
-  appendSpeechChatLine("xiaozhi-msg-system", t("asr_switching_to").replace("{label}", label));
-  // 用 setRecognizedLanguage 觸發引擎切換, 同 logcat 觀察到嘅行為一致:
-  // - "en_us" → 切換到 Nuance
-  // - "zh_cn" → 切換到 iFlytek
-  // 呢個方法唔需要 unbind/rebind, TTS session 繼續正常運作。
-  // 同時切換 TTS 引擎, 令 ASR 同 TTS 同步:
-  // - nuance asr = nuance tts
-  // - iflytek asr = iflytek tts
-  // 切換前端 TTS 引擎狀態
-  setTtsEngine(engine);
-  // 通知後端真正切換 TTS 引擎 (唔係淨係改前端變量)
-  api("speech/tts_config/set", { engine: engine });
-  return api("speech/set_language", { lang: lang }).then(function () {
-    speechReadyForAsr = true;
-    document.getElementById("asrCurrentEngineHint").textContent = t("asr_current_engine_is").replace("{label}", label);
-    appendSpeechChatLine("xiaozhi-msg-system", t("asr_engine_ready_hint"));
-    // 播放一句對白確認切換成功, 用對應嘅 TTS 引擎講
-    var confirmText = engine === "iflytek"
-        ? "我們一同玩吧"
-        : "let's play together";
-    api("speech/tts", { text: confirmText, engine: engine });
-  }).catch(function (err) {
-    document.getElementById("asrCurrentEngineHint").textContent = t("asr_current_engine_switch_failed");
-    appendSpeechChatLine("xiaozhi-msg-system", t("asr_switch_failed_prefix") + (err && err.message ? err.message : err));
-  });
-}
+// 2026-09 移除: MIC 控制成組 (updateMicStateUi/setMic/setMicKeepHeld) - 卡已
+// 拎走 (見 index.html)。Backend speech/set_mic* endpoint 保留唔郁。
+// 2026-09 移除: ASR 引擎切換 (switchAsrEngine + speechReadyForAsr) - 機身已無
+// iFlytek/Nuance, speech/set_language 只會回 NOT_INIT, 成張 ASR 卡已拎走
+// (見 index.html)。對應 backend endpoint 本身保留 (其他 caller 照舊收到誠實
+// 錯誤, 唔靜默改語義)。
 
 // 2026-08 清理: 原本呢度有 startAsr()/stopAsr()/resetSpeech() 三個 function,
 // 交叉核對成個 index.html 搵唔到任何按鈕/入口綁住呢三個 function, 亦冇任何
 // 其他 JS 檔案 call 過佢哋 - 純粹係之前語音 tab 改版 (UI 整合做四張卡) 拎走
 // 咗對應按鈕之後, function 本身冇跟手一齊刪嘅殘留死 code, 已刪走。對應嘅
-// backend endpoint (speech/start_asr, speech/reset) 本身冇改, setMic(false)
-// (stopAsr 舊實現) 依然可以直接用返下面嘅 setMic() 掣。
+// backend endpoint (speech/start_asr, speech/reset) 已經喺 2026-09 一齊移除
+// (死 binder), 前端早已無入口再 call 佢哋。
 
-// ---------------- Service config (/sdcard/actions/service_config.json) -------------
-//
-// 呢個檔案控制機身開機時嘅 wake word / ASR 語言 / 預設對話 app。實測確認：改咗呢個
-// 檔案、重開機之後，wake word 真係會跟住轉。中文／英文兩個 preset 都係機身出廠
-// 內置嘅原裝 default config，一字不改。寫入唔會自動重開機，要用家自己撳「立即
-// 重開機」，避免手滑撳咗個 preset 掣就即刻累機身重開。
-//
-// 2026-08 更新: 撳「中文/英文」即寫，唔再彈 confirm —— 呢個掣本身淨係寫入
-// config 檔, 唔會即刻令機身重開機 (要另外撳「立即重開機」先真正生效/累機),
-// 屬於低風險、可以隨時再撳另一個 preset 覆蓋返嘅操作, 冇必要加多一重確認。
-function setServiceConfigPreset(preset) {
-  document.getElementById("serviceConfigResult").textContent = t("service_config_writing");
-  return api("service_config/set", { preset: preset }).then(function (res) {
-    const el = document.getElementById("serviceConfigResult");
-    el.textContent = res && res.ok
-      ? t("service_config_write_ok")
-      : t("service_config_write_failed_prefix") + (res && res.error ? res.error : t("asr_reset_failed_unknown"));
-  });
-}
+// 2026-09 移除: 離線對話設定成組 (setServiceConfigPreset/rebootRobot) - 卡已
+// 拎走 (見 index.html)。注意 app-accel.js advancedRebootRobot() 係另一粒獨立
+// 掣 (UUID 卡用), 唔受影響。Backend service_config/* endpoint 保留唔郁。
 
-function rebootRobot() {
-  if (!confirm(t("service_config_reboot_confirm"))) return Promise.resolve();
-  document.getElementById("serviceConfigResult").textContent = t("service_config_rebooting");
-  return api("service_config/reboot").then(function (res) {
-    if (res && res.ok) {
-      document.getElementById("serviceConfigResult").textContent = t("service_config_reboot_ok");
-    } else {
-      document.getElementById("serviceConfigResult").textContent =
-        t("service_config_reboot_failed_prefix") + (res && res.error ? res.error : t("asr_reset_failed_unknown")) + t("service_config_reboot_failed_suffix");
-    }
-  });
-}
-
-// 2026-08 新增: iFlytek offline 獨立測試面板。淨係 init/start/stop/destroy/log
-// 五個 action，冇額外邏輯——所有真正嘅判斷 (成唔成功、識別結果係咪空白) 都留俾
-// 你自己睇 log 판斷，呢度唔做自動化嘅「成功/失敗」判定，因為 Arthur 想要嘅判準
-// 係「斷網情況下講嘢，睇文字係咪空白」，呢個要人手講嘢先觸發得到，冇得自動化。
-function iflytekTestCall(action) {
-  const logEl = document.getElementById("iflytekTestLog");
-  logEl.textContent = "(calling " + action + "...)";
-  return api("iflytektest/" + action).then(function (res) {
-    logEl.textContent = res && res.ok ? (res.status || "OK") : "ERROR: " + (res && res.error ? res.error : "unknown");
-  });
-}
-
-function iflytekTestShowLog() {
-  const logEl = document.getElementById("iflytekTestLog");
-  return api("iflytektest/log").then(function (res) {
-    if (!res || !res.ok) {
-      logEl.textContent = "ERROR: " + (res && res.error ? res.error : "unknown");
-      return;
-    }
-    const lines = res.lines;
-    logEl.textContent = Array.isArray(lines) && lines.length ? lines.join("\n") : "(log is empty — call 初始化 first)";
-  });
-}
-
-// 2026-08 新增: 複製 log 內容去 clipboard。裝置系統 WebView 係 Chromium 39
-// (2014)，navigator.clipboard (Clipboard API) 要 Chrome 66+ 先有，呢部機
-// 冇得用，所以主力用 document.execCommand("copy") 呢個舊式、廣泛支援嘅方法
-// (用一個隱藏 textarea 做中介)，navigator.clipboard 得閒先當額外嘗試。
-function iflytekTestCopyLog(btn) {
-  const logEl = document.getElementById("iflytekTestLog");
-  const text = logEl.textContent || "";
-  if (!text || text === "-") {
-    return; // 未撳過「睇 Log」，冇嘢好複製
-  }
-
-  function fallbackCopy() {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    // 避免喺畫面度閃一下/影響 scroll 位置
-    ta.style.position = "fixed";
-    ta.style.top = "-9999px";
-    ta.style.left = "-9999px";
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    let ok = false;
-    try {
-      ok = document.execCommand("copy");
-    } catch (e) {
-      ok = false;
-    }
-    document.body.removeChild(ta);
-    return ok;
-  }
-
-  const btn2 = btn || null;
-  const originalText = btn2 ? btn2.textContent : null;
-  function flashFeedback(success) {
-    if (!btn2) return;
-    btn2.textContent = success ? t("iflytek_test_copy_log_ok") : t("iflytek_test_copy_log_failed");
-    setTimeout(function () {
-      btn2.textContent = originalText;
-    }, 1500);
-  }
-
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(
-      function () {
-        flashFeedback(true);
-      },
-      function () {
-        flashFeedback(fallbackCopy());
-      }
-    );
-  } else {
-    flashFeedback(fallbackCopy());
-  }
-}
+// 2026-09 移除: 離線文法辨識成組 function (grammarLoadDefault/grammarInit/
+// grammarStart/grammarStop/setOfflineAutoSwitch/refreshOfflineAutoSwitch) -
+// 卡已拎走 (見 index.html), 背後 iFlytek 本地引擎唔存在, endpoint 只會回
+// NOT_INIT。Backend endpoint 本身保留唔郁。

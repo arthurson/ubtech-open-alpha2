@@ -1,0 +1,22 @@
+# Android
+.gradle/
+build/
+app/build/
+app/.cxx/
+sdk-module/*/build/
+*.iml
+local.properties
+# Python
+__pycache__/
+*.pyc
+# Logs
+*.log
+androguard.db
+androguard.log
+# OS
+.DS_Store
+Thumbs.db
+# Zip
+*.zip
+# Temp
+tmp/
