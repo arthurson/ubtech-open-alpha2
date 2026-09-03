@@ -3,25 +3,25 @@ package com.ubtechinc.alpha.jni.headkey;
 import android.util.Log;
 
 /**
- * 3.002 版 libhead_key_mgr.so 的 JNI 桥（rk29-keypad，/dev/input/event*）。
+ * 3.002 版 libhead_key_mgr.so 的 JNI 橋（rk29-keypad，/dev/input/event*）。
  *
- * <p>类名+方法签名必须与 .so 导出符号逐字对应（由 3.002 APK classes2.dex 抽出，
- * 自研 DexSig 解析确认）：
+ * <p>類名+方法簽名必須與 .so 導出符號逐字對應（由 3.002 APK classes2.dex 抽出，
+ * 自研 DexSig 解析確認）：
  * {@code Java_com_ubtechinc_alpha_jni_headkey_HeadKeyMgr_Init/Add/nativeInit/
- * nativeThreadStart/nativeThreadStop}（均为 public 实例 native），外加
- * 原装同包私有桩 {@code convertHeadKeyEvent(I)[B / newConvertHeadKeyEvent(I)V /
- * publishEvent(B)V}（native 可能 GetMethodID，直接缺席会导致 native 线程静默死，
- * 故保留同签名桩；调用即打 log 供核对）。</p>
+ * nativeThreadStart/nativeThreadStop}（均為 public 實例 native），外加
+ * 原裝同包私有樁 {@code convertHeadKeyEvent(I)[B / newConvertHeadKeyEvent(I)V /
+ * publishEvent(B)V}（native 可能 GetMethodID，直接缺席會導致 native 線程靜默死，
+ * 故保留同簽名樁；調用即打 log 供核對）。</p>
  *
- * <p>回调：native 按键线程调 {@code onNativeCallback(I)}（public 实例方法，原装本意由
- * 子类/本类实现转换后 publish）。本类空实现，app 侧 HeadKeyPoller 继承并 override，
- * 把码值喂进既有 gesture 合成管线。native 另写 {@code /sdcard/keyjnilog.txt}
- * 调试日志，可对照原始码。</p>
+ * <p>回調：native 按鍵線程調 {@code onNativeCallback(I)}（public 實例方法，原裝本意由
+ * 子類/本類實現轉換後 publish）。本類空實現，app 侧 HeadKeyPoller 繼承並 override，
+ * 把碼值喂進既有 gesture 合成管線。native 另寫 {@code /sdcard/keyjnilog.txt}
+ * 調試日志，可對照原始碼。</p>
  *
- * <p>时序（经验）：{@code new → Init() → nativeInit() → nativeThreadStart()}；
- * 停用 {@code nativeThreadStop()}。{@code Add(II)} 暂不调用（用途未明，疑为
- * 注册额外事件节点；默认扫描已覆盖 rk29-keypad）。任一步失败抛错，调用方回退
- * Java 直读 /dev/input/event0。</p>
+ * <p>時序（經驗）：{@code new → Init() → nativeInit() → nativeThreadStart()}；
+ * 停用 {@code nativeThreadStop()}。{@code Add(II)} 暫不調用（用途未明，疑為
+ * 注冊額外事件節點；預設掃描已覆蓋 rk29-keypad）。任一步失敗拋錯，調用方回退
+ * Java 直讀 /dev/input/event0。</p>
  */
 public class HeadKeyMgr {
     private static final String TAG = "HeadKeyMgr";
@@ -37,7 +37,7 @@ public class HeadKeyMgr {
         }
     }
 
-    /** .so 是否已载入；未载入时一切 native 调用都会抛 UnsatisfiedLinkError。 */
+    /** .so 是否已載入；未載入時一切 native 調用都會拋 UnsatisfiedLinkError。 */
     public static boolean isLibLoaded() {
         return sLibLoaded;
     }
@@ -52,11 +52,11 @@ public class HeadKeyMgr {
 
     public native void nativeThreadStop();
 
-    /** native 按键线程回调（子类 override；默认空实现）。 */
+    /** native 按鍵線程回調（子類 override；預設空實現）。 */
     public void onNativeCallback(int code) {
     }
 
-    // ---- 原装同签名私有桩（防 native GetMethodID 落空；被调即 log） ----
+    // ---- 原裝同簽名私有樁（防 native GetMethodID 落空；被調即 log） ----
     @SuppressWarnings("unused")
     private byte[] convertHeadKeyEvent(int code) {
         Log.d(TAG, "convertHeadKeyEvent(" + code + ") stub hit");

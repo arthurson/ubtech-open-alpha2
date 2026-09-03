@@ -4,13 +4,13 @@ import android.content.Context;
 import android.util.Log;
 
 /**
- * 1.1.7.3 这一代 alpha2services 的最小本地替代（pure-direct）。
- * 不复制 3.002 的 9991 个类，只实现对 open-alpha2 真正重要的胸/头直驱：
- *   - DirectSerialPort (胸 /dev/ttyS1，头 /dev/ttyS3)
+ * 1.1.7.3 這一代 alpha2services 的最小本地替代（pure-direct）。
+ * 不複製 3.002 的 9991 個類，只實現對 open-alpha2 真正重要的胸/頭直驅：
+ *   - DirectSerialPort (胸 /dev/ttyS1，頭 /dev/ttyS3)
  *   - 5-mic LED 的 JNI 分支（DirectLedController）
  *
- * <p>机身已无 com.ubtechinc.alpha2services，无 binder fallback：
- * start() 失败则调用方直接报错。</p>
+ * <p>機身已無 com.ubtechinc.alpha2services，無 binder fallback：
+ * start() 失敗則調用方直接報錯。</p>
  */
 public final class LocalAlpha2Services {
     private static final String TAG = "LocalAlpha2Services";
@@ -20,7 +20,7 @@ public final class LocalAlpha2Services {
         this.direct = HardwareDirectManager.get(ctx);
     }
 
-    /** 在 MainActivity.onCreate 的后台线程调用 */
+    /** 在 MainActivity.onCreate 的後臺線程調用 */
     public boolean start() {
         boolean ok = direct.tryEnableDirect();
         Log.i(TAG, "LocalAlpha2Services start direct=" + ok);
@@ -31,7 +31,7 @@ public final class LocalAlpha2Services {
 
     public boolean isDirectActive() { return direct.isDirectAvailable(); }
 
-    // 胸口直驱快捷
+    // 胸口直驅快捷
     public boolean chestSetSingle(byte id, int angle, short time) {
         if (!isDirectActive()) return false;
         return direct.chest().setSingleServo(id, angle, time);
@@ -47,13 +47,13 @@ public final class LocalAlpha2Services {
         return direct.chest().configureSonar(cm);
     }
 
-    // 头直驱
+    // 頭直驅
     public boolean headNoise(boolean open) {
         if (!isDirectActive()) return false;
         return direct.head().setNoiseReduction(open);
     }
 
-    // LED 走 JNI，不依赖串口是否可用
+    // LED 走 JNI，不依賴串口是否可用
     public boolean ledHead(int color) { return DirectLedController.headSolid(color); }
     public boolean ledEye(int color)  { return DirectLedController.setEye5Mic(color, 9, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0); }
     public boolean ledMouthBreathe(int speed) { return DirectLedController.setMouth(Integer.MAX_VALUE, speed, 0, Integer.MAX_VALUE, 1); }

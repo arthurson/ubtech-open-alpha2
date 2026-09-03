@@ -40,7 +40,9 @@ import com.ubtechinc.alpha.hardware.DirectLedController;
 import com.ubtechinc.alpha.hardware.RobotWire;
 import com.ubtechinc.alpha.jni.LedControl;
 import com.ubtechinc.alpha.hardware.HardwareDirectManager;
+import com.ubtechinc.alpha.hardware.HeadKeyPoller;
 import com.ubtechinc.alpha.hardware.LocalAlpha2Services;
+import com.ubtechinc.alpha.hardware.MouthLedData;
 import com.ubtechinc.alpha.hardware.ubx.UbxFile;
 import com.ubtechinc.alpha.hardware.ubx.UbxParser;
 import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
@@ -257,9 +259,8 @@ public class MainActivity extends Activity implements SensorEventListener {
     private final AudioPlaybackController audioPlaybackController = new AudioPlaybackController();
     private final MusicController musicController = new MusicController();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private AudioManager audioManager;
-    private EventBus.Listener gestureListener;
     private Runnable volumeRepeater;
+    private AudioManager audioManager;
 
     // -- Pad (+/-) 實體鍵指示燈 -----------------------------------------------
     // 真機掃描確認: ledSetOn(14) = volume- 燈, ledSetOn(16) = volume+ 燈。
@@ -970,40 +971,20 @@ public class MainActivity extends Activity implements SensorEventListener {
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         accelerometerSensor = sensorManager != null
                 ? sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) : null;
-        gestureListener = line -> {
-            if (!line.contains("\"type\":\"gesture\"")) {
-                return;
+        // HeadKeyPoller 已搬入 hardware-direct module：经 Listener 直连，
+        // 不再绕 EventBus "gesture" 事件（旧 direction 解析一并删除）。
+        // head_key/head_key_native 照旧转送 EventBus，供 WebSocket log 备查。
+        headKeyPoller.setListener(new HeadKeyPoller.Listener() {
+            @Override public void onGesture(int eventCode) {
+                mainHandler.post(() -> onGestureCode(eventCode));
             }
-            int code = parseGestureEventCode(line);
-            if (code < 0) {
-                return;
+            @Override public void onHeadKey(int code, int value) {
+                EventBus.get().publish("head_key", "{\"code\":" + code + ",\"value\":" + value + "}");
             }
-            mainHandler.post(() -> onGestureCode(code));
-        };
-        EventBus.get().subscribe(gestureListener);
-    }
-
-    /** Pulls the raw "direction" int out of a gesture EventBus line and returns its
-     *  high byte (the event code), or -1 if the line couldn't be parsed. */
-    private static int parseGestureEventCode(String line) {
-        int idx = line.indexOf("\"direction\":");
-        if (idx < 0) {
-            return -1;
-        }
-        int start = idx + "\"direction\":".length();
-        int end = start;
-        while (end < line.length() && (Character.isDigit(line.charAt(end)) || line.charAt(end) == '-')) {
-            end++;
-        }
-        if (end == start) {
-            return -1;
-        }
-        try {
-            int raw = Integer.parseInt(line.substring(start, end));
-            return (raw >> 8) & 0xFF;
-        } catch (NumberFormatException e) {
-            return -1;
-        }
+            @Override public void onHeadKeyNative(int code) {
+                EventBus.get().publish("head_key_native", "{\"code\":" + code + "}");
+            }
+        });
     }
 
     private void onGestureCode(int code) {
@@ -3321,9 +3302,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             tts.stop();
             tts.shutdown();
         }
-        if (gestureListener != null) {
-            EventBus.get().unsubscribe(gestureListener);
-        }
+        headKeyPoller.setListener(null);
         try { headKeyPoller.stop(); } catch (Throwable ignored) {}
         if (localServices != null) {
             try { localServices.stop(); } catch (Throwable ignored) {}

@@ -4,41 +4,41 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * .ubx 解析结果（clean-room 实现，结构按原装 .ubx 实测为准，
- * 经 UBX/actions 全量 202 个 + Alpha2_pc 例档逐字节对齐验证）。
+ * .ubx 解析結果（clean-room 實現，結構按原裝 .ubx 實測為準，
+ * 經 UBX/actions 全量 202 個 + Alpha2_pc 例檔逐字節對齊驗證）。
  *
- * <p>文件 = 顶层头 + motion 段（多 track，每 track 若干 servo 帧）+ 副段（cLen，常 8）。
- * 长度语义：每段均为 [outer len][echo==len][body]，len 只计 echo 起（含 echo，
- * 不含 outer 本身）；消费一段后以前进 {@code 4 + len} 对准下一段。</p>
+ * <p>文件 = 頂層頭 + motion 段（多 track，每 track 若干 servo 幀）+ 副段（cLen，常 8）。
+ * 長度語義：每段均為 [outer len][echo==len][body]，len 只計 echo 起（含 echo，
+ * 不含 outer 本身）；消費一段後以前進 {@code 4 + len} 對準下一段。</p>
  */
 public final class UbxFile {
     public int version;
     public final List<UbxTrack> tracks = new ArrayList<>();
     /**
-     * tick 时间基（ms），来自首个含 type-0 block 的 track；
-     * 多 track 时各 track 以自身 {@link UbxTrack#timeBaseMs} 为准，此处仅作单 track 快捷。
-     * 文件无此 block 时 &lt;=0（未知）。
+     * tick 時間基（ms），來自首個含 type-0 block 的 track；
+     * 多 track 時各 track 以自身 {@link UbxTrack#timeBaseMs} 為準，此處僅作單 track 快捷。
+     * 文件無此 block 時 &lt;=0（未知）。
      */
     public int timeBaseMs = -1;
     /**
-     * 宽容跳过的空 marker 数。原装 202+1 个文件实测 motion 段严丝合缝、
-     * 无真实空 marker（此前计出的空位系步进少算 4B 的幻影）；此计数器仅作
-     * 前向兼容保留，正常文件恒为 0。
+     * 寬容跳過的空 marker 數。原裝 202+1 個文件實測 motion 段嚴絲合縫、
+     * 無真實空 marker（此前計出的空位係步進少算 4B 的幻影）；此計數器僅作
+     * 前向兼容保留，正常文件恆為 0。
      */
     public int skipped;
 
-    /** 单个 track（对应 util.d.b）。servo 帧只从 f==0 的 d.a 经 a.d 链收进 frames。 */
+    /** 單個 track（對應 util.d.b）。servo 幀只從 f==0 的 d.a 經 a.d 鏈收進 frames。 */
     public static final class UbxTrack {
-        /** track id（头 echo 后 4B；单动作恒 0，多动作如 0/2/3/4/1）。 */
+        /** track id（頭 echo 後 4B；單動作恆 0，多動作如 0/2/3/4/1）。 */
         public int id;
         /**
-         * @deprecated  phantom 字段：原装结构并无此 4B，
-         * 旧版误将 echo 当 id、真 id 当 X。为兼容保留，恒与 {@link #id} 相同，请勿再用。
+         * @deprecated  phantom 字段：原裝結構並無此 4B，
+         * 舊版誤將 echo 當 id、真 id 當 X。為兼容保留，恆與 {@link #id} 相同，請勿再用。
          */
         @Deprecated
         public int xfield;
         public int servoGroups;
-        /** voice d.a（f==4 → a/j/a/o 链）成功拆出的次数（配乐帧见 frames 内 voice 项）。 */
+        /** voice d.a（f==4 → a/j/a/o 鏈）成功拆出的次數（配樂幀見 frames 內 voice 項）。 */
         public int voiceGroups;
         public int framesA;
         public int nonServoFrames;
@@ -47,33 +47,33 @@ public final class UbxFile {
         public int leafC;
         public int leafD;
         public int leafCount;
-        /** d.d 叶全量（每项 [a][b][c][d]；leafA~D 保留末项以兼容）。 */
+        /** d.d 葉全量（每項 [a][b][c][d]；leafA~D 保留末項以兼容）。 */
         public final List<int[]> leafRows = new ArrayList<>();
-        /** d.f 关键帧表全量（位姿参考，不进 frames；旧版曾误并入 frames）。 */
+        /** d.f 關鍵幀表全量（位姿參考，不進 frames；舊版曾誤並入 frames）。 */
         public final List<UbxServoFrame> keyframes = new ArrayList<>();
-        /** 本 track 时间基（ms，type-0 的 a）；无则 &lt;=0，回落 {@link UbxFile#timeBaseMs}。 */
+        /** 本 track 時間基（ms，type-0 的 a）；無則 &lt;=0，回落 {@link UbxFile#timeBaseMs}。 */
         public int timeBaseMs = -1;
         public int timeBaseB;
         public final List<Integer> frameBValues = new ArrayList<>();
         /**
-         * @deprecated phantom：b-section 实测恒为 d.a 复帧列，从无 20B 引用头；
-         * 保留空 list 以兼容，恒为空。
+         * @deprecated phantom：b-section 實測恆為 d.a 複幀列，從無 20B 引用頭；
+         * 保留空 list 以兼容，恆為空。
          */
         @Deprecated
         public final List<int[]> refs = new ArrayList<>();
-        /** a.d 非 0/1 block 原样（type2/3 灯等、type4 音乐 meta；旧版直接丢弃）。 */
+        /** a.d 非 0/1 block 原樣（type2/3 燈等、type4 音樂 meta；舊版直接丟棄）。 */
         public final List<UbxBlock> blocks = new ArrayList<>();
-        /** 音乐文件名（如 rap.mp3，无则 null；UTF-16 段中提取）。 */
+        /** 音樂文件名（如 rap.mp3，無則 null；UTF-16 段中提取）。 */
         public String musicName;
-        /** 音乐原绝对路径（如 D:\work\...\rap.mp3，無則 null，僅供溯源）。 */
+        /** 音樂原絕對路徑（如 D:\work\...\rap.mp3，無則 null，僅供溯源）。 */
         public String musicPath;
-        /** 宽容跳过的空 marker 数（原厂 `if (L1>0)` 同语义）。 */
+        /** 寬容跳過的空 marker 數（原廠 `if (L1>0)` 同語義）。 */
         public int skipped;
         public final List<UbxServoFrame> frames = new ArrayList<>();
     }
 
     /**
-     * a.d 非 servo block 原样（type + data 全拷贝）。
+     * a.d 非 servo block 原樣（type + data 全拷貝）。
      */
     public static final class UbxBlock {
         public int type;
@@ -81,16 +81,16 @@ public final class UbxFile {
     }
 
     /**
-     * 单个 servo 关键帧（对应 util.a.a）。
-     * start/end 与播放 tick 同单位（ticks，乘 timeBaseMs 得 ms；原装 b/c 常见 start&gt;end 如 20/0，语义待胸 dump 定，播放以 start 为准）。
-     * angles20 为 20 轴目标值（0-255，按 a.m 规则“每8字节取1int→byte”预抽取；
-     * groups 不足 20 时余轴自然为 0，不另改写）。
-     * moveTimeHintMs = 原厂 send time 参数（a.a.b() * 同 track timeBase），供 player 参考。
+     * 單個 servo 關鍵幀（對應 util.a.a）。
+     * start/end 與播放 tick 同單位（ticks，乘 timeBaseMs 得 ms；原裝 b/c 常見 start&gt;end 如 20/0，語義待胸 dump 定，播放以 start 為準）。
+     * angles20 為 20 軸目標值（0-255，按 a.m 規則“每8字節取1int→byte”預抽取；
+     * groups 不足 20 時餘軸自然為 0，不另改寫）。
+     * moveTimeHintMs = 原廠 send time 參數（a.a.b() * 同 track timeBase），供 player 參考。
      */
     public static final class UbxServoFrame {
         public int start;
         public int end;
-        /** voice 帧（d.a f==4 → a/j/a/o 链）：只供配乐调度，舵机发送跳过。music 为 e-blob 尾 GBK 名。 */
+        /** voice 幀（d.a f==4 → a/j/a/o 鏈）：只供配樂調度，舵機發送跳過。music 為 e-blob 尾 GBK 名。 */
         public boolean voice;
         public String music;
         public final byte[] angles20 = new byte[20];
@@ -98,7 +98,7 @@ public final class UbxFile {
         public int baseC;
         public int groupBytes;
         public int moveTimeHintMs;
-        // d.e 叶原始字段（timing 语义待 dump 定）
+        // d.e 葉原始字段（timing 語義待 dump 定）
         public int leafA;
         public int leafB;
         public int leafC;

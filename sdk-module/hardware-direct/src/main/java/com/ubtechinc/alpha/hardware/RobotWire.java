@@ -6,7 +6,7 @@ package com.ubtechinc.alpha.hardware;
  * 其他（全部為已不存在嘅 alpha2services binder/broadcast 設計嘅常數）
  * 隨舊 module 一齊刪除。
  *
- * <p>每一個值都係同機身 MCU／系統 broadcast 嘅 wire contract，必須逐 byte
+ * <p>每一個值都係同機身 MCU／係統 broadcast 嘅 wire contract，必須逐 byte
  * 一致，唔可以改。
  */
 public final class RobotWire {
@@ -30,7 +30,7 @@ public final class RobotWire {
     public static final byte CHES_CMD_UPDATE_END = 50;
     public static final byte CHEST_READ_VERSION = 51;
     public static final byte CHEST_SET_ALL_ANGLE = 52;
-    /** 群舵机播放帧：a.m 私有发送原文 cmd 3 [20轴byte + short time]（smali 实证，勿与 52 混用）。 */
+    /** 群舵機播放幀：a.m 私有發送原文 cmd 3 [20軸byte + short time]（smali 實證，勿與 52 混用）。 */
     public static final byte CHEST_CMD_SENDMOTOR = 3;
     public static final byte CHEST_READ_SID_EEPROM = 55;
     public static final byte CHEST_POWER_SAVE = 64;

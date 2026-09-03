@@ -1,4 +1,4 @@
-package com.open.alpha2;
+package com.ubtechinc.alpha.hardware;
 
 import android.util.Log;
 
@@ -10,38 +10,50 @@ import java.io.InputStream;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 头顶 +/- pad（pure-direct）。
+ * 頭頂 +/- pad（pure-direct）。
  *
- * <p>3.002 路径（优先）：{@code libhead_key_mgr.so} native 线程读
- * {@code /dev/input/event*}（rk29-keypad），经
- * {@code HeadKeyMgr.onNativeCallback(int)} 回调本类，
+ * <p>3.002 路徑（優先）：{@code libhead_key_mgr.so} native 線程讀
+ * {@code /dev/input/event*}（rk29-keypad），經
+ * {@code HeadKeyMgr.onNativeCallback(int)} 回調本類，
  * 由 {@link #onNativeKey(int)} 按 0x5a..0x5f 合成 gesture。
- * 与 Java 直读互斥（双 reader 会分流事件丢键），native 起得来就不开 poll 线程。</p>
+ * 與 Java 直讀互斥（雙 reader 會分流事件丟鍵），native 起得來就不開 poll 線程。</p>
  *
- * <p>回退：native 任一步失败（.so 缺失/Init 失败）则沿用旧 Java 直读
- * {@code /dev/input/event0}（实测即 rk29-keypad，777 可读），按旧格式原样 publish
- * EventBus "gesture" 事件，后续音量/volume LED/stop-all 全走既有
- * {@code onGestureCode()} 管道，零改动。</p>
+ * <p>回退：native 任一步失敗（.so 缺失/Init 失敗）則沿用舊 Java 直讀
+ * {@code /dev/input/event0}（實測即 rk29-keypad，777 可讀），按舊格式經
+ * {@link Listener#onGesture(int)} 上報，調用方（如 MainActivity）自行決定
+ * 線程派發（如 mainHandler.post 到 onGestureCode 管道）。本模塊不依賴
+ * app 侧 EventBus。</p>
  *
- * <p>Linux input_event（32-bit ARM，小端，共 16 字节）：
+ * <p>Linux input_event（32-bit ARM，小端，共 16 字節）：
  * {@code struct timeval(8) + type u16 + code u16 + value s32}。
- * 只处理 EV_KEY（type=1）。code 映射兼容两种驱动行为：
+ * 只處理 EV_KEY（type=1）。code 映射兼容兩種驅動行為：
  * <ul>
- *   <li>若驱动直接报 0x5a..0x5f 六个码（旧 native 回调值）：value==1 按下时直发该码；
- *       value==0 抬起时，0x5a→0x5b、0x5c→0x5d，其余直发（旧语义：0x5b="-"放开等）。</li>
- *   <li>另跟踪 minus/plus 按住状态，两键同按时合成 0x5e（双键按下），双双放开后合成
- *       0x5f（双键放开），与旧 6 码表一致。</li>
+ *   <li>若驅動直接報 0x5a..0x5f 六個碼（舊 native 回調值）：value==1 按下時直發該碼；
+ *       value==0 抬起時，0x5a→0x5b、0x5c→0x5d，其餘直發（舊語義：0x5b="-"放開等）。</li>
+ *   <li>另跟踪 minus/plus 按住狀態，兩鍵同按時合成 0x5e（雙鍵按下），雙雙放開後合成
+ *       0x5f（雙鍵放開），與舊 6 碼表一致。</li>
  * </ul>
- * 所有原始键事件另以 "head_key" 事件（含 code/value）送 WebSocket log，方便核对。
- * native 回调另以 "head_key_native" 事件送原始码；native 自身亦写
- * {@code /sdcard/keyjnilog.txt}，可对照。</p>
+ * 所有原始鍵事件另經 {@link Listener#onHeadKey(int, int)} /
+ * {@link Listener#onHeadKeyNative(int)} 上報（調用方可轉送 WebSocket log 備查；
+ * native 自身亦寫 {@code /sdcard/keyjnilog.txt}，可對照）。回調來自 poll 線程或
+ * native 回調線程，非主線程。</p>
  */
 public class HeadKeyPoller extends HeadKeyMgr {
     private static final String TAG = "HeadKeyPoller";
 
-    static final String EVENT_NODE = "/dev/input/event0";
+    /** 上報接口（調用方實現；native/直讀兩路共用）。 */
+    public interface Listener {
+        /** 合成 gesture 碼（0x5a..0x5f，見 AIDL_REFERENCE 第7章）。 */
+        void onGesture(int eventCode);
+        /** 原始鍵事件（code/value，EV_KEY 語義）。 */
+        void onHeadKey(int code, int value);
+        /** native 回調原始碼。 */
+        void onHeadKeyNative(int code);
+    }
 
-    // 旧 gesture 码（见 AIDL_REFERENCE 第7章 + MainActivity.onGestureCode）
+    private static final String EVENT_NODE = "/dev/input/event0";
+
+    // 舊 gesture 碼（見 AIDL_REFERENCE 第7章 + MainActivity.onGestureCode）
     private static final int KEY_MINUS = 0x5a;
     private static final int KEY_MINUS_UP = 0x5b;
     private static final int KEY_PLUS = 0x5c;
@@ -52,6 +64,7 @@ public class HeadKeyPoller extends HeadKeyMgr {
     private static final int EV_KEY = 1;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private volatile Listener listener;
     private Thread thread;
 
     private boolean minusDown = false;
@@ -59,11 +72,13 @@ public class HeadKeyPoller extends HeadKeyMgr {
     private boolean bothReported = false;
     private boolean nativeActive = false;
 
+    public void setListener(Listener l) { listener = l; }
+
     public synchronized void start() {
         if (running.get()) return;
-        // 3.002 native 优先（与 Java 直读互斥，起得来就不开 poll 线程）。
-        // 注意：反汇编证实 native Init() 成功失败一律回 0（结尾 moveq r0,#0），
-        // 不可用返回值判断；照原装顺序调，成败看回调/“nativeRun” log。
+        // 3.002 native 優先（與 Java 直讀互斥，起得來就不開 poll 線程）。
+        // 注意：反匯編證實 native Init() 成功失敗一律回 0（結尾 moveq r0,#0），
+        // 不可用返回值判斷；照原裝順序調，成敗看回調/“nativeRun” log。
         if (HeadKeyMgr.isLibLoaded()) {
             try {
                 boolean initRet = Init();
@@ -100,26 +115,29 @@ public class HeadKeyPoller extends HeadKeyMgr {
     }
 
     /**
-     * native 按键回调。原始码先打 log + publish（与 /sdcard/keyjnilog.txt 对照），
-     * 再按 0x5a..0x5f 显式状态表合成 gesture（不复用 poll 路径的 value 语义）。
+     * native 按鍵回調。原始碼先打 log + 上報（與 /sdcard/keyjnilog.txt 對照），
+     * 再按 0x5a..0x5f 显式狀態表合成 gesture（不複用 poll 路徑的 value 語義）。
      */
     @Override
     public void onNativeCallback(int code) {
         Log.i(TAG, "native key 0x" + Integer.toHexString(code));
-        try {
-            EventBus.get().publish("head_key_native", "{\"code\":" + code + "}");
-        } catch (Throwable t) {
-            Log.w(TAG, "publish head_key_native failed", t);
+        Listener l = listener;
+        if (l != null) {
+            try {
+                l.onHeadKeyNative(code);
+            } catch (Throwable t) {
+                Log.w(TAG, "onHeadKeyNative failed", t);
+            }
         }
         onNativeKey(code);
     }
 
     /**
-     * native 回调解码：实测码形如 {@code 0x5A01/0x5B01/0x5E01…}，
-     * 即旧 broadcast 格式 {@code (eventCode<<8)|0x01}（native log 另带序号，如
-     * {@code key:0x5f01,47}）。native 侧已做完按住/合成（native 有 keycunt 状态），
-     * 每个回调即一个完整 gesture 事件，高 8 bit 右移即得 0x5a..0x5f；
-     * 此处只同步 minus/plus/both 状态（与 poll 路径共用，供后续合成参考）并直发。
+     * native 回調解碼：實測碼形如 {@code 0x5A01/0x5B01/0x5E01…}，
+     * 即舊 broadcast 格式 {@code (eventCode<<8)|0x01}（native log 另帶序號，如
+     * {@code key:0x5f01,47}）。native 侧已做完按住/合成（native 有 keycunt 狀態），
+     * 每個回調即一個完整 gesture 事件，高 8 bit 右移即得 0x5a..0x5f；
+     * 此處只同步 minus/plus/both 狀態（與 poll 路徑共用，供後續合成參考）並直發。
      */
     private synchronized void onNativeKey(int code) {
         int eventCode = (code >> 8) & 0xFF;
@@ -201,7 +219,7 @@ public class HeadKeyPoller extends HeadKeyMgr {
                     int value = (ev[12] & 0xFF) | ((ev[13] & 0xFF) << 8)
                             | ((ev[14] & 0xFF) << 16) | (ev[15] << 24);
                     if (type == EV_KEY) onKey(code, value);
-                    // 非按键事件（SYN 等）忽略
+                    // 非按鍵事件（SYN 等）忽略
                 }
             } finally {
                 try { in.close(); } catch (Exception ignore) {}
@@ -214,13 +232,20 @@ public class HeadKeyPoller extends HeadKeyMgr {
 
     private void onKey(int code, int value) {
         Log.d(TAG, "key code=0x" + Integer.toHexString(code) + " value=" + value);
-        EventBus.get().publish("head_key", "{\"code\":" + code + ",\"value\":" + value + "}");
+        Listener l = listener;
+        if (l != null) {
+            try {
+                l.onHeadKey(code, value);
+            } catch (Throwable t) {
+                Log.w(TAG, "onHeadKey failed", t);
+            }
+        }
         boolean pressed = value == 1;
         boolean released = value == 0;
-        if (!pressed && !released) return; // value==2 连发忽略（音量连发由 startVolumeRepeat 处理）
+        if (!pressed && !released) return; // value==2 連發忽略（音量連發由 startVolumeRepeat 處理）
 
-        // 驱动直报 0x5b/0x5d/0x5e/0x5f 这类合成码：沿用旧语义直发
-        // （value==0 的合成码若出现则忽略，避免与下面 0x5a/0x5c 路径双发）。
+        // 驅動直報 0x5b/0x5d/0x5e/0x5f 這類合成碼：沿用舊語義直發
+        // （value==0 的合成碼若出現則忽略，避免與下面 0x5a/0x5c 路徑雙發）。
         if (code == KEY_MINUS_UP || code == KEY_PLUS_UP || code == KEY_BOTH || code == KEY_BOTH_UP) {
             if (pressed) emitGesture(code);
             syncBothState(code, pressed);
@@ -243,14 +268,14 @@ public class HeadKeyPoller extends HeadKeyMgr {
                 } else if (!bothReported) {
                     emitGesture(code == KEY_MINUS ? KEY_MINUS_UP : KEY_PLUS_UP);
                 } else if (!minusDown || !plusDown) {
-                    // 双按中先松开一颗：先报双键放开，再报剩下一颗的按下态由其重发时处理
+                    // 雙按中先鬆開一顆：先報雙鍵放開，再報剩下一顆的按下態由其重發時處理
                     bothReported = false;
                     emitGesture(KEY_BOTH_UP);
                 }
             }
             return;
         }
-        // 其他键（如 USB 音频的 0x71-0x73）只记 log，不进 gesture 管道
+        // 其他鍵（如 USB 音频的 0x71-0x73）只記 log，不進 gesture 管道
     }
 
     private void syncBothState(int code, boolean pressed) {
@@ -260,14 +285,16 @@ public class HeadKeyPoller extends HeadKeyMgr {
         else if (code == KEY_BOTH_UP && !pressed) { bothReported = false; minusDown = false; plusDown = false; }
     }
 
-    /** 按旧 broadcast 格式原样 publish：direction=(eventCode<<8)|0x01。 */
+    /** 合成 gesture 上報（舊 broadcast direction=(eventCode<<8)|0x01 語義由調用方按需还原）。 */
     private void emitGesture(int eventCode) {
-        int raw = (eventCode << 8) | 0x01;
         Log.i(TAG, "gesture 0x" + Integer.toHexString(eventCode));
-        try {
-            EventBus.get().publish("gesture", "{\"direction\":" + raw + "}");
-        } catch (Throwable t) {
-            Log.w(TAG, "emitGesture failed", t);
+        Listener l = listener;
+        if (l != null) {
+            try {
+                l.onGesture(eventCode);
+            } catch (Throwable t) {
+                Log.w(TAG, "onGesture failed", t);
+            }
         }
     }
 }

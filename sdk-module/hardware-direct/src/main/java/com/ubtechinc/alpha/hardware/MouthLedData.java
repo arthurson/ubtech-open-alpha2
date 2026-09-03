@@ -1,4 +1,4 @@
-package com.open.alpha2;
+package com.ubtechinc.alpha.hardware;
 
 import com.ubtechinc.alpha.jni.LedControl;
 

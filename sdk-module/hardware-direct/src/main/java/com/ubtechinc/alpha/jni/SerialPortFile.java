@@ -11,16 +11,16 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 /**
- * libserial_port.so 的 JNI 桥（pure-direct 用）。
+ * libserial_port.so 的 JNI 橋（pure-direct 用）。
  *
- * <p>包名+类名+方法签名必须与 .so 导出的符号逐字对应：
+ * <p>包名+類名+方法簽名必須與 .so 導出的符號逐字對應：
  * {@code Java_com_ubtechinc_alpha_jni_SerialPortFile_open} /
- * {@code Java_com_ubtechinc_alpha_jni_SerialPortFile_close}（已用 NDK readelf 验证）。
- * 反编译确认 native open(path, baudrate, flags) 内部走 termios 配 115200，
- * 这正是纯 File 路径缺的那一步（实测 ttyS1 默认 9600，不配 baud 发什么 MCU 都不认）。</p>
+ * {@code Java_com_ubtechinc_alpha_jni_SerialPortFile_close}（已用 NDK readelf 驗證）。
+ * 反編譯確認 native open(path, baudrate, flags) 內部走 termios 配 115200，
+ * 這正是純 File 路徑缺的那一步（實測 ttyS1 預設 9600，不配 baud 發什麼 MCU 都不認）。</p>
  *
- * <p>用法与经典 android-serialport-api 一致；DirectSerialPort 经反射调用本类，
- * 避免 hardware-direct 编译期写死依赖。</p>
+ * <p>用法與經典 android-serialport-api 一致；DirectSerialPort 經反射調用本類，
+ * 避免 hardware-direct 編譯期寫死依賴。</p>
  */
 public class SerialPortFile {
     private static final String TAG = "SerialPortFile";
@@ -47,7 +47,7 @@ public class SerialPortFile {
         mFileOutputStream = new FileOutputStream(mFd);
     }
 
-    /** 供 DirectSerialPort 反射取 fd（File 包装用）。 */
+    /** 供 DirectSerialPort 反射取 fd（File 包裝用）。 */
     public FileDescriptor getFD() {
         return mFd;
     }

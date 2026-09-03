@@ -4,12 +4,12 @@ import android.content.Context;
 import android.util.Log;
 
 /**
- * 对上层 (MainActivity/HttpServer) 暴露的统一入口。pure-direct 模式：
- * 所有胸/头硬件只走 /dev/ttyS1 + /dev/ttyS3 + libhead_led.so JNI，
- * 不再 bind com.ubtechinc.alpha2services（机身已无此 APK，无 fallback）。
+ * 對上層 (MainActivity/HttpServer) 暴露的統一入口。pure-direct 模式：
+ * 所有胸/頭硬件只走 /dev/ttyS1 + /dev/ttyS3 + libhead_led.so JNI，
+ * 不再 bind com.ubtechinc.alpha2services（機身已無此 APK，無 fallback）。
  *
- * <p>实测本机 ttyS1/ttyS3 为 777，普通应用也可直接 open；若 open 失败则
- * isDirectAvailable()=false，调用方直接报错，不再尝试任何 binder 回退。</p>
+ * <p>實測本機 ttyS1/ttyS3 為 777，普通應用也可直接 open；若 open 失敗則
+ * isDirectAvailable()=false，調用方直接報錯，不再嘗試任何 binder 回退。</p>
  */
 public final class HardwareDirectManager {
     private static final String TAG = "HardwareDirectManager";
@@ -31,11 +31,11 @@ public final class HardwareDirectManager {
         return sInstance;
     }
 
-    /** 尝试打开直驱串口，返回是否成功。应在 MainActivity.onCreate 的后台线程调用。 */
+    /** 嘗試打開直驅串口，返回是否成功。應在 MainActivity.onCreate 的後臺線程調用。 */
     public synchronized boolean tryEnableDirect() {
         boolean c = chest.open();
         boolean h = head.open();
-        // 头板失败不影响胸板舵机，任一成功就算部分可用
+        // 頭板失敗不影響胸板舵機，任一成功就算部分可用
         directReady = c || h;
         Log.i(TAG, "tryEnableDirect chest=" + c + " head=" + h + " directReady=" + directReady);
         if (!directReady) {
@@ -56,7 +56,7 @@ public final class HardwareDirectManager {
         directReady = false;
     }
 
-    /** 便捷：舵机直驱发送（pure-direct，无 binder 回退，失败直接返回 false）。 */
+    /** 便捷：舵機直驅發送（pure-direct，無 binder 回退，失敗直接返回 false）。 */
     public boolean chestSendSingle(byte id, int angle, short time) {
         if (!isDirectAvailable()) return false;
         return chest.setSingleServo(id, angle, time);

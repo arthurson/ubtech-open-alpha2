@@ -22,8 +22,10 @@ android {
         // 改為喺 app/src/main/cpp 用 CMake 自己編譯 libeasyopus.so, 淨係 link
         // 一份 armeabi-v7a 嘅 prebuilt libopus.so (見下面 externalNativeBuild
         // 同 app/src/main/cpp/CMakeLists.txt)。呢個 abiFilters 喺 Gradle 層面
-        // 明文化呢個專案一路以嚟嘅前提, 同 jniLibs/armeabi-v7a/libhead_led.so
-        // 一路都冇第二份嘅事實一致。
+        // 明文化呢個專案一路以嚟嘅前提; prebuilt .so (libhead_led/head_key_mgr/
+        // serial_port) 一律收喺 sdk-module/hardware-direct/src/main/jniLibs，
+        // 由該 module 打包進 APK（System.loadLibrary 按名解析，與放邊無關），
+        // app/src/main/jniLibs 已刪除，避免兩邊重複來源撞名。
         ndk {
             abiFilters 'armeabi-v7a'
         }

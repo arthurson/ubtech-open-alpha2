@@ -12,25 +12,25 @@ import java.io.File;
 import java.nio.ByteBuffer;
 
 /**
- * 变速配乐流播（decode + 线性重采样 + AudioTrack，API 19 可用 API 面）。
+ * 變速配樂流播（decode + 線性重採樣 + AudioTrack，API 19 可用 API 面）。
  *
- * <p>背景：机身 Android 5.1（API 22），{@code MediaPlayer.setPlaybackParams}
- * 要 API 23+，无变速能力。这里按官方配乐语义（槽位起播、播至多 b*timeBase、
- * 切帧打断）自行实现变速：MediaExtractor + MediaCodec 解 mp3 → PCM，
- * 按步进 {@code speed} 线性插值重采样（变速不变调是 Sonic/WSOLA 量级的工作，
- * 此处与速度锁定 pitch，即“磁带式”变速，特此说明），
- * 经 AudioTrack(STREAM_MUSIC) 播出。</p>
+ * <p>背景：機身 Android 5.1（API 22），{@code MediaPlayer.setPlaybackParams}
+ * 要 API 23+，無變速能力。這裡按官方配樂語義（槽位起播、播至多 b*timeBase、
+ * 切幀打斷）自行實現變速：MediaExtractor + MediaCodec 解 mp3 → PCM，
+ * 按步進 {@code speed} 線性插值重採樣（變速不變調是 Sonic/WSOLA 量級的工作，
+ * 此處與速度鎖定 pitch，即“磁帶式”變速，特此說明），
+ * 經 AudioTrack(STREAM_MUSIC) 播出。</p>
  *
- * <p>流式环形输入（只留约 0.4s 解码帧），不整曲进内存；输出按小块写入，
- * stop 延迟不超过一块（约 50ms）。所用 MediaCodec API（getInputBuffers 等）
- * 均为 API 16+，在 minSdk 19 上安全。</p>
+ * <p>流式環形輸入（只留約 0.4s 解碼幀），不整曲進記憶體；輸出按小塊寫入，
+ * stop 延遲不超過一塊（約 50ms）。所用 MediaCodec API（getInputBuffers 等）
+ * 均為 API 16+，在 minSdk 19 上安全。</p>
  */
 final class VoiceStream {
     private static final String TAG = "VoiceStream";
     private static final int RING_FRAMES = 16384;
     private static final int OUT_CHUNK_FRAMES = 2048;
 
-    /** 另一线程可见的停止请求（UbxPlayer.stop/stopVoice 置位）。 */
+    /** 另一線程可見的停止請求（UbxPlayer.stop/stopVoice 置位）。 */
     interface StopFlag { boolean isStopped(); }
 
     private volatile boolean abort;
@@ -47,9 +47,9 @@ final class VoiceStream {
     }
 
     /**
-     * 播 file，变速 speed（=输出帧对应的输入步进，2x 取每 2 帧其一），
-     * 至自然播完 / 到达 deadlineMonoMs / stop 三者之一即收尾（stop+release 全关）。
-     * 阻塞调用，设计跑在 UbxPlayer 的 voice 线程。
+     * 播 file，變速 speed（=輸出幀對應的輸入步進，2x 取每 2 幀其一），
+     * 至自然播完 / 到達 deadlineMonoMs / stop 三者之一即收尾（stop+release 全關）。
+     * 阻塞調用，設計跑在 UbxPlayer 的 voice 線程。
      */
     void play(File file, float speed, long deadlineMonoMs, StopFlag stop) {
         abort = false;
@@ -127,24 +127,24 @@ final class VoiceStream {
         }
     }
 
-    /** @return 结束原因：eos（自然播完）/bound（b*timeBase 自停）/stopped（打断）/track-dead. */
+    /** @return 結束原因：eos（自然播完）/bound（b*timeBase 自停）/stopped（打斷）/track-dead. */
     private String pump(MediaExtractor ex, MediaCodec codec, AudioTrack track, int channels,
                         float speed, long deadlineMonoMs, StopFlag stop) {
         ByteBuffer[] inBufs = codec.getInputBuffers();
         ByteBuffer[] outBufs = codec.getOutputBuffers();
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         short[] ring = new short[RING_FRAMES * channels];
-        int ringStart = 0; // 已消费帧数（相对下标，满半整理）
-        int ringAvail = 0; // 环内有效输入帧数
+        int ringStart = 0; // 已消費幀數（相對下標，滿半整理）
+        int ringAvail = 0; // 環內有效輸入幀數
         boolean inputEos = false;
         boolean outEosSeen = false;
-        double pos = 0; // 当前输出帧对应的输入帧位置（分数）
+        double pos = 0; // 當前輸出幀對應的輸入幀位置（分數）
         short[] out = new short[OUT_CHUNK_FRAMES * channels];
 
         while (true) {
             if (abort || stop.isStopped()) return "stopped";
             if (System.nanoTime() / 1000000L >= deadlineMonoMs) return "bound"; // b*timeBase 自停
-            // 喂输入（环将满时停喂，免慢速下溢出丢尾）
+            // 喂輸入（環將滿時停喂，免慢速下溢出丟尾）
             if (!inputEos && (RING_FRAMES - (ringStart + ringAvail)) > 4096) {
                 int ii = codec.dequeueInputBuffer(10000);
                 if (ii >= 0) {
@@ -159,7 +159,7 @@ final class VoiceStream {
                     }
                 }
             }
-            // 收输出 → 环
+            // 收輸出 → 環
             boolean progressed = false;
             for (int k = 0; k < 4; k++) {
                 int oi = codec.dequeueOutputBuffer(info, 10000);
@@ -169,7 +169,7 @@ final class VoiceStream {
                         ByteBuffer ob = outBufs[oi];
                         int frames = info.size / (2 * channels);
                         int space = RING_FRAMES - (ringStart + ringAvail);
-                        if (frames > space) frames = space; // 环满则丢尾（极端慢速才发生）
+                        if (frames > space) frames = space; // 環滿則丟尾（極端慢速才發生）
                         ob.position(info.offset);
                         for (int f = 0; f < frames; f++) {
                             for (int c = 0; c < channels; c++) {
@@ -183,20 +183,20 @@ final class VoiceStream {
                 } else if (oi == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
                     outBufs = codec.getOutputBuffers();
                 } else {
-                    break; // TRY_AGAIN_LATER 或 FORMAT_CHANGED（mp3 全程同参，沿用初值）
+                    break; // TRY_AGAIN_LATER 或 FORMAT_CHANGED（mp3 全程同參，沿用初值）
                 }
             }
-            // 消费：线性插值产生一块输出
+            // 消費：線性插值產生一塊輸出
             int produced = 0;
             while (produced < OUT_CHUNK_FRAMES) {
-                int need = (int) Math.floor(pos) + 2 - ringStart; // 相对环首
+                int need = (int) Math.floor(pos) + 2 - ringStart; // 相對環首
                 if (need > ringAvail) {
                     if (outEosSeen && ringAvail > 0 && pos < ringStart + ringAvail) {
-                        // 尾帧：用末帧顶住
+                        // 尾幀：用末幀頂住
                     } else if (outEosSeen) {
                         break;
                     } else {
-                        break; // 等更多输入
+                        break; // 等更多輸入
                     }
                 }
                 int i0 = (int) Math.floor(pos);
@@ -211,7 +211,7 @@ final class VoiceStream {
                 }
                 produced++;
                 pos += speed;
-                // 整理环：消费过半则前移
+                // 整理環：消費過半則前移
                 int consumed = (int) Math.floor(pos) - ringStart;
                 if (consumed > RING_FRAMES / 2) {
                     int remain = ringAvail - consumed;

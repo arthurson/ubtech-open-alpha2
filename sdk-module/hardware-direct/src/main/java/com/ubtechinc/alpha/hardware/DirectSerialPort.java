@@ -13,18 +13,18 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 不依赖 alpha2services 的直驱串口（pure-direct 下唯一的胸/头控制通路）。
+ * 不依賴 alpha2services 的直驅串口（pure-direct 下唯一的胸/頭控制通路）。
  *
- * <p>打开顺序（依次尝试主/备/备2设备）：
- * 1) JNI 路径：{@code com.ubtechinc.alpha.jni.SerialPortFile}（libserial_port.so，
- *    native 内走 termios 配好 115200 8N1 raw）。此类与 .so 同模块打包，
+ * <p>打開順序（依次嘗試主/備/備2設備）：
+ * 1) JNI 路徑：{@code com.ubtechinc.alpha.jni.SerialPortFile}（libserial_port.so，
+ *    native 內走 termios 配好 115200 8N1 raw）。此類與 .so 同模塊打包，
  *    Class.forName 一般都能找到；找不到才走 2)。
- * 2) 纯 File 路径：FileInputStream/FileOutputStream 直开，之后用 busybox stty
- *    把波特率改成 115200（实测系统默认 9600，不改 MCU 收到的全是乱码——2026-09
- *    实测 servo TX 发得出但舵机不动的根因之一）。</p>
+ * 2) 純 File 路徑：FileInputStream/FileOutputStream 直開，之後用 busybox stty
+ *    把波特率改成 115200（實測係統預設 9600，不改 MCU 收到的全是亂碼——2026-09
+ *    實測 servo TX 發得出但舵機不動的根因之一）。</p>
  *
- * <p>本机 ttyS1/ttyS3 为 777，普通应用也可 open；失败则 isAvailable()=false，
- * 调用方直接报错，无任何 binder 回退。</p>
+ * <p>本機 ttyS1/ttyS3 為 777，普通應用也可 open；失敗則 isAvailable()=false，
+ * 調用方直接報錯，無任何 binder 回退。</p>
  */
 public final class DirectSerialPort {
     private static final String TAG = "DirectSerialPort";
@@ -41,7 +41,7 @@ public final class DirectSerialPort {
     private InputStream input;
     private OutputStream output;
     private FileDescriptor fd;
-    private Object serialPortFileObj; // JNI 路径时持有，供 close() 用
+    private Object serialPortFileObj; // JNI 路徑時持有，供 close() 用
     private String openedPath;
     private Thread readerThread;
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -72,12 +72,12 @@ public final class DirectSerialPort {
 
     public synchronized boolean open() {
         if (running.get()) return true;
-        // 1) JNI 路径（自带 termios 配 baud）
+        // 1) JNI 路徑（自帶 termios 配 baud）
         if (tryOpenViaJni(primaryPath) || tryOpenViaJni(altPath) || (altPath2 != null && tryOpenViaJni(altPath2))) {
             startReader();
             return true;
         }
-        // 2) 纯 File 路径 + stty 配 baud
+        // 2) 純 File 路徑 + stty 配 baud
         if (tryOpenViaFile(primaryPath) || tryOpenViaFile(altPath) || (altPath2 != null && tryOpenViaFile(altPath2))) {
             startReader();
             return true;
@@ -121,7 +121,7 @@ public final class DirectSerialPort {
                     f.setAccessible(true);
                     jfd = (FileDescriptor) f.get(obj);
                 }
-            } catch (Exception ignore) { /* fd 可选，有则存，无亦可 */ }
+            } catch (Exception ignore) { /* fd 可選，有則存，無亦可 */ }
             this.input = in;
             this.output = out;
             this.fd = jfd;
@@ -152,8 +152,8 @@ public final class DirectSerialPort {
             try { this.fd = fin.getFD(); } catch (Exception ignore) {}
             this.serialPortFileObj = null;
             this.openedPath = path;
-            // 纯 Java 开不出 termios，必须用 stty 把波特率从默认 9600 改到 115200，
-            // 否则 MCU 侧全是乱码（2026-09 实测教训）。busybox 自带 stty。
+            // 純 Java 開不出 termios，必須用 stty 把波特率從預設 9600 改到 115200，
+            // 否則 MCU 侧全是亂碼（2026-09 實測教訓）。busybox 自帶 stty。
             configureBaudStty(path, baudrate);
             Log.i(TAG, "opened via File: " + path);
             return true;
@@ -164,7 +164,7 @@ public final class DirectSerialPort {
         }
     }
 
-    /** 用 busybox stty 配波特率+8N1 raw（File 路径专用，JNI 路径 native 已配好）。 */
+    /** 用 busybox stty 配波特率+8N1 raw（File 路徑專用，JNI 路徑 native 已配好）。 */
     private static void configureBaudStty(String path, int baudrate) {
         String[] cmds = {
                 "busybox stty -F " + path + " " + baudrate + " cs8 -cstopb -parenb raw -echo",
@@ -180,7 +180,7 @@ public final class DirectSerialPort {
                 while ((line = r.readLine()) != null) sb.append(line).append(' ');
                 p.waitFor();
                 Log.i(TAG, "stty " + path + " [" + cmd.split(" ")[0] + "] -> " + sb.toString().trim());
-                if (sb.toString().contains(String.valueOf(baudrate))) return; // 配好了就不用试下一条
+                if (sb.toString().contains(String.valueOf(baudrate))) return; // 配好了就不用試下一條
             } catch (Exception e) {
                 Log.d(TAG, "stty attempt failed (" + cmd.split(" ")[0] + "): " + e.getMessage());
             }
@@ -204,7 +204,7 @@ public final class DirectSerialPort {
         }
     }
 
-    /** 透传原始帧 (绕过 encode)，用于 set_uuid/version fallback 等手写长式帧 */
+    /** 透傳原始幀 (繞過 encode)，用於 set_uuid/version fallback 等手寫長式幀 */
     public synchronized boolean sendRaw(byte[] rawFrame) {
         OutputStream out = output;
         if (!isAvailable() || out == null || rawFrame == null) return false;
@@ -235,7 +235,7 @@ public final class DirectSerialPort {
                         int off = 0;
                         while (off < avail) {
                             SerialFrameCodec.DecodeResult r = SerialFrameCodec.tryDecode(buf, off, avail - off);
-                            if (r == null) break; // 不够一帧
+                            if (r == null) break; // 不夠一幀
                             if (r.frame != null) {
                                 for (OnFrameListener l : listeners) {
                                     try { l.onFrame(r.frame); } catch (Exception ignore) {}
@@ -244,7 +244,7 @@ public final class DirectSerialPort {
                             }
                             off += r.consumed;
                         }
-                        // 未消费的残余搬到头部
+                        // 未消費的殘餘搬到頭部
                         if (off > 0 && off < avail) {
                             System.arraycopy(buf, off, buf, 0, avail - off);
                             pos = avail - off;
@@ -252,7 +252,7 @@ public final class DirectSerialPort {
                             pos = 0;
                         } else {
                             pos = avail;
-                            if (pos >= buf.length - 256) pos = 0; // 防溢出，丢弃
+                            if (pos >= buf.length - 256) pos = 0; // 防溢出，丟棄
                         }
                     } catch (Exception e) {
                         if (running.get()) Log.w(TAG, "reader error: " + e.getMessage());
@@ -273,7 +273,7 @@ public final class DirectSerialPort {
 
     private void closeQuietly() {
         try { if (input != null) input.close(); } catch (IOException ignore) {}
-        // output 关闭会连带关 fd；input/output 同 fd 时关一次即可，但分开 try 更稳
+        // output 關閉會連帶關 fd；input/output 同 fd 時關一次即可，但分開 try 更穩
         try { if (output != null) output.close(); } catch (IOException ignore) {}
         if (serialPortFileObj != null) {
             try { serialPortFileObj.getClass().getMethod("close").invoke(serialPortFileObj); } catch (Exception ignore) {}
