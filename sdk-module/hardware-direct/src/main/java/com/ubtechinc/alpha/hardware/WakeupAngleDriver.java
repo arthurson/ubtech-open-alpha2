@@ -33,6 +33,7 @@ public final class WakeupAngleDriver {
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread feedThread;
+    private volatile AudioRecord activeRec;
     private volatile int handle = -1;
     private volatile Listener listener;
     private volatile long fedBytes;
@@ -101,8 +102,11 @@ public final class WakeupAngleDriver {
         // s4 語義未明，先空字串。
         int h = -1;
         try {
-            h = CAEJni.CAENew(resPath, "ivwCb", "audioCb", "", this);
-            Log.i(TAG, "CAENew5 -> " + h);
+            int rc = CAEJni.CAENew(resPath, "ivwCb", "audioCb", "", this);
+            // 注意：回傳值唔係 handle——native 另行 SetStaticIntField(caeHandle)
+            // 寫入真 handle（指針轉 int，可負）；一切後續調用都用 caeHandle。
+            h = caeHandle;
+            Log.i(TAG, "CAENew5 rc=" + rc + " (caeHandle=" + h + ")");
         } catch (Throwable t) {
             Log.w(TAG, "CAENew5 threw: " + t.getMessage());
             return false;
@@ -126,11 +130,21 @@ public final class WakeupAngleDriver {
 
     public synchronized void stop() {
         running.set(false);
+        // 先停 AudioRecord（解開 read 阻塞），等喂数线程完全退出，
+        // 再靜置一會讓 native queue 落定，最後先 CAEDestroy——
+        // 否則 CAEQueueBreak 內 teardown 撞到寫入中即 SIGSEGV（實測）。
+        AudioRecord rec = activeRec;
+        activeRec = null;
+        if (rec != null) {
+            try { rec.stop(); } catch (Throwable ignore) {}
+            try { rec.release(); } catch (Throwable ignore) {}
+        }
         Thread t = feedThread;
         feedThread = null;
         if (t != null) {
-            try { t.interrupt(); t.join(1000); } catch (InterruptedException ignore) {}
+            try { t.interrupt(); t.join(3000); } catch (InterruptedException ignore) {}
         }
+        try { Thread.sleep(300); } catch (InterruptedException ignore) {}
         int h = handle;
         handle = -1;
         if (h != 0) {
@@ -165,6 +179,7 @@ public final class WakeupAngleDriver {
                 return;
             }
             rec.startRecording();
+            activeRec = rec;
             byte[] buf = new byte[4096];
             while (running.get()) {
                 int n;
@@ -199,6 +214,7 @@ public final class WakeupAngleDriver {
                 try { rec.stop(); } catch (Throwable ignore) {}
                 try { rec.release(); } catch (Throwable ignore) {}
             }
+            if (activeRec == rec) activeRec = null;
             running.set(false);
         }
     }
