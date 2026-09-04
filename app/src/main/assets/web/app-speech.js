@@ -108,8 +108,10 @@ function setAndroidTtsEngine() {
   const select = document.getElementById("ttsAndroidEngineSelect");
   const enginePkg = select ? select.value : "";
   if (!enginePkg) return;
-  // 2026-09: 轉咗引擎, 舊語言選擇未必啱用, 重置返等語言清單載入後用戶再揀。
+  // 2026-09: 轉咗引擎, 舊語言選擇未必啱用, 前後端一齊重置 (後端 pref 都清，
+  // 等對話管線 TTS 跌返自動判斷)。
   currentAndroidTtsLang = "";
+  Alpha2Api.speechSetTtsLang( { lang: "" });
   Alpha2Api.speechSetTtsEngine( { engine: enginePkg }).then(function () {
     setTimeout(function () {
       loadCurAndroidTtsEngine();
@@ -145,7 +147,8 @@ function loadCurAndroidTtsEngine() {
 
 // 而家揀緊嘅 Android TTS 語言 BCP-47 tag - 空字串代表沿用 engine 而家已經
 // 生效嗰個語言, 唔強行切換 (見後端 speech/tts 個 android 分支 comment)。
-// speakTts() 揀 engine=android 嗰陣會帶埋呢個值。
+// speakTts() 會帶埋呢個值；對話管線 (後端 speakAndroidTts) 讀同一個後端 pref，
+// 所以呢度一揀，對話 TTS 即時跟 (見 setAndroidTtsLang)。
 let currentAndroidTtsLang = "";
 
 /** 載入而家揀緊嗰個 Android TTS 引擎識嘅全部語言 (server 端經
@@ -170,12 +173,21 @@ function loadAndroidTtsLanguages() {
       select.appendChild(opt);
     });
     select.value = currentAndroidTtsLang;
+    // 後端 pref 可能有上次記低嘅選擇 (重啟後前端 var 會丟失)，sync 返。
+    Alpha2Api.speechCurTtsLang().then(function (cur) {
+      if (cur && cur.ok && cur.lang !== undefined && cur.lang !== currentAndroidTtsLang) {
+        currentAndroidTtsLang = cur.lang || "";
+        select.value = currentAndroidTtsLang;
+      }
+    });
   });
 }
 
 function setAndroidTtsLang() {
   const select = document.getElementById("ttsAndroidLangSelect");
   currentAndroidTtsLang = select ? select.value : "";
+  // 同步寫返後端 pref —— 對話管線 TTS 即時跟呢個選擇 (見 MainActivity.speakAndroidTts)。
+  Alpha2Api.speechSetTtsLang( { lang: currentAndroidTtsLang });
 }
 
 function speakTts() {
@@ -220,9 +232,27 @@ function stopTts() {
 
 // 2026-09 移除: 離線對話設定成組 (setServiceConfigPreset/rebootRobot) - 卡已
 // 拎走 (見 index.html)。注意 app-accel.js advancedRebootRobot() 係另一粒獨立
-// 掣 (UUID 卡用), 唔受影響。Backend service_config/* endpoint 保留唔郁。
+// 掣 (UUID 卡用), 唔受影響。service_config/get|set 已刪除，reboot 保留。
 
 // 2026-09 移除: 離線文法辨識成組 function (grammarLoadDefault/grammarInit/
 // grammarStart/grammarStop/setOfflineAutoSwitch/refreshOfflineAutoSwitch) -
-// 卡已拎走 (見 index.html), 背後 iFlytek 本地引擎唔存在, endpoint 只會回
-// NOT_INIT。Backend endpoint 本身保留唔郁。
+// 卡已拎走 (見 index.html), 背後 iFlytek 本地引擎唔存在；backend
+// init/start/stop_grammar endpoint 一併刪除，get_default_grammar 照讀本地 asset。
+/** 喚醒轉頭開關讀寫（後端 speech/wakeup_track/get|set，開頁同步一次）。 */
+function loadWakeupTrack() {
+  Alpha2Api.speechWakeupTrackGet().then(function (res) {
+    const toggle = document.getElementById("wakeupTrackToggle");
+    const state = document.getElementById("wakeupTrackState");
+    if (toggle) toggle.checked = !!(res && res.ok && res.enabled);
+    if (state) state.textContent = (res && res.ok && res.running) ? "RUN" : "";
+  });
+}
+
+function setWakeupTrack(checked) {
+  Alpha2Api.speechWakeupTrackSet({ enabled: checked ? "true" : "false" }).then(function (res) {
+    const toggle = document.getElementById("wakeupTrackToggle");
+    const state = document.getElementById("wakeupTrackState");
+    if (toggle) toggle.checked = !!(res && res.ok && res.enabled);
+    if (state) state.textContent = (res && res.ok && res.running) ? "RUN" : "";
+  });
+}

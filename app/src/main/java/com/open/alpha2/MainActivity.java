@@ -37,12 +37,12 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.ubtechinc.alpha.hardware.DirectLedController;
-import com.ubtechinc.alpha.hardware.RobotWire;
-import com.ubtechinc.alpha.jni.LedControl;
+import com.ubtechinc.alpha.hardware.RobotWire;import com.ubtechinc.alpha.jni.LedControl;
 import com.ubtechinc.alpha.hardware.HardwareDirectManager;
 import com.ubtechinc.alpha.hardware.HeadKeyPoller;
 import com.ubtechinc.alpha.hardware.LocalAlpha2Services;
 import com.ubtechinc.alpha.hardware.MouthLedData;
+import com.ubtechinc.alpha.hardware.WakeupAngleDriver;
 import com.ubtechinc.alpha.hardware.ubx.UbxFile;
 import com.ubtechinc.alpha.hardware.ubx.UbxParser;
 import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
@@ -106,9 +106,15 @@ public class MainActivity extends Activity implements SensorEventListener {
     private static final String PREF_XIAOZHI_MCP_ENABLED = "xiaozhi_mcp_enabled";
     // 見 xiaozhiTtsEngine field 的 javadoc。
     private static final String PREF_XIAOZHI_TTS_ENGINE = "xiaozhi_tts_engine";
+    /** 2026-09 新增: TTS 卡揀緊嘅 Android 語言 BCP-47 tag (空=沿用引擎目前
+     *  語言)。前端 setAndroidTtsLang() 同步寫入，對話管線 speakAndroidTts()
+     *  優先用佢——一揀即時跟，唔使等。 */
+    private static final String PREF_ANDROID_TTS_LANG = "android_tts_lang";
     private static final String PREF_XIAOZHI_MCP_DISABLED_TOOLS = "xiaozhi_mcp_disabled_tools";
     /** 開app自動連接小智（小智tab開關，預設關；見 auto_connect/get|set）。 */
     private static final String PREF_XIAOZHI_AUTO_CONNECT = "xiaozhi_auto_connect";
+    /** 喚醒轉頭（語音tab開關；bringup 未完成前暫預設關，見 WakeupAngleDriver）。 */
+    private static final String PREF_SPEECH_WAKEUP_TRACK = "speech_wakeup_track";
     /** 官方 xiaozhi-esp32 firmware 寫死用的 vision/explain endpoint (esp32_camera.cc
      *  Explain() 實作) - 這個 URL 不會經 OTA check_version 的回應帶回來 (見
      *  runXiaozhiActivationFlow() 的 comment: response 只有 activation/websocket
@@ -170,6 +176,8 @@ public class MainActivity extends Activity implements SensorEventListener {
     /** 最近一次播放的 .ubx 文件（供 ubx/speed 播緊時由頭重播；三個播放入口都会更新）。 */
     private volatile java.io.File lastPlayedFile;
     private final HeadKeyPoller headKeyPoller = new HeadKeyPoller();
+    /** 喚醒詞聲源定向（CAE）。開關見 speech/wakeup_track，角度經 speech_direction 推 servo19。 */
+    private final WakeupAngleDriver wakeupDriver = new WakeupAngleDriver();
     private HttpServer httpServer;
     // 小智 (XiaoZhi) AI 對話 - 獨立於機械人 AIDL 之外的 client-side WebSocket
     // 連線, 連出去 xiaozhi.me。單一 instance, 在 onCreate() 才建立 (要用
@@ -329,6 +337,10 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  判斷 - 不靠 speech/set_asr_engine 的語言設定, 因為 iFlytek 引擎本身可能自動
      *  偵測語言, 靠內容判斷更可靠。 */
     private IflytekSemanticMatcherEn iflytekMatcherEn;
+
+    /** 2026-09 新增: Vosk 離線 ASR controller (語音 tab)。單例，onCreate 起，
+     *  onDestroy 停。Model 放 sdcard 自動偵測，見 VoskController。 */
+    private VoskController vosk;
 
     /** 2026-08 新增: 離線文法辨識 (iFlytek local BNF grammar) 模式現在開不開。
      *  開了之後, 機身 alpha2services 會用 engine_type=local + APK 裡面的
@@ -673,6 +685,19 @@ public class MainActivity extends Activity implements SensorEventListener {
         mainHandler.postDelayed(new Runnable() {
             @Override public void run() { maybeAutoConnectXiaozhi("startup"); }
         }, 15000);
+        // 喚醒轉頭（預設開）：引擎+mic 全本地，不等網絡；遲幾秒等開機 I/O 定。
+        mainHandler.postDelayed(new Runnable() {
+            @Override public void run() {
+                boolean enabled;
+                try {
+                    enabled = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                            .getBoolean(PREF_SPEECH_WAKEUP_TRACK, false);
+                } catch (Exception e) {
+                    enabled = false;
+                }
+                if (enabled) startWakeupTrack();
+            }
+        }, 8000);
         // 見 xiaozhiTtsEngine field 的 javadoc - 讀取上次選定的 TTS 引擎, 如果沒有存過
         // 就用預設值 "xiaozhi" (原本行為, 不靜音)。2026-09: 舊版本存落的
         // "iflytek"/"nuance" 已無對應引擎, 一律遷移到 "xiaozhi" 並寫返落去,
@@ -687,6 +712,19 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         iflytekMatcher = new IflytekSemanticMatcher(this);
         iflytekMatcherEn = new IflytekSemanticMatcherEn(this);
+        // 2026-09: Vosk 熔斷 —— vosk-android minSdk 21，API 19 機（呢個 APK 要
+        // 裝到 4.4）絕對唔可以掂 org.vosk.*（native/JNA 即炒）。19 機 vosk
+        // 維持 null，所有 vosk/* endpoint 經下面 voskOrError() 回清晰錯誤。
+        if (android.os.Build.VERSION.SDK_INT >= 21) {
+            try {
+                vosk = new VoskController(this, iflytekMatcher, iflytekMatcherEn);
+            } catch (Throwable e) {
+                Log.w(TAG, "VoskController init failed", e);
+            }
+        } else {
+            Log.i(TAG, "Vosk disabled: need API 21+, this device is API "
+                    + android.os.Build.VERSION.SDK_INT);
+        }
         // Constructs (or re-constructs, when switching engines) androidTts. Pulled out
         // of onCreate()'s inline block into its own method so speech/set_tts_engine can
         // call it again later without duplicating the OnInitListener/
@@ -804,21 +842,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         Log.i(TAG, "Open Alpha2 - reachable at " + scheme + "://" + ip
                 + ":" + HttpServer.PORT + "/ from any browser on the same network");
         registerPanelUrlReceiver();
-
-        // Charge-and-play defaults to ON (user preference). Sent as a delayed broadcast
-        // rather than immediately here because ALPHA_SET_CHARGE_PLAY has no AIDL
-        // "ready" wait method to hook into (unlike chest/header serial's
-        // waitChestReady()/waitHeaderReady()) - alpha2services needs a moment after
-        // process start to be listening for this broadcast at all. 3s chosen to match
-        // the waitChestReady/waitHeaderReady timeout used elsewhere in this file.
-        mainHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                Intent i = new Intent(RobotWire.ALPHA_SET_CHARGE_PLAY);
-                i.putExtra("open_charge_play", true);
-                sendBroadcast(i);
-            }
-        }, 3000);
 
         // pure-direct: 「頭部降噪」預設常開，經 DirectHeadController 直發 /dev/ttyS3，
         // 不再經 robot.waitHeaderReady() / alpha2services binder。
@@ -1490,10 +1513,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     /** 啟動「播歌期間不斷動隨機動作」的循環 - 每 MUSIC_FILLER_ACTION_INTERVAL_MS
      *  觸發一次 triggerRandomFillerAction(), 再重新 schedule 自己, 直到
      *  boundPlayer 不再是 currentMusicPlayer (也就是整首歌已經播完/被叫停/被第二首歌
-     *  取代了) 才停止。用 mainHandler (Looper.getMainLooper()) 排程, 和
-     *  reassertHeadEyeLed() 一致的做法 - 這個 method 本身只是 postDelayed, 沒有做
-     *  blocking call, 不用擔心阻塞 main thread; 真正的動作播放
-     *  (在 triggerRandomFillerAction() 裡面) 一直都是開獨立 thread 做 AIDL call。 */
+     *  取代了) 才停止。用 mainHandler (Looper.getMainLooper()) 排程——這個 method
+     *  本身只是 postDelayed, 沒有做 blocking call, 不用擔心阻塞 main thread;
+     *  真正的動作播放 (在 triggerRandomFillerAction() 裡面) 一直都是開獨立 thread 做。 */
     /** 播歌隨機動作開關 - 讀取 SharedPreferences, 預設 true (保持之前還沒有開關按鈕之前
      *  的行為: 一直都會動)。讓 audio/local_music/filler_action/get、
      *  startMusicFillerActionLoop()、playLocalMusicFile() 一起用同一個讀法,
@@ -1712,6 +1734,14 @@ public class MainActivity extends Activity implements SensorEventListener {
         robotTtsSpeaking = false; // 見 robotTtsSpeaking field javadoc - 手動/總停鍵停止時都要立即放行 mic enforcer
         if (androidTts != null) {
             androidTts.stop();
+        }
+        // 2026-09: 手動全部停止都要 resume Vosk（上面 UtteranceProgressListener
+        // 嘅 onDone 唔一定會嚟）。
+        if (vosk != null) {
+            try {
+                vosk.setPaused(false);
+            } catch (Throwable ignore) {
+            }
         }
         xiaozhiAudioController.stopPlayback();
         stopMouthLedForTts();
@@ -2667,8 +2697,6 @@ public class MainActivity extends Activity implements SensorEventListener {
                 xiaozhiReconnectAttempts.set(0);
                 stopXiaozhiMic();
                 stopMouthLedForTts();
-                cancelHeadLedReassert();
-                cancelEyeLedReassert();
                 xiaozhiClient.disconnect();
                 Log.i(TAG, "mute key -> xiaozhi DISCONNECT");
             } else {
@@ -2806,19 +2834,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                      // onSonarDistanceReceived() 一致的做法。
         }
         alpha2PirAlertActive = triggered;
-        // 2026-08 新增: 用戶提出一個關鍵盲點 - 這個 PIR 警示 (獨立網頁「PIR 測試」
-        // 開關 alpha2PirAlertEnabled 控制, 原意純粹供用戶在 web UI 上自己測試 PIR
-        // 感應器有沒有反應) 和 XiaoZhi 常開對話期間的 self.robot.led_set_head/
-        // led_set_eye MCP tool, 兩者完全獨立、互不知情, 但用的是同一份 head/eye
-        // LED 硬體資源。如果兩者同時觸發, reassertHeadEyeLed() 那個持續補發的
-        // thread 會不斷和這裡的 setHeadEyeLedLong()/header_stop5MicEarLED() 互相
-        // 干擾, 導致 LED 看起來不斷閃爍/跳色, 這就是用戶說的「頭部 LED 仍然和其他 code
-        // 衝突」的其中一種病灶 (另一種是 alpha2services 內部熄燈循環, 已經在
-        // reassertHeadEyeLed() javadoc 處理)。這裡讓 PIR 警示觸發／解除的當下都
-        // 取消 XiaoZhi 那邊的持續補發, 讓這個「用戶主動開啟的 PIR 測試」
-        // 優先勝出, 不會兩份 code 同時不斷寫入同一個硬體。
-        cancelHeadLedReassert();
-        cancelEyeLedReassert();
+        // PIR 警示（獨立網頁「PIR 測試」開關 alpha2PirAlertEnabled 控制）直接單發
+        // setHeadEyeLedLong()/stop——抢灯的补发线程与 alpha2services 熄灯循环都已
+        // 移除，后到者胜，无需取消任何东西。
         try {
             if (triggered) {
                 setHeadEyeLedLong(1, 9); // 1 = 紅 (red), 9 = 最光
@@ -3207,11 +3225,25 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // no-op: the mouth LED is already started right before speak() is
                 // called, not here, so it lights up without waiting for this callback's
                 // round-trip.
+                // 2026-09: Vosk 聆聽緊就 pause 返，唔好將自己把聲認返入去無限迴音。
+                // mic 照 hold 住（pause 唔放 recorder），播完 onDone  resume。
+                if (vosk != null) {
+                    try {
+                        vosk.setPaused(true);
+                    } catch (Throwable ignore) {
+                    }
+                }
             }
 
             @Override
             public void onDone(String utteranceId) {
                 stopMouthLedForTts();
+                if (vosk != null) {
+                    try {
+                        vosk.setPaused(false);
+                    } catch (Throwable ignore) {
+                    }
+                }
                 // 和 robot-side TTS 的 onServerPlayEnd 一致, publish tts_end
                 // 讓前端知道這句讀完了 - 小智 tab 選了本地引擎的時候靠這個 event
                 // 排隊讀多句回覆 (見 xiaozhiTtsQueue 相關 comment)。isEnd 固定
@@ -3223,6 +3255,12 @@ public class MainActivity extends Activity implements SensorEventListener {
             @Override
             public void onError(String utteranceId) {
                 stopMouthLedForTts();
+                if (vosk != null) {
+                    try {
+                        vosk.setPaused(false);
+                    } catch (Throwable ignore) {
+                    }
+                }
                 // 出錯也要 publish, 不然前端的 queue 會卡在那裡等一個永遠不會來
                 // 的 tts_end, 之後所有排隊的句子都讀不到。
                 EventBus.get().publish("tts_end", "{\"isEnd\":true}");
@@ -3234,6 +3272,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     /**
      * 2026-09 新增: 經 Android 內置 TTS 讀一句 (供語意配對答案等唔經 speech/tts
      * endpoint 的內部調用)。同 speech/tts engine=android 分支同一個語義:
+     * 2026-09 更新: locale 參數而家只係 fallback —— TTS 卡有明確選擇
+     * (PREF_ANDROID_TTS_LANG 非空) 就優先用卡嘅選擇，對話 TTS 即時跟卡走；
+     * 卡留空 ("沿用引擎目前語言") 先用傳入嘅自動判斷值。
      * 嘗試切 locale (唔支援就記 warning 照用引擎現有語言讀, 唔靜音),
      * QUEUE_FLUSH 單句播放。嘴 LED 由 UtteranceProgressListener 負責熄,
      * 呼叫方開始前點亮、失敗時自己熄即可。
@@ -3245,6 +3286,17 @@ public class MainActivity extends Activity implements SensorEventListener {
             Log.w(TAG, "speakAndroidTts: Android TTS not ready, drop: " + text);
             return false;
         }
+        // TTS 卡優先：有明確選擇就用佢，否則用傳入嘅自動判斷值。
+        java.util.Locale effective = locale;
+        try {
+            String cardLang = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .getString(PREF_ANDROID_TTS_LANG, "");
+            if (cardLang != null && !cardLang.isEmpty()) {
+                effective = java.util.Locale.forLanguageTag(cardLang);
+            }
+        } catch (Throwable ignore) {
+        }
+        locale = effective;
         if (locale != null) {
             try {
                 int r = tts.setLanguage(locale);
@@ -3333,6 +3385,12 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         if (robot != null) {
             robot.releaseApi();
+        }
+        if (vosk != null) {
+            try {
+                vosk.shutdown();
+            } catch (Throwable ignore) {
+            }
         }
         if (dynamicReceiver != null) {
             try {
@@ -3469,6 +3527,56 @@ public class MainActivity extends Activity implements SensorEventListener {
      */
     private HttpServer.ApiResponse handleSystemApi(String path, Map<String, String> query, String method, String body) {
         switch (path) {
+            // 一野搜齊機器資料（lynx 年代 sys/* 七連發的 pure-direct 版，一個回包齊晒，
+            // 慢 query 各 1.5s 上限）。電池版本字串本機胸固件無此命令，如實缺席；
+            // 電量/充電走 Android 系統廣播。
+            case "discover": {
+                String appVer = "?";
+                try {
+                    appVer = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+                } catch (Exception ignored) {
+                }
+                String chestFw;
+                try {
+                    chestFw = queryChestFirmwareVersion(1500);
+                } catch (Exception e) {
+                    chestFw = null;
+                }
+                String chestUuid;
+                try {
+                    chestUuid = queryChestRobotUuid(1500);
+                } catch (Exception e) {
+                    chestUuid = null;
+                }
+                int[] pose = ubxPlayer.pose();
+                StringBuilder sb = new StringBuilder("{\"ok\":true,");
+                sb.append("\"app\":{\"package\":\"").append(jsonSafe(getPackageName())).append("\",")
+                        .append("\"version\":\"").append(jsonSafe(appVer)).append("\",")
+                        .append("\"panel\":\"http://").append(jsonSafe(getWifiIp())).append(":")
+                        .append(HttpServer.PORT).append("/\"},");
+                sb.append("\"robot\":{\"chestFw\":").append(chestFw != null ? "\"" + jsonSafe(chestFw) + "\"" : "null").append(",")
+                        .append("\"chestUuid\":").append(chestUuid != null ? "\"" + jsonSafe(chestUuid) + "\"" : "null").append(",")
+                        .append("\"chestAvailable\":").append(directChestReady()).append(",")
+                        .append("\"headerAvailable\":").append(directHeaderReady()).append("},");
+                sb.append("\"power\":{\"level\":").append(lastBatteryLevel).append(",")
+                        .append("\"scale\":").append(lastBatteryScale).append(",")
+                        .append("\"charging\":").append(lastBatteryCharging).append(",")
+                        .append("\"status\":\"").append(jsonSafe(lastBatteryStatus)).append("\"},");
+                sb.append("\"sensors\":{\"sonarCm\":").append(lastSonarDistanceCm).append(",")
+                        .append("\"sonarThresholdCm\":").append(sonarThresholdCm).append(",")
+                        .append("\"pir\":").append(lastPirTriggeredState).append("},");
+                sb.append("\"servo\":{\"poseKnown\":").append(pose != null);
+                if (pose != null) {
+                    sb.append(",\"angles\":[");
+                    for (int i = 0; i < 20; i++) {
+                        if (i > 0) sb.append(',');
+                        sb.append(pose[i]);
+                    }
+                    sb.append("]");
+                }
+                sb.append("}}");
+                return HttpServer.ApiResponse.ok(sb.toString());
+            }
             // ---------------- 本地音樂播放 ----------------
             // "/api/system/music/..." - 播放機身 SD 卡裡面 (/sdcard/Music 等) 已有的
             // 音樂檔, 經由 MusicController (standard android.media.MediaPlayer,
@@ -3575,12 +3683,12 @@ public class MainActivity extends Activity implements SensorEventListener {
                 String idStr = query.get("id"), angleStr = query.get("angle"), timeStr = query.get("time");
                 if (idStr == null || angleStr == null) return HttpServer.ApiResponse.error("id and angle required");
                 try {
-                    byte id = (byte) Integer.parseInt(idStr);
+                    int id = Integer.parseInt(idStr);
                     int angle = Integer.parseInt(angleStr);
-                    short time = (short) (timeStr != null ? Integer.parseInt(timeStr) : 500);
-                    boolean ok = localServices.chestSetSingle(id, angle, time);
-                    if (!ok) return HttpServer.ApiResponse.error("direct not ready or send failed (need /dev/ttyS1 permission)");
-                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + id + ",\"angle\":" + angle + "}");
+                    int time = timeStr != null ? Integer.parseInt(timeStr) : 500;
+                    if (id < 1 || id > 20) return HttpServer.ApiResponse.error("id 1-20");
+                    // cmd05 在本机固件有 ACK 无动作，改走 cmd03 全帧（servoSendOne 内处理）。
+                    return servoSendOne(id, angle, time);
                 } catch (Exception e) { return HttpServer.ApiResponse.error(e.getMessage()); }
             }
             case "servo/all": {
@@ -3591,10 +3699,12 @@ public class MainActivity extends Activity implements SensorEventListener {
                     String[] parts = angles.split(",");
                     if (parts.length != 20) return HttpServer.ApiResponse.error("need 20 angles");
                     int[] arr = new int[20];
-                    for (int i=0;i<20;i++) arr[i] = Integer.parseInt(parts[i].trim());
-                    short time = (short) (timeStr != null ? Integer.parseInt(timeStr) : 500);
-                    boolean ok = localServices.chestSetAll(arr, time);
-                    if (!ok) return HttpServer.ApiResponse.error("direct not ready");
+                    for (int i=0;i<20;i++) arr[i] = Integer.parseInt(parts[i].trim()) & 0xFF;
+                    int time = timeStr != null ? Integer.parseInt(timeStr) : 500;
+                    // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
+                    boolean sent = HardwareDirectManager.get(this).chest().setAllServos(arr, (short) time);
+                    if (!sent) return HttpServer.ApiResponse.error("direct not ready");
+                    ubxPlayer.notePose(arr);
                     return HttpServer.ApiResponse.ok("{\"ok\":true}");
                 } catch (Exception e) { return HttpServer.ApiResponse.error(e.getMessage()); }
             }
@@ -3896,8 +4006,6 @@ public class MainActivity extends Activity implements SensorEventListener {
                 xiaozhiReconnectAttempts.set(0);
                 stopXiaozhiMic();
                 stopMouthLedForTts();
-                cancelHeadLedReassert(); // 斷開連線就沒必要再持續補發 head/eye LED, 結束
-                cancelEyeLedReassert();
                 xiaozhiClient.disconnect();
                 // 2026-08 v2: mute 鍵 LED = 小智連線指示燈 - web UI 斷線都要熄燈。
                 setChestMuteLed(false);
@@ -4051,10 +4159,8 @@ public class MainActivity extends Activity implements SensorEventListener {
             // {"type":"listen","state":"start","mode":"auto"} - 兩個連續的 listen
             // state 轉換之間沒有給足時間讓 server 先處理完前一個, 很可能導致 server 側
             // 把 session 重置了/取消了剛送出的那個 detect 的處理, 才再開始一個
-            // 新（空）的聆聽 session, 讓文字訊息無聲無息地被蓋過 - 和
-            // reassertHeadEyeLed() 提到的「兩個連續 listen 轉換之間沒讓夠時間」是
-            // 同一種問題的另一個病徵。這裡多給 300ms 緩衝再重開 mic, 讓 server
-            // 有機會先處理完個 detect message。 */
+            // 新（空）的聆聽 session, 讓文字訊息無聲無息地被蓋過。這裡多給 300ms
+            // 緩衝再重開 mic, 讓 server 有機會先處理完個 detect message。 */
             try {
                 Thread.sleep(300);
             } catch (InterruptedException e) {
@@ -4103,6 +4209,14 @@ public class MainActivity extends Activity implements SensorEventListener {
             robot.speech_SetMIC(false);
             return HttpServer.ApiResponse.error("failed to start playback: " + playbackResult.error);
         }
+        // 2026-09: opus 十秒內就會出聲，Vosk 聆聽緊就 pause 返防迴音
+        // (mic 照 hold，session 完 stopXiaozhiMic／stopAll 會 resume)。
+        if (vosk != null) {
+            try {
+                vosk.setPaused(true);
+            } catch (Throwable ignore) {
+            }
+        }
         // 2026-08 修正: 呢度之前即刻跟住開 startCapture(), 但 logcat 顯示
         // AudioHardwareTiny 岩岩開完 AudioTrack (output) 個 pthread 仲未 settle
         // 就即刻去開 AudioRecord (input), 會撞到
@@ -4126,11 +4240,24 @@ public class MainActivity extends Activity implements SensorEventListener {
                 }, 5000);
         if (captureResult.error != null) {
             xiaozhiAudioController.stopPlayback();
+            if (vosk != null) {
+                try {
+                    vosk.setPaused(false);
+                } catch (Throwable ignore) {
+                }
+            }
             robot.speech_SetMIC(false);
             return HttpServer.ApiResponse.error("failed to start mic capture: " + captureResult.error);
         }
         // Mic 擁有權和硬體都成功取得 - 通知前端將燈號轉綠 (見 index.html
         // #xiaozhiMicLed / app-xiaozhi.js 的 xiaozhi_mic_state 事件處理)。
+        // 2026-09: Vosk 聆聽緊就成個停咗讓 mic (單 input HAL 容唔落兩個
+        // recorder；pause 唔放 mic，唔夠)。唔自動重開——vosk_state event 會
+        // 話返前端轉灰燈，用戶手動返去撳開始。
+        if (vosk != null && vosk.isListening()) {
+            vosk.stopListening();
+            Log.i(TAG, "vosk stopped to yield mic to xiaozhi");
+        }
         xiaozhiMicHeld = true;
         startXiaozhiMicHoldEnforcer();
         EventBus.get().publish(XIAOZHI_MIC_STATE_EVENT, "{\"held\":true}");
@@ -4144,6 +4271,14 @@ public class MainActivity extends Activity implements SensorEventListener {
         stopXiaozhiMicHoldEnforcer();
         xiaozhiAudioController.stopCapture();
         xiaozhiAudioController.stopPlayback();
+        // 2026-09: 小智 session 完咗，Vosk 嗰邊如果 pause 緊就 resume
+        // (之前播 opus／TTS 嗰陣 pause 咗)。唔自動重開聆聽——要開用戶自己撳。
+        if (vosk != null) {
+            try {
+                vosk.setPaused(false);
+            } catch (Throwable ignore) {
+            }
+        }
         if (xiaozhiClient.isOpen()) {
             try {
                 xiaozhiClient.sendListenStop();
@@ -4872,8 +5007,7 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  "start" event (setTtsStateListener() 那段) 和 self.media.play_music 一起使用,
      *  兩者想要的是完全同一種「動一下讓機器人看起來生動一點」效果, 沒必要各自開一份
      *  幾乎一樣的 new Thread(...) { ... }.start()。不在 WebSocket read loop
-     *  thread/HTTP worker thread 上直接呼叫 AIDL blocking call, 和
-     *  reassertHeadEyeLed() 一致的安全做法。 */
+     *  thread/HTTP worker thread 上直接做 blocking call，一律開獨立 thread。 */
     private void triggerRandomFillerAction() {
         new Thread(new Runnable() {
             @Override
@@ -5886,11 +6020,11 @@ public class MainActivity extends Activity implements SensorEventListener {
                             break;
                         }
                         case "self.robot.led_set_head": {
-                            // pure-direct: 经 JNI 直驱（旧 alpha2services 内部熄灯循环已消失，单发即稳住）。
+                            // pure-direct: 经 JNI 直驱，单发即稳住（抢灯的 alpha2services
+                            // 内部熄灯循环已随 APK 移除而消失，补发线程一并删除）。
                             String preset = arguments.optString("preset", "long");
                             UbxErrorCode.API_ERROR_CODE code;
                             if ("stop".equals(preset)) {
-                                cancelHeadLedReassert();
                                 code = directCode(DirectLedController.stopHead5Mic());
                             } else {
                                 if (!arguments.has("color") || !arguments.has("brightness")) {
@@ -5910,7 +6044,6 @@ public class MainActivity extends Activity implements SensorEventListener {
                                     default:        p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
                                 }
                                 code = directCode(DirectLedController.setHead5MicRaw(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8));
-                                reassertHeadEyeLed(false, color, brightness, p5, p6, p8);
                             }
                             boolean hReady = directHeaderReady();
                             isError = !isOk(code) || !hReady;
@@ -5922,7 +6055,6 @@ public class MainActivity extends Activity implements SensorEventListener {
                             String preset = arguments.optString("preset", "long");
                             UbxErrorCode.API_ERROR_CODE code;
                             if ("stop".equals(preset)) {
-                                cancelEyeLedReassert();
                                 code = directCode(DirectLedController.stopEye5Mic());
                             } else {
                                 if (!arguments.has("color") || !arguments.has("brightness")) {
@@ -5941,7 +6073,6 @@ public class MainActivity extends Activity implements SensorEventListener {
                                     default:      p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
                                 }
                                 code = directCode(DirectLedController.setEye5MicRaw(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8));
-                                reassertHeadEyeLed(true, color, brightness, p5, p6, p8);
                             }
                             boolean eReady = directHeaderReady();
                             isError = !isOk(code) || !eReady;
@@ -6217,6 +6348,28 @@ public class MainActivity extends Activity implements SensorEventListener {
         };
     }
 
+    /** vosk/* endpoint 熔斷：vosk 係 null（API 19 機唔起 controller，或者
+     *  21+ 機 init 失敗）就回清晰錯誤，唔好逐個 case 寫 if。
+     *  return null = 可用，照行。 */
+    private HttpServer.ApiResponse voskOrError() {
+        if (vosk != null) return null;
+        if (android.os.Build.VERSION.SDK_INT < 21) {
+            return HttpServer.ApiResponse.error("Vosk needs Android 5.0+ (this device is API "
+                    + android.os.Build.VERSION.SDK_INT + ")");
+        }
+        return HttpServer.ApiResponse.error("vosk not initialised");
+    }
+
+    /** vosk/endpointer 用：空/錯即 NaN（=跟預設）。 */
+    private static float parseEpFloat(String v) {
+        if (v == null || v.isEmpty()) return Float.NaN;
+        try {
+            return Float.parseFloat(v);
+        } catch (Exception e) {
+            return Float.NaN;
+        }
+    }
+
     private HttpServer.ApiResponse handleApi(String path, Map<String, String> query, String method, String body) {
         switch (path) {
             case "status":
@@ -6228,6 +6381,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // 2026-09: speechReady key 已移除 (無 ASR，舊 binder service 永遠唔會 ready)。
                 return HttpServer.ApiResponse.ok("{\"ok\":true,"
                         + "\"appVersion\":\"" + appVer + "\","
+                        + "\"apiLevel\":" + android.os.Build.VERSION.SDK_INT + ","
                         + "\"chestAvailable\":" + directChestReady() + ","
                         + "\"headerAvailable\":" + directHeaderReady() + ","
                         + "\"androidTtsReady\":" + androidTtsReady + "}");
@@ -6386,6 +6540,26 @@ public class MainActivity extends Activity implements SensorEventListener {
                 stopAllSpeechPlayback();
                 return codeResponse(UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED);
 
+            case "speech/wakeup_track/get": {
+                boolean enabled = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .getBoolean(PREF_SPEECH_WAKEUP_TRACK, false);
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled
+                        + ",\"running\":" + wakeupDriver.isRunning() + "}");
+            }
+            case "speech/wakeup_track/set": {
+                String v = query.get("enabled");
+                boolean enabled = "true".equalsIgnoreCase(v) || "1".equals(v);
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                        .putBoolean(PREF_SPEECH_WAKEUP_TRACK, enabled).apply();
+                if (enabled) {
+                    startWakeupTrack();
+                } else {
+                    wakeupDriver.stop();
+                }
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled
+                        + ",\"running\":" + wakeupDriver.isRunning() + "}");
+            }
+
             // Android TTS 語言揀擇 - 淨係 engine=android 用得 (Nuance/iFlytek
             // 兩個 AIDL engine 沒有語言參數選擇, lang 已經由 engine 本身固定死,
             // 見下面 speech/tts 的 android 分支)。ui_lang ("zh"/"en") 控制的是
@@ -6433,6 +6607,28 @@ public class MainActivity extends Activity implements SensorEventListener {
             case "speech/cur_tts_engine":
                 return HttpServer.ApiResponse.ok(
                         "{\"ok\":true,\"engine\":\"" + jsonSafe(androidTtsEnginePkg) + "\"}");
+
+            // 2026-09 新增: TTS 卡語言選擇嘅後端 pref (BCP-47 tag，空=沿用引擎
+            // 目前語言)。前端 setAndroidTtsLang() 同步寫入；對話管線
+            // speakAndroidTts() 優先讀佢——一揀即時跟。
+            case "speech/set_tts_lang": {
+                String lang = ApiValidator.optional(query, "lang", "");
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                        .putString(PREF_ANDROID_TTS_LANG, lang == null ? "" : lang).apply();
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "speech/cur_tts_lang": {
+                String lang;
+                try {
+                    lang = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                            .getString(PREF_ANDROID_TTS_LANG, "");
+                } catch (Throwable e) {
+                    lang = "";
+                }
+                return HttpServer.ApiResponse.ok(
+                        "{\"ok\":true,\"lang\":\"" + jsonSafe(lang == null ? "" : lang) + "\"}");
+            }
 
             case "speech/set_mic": {
                 boolean wake = ApiValidator.requireBoolean(query, "wake");
@@ -6501,57 +6697,12 @@ public class MainActivity extends Activity implements SensorEventListener {
                             + "\"actionId\":\"" + jsonSafe(simResult.actionId) + "\"}");
                 }
             // 2026-09 移除: speech/stop_inject (同上, 死 binder)。
-            // 2026-08 重新加入 speech/init_grammar、speech/start_grammar、
-            // speech/stop_grammar 三個 endpoint (2026-08 之前曾經因為「同一句話
-            // 經 grammar_result 同 asr_result 兩條路徑各自觸發語意配對, 重複答兩次」
-            // 而全線移除)。現在重新設計過:
-            //
-            // 1. 開啟離線文法模式之後 (speech/start_grammar), onServerCallBack()
-            //    那條聽寫路徑會被 offlineGrammarActive flag gate 住 - 只有 grammar
-            //    listener 一條路徑會觸發語意配對 + TTS + 動作, 徹底解決重複回應。
-            // 2. 反編譯 alpha2services (v1.1.7.3.20) 證實: iFlytek 引擎實作
-            //    (com.ubtechinc.speechmanager.a.a) 本身就有完整的本地文法支援 -
-            //    initSpeechGrammar() 收到 BNF 字串之後用 engine_type=local +
-            //    assets/asr/common.jet (APK 自帶離線資源) 執行 buildGrammar("bnf",...),
-            //    startSpeechGrammar() 用 mix 模式啟動 (連上網走雲端, 離線自動退回
-            //    local_grammar="call" 本地文法), 辨識全程不用網路。這就是讓
-            //    iFlytek 離線可用的正確做法。
-            // 3. BNF 格式是 iFlytek IAMVERSION 1.1.0 (#BNF+IAMVERSION 開頭,
-            //    !slot 宣告, <grammarstart> 做 root rule)。格式錯的話 buildGrammar
-            //    會經 GrammarListener 回錯誤碼, grammar_init event 會帶埋 errorCode。
+            // 2026-09 移除: speech/init_grammar、speech/start_grammar、
+            // speech/stop_grammar 三個 endpoint（機身已無 iFlytek 引擎，
+            // 恒回 NOT_INIT）。內部 doInitGrammar/doStartGrammar/doStopGrammar
+            // 保留（離線自動切換內部流程仲用緊），get_default_grammar 照讀本地 asset。
             case "speech/get_default_grammar":
                 return getDefaultGrammar();
-            case "speech/init_grammar": {
-                // 2026-09: 舊 speechReady gate 已刪 (field 一併移除；舊 binder
-                // service 永遠唔會 ready，留住只會令呢個 endpoint 永遠回同一個錯)。
-                String bnf = ApiValidator.optional(query, "bnf", "");
-                if (bnf.isEmpty()) {
-                    bnf = readDefaultGrammarAsset();
-                    if (bnf == null) {
-                        return HttpServer.ApiResponse.error(
-                                "No 'bnf' param given and assets/iflytek/default_grammar.bnf unreadable");
-                    }
-                }
-                return codeResponse(doInitGrammar(bnf));
-            }
-            case "speech/start_grammar": {
-                // 2026-09: 舊 speechReady gate 已刪 (同上)。
-                // 2026-08 新增: 文法尚未構建成功 (或者根本沒 init 過) 就不允許開始 -
-                // 這個狀態下機身會把所有語音退回雲端 fallback, 離線時全部變成網路
-                // 錯誤 (10114/20002), 用戶會以為離線功能壞了。要求先 init 成功。
-                if (!lastGrammarBuildOk) {
-                    return HttpServer.ApiResponse.error(
-                            "Grammar not built yet (or last build failed with error 23300 = wrong "
-                                    + "BNF format). Press 'Init grammar' first and wait for a "
-                                    + "grammar_init event with errorCode 0. Correct format: "
-                                    + "'#BNF+IAT 1.0 UTF-8;' header + !grammar/!slot/!start "
-                                    + "directives - see the default template.");
-                }
-                return codeResponse(doStartGrammar());
-            }
-            case "speech/stop_grammar": {
-                return codeResponse(doStopGrammar());
-            }
             case "speech/offline_auto_switch": {
                 // 2026-08 新增: 自動跟網路切換開關。沒有 on 參數 = 查詢現狀;
                 // 有 on=true/false = 設定 (寫入 SharedPreferences, 重啟 App 都記得),
@@ -6583,19 +6734,106 @@ public class MainActivity extends Activity implements SensorEventListener {
                         + offlineGrammarAutoSwitch + ",\"connected\":" + lastProbeOnline
                         + ",\"offlineActive\":" + offlineGrammarActive + "}");
             }
+            // -- Vosk 離線 ASR (2026-09 新增) --------------------------------------
+            // Model 放 sdcard 自動偵測 (見 VoskController.scanModels)，一次一粒。
+            // 成句結果沿用 asr_result event（前端同打字模擬同一條管線：氣泡＋
+            // 語意配對＋Android TTS＋direct 動作）。
+            // API 19 熔斷：除 models（純檔案掃描，static，邊個 API 都得）之外，
+            // 其他經 voskOrError() 回清晰錯誤，唔好逐個 case 寫 if。
+            case "vosk/models": {
+                StringBuilder sb = new StringBuilder("{\"ok\":true,\"models\":[");
+                boolean first = true;
+                for (VoskController.VoskModelInfo m : VoskController.scanModels()) {
+                    if (!first) sb.append(',');
+                    first = false;
+                    sb.append("{\"id\":\"").append(jsonSafe(m.id))
+                      .append("\",\"lang\":\"").append(jsonSafe(m.langHint))
+                      .append("\",\"sizeMb\":").append(m.sizeBytes / 1048576).append('}');
+                }
+                return HttpServer.ApiResponse.ok(sb.append("]}").toString());
+            }
+            case "vosk/load": {
+                HttpServer.ApiResponse need = voskOrError();
+                if (need != null) return need;
+                String id = ApiValidator.require(query, "model");
+                String err = vosk.loadModel(id);
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"loading\":\""
+                        + jsonSafe(id) + "\"}");
+            }
+            case "vosk/status": {
+                HttpServer.ApiResponse need = voskOrError();
+                if (need != null) return need;
+                String mid = vosk.getModelId();
+                String msg = vosk.getLastError();
+                float epTEnd = vosk.getEpTEnd();
+                return HttpServer.ApiResponse.ok("{\"ok\":true"
+                        + ",\"state\":\"" + vosk.getState().name().toLowerCase(java.util.Locale.US) + "\""
+                        + ",\"model\":" + (mid == null ? "null" : "\"" + jsonSafe(mid) + "\"")
+                        + ",\"listening\":" + vosk.isListening()
+                        + ",\"epMode\":" + vosk.getEpMode()
+                        + ",\"epTEnd\":" + (Float.isNaN(epTEnd) ? "null"
+                                : String.format(java.util.Locale.US, "%.2f", epTEnd))
+                        + (msg == null ? "" : ",\"message\":\"" + jsonSafe(msg) + "\"")
+                        + "}");
+            }
+            case "vosk/start": {
+                HttpServer.ApiResponse need = voskOrError();
+                if (need != null) return need;
+                String err = vosk.startListening();
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+            case "vosk/stop": {
+                HttpServer.ApiResponse need = voskOrError();
+                if (need != null) return need;
+                vosk.stopListening();
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+            case "vosk/unload": {
+                HttpServer.ApiResponse need = voskOrError();
+                if (need != null) return need;
+                vosk.unload();
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+            // 2026-09 新增: 咪測試——開 1 秒錄音計 RMS/Peak (dBFS)，幫用戶判斷
+            // 係唔係收得細。聽緊嗰陣唔做 (單 input HAL)，先㩒停止。
+            case "vosk/mic_test": {
+                HttpServer.ApiResponse need = voskOrError();
+                if (need != null) return need;
+                // micTestJson 自帶 {"ok":...}，直接透傳。
+                return HttpServer.ApiResponse.ok(vosk.micTestJson());
+            }
+            // 2026-09 新增: 收音延遲調校。mode -1/省略=跟預設，0=標準 1=短
+            // 2=長 3=很長；t_start/t_end/t_max 三個一齊俾先有效 (秒，見 vosk_api.h，
+            // t_end 係講完幾耐靜音先 finalize，0.5-1.0 左右）。在聽緊即時生效，
+            // 並 persist 跨重開；status 會帶返現值。
+            case "vosk/endpointer": {
+                HttpServer.ApiResponse need = voskOrError();
+                if (need != null) return need;
+                int mode = ApiValidator.optionalInt(query, "mode", -1);
+                float tStart = parseEpFloat(query.get("t_start"));
+                float tEnd = parseEpFloat(query.get("t_end"));
+                float tMax = parseEpFloat(query.get("t_max"));
+                String err = vosk.setEndpointer(mode, tStart, tEnd, tMax);
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
             // -- Servos -----------------------------------------------------------------
             case "servo/one": {
-                // pure-direct: 经 /dev/ttyS1 直发，不再 waitChestReady()/binder。
+                // pure-direct: cmd05 在本机固件有 ACK 无动作，改走 cmd03 全帧。
                 int id = ApiValidator.requireIntRange(query, "id", 1, 20);
                 int angle = ApiValidator.requireInt(query, "angle");
                 int time = ApiValidator.optionalInt(query, "time", 1000);
-                boolean sent = HardwareDirectManager.get(this).chest().setSingleServo((byte) id, angle, (short) time);
-                return codeResponseReady(directCode(sent), directChestReady());
+                boolean ok = servoSendOneCode(id, angle, time) == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+                return codeResponseReady(directCode(ok), directChestReady());
             }
             case "servo/all": {
                 int[] angles = ApiValidator.requireAngles20(query);
                 int time = ApiValidator.optionalInt(query, "time", 1000);
+                // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
                 boolean sent = HardwareDirectManager.get(this).chest().setAllServos(angles, (short) time);
+                if (sent) ubxPlayer.notePose(angles);
                 return codeResponseReady(directCode(sent), directChestReady());
             }
             case "servo/sonar": {
@@ -6606,20 +6844,31 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return codeResponseReady(directCode(sent), directChestReady());
             }
             case "servo/read": {
+                // 命令位姿追踪值：本机胸 cmd13 回包恒定（跳舞途中亦不变），无实时回授；
+                // tuner 要的是“当前摆位”，命令位姿即正确语义。未知如实报，不编 0。
                 int idInt = ApiValidator.requireIntRange(query, "id", 1, 20);
-                byte id = (byte) idInt;
-                boolean sent = HardwareDirectManager.get(this).chest().readServo(id);
-                UbxErrorCode.API_ERROR_CODE code = directCode(sent);
-                // 即使 MCU 回覆解析尚未實作，也回一個可被前端識別為「已發送」的 JSON，
-                // 讓 advTunerReadAll() 的掃描流程不再報 unknown endpoint。
-                // 同時附上 angle/offset 假值 0，避免前端因 offset==undefined 而保持 "-" 導致備份交白卷；
-                // 真實 offset 可在 chest_rcv 事件 Log 中對照（F8 8F ... 0D ...）。
-                // 若 chest 未 ready，chest_readServo 會回 NOT_INIT，此時 front 會見到 ok:false。
-                if (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + id + ",\"angle\":0,\"offset\":0,\"sent\":true}");
-                } else {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + code.name() + "\",\"sent\":false}");
+                int[] pose = ubxPlayer.pose();
+                if (pose == null) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + idInt
+                            + ",\"error\":\"pose unknown (play any action first)\",\"known\":false}");
                 }
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + idInt
+                        + ",\"angle\":" + pose[idInt - 1] + ",\"offset\":" + pose[idInt - 1]
+                        + ",\"known\":true}");
+            }
+            case "servo/read-all": {
+                int[] pose = ubxPlayer.pose();
+                if (pose == null) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"known\":false,"
+                            + "\"error\":\"pose unknown (play any action first)\"}");
+                }
+                StringBuilder sb = new StringBuilder("{\"ok\":true,\"known\":true,\"angles\":[");
+                for (int i = 0; i < 20; i++) {
+                    if (i > 0) sb.append(',');
+                    sb.append(pose[i]);
+                }
+                sb.append("]}");
+                return HttpServer.ApiResponse.ok(sb.toString());
             }
 
             // 2026-08-15 更新: 真機已確認 cmd=72 開關生效, PIR 觸發正常 (見
@@ -7536,16 +7785,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return btStatus();
 
             // -- Robot-service broadcasts with simple boolean extras. --------------------
-            case "misc/charge_play": {
-                boolean open = ApiValidator.requireBoolean(query, "open");
-                Intent i = new Intent(RobotWire.ALPHA_SET_CHARGE_PLAY);
-                i.putExtra("open_charge_play", open);
-                sendBroadcast(i);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-            // 2026-09 移除: misc/power_save - 純粹發 broadcast 俾已不存在的
-            // alpha2services, 回 ok:true 但實際無效 (假活)。連同舵機頁開關一齊
-            // 拎走。charge_play 同理已死但今次唔郁 (無 UI 入口, 留待下批)。
+            // 2026-09 移除: misc/power_save（見下）與 misc/charge_play ——
+            // 純粹發 broadcast 俾已不存在的 alpha2services, 回 ok:true 但實際
+            // 無效 (假活)。連同舵機頁開關一齊拎走。
 
             // -- Accelerometer (IMU): standard Android SensorManager, not SDK-gated -
             // see setAccelerometerEnabled()/onSensorChanged() above. Readings stream out
@@ -7579,61 +7821,13 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + accelerometerEnabled
                         + ",\"available\":" + (accelerometerSensor != null) + "}");
 
-            // -- Service config (/sdcard/actions/service_config.{json,txt}) -------------
-            //
-            // 2026-08 新增。這個 config 檔控制機身開機時的 wake word/ASR 語言/預設對話
-            // app (見 AIDL_REFERENCE_ALPHA2.md「引擎選擇」段落) —— 實測證實 (見 log) 改了這個
-            // 檔案、重開機之後, wake word 真的會跟著轉。
-            //
-            // 兩個關鍵限制, 這組 API 圍繞這兩點設計:
-            // 1. 這是外部儲存的普通檔案 (/sdcard, 不是 app 私有目錄), targetSdkVersion 22
-            //    不用 runtime permission, manifest 已有 WRITE_EXTERNAL_STORAGE, 讀寫本身
-            //    沒有障礙。
-            // 2. 改完必須重開機才生效 (實測: alpha2services 只在開機時讀一次, 沒有監聽
-            //    檔案改動), 所以 set 這個 endpoint 只負責寫檔, 不會假裝「即時生效」；
-            //    重開機要用戶自己另外選擇「reboot after set」或之後手動用 service_config/reboot。
-            //
-            // 只支援兩個 preset (cn/en), 兩個都是機身出廠內建的原裝 default config
-            // (分別對應 aaservice_config.json 和 service_config.json 這兩份出廠檔案),
-            // 一字不改照抄, 不是自己組出來的組合——兩個都是原廠已知安全的設定, 所以
-            // 不設「還原」按鈕, 也不做寫入前備份 (兩個 preset 之間可以隨時互相切換,
-            // 沒有「損壞」這個概念)。
-            case "service_config/get":
-                return serviceConfigGet();
-            case "service_config/set": {
-                String preset = ApiValidator.require(query, "preset");
-                boolean reboot = ApiValidator.optionalBoolean(query, "reboot", false);
-                return serviceConfigSet(preset, reboot);
-            }
+            // 2026-09 移除: service_config/get|set（讀寫 /sdcard/actions/
+            // service_config.{json,txt}，alpha2services 專用 config，機身已無此
+            // 服務，對 open alpha2 無用；連同 preset 常數一齊拎走。reboot 保留
+            // （UUID 卡重開機掣仲用緊）。
             case "service_config/reboot":
-                // 獨立出來做一個 endpoint, 讓用戶可以「set 完先看看寫對了沒, 之後再
-                // reboot」, 不一定要一步到位。
+                // 獨立 endpoint，用戶隨時手動重開機。
                 return systemReboot();
-
-            // -- Alice talk server 假 endpoint (/api/alice/talkServer) -------------------
-            //
-            // 2026-08 新增。原廠 alice_Server (service_config.json 裡的那個欄位) 寫死指向
-            // 一個內部開發機 IP (http://10.10.1.54:8081/programd/talkServer?), 在外面連不
-            // 到。實測拆解 alpha2services 證實: ASR 識別本身是 local (.bnf 語法比對, 不用
-            // 上網), 但識別完之後的「取得對話回應」步驟會打一條 HttpURLConnection 去
-            // alice_Server (com.ubtechinc.alpha2ctrlapp.network.c.c.a()), connectTimeout
-            // 10 秒; 打不通整個對話流程就卡在那裡沒反應, 看起來好像 iFlytek 整套都停擺,
-            // 其實只是這一步卡住。
-            //
-            // 這個 endpoint 就是供 *_openalpha2_offline preset (見下面 ALICE_OFFLINE_*)
-            // 用的假後端: 對應的 preset 把 alice_Server 改指向
-            // "http://127.0.0.1:8888/api/alice/talkServer?", 讓這條 HTTP call 打得通,
-            // 使流程不再卡死。Request 格式 (form-urlencoded, 由
-            // com.ubtechinc.alpha2ctrlapp.network.c.c.a() 組裝) 已拆解確認:
-            //   appType=...&requestKey=...&requestTime=...&serviceVersion=...
-            //   &systemLanguage=...&content=<識別到的文字>
-            // Response 格式尚未拆到實際 schema (原廠那條 link 一直打不通, 沒 log 過真正
-            // response) —— 現在只需要讓 HTTP round-trip 成功不拋出 exception, 使下游
-            // 不再卡死; response body 是否真的被原廠 code 解析、解析失敗會如何, 都尚未驗證,
-            // 純粹先做到「打得通」這一步。plain text 對應 talkServer 這類 AIML/ALICE 協議
-            // 常見的裸文字回覆格式。
-            case "alice/talkServer":
-                return aliceTalkServer(body);
 
             default:
                 return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
@@ -7641,193 +7835,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    // -- Service config (/sdcard/actions/service_config.json + .txt) ------------------
-    //
-    // 這個檔案控制機身開機時的 wake word / ASR 語言 / 預設對話 app。實測確認 (見對話
-    // history 的 log): 覆蓋這個檔案 + 重開機, wake word 真的會跟著轉。中文／英文兩個
-    // preset 都是機身原本出廠內建的兩組 default config (分別對應 aaservice_config.json
-    // 和 service_config.json 這兩份出廠檔案), 一字不改照抄, 不是自己組出來的組合 ——
-    // 兩個都是原廠已知安全的設定, 所以不設「還原」按鈕, 也不做寫入前備份 (兩個 preset
-    // 之間可以隨時互相切換, 沒有「損壞」這個概念)。
-
-    private static final String SERVICE_CONFIG_DIR = "/sdcard/actions";
-    private static final String SERVICE_CONFIG_JSON = SERVICE_CONFIG_DIR + "/service_config.json";
-    private static final String SERVICE_CONFIG_TXT = SERVICE_CONFIG_DIR + "/service_config.txt";
-
-    /** 中文組: 出廠原裝 aaservice_config.json 內容, 一字不改。wake word「你好 阿爾法」
-     *  (CN_WAKEUP_NIHAO_ALPHA), default_App 沿用原廠的 iflytekmix。 */
-    private static final String CN_PRESET_JSON = "{"
-            + "\"alice_Server\":\"http://10.10.1.54:8081/programd/talkServer?\","
-            + "\"asr_Language\":\"zh_cn\","
-            + "\"default_App\":\"com.ubtech.iflytekmix\","
-            + "\"develop_Server\":\"http://dev.ubtrobot.com/opencenter/app/accesscheckapp\","
-            + "\"isBusiness\":false,"
-            + "\"isOpenDebugLog\":true,"
-            + "\"isOpenInfoLog\":true,"
-            + "\"wakeup_threshold_mic5\":25,"
-            + "\"wakeup_word\":\"CN_WAKEUP_NIHAO_ALPHA\","
-            + "\"web_Server\":\"https://services.ubtrobot.com/ubx/\","
-            + "\"xmpp_Server\":\"services.ubtrobot.com\""
-            + "}";
-
-    /** 英文組: 出廠原裝 service_config.json 內容, 一字不改。wake word「Hello Alpha」
-     *  (EN_WAKEUP_HELLO_ALPHA_THREE), default_App 沿用原廠的 alphaenglishchat。 */
-    private static final String EN_PRESET_JSON = "{"
-            + "\"asr_Language\":\"en_us\","
-            + "\"default_App\":\"com.ubtechinc.alphaenglishchat\","
-            + "\"isBusiness\":false,"
-            + "\"isOpenDebugLog\":true,"
-            + "\"isOpenInfoLog\":true,"
-            + "\"web_Server\":\"http://services.ubtrobot.com/ubx/\","
-            + "\"develop_Server\":\"http://dev.ubtrobot.com/opencenter/app/accesscheckapp\","
-            + "\"alice_Server\":\"http://10.10.1.54:8081/programd/talkServer?\","
-            + "\"xmpp_Server\":\"services.ubtrobot.com\","
-            + "\"wakeup_word\":\"EN_WAKEUP_HELLO_ALPHA_THREE\","
-            + "\"wakeup_threshold_mic5\":25"
-            + "}";
-
-    /** 2026-08 更新 (混合版): default_App 指返 OpenAlpha2 自己; 四個 server link
-     *  入面淨係 alice_Server 繼續指去 OpenAlpha2 個假 endpoint - 因為原廠值係
-     *  內部開發機 IP (10.10.1.54), 外部永遠連不上, 識別完取得對話回應那步會卡
-     *  10 秒。其餘三個 (web/develop/xmpp) 實測原廠伺服器 2026 年仍然有反應,
-     *  沿用原廠值反而更好:
-     *  - web_Server: firmware 每次開機都強制將這個欄位改寫成 https://, 本機
-     *    http server 沒有 TLS 必定失敗; 沿用原廠 https link 就沒有這個問題。
-     *  - develop_Server/xmpp_Server: 原廠仍在運作, 開機檢查/xmpp 連線取得真回應;
-     *    離線時照樣連不上, 無影響。
-     *  離線文法辨識與對答完全不經這些 link (見 applyConnectivityMode/
-     *  doStartGrammar 那邊 comment)。 */
-    private static final String CN_OPENALPHA2_OFFLINE_PRESET_JSON = "{"
-            + "\"alice_Server\":\"http://127.0.0.1:8888/api/alice/talkServer?\","
-            + "\"asr_Language\":\"zh_cn\","
-            + "\"default_App\":\"com.open.alpha2\","
-            + "\"develop_Server\":\"http://dev.ubtrobot.com/opencenter/app/accesscheckapp\","
-            + "\"isBusiness\":false,"
-            + "\"isOpenDebugLog\":true,"
-            + "\"isOpenInfoLog\":true,"
-            + "\"wakeup_threshold_mic5\":25,"
-            + "\"wakeup_word\":\"CN_WAKEUP_NIHAO_ALPHA\","
-            + "\"web_Server\":\"https://services.ubtrobot.com/ubx/\","
-            + "\"xmpp_Server\":\"services.ubtrobot.com\""
-            + "}";
-
-    /** 2026-08 更新: 同 CN_OPENALPHA2_OFFLINE_PRESET_JSON 同一套混合改法 -
-     *  alice_Server 留本機假 endpoint (原廠死 IP), web/develop/xmpp 用返原廠
-     *  (實測仍然有反應), 見該處註解。 */
-    private static final String EN_OPENALPHA2_OFFLINE_PRESET_JSON = "{"
-            + "\"asr_Language\":\"en_us\","
-            + "\"default_App\":\"com.open.alpha2\","
-            + "\"isBusiness\":false,"
-            + "\"isOpenDebugLog\":true,"
-            + "\"isOpenInfoLog\":true,"
-            + "\"web_Server\":\"http://services.ubtrobot.com/ubx/\","
-            + "\"develop_Server\":\"http://dev.ubtrobot.com/opencenter/app/accesscheckapp\","
-            + "\"alice_Server\":\"http://127.0.0.1:8888/api/alice/talkServer?\","
-            + "\"xmpp_Server\":\"services.ubtrobot.com\","
-            + "\"wakeup_word\":\"EN_WAKEUP_HELLO_ALPHA_THREE\","
-            + "\"wakeup_threshold_mic5\":25"
-            + "}";
-
-    /** alice_Server 假後端。Request body 是 form-urlencoded (由 alpha2services 的
-     *  com.ubtechinc.alpha2ctrlapp.network.c.c.a() 組裝), 欄位: appType/requestKey/
-     *  requestTime/serviceVersion/systemLanguage/content。只讀取 content 出來做 log
-     *  方便對著實機 debug 查看「機身識別到的文字有沒有送到這裡」, 回應內容目前是
-     *  hardcode 的固定句子 —— 想接上真正智能回覆 (例如轉發去 LLM API) 就是在這個
-     *  method 度加。 */
-    private HttpServer.ApiResponse aliceTalkServer(String body) {
-        String content = "";
-        if (body != null) {
-            for (String pair : body.split("&")) {
-                int eq = pair.indexOf('=');
-                if (eq < 0) continue;
-                String key = pair.substring(0, eq);
-                if ("content".equals(key)) {
-                    try {
-                        content = java.net.URLDecoder.decode(pair.substring(eq + 1), "UTF-8");
-                    } catch (java.io.UnsupportedEncodingException e) {
-                        content = pair.substring(eq + 1);
-                    }
-                    break;
-                }
-            }
-        }
-        Log.i(TAG, "aliceTalkServer received content=" + content);
-        // TODO: 這句是 placeholder。想真的有智能回覆, 在這裡轉發 content 去自己選擇的
-        // LLM/對話服務, 拿回來做 response body。現在只求「HTTP round-trip 打得通」。
-        return new HttpServer.ApiResponse(200, "text/plain; charset=utf-8", "OK");
-    }
-
-    /** 讀返 service_config.json 現有內容。 */
-    private HttpServer.ApiResponse serviceConfigGet() {
-        String current;
-        try {
-            current = readFileUtf8(SERVICE_CONFIG_JSON);
-        } catch (java.io.IOException e) {
-            return HttpServer.ApiResponse.error("Cannot read " + SERVICE_CONFIG_JSON + ": " + e.getMessage());
-        }
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"current\":" + current + "}");
-    }
-
-    /** preset = "cn" | "en" | "cn_openalpha2_offline" | "en_openalpha2_offline"。
-     *  前兩個是機身出廠內建的原裝 default config, 一字不改照抄 (UI 上顯示為「備份」);
-     *  後兩個是 2026-08 新增, default_App 指向 OpenAlpha2 自己 (com.open.alpha2),
-     *  並且將 alice_Server/web_Server/develop_Server/xmpp_Server 全部改指向
-     *  OpenAlpha2 自己的 8888 server, 讓 wake word 觸發之後直接 launch OpenAlpha2、
-     *  完全脫離外部連線。四個都不設「還原」按鈕、也不做寫入前備份——隨時可以互相
-     *  切換, 沒有「損壞」這個概念。寫入對應的 JSON + 精簡 TXT 版本, 兩個檔案要同步。 */
-    private HttpServer.ApiResponse serviceConfigSet(String preset, boolean reboot) {
-        String json;
-        if ("cn".equals(preset)) {
-            json = CN_PRESET_JSON;
-        } else if ("en".equals(preset)) {
-            json = EN_PRESET_JSON;
-        } else if ("cn_openalpha2_offline".equals(preset)) {
-            json = CN_OPENALPHA2_OFFLINE_PRESET_JSON;
-        } else if ("en_openalpha2_offline".equals(preset)) {
-            json = EN_OPENALPHA2_OFFLINE_PRESET_JSON;
-        } else {
-            return HttpServer.ApiResponse.error("preset must be 'cn', 'en', "
-                    + "'cn_openalpha2_offline' or 'en_openalpha2_offline'");
-        }
-
-        org.json.JSONObject obj;
-        String asrLanguage;
-        String defaultApp;
-        try {
-            obj = new org.json.JSONObject(json);
-            asrLanguage = obj.getString("asr_Language");
-            defaultApp = obj.getString("default_App");
-        } catch (org.json.JSONException e) {
-            // 這兩個 preset 是常數, 不應該解析失敗——如果發生, 一定是這個 class 裡
-            // 手寫錯了, 不是用家輸入問題。
-            return HttpServer.ApiResponse.error("Internal preset JSON malformed: " + e.getMessage());
-        }
-
-        String txt = asrLanguage + "\n" + defaultApp + "\n";
-        try {
-            writeFileUtf8(SERVICE_CONFIG_JSON, json);
-            writeFileUtf8(SERVICE_CONFIG_TXT, txt);
-        } catch (java.io.IOException e) {
-            return HttpServer.ApiResponse.error("Write failed: " + e.getMessage());
-        }
-
-        String rebootNote;
-        if (reboot) {
-            HttpServer.ApiResponse rebootResult = systemReboot();
-            rebootNote = rebootResult.status == 200
-                    ? "\"rebooting\":true"
-                    : "\"rebooting\":false,\"rebootError\":\"" + jsonSafe(rebootResult.body) + "\"";
-        } else {
-            rebootNote = "\"rebooting\":false";
-        }
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"written\":true,"
-                + "\"note\":\"config written but firmware only reads this file at boot - "
-                + "reboot required for it to take effect\"," + rebootNote + "}");
-    }
-
-    /** 觸發機身重開機。實測證實 service_config.json 只在開機時讀一次, 沒有 runtime
-     *  監聽, 所以這是讓新 config 生效的必經步驟 - 不提供任何「不用重開機」的
-     *  替代方案, 因為沒實測過有第二條路。 */
+    /** 觸發機身重開機（UUID 卡重開機掣用，經 PowerManager）。 */
     private HttpServer.ApiResponse systemReboot() {
         try {
             android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
@@ -7844,32 +7852,6 @@ public class MainActivity extends Activity implements SensorEventListener {
                     "REBOOT permission denied by system (common on locked-down firmware) - "
                             + "please power-cycle the robot manually for the config change to take effect: "
                             + e.getMessage());
-        }
-    }
-
-    private static String readFileUtf8(String path) throws java.io.IOException {
-        java.io.File f = new java.io.File(path);
-        byte[] bytes = new byte[(int) f.length()];
-        java.io.FileInputStream in = new java.io.FileInputStream(f);
-        try {
-            int off = 0;
-            while (off < bytes.length) {
-                int n = in.read(bytes, off, bytes.length - off);
-                if (n < 0) break;
-                off += n;
-            }
-        } finally {
-            in.close();
-        }
-        return new String(bytes, "UTF-8");
-    }
-
-    private static void writeFileUtf8(String path, String content) throws java.io.IOException {
-        java.io.FileOutputStream out = new java.io.FileOutputStream(path);
-        try {
-            out.write(content.getBytes("UTF-8"));
-        } finally {
-            out.close();
         }
     }
 
@@ -8097,90 +8079,11 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     /** Same "long" (solid, always-on) LED effect as led/head/set & led/eye/set's
      *  preset=long, but callable directly server-side without an HTTP round-trip.
-     *  Used by releaseMicForAudioIo() to set the mic-listening cue LED *after*
-     *  speech_SetMIC(true) has actually taken effect - see that method's javadoc for
-     *  why ordering here matters (alpha2services' own setWakeState(true) broadcasts
-     *  a LED_ACTION that turns the ear LED back off as a side effect, racing against
-     *  whatever this app just set). */
+     *  抢灯时代（alpha2services 内部熄灯循环持续覆写）的补发线程已随 APK 移除而删除，
+     *  pure-direct 下单发即稳住。 */
     private void setHeadEyeLedLong(int color, int brightness) {
-        // pure-direct: 经 JNI 直驱（无 alpha2services 内部熄灯循环与之相争，单发即稳住，
-        // reassert 补发线程保留仅作兼容，见 reassertHeadEyeLed）。
         DirectLedController.setHead5MicRaw(color, brightness, 31, 31, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
         DirectLedController.setEye5MicRaw(color, brightness, 255, 255, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
-    }
-
-    /** 2026-08 新增: 用戶實測 self.robot.led_set_head/led_set_eye 呢兩個 MCP tool
-     *  「亮一秒又熄了」/「開兩次又停了」- 對照 logcat 找到真正機制: 不只是
-     *  releaseMicForAudioIo() javadoc 提到的「setWakeState() 觸發 broadcast 熄燈」
-     *  那麼簡單, 而是 alpha2services 內部 AlphaMainSeviceImpl 的 "stop ear led"
-     *  邏輯本身**不是真的熄掉了 LED**, 而是內部照樣呼叫多次
-     *  header_ledSetHead5Mic(color=3,brightness=2,...,p5=400,p6=9000,p8=2) 這組
-     *  固定參數去做「熄燈」效果 (也就是設定成一個很暗的顏色/圖案, 不是真正斷電) -
-     *  而這個內部熄燈邏輯**持續循環運作**, 密度很高 (實測相隔只有 0.8 秒左右
-     *  就再來一次), 只要小智常開對話還開著就不會停。之前的做法 (在這裡單次補發
-     *  2 秒就結束) 追不上這個持續循環的頻率, 2 秒過了之後又打回原形。
-     *
-     *  現在改成「持續生效直到用戶下一次改指令為止」: 每次 led_set_head/
-     *  led_set_eye 被呼叫, 就開一條長駐 background thread, 用
-     *  headLedReassertGeneration/eyeLedReassertGeneration 這兩個 generation
-     *  counter 分別做 head/eye 獨立的取消機制 - 新一次呼叫 (無論是新顏色還是
-     *  preset=stop) 都會讓 generation 數字進位, 舊的那條 thread 見到自己的
-     *  generation 已經過時就會自行停止, 保證同一時間只有一條 thread 在
-     *  持續補發, 不會愈開愈多。preset=stop 那個 case (header_stop5MicEarLED())
-     *  只需要讓 generation 進位使舊的補發 thread 停止, 不需要自己再開新
-     *  thread。
-     *
-     *  2026-08 再修正: 用戶實測 300ms 的補發間隔仍然「和其他 code 相撞」- 對照
-     *  logcat 發現內部熄燈循環大約每 2 秒觸發一次, 300ms 的間隔理應大部分時間
-     *  都能贏過它, 但兩種顏色交替出現在肉眼看來仍然構成明顯閃爍。這個「熄燈循環」
-     *  本身沒辦法完全消除 (只要小智 auto-mode 開著就會持續運作), 只能縮短
-     *  「熄了未補發回來」那段空隙的長度來減少肉眼可見的閃爍程度。把補發間隔由
-     *  300ms 縮短到 80ms - AIDL call 本身很快, 2 秒週期裡補發 25 次左右都不會
-     *  構成負擔, 但空隙短很多, 閃爍會沒那麼明顯。 */
-    private static final long LED_REASSERT_INTERVAL_MS = 80;
-    private final java.util.concurrent.atomic.AtomicLong headLedReassertGeneration =
-            new java.util.concurrent.atomic.AtomicLong(0);
-    private final java.util.concurrent.atomic.AtomicLong eyeLedReassertGeneration =
-            new java.util.concurrent.atomic.AtomicLong(0);
-
-    /** 讓目前生效中的 head/eye LED 持續補發 thread (如果有) 在下一個補發週期
-     *  自行停止, 不開新 thread 補回 - preset=stop 那個 case 用這個。 */
-    private void cancelHeadLedReassert() {
-        headLedReassertGeneration.incrementAndGet();
-    }
-
-    private void cancelEyeLedReassert() {
-        eyeLedReassertGeneration.incrementAndGet();
-    }
-
-    private void reassertHeadEyeLed(final boolean isEye, final int color, final int brightness,
-            final int p5, final int p6, final int p8) {
-        final java.util.concurrent.atomic.AtomicLong genCounter =
-                isEye ? eyeLedReassertGeneration : headLedReassertGeneration;
-        final long myGeneration = genCounter.incrementAndGet();
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                while (genCounter.get() == myGeneration) {
-                    try {
-                        Thread.sleep(LED_REASSERT_INTERVAL_MS);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
-                    if (genCounter.get() != myGeneration) {
-                        return; // 補發期間又有新一次呼叫, 或用戶呼叫了 stop, 讓位給它
-                    }
-                    // pure-direct: 经 JNI 直驱（旧 alpha2services 内部熄灯循环已随 APK 移除而消失，
-                    // 补发线程保留仅作兼容，单发本已稳住）。
-                    if (isEye) {
-                        DirectLedController.setEye5MicRaw(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8);
-                    } else {
-                        DirectLedController.setHead5MicRaw(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8);
-                    }
-                }
-            }
-        }, "XiaozhiLedReassert").start();
     }
 
     /** 2026-08 新增: 這台機器 (head board / firmware 1.1.1.14) 的
@@ -8736,6 +8639,37 @@ public class MainActivity extends Activity implements SensorEventListener {
         return HttpServer.ApiResponse.ok(ubxPlayer.statusJson());
     }
 
+    // -- Servo 命令位姿（cmd03 化）--------------------------------------------------
+    // 本机胸固件只执行 cmd 3：单舵机 = 全帧改一轴后整帧发；读角 = 命令位姿追踪
+    // （ServoPoseTracker，开机未动过则 unknown，绝不编造）。
+    /** 单舵机经 cmd03 全帧发送；返回 code（pose unknown 时 FAILED，调用方各自组 JSON）。 */
+    private UbxErrorCode.API_ERROR_CODE servoSendOneCode(int id, int angle, int timeMs) {
+        int[] cur = ubxPlayer.pose();
+        if (cur == null) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
+        cur[id - 1] = angle & 0xFF;
+        boolean sent = HardwareDirectManager.get(this).chest().setAllServos(cur, (short) timeMs);
+        if (!sent) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
+        ubxPlayer.notePose(cur);
+        return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+    }
+
+    private HttpServer.ApiResponse servoSendOne(int id, int angle, int timeMs) {
+        UbxErrorCode.API_ERROR_CODE code = servoSendOneCode(id, angle, timeMs);
+        if (code != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+            boolean known = ubxPlayer.poseKnown();
+            return HttpServer.ApiResponse.error(known ? "direct not ready"
+                    : "pose unknown (play any action first, or send full pose via servo/all)");
+        }
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + id + ",\"angle\":" + (angle & 0xFF) + "}");
+    }
+
+    private HttpServer.ApiResponse servoSendAll(int[] arr, int timeMs) {
+        boolean sent = HardwareDirectManager.get(this).chest().setAllServos(arr, (short) timeMs);
+        if (!sent) return HttpServer.ApiResponse.error("direct not ready");
+        ubxPlayer.notePose(arr);
+        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+    }
+
     private HttpServer.ApiResponse actionListDirect() {
         List<String[]> info = loadActionInfo();
         StringBuilder sb = new StringBuilder("{\"ok\":true,\"actions\":[");
@@ -8750,6 +8684,62 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         sb.append("]}");
         return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    /**
+     * 起喚醒轉頭：assets/ivw/*.jet 解壓到 files/ivw（CAENew 要檔案路徑），
+     * 交 WakeupAngleDriver 在背景跑；角度經 speech_direction 推既有 servo19 管道。
+     * 可重入（已跑緊即返 true）。
+     */
+    private boolean startWakeupTrack() {
+        if (wakeupDriver.isRunning()) return true;
+        final java.io.File resFile;
+        try {
+            resFile = ensureWakeupJet();
+        } catch (Exception e) {
+            Log.w(TAG, "wakeup res extract failed", e);
+            return false;
+        }
+        if (resFile == null) return false;
+        final WakeupAngleDriver.Listener listener = new WakeupAngleDriver.Listener() {
+            @Override public void onWakeup(int angle, int beam, String keyword, float power, int score) {
+                // 同 RobotEventReceiver 收到 SPEECH_DIRECTION 完全同形，直入既有管線。
+                try {
+                    EventBus.get().publish("speech_direction", "{\"absoluteAngle\":" + angle + "}");
+                } catch (Throwable t) {
+                    Log.w(TAG, "publish speech_direction failed", t);
+                }
+            }
+        };
+        new Thread(new Runnable() {
+            @Override public void run() {
+                wakeupDriver.start(resFile, listener);
+            }
+        }, "WakeupTrackStart").start();
+        return true;
+    }
+
+    /** assets/ivw/ivw_resource_three_cn.jet → files/ivw/（不存在或太細先解壓）。 */
+    private java.io.File ensureWakeupJet() throws java.io.IOException {
+        java.io.File dir = new java.io.File(getFilesDir(), "ivw");
+        if (!dir.isDirectory() && !dir.mkdirs()) {
+            throw new java.io.IOException("mkdir failed: " + dir);
+        }
+        java.io.File out = new java.io.File(dir, "ivw_resource_three_cn.jet");
+        if (out.isFile() && out.length() > 900000) return out;
+        java.io.InputStream in = null;
+        java.io.OutputStream os = null;
+        try {
+            in = getAssets().open("ivw/ivw_resource_three_cn.jet");
+            os = new java.io.FileOutputStream(out);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+        } finally {
+            if (in != null) { try { in.close(); } catch (Exception ignore) {} }
+            if (os != null) { try { os.close(); } catch (Exception ignore) {} }
+        }
+        return out.isFile() ? out : null;
     }
 
     private HttpServer.ApiResponse actionPlayDirect(String name) {

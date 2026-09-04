@@ -47,9 +47,7 @@ components:
             type: string
             description: 事件類型
             enum:
-              - asr_result
               - grammar_result
-              - speech_ready
               - grammar_init
               - mic_state
               - mic_broadcast_debug
@@ -78,10 +76,10 @@ components:
             format: int64
             description: Unix ms
       examples:
-        - name: asr
+        - name: battery
           payload:
-            type: asr_result
-            data: { text: "你好" }
+            type: battery
+            data: { level: 80, scale: 100, charging: false, status: "discharging" }
             ts: 1725710000000
         - name: sonar
           payload:

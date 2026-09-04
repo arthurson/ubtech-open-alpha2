@@ -20,7 +20,6 @@ public final class RobotWire {
     public static final String ALPHA_BT_CONNECTION = "com.ubtechinc.services.bluetooth";
     public static final String ALPHA_QR_CODE = "com.ubt.alpha2.qr_code";
     public static final String ALPHA_WIFI_RESULT = "com.ubt.alpha2.wifiresult";
-    public static final String ALPHA_SET_CHARGE_PLAY = "com.ubtechinc.services.SET_CHARGE_PLAY";
 
     // -- Chest microcontroller serial command bytes ---------------------------
     public static final byte CHES_CMD_MOTORANGLE = 5;

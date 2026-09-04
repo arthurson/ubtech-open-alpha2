@@ -8,11 +8,11 @@ android {
     defaultConfig {
         applicationId "com.open.alpha2"
         minSdkVersion 19
-        // The Alpha2 robot's earliest firmware ran Android 4.4 (KitKat, API 19).
-        // Neither the SDK module nor this app use any API surface introduced after
-        // API 19 (checked: no android.* imports here or in the SDK post-date API 19;
-        // try-with-resources is a javac/D8 language-level rewrite, not a runtime API,
-        // so it works unchanged down to API 19).
+        // 2026-09: 19 ↔ 21 來回一次 —— vosk-android 要 minSdk 21，但呢個 APK
+        // 要裝到 Android 4.4 (API 19) 機。解法：minSdk 維持 19（呢部機以外嘅
+        // 舊機照裝得），manifest 用 tools:overrideLibrary 過 merger，
+        // runtime 用 SDK_INT 熔斷（見 MainActivity voskOrError／VoskController
+        // 只喺 21+ 先掂 org.vosk）。Vosk 以外嘅 code 本身全部 API 19 安全。
         targetSdkVersion 22
         versionCode 4
         versionName "beta 4"
@@ -86,6 +86,13 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 
+    // 2026-09: vosk-android 拖入嘅 JNA (multi-release JAR, META-INF/versions/
+    // 有 Java 9+ 專用 class) 會整死舊 D8 (mergeExtDex NPE)。部機行 API 22，
+    // JNA 行返 Java 8 fallback 完全夠用，直接唔打包呢啲版本類。
+    packagingOptions {
+        exclude 'META-INF/versions/**'
+    }
+
     lintOptions {
         // 機械人跑 Android 5.1 (API 22)，targetSdk 22 係刻意為之（非上架 Play Store，用 adb sideload 直裝）
         // Release lint 會因 ExpiredTargetSdkVersion 報錯阻斷 assembleRelease，關掉檢查
@@ -97,6 +104,15 @@ android {
 dependencies {
     // 2026-09: ubtechalpha2robot (Alpha2OpenSdk binder) 已刪除，脫離上游。
     implementation project(':sdk-module:hardware-direct')
+    // 2026-09: Vosk 離線 ASR (語音 tab)。AAR vendor 在 app/libs (只留
+    // armeabi-v7a，其他 ABI 已由 AAR 本體剃走)：vosk 本體 (libvosk.so) +
+    // JNA (libjnidispatch.so)。Model 唔跟 app（~65MB 粒），放 sdcard 由
+    // VoskController 掃描自動偵測。零遠程依賴，--offline 照編。
+    implementation files('libs/vosk-android-0.3.75-armeabi-v7a.aar')
+    implementation files('libs/jna-5.13.0-armeabi-v7a.aar')
+}
+
+// 2026-09: JNA 已隨上面 vendor 入 libs (v7a 版)，唔再經 Maven 解，force 唔再需要。
     // 2026-08: opus.aar (theeasiestway/android-opus-codec 嘅預編譯版本) 已經
     // 喺呢個修訂移除。原本嘅 aar 內含 classes.jar (Kotlin 編譯出嚟嘅
     // com.theeasiestway.opus.Opus/Constants) + libeasyopus.so + libopus.so +
@@ -113,4 +129,3 @@ dependencies {
     //     link opusenc, 因為 CodecOpus.cpp 完全冇用到 libopusenc 嘅任何
     //     API (見 app/src/main/cpp/CMakeLists.txt 嘅 comment)。
     // 見 app/src/main/cpp/CMakeLists.txt 同 externalNativeBuild block。
-}

@@ -91,4 +91,38 @@ final class SimplifiedToTraditional {
         }
         return sb.toString();
     }
+
+    private static volatile Map<Character, Character> tradToSimp;
+
+    /** 反向：繁體轉簡體（同一張表倒查，早出現者優先）。
+     *  ⚠️ 用途唯一：Vosk 普通話 model 吐簡體，問法庫係繁體——起限定文法嗰陣
+     *  要將問法轉做簡體先對得上 acoustic 輸出。絕對唔可以用喺顯示/TTS/配對
+     *  輸出（嗰啲一定要繁體，見上面 toTraditional 嘅 javadoc）。 */
+    static String toSimplified(String text) {
+        if (text == null) return null;
+        Map<Character, Character> rev = tradToSimp;
+        if (rev == null) {
+            synchronized (SimplifiedToTraditional.class) {
+                rev = tradToSimp;
+                if (rev == null) {
+                    rev = new HashMap<>();
+                    int len = SIMP.length();
+                    for (int i = 0; i < len; i++) {
+                        char t = TRAD.charAt(i);
+                        if (!rev.containsKey(t)) {
+                            rev.put(t, SIMP.charAt(i));
+                        }
+                    }
+                    tradToSimp = rev;
+                }
+            }
+        }
+        StringBuilder sb = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            Character s = rev.get(c);
+            sb.append(s != null ? s.charValue() : c);
+        }
+        return sb.toString();
+    }
 }

@@ -4,9 +4,9 @@ info:
   description: '`com.open.alpha2` 裝在 UBTECH Alpha2 機械人 (Android 5.1.1, API 22) 上的本地控制面板
     HTTP + WebSocket API。
 
-    依 `MainActivity.java:6079 handleApi()` / `HttpServer.java:34` 反向生成，
+    依 `MainActivity handleApi()` / `HttpServer` 反向生成，
 
-    覆蓋 17 個 AIDL interface (`AIDL_REFERENCE_ALPHA2.md`) 的全部 HTTP 映射，加上獨立的 system/xiaozhi/stream/upload
+    覆蓋機械人全部本機能力（原 17 個 AIDL interface 功能，現經直驅實現），加上獨立的 system/xiaozhi/stream/upload
     命名空間。
 
     預設由 `HttpServer.PORT = 8888` 以純 HTTP 提供 (`http://<robot-ip>:8888/`)，同 WiFi 任何瀏覽器可直接訪問。
@@ -24,7 +24,7 @@ info:
   license:
     name: GPL-3.0-only
     url: https://www.gnu.org/licenses/gpl-3.0.html
-  x-generated: '2026-09-02'
+  x-generated: '2026-09-04'
 servers:
 - url: http://{robotIp}:8888
   description: 機械人本機 HTTP Server (同 WiFi 直連)
@@ -36,9 +36,9 @@ tags:
 - name: core
   description: 基礎狀態與升級
 - name: action
-  description: 內建動作播放 (AIDL IAlphaActionService)
+  description: 內建動作播放 (UbxPlayer 直驅)
 - name: speech
-  description: 語音 / TTS / ASR / iFlytek 離線文法
+  description: 語音 / TTS（僅 Android 引擎有效）/ 本地語意配對（機身已無 Nuance/iFlytek 引擎）
 - name: servo
   description: 20 軸舵機與聲納
 - name: sensor
@@ -52,7 +52,7 @@ tags:
 - name: radio
   description: 網絡電台 (Radio Browser API)
 - name: system
-  description: 獨立於 AIDL 的系統功能 (/api/system/*)
+  description: 不經機身服務的系統功能 (/api/system/*)
 - name: xiaozhi
   description: 小智 AI 對話橋接 (xiaozhi.me) 與 MCP 工具 (/api/xiaozhi/*)
 - name: upload
@@ -77,10 +77,9 @@ paths:
                 $ref: '#/components/schemas/StatusResponse'
               example:
                 ok: true
-                appVersion: 1.0.0
+                appVersion: beta 4
                 chestAvailable: true
                 headerAvailable: true
-                speechReady: true
                 androidTtsReady: true
   /api/chest/version:
     get:
@@ -185,10 +184,10 @@ paths:
     get:
       tags:
       - action
-      summary: 取回機身內建動作清單 (每 5 秒 blocking wait, 透過 IAlphaActionListListener)
+      summary: 取回機身內建動作清單 (讀 /sdcard/actions/actionInfo.txt，pure-direct)
       responses:
         '200':
-          description: '## 分隔四元組 (id##type##中文名##英文名) 已拆為陣列'
+          description: 動作陣列（檔格式 fileId##nameCn##nameEn##type，已拆為物件）
           content:
             application/json:
               schema:
@@ -199,29 +198,46 @@ paths:
                     actions:
                       type: array
                       items:
-                        type: array
-                        items:
-                          type: string
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          type:
+                            type: string
+                          nameCn:
+                            type: string
+                          nameEn:
+                            type: string
       operationId: actionList_get
   /api/action/play:
     get:
       tags:
       - action
-      summary: 按名稱播放內建動作
+      summary: 按 fileId/中英文名播內建動作（搶佔式；有同目錄 mp3 會同步播配樂）
       parameters:
       - name: name
         in: query
         required: true
         schema:
           type: string
-        description: 動作中/英文名 (fuzzy match 亦支援於 MCP 層)
+        description: fileId、nameEn、nameCn 或 xxx.ubx 檔名/絕對路徑
       responses:
         '200':
-          description: UbxErrorCode 結果
+          description: '{ok, code, name, total}（total=servo 幀數）'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    code:
+                      type: string
+                      example: API_ERROR_SUCCEED
+                    name:
+                      type: string
+                    total:
+                      type: integer
       operationId: actionPlay_get
   /api/action/stop:
     post:
@@ -243,7 +259,7 @@ paths:
       summary: 列出 /sdcard/actions 內 .ubx 檔 (name/size)
       responses:
         '200':
-          description: 檔案清單
+          description: '{ok, files:[{name, size}]}（只列檔案，目錄略過）'
           content:
             application/json:
               schema:
@@ -255,12 +271,17 @@ paths:
                       type: array
                       items:
                         type: object
+                        properties:
+                          name:
+                            type: string
+                          size:
+                            type: integer
       operationId: directUbxList_get
   /api/direct/ubx/play:
     get:
       tags:
       - direct
-      summary: 解析並經 UbxPlayer 直播指定 .ubx (name 或 path 二選一)
+      summary: 解析並經 UbxPlayer 直播指定 .ubx (name 或 path 二選一；有同目錄 mp3 會同步播配樂)
       parameters:
       - name: name
         in: query
@@ -274,11 +295,18 @@ paths:
         description: 絕對路徑 (如 /sdcard/tiny.ubx)
       responses:
         '200':
-          description: UbxErrorCode 結果
+          description: '{ok, name, total}（total=servo 幀數）'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    name:
+                      type: string
+                    total:
+                      type: integer
       operationId: directUbxPlay_get
   /api/direct/ubx/stop:
     post:
@@ -291,7 +319,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                $ref: '#/components/schemas/OkWrapper'
       operationId: directUbxStop_post
   /api/direct/ubx/speed:
     get:
@@ -308,11 +336,21 @@ paths:
         description: 變速倍率（配樂同 pitch 一齊變）
       responses:
         '200':
-          description: UbxErrorCode 結果
+          description: '{ok, code, speed, restarted}（restarted=播緊時是否已重播）'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    code:
+                      type: string
+                      example: API_ERROR_SUCCEED
+                    speed:
+                      type: number
+                    restarted:
+                      type: boolean
       operationId: directUbxSpeed_get
   /api/direct/ubx/status:
     get:
@@ -325,8 +363,47 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OkWrapper'
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    playing:
+                      type: boolean
+                    name:
+                      type: string
+                    sent:
+                      type: integer
+                    total:
+                      type: integer
+                    voice:
+                      type: string
+                    speed:
+                      type: number
+                    lastError:
+                      type: string
       operationId: directUbxStatus_get
+  /api/direct/status:
+    get:
+      tags:
+      - direct
+      summary: 直驅層狀態 (localServices/chest/head 是否暢通)
+      responses:
+        '200':
+          description: '{ok, direct, chest, head}'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    direct:
+                      type: boolean
+                    chest:
+                      type: boolean
+                    head:
+                      type: boolean
+      operationId: directStatus_get
   /api/direct/sonar/config:
     get:
       tags:
@@ -341,39 +418,41 @@ paths:
         description: 距離 cm
       responses:
         '200':
-          description: 結果
+          description: '{ok}（布林值即是否寫入成功）'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                $ref: '#/components/schemas/OkWrapper'
       operationId: directSonarConfig_get
   /api/direct/led/head:
     get:
       tags:
       - direct
-      summary: 頭燈直驅
+      summary: 頭燈直驅（color/mode 留空即預設 3/0）
       parameters:
       - name: color
         in: query
         schema:
           type: integer
+          default: 3
       - name: mode
         in: query
         schema:
           type: integer
+          default: 0
       responses:
         '200':
-          description: 結果
+          description: '{ok}（布林值即是否寫入成功）'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                $ref: '#/components/schemas/OkWrapper'
       operationId: directLedHead_get
   /api/direct/led/mouth:
     get:
       tags:
       - direct
-      summary: 嘴燈呼吸直驅
+      summary: 嘴燈呼吸直驅（留空預設 500ms）
       parameters:
       - name: breathe
         in: query
@@ -382,11 +461,11 @@ paths:
           default: 500
       responses:
         '200':
-          description: 結果
+          description: '{ok}（布林值即是否寫入成功）'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                $ref: '#/components/schemas/OkWrapper'
       operationId: directLedMouth_get
   /api/direct/led/off:
     get:
@@ -395,11 +474,11 @@ paths:
       summary: 全燈熄直驅
       responses:
         '200':
-          description: 結果
+          description: '{ok}（布林值即是否寫入成功）'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                $ref: '#/components/schemas/OkWrapper'
       operationId: directLedOff_get
   /api/direct/servo/one:
     get:
@@ -427,11 +506,18 @@ paths:
         description: 執行時間 ms
       responses:
         '200':
-          description: 結果
+          description: '{ok, id, angle}'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    id:
+                      type: integer
+                    angle:
+                      type: integer
       operationId: directServoOne_get
   /api/direct/servo/all:
     get:
@@ -457,16 +543,16 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                $ref: '#/components/schemas/OkWrapper'
       operationId: directServoAll_get
   /api/ubx/list:
     get:
       tags:
       - direct
-      summary: 列出 /sdcard/actions 内 .ubx 档（前端动作 tab 经 /api/alpha2 前缀调用）
+      summary: 列出 /sdcard/actions 內 .ubx 檔（前端动作 tab 经 /api/alpha2 前缀调用）
       responses:
         '200':
-          description: 檔案清單
+          description: '{ok, files:[{name, size}]}（只列檔案，目錄略過）'
           content:
             application/json:
               schema:
@@ -478,12 +564,17 @@ paths:
                       type: array
                       items:
                         type: object
+                        properties:
+                          name:
+                            type: string
+                          size:
+                            type: integer
       operationId: ubxList_get
   /api/ubx/play:
     get:
       tags:
       - direct
-      summary: 解析并经 UbxPlayer 直播指定 .ubx（抢占：播新自动停旧；name 或 path 二选一）
+      summary: 解析並經 UbxPlayer 直播指定 .ubx（搶佔：播新自動停舊；name 或 path 二選一；有同目錄 mp3 會同步播配樂）
       parameters:
       - name: name
         in: query
@@ -497,11 +588,18 @@ paths:
         description: 絕對路徑
       responses:
         '200':
-          description: UbxErrorCode 結果
+          description: '{ok, name, total}（total=servo 幀數）'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    name:
+                      type: string
+                    total:
+                      type: integer
       operationId: ubxPlay_get
   /api/ubx/stop:
     post:
@@ -514,7 +612,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                $ref: '#/components/schemas/OkWrapper'
       operationId: ubxStop_post
   /api/ubx/status:
     get:
@@ -527,7 +625,24 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OkWrapper'
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    playing:
+                      type: boolean
+                    name:
+                      type: string
+                    sent:
+                      type: integer
+                    total:
+                      type: integer
+                    voice:
+                      type: string
+                    speed:
+                      type: number
+                    lastError:
+                      type: string
       operationId: ubxStatus_get
   /api/ubx/speed:
     get:
@@ -544,17 +659,31 @@ paths:
         description: 變速倍率（配樂同 pitch 一齊變）
       responses:
         '200':
-          description: UbxErrorCode 結果
+          description: '{ok, code, speed, restarted}（restarted=播緊時是否已重播）'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    code:
+                      type: string
+                      example: API_ERROR_SUCCEED
+                    speed:
+                      type: number
+                    restarted:
+                      type: boolean
       operationId: ubxSpeed_get
   /api/speech/tts:
     get:
       tags:
       - speech
-      summary: 播 TTS (Nuance / iFlytek / Android 三引擎)
+      summary: 播 TTS（只有 engine=android 會真係出聲）
+      description: 機身已無 Nuance/iFlytek 引擎（alpha2services 已移除，binder
+        回 NOT_INIT）。engine=nuance/iflytek 照收但必定回 {ok:false,
+        code:API_ERROR_NOT_INIT} 全程靜音；預設 engine=nuance，即預設唔出聲，
+        要出聲請用 engine=android。
       parameters:
       - name: text
         in: query
@@ -570,12 +699,12 @@ paths:
           - iflytek
           - android
           default: nuance
-        description: nuance=英文, iflytek=中文, android=系統 TTS
+        description: 只有 android 會出聲；nuance=機身（已無引擎，必靜音），iflytek=機身（已無引擎，必靜音）
       - name: voice
         in: query
         schema:
           type: string
-        description: 僅 iflytek 有效 (catherine/john/xiaofeng/xiaoyan)
+        description: 已無實效（原僅 iflytek 有效，而該引擎已不存在）
       - name: lang
         in: query
         schema:
@@ -584,17 +713,23 @@ paths:
         description: 僅 engine=android 有效，BCP-47 tag (speech/tts_languages 回傳)
       responses:
         '200':
-          description: 是否已入列
+          description: android 即時讀出回 {ok}；nuance/iflytek 回 {ok:false, code:API_ERROR_NOT_INIT}
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    code:
+                      type: string
+                      example: API_ERROR_NOT_INIT
       operationId: speechTts_get
   /api/speech/stop:
     get:
       tags:
       - speech
-      summary: 停止所有 TTS 播放
+      summary: 停止所有語音播放（機身 TTS、Android TTS、小智語音）
       responses:
         '200':
           description: 已停止
@@ -603,6 +738,52 @@ paths:
               schema:
                 $ref: '#/components/schemas/CodeResponse'
       operationId: speechStop_get
+  /api/speech/wakeup_track/get:
+    get:
+      tags:
+      - speech
+      summary: 讀取「喚醒轉頭」開關（含引擎運行狀態 running）
+      responses:
+        '200':
+          description: 開關狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    running:
+                      type: boolean
+      operationId: speechWakeupTrackGet_get
+  /api/speech/wakeup_track/set:
+    get:
+      tags:
+      - speech
+      summary: 設定「喚醒轉頭」開關（開即刻起 CAE 引擎；喚醒詞觸發 servo19 轉向聲源）
+      parameters:
+      - name: enabled
+        in: query
+        required: true
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: 已儲存（含引擎運行狀態）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    running:
+                      type: boolean
+      operationId: speechWakeupTrackSet_get
   /api/speech/tts_languages:
     get:
       tags:
@@ -673,7 +854,7 @@ paths:
         description: 引擎包名 (如 com.google.android.tts)
       responses:
         '200':
-          description: 已觸發切換
+          description: 已觸發切換（回 {ok}；用 cur_tts_engine 輪詢生效）
           content:
             application/json:
               schema:
@@ -697,12 +878,55 @@ paths:
                     engine:
                       type: string
       operationId: speechCurTtsEngine_get
+  /api/speech/set_tts_lang:
+    get:
+      tags:
+      - speech
+      summary: 設定 TTS 卡語言選擇 (BCP-47，空=沿用引擎目前語言，對話 TTS 即時跟)
+      parameters:
+      - name: lang
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 已寫入
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: speechSetTtsLang_get
+  /api/speech/cur_tts_lang:
+    get:
+      tags:
+      - speech
+      summary: 查詢 TTS 卡語言選擇
+      responses:
+        '200':
+          description: BCP-47 tag (空=沿用引擎目前語言)
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    lang:
+                      type: string
+      operationId: speechCurTtsLang_get
   /api/speech/set_mic:
     get:
       tags:
       - speech
-      summary: 轉移麥克風擁有權 (setWakeState)
-      description: true=App 拿回 mic (供錄音), false=交還給 alpha2services 的 wake-word 引擎
+      summary: 轉移麥克風擁有權（底層 setWakeState 已無對象，恒回成功；只記 app 側旗標）
+      description: 機身 wake-word 引擎已隨 alpha2services 移除，實際無收放動作；
+        held/keepHeld 照記照報，供前端顯示。
+      parameters:
+      - name: wake
+        in: query
+        required: true
+        schema:
+          type: boolean
       parameters:
       - name: wake
         in: query
@@ -728,7 +952,7 @@ paths:
     get:
       tags:
       - speech
-      summary: 持續搶佔麥克風開關 (每 2 秒補發 setWakeState)
+      summary: 持續搶佔麥克風開關（底層已無對象；enforcer 空轉，只記旗標）
       parameters:
       - name: keep
         in: query
@@ -754,7 +978,7 @@ paths:
     get:
       tags:
       - speech
-      summary: 本地語意配對模擬 (不經 AIDL，直接 IflytekSemanticMatcher.match)
+      summary: 本地語意配對模擬（純本地 1000 問法配對，不經任何引擎；名為 iflytek 乃歷史原因）
       description: 依有無漢字自動選中/英文庫，回 matched/question/type/operation/answer/actionId，命中即執行
         TTS+動作
       parameters:
@@ -792,7 +1016,7 @@ paths:
     get:
       tags:
       - speech
-      summary: 取得預設 BNF 文法檔內容 (assets/iflytek/default_grammar.bnf)
+      summary: 取得預設 BNF 文法檔內容 (assets/iflytek/default_grammar.bnf；文法本身已無處上載，僅供參考)
       responses:
         '200':
           description: BNF 文本
@@ -806,51 +1030,6 @@ paths:
                     bnf:
                       type: string
       operationId: speechGetDefaultGrammar_get
-  /api/speech/init_grammar:
-    get:
-      tags:
-      - speech
-      summary: 初始化離線文法 (speech_initGrammar, BNF 格式
-      parameters:
-      - name: bnf
-        in: query
-        schema:
-          type: string
-        description: 留空則用 default_grammar.bnf
-      responses:
-        '200':
-          description: 是否已提交，結果經 WebSocket grammar_init (errorCode 0=成功, 23300=格式錯)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CodeResponse'
-      operationId: speechInitGrammar_get
-  /api/speech/start_grammar:
-    get:
-      tags:
-      - speech
-      summary: 啟動離線文法辨識 (speech_startGrammar, 需先 init 成功)
-      responses:
-        '200':
-          description: 結果
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CodeResponse'
-      operationId: speechStartGrammar_get
-  /api/speech/stop_grammar:
-    get:
-      tags:
-      - speech
-      summary: 停止離線文法辨識
-      responses:
-        '200':
-          description: 結果
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CodeResponse'
-      operationId: speechStopGrammar_get
   /api/speech/offline_auto_switch:
     get:
       tags:
@@ -879,6 +1058,138 @@ paths:
                     offlineActive:
                       type: boolean
       operationId: speechOfflineAutoSwitch_get
+  /api/vosk/models:
+    get:
+      tags:
+      - speech
+      summary: 列出 sdcard 掃描到的 Vosk model (有 am/final.mdl 即算)
+      responses:
+        '200':
+          description: model 清單 (id/lang/sizeMb)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: voskModels_get
+  /api/vosk/load:
+    get:
+      tags:
+      - speech
+      summary: 載入指定 Vosk model (背景幾秒，一次一粒)
+      parameters:
+      - name: model
+        in: query
+        required: true
+        schema:
+          type: string
+        description: model id (目錄名，見 vosk/models)
+      responses:
+        '200':
+          description: 已開始載入 (進度經 vosk_state event / vosk/status 查)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: voskLoad_get
+  /api/vosk/status:
+    get:
+      tags:
+      - speech
+      summary: Vosk 狀態 (state/model/listening)
+      responses:
+        '200':
+          description: 狀態
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: voskStatus_get
+  /api/vosk/start:
+    get:
+      tags:
+      - speech
+      summary: 開始 Vosk 聆聽 (16kHz mic，成句經 asr_result event)
+      responses:
+        '200':
+          description: 已開始
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: voskStart_get
+  /api/vosk/stop:
+    get:
+      tags:
+      - speech
+      summary: 停止 Vosk 聆聽 (model 繼續駐留)
+      responses:
+        '200':
+          description: 已停止
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: voskStop_get
+  /api/vosk/unload:
+    get:
+      tags:
+      - speech
+      summary: 卸載 Vosk model (釋放記憶體)
+      responses:
+        '200':
+          description: 已卸載
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: voskUnload_get
+  /api/vosk/mic_test:
+    get:
+      tags:
+      - speech
+      summary: 咪測試 (開 1 秒錄音計 RMS/Peak dBFS，聽緊嗰陣唔做)
+      responses:
+        '200':
+          description: 音量 (rmsDb/peakDb/samples)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: voskMicTest_get
+  /api/vosk/endpointer:
+    get:
+      tags:
+      - speech
+      summary: 收音延遲調校 (mode/t_start/t_end/t_max，省略=跟預設並 persist)
+      parameters:
+      - name: mode
+        in: query
+        schema:
+          type: integer
+        description: -1/省略=跟預設，0=標準 1=短 2=長 3=很長
+      - name: t_start
+        in: query
+        schema:
+          type: number
+        description: 開頭靜音幾耐算無聲 (秒，預設 ~5)
+      - name: t_end
+        in: query
+        schema:
+          type: number
+        description: 講完幾耐靜音先 finalize (秒，0.5-1.0 左右)
+      - name: t_max
+        in: query
+        schema:
+          type: number
+        description: 逼斷句上限 (秒，20-30 左右；三個要一齊俾先有效)
+      responses:
+        '200':
+          description: 已套用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: voskEndpointer_get
   /api/servo/one:
     get:
       tags:
@@ -909,7 +1220,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                $ref: '#/components/schemas/ReadyResponse'
       operationId: servoOne_get
   /api/servo/all:
     get:
@@ -935,14 +1246,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                $ref: '#/components/schemas/ReadyResponse'
       operationId: servoAll_get
   /api/servo/read:
     get:
       tags:
       - servo
-      summary: 讀取單顆舵機角度/偏移 (chest_readServo, cmd 6)
-      description: 即使 MCU 回覆解析尚未實作，仍回 {ok, sent, angle:0, offset:0} 供前端掃描流程使用
+      summary: 讀取單顆舵機角度（命令位姿追踪；胸 cmd13 回包恒定，無實時回授）
+      description: 回最後一次 cmd3 的該軸命令值；開機未動過則 ok:false + known:false
       parameters:
       - name: id
         in: query
@@ -953,7 +1264,7 @@ paths:
           maximum: 20
       responses:
         '200':
-          description: 已發送讀取請求 (angle/offset 暫為 0，真值見 chest_rcv Log)
+          description: 命令角度（或 unknown）
           content:
             application/json:
               schema:
@@ -967,9 +1278,31 @@ paths:
                       type: integer
                     offset:
                       type: integer
-                    sent:
+                    known:
                       type: boolean
       operationId: servoRead_get
+  /api/servo/read-all:
+    get:
+      tags:
+      - servo
+      summary: 一次讀回全部 20 軸命令位姿（tuner 備份用）
+      responses:
+        '200':
+          description: 20 軸命令值（或 unknown）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    known:
+                      type: boolean
+                    angles:
+                      type: array
+                      items:
+                        type: integer
+      operationId: servoReadAll_get
   /api/servo/sonar:
     get:
       tags:
@@ -988,7 +1321,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                $ref: '#/components/schemas/ReadyResponse'
       operationId: servoSonar_get
   /api/pir/set:
     get:
@@ -1007,7 +1340,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                $ref: '#/components/schemas/ReadyResponse'
       operationId: pirSet_get
   /api/pir/alert_enabled:
     get:
@@ -1112,7 +1445,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                $ref: '#/components/schemas/ReadyResponse'
       operationId: ledHeadSet_get
   /api/led/eye/set:
     get:
@@ -1152,7 +1485,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CodeResponse'
+                $ref: '#/components/schemas/ReadyResponse'
       operationId: ledEyeSet_get
   /api/led/mouth/set:
     get:
@@ -1166,7 +1499,7 @@ paths:
           type: string
           enum:
           - breathing
-          - false
+          - 'off'
           default: breathing
       - name: speed
         in: query
@@ -1191,7 +1524,7 @@ paths:
     get:
       tags:
       - led
-      summary: 原始 JNI LED 測試 (LedControl.open/ledSetOn/ledSetEye/ledSetHead)
+      summary: 原始 JNI LED 測試 (LedControl.open/ledSetOFF/ledSetOn/ledSetEye/ledSetHead)
       parameters:
       - name: func
         in: query
@@ -1199,10 +1532,10 @@ paths:
         schema:
           type: string
           enum:
-          - true
+          - 'off'
+          - on
           - eye
           - head
-          - false
       - name: i
         in: query
         schema:
@@ -1242,11 +1575,22 @@ paths:
           type: integer
       responses:
         '200':
-          description: JNI 回傳
+          description: '{open, raw[, args]}（raw 為 native 回傳，成功為 false，見 DirectLedController）'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OkWrapper'
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    open:
+                      type: boolean
+                    raw:
+                      type: boolean
+                    args:
+                      type: array
+                      items:
+                        type: integer
       operationId: debugJniLed_get
   /api/debug/serial/send:
     get:
@@ -2074,7 +2418,7 @@ paths:
     get:
       tags:
       - radio
-      summary: 查詢電台播放狀態
+      summary: 查詢電台播放狀態（id/name 只在播放時出現）
       responses:
         '200':
           description: 狀態
@@ -2142,25 +2486,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
       operationId: btStatus_get
-  /api/misc/charge_play:
-    get:
-      tags:
-      - core
-      summary: 設定充電同時播放開關
-      parameters:
-      - name: open
-        in: query
-        required: true
-        schema:
-          type: boolean
-      responses:
-        '200':
-          description: 已設定
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OkWrapper'
-      operationId: miscChargePlay_get
   /api/misc/request_uuid:
     get:
       tags:
@@ -2196,48 +2521,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
       operationId: miscSetUuid_get
-  /api/service_config/get:
-    get:
-      tags:
-      - core
-      summary: 讀取 /sdcard/actions/service_config.json
-      responses:
-        '200':
-          description: 配置內容
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OkWrapper'
-      operationId: serviceConfigGet_get
-  /api/service_config/set:
-    get:
-      tags:
-      - core
-      summary: 寫入 service_config 預設 (cn/en/offline, 需重開機生效)
-      parameters:
-      - name: preset
-        in: query
-        required: true
-        schema:
-          type: string
-          enum:
-          - cn
-          - en
-          - cn_offline
-          - en_offline
-      - name: reboot
-        in: query
-        schema:
-          type: boolean
-          default: false
-      responses:
-        '200':
-          description: 已寫入
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OkWrapper'
-      operationId: serviceConfigSet_get
   /api/service_config/reboot:
     get:
       tags:
@@ -2251,35 +2534,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
       operationId: serviceConfigReboot_get
-  /api/alice/talkServer:
-    post:
-      tags:
-      - core
-      summary: 假 ALICE talkServer 後端 (供 offline preset 指向 127.0.0.1:8888)
-      description: 接收 form-urlencoded `content=<識別文字>`, 回 plain text 使流程不卡死
-      requestBody:
-        required: true
-        content:
-          application/x-www-form-urlencoded:
-            schema:
-              type: object
-              properties:
-                content:
-                  type: string
-                appType:
-                  type: string
-                requestKey:
-                  type: string
-                systemLanguage:
-                  type: string
-      responses:
-        '200':
-          description: 裸文字回覆
-          content:
-            text/plain:
-              schema:
-                type: string
-      operationId: aliceTalkserver_post
   /api/system/music/list:
     get:
       tags:
@@ -2307,6 +2561,20 @@ paths:
                           sizeBytes:
                             type: integer
       operationId: systemMusicList_get
+  /api/system/discover:
+    get:
+      tags:
+      - system
+      summary: 一野搜齊機器資料（app/胸固件/UUID/電量/聲納/PIR/位姿；慢 query 各 1.5s 上限）
+      description: lynx 年代 sys/* 七連發的 pure-direct 版；電池版本字串本機胸固件無此命令，如實缺席
+      responses:
+        '200':
+          description: 機器資料總覽
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: systemDiscover_get
   /api/system/music/play:
     get:
       tags:
@@ -2488,7 +2756,7 @@ paths:
       summary: 查詢配對/啟用流程狀態 (輪詢)
       responses:
         '200':
-          description: 階段 (checking / code / polling / connected / error)
+          description: 階段 (idle / checking / code / polling / connected / error)
           content:
             application/json:
               schema:
@@ -2609,7 +2877,7 @@ paths:
     get:
       tags:
       - xiaozhi
-      summary: 取得 MCP 總開關與 disabled 清單
+      summary: 取得 MCP disabled 清單（總開關已移除，mcpEnabled 恆為 true）
       responses:
         '200':
           description: 配置
@@ -2631,7 +2899,7 @@ paths:
     get:
       tags:
       - xiaozhi
-      summary: 設定 MCP 總開關或單一工具開關
+      summary: 設定單一工具開關（總開關已移除：不帶 tool 的寫入會存但無實效）
       parameters:
       - name: tool
         in: query
@@ -2655,7 +2923,7 @@ paths:
     get:
       tags:
       - xiaozhi
-      summary: 取得小智 TTS 引擎選擇
+      summary: 取得小智 TTS 引擎選擇（只剩 xiaozhi/android；iflytek/nuance 已移除）
       responses:
         '200':
           description: 引擎
@@ -2670,15 +2938,13 @@ paths:
                       type: string
                       enum:
                       - xiaozhi
-                      - iflytek
-                      - nuance
                       - android
       operationId: xiaozhiTtsConfigGet_get
   /api/xiaozhi/tts_config/set:
     get:
       tags:
       - xiaozhi
-      summary: 設定小智 TTS 引擎
+      summary: 設定小智 TTS 引擎（只收 xiaozhi/android；舊值直接拒收）
       parameters:
       - name: engine
         in: query
@@ -2687,8 +2953,6 @@ paths:
           type: string
           enum:
           - xiaozhi
-          - iflytek
-          - nuance
           - android
       responses:
         '200':
@@ -2975,8 +3239,8 @@ paths:
       summary: WebSocket 即時事件總線 (RFC6455)
       description: '升級至 WebSocket 後推送 JSON 事件，type 欄位區分：
 
-        `asr_result`/`grammar_result`/`speech_ready`/`grammar_init`/`mic_state`/`accel`/`sonar_distance`/`pir_state`/`robot_uuid`/`xiaozhi_status`/`mcp_tool_call`
-        等。
+        `grammar_result`/`grammar_init`/`mic_state`/`accel`/`sonar_distance`/`pir_state`/`robot_uuid`/`xiaozhi_status`/`mcp_tool_call`
+        等（`asr_result`/`speech_ready` 已隨機身 ASR 引擎移除，不再推送）。
 
         前端 `app-log.js` 與 `EventBus.java` 全量訂閱，無需輪詢。
 
@@ -3044,9 +3308,17 @@ components:
           code:
             type: string
             example: API_ERROR_SUCCEED
-          msg:
+    ReadyResponse:
+      allOf:
+      - $ref: '#/components/schemas/OkWrapper'
+      - type: object
+        properties:
+          code:
             type: string
-            example: Success
+            example: API_ERROR_SUCCEED
+          bindReady:
+            type: boolean
+            description: 底層直驅串口當刻是否暢通
     StatusResponse:
       allOf:
       - $ref: '#/components/schemas/OkWrapper'
@@ -3057,8 +3329,6 @@ components:
           chestAvailable:
             type: boolean
           headerAvailable:
-            type: boolean
-          speechReady:
             type: boolean
           androidTtsReady:
             type: boolean
@@ -3082,4 +3352,4 @@ components:
 security: []
 externalDocs:
   description: AIDL 完整參考 (17 interfaces, transaction id 驗證)
-  url: ./AIDL_REFERENCE_ALPHA2.md
+  url: ../docs/legacy-beta3/AIDL_REFERENCE_ALPHA2.md

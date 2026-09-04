@@ -44,14 +44,13 @@ public final class DirectChestController {
         return port.send(RobotWire.CHEST_CMD_SENDMOTOR, p.getBuffer());
     }
 
-    /** 全舵機 20 個角度 */
+    /**
+     * 全舵機 20 個角度。注意：本机胸固件只执行 <b>cmd 3</b>（dance 通道）——
+     * cmd 52 有 ACK 但舵机不动（真机多人眼确认），故此处直接发 cmd 3，
+     * 调用方“摆全组位姿”语义不变。位姿追踪见 {@link ServoPoseTracker}。
+     */
     public boolean setAllServos(int[] angles20, short time) {
-        if (angles20 == null || angles20.length != 20) return false;
-        if (time < 20) time = 20;
-        DeveloperPacketData p = new DeveloperPacketData(22);
-        for (int a : angles20) p.putByte((byte) a);
-        p.putShort_(time);
-        return port.send(RobotWire.CHEST_SET_ALL_ANGLE, p.getBuffer());
+        return playAllServos(angles20, time);
     }
 
     /** 聲納配置：1.1.7.3 正確值為 subCmd=10, 距離 cm */

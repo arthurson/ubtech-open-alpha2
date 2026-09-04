@@ -982,6 +982,24 @@ input[type="range"] {
 
 /* 2026-09: mic-state-dot / mic-state-label 已移除 (MIC 卡一齊拎走)。 */
 
+/* 2026-09 新增: Vosk 聆聽指示燈 - 綠=聽緊，灰=其他狀態。圓點擺開始掣前面。 */
+.vosk-state-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.25);
+  flex-shrink: 0;
+  align-self: center;
+}
+.vosk-state-dot-on {
+  background: #16a34a;
+  box-shadow: 0 0 6px #16a34a;
+}
+.vosk-state-dot-off {
+  background: #9ca3af;
+}
+
 /* ---------------- Music tab: track list, drag-drop import, equalizer ---------------- */
 
 .music-drop-zone {

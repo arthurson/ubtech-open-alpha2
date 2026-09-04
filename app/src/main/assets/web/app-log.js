@@ -144,9 +144,15 @@ function appendLog(msg) {
       triggerIflytekSimulate(cleanAsr);
     }
   }
-  // 2026-09 移除: speech_ready handler - 事件本身來自已不存在的機身 speech
-  // service bind, 加上對應嘅「開始聆聽」按鈕同 speechReadyForAsr 變量已經一齊
-  // 拎走, 留返都唔會再觸發。
+  // 2026-09: Vosk 即時 partial - 淨係顯示喺語音頁 Vosk 卡狀態行，唔入對話流
+  // (成句先經下面 asr_result 入氣泡＋管線)。
+  if (msg.type === "asr_partial" && msg.data && msg.data.text) {
+    const partial = document.getElementById("voskPartialOut");
+    if (partial) partial.textContent = msg.data.text;
+  }
+  if (msg.type === "vosk_state" && msg.data) {
+    if (typeof voskRenderStatus === "function") voskRenderStatus(msg.data);
+  }
   // 真正 online iFlytek ASR 認到之後嘅語意配對結果 (由 MainActivity
   // handleIflytekSemanticText() publish) — 之前淨係 speech/iflytek_simulate
   // (打字模擬) 嗰條路徑先會喺 sendSpeechChatText() 度即時攞 HTTP response
@@ -218,6 +224,10 @@ window.addEventListener("DOMContentLoaded", function () {
   buildHeadColorPicker();
   buildEyeColorPicker();
   setTtsEngine("android"); // 2026-09: 得返 Android 內置 TTS, 載入引擎/語言清單
+  // 2026-09: Vosk 卡初始化 (model 掃描＋狀態同步，有卡先做)。
+  if (document.getElementById("voskModelSelect") && typeof voskRefreshModels === "function") {
+    voskRefreshModels();
+  }
   // 2026-09 移除: MIC 指示燈初始化 (卡已拎走, 見 index.html)。
   refreshStatus();
   refreshDeviceInfo();
@@ -225,6 +235,7 @@ window.addEventListener("DOMContentLoaded", function () {
   refreshVolume();
   disableTalkFabIfInsecureContext();
   // 2026-09 移除: 離線文法/模式指示燈初始化 (卡已拎走, 見 index.html)。
+  if (typeof loadWakeupTrack === "function") loadWakeupTrack();
   connectWs();
   musicInit();
   if (typeof radioInit === "function") radioInit();

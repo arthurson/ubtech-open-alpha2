@@ -13,12 +13,12 @@ const Alpha2Api = (function() {
 
   // ── action ──────────────────────────────────────────────
   function actionList(params) {
-    // 取回機身內建動作清單 (每 5 秒 blocking wait, 透過 IAlphaActionListListener)
+    // 取回機身內建動作清單 (讀 /sdcard/actions/actionInfo.txt，pure-direct)
     return api('action/list', params);
   }
 
   function actionPlay(params) {
-    // 按名稱播放內建動作
+    // 按 fileId/中英文名播內建動作（搶佔式；有同目錄 mp3 會同步播配樂）
     return api('action/play', params);
   }
 
@@ -189,11 +189,6 @@ const Alpha2Api = (function() {
   }
 
   // ── core ──────────────────────────────────────────────
-  function aliceTalkserver(params) {
-    // 假 ALICE talkServer 後端 (供 offline preset 指向 127.0.0.1:8888)
-    return api('alice/talkServer', params);
-  }
-
   function batteryStatus(params) {
     // 查詢電池狀態 (BatteryManager broadcast 緩存)
     return api('battery/status', params);
@@ -234,11 +229,6 @@ const Alpha2Api = (function() {
     return api('chest/version', params);
   }
 
-  function miscChargePlay(params) {
-    // 設定充電同時播放開關
-    return api('misc/charge_play', params);
-  }
-
   function miscRequestUuid(params) {
     // 請求機械人 UUID (觸發 broadcast, 結果經 WebSocket robot_uuid)
     return api('misc/request_uuid', params);
@@ -249,20 +239,9 @@ const Alpha2Api = (function() {
     return api('misc/set_uuid', params);
   }
 
-  function serviceConfigGet(params) {
-    // 讀取 /sdcard/actions/service_config.json
-    return api('service_config/get', params);
-  }
-
   function serviceConfigReboot(params) {
     // 重開機 (PowerManager reboot)
     return api('service_config/reboot', params);
-  }
-
-  function serviceConfigSet(params) {
-    if (params && params.preset != null) assertEnum(params.preset, ['cn', 'en', 'cn_offline', 'en_offline'], 'preset');
-    // 寫入 service_config 預設 (cn/en/offline, 需重開機生效)
-    return api('service_config/set', params);
   }
 
   function status(params) {
@@ -277,12 +256,12 @@ const Alpha2Api = (function() {
 
   // ── direct ──────────────────────────────────────────────
   function directLedHead(params) {
-    // 頭燈直驅
+    // 頭燈直驅（color/mode 留空即預設 3/0）
     return api('direct/led/head', params);
   }
 
   function directLedMouth(params) {
-    // 嘴燈呼吸直驅
+    // 嘴燈呼吸直驅（留空預設 500ms）
     return api('direct/led/mouth', params);
   }
 
@@ -307,13 +286,18 @@ const Alpha2Api = (function() {
     return api('direct/sonar/config', params);
   }
 
+  function directStatus(params) {
+    // 直驅層狀態 (localServices/chest/head 是否暢通)
+    return api('direct/status', params);
+  }
+
   function directUbxList(params) {
     // 列出 /sdcard/actions 內 .ubx 檔 (name/size)
     return api('direct/ubx/list', params);
   }
 
   function directUbxPlay(params) {
-    // 解析並經 UbxPlayer 直播指定 .ubx (name 或 path 二選一)
+    // 解析並經 UbxPlayer 直播指定 .ubx (name 或 path 二選一；有同目錄 mp3 會同步播配樂)
     return api('direct/ubx/play', params);
   }
 
@@ -334,12 +318,12 @@ const Alpha2Api = (function() {
   }
 
   function ubxList(params) {
-    // 列出 /sdcard/actions 内 .ubx 档（前端动作 tab 经 /api/alpha2 前缀调用）
+    // 列出 /sdcard/actions 內 .ubx 檔（前端动作 tab 经 /api/alpha2 前缀调用）
     return api('ubx/list', params);
   }
 
   function ubxPlay(params) {
-    // 解析并经 UbxPlayer 直播指定 .ubx（抢占：播新自动停旧；name 或 path 二选一）
+    // 解析並經 UbxPlayer 直播指定 .ubx（搶佔：播新自動停舊；name 或 path 二選一；有同目錄 mp3 會同步播配樂）
     return api('ubx/play', params);
   }
 
@@ -361,8 +345,8 @@ const Alpha2Api = (function() {
 
   // ── led ──────────────────────────────────────────────
   function debugJniLed(params) {
-    if (params && params.func != null) assertEnum(params.func, [True, 'eye', 'head', False], 'func');
-    // 原始 JNI LED 測試 (LedControl.open/ledSetOn/ledSetEye/ledSetHead)
+    if (params && params.func != null) assertEnum(params.func, ['off', True, 'eye', 'head'], 'func');
+    // 原始 JNI LED 測試 (LedControl.open/ledSetOFF/ledSetOn/ledSetEye/ledSetHead)
     return api('debug/jni/led', params);
   }
 
@@ -394,7 +378,7 @@ const Alpha2Api = (function() {
   }
 
   function ledMouthSet(params) {
-    if (params && params.preset != null) assertEnum(params.preset, ['breathing', False], 'preset');
+    if (params && params.preset != null) assertEnum(params.preset, ['breathing', 'off'], 'preset');
     // 設定嘴部 LED (LedControl JNI, 非 AIDL)
     return api('led/mouth/set', params);
   }
@@ -416,7 +400,7 @@ const Alpha2Api = (function() {
   }
 
   function audioRadioStatus(params) {
-    // 查詢電台播放狀態
+    // 查詢電台播放狀態（id/name 只在播放時出現）
     return api('audio/radio/status', params);
   }
 
@@ -460,8 +444,13 @@ const Alpha2Api = (function() {
 
   function servoRead(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
-    // 讀取單顆舵機角度/偏移 (chest_readServo, cmd 6)
+    // 讀取單顆舵機角度（命令位姿追踪；胸 cmd13 回包恒定，無實時回授）
     return api('servo/read', params);
+  }
+
+  function servoReadAll(params) {
+    // 一次讀回全部 20 軸命令位姿（tuner 備份用）
+    return api('servo/read-all', params);
   }
 
   function servoSonar(params) {
@@ -475,19 +464,19 @@ const Alpha2Api = (function() {
     return api('speech/cur_tts_engine', params);
   }
 
+  function speechCurTtsLang(params) {
+    // 查詢 TTS 卡語言選擇
+    return api('speech/cur_tts_lang', params);
+  }
+
   function speechGetDefaultGrammar(params) {
-    // 取得預設 BNF 文法檔內容 (assets/iflytek/default_grammar.bnf)
+    // 取得預設 BNF 文法檔內容 (assets/iflytek/default_grammar.bnf；文法本身已無處上載，僅供參考)
     return api('speech/get_default_grammar', params);
   }
 
   function speechIflytekSimulate(params) {
-    // 本地語意配對模擬 (不經 AIDL，直接 IflytekSemanticMatcher.match)
+    // 本地語意配對模擬（純本地 1000 問法配對，不經任何引擎；名為 iflytek 乃歷史原因）
     return api('speech/iflytek_simulate', params);
-  }
-
-  function speechInitGrammar(params) {
-    // 初始化離線文法 (speech_initGrammar, BNF 格式
-    return api('speech/init_grammar', params);
   }
 
   function speechOfflineAutoSwitch(params) {
@@ -496,12 +485,12 @@ const Alpha2Api = (function() {
   }
 
   function speechSetMic(params) {
-    // 轉移麥克風擁有權 (setWakeState)
+    // 轉移麥克風擁有權（底層 setWakeState 已無對象，恒回成功；只記 app 側旗標）
     return api('speech/set_mic', params);
   }
 
   function speechSetMicKeepHeld(params) {
-    // 持續搶佔麥克風開關 (每 2 秒補發 setWakeState)
+    // 持續搶佔麥克風開關（底層已無對象；enforcer 空轉，只記旗標）
     return api('speech/set_mic_keep_held', params);
   }
 
@@ -510,24 +499,29 @@ const Alpha2Api = (function() {
     return api('speech/set_tts_engine', params);
   }
 
-  function speechStartGrammar(params) {
-    // 啟動離線文法辨識 (speech_startGrammar, 需先 init 成功)
-    return api('speech/start_grammar', params);
+  function speechSetTtsLang(params) {
+    // 設定 TTS 卡語言選擇 (BCP-47，空=沿用引擎目前語言，對話 TTS 即時跟)
+    return api('speech/set_tts_lang', params);
   }
 
   function speechStop(params) {
-    // 停止所有 TTS 播放
+    // 停止所有語音播放（機身 TTS、Android TTS、小智語音）
     return api('speech/stop', params);
   }
 
-  function speechStopGrammar(params) {
-    // 停止離線文法辨識
-    return api('speech/stop_grammar', params);
+  function speechWakeupTrackGet(params) {
+    // 讀取喚醒轉頭開關（含引擎運行狀態 running）
+    return api('speech/wakeup_track/get', params);
+  }
+
+  function speechWakeupTrackSet(params) {
+    // 設定喚醒轉頭開關（下次開app生效；開即刻起引擎）
+    return api('speech/wakeup_track/set', params);
   }
 
   function speechTts(params) {
     if (params && params.engine != null) assertEnum(params.engine, ['nuance', 'iflytek', 'android'], 'engine');
-    // 播 TTS (Nuance / iFlytek / Android 三引擎)
+    // 播 TTS（只有 engine=android 會真係出聲）
     return api('speech/tts', params);
   }
 
@@ -542,8 +536,53 @@ const Alpha2Api = (function() {
     return api('speech/tts_languages', params);
   }
 
+  function voskEndpointer(params) {
+    // 收音延遲調校 (mode/t_start/t_end/t_max，省略=跟預設並 persist)
+    return api('vosk/endpointer', params);
+  }
+
+  function voskLoad(params) {
+    // 載入指定 Vosk model (背景幾秒，一次一粒)
+    return api('vosk/load', params);
+  }
+
+  function voskMicTest(params) {
+    // 咪測試 (開 1 秒錄音計 RMS/Peak dBFS，聽緊嗰陣唔做)
+    return api('vosk/mic_test', params);
+  }
+
+  function voskModels(params) {
+    // 列出 sdcard 掃描到的 Vosk model (有 am/final.mdl 即算)
+    return api('vosk/models', params);
+  }
+
+  function voskStart(params) {
+    // 開始 Vosk 聆聽 (16kHz mic，成句經 asr_result event)
+    return api('vosk/start', params);
+  }
+
+  function voskStatus(params) {
+    // Vosk 狀態 (state/model/listening)
+    return api('vosk/status', params);
+  }
+
+  function voskStop(params) {
+    // 停止 Vosk 聆聽 (model 繼續駐留)
+    return api('vosk/stop', params);
+  }
+
+  function voskUnload(params) {
+    // 卸載 Vosk model (釋放記憶體)
+    return api('vosk/unload', params);
+  }
+
   // ── stream ──────────────────────────────────────────────
   // ── system ──────────────────────────────────────────────
+  function systemDiscover(params) {
+    // 一野搜齊機器資料（app/胸固件/UUID/電量/聲納/PIR/位姿；慢 query 各 1.5s 上限）
+    return api('system/discover', params);
+  }
+
   function systemMusicList(params) {
     // (system) 列出 /sdcard/Music 音樂清單 (MusicController)
     return api('system/music/list', params);
@@ -619,12 +658,12 @@ const Alpha2Api = (function() {
   }
 
   function xiaozhiMcpConfigGet(params) {
-    // 取得 MCP 總開關與 disabled 清單
+    // 取得 MCP disabled 清單（總開關已移除，mcpEnabled 恆為 true）
     return api('xiaozhi/mcp_config/get', params);
   }
 
   function xiaozhiMcpConfigSet(params) {
-    // 設定 MCP 總開關或單一工具開關
+    // 設定單一工具開關（總開關已移除：不帶 tool 的寫入會存但無實效）
     return api('xiaozhi/mcp_config/set', params);
   }
 
@@ -669,13 +708,13 @@ const Alpha2Api = (function() {
   }
 
   function xiaozhiTtsConfigGet(params) {
-    // 取得小智 TTS 引擎選擇
+    // 取得小智 TTS 引擎選擇（只剩 xiaozhi/android；iflytek/nuance 已移除）
     return api('xiaozhi/tts_config/get', params);
   }
 
   function xiaozhiTtsConfigSet(params) {
-    if (params && params.engine != null) assertEnum(params.engine, ['xiaozhi', 'iflytek', 'nuance', 'android'], 'engine');
-    // 設定小智 TTS 引擎
+    if (params && params.engine != null) assertEnum(params.engine, ['xiaozhi', 'android'], 'engine');
+    // 設定小智 TTS 引擎（只收 xiaozhi/android；舊值直接拒收）
     return api('xiaozhi/tts_config/set', params);
   }
 
@@ -717,7 +756,6 @@ const Alpha2Api = (function() {
     cameraSnapshotSave,
     cameraSupportedSizes,
     cameraTakePhotoSave,
-    aliceTalkserver,
     batteryStatus,
     btStatus,
     chestPage,
@@ -726,12 +764,9 @@ const Alpha2Api = (function() {
     chestUpgradeResume,
     chestUpgradeStatus,
     chestVersion,
-    miscChargePlay,
     miscRequestUuid,
     miscSetUuid,
-    serviceConfigGet,
     serviceConfigReboot,
-    serviceConfigSet,
     status,
     wifiStatus,
     directLedHead,
@@ -740,6 +775,7 @@ const Alpha2Api = (function() {
     directServoAll,
     directServoOne,
     directSonarConfig,
+    directStatus,
     directUbxList,
     directUbxPlay,
     directUbxSpeed,
@@ -768,21 +804,32 @@ const Alpha2Api = (function() {
     servoAll,
     servoOne,
     servoRead,
+    servoReadAll,
     servoSonar,
     speechCurTtsEngine,
+    speechCurTtsLang,
     speechGetDefaultGrammar,
     speechIflytekSimulate,
-    speechInitGrammar,
     speechOfflineAutoSwitch,
     speechSetMic,
     speechSetMicKeepHeld,
     speechSetTtsEngine,
-    speechStartGrammar,
+    speechSetTtsLang,
     speechStop,
-    speechStopGrammar,
+    speechWakeupTrackGet,
+    speechWakeupTrackSet,
     speechTts,
     speechTtsEngines,
     speechTtsLanguages,
+    voskEndpointer,
+    voskLoad,
+    voskMicTest,
+    voskModels,
+    voskStart,
+    voskStatus,
+    voskStop,
+    voskUnload,
+    systemDiscover,
     systemMusicList,
     systemMusicPause,
     systemMusicPlay,

@@ -236,6 +236,15 @@ public class IflytekSemanticMatcher {
         return load().size();
     }
 
+    /** Vosk 限定文法用: 全部問法原文 (去重、去空)。 */
+    public synchronized java.util.List<String> questions() {
+        java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>();
+        for (Entry e : load()) {
+            if (e.q != null && !e.q.isEmpty()) set.add(e.q);
+        }
+        return new java.util.ArrayList<>(set);
+    }
+
     /** 由 assets/iflytek/action_category_pools.json 讀入 17 個分類 -> action id
      *  pool 的對照表。讀取/parse 失敗就回傳空 map (不會拋出), 和 load() 一致的
      *  「不崩潰、log 一次」哲學。 */

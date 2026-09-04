@@ -41,13 +41,9 @@ import com.ubtechinc.alpha.jni.LedControl;
  *                              (e.g. matching header_ledSetEye5Mic's own "dual"=3) is
  *                              unconfirmed - only 1 is known to work.
  *
- * KNOWN RISK - separate control path: LedControl.open()/close() talk directly to
- * libhead_led.so via JNI, bypassing alpha2serverlib/alpha2services entirely. This is a
- * DIFFERENT path from header_ledSetHead5Mic/header_ledSetEye5Mic, which go through the
- * AIDL-bound alpha2services process. Whether the two paths can safely be used
- * concurrently (e.g. do they contend for the same underlying serial/LED device) has NOT
- * been verified against real hardware. If head/eye LEDs stop responding correctly after
- * a mouth LED call, that's this contention risk manifesting.
+ * 控制路径说明：LedControl.open()/close() 经 libhead_led.so JNI 直达硬件。
+ * 旧 AIDL 路径（alpha2services）已随 APK 移除而消失，实测各 LED 路径（头/眼/嘴/
+ * MCP/HTTP）不再互抢，单发即稳住，无需补发或加锁。
  */
 public final class MouthLedData {
     /** No confirmed effect on this hardware; true purpose unknown. */

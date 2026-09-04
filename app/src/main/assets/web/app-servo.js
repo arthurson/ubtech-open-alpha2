@@ -455,35 +455,29 @@ function advTunerRead(id) {
   const statusEl = document.getElementById("advTunerStatus");
   statusEl.textContent = "讀取 #" + id + "...";
   return Alpha2Api.servoRead( { id: id }).then(function(json) {
-    if (json.ok && json.offset !== undefined) {
-      document.getElementById("advServoOff_" + id).textContent = json.offset + " (回讀)";
-      statusEl.textContent = "#" + id + " 偏移 " + json.offset + " (回讀)";
+    const v = (json.angle !== undefined) ? json.angle : json.offset;
+    if (json.ok && v !== undefined) {
+      document.getElementById("advServoOff_" + id).textContent = v + " (回讀)";
+      statusEl.textContent = "#" + id + " 角度 " + v + " (命令位姿)";
     } else {
-      statusEl.textContent = "#" + id + " 讀取失敗或無回包，請看事件Log chest_rcv";
+      statusEl.textContent = "#" + id + " 位姿未知（播個動作先）";
     }
   }).catch(function(e){ statusEl.textContent = "讀取錯誤: " + e.message; });
 }
 function advTunerReadAll() {
   const statusEl = document.getElementById("advTunerStatus");
   statusEl.textContent = "一鍵讀取全部 1-20...";
-  let idx = 1;
-  function next() {
-    if (idx > 20) { statusEl.textContent = "全部讀取完成（偏移已更新，對照原廠底行）"; return Promise.resolve(); }
-    const sid = idx;
-    return Alpha2Api.servoRead( { id: sid }).then(function(json){
-      if (json.ok && json.offset !== undefined) {
-        document.getElementById("advServoOff_" + sid).textContent = json.offset + " (回讀)";
-      }
-      statusEl.textContent = "讀取中 " + sid + "/20";
-      idx++;
-      return new Promise(function(resolve) { setTimeout(function() { resolve(next()); }, 300); });
-    }).catch(function(e){
-      statusEl.textContent = "讀取錯誤: " + e.message;
-      idx++;
-      return new Promise(function(resolve) { setTimeout(function() { resolve(next()); }, 300); });
-    });
-  }
-  return next();
+  return Alpha2Api.servoReadAll().then(function(json){
+    if (!json.ok || !json.angles || json.angles.length !== 20) {
+      statusEl.textContent = "位姿未知（播個動作先）";
+      return json;
+    }
+    for (let i = 1; i <= 20; i++) {
+      document.getElementById("advServoOff_" + i).textContent = json.angles[i - 1] + " (回讀)";
+    }
+    statusEl.textContent = "全部讀取完成（命令位姿，共 20 軸）";
+    return json;
+  }).catch(function(e){ statusEl.textContent = "讀取錯誤: " + e.message; });
 }
 function advTunerReset() {
   const homes = [];

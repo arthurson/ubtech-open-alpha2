@@ -3,6 +3,7 @@ package com.ubtechinc.alpha.hardware.ubx;
 import android.util.Log;
 
 import com.ubtechinc.alpha.hardware.DirectChestController;
+import com.ubtechinc.alpha.hardware.ServoPoseTracker;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -51,6 +52,16 @@ public final class UbxPlayer {
     private volatile String voiceSong = "";
     private android.media.MediaPlayer voicePlayer;
     private volatile VoiceStream curStream;
+    /** 命令位姿（最后一次成功 cmd3 的 20 轴；开机未动过则未知）。 */
+    private final ServoPoseTracker poseTracker = new ServoPoseTracker();
+
+    /** 当前命令位姿拷贝；未知返回 null（调用方须如实报 unknown）。 */
+    public int[] pose() { return poseTracker.snapshot(); }
+
+    public boolean poseKnown() { return poseTracker.isKnown(); }
+
+    /** 外部 cmd3 发送成功后同步位姿（如 servo/all 直发）。 */
+    public void notePose(int[] angles20) { poseTracker.update(angles20); }
 
     /** 流播路徑用：標記當前歌名（供 status），與 startVoiceLocked 對等。 */
     private synchronized void setVoiceSong(String s) { voiceSong = s != null ? s : ""; }
@@ -225,7 +236,9 @@ public final class UbxPlayer {
                 int[] angles = new int[20];
                 for (int i = 0; i < 20; i++) angles[i] = s.sf.angles20[i] & 0xFF;
                 try {
-                    chest.playAllServos(angles, (short) s.moveMs);
+                    if (chest.playAllServos(angles, (short) s.moveMs)) {
+                        poseTracker.update(angles); // 命令位姿追踪（成功发送才记）
+                    }
                 } catch (Exception e) {
                     Log.w(TAG, "send failed: " + e.getMessage());
                 }

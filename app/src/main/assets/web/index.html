@@ -227,6 +227,11 @@
       <!-- 2026-09: 離線/雲端模式指示燈已移除 - 跟住離線文法卡一齊走 (嗰個先係
            唯一用家, 機身已無 iFlytek 離線/雲端兩條路)。 -->
       <h2 data-i18n="speech_chat_heading">💬 對話界面</h2>
+      <!-- 2026-09: Vosk 聆聽指示燈 (綠=聽緊，灰=其他)，擺對話界面呢行，
+           唔可以擺入上面個 h2 (applyUiLanguage 會成個 textContent 覆寫)。 -->
+      <div class="row" style="margin-bottom:-4px">
+        <span id="voskStateDot" class="vosk-state-dot vosk-state-dot-off"></span>
+      </div>
       <div id="speechChatLog" class="event-log" style="min-height:200px"></div>
       <div class="row">
         <input id="speechChatTextInput" placeholder="打字模擬 ASR 辨識結果…" data-i18n="speech_chat_text_placeholder" data-i18n-attr="placeholder" autocomplete="off" style="flex:2" onkeydown="if(event.key==='Enter'){sendSpeechChatText();}">
@@ -236,12 +241,55 @@
       </div>
     </section>
 
-    <!-- 2026-09: ASR (iFlytek/Nuance 引擎切換) 卡已移除 - 機身已無
-         alpha2services, 兩個引擎都唔存在 (speech/set_language 只會回 NOT_INIT)。
-         對話界面打字模擬保留 (純本地問法配對, 答案改行 Android TTS, 見
-         app-speech.js sendSpeechChatText() + MainActivity.speakAndroidTts())。
-         2026-09: 離線文法辨識 (iFlytek 本地 BNF) 卡一齊移除 - 同樣依賴已不存在
-         的機身 iFlytek 引擎 + common.jet (speech/init_grammar 等只會回 NOT_INIT)。 -->
+    <!-- 喚醒轉頭：CAE 引擎聽到喚醒詞即量聲源方位，servo19 轉過去。開關預設開，
+         詳見 speech/wakeup_track/get|set。 -->
+    <section class="card">
+      <h2 data-i18n="wakeup_track_heading">👂 喚醒轉頭</h2>
+      <div class="row">
+        <label class="switch-label">
+          <span class="toggle-switch">
+            <input type="checkbox" id="wakeupTrackToggle" onchange="setWakeupTrack(this.checked)">
+            <span class="toggle-track"></span>
+          </span>
+          <span data-i18n="wakeup_track_label">開＝聽到喚醒詞轉頭望過去</span>
+        </label>
+        <span id="wakeupTrackState" class="hint">—</span>
+      </div>
+      <p class="hint" data-i18n="wakeup_track_hint">全本地引擎（免上網）；同小智咪/串流搶咪，有衝突先關呢個。</p>
+    </section>
+
+    <!-- 2026-09: Vosk 離線 ASR 卡 - 頂替已移除的 ASR/離線文法卡。Model 放
+         sdcard (頂層 vosk-* 目錄, 有 am/final.mdl 即算)，開頁自動掃描列出；
+         載入後「開始聆聽」即時辨識，成句經 asr_result 入返對話管線 (氣泡＋語意
+         配對＋TTS＋動作)，partial 即時顯示喺下面。辨識限定喺問法庫範圍
+         (中文轉簡體先對 acoustic，見 VoskController)，命中先至會郁。 -->
+    <section class="card" id="voskCard">
+      <h2 data-i18n="vosk_heading">🎙️ 語音辨識 (Vosk 離線)</h2>
+      <p class="hint" data-i18n="vosk_hint">模型放 sdcard 頂層（如 vosk-model-small-cn-0.22），開頁自動偵測，不跟 App。載入需幾秒＋約 200MB 記憶體，一次一粒。</p>
+      <div class="row">
+        <label for="voskModelSelect" data-i18n="vosk_model_label">模型：</label>
+        <select id="voskModelSelect" onchange="voskLoad()" style="flex:1"></select>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="voskStartBtn" onclick="voskStart()" data-i18n="vosk_start_btn" disabled>開始聆聽</button>
+        <button id="voskStopBtn" onclick="voskStop()" data-i18n="vosk_stop_btn" disabled>停止</button>
+        <button class="secondary" onclick="voskMicTest()" data-i18n="vosk_mic_test_btn">測試咪</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <label for="voskEpMode" data-i18n="vosk_ep_label">收音延遲：</label>
+        <select id="voskEpMode">
+          <option value="-1" data-i18n="vosk_ep_default">跟預設</option>
+          <option value="1" data-i18n="vosk_ep_short">短</option>
+          <option value="2" data-i18n="vosk_ep_long">長</option>
+          <option value="3" data-i18n="vosk_ep_verylong">很長</option>
+        </select>
+        <input id="voskEpTEnd" type="number" min="0.1" max="10" step="0.1" placeholder="尾音秒" style="width:80px">
+        <button class="secondary" onclick="voskSetEndpointer()" data-i18n="vosk_ep_apply_btn">套用</button>
+      </div>
+      <p class="hint" style="margin-top:6px" id="voskPartialOut">—</p>
+      <p class="hint" style="margin-top:6px" id="voskMicOut">—</p>
+      <p class="hint" style="margin-top:6px" id="voskStatusOut">—</p>
+    </section>
     <section class="card">
       <h2 data-i18n="tts_heading">語音 / TTS</h2>
       <!-- 2026-09: TTS 只留 Android 內置 - Nuance/iFlytek 按鈕組同 iFlytek 聲音
@@ -795,6 +843,7 @@
 <script src="app-status.js"></script>
 <script src="app-actions.js"></script>
 <script src="app-speech.js"></script>
+<script src="app-vosk.js"></script>
 <script src="app-servo.js"></script>
 <script src="app-led.js"></script>
 <script src="app-camera.js"></script>

@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.open.alpha2">
+
+    <!-- 2026-09: vosk-android 要求 minSdk 21，但呢個 APK 要裝到 API 19。
+         override 之後，API 19 機 runtime 絕對唔可以掂 org.vosk.*（見
+         MainActivity SDK_INT 熔斷），否則 native/JNA 即炒。 -->
+    <uses-sdk tools:overrideLibrary="org.vosk" />
 
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
