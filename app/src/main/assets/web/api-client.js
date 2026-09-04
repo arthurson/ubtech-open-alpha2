@@ -509,16 +509,6 @@ const Alpha2Api = (function() {
     return api('speech/stop', params);
   }
 
-  function speechWakeupTrackGet(params) {
-    // 讀取喚醒轉頭開關（含引擎運行狀態 running）
-    return api('speech/wakeup_track/get', params);
-  }
-
-  function speechWakeupTrackSet(params) {
-    // 設定喚醒轉頭開關（下次開app生效；開即刻起引擎）
-    return api('speech/wakeup_track/set', params);
-  }
-
   function speechTts(params) {
     if (params && params.engine != null) assertEnum(params.engine, ['nuance', 'iflytek', 'android'], 'engine');
     // 播 TTS（只有 engine=android 會真係出聲）
@@ -534,6 +524,16 @@ const Alpha2Api = (function() {
     if (params && params.ui_lang != null) assertEnum(params.ui_lang, ['zh', 'en'], 'ui_lang');
     // 列出 Android TTS 可用語言
     return api('speech/tts_languages', params);
+  }
+
+  function speechWakeupTrackGet(params) {
+    // 讀取「喚醒轉頭」開關（含引擎運行狀態 running）
+    return api('speech/wakeup_track/get', params);
+  }
+
+  function speechWakeupTrackSet(params) {
+    // 設定「喚醒轉頭」開關（開即刻起 CAE 引擎；喚醒詞觸發 servo19 轉向聲源）
+    return api('speech/wakeup_track/set', params);
   }
 
   function voskEndpointer(params) {
@@ -816,11 +816,11 @@ const Alpha2Api = (function() {
     speechSetTtsEngine,
     speechSetTtsLang,
     speechStop,
-    speechWakeupTrackGet,
-    speechWakeupTrackSet,
     speechTts,
     speechTtsEngines,
     speechTtsLanguages,
+    speechWakeupTrackGet,
+    speechWakeupTrackSet,
     voskEndpointer,
     voskLoad,
     voskMicTest,
