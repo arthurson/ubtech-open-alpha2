@@ -473,6 +473,9 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     // (TTS 嘴燈 bracket 搬咗去 LedCenter。)
     private LedCenter ledCenter;
+    // 2026-09: 語意配對 + 裝置狀態搬咗去 SemanticCenter / DeviceStatus。
+    private SemanticCenter semanticCenter;
+    private DeviceStatus deviceStatus;
 
     // 2026-08 新增: RobotEventReceiver 沒有 constructor/field 拿到 outer
     // MainActivity instance (它一直只經 EventBus 靜態方法送 event, 不認識
@@ -577,6 +580,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         // vosk pause/resume 有嘢掂)。null = 用機身目前預設引擎，同以前一樣。
         ttsCenter = new TtsCenter(this, vosk);
         ttsCenter.initAndroidTts(null);
+        semanticCenter = new SemanticCenter(iflytekMatcher, iflytekMatcherEn, actionDirect, ttsCenter);
+        deviceStatus = new DeviceStatus(this);
 
         // Plain HTTP only. TLS/HTTPS was tried (self-signed cert) to make getUserMedia()
         // available for the walkie-talkie mic feature, but browsers on this device
@@ -1254,133 +1259,8 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 同一條路, 避免重複 TTS。中英文由 looksChinese() 判斷, 只看輸入文字內容,
     // 不理會 ASR engine 目前設定的是哪種語言。
 
-    /** TTS 之後要等多久才播動作, 沿用悠聊 RobotActionBusiness.startBusiness() 反編譯
-     *  出來的原本時序 (先 TTS, sleep 200ms, 才播動作 - 兩者是分開、非同步的 AIDL
-     *  call, 只靠這個 sleep 頂住, 沒有等 TTS 真的播完才動)。用戶已確認沿用悠聊原本
-     *  這樣做, 不改成等 TTS 播完才動。 */
-    private static final int IFLYTEK_TTS_TO_ACTION_DELAY_MS = 200;
-
-    /** 判斷一句輸入文字是否應該用中文 matcher 處理: 有任何 CJK 統一表意文字 (漢字)
-     *  就當中文, 完全沒有就當英文。2026-08 特意選這個做法, 不依靠 speech/set_asr_engine
-     *  那個手動語言設定, 因為 iFlytek 引擎本身可能自動偵測用戶說的是什麼語言, 只看辨識
-     *  出來的文字內容本身最可靠。中英文夾雜的句子 (例如 "跳個 dance") 會因為有漢字而
-     *  當中文 - 這是刻意的簡化, 不追求完美的語言偵測, 對這個用途已經夠準確。 */
-    private static boolean looksChinese(String text) {
-        if (text == null) return false;
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c >= 0x4E00 && c <= 0x9FFF) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /** IflytekSemanticMatcherEn.MatchResult -> IflytekSemanticMatcher.MatchResult 的
-     *  薄轉接層。兩個 class 的 MatchResult 結構完全一樣 (question/type/operation/
-     *  slot/answer/actionId), 但屬於不同 class 的 nested type, Java 不會自動把它們
-     *  當成同一個型別 - 這個 method 純粹做欄位複製, 讓 handleIflytekSemanticText() 的
-     *  下半部分 (publish event、TTS/動作執行) 不用為中英文分別多寫一份。 */
-    private static IflytekSemanticMatcher.MatchResult toZhResult(IflytekSemanticMatcherEn.MatchResult en) {
-        if (en == null) return null;
-        return new IflytekSemanticMatcher.MatchResult(
-                en.question, en.type, en.operation, en.slot, en.answer, en.actionId);
-    }
-
-    /** 將一句文字 (可能是 iFlytek 引擎真正辨識到的, 也可能是 speech/iflytek_simulate
-     *  這個 endpoint 用來測試的打字輸入) 對照 1000 條問法配對, 命中就執行悠聊原本的
-     *  「先 TTS、再隔 200ms 播動作」流程。找不到就什麼都不做 (不是錯誤 - 用戶說的話不在
-     *  那 1000 條裡面是很正常的事, 靜靜地不回應好過亂回一個不相關的回覆), 回傳 null。
-     *
-     *  中英文用哪個 matcher 由 looksChinese() 判斷 - 有漢字用 IflytekSemanticMatcher
-     *  (中文, iflytek_semantic_zh.json), 沒有就用 IflytekSemanticMatcherEn (英文,
-     *  iflytek_semantic_en.json)。兩個 class 結構一致、資料獨立, 不會互相影響。
-     *
-     *  回傳 MatchResult (而不是 void) 是為了讓 speech/iflytek_simulate 這個 endpoint 用來
-     *  即時告訴前端「有沒有配對中」, publishEvent=false 那個 overload 不會再經由 EventBus
-     *  多 publish 一次 (前端 sendSpeechChatText() 已經即時用 HTTP response 顯示)。
-     *
-     *  TTS/動作執行本身依然在獨立 thread 上做 AIDL blocking call, 不在呼叫者的
-     *  thread (可能是 HTTP worker thread) 上直接做 - 和 triggerRandomFillerAction()
-     *  一致的安全做法。 */
-    private IflytekSemanticMatcher.MatchResult handleIflytekSemanticText(final String text) {
-        return handleIflytekSemanticText(text, true);
-    }
-
-    private IflytekSemanticMatcher.MatchResult handleIflytekSemanticText(final String text,
-                                                                         final boolean publishEvent) {
-        final boolean chinese = looksChinese(text);
-        if (chinese) {
-            if (iflytekMatcher == null) return null; // onCreate() 尚未執行完 (理論上不會, 保險)
-        } else {
-            if (iflytekMatcherEn == null) return null;
-        }
-
-        final IflytekSemanticMatcher.MatchResult result = chinese
-                ? iflytekMatcher.match(text)
-                : toZhResult(iflytekMatcherEn.match(text));
-        if (result == null) {
-            return null; // 找不到對應問法 - 靜靜地不做事, 不算錯誤
-        }
-        if (publishEvent) {
-            EventBus.get().publish("iflytek_match",
-                    "{\"question\":\"" + jsonSafe(result.question) + "\","
-                            + "\"type\":\"" + jsonSafe(result.type) + "\","
-                            + "\"operation\":\"" + jsonSafe(result.operation) + "\","
-                            + "\"answer\":\"" + jsonSafe(result.answer) + "\","
-                            + "\"actionId\":\"" + jsonSafe(result.actionId) + "\"}");
-        }
-
-        // 2026-09 更新: 機身已無 iFlytek/Nuance (無 alpha2services),
-        // robot.speech_startTTS() 只會回 NOT_INIT 全程靜音。語意配對答案改行
-        // Android 內置 TTS (同 speech/tts engine=android 分支同一部機), 依答案
-        // 語言揀 locale。嘴 LED 熄燈靠 Android TTS 個 UtteranceProgressListener
-        // (見 initAndroidTts), 唔使自己熄。
-        final String ttsAnswer = result.answer;
-        final java.util.Locale ttsLocale =
-                chinese ? java.util.Locale.SIMPLIFIED_CHINESE : java.util.Locale.ENGLISH;
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                if (ttsAnswer != null && !ttsAnswer.isEmpty()) {
-                    LedCenter.startMouthLedForTts();
-                    if (!ttsCenter.speakAndroidTts(ttsAnswer, ttsLocale)) {
-                        LedCenter.stopMouthLedForTts();
-                    }
-                }
-                if (result.actionId == null) {
-                    return; // CHAT 類或部分 FUNCTION 類沒有對應動作, TTS 完就結束
-                }
-                try {
-                    Thread.sleep(IFLYTEK_TTS_TO_ACTION_DELAY_MS);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-                String actionId = result.actionId;
-                if (actionId != null && actionId.startsWith("__RANDOM_CATEGORY__")) {
-                    // 2026-08 新增: 用戶說到分類名 (例如「跳舞」/"Dance for me") 但沒有
-                    // 說出具體是哪個動作 - 在 202 動作清單的對應分類 (例如
-                    // DANCE_KIDS/YOGA_ANY) 裡面隨機選一個。和下面 "__RANDOM__"
-                    // (完全不限分類, 202 個隨便選) 不同, 這是分類限定的隨機。中英文
-                    // matcher 共用同一份 action_category_pools.json, 哪個 instance
-                    // 呼叫結果都一樣, 只是依 chinese 這個 flag 選擇對應的 instance。
-                    actionId = chinese
-                            ? iflytekMatcher.resolveCategoryRandomActionId(actionId)
-                            : iflytekMatcherEn.resolveCategoryRandomActionId(actionId);
-                } else if ("__RANDOM__".equals(actionId)) {
-                    // TFBOY 這類 operation 在原廠問法裡沒有固定動作 - 沿用
-                    // triggerRandomFillerAction() 已有的隨機動作池 (202 個動作裡
-                    // 「隨機短/長」開頭的那批, 專門用來做這種「動一下讓它生動一點」的效果)。
-                    actionId = actionDirect.resolveRandomActionId();
-                }
-                if (actionId != null) {
-                    actionDirect.playActionDirect(actionId); // pure-direct：旧 AIDL 已无服务承载
-                }
-            }
-        }, "IflytekSemanticAction").start();
-        return result;
-    }
+    // (語意配對成組搬咗去 SemanticCenter：looksChinese/toZhResult/handle、
+    // IFLYTEK delay 常數；單參數 overload 零調用，一併刪除。)
 
     // -- Wakeup direction -> servo 19 (head) turn -------------------------------------
     // RobotEventReceiver already listens for the com.ubtechinc.services.SPEECH_DIRECTION
@@ -1624,7 +1504,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     // (PIR 提示音搬咗去 RingtoneCenter.playPirAlertCue()。)
     // (TTS 語言表/legacy fallback/iso3/引擎表/init/讀出成組搬咗去 TtsCenter。)
-    /** 接住 checkTtsDataSyncLegacy() 發出的 ACTION_CHECK_TTS_DATA 結果。只
+    /** 接住 TtsCenter.checkTtsDataSyncLegacy() 發出的 ACTION_CHECK_TTS_DATA 結果。只
      *  處理這個 app 自己認得的 requestCode, 其他一律交回給 super (雖然目前這個
      *  app 沒有其他地方用 startActivityForResult(), 但這是基本禮貌, 不應該
      *  吞晒所有 requestCode)。 */
@@ -4500,7 +4380,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // 剩返「輸入係空白字串」呢種 edge case 先會行到。
                 {
                     String simText = ApiValidator.require(query, "text");
-                    IflytekSemanticMatcher.MatchResult simResult = handleIflytekSemanticText(simText, false);
+                    IflytekSemanticMatcher.MatchResult simResult = semanticCenter.handleIflytekSemanticText(simText, false);
                     if (simResult == null) {
                         return HttpServer.ApiResponse.ok(
                                 "{\"ok\":true,\"matched\":false,\"input\":\"" + jsonSafe(simText) + "\"}");
@@ -5157,9 +5037,9 @@ public class MainActivity extends Activity implements SensorEventListener {
 
             // -- Wi-Fi / Bluetooth: standard Android framework, not SDK-gated. -----------
             case "wifi/status":
-                return wifiStatus();
+                return deviceStatus.wifiStatus();
             case "bt/status":
-                return btStatus();
+                return deviceStatus.btStatus();
 
             // -- Robot-service broadcasts with simple boolean extras. --------------------
             // 2026-09 移除: misc/power_save（見下）與 misc/charge_play ——
@@ -5655,39 +5535,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     // xiaozhiTakePhotoAndExplain() 那段 comment。這個「跳幀」workaround 已不再使用,
     // 已移除, 避免留低死 code 同令人誤會依然係現行做法。
 
-    private HttpServer.ApiResponse wifiStatus() {
-        try {
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-            boolean enabled = wm.isWifiEnabled();
-            String ssid = "";
-            int ipInt = 0;
-            if (wm.getConnectionInfo() != null) {
-                ssid = wm.getConnectionInfo().getSSID();
-                ipInt = wm.getConnectionInfo().getIpAddress();
-            }
-            return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled
-                    + ",\"ssid\":\"" + jsonSafe(ssid) + "\",\"ip\":\""
-                    + Formatter.formatIpAddress(ipInt) + "\"}");
-        } catch (Exception e) {
-            return HttpServer.ApiResponse.error(String.valueOf(e.getMessage()));
-        }
-    }
-
-    private HttpServer.ApiResponse btStatus() {
-        try {
-            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-            if (adapter == null) {
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"available\":false}");
-            }
-            boolean enabled = adapter.isEnabled();
-            String name = adapter.getName();
-            return HttpServer.ApiResponse.ok("{\"ok\":true,\"available\":true,\"enabled\":" + enabled
-                    + ",\"name\":\"" + jsonSafe(name) + "\"}");
-        } catch (Exception e) {
-            return HttpServer.ApiResponse.error(String.valueOf(e.getMessage()));
-        }
-    }
-
+    // (wifi/bt 狀態搬咗去 DeviceStatus。)
     // 2026-09 移除: 舊 binder actionList() (經 robot.action_getActionList 等
     // 5s latch)——機身已無 alpha2services，只會回 NOT_INIT。action/list 一律行
     // ActionDirect.actionListDirect() (讀 actionInfo.txt + UbxPlayer)。
