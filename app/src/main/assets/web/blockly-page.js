@@ -39,6 +39,35 @@ window.api = function (path, params) {
   });
 };
 
+// 命名空間 helper — 對應 MainActivity 三個獨立路由, 同 app-core.js /
+// app-xiaozhi.js 嗰套一樣形狀。api-client.js (Alpha2Api.*) 會自動揀啱嘅
+// 一個: sysApi() -> /api/system/*, directApi() -> /api/direct/*,
+// xiaozhiApi() -> /api/xiaozhi/*。hwApi 係 api() 嘅 alias (俾 api-client.js
+// 嘅 legacy hw() 用, 同 index.html 一致)。
+function namespacedApi(prefix, label) {
+  return function (path, params) {
+    clearError();
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return fetch(API + prefix + path + qs).then(function (res) {
+      return res.json().catch(function () {
+        return { ok: false, error: 'invalid response (status ' + res.status + ')' };
+      }).then(function (json) {
+        if (!json.ok) {
+          showError('API /' + label + path, new Error(json.error || json.code || 'request failed'));
+        }
+        return json;
+      });
+    }).catch(function (networkErr) {
+      showError('Network error calling /' + label + path, networkErr);
+      return { ok: false, error: String(networkErr) };
+    });
+  };
+}
+window.sysApi = namespacedApi('system/', 'system/');
+window.directApi = namespacedApi('direct/', 'direct/');
+window.xiaozhiApi = namespacedApi('xiaozhi/', 'xiaozhi/');
+window.hwApi = window.api;
+
 // ---------------- WebSocket：接駁事件驅動 blocks ----------------
 let ws = null;
 let wsReconnectTimer = null;

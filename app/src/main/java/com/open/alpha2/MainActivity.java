@@ -1700,16 +1700,14 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     /** 2026-08 新增: 停止「小智說話/回覆」這一種播放 - 抽出來做共用 method, 供
      *  handleApi() 的 "speech/stop" HTTP endpoint 和 onGestureCode() 的 0x5e
-     *  (雙鍵齊按, 也就是「94 鍵」) 一起使用。停止機身本地 TTS (Nuance/iflytek,
-     *  robot.speech_StopTTS())、Android TTS、和小智語音回覆的音訊
-     *  (XiaozhiAudioController, WebSocket 收 Opus frame -> 解碼 -> AudioTrack,
-     *  詳見 XiaozhiAudioController.onIncomingOpusFrame()/stopPlayback() 的
-     *  javadoc) - 這三條是完全獨立的播放管道, 停一條不會連帶讓另一條也停, 之前
-     *  用戶回報「停不了小智說話」就是因為漏了 XiaozhiAudioController 這條路。 */
+     *  (雙鍵齊按, 也就是「94 鍵」) 一起使用。停止 Android TTS 和小智語音回覆
+     *  的音訊 (XiaozhiAudioController, WebSocket 收 Opus frame -> 解碼 ->
+     *  AudioTrack, 詳見 XiaozhiAudioController.onIncomingOpusFrame()/
+     *  stopPlayback() 的 javadoc) - 互相獨立的播放管道, 停一條不會連帶讓另一條
+     *  也停, 之前用戶回報「停不了小智說話」就是因為漏了 XiaozhiAudioController
+     *  這條路。2026-09: 機身本地 TTS (Nuance/iflytek) 已隨 alpha2services 移除，
+     *  無嘢要停，舊 robot.speech_StopTTS() call 拎走。 */
     private void stopAllSpeechPlayback() {
-        if (robot != null) {
-            robot.speech_StopTTS();
-        }
         lastSpeechStopAtMs = System.currentTimeMillis();
         robotTtsSpeaking = false; // 見 robotTtsSpeaking field javadoc - 手動/總停鍵停止時都要立即放行 mic enforcer
         if (androidTts != null) {
@@ -3402,10 +3400,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             unregisterReceiver(connectivityReceiver);
         } catch (IllegalArgumentException ignored) {
         }
-        if (offlineWatchdogThread != null) {
-            offlineWatchdogThread.quitSafely();
-            offlineWatchdogThread = null;
-        }
+        // 2026-09: offline watchdog thread 已成組移除，無嘢要 quit。
         cameraController.shutdown();
         audioController.shutdown();
         audioPlaybackController.shutdown();
@@ -5486,11 +5481,10 @@ public class MainActivity extends Activity implements SensorEventListener {
                 tools.put(playRandomAction);
 
                 // 2026-08 新增: 全套硬件控制 MCP tools (servo/LED/PIR/sonar), 跟返
-                // 這個 bridge 已有的 pattern (schema 用 org.json 組建, 執行時直接呼叫
-                // robot.xxx() 的 AIDL wrapper, 有 waitXxxReady() 就跟現有 HTTP API
-                // case 一樣加上) - 詳細參數含義/已驗證行為見 AIDL_REFERENCE.md 和
-                // handleApi() 裡對應的 "servo/*"、"led/*"、"pir/*" case (這些 MCP
-                // tool 純粹是那些 case 的薄包裝, 沒有重複定義邏輯)。
+                // 這個 bridge 已有的 pattern (schema 用 org.json 組建, 執行時直驅
+                // 硬件——2026-09 已無 AIDL wrapper / waitXxxReady) - 詳細參數含義/
+                // 已驗證行為見 handleApi() 裡對應的 "servo/*"、"led/*"、"pir/*"
+                // case (這些 MCP tool 純粹是那些 case 的薄包裝, 沒有重複定義邏輯)。
 
                 org.json.JSONObject servoOne = new org.json.JSONObject();
                 servoOne.put("name", "self.robot.servo_set_one");
@@ -8307,70 +8301,9 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    private HttpServer.ApiResponse actionList() {
-        // action_getActionList is asynchronous (Binder round-trip); block this worker
-        // thread briefly with a latch-style wait rather than making the HTTP layer async.
-        final Object[] resultHolder = new Object[1];
-        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
-
-        UbxErrorCode.API_ERROR_CODE started = robot.action_getActionList(new RobotStub.IAlpha2ActionListListener() {
-            @Override
-            public void onGetActionList(ArrayList<ArrayList<String>> list) {
-                resultHolder[0] = list;
-                latch.countDown();
-            }
-        });
-
-        if (started != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-            return codeResponse(started);
-        }
-        try {
-            latch.await(5, java.util.concurrent.TimeUnit.SECONDS);
-        } catch (InterruptedException ignored) {
-        }
-
-        @SuppressWarnings("unchecked")
-        ArrayList<ArrayList<String>> list = (ArrayList<ArrayList<String>>) resultHolder[0];
-        // 2026-08 debug: action/list 響應空 actions[] 但機身 /sdcard/actions/*.ubx
-        // 實際有 ~140 個檔。可能是 (a) latch timeout, onGetActionList 沒有在 5s 內
-        // callback, list 保持 null, 或 (b) 機身確實有 callback 回 list, 但每行
-        // < 4 欄, 全部被下面的 "row.size() < 4" 跳過。這兩種情況分開 log 才能分辨
-        // 邊個先係真正原因。
-        if (list == null) {
-            Log.w(TAG, "actionList: onGetActionList did not complete within 5s latch (list == null)");
-        } else {
-            Log.d(TAG, "actionList: got " + list.size() + " row(s)");
-            for (int i = 0; i < list.size(); i++) {
-                ArrayList<String> row = list.get(i);
-                if (row.size() < 4) {
-                    Log.w(TAG, "actionList: row " + i + " skipped, size=" + row.size()
-                            + " content=" + row);
-                }
-            }
-        }
-        StringBuilder sb = new StringBuilder("{\"ok\":true,\"actions\":[");
-        if (list != null) {
-            // Bug fix: "if (i > 0) sb.append(',')" used the *list index* as the
-            // "already emitted something" check. When an earlier row is skipped
-            // (row.size() < 4, see above), the first row that IS emitted still has
-            // i > 0 and gets a leading comma anyway -> malformed JSON "[,{...}".
-            // Track whether anything has actually been appended instead.
-            boolean firstEmitted = true;
-            for (int i = 0; i < list.size(); i++) {
-                ArrayList<String> row = list.get(i);
-                if (row.size() < 4) continue;
-                if (!firstEmitted) sb.append(',');
-                firstEmitted = false;
-                sb.append("{\"id\":\"").append(jsonSafe(row.get(0))).append("\",")
-                        .append("\"type\":\"").append(jsonSafe(row.get(1))).append("\",")
-                        .append("\"nameCn\":\"").append(jsonSafe(row.get(2))).append("\",")
-                        .append("\"nameEn\":\"").append(jsonSafe(row.get(3))).append("\"}");
-            }
-        }
-        sb.append("]}");
-        return HttpServer.ApiResponse.ok(sb.toString());
-    }
-
+    // 2026-09 移除: 舊 binder actionList() (經 robot.action_getActionList 等
+    // 5s latch)——機身已無 alpha2services，只會回 NOT_INIT。action/list 一律行
+    // 下面 actionListDirect() (讀 actionInfo.txt + UbxPlayer)。
     // -- Pure-direct actions (actionInfo.txt + UbxPlayer) -----------------------
     // actionInfo.txt 行格式（GBK 编码）：<fileId>##<nameCn>##<nameEn>##<type>，
     // 与旧 AIDL getActionList 行顺序不同（彼为 id/type/nameCn/nameEn），此处重排，
@@ -8539,13 +8472,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + id + ",\"angle\":" + (angle & 0xFF) + "}");
     }
 
-    private HttpServer.ApiResponse servoSendAll(int[] arr, int timeMs) {
-        boolean sent = HardwareDirectManager.get(this).chest().setAllServos(arr, (short) timeMs);
-        if (!sent) return HttpServer.ApiResponse.error("direct not ready");
-        ubxPlayer.notePose(arr);
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
-    }
-
+    // 2026-09 移除: servoSendAll()——零調用 (direct servo/all 已內聯同一邏輯)。
     private HttpServer.ApiResponse actionListDirect() {
         List<String[]> info = loadActionInfo();
         StringBuilder sb = new StringBuilder("{\"ok\":true,\"actions\":[");
@@ -8829,85 +8756,29 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     /** 最近一次探測結果 - 開機預設樂觀當有網, 第一次 probe 之後就會校正。 */
     private volatile boolean lastProbeOnline = true;
-    /** 探測用 HandlerThread - 一定要背景 thread! 之前用 MainLooper, probe 的
-     *  TCP connect 全部即刻彈 NetworkOnMainThreadException, 令 watchdog 永遠
-     *  以為離線 (2026-08 實測 bug)。 */
-    private android.os.HandlerThread offlineWatchdogThread;
-    private android.os.Handler offlineWatchdogHandler;
-    private boolean offlineWatchdogStarted = false;
-
-    /** 週期性探測迴路 (30 秒一次)。CONNECTIVITY_ACTION 只在 WiFi link 層面
-     *  變化時才會發送 - hotspot 的後備網路 (行動數據) 開關根本不會觸發任何廣播,
-     *  所以單靠 receiver 不夠, 要自己定時 probe 才能偵測到「WiFi 沒變但上不了
-     *  網」這種狀態。
-     *
-     *  2026-08 加防抖動: 實測手機數據底下對訊飛雲的 TCP probe 結果會飄忽
-     *  (時通時不通), 單次結果就轉模式會讓指示燈/語音模式不停跳動。現在要
-     *  連續 2 次同方向的結果才真的切換 (PROBE_CONFIRM_N)。 */
-    private static final int PROBE_CONFIRM_N = 2;
-    private int offlineProbeDownCount = 0;
-    private int offlineProbeUpCount = 0;
-
-    private final Runnable offlineProbeLoop = new Runnable() {
-        @Override
-        public void run() {
-            try {
-                final boolean online = hasRealInternet();
-                if (online != lastProbeOnline) {
-                    if (online) {
-                        offlineProbeUpCount++;
-                        offlineProbeDownCount = 0;
-                    } else {
-                        offlineProbeDownCount++;
-                        offlineProbeUpCount = 0;
-                    }
-                    Log.i(TAG, "offline watchdog: internet " + (online ? "UP" : "DOWN")
-                            + " (" + (online ? offlineProbeUpCount : offlineProbeDownCount)
-                            + "/" + PROBE_CONFIRM_N + ")");
-                    if ((online && offlineProbeUpCount >= PROBE_CONFIRM_N)
-                            || (!online && offlineProbeDownCount >= PROBE_CONFIRM_N)) {
-                        lastProbeOnline = online;
-                        offlineProbeUpCount = 0;
-                        offlineProbeDownCount = 0;
-                        applyConnectivityMode(online, "probe");
-                    }
-                } else {
-                    // 同現狀一致 - 清晒兩邊計數
-                    offlineProbeUpCount = 0;
-                    offlineProbeDownCount = 0;
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "offline watchdog error: " + e.getMessage());
-            }
-            offlineWatchdogHandler.postDelayed(this, 30000);
-        }
-    };
-
-    private void startOfflineWatchdog() {
-        if (offlineWatchdogStarted) return;
-        offlineWatchdogStarted = true;
-        offlineWatchdogThread = new android.os.HandlerThread("OfflineProbe");
-        offlineWatchdogThread.start();
-        offlineWatchdogHandler = new android.os.Handler(offlineWatchdogThread.getLooper());
-        offlineWatchdogHandler.postDelayed(offlineProbeLoop, 8000);
-    }
-    // 2026-09 註: 上面成組 watchdog 而家係惰性 (startOfflineWatchdog 無 caller，
-    // 唯一啟動點舊 binder initOver 已刪) - 但 triggerWakeupProbe() 同 onDestroy()
-    // 仲引用緊啲 field，所以唔可以成段刪。要郁佢哋要連 triggerWakeupProbe 一齊
-    // 重新設計，留待下批。
+    // 2026-09 移除: 30 秒週期 watchdog 成組 (offlineProbeLoop / PROBE_CONFIRM_N
+    // 計數器 / HandlerThread / startOfflineWatchdog)——啟動點 (舊 binder initOver)
+    // 早已刪除，loop 從來唔會跑，留喺度只會令人以為仲有背景探測。探測入口而家得返
+    // 兩個：speech/offline_auto_switch toggle 即時 probe 同下面 triggerWakeupProbe()。
+    // (注意：probe 一定要背景 thread，之前用 MainLooper 會即刻彈
+    // NetworkOnMainThreadException——2026-08 實測 bug，唔好倒返轉頭。)
 
     /** 2026-08 新增: 「從第一句對答就知道是否離線」- 喚醒詞觸發的當下 (用戶開口)
-     *  立即探測一次雲端連通性。單次結果即時生效, 不用等 30 秒 watchdog 或
-     *  2 次確認 - 用戶實際開口那一刻的證據最可信, 而且探測 (~1-7s) 和講話+
-     *  辨識並行, 機器人回答時模式已經和現實一致。由 RobotEventReceiver 的
-     *  tts_hint_wakeup case 叫。 */
+     *  立即探測一次雲端連通性。單次結果即時生效 - 用戶實際開口那一刻的證據
+     *  最可信, 而且探測 (~1-7s) 和講話+辨識並行, 機器人回答時模式已經和現實
+     *  一致。由 RobotEventReceiver 的 tts_hint_wakeup case 叫。
+     *
+     *  2026-09: watchdog HandlerThread 已移除，改用即開即走嘅 plain thread
+     *  (同 speech/offline_auto_switch toggle 嗰個 probeThread 同一 pattern)——
+     *  之前靠 handler 導致呢個方法永遠 early-return，wakeup probe 實際無行過。
+     *  一定要背景 thread (hasRealInternet() 會 block；Main thread 會彈
+     *  NetworkOnMainThreadException)。只喺 auto-switch 開住先做。 */
     public static void triggerWakeupProbe() {
         final MainActivity inst = sInstance;
-        if (inst == null || !inst.offlineGrammarAutoSwitch
-                || inst.offlineWatchdogHandler == null) {
+        if (inst == null || !inst.offlineGrammarAutoSwitch) {
             return;
         }
-        inst.offlineWatchdogHandler.post(new Runnable() {
+        new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
@@ -8916,15 +8787,13 @@ public class MainActivity extends Activity implements SensorEventListener {
                         Log.i(TAG, "wakeup probe: internet " + (online ? "UP" : "DOWN")
                                 + " -> switching mode now");
                         inst.lastProbeOnline = online;
-                        inst.offlineProbeUpCount = 0;
-                        inst.offlineProbeDownCount = 0;
                         inst.applyConnectivityMode(online, "wakeup");
                     }
                 } catch (Exception e) {
                     Log.w(TAG, "wakeup probe error: " + e.getMessage());
                 }
             }
-        });
+        }, "wakeup-probe").start();
     }
 
     /** 自動切換的入口 - 網路狀態變化或 App 啟動 (speech_ready 之後) 都會執行。

@@ -39,6 +39,8 @@ jobs:
         run: |
           python scripts/generate-api-client.py
           git diff --exit-code -- app/src/main/assets/web/api-client.js || (echo "::error::api-client.js drift - run python scripts/generate-api-client.py and commit"; git diff -- app/src/main/assets/web/api-client.js; exit 1)
+      - name: Check api-client routes (caller prefix matches backend)
+        run: python scripts/check-api-client-routes.py
       - name: Validate openapi yaml
         run: python -c "import yaml, pathlib; yaml.safe_load(open('openapi/open-alpha2-openapi.yml', encoding='utf-8')); print('openapi.yml OK')"
       - name: Validate asyncapi yaml

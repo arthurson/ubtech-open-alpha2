@@ -596,3 +596,45 @@ function hwApi(path, params) {
   return api(path, params);
 }
 
+// Namespaced fetch helpers - 同 api() 一樣形狀, 淨係前綴唔同, 對應
+// MainActivity 三個獨立路由 (見開頭 dispatch): sysApi() -> /api/system/*
+// (handleSystemApi), directApi() -> /api/direct/* (handleDirectApi)。
+// xiaozhiApi() 住喺 app-xiaozhi.js (佢要跟小智 UI 狀態, 唔放呢度)。
+// api-client.js (Alpha2Api.*) 會按 OpenAPI path 自動揀啱嘅一個, 直接用
+// api('system/...') 會打去 /api/alpha2/system/... 而 404, 唔好咁做。
+function sysApi(path, params) {
+  clearError();
+  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  return fetch(API + "system/" + path + qs).then(function (res) {
+    return res.json().catch(function (e) {
+      return { ok: false, error: "invalid response (status " + res.status + ")" };
+    }).then(function (json) {
+      if (!json.ok) {
+        showError("API /system/" + path, new Error(json.error || json.code || "request failed"));
+      }
+      return json;
+    });
+  }).catch(function (networkErr) {
+    showError("Network error calling /system/" + path, networkErr);
+    return { ok: false, error: String(networkErr) };
+  });
+}
+
+function directApi(path, params) {
+  clearError();
+  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  return fetch(API + "direct/" + path + qs).then(function (res) {
+    return res.json().catch(function (e) {
+      return { ok: false, error: "invalid response (status " + res.status + ")" };
+    }).then(function (json) {
+      if (!json.ok) {
+        showError("API /direct/" + path, new Error(json.error || json.code || "request failed"));
+      }
+      return json;
+    });
+  }).catch(function (networkErr) {
+    showError("Network error calling /direct/" + path, networkErr);
+    return { ok: false, error: String(networkErr) };
+  });
+}
+

@@ -2,9 +2,6 @@ package com.open.alpha2;
 
 import android.content.Context;
 import android.content.Intent;
-import android.util.Log;
-
-import java.util.ArrayList;
 
 /**
  * 2026-09: 脫離 Alpha2OpenSdk —— 取代 sdk-module/ubtechalpha2robot 的
@@ -27,20 +24,13 @@ import java.util.ArrayList;
  * {@code DirectLedController}（JNI）、Android 原生 API。
  */
 public final class RobotStub {
-    private static final String TAG = "RobotStub";
-
     private final Context mContext;
 
     public RobotStub(Context context) {
         this.mContext = context.getApplicationContext();
     }
 
-    /** Async action-list callback (binder 時代遺留接口，永遠唔會被叫）。 */
-    public interface IAlpha2ActionListListener {
-        void onGetActionList(ArrayList<ArrayList<String>> list);
-    }
-
-    /** Grammar-build callback （同上）。 */
+    /** Grammar-build callback (binder 時代遺留接口，listener 永遠唔會被叫）。 */
     public interface IAlpha2SpeechGrammarInitListener {
         void speechGrammarInitCallback(String grammarId, int errorCode);
     }
@@ -51,21 +41,8 @@ public final class RobotStub {
         void onSpeechGrammarError(int errorCode);
     }
 
-    // -- Action (全死：無 action service) -------------------------------------
-
-    public UbxErrorCode.API_ERROR_CODE action_getActionList(IAlpha2ActionListListener listener) {
-        return UbxErrorCode.API_ERROR_CODE.API_ERROR_NOT_INIT;
-    }
-
-    public UbxErrorCode.API_ERROR_CODE action_PlayActionName(String actionName) {
-        Log.w(TAG, "action_PlayActionName(" + actionName + "): no alpha2services, NOT_INIT");
-        return UbxErrorCode.API_ERROR_CODE.API_ERROR_NOT_INIT;
-    }
-
-    public UbxErrorCode.API_ERROR_CODE action_StopAction() {
-        return UbxErrorCode.API_ERROR_CODE.API_ERROR_NOT_INIT;
-    }
-
+    // 2026-09 移除: action_getActionList / action_PlayActionName /
+    // action_StopAction (零調用；動作一律經 UbxPlayer 直驅，見 actionListDirect())。
     // -- Speech / TTS (全死：無 speech service) --------------------------------
 
     public UbxErrorCode.API_ERROR_CODE speech_startTTS(String language, String text, String strVoiceName) {

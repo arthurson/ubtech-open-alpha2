@@ -2,7 +2,9 @@
 // source: openapi/open-alpha2-openapi.yml
 // regenerate: python scripts/generate-api-client.py
 
-// Depends on window.api() from app-core.js (fetch wrapper with error banner).
+// Depends on the namespaced fetch helpers (fetch wrappers with error banner):
+// api() (app-core.js/blockly-page.js), sysApi()/directApi() (ditto),
+// xiaozhiApi() (app-xiaozhi.js/blockly-page.js), hwApi() (alias of api()).
 // Provides typed wrappers with local enum/range validation before fetch,
 // mirroring ApiValidator.java on the server side.
 
@@ -257,64 +259,64 @@ const Alpha2Api = (function() {
   // ── direct ──────────────────────────────────────────────
   function directLedHead(params) {
     // 頭燈直驅（color/mode 留空即預設 3/0）
-    return api('direct/led/head', params);
+    return directApi('led/head', params);
   }
 
   function directLedMouth(params) {
     // 嘴燈呼吸直驅（留空預設 500ms）
-    return api('direct/led/mouth', params);
+    return directApi('led/mouth', params);
   }
 
   function directLedOff(params) {
     // 全燈熄直驅
-    return api('direct/led/off', params);
+    return directApi('led/off', params);
   }
 
   function directServoAll(params) {
     // 全舵機直驅 (逗號分隔 20 個角度, 預設 time=500)
-    return api('direct/servo/all', params);
+    return directApi('servo/all', params);
   }
 
   function directServoOne(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
     // 單舵機直驅 (localServices.chestSetSingle, 預設 time=500)
-    return api('direct/servo/one', params);
+    return directApi('servo/one', params);
   }
 
   function directSonarConfig(params) {
     // 胸板聲納配置直發 (subCmd=10)
-    return api('direct/sonar/config', params);
+    return directApi('sonar/config', params);
   }
 
   function directStatus(params) {
     // 直驅層狀態 (localServices/chest/head 是否暢通)
-    return api('direct/status', params);
+    return directApi('status', params);
   }
 
   function directUbxList(params) {
     // 列出 /sdcard/actions 內 .ubx 檔 (name/size)
-    return api('direct/ubx/list', params);
+    return directApi('ubx/list', params);
   }
 
   function directUbxPlay(params) {
     // 解析並經 UbxPlayer 直播指定 .ubx (name 或 path 二選一；有同目錄 mp3 會同步播配樂)
-    return api('direct/ubx/play', params);
+    return directApi('ubx/play', params);
   }
 
   function directUbxSpeed(params) {
     if (params && params.value != null) assertEnum(params.value, [0.5, 0.67, 1, 1.5, 2], 'value');
     // 動作播放變速（舵機+配樂同縮放；黏性，播緊時設會由頭重播即時生效）
-    return api('direct/ubx/speed', params);
+    return directApi('ubx/speed', params);
   }
 
   function directUbxStatus(params) {
     // UbxPlayer 狀態 (playing/name/sent/total/voice/speed/lastError)
-    return api('direct/ubx/status', params);
+    return directApi('ubx/status', params);
   }
 
   function directUbxStop(params) {
     // 截停 UbxPlayer (舵機保持末位姿)
-    return api('direct/ubx/stop', params);
+    return directApi('ubx/stop', params);
   }
 
   function ubxList(params) {
@@ -570,48 +572,48 @@ const Alpha2Api = (function() {
   // ── system ──────────────────────────────────────────────
   function systemDiscover(params) {
     // 一野搜齊機器資料（app/胸固件/UUID/電量/聲納/PIR/位姿；慢 query 各 1.5s 上限）
-    return api('system/discover', params);
+    return sysApi('discover', params);
   }
 
   function systemMusicList(params) {
     // (system) 列出 /sdcard/Music 音樂清單 (MusicController)
-    return api('system/music/list', params);
+    return sysApi('music/list', params);
   }
 
   function systemMusicPause(params) {
     // (system) 暫停音樂
-    return api('system/music/pause', params);
+    return sysApi('music/pause', params);
   }
 
   function systemMusicPlay(params) {
     // (system) 播放指定路徑音樂
-    return api('system/music/play', params);
+    return sysApi('music/play', params);
   }
 
   function systemMusicResume(params) {
     // (system) 恢復音樂
-    return api('system/music/resume', params);
+    return sysApi('music/resume', params);
   }
 
   function systemMusicSeek(params) {
     // (system) 跳轉進度
-    return api('system/music/seek', params);
+    return sysApi('music/seek', params);
   }
 
   function systemMusicStatus(params) {
     // (system) 查詢播放狀態
-    return api('system/music/status', params);
+    return sysApi('music/status', params);
   }
 
   function systemMusicStop(params) {
     // (system) 停止音樂
-    return api('system/music/stop', params);
+    return sysApi('music/stop', params);
   }
 
   function systemMusicVolume(params) {
     if (params && params.percent != null) assertRange(Number(params.percent), 0, 100, 'percent');
     // (system) 設定音量 0-100%
-    return api('system/music/volume', params);
+    return sysApi('music/volume', params);
   }
 
   // ── upload ──────────────────────────────────────────────
@@ -619,93 +621,93 @@ const Alpha2Api = (function() {
   // ── xiaozhi ──────────────────────────────────────────────
   function xiaozhiActivationStatus(params) {
     // 查詢配對/啟用流程狀態 (輪詢)
-    return api('xiaozhi/activation_status', params);
+    return xiaozhiApi('activation_status', params);
   }
 
   function xiaozhiAutoConnectGet(params) {
     // 讀取「開app自動連接小智」開關
-    return api('xiaozhi/auto_connect/get', params);
+    return xiaozhiApi('auto_connect/get', params);
   }
 
   function xiaozhiAutoConnectSet(params) {
     // 設定「開app自動連接小智」開關（下次開app生效）
-    return api('xiaozhi/auto_connect/set', params);
+    return xiaozhiApi('auto_connect/set', params);
   }
 
   function xiaozhiAutoMode(params) {
     // 一鍵全自動 (連線+常開麥克風)
-    return api('xiaozhi/auto_mode', params);
+    return xiaozhiApi('auto_mode', params);
   }
 
   function xiaozhiConnect(params) {
     // 啟動 OTA 啟用與 WebSocket 連線 (背景線程，需輪詢 activation_status)
-    return api('xiaozhi/connect', params);
+    return xiaozhiApi('connect', params);
   }
 
   function xiaozhiDisconnect(params) {
     // 斷開小智連線並釋放 mic
-    return api('xiaozhi/disconnect', params);
+    return xiaozhiApi('disconnect', params);
   }
 
   function xiaozhiMcpConfigGet(params) {
     // 取得 MCP disabled 清單（總開關已移除，mcpEnabled 恆為 true）
-    return api('xiaozhi/mcp_config/get', params);
+    return xiaozhiApi('mcp_config/get', params);
   }
 
   function xiaozhiMcpConfigSet(params) {
     // 設定單一工具開關（總開關已移除：不帶 tool 的寫入會存但無實效）
-    return api('xiaozhi/mcp_config/set', params);
+    return xiaozhiApi('mcp_config/set', params);
   }
 
   function xiaozhiMcpToolsList(params) {
     // 列出全部 MCP 工具含 enabled 狀態
-    return api('xiaozhi/mcp_tools/list', params);
+    return xiaozhiApi('mcp_tools/list', params);
   }
 
   function xiaozhiMicStart(params) {
     // 開啟小智麥克風採集與 Opus 上行 + 播放下行
-    return api('xiaozhi/mic/start', params);
+    return xiaozhiApi('mic/start', params);
   }
 
   function xiaozhiMicStop(params) {
     // 關閉小智麥克風並交還給 wake-word 引擎
-    return api('xiaozhi/mic/stop', params);
+    return xiaozhiApi('mic/stop', params);
   }
 
   function xiaozhiOtaConfigGet(params) {
     // 取得 OTA / 自架 Server 配置
-    return api('xiaozhi/ota_config/get', params);
+    return xiaozhiApi('ota_config/get', params);
   }
 
   function xiaozhiOtaConfigSet(params) {
     // 設定自架 Server (需先 disconnect)
-    return api('xiaozhi/ota_config/set', params);
+    return xiaozhiApi('ota_config/set', params);
   }
 
   function xiaozhiSendText(params) {
     // 發送文字對話 (不經麥克風，source=text + session_id)
-    return api('xiaozhi/send_text', params);
+    return xiaozhiApi('send_text', params);
   }
 
   function xiaozhiStatus(params) {
     // 查詢小智連線狀態
-    return api('xiaozhi/status', params);
+    return xiaozhiApi('status', params);
   }
 
   function xiaozhiSupported(params) {
     // 查詢小智語音支援 (sdkInt / audioSupported)
-    return api('xiaozhi/supported', params);
+    return xiaozhiApi('supported', params);
   }
 
   function xiaozhiTtsConfigGet(params) {
     // 取得小智 TTS 引擎選擇（只剩 xiaozhi/android；iflytek/nuance 已移除）
-    return api('xiaozhi/tts_config/get', params);
+    return xiaozhiApi('tts_config/get', params);
   }
 
   function xiaozhiTtsConfigSet(params) {
     if (params && params.engine != null) assertEnum(params.engine, ['xiaozhi', 'android'], 'engine');
     // 設定小智 TTS 引擎（只收 xiaozhi/android；舊值直接拒收）
-    return api('xiaozhi/tts_config/set', params);
+    return xiaozhiApi('tts_config/set', params);
   }
 
   // ── legacy aliases (hwApi) ─────────────────────────────

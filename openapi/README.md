@@ -18,7 +18,8 @@
 - 源：`openapi/open-alpha2-openapi.yml`
 - 生成器：`scripts/generate-api-client.py` → `app/src/main/assets/web/api-client.js`
 - 內容：`Alpha2Api.servoOne({id,angle,time})` 等 132 個 typed wrapper，內建 `assertEnum` / `assertRange`（鏡像後端校驗）
-- 依賴：`app-core.js` 的 `api()`，故 `index.html` 中 `api-client.js` 緊接 `app-core.js` 之後載入
+- 路由：按 OpenAPI path 前綴自動揀 caller——`api()`（`/api/alpha2/*`）、`sysApi()`（`/api/system/*`）、`directApi()`（`/api/direct/*`）、`xiaozhiApi()`（`/api/xiaozhi/*`）；直接用 `api('system/...')` 會 404，`scripts/check-api-client-routes.py` 會擋
+- 依賴：`app-core.js` 的 `api()`（`index.html` 緊接其後載入；`blockly.html` 用 `blockly-page.js` 提供嘅同名 helper，一樣要載喺 `api-client.js` 之前）
 
 ```js
 // 舊

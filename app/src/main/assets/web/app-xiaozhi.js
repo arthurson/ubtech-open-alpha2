@@ -218,7 +218,7 @@ function xiaozhiStopActivationPolling() {
 function xiaozhiConnect() {
   xiaozhiHideActivationCode();
   xiaozhiSetStatus("xiaozhi_status_checking");
-  xiaozhiApi("connect", {}).then(function (res) {
+  Alpha2Api.xiaozhiConnect({}).then(function (res) {
     if (!res.ok) {
       xiaozhiSetStatus("xiaozhi_status_error");
       xiaozhiAppendChatLine("xiaozhi-msg-system", res.error || "connect failed");
@@ -231,7 +231,7 @@ function xiaozhiConnect() {
 
 function xiaozhiPollActivationStatus() {
   xiaozhiStopActivationPolling();
-  xiaozhiApi("activation_status", {}).then(function (res) {
+  Alpha2Api.xiaozhiActivationStatus({}).then(function (res) {
     if (!res.ok) {
       xiaozhiSetStatus("xiaozhi_status_error");
       return;
@@ -258,7 +258,7 @@ function xiaozhiPollActivationStatus() {
         // 單一開關嘅設計: 一連接好就即刻開埋 auto_mode, 等於自動搶 mic、隨時語音
         // 對話, 唔使用戶再撳多一下 - 見 index.html 個開關 label。
         xiaozhiAutoModeOn = true;
-        xiaozhiApi("auto_mode", { enabled: "true" });
+        Alpha2Api.xiaozhiAutoMode({ enabled: "true" });
         break;
       case "error":
         xiaozhiHideActivationCode();
@@ -285,7 +285,7 @@ function xiaozhiDisconnect() {
   // 斷線之後隊列入面排緊嘅句子已經冇意義 (小智已經斷咗, 唔會再有新對話接
   // 落去), 一齊清空, 唔留低啲舊句子等落次連接先再讀。
   xiaozhiResetTtsQueue();
-  xiaozhiApi("disconnect", {}).then(function () {
+  Alpha2Api.xiaozhiDisconnect({}).then(function () {
     xiaozhiSetStatus("xiaozhi_status_disconnected");
     xiaozhiSetConnectedUi(false);
   });
@@ -338,7 +338,7 @@ function xiaozhiSendText() {
     return;
   }
   if (els.sendTextBtn) els.sendTextBtn.disabled = true;
-  xiaozhiApi("send_text", { text: text }).then(function (res) {
+  Alpha2Api.xiaozhiSendText({ text: text }).then(function (res) {
     if (res.ok) {
       if (els.textInput) els.textInput.value = "";
     } else {
@@ -541,7 +541,7 @@ function xiaozhiHandleEvent(type, data) {
  *  xiaozhiSetConnectedUi() to gate the mic button on, and shows/hides the
  *  unsupported-hint text accordingly. */
 function xiaozhiCheckSupport() {
-  xiaozhiApi("supported", {}).then(function (res) {
+  Alpha2Api.xiaozhiSupported({}).then(function (res) {
     xiaozhiAudioSupported = !!(res.ok && res.audioSupported);
     const notice = xiaozhiElements().unsupportedNotice;
     if (notice) {
@@ -558,7 +558,7 @@ function xiaozhiCheckSupport() {
  *  robot is already in (e.g. browser tab was reloaded while a XiaoZhi session was
  *  already active from before) rather than always starting the UI in "disconnected". */
 function xiaozhiRefreshStatus() {
-  xiaozhiApi("status", {}).then(function (res) {
+  Alpha2Api.xiaozhiStatus({}).then(function (res) {
     if (!res.ok) return;
     if (res.connected) {
       xiaozhiSetStatus("xiaozhi_status_connected", res.sessionId ? "(" + res.sessionId + ")" : "");
@@ -572,7 +572,7 @@ function xiaozhiRefreshStatus() {
     // (e.g. the person reloaded the page while waiting to enter the code) and resume
     // polling it rather than showing a plain "disconnected" that would make them
     // think they need to press Connect again mid-pairing.
-    xiaozhiApi("activation_status", {}).then(function (actRes) {
+    Alpha2Api.xiaozhiActivationStatus({}).then(function (actRes) {
       if (actRes.ok && (actRes.stage === "checking" || actRes.stage === "awaiting_code"
           || actRes.stage === "polling" || actRes.stage === "connecting")) {
         xiaozhiPollActivationStatus();
@@ -602,7 +602,7 @@ function xiaozhiBackgroundStatusWatch() {
   // null), 即係話用戶啱啱手動撳咗連接或者已經响 awaiting_code/polling/connecting
   // 度 - 唔使呢度嘅慢速輪詢再插一腳。
   if (!xiaozhiActivationPollTimer) {
-    xiaozhiApi("status", {}).then(function (res) {
+    Alpha2Api.xiaozhiStatus({}).then(function (res) {
       if (!res.ok) return;
       if (res.connected) {
         xiaozhiSetStatus("xiaozhi_status_connected", res.sessionId ? "(" + res.sessionId + ")" : "");
@@ -611,7 +611,7 @@ function xiaozhiBackgroundStatusWatch() {
         xiaozhiMicActive = !!res.micActive;
         xiaozhiSetMicLed(!!res.micHeld);
       } else {
-        xiaozhiApi("activation_status", {}).then(function (actRes) {
+        Alpha2Api.xiaozhiActivationStatus({}).then(function (actRes) {
           if (actRes.ok && (actRes.stage === "checking" || actRes.stage === "awaiting_code"
               || actRes.stage === "polling" || actRes.stage === "connecting")) {
             // 搵到一個背景先至開始咗嘅 activation attempt (通常係自動重連觸發)
@@ -631,7 +631,7 @@ function xiaozhiBackgroundStatusWatch() {
  *  個開關同輸入框 - page load 就要 call, 等用戶見到之前揀咗嘅設定, 唔會每次開個
  *  panel 都變返做未設定過咁。 */
 function xiaozhiLoadOtaConfig() {
-  xiaozhiApi("ota_config/get", {}).then(function (res) {
+  Alpha2Api.xiaozhiOtaConfigGet({}).then(function (res) {
     if (!res.ok) return;
     const toggle = document.getElementById("xiaozhiOtaCustomToggle");
     const box = document.getElementById("xiaozhiOtaCustomBox");
@@ -657,7 +657,7 @@ function xiaozhiToggleOtaCustom() {
   const wantOn = !!(toggle && toggle.checked);
   if (box) box.style.display = wantOn ? "" : "none";
   if (!wantOn) {
-    xiaozhiApi("ota_config/set", { enabled: "false" }).then(function (res) {
+    Alpha2Api.xiaozhiOtaConfigSet({ enabled: "false" }).then(function (res) {
       if (!res.ok) {
         xiaozhiAppendChatLine("xiaozhi-msg-system", res.error || t("xiaozhi_ota_custom_error"));
       }
@@ -686,7 +686,7 @@ function xiaozhiSaveOtaCustom() {
     xiaozhiAppendChatLine("xiaozhi-msg-system", t("xiaozhi_ota_custom_url_required"));
     return;
   }
-  xiaozhiApi("ota_config/set", { enabled: "true", url: url, wsUrl: wsUrl, deviceId: deviceId, token: token })
+  Alpha2Api.xiaozhiOtaConfigSet({ enabled: "true", url: url, wsUrl: wsUrl, deviceId: deviceId, token: token })
     .then(function (res) {
       if (res.ok) {
         xiaozhiAppendChatLine("xiaozhi-msg-system", t("xiaozhi_ota_custom_saved"));
@@ -715,7 +715,7 @@ function xiaozhiToggleMcpExpandAll() {
 
 function xiaozhiToggleMcpTool(toolName, checkbox) {
   const wantOn = !!(checkbox && checkbox.checked);
-  xiaozhiApi("mcp_config/set", { tool: toolName, enabled: wantOn ? "true" : "false" }).then(function (res) {
+  Alpha2Api.xiaozhiMcpConfigSet({ tool: toolName, enabled: wantOn ? "true" : "false" }).then(function (res) {
     if (!res.ok) {
       // Server 拒絕咗 - 撥返個 checkbox 做返之前個狀態, 唔好留低一個「睇落改咗
       // 但其實冇生效」嘅假象。
@@ -729,7 +729,7 @@ function xiaozhiLoadMcpTools() {
   const box = document.getElementById("xiaozhiMcpToolsList");
   if (!box) return;
   box.textContent = t("xiaozhi_mcp_tools_loading");
-  xiaozhiApi("mcp_tools/list", {}).then(function (res) {
+  Alpha2Api.xiaozhiMcpToolsList({}).then(function (res) {
     if (!res.tools || !Array.isArray(res.tools) || res.tools.length === 0) {
       box.textContent = t("xiaozhi_mcp_tools_empty");
       return;
@@ -809,7 +809,7 @@ function xiaozhiSetTtsEngineUi(engine) {
  *  onIncomingOpusFrame sink 即時開始/停止靜音 opus, 唔使重連), 成功先更新
  *  按鈕 active 狀態; 失敗就唔改, 等用戶見到個掣冇跳、可以再撳一次。 */
 function xiaozhiSetTtsEngine(engine) {
-  xiaozhiApi("tts_config/set", { engine: engine }).then(function (res) {
+  Alpha2Api.xiaozhiTtsConfigSet({ engine: engine }).then(function (res) {
     if (res && res.ok) {
       xiaozhiSetTtsEngineUi(engine);
     }
@@ -818,7 +818,7 @@ function xiaozhiSetTtsEngine(engine) {
 
 /** Page load 讀返「開app自動連接」開關狀態 - 對照 xiaozhiLoadOtaConfig() 嘅做法。 */
 function xiaozhiLoadAutoConnect() {
-  xiaozhiApi("auto_connect/get", {}).then(function (res) {
+  Alpha2Api.xiaozhiAutoConnectGet({}).then(function (res) {
     const toggle = document.getElementById("xiaozhiAutoConnectToggle");
     if (toggle) toggle.checked = !!(res && res.ok && res.enabled);
   });
@@ -826,7 +826,7 @@ function xiaozhiLoadAutoConnect() {
 
 /** 開app自動連接開關切換 - 即刻儲存，下次開app生效（唔會即刻連線）。 */
 function xiaozhiSetAutoConnect(checked) {
-  xiaozhiApi("auto_connect/set", { enabled: checked ? "true" : "false" }).then(function (res) {
+  Alpha2Api.xiaozhiAutoConnectSet({ enabled: checked ? "true" : "false" }).then(function (res) {
     const toggle = document.getElementById("xiaozhiAutoConnectToggle");
     if (toggle) toggle.checked = !!(res && res.ok && res.enabled);
   });
@@ -835,7 +835,7 @@ function xiaozhiSetAutoConnect(checked) {
 /** Page load 讀返上次揀低嘅 TTS 引擎, 同步按鈕 active 狀態 - 對照
  *  xiaozhiLoadOtaConfig() 嘅做法。 */
 function xiaozhiLoadTtsConfig() {
-  xiaozhiApi("tts_config/get").then(function (res) {
+  Alpha2Api.xiaozhiTtsConfigGet().then(function (res) {
     if (res && res.ok && res.engine) {
       xiaozhiSetTtsEngineUi(res.engine);
     }
