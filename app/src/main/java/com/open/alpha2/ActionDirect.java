@@ -135,6 +135,45 @@ public final class ActionDirect {
         return pool.get(new java.util.Random().nextInt(pool.size()));
     }
 
+    /** Resolves a human-supplied action name (Chinese or English, as passed by the
+     *  XiaoZhi LLM to self.robot.play_action) to the actual on-device action id from
+     *  xiaozhi_actions.json. Tried in order, first match wins:
+     *  1. Exact id match (in case the caller *does* pass a raw id - still valid).
+     *  2. Exact match against nameCn or nameEn (case-insensitive for nameEn).
+     *  3. Substring match either direction (query contains the action name, or the
+     *     action name contains the query) - handles the LLM paraphrasing slightly,
+     *     catching the common case of extra/missing words around a name that
+     *     otherwise matches exactly.
+     *  Returns null if nothing matches closely enough - deliberately does not fall
+     *  back to a "best guess" at low confidence, since a wrong action executing on
+     *  physical hardware is worse than a clear "not found" the LLM can react to (see
+     *  the "raise_left_hand" bug this whole mechanism exists to prevent). */
+    public String resolveActionId(String query) {
+        java.util.List<org.json.JSONObject> actions = loadXiaozhiActions();
+        String q = query.trim();
+        if (q.isEmpty()) return null;
+
+        for (org.json.JSONObject a : actions) {
+            if (q.equals(a.optString("id"))) return a.optString("id");
+        }
+        for (org.json.JSONObject a : actions) {
+            if (q.equals(a.optString("nameCn"))
+                    || q.equalsIgnoreCase(a.optString("nameEn"))) {
+                return a.optString("id");
+            }
+        }
+        String qLower = q.toLowerCase(java.util.Locale.US);
+        for (org.json.JSONObject a : actions) {
+            String cn = a.optString("nameCn");
+            String en = a.optString("nameEn").toLowerCase(java.util.Locale.US);
+            if ((!cn.isEmpty() && (q.contains(cn) || cn.contains(q)))
+                    || (!en.isEmpty() && (qLower.contains(en) || en.contains(qLower)))) {
+                return a.optString("id");
+            }
+        }
+        return null;
+    }
+
     /** 动作名/ID 解析：fileId > nameEn > nameCn，另支持 xxx.ubx / 绝对路径直通。 */
     private java.io.File resolveActionFile(String name) {
         if (name == null) return null;

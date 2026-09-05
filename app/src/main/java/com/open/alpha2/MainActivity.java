@@ -476,6 +476,8 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 2026-09: 語意配對 + 裝置狀態搬咗去 SemanticCenter / DeviceStatus。
     private SemanticCenter semanticCenter;
     private DeviceStatus deviceStatus;
+    // 2026-09: 相機拍照層搬咗去 CameraApi，呢度淨係留個 instance。
+    private CameraApi cameraApi;
 
     // 2026-08 新增: RobotEventReceiver 沒有 constructor/field 拿到 outer
     // MainActivity instance (它一直只經 EventBus 靜態方法送 event, 不認識
@@ -582,6 +584,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         ttsCenter.initAndroidTts(null);
         semanticCenter = new SemanticCenter(iflytekMatcher, iflytekMatcherEn, actionDirect, ttsCenter);
         deviceStatus = new DeviceStatus(this);
+        cameraApi = new CameraApi(this, cameraController, ringtoneCenter);
 
         // Plain HTTP only. TLS/HTTPS was tried (self-signed cert) to make getUserMedia()
         // available for the walkie-talkie mic feature, but browsers on this device
@@ -1122,7 +1125,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         // （約 100 行 asr_result/tts_end/speech_ready 回調，包喺 if(false))
         // 已經成段刪除：機身無 alpha2services，永遠唔會執行。
 
-        registerWakeupDirectionListener();
+        ubxApi.registerWakeupDirectionListener();
         registerChestMuteKeyTestListener();
         registerAlpha2PirAlertListener();
     }
@@ -1262,70 +1265,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     // (語意配對成組搬咗去 SemanticCenter：looksChinese/toZhResult/handle、
     // IFLYTEK delay 常數；單參數 overload 零調用，一併刪除。)
 
-    // -- Wakeup direction -> servo 19 (head) turn -------------------------------------
-    // RobotEventReceiver already listens for the com.ubtechinc.services.SPEECH_DIRECTION
-    // broadcast and publishes it to EventBus as {"type":"speech_direction",...,
-    // "data":{"absoluteAngle":N}} (N already unsigned 0-255, see RobotEventReceiver).
-    // This subscribes to that same EventBus feed - rather than adding a second
-    // BroadcastReceiver - and does the actual servo turn. Per docs/sensors-and-events.md,
-    // servo 19 is the head-yaw servo; on this unit its safe range is [75,165] with
-    // home=120=facing forward. Mapping is 1:1, just clamped into that range.
-    private static final String SPEECH_DIRECTION_MARKER = "\"type\":\"speech_direction\"";
-    private static final int SERVO_HEAD_ID = 19;
-    private static final int SERVO_HEAD_MIN = 75;
-    private static final int SERVO_HEAD_MAX = 165;
-    private static final short SERVO_TURN_TIME_MS = 500;
-
-    private void registerWakeupDirectionListener() {
-        EventBus.get().subscribe(new EventBus.Listener() {
-            @Override
-            public void onEvent(String line) {
-                if (!line.contains(SPEECH_DIRECTION_MARKER)) {
-                    return;
-                }
-                final Integer angle = extractAbsoluteAngle(line);
-                if (angle == null) {
-                    return;
-                }
-                // onEvent() runs on the main thread. pure-direct 下直发无需等待，
-                // 仍放 background thread 避免阻塞 EventBus 分发。
-                // 注：SPEECH_DIRECTION 广播本身由旧 alpha2services 发出，机身无此 APK
-                // 后此监听自然不再触发，保留仅作兼容。
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        int servoAngle = clampServoAngle(angle);
-                        HardwareDirectManager.get(MainActivity.this).chest().setSingleServo((byte) SERVO_HEAD_ID, servoAngle, SERVO_TURN_TIME_MS);
-                    }
-                }).start();
-            }
-        });
-    }
-
-    /** Pulls the integer after "absoluteAngle":  out of an EventBus-published JSON line,
-     *  without pulling in a JSON library (matching the rest of this file's style). */
-    private static Integer extractAbsoluteAngle(String line) {
-        String key = "\"absoluteAngle\":";
-        int i = line.indexOf(key);
-        if (i < 0) return null;
-        int start = i + key.length();
-        int end = start;
-        while (end < line.length() && (Character.isDigit(line.charAt(end)) || line.charAt(end) == '-')) {
-            end++;
-        }
-        if (end == start) return null;
-        try {
-            return Integer.parseInt(line.substring(start, end));
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    private static int clampServoAngle(int angle) {
-        if (angle < SERVO_HEAD_MIN) return SERVO_HEAD_MIN;
-        if (angle > SERVO_HEAD_MAX) return SERVO_HEAD_MAX;
-        return angle;
-    }
+    // (喚醒轉頭成組搬咗去 UbxApi.registerWakeupDirectionListener()。)
 
     // -- 心口 mute 鍵 (-111) 測試: 撳一下紫燈長開, 再撳一下熄燈 ------------------------
     // 2026-08 新增: 純粹用來目視確認 RobotEventReceiver 那個 CHEST_ACTION case 有沒有
@@ -2784,52 +2724,7 @@ public class MainActivity extends Activity implements SensorEventListener {
      *  the operator doesn't directly control turn-by-turn, so starting narrow and
      *  expanding later (once real usage patterns are seen) is safer than exposing
      *  everything (LED raw params, serial port raw commands, etc.) up front. */
-    /** Lazily loads + parses assets/web/xiaozhi_actions.json (202 個動作, 由用戶提供的
-     *  202_actions_classified.txt 轉出來的) - each entry has "id", "nameCn", "nameEn".
-     *  "id" is confirmed to be the exact on-device action filename minus the ".ubx"
-     *  extension (e.g. id "1464835936031" -> /mnt/internal_sd/actions/1464835936031.ubx),
-     *  which is what action_PlayActionName()/AlphaActionServiceUtil.playActionName()
-     *  actually needs - see xiaozhiMcpBridge()'s play_action tool schema for how this
-     *  is exposed to the LLM. Returns an empty list (never null) on any read/parse
-     *  failure, logging the reason once rather than crashing tools/list. */
-    /** Resolves a human-supplied action name (Chinese or English, as passed by the
-     *  XiaoZhi LLM to self.robot.play_action) to the actual on-device action id from
-     *  xiaozhi_actions.json. Tried in order, first match wins:
-     *  1. Exact id match (in case the caller *does* pass a raw id - still valid).
-     *  2. Exact match against nameCn or nameEn (case-insensitive for nameEn).
-     *  3. Substring match either direction (query contains the action name, or the
-     *     action name contains the query) - handles the LLM paraphrasing slightly,
-     *     catching the common case of extra/missing words around a name that
-     *     otherwise matches exactly.
-     *  Returns null if nothing matches closely enough - deliberately does not fall
-     *  back to a "best guess" at low confidence, since a wrong action executing on
-     *  physical hardware is worse than a clear "not found" the LLM can react to (see
-     *  the "raise_left_hand" bug this whole mechanism exists to prevent). */
-    private String resolveActionId(String query) {
-        java.util.List<org.json.JSONObject> actions = actionDirect.loadXiaozhiActions();
-        String q = query.trim();
-        if (q.isEmpty()) return null;
-
-        for (org.json.JSONObject a : actions) {
-            if (q.equals(a.optString("id"))) return a.optString("id");
-        }
-        for (org.json.JSONObject a : actions) {
-            if (q.equals(a.optString("nameCn"))
-                    || q.equalsIgnoreCase(a.optString("nameEn"))) {
-                return a.optString("id");
-            }
-        }
-        String qLower = q.toLowerCase(java.util.Locale.US);
-        for (org.json.JSONObject a : actions) {
-            String cn = a.optString("nameCn");
-            String en = a.optString("nameEn").toLowerCase(java.util.Locale.US);
-            if ((!cn.isEmpty() && (q.contains(cn) || cn.contains(q)))
-                    || (!en.isEmpty() && (qLower.contains(en) || en.contains(qLower)))) {
-                return a.optString("id");
-            }
-        }
-        return null;
-    }
+    // (xiaozhi_actions catalog + resolveActionId 搬咗去 ActionDirect，MCP 經嗰邊用。)
 
     /** Radio Browser (radio-browser.info) 的其中一個 API 主機 - 官方文件建議客戶端
      *  對 "all.api.radio-browser.info" 做 DNS 解析再從多個鏡像之間挑選, 但這台機器沒有
@@ -3729,7 +3624,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                             // 找不到, 讓它有機會呼叫 self.robot.list_actions 再試,
                             // 而不是盲目把 LLM 編的名直接傳給 AIDL (會撞回
                             // "raise_left_hand" 那種開不了檔案的老問題)。
-                            String resolvedId = resolveActionId(actionName);
+                            String resolvedId = actionDirect.resolveActionId(actionName);
                             if (resolvedId == null) {
                                 isError = true;
                                 resultText = "no action found matching \"" + actionName
@@ -4728,154 +4623,26 @@ public class MainActivity extends Activity implements SensorEventListener {
             // snapshot endpoint just starts the camera (if it isn't already streaming)
             // and returns whatever the most recent preview frame is, for callers that
             // want one still image rather than opening the stream. -----------------------
-            case "camera/snapshot": {
-                CameraController.StartResult started = cameraController.start(8000);
-                if (started.error != null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
-                            + jsonSafe(started.error) + "\"}");
-                }
-                CameraController.Frame frame = waitForFrame(cameraController, 3000);
-                if (frame == null) {
-                    return HttpServer.ApiResponse.ok(
-                            "{\"ok\":false,\"error\":\"timed out waiting for a preview frame\"}");
-                }
-                String b64 = android.util.Base64.encodeToString(frame.jpeg, android.util.Base64.NO_WRAP);
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"jpegBase64\":\"" + b64 + "\"}");
-            }
-            case "camera/snapshot_save": {
-                // 齊 9 檔影相並存入 Android：可選 w/h，未提供則用當前 preview 解像度；存至 /sdcard/DCIM/Alpha2
-                Integer wOpt = ApiValidator.optionalInteger(query, "w");
-                Integer hOpt = ApiValidator.optionalInteger(query, "h");
-                int reqW = 0, reqH = 0;
-                boolean hasSize = wOpt != null && hOpt != null;
-                if (hasSize) {
-                    reqW = wOpt.intValue();
-                    reqH = hOpt.intValue();
-                }
-                int prevW = cameraController.getPreviewWidth();
-                int prevH = cameraController.getPreviewHeight();
-                if (hasSize) {
-                    cameraController.setRequestedResolution(reqW, reqH);
-                    cameraController.forceStopAndWait(3000);
-                }
-                CameraController.StartResult started = cameraController.start(8000);
-                if (started.error != null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(started.error) + "\"}");
-                }
-                CameraController.Frame frame = waitForFrame(cameraController, 3000);
-                if (frame == null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"timed out waiting for frame\"}");
-                }
-                try {
-                    java.io.File dir = new java.io.File("/sdcard/DCIM/Alpha2");
-                    if (!dir.exists()) dir.mkdirs();
-                    String ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss_SSS", java.util.Locale.US).format(new java.util.Date());
-                    String name = "alpha2_" + frame.jpeg.length + "_" + cameraController.getPreviewWidth() + "x" + cameraController.getPreviewHeight() + "_" + ts + ".jpg";
-                    // 若有指定尺寸，用指定尺寸命名更直觀
-                    if (hasSize) name = "alpha2_" + reqW + "x" + reqH + "_" + ts + ".jpg";
-                    java.io.File outFile = new java.io.File(dir, name);
-                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile)) { fos.write(frame.jpeg); }
-                    // 同時觸發媒體掃描，讓相簿即時可見
-                    try { sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, android.net.Uri.fromFile(outFile))); } catch (Exception ignored) {}
-                    // 恢復之前解像度（若有切換）
-                    if (hasSize && (prevW != reqW || prevH != reqH)) {
-                        cameraController.setRequestedResolution(prevW, prevH);
-                        cameraController.forceStopAndWait(2000);
-                        // 不自動重開，讓前端按需再開，避免長時間佔用
-                    }
-                    String b64 = android.util.Base64.encodeToString(frame.jpeg, android.util.Base64.NO_WRAP);
-                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"path\":\"" + jsonSafe(outFile.getAbsolutePath()) + "\",\"jpegBase64\":\"" + b64 + "\",\"width\":" + cameraController.getPreviewWidth() + ",\"height\":" + cameraController.getPreviewHeight() + "}");
-                } catch (Exception e) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(e.getMessage()) + "\"}");
-                }
-            }
-            case "camera/take_photo_save": {
-                // 真正單張拍攝（picture 尺寸，經 Camera.takePicture 完整 ISP），存入 Android
-                // 若未指定，用最大 picture 尺寸 (見 openapi default w=4208 h=3120)。
-                int reqW = ApiValidator.optionalInt(query, "w", 4208);
-                int reqH = ApiValidator.optionalInt(query, "h", 3120);
-                CameraController.StartResult started = cameraController.start(8000);
-                if (started.error != null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(started.error) + "\"}");
-                }
-                CameraController.PhotoResult photo = cameraController.takePhoto(reqW, reqH, 8000);
-                if (photo.error != null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(photo.error) + "\"}");
-                }
-                try {
-                    java.io.File dir = new java.io.File("/sdcard/DCIM/Alpha2");
-                    if (!dir.exists()) dir.mkdirs();
-                    String ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss_SSS", java.util.Locale.US).format(new java.util.Date());
-                    String name = "alpha2_pic_" + reqW + "x" + reqH + "_" + ts + ".jpg";
-                    java.io.File outFile = new java.io.File(dir, name);
-                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile)) { fos.write(photo.jpeg); }
-                    try { sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, android.net.Uri.fromFile(outFile))); } catch (Exception ignored) {}
-                    String b64 = android.util.Base64.encodeToString(photo.jpeg, android.util.Base64.NO_WRAP);
-                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"path\":\"" + jsonSafe(outFile.getAbsolutePath()) + "\",\"jpegBase64\":\"" + b64 + "\",\"width\":" + reqW + ",\"height\":" + reqH + ",\"bytes\":" + photo.jpeg.length + "}");
-                } catch (Exception e) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(e.getMessage()) + "\"}");
-                }
-            }
+            case "camera/snapshot":
+                return cameraApi.snapshot();
+            case "camera/snapshot_save":
+                return cameraApi.snapshotSave(query);
+            case "camera/take_photo_save":
+                return cameraApi.takePhotoSave(query);
             // Plays the "Sirrah" shutter cue out of the robot's own speaker (see
             // playShutterCue() javadoc) - called by the browser right after a
             // successful camera/snapshot, instead of synthesizing a click sound in
             // the browser itself.
             case "camera/shutter_sound":
-                ringtoneCenter.playShutterCue();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+                return cameraApi.shutterSound();
             case "camera/info":
-                return HttpServer.ApiResponse.ok("{\"ok\":true,"
-                        + "\"previewWidth\":" + cameraController.getPreviewWidth() + ","
-                        + "\"previewHeight\":" + cameraController.getPreviewHeight() + "}");
+                return cameraApi.info();
             case "camera/fps":
-                double fps = cameraController.getFps();
-                String fpsStr = String.format(java.util.Locale.US, "%.1f", fps);
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"fps\":" + fpsStr + ",\"streaming\":" + cameraController.isStreaming() + "}");
-            case "camera/supported_sizes": {
-                java.util.List<android.hardware.Camera.Size> preview = cameraController.getSupportedPreviewSizesSync(4000);
-                java.util.List<android.hardware.Camera.Size> picture = cameraController.getSupportedPictureSizesSync(4000);
-                java.util.List<int[]> fpsRanges = cameraController.getSupportedPreviewFpsRangesSync(4000);
-                StringBuilder sb = new StringBuilder("{\"ok\":true,\"preview\":[");
-                if (preview != null) {
-                    boolean first = true;
-                    for (android.hardware.Camera.Size s : preview) {
-                        if (!first) sb.append(",");
-                        first = false;
-                        sb.append("\"").append(s.width).append("x").append(s.height).append("\"");
-                    }
-                }
-                sb.append("],\"picture\":[");
-                if (picture != null) {
-                    boolean first = true;
-                    for (android.hardware.Camera.Size s : picture) {
-                        if (!first) sb.append(",");
-                        first = false;
-                        sb.append("\"").append(s.width).append("x").append(s.height).append("\"");
-                    }
-                }
-                sb.append("],\"fpsRanges\":[");
-                if (fpsRanges != null) {
-                    boolean first = true;
-                    for (int[] r : fpsRanges) {
-                        if (!first) sb.append(",");
-                        first = false;
-                        sb.append("\"").append(r[0]/1000.0).append("-").append(r[1]/1000.0).append("\"");
-                    }
-                }
-                sb.append("],\"current\":\"").append(cameraController.getPreviewWidth()).append("x").append(cameraController.getPreviewHeight()).append("\"}");
-                return HttpServer.ApiResponse.ok(sb.toString());
-            }
-            case "camera/resolution": {
-                int w = ApiValidator.requireInt(query, "w");
-                int h = ApiValidator.requireInt(query, "h");
-                cameraController.setRequestedResolution(w, h);
-                // Block until the camera is genuinely released before answering - see
-                // forceStopAndWait()'s javadoc for why stopIfIdle() alone isn't enough
-                // here (it doesn't guarantee timing, just that it *will* close once idle).
-                cameraController.forceStopAndWait(3000);
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"requestedWidth\":" + w
-                        + ",\"requestedHeight\":" + h + "}");
-            }
+                return cameraApi.fps();
+            case "camera/supported_sizes":
+                return cameraApi.supportedSizes();
+            case "camera/resolution":
+                return cameraApi.resolution(query);
 
             // -- Walkie-talkie: browser mic -> robot speaker. See AudioPlaybackController's
             // javadoc - whether the speaker is reachable via a standard AudioTrack at all
@@ -5509,25 +5276,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    /** Polls CameraController.getLastFrame() until a frame newer than "none yet"
-     *  appears, for the single-shot camera/snapshot endpoint. */
-    private static CameraController.Frame waitForFrame(CameraController controller, long timeoutMs) {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        while (System.currentTimeMillis() < deadline) {
-            CameraController.Frame frame = controller.getLastFrame();
-            if (frame != null) {
-                return frame;
-            }
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return null;
-            }
-        }
-        return controller.getLastFrame();
-    }
-
+    // (waitForFrame 搬咗去 CameraApi。)
     // 2026-08 (已淘汰): 之前用 waitForStableFrame() 跳過幾幀來迴避 preview frame
     // 過渡期問題 (AE/AF 未收斂) - 反編譯用戶提供、實測成功的第三方 apk 之後發現真正
     // 根源是 capture 方式本身 (preview frame vs 真正單張拍攝), 已改用
