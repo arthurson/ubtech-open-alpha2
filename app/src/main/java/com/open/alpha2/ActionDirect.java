@@ -37,6 +37,12 @@ public final class ActionDirect {
     private final UbxPlayer ubxPlayer;
 
     private List<String[]> actionInfoCache; // 每项 [fileId, nameCn, nameEn, type]
+    /** Cached parse of assets/web/xiaozhi_actions.json (202 動作, id/nameCn/nameEn) -
+     *  loaded once lazily on first use rather than at onCreate(), since it's only
+     *  needed if/when the XiaoZhi tab's play_action tool schema is actually requested.
+     *  null until first load attempt; an empty (but non-null) list means the load was
+     *  attempted and failed/produced nothing. */
+    private volatile java.util.List<org.json.JSONObject> xiaozhiActionsCache;
     private volatile java.io.File lastPlayedFile;
 
     public ActionDirect(Context context, UbxPlayer ubxPlayer) {
@@ -83,6 +89,50 @@ public final class ActionDirect {
         }
         actionInfoCache = out;
         return out;
+    }
+
+    /** 讀 assets/web/xiaozhi_actions.json 做 catalog (MCP fuzzy、隨機池共用)。 */
+    public java.util.List<org.json.JSONObject> loadXiaozhiActions() {
+        java.util.List<org.json.JSONObject> cached = xiaozhiActionsCache;
+        if (cached != null) return cached;
+        java.util.List<org.json.JSONObject> result = new java.util.ArrayList<>();
+        try (java.io.InputStream in = appContext.getAssets().open("web/xiaozhi_actions.json")) {
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            byte[] tmp = new byte[4096];
+            int n;
+            while ((n = in.read(tmp)) != -1) buf.write(tmp, 0, n);
+            org.json.JSONArray arr = new org.json.JSONArray(buf.toString("UTF-8"));
+            for (int i = 0; i < arr.length(); i++) {
+                result.add(arr.getJSONObject(i));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "loadXiaozhiActions: failed to load assets/web/xiaozhi_actions.json: " + e);
+        }
+        xiaozhiActionsCache = result;
+        return result;
+    }
+
+    /** Picks a random id from the "隨機短/隨機長" action group in
+     *  xiaozhi_actions.json - these are the robot's own pre-recorded filler-movement
+     *  actions (20 of them: 隨機短1-10、隨機長1-10, with a couple of duplicate ids for
+     *  the same name e.g. two "隨機短2" entries - both are valid, harmless to include
+     *  twice in the pool), meant for exactly this "play something to look alive"
+     *  use case rather than reacting to any specific emotion/content. Matched by
+     *  nameCn prefix rather than a hardcoded id list so this keeps working if
+     *  xiaozhi_actions.json is regenerated from a different 202_actions_classified.txt
+     *  with different ids. Returns null (never throws) if the group is empty for any
+     *  reason - caller must handle that as a normal "nothing to play" case, not a bug. */
+    public String resolveRandomActionId() {
+        java.util.List<org.json.JSONObject> actions = loadXiaozhiActions();
+        java.util.List<String> pool = new java.util.ArrayList<>();
+        for (org.json.JSONObject a : actions) {
+            String cn = a.optString("nameCn");
+            if (cn.startsWith("隨機短") || cn.startsWith("隨機長")) {
+                pool.add(a.optString("id"));
+            }
+        }
+        if (pool.isEmpty()) return null;
+        return pool.get(new java.util.Random().nextInt(pool.size()));
     }
 
     /** 动作名/ID 解析：fileId > nameEn > nameCn，另支持 xxx.ubx / 绝对路径直通。 */
