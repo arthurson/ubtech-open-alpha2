@@ -1,0 +1,522 @@
+package com.open.alpha2;
+
+import android.content.Context;
+import android.util.Log;
+
+import com.ubtechinc.alpha.hardware.HardwareDirectManager;
+import com.ubtechinc.alpha.hardware.RobotWire;
+
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * 胸口 MCU 同步查詢：韌體版本 (cmd 51) 同 SN/UUID (cmd 55)，pure-direct。
+ *
+ * 2026-09 由 MainActivity 抽出 (第一刀拆 god object)：latch/raw/len 狀態、
+ * 幀解析、阻塞查詢原本全部係 MainActivity 私有成員，搬過嚟一字不改邏輯。
+ * 擁有關係：
+ * - MainActivity.onDirectChestFrame() 收到胸串口幀先處理心跳/避障/mute/PIR/
+ *   升級 ACK，剩低交畀 {@link #onFrame} 認領版本/UUID 回覆。
+ * - handleApi chest/version、misc/request_uuid、system/discover、
+ *   胸升級 reset 經呢度做阻塞查詢 (HttpServer worker thread，可阻塞)。
+ *
+ * 線程：latch 欄位 volatile，和以前一樣——兩個查詢同時行會互踩
+ * (後者覆蓋前者嘅 latch)，行為同未抽之前完全一致，調用方本來就唔會並行。
+ */
+public final class ChestQuery {
+    private static final String TAG = "ChestQuery";
+
+    /** set_uuid 經本 App 成功寫入的上次 SN 長度, 下次讀回用來截尾 (見
+     *  truncateUuidTail)。無記錄 (-1) 就行 pattern/大小寫規則。 */
+    public static final String PREF_UUID_WRITTEN_LEN = "uuid_written_len";
+
+    private final Context appContext;
+
+    // 2026-08: 真實胸口 MCU 韌體版本查詢 (CHEST_READ_VERSION 51 / 0x33) 用的
+    // 同步等待狀態，供 queryFirmwareVersion() 阻塞等待 (HttpServer worker
+    // thread，非主 thread)，onFrame() 回調一到就 countDown。
+    private volatile CountDownLatch chestVersionLatch;
+    private volatile byte[] chestVersionRaw;
+    private volatile int chestVersionLen;
+    // 2026-09: 機械人 SN/UUID 直讀 (CHEST_READ_SID_EEPROM 55 / 0x37) 用的
+    // 同步等待狀態，同一個 pattern。機身已無 alpha2services,
+    // robot.requestRobotUUID() 的 broadcast 永遠無人回覆。
+    private volatile CountDownLatch chestUuidLatch;
+    private volatile byte[] chestUuidRaw;
+    private volatile int chestUuidLen;
+
+    public ChestQuery(Context context) {
+        this.appContext = context.getApplicationContext();
+    }
+
+    private boolean chestReady() {
+        try {
+            return HardwareDirectManager.get(appContext).chest().isAvailable();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 認領版本/UUID 回覆幀 (由 MainActivity.onDirectChestFrame 在升級 ACK
+     * 之後調用，順序不變：升級優先，UUID 次之，版本最後 fallback)。
+     * @return true = 已認領 (調用方應直接 return)。
+     */
+    public boolean onFrame(byte[] frame, byte[] payload, int plen) {
+        // 2026-09: UUID/SN 回覆 latch (cmd 55)。放喺版本 latch 之前優先處理,
+        // 避免版本查詢的 fallback 誤食 uuid 幀 (uuid 幀 plen 好長, 唔係 sonar ack /
+        // obstacle, 舊 fallback 條件會當佢係版本回覆)。
+        if (chestUuidLatch != null && chestUuidLatch.getCount() > 0) {
+            boolean isUuid = isUuidFrame(frame, frame.length)
+                    || (plen >= 1 && payload[0] == RobotWire.CHEST_READ_SID_EEPROM);
+            if (isUuid) {
+                chestUuidRaw = java.util.Arrays.copyOf(frame, frame.length);
+                chestUuidLen = frame.length;
+                chestUuidLatch.countDown();
+                return true;
+            }
+        }
+        // 版本 latch：完整帧优先（isVersionFrame 认 F8 8F），否则按 payload fallback
+        if (chestVersionLatch != null && chestVersionLatch.getCount() > 0) {
+            boolean isVer = isVersionFrame(frame, frame.length, RobotWire.CHEST_READ_VERSION);
+            boolean isFallback = false;
+            if (!isVer) {
+                boolean isSonarAck = (plen == 2 && payload[0] == 4 && payload[1] == 0);
+                boolean isObstacle = (plen >= 2 && payload[0] == (byte) -127);
+                boolean isUuid = (plen >= 1 && payload[0] == RobotWire.CHEST_READ_SID_EEPROM);
+                if (plen >= 1 && !isSonarAck && !isObstacle && !isUuid) {
+                    isFallback = true;
+                }
+            }
+            if (isVer || isFallback) {
+                if (isVer) {
+                    chestVersionRaw = java.util.Arrays.copyOf(frame, frame.length);
+                    chestVersionLen = frame.length;
+                } else {
+                    chestVersionRaw = java.util.Arrays.copyOf(payload, plen);
+                    chestVersionLen = plen;
+                }
+                chestVersionLatch.countDown();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 清掉未完成的等待 (胸升級開始前調用，和以前 resetChestUpgradeState 一致)。 */
+    public void reset() {
+        chestVersionLatch = null;
+        chestUuidLatch = null;
+    }
+
+    /** 最後一次版本回覆原幀 (拷貝，可 null)，供升級超時診斷 log 用。 */
+    public byte[] getLastVersionRaw() {
+        byte[] raw = chestVersionRaw;
+        return raw != null ? java.util.Arrays.copyOf(raw, raw.length) : null;
+    }
+
+    /** 最後一次 UUID 回覆原幀 (拷貝，可 null)，供 request_uuid 診斷用。 */
+    public byte[] getLastUuidRaw() {
+        byte[] raw = chestUuidRaw;
+        return raw != null ? java.util.Arrays.copyOf(raw, raw.length) : null;
+    }
+
+    /**
+     * 判斷一段 raw serial 回調是否為版本幀 (CHEST_READ_VERSION / HEADER_READ_VERSION 51)。
+     * 標準 wire 格式: F8 8F len 01/00 00 33 payload sum ED，其中 33h=51。
+     * 為兼容多次連幀或 SDK 預剝 header 的情況，掃描整段 bytes 內任何 F8 8F 窗口。
+     */
+    private static boolean isVersionFrame(byte[] bytes, int len, byte expectedCmd) {
+        if (bytes == null || len < 8) return false;
+        int n = Math.min(len, bytes.length);
+        for (int i = 0; i + 5 < n; i++) {
+            if ((bytes[i] & 0xFF) == 0xF8 && (bytes[i + 1] & 0xFF) == 0x8F) {
+                if (i + 5 >= n) continue;
+                if (bytes[i + 5] == expectedCmd) {
+                    // 進一步確認：len byte 與實際長度大致相符 (7+payloadLen)
+                    // 不強校驗 checksum，避免韌體差異導致誤判
+                    return true;
+                }
+            }
+        }
+        // 兼容 SDK 已剝頭只剩 payload 的極端情況：單字節就是 cmd 的回顯
+        // 此分支由外層 fallback 邏輯處理，這裡只認標準幀
+        return false;
+    }
+
+    /**
+     * 從版本幀中抽出 payload 並解碼為可讀字串。
+     * 1) 若為標準 F8 8F 幀，payload = bytes[6 .. 6+payloadLen-1], payloadLen = (lenByte &0xFF)-7
+     * 2) 若非標準幀（fallback），整段 bytes 即 payload
+     * 解碼策略：先嘗試 ASCII 打印字符，若全為可打印則直接返回；否則返回點分十進制 (例如 1.18.3)
+     * 或 hex 兜底。
+     */
+    private static String parseVersionFrame(byte[] bytes, int len) {
+        if (bytes == null || len <= 0) return null;
+        int n = Math.min(len, bytes.length);
+        byte[] payload = null;
+        int payloadLen = 0;
+        // 嘗試按標準幀解析
+        for (int i = 0; i + 5 < n; i++) {
+            if ((bytes[i] & 0xFF) == 0xF8 && (bytes[i + 1] & 0xFF) == 0x8F) {
+                if (bytes[i + 5] == RobotWire.CHEST_READ_VERSION || bytes[i + 5] == RobotWire.HEADER_READ_VERSION) {
+                    int lenByte = bytes[i + 2] & 0xFF;
+                    int pl = lenByte - 7;
+                    if (pl < 0) pl = 0;
+                    if (i + 6 + pl <= n) {
+                        payload = new byte[pl];
+                        System.arraycopy(bytes, i + 6, payload, 0, pl);
+                        payloadLen = pl;
+                        break;
+                    }
+                }
+            }
+        }
+        if (payload == null) {
+            // Fallback：整段即 payload（SDK 可能已拆掉 header）
+            // 但若開頭仍是 F8 8F 則跳過 header 嘗試最後一次剝離
+            if (n >= 6 && (bytes[0] & 0xFF) == 0xF8 && (bytes[1] & 0xFF) == 0x8F) {
+                int lenByte = bytes[2] & 0xFF;
+                int pl = lenByte - 7;
+                if (pl > 0 && 6 + pl <= n) {
+                    payload = new byte[pl];
+                    System.arraycopy(bytes, 6, payload, 0, pl);
+                    payloadLen = pl;
+                } else {
+                    payload = java.util.Arrays.copyOf(bytes, n);
+                    payloadLen = n;
+                }
+            } else {
+                payload = java.util.Arrays.copyOf(bytes, n);
+                payloadLen = n;
+            }
+        }
+        if (payloadLen == 0) return "(empty payload)";
+        // 去掉尾部 0x00 padding
+        int trim = payloadLen;
+        while (trim > 0 && payload[trim - 1] == 0) trim--;
+        if (trim == 0) return MainActivity.toHex(payload, payloadLen);
+        // 先嘗試直接全可打印
+        boolean allPrintable = true;
+        for (int i = 0; i < trim; i++) {
+            int b = payload[i] & 0xFF;
+            if (b < 0x20 || b > 0x7E) { allPrintable = false; break; }
+        }
+        if (allPrintable) {
+            String s = new String(payload, 0, trim, StandardCharsets.US_ASCII).trim();
+            s = s.replaceAll("[^A-Za-z0-9._\\-]", "");
+            if (!s.isEmpty()) return s;
+        }
+        // 兼容真機實測：payload 開頭夾帶 cmd(0x33) + length(0x00) 等非打印前綴
+        // 掃描最長可打印連續段（例如 "ALPHA2Q-CHEST-B-V352-171031"）
+        int bestStart = -1, bestLen = 0, curStart = -1;
+        for (int i = 0; i <= trim; i++) {
+            boolean printable = i < trim && (payload[i] & 0xFF) >= 0x20 && (payload[i] & 0xFF) <= 0x7E;
+            if (printable) {
+                if (curStart == -1) curStart = i;
+            } else {
+                if (curStart != -1) {
+                    int curLen = i - curStart;
+                    if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; }
+                    curStart = -1;
+                }
+            }
+        }
+        if (bestLen >= 3) {
+            String s = new String(payload, bestStart, bestLen, StandardCharsets.US_ASCII).trim();
+            s = s.replaceAll("[^A-Za-z0-9._\\-]", "");
+            // 若最長段看起來像版本（含 V 或 - 或 . 或 ALPHA），直接返回
+            if (s.length() >= 3 && (s.contains("V") || s.contains("-") || s.contains(".") || s.contains("ALPHA"))) {
+                return s;
+            }
+            if (s.length() >= 4) return s;
+        }
+        // 二進制版本號：常見為 3-4 bytes 各為 major/minor/patch/build
+        if (trim <= 8) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < trim; i++) {
+                if (i > 0) sb.append('.');
+                sb.append(payload[i] & 0xFF);
+            }
+            return sb.toString() + " (hex:" + MainActivity.toHex(payload, trim) + ")";
+        }
+        // 兜底：返回過濾後的 ASCII + hex 對照，方便日後診斷
+        String filtered = new String(payload, 0, trim, StandardCharsets.US_ASCII).replaceAll("[^\\x20-\\x7E]", "").trim();
+        if (!filtered.isEmpty() && filtered.length() >= 4) return filtered;
+        return MainActivity.toHex(payload, trim);
+    }
+
+    /**
+     * 同步阻塞查詢胸口 MCU 真實韌體版本。
+     * 必須在非主 thread 調用 (HttpServer worker thread)，否則 waitForInitComplete 會立刻返回。
+     * @param timeoutMs 最多等幾耐 (建議 1500-2000ms)
+     * @return 解碼後版本字串，失敗回 null
+     */
+    public String queryFirmwareVersion(long timeoutMs) {
+        // pure-direct: 经 /dev/ttyS1 直发 cmd 51（旧 robot.chest_readFirmwareVersion 走 binder，已停用）。
+        // 此方法已保证不在主 thread。
+        if (!chestReady()) {
+            Log.w(TAG, "queryFirmwareVersion: chest not ready (pure-direct)");
+            return null;
+        }
+        CountDownLatch latch = new CountDownLatch(1);
+        chestVersionLatch = latch;
+        chestVersionRaw = null;
+        chestVersionLen = 0;
+        boolean sent = HardwareDirectManager.get(appContext).chest().readVersion();
+        Log.i(TAG, "chest_readFirmwareVersion direct send -> " + sent);
+        if (!sent) {
+            chestVersionLatch = null;
+            // Fallback：用标准长式 raw 帧直接发送 (F8 8F 07 00 00 33 3A ED)
+            try {
+                byte[] rawFrame = new byte[]{(byte)0xF8,(byte)0x8F,0x07,0x00,0x00,0x33,0x3A,(byte)0xED};
+                CountDownLatch latch2 = new CountDownLatch(1);
+                chestVersionLatch = latch2;
+                boolean sent2 = HardwareDirectManager.get(appContext).chest().sendRaw(rawFrame);
+                Log.i(TAG, "chest_sendRaw fallback send -> " + sent2);
+                if (sent2) {
+                    boolean ok2 = latch2.await(timeoutMs, TimeUnit.MILLISECONDS);
+                    if (ok2 && chestVersionRaw != null) {
+                        String v = parseVersionFrame(chestVersionRaw, chestVersionLen);
+                        Log.i(TAG, "chest version (raw fallback) raw=" + MainActivity.toHex(chestVersionRaw,chestVersionLen) + " parsed=" + v);
+                        return v;
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "chest raw fallback failed", e);
+            } finally {
+                chestVersionLatch = null;
+            }
+            return null;
+        }
+        try {
+            boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+            if (!ok) {
+                Log.w(TAG, "queryFirmwareVersion timeout " + timeoutMs + "ms, try raw fallback");
+                // timeout 仍無回覆，補一次 raw 幀再等半個週期
+                chestVersionLatch = null;
+                try {
+                    byte[] rawFrame = new byte[]{(byte)0xF8,(byte)0x8F,0x07,0x00,0x00,0x33,0x3A,(byte)0xED};
+                    CountDownLatch latch2 = new CountDownLatch(1);
+                    chestVersionLatch = latch2;
+                    chestVersionRaw = null; chestVersionLen = 0;
+                    boolean sent2 = HardwareDirectManager.get(appContext).chest().sendRaw(rawFrame);
+                    Log.i(TAG, "chest timeout raw fallback send -> " + sent2);
+                    if (sent2) {
+                        boolean ok2 = latch2.await(Math.max(800, timeoutMs/2), TimeUnit.MILLISECONDS);
+                        if (ok2 && chestVersionRaw != null) {
+                            String v2 = parseVersionFrame(chestVersionRaw, chestVersionLen);
+                            Log.i(TAG, "chest version (timeout raw fallback) raw=" + MainActivity.toHex(chestVersionRaw,chestVersionLen) + " parsed=" + v2);
+                            return v2;
+                        }
+                    }
+                } catch (Exception e2) {
+                    Log.w(TAG, "chest timeout raw fallback failed", e2);
+                } finally {
+                    chestVersionLatch = null;
+                }
+                return null;
+            }
+            if (chestVersionRaw == null) {
+                Log.w(TAG, "queryFirmwareVersion latch counted but raw==null");
+                return null;
+            }
+            String v = parseVersionFrame(chestVersionRaw, chestVersionLen);
+            Log.i(TAG, "chest version raw=" + MainActivity.toHex(chestVersionRaw, chestVersionLen) + " parsed=" + v);
+            return v;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            chestVersionLatch = null;
+        }
+    }
+
+    /**
+     * 2026-09 新增: UUID/SN 直讀回覆是否為 cmd 55 幀 (CHEST_READ_SID_EEPROM)。
+     * 同 isVersionFrame 的掃描邏輯, 認標準 F8 8F 長式幀的 cmd byte (i+5)。
+     * 已剝頭只剩 payload 的情況由外層 fallback (payload[0]==55) 覆蓋。
+     */
+    private static boolean isUuidFrame(byte[] bytes, int len) {
+        if (bytes == null || len < 8) return false;
+        int n = Math.min(len, bytes.length);
+        for (int i = 0; i + 5 < n; i++) {
+            if ((bytes[i] & 0xFF) == 0xF8 && (bytes[i + 1] & 0xFF) == 0x8F) {
+                if (i + 5 >= n) continue;
+                if (bytes[i + 5] == RobotWire.CHEST_READ_SID_EEPROM) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 2026-09 新增: 從 cmd 55 回覆幀抽出 SN/UUID 字串。
+     * 實機證據 (見 misc/set_uuid comment 的 hex dump
+     * "f8 8f 28 01 00 37 00 42 41 ... 00 00...00 3c ed"): 標準長式幀,
+     * cmd=0x37 後的 payload = [flag byte 0x00] + SN ASCII + 0x00 padding。
+     * 解碼和 RobotEventReceiver.decodeUuidExtra / 舊 broadcast 路徑完全一致:
+     * ASCII 解碼 -> 切掉第一個 \0 之後的東西 -> 白名單只留英數/-/_ (蓋掉舊 SN
+     * 較長時殘留的非零垃圾 byte, 見 2026-08 v4 修正)。
+     * 找不到 cmd 55 幀 / 洗完是空字串就回 null。
+     */
+    private static String parseRobotUuidFrame(byte[] bytes, int len) {
+        if (bytes == null || len <= 0) return null;
+        int n = Math.min(len, bytes.length);
+        byte[] snBytes = null;
+        for (int i = 0; i + 5 < n; i++) {
+            if ((bytes[i] & 0xFF) == 0xF8 && (bytes[i + 1] & 0xFF) == 0x8F) {
+                if (i + 5 >= n) continue;
+                if (bytes[i + 5] != RobotWire.CHEST_READ_SID_EEPROM) continue;
+                int lenByte = bytes[i + 2] & 0xFF;
+                int pl = lenByte - 7;
+                if (pl < 0) pl = 0;
+                if (i + 6 + pl <= n) {
+                    snBytes = new byte[pl];
+                    System.arraycopy(bytes, i + 6, snBytes, 0, pl);
+                    break;
+                }
+            }
+        }
+        if (snBytes == null) {
+            // Fallback: 已剝頭的 payload (bytes[0] 即 cmd, 見 stripSerialFrame /
+            // 舊 AIDL onListenSerialPortRcvData 格式)。
+            byte[] payload = MainActivity.stripSerialFrame(bytes);
+            if (payload != null && payload.length >= 1
+                    && payload[0] == RobotWire.CHEST_READ_SID_EEPROM) {
+                snBytes = java.util.Arrays.copyOfRange(payload, 1, payload.length);
+            } else if (n >= 1 && bytes[0] == RobotWire.CHEST_READ_SID_EEPROM) {
+                snBytes = java.util.Arrays.copyOfRange(bytes, 1, n);
+            }
+        }
+        if (snBytes == null || snBytes.length == 0) return null;
+        String s;
+        try {
+            s = new String(snBytes, StandardCharsets.US_ASCII);
+        } catch (Exception e) {
+            return null;
+        }
+        // 2026-09 實測修正 (logcat 真幀 f8 8f 28 00 00 37 00 42 41...):
+        // payload 第一個 byte 是 flag 0x00, 舊寫法 indexOf('\0') 切第一個 \0
+        // 會切出空字串 -> 回 null ->「無法讀取 uuid」。先跳過開頭的 flag/padding
+        // (SN 合法字元只有英數/-/_), 再切第一個 \0 之後的尾部 padding, 最後白名單
+        // 過濾。注意尾段可能有非零殘留 (舊 SN 較長時): 白名單留唔到佢哋, 完整值照
+        // 顯示由用戶對實體貼紙核對 (見 misc/request_uuid 的 log)。
+        int start = 0;
+        while (start < s.length() && !isUuidChar(s.charAt(start))) start++;
+        s = s.substring(start);
+        int cut = s.indexOf('\0');
+        if (cut >= 0) {
+            s = s.substring(0, cut);
+        }
+        s = s.replaceAll("[^A-Za-z0-9\\-_]", "").trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    /** SN/UUID 合法字元 (見 misc/set_uuid 輸入驗證): 英數/-/_ 。 */
+    private static boolean isUuidChar(char c) {
+        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+                || (c >= '0' && c <= '9') || c == '-' || c == '_';
+    }
+
+    /** 已知 SN 版式 (實機貼紙 + uuidGenerateRandom 範圍): BAF006UBT + 8 digits。 */
+    private static final java.util.regex.Pattern KNOWN_SN_PATTERN =
+            java.util.regex.Pattern.compile("BAF006UBT\\d{8}");
+
+    /**
+     * 2026-09 新增: 斬走 EEPROM 尾段非零殘留, 只留真 SN。
+     * 背景: 用戶已對實體貼紙確認, 真 SN 係 17 字 "BAF006UBT10000001",
+     * 讀返嚟 31 字尾段 "yy44567oumamae" 係舊長 SN 被短 SN 蓋過之後的殘留
+     * (EEPROM 欄位定長, 寫幾多 byte 就蓋幾多, 其餘唔郁)。規則按優先序:
+     * 1) preferredLen (本 App 上次 set_uuid 寫入長度, 有記錄就最準);
+     * 2) BAF006UBT+8digits 版式對中就取該段;
+     * 3) UBTech SN 全大寫+數字, 第一個小寫字母起即殘留 (截完要有返 >=8 字,
+     *    否則當 SN 本身含小寫, 回全串唔斬);
+     * 4) 乜都對唔中就回全串 (寧願顯示多唔顯示少)。
+     * 回 null 只代表輸入本身空/全非法。
+     */
+    static String truncateUuidTail(String s, int preferredLen) {
+        if (s == null || s.isEmpty()) return null;
+        if (preferredLen >= 1 && preferredLen <= 31 && s.length() > preferredLen) {
+            String t = s.substring(0, preferredLen).trim();
+            if (!t.isEmpty()) return t;
+        }
+        java.util.regex.Matcher m = KNOWN_SN_PATTERN.matcher(s);
+        if (m.find()) return m.group();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= 'a' && c <= 'z') {
+                String t = s.substring(0, i).replaceAll("[^A-Za-z0-9\\-_]", "").trim();
+                if (t.length() >= 8) return t;
+                break;
+            }
+        }
+        return s;
+    }
+
+    /**
+     * 2026-09 新增: 同步阻塞查詢胸口 EEPROM 的 SN/UUID (pure-direct)。
+     * 取代 robot.requestRobotUUID() 的 broadcast 路徑 —— 機身已無 alpha2services,
+     * 那個 broadcast 發出去永遠無人回覆 "com.ubtechinc.robot_uuid.info",
+     * 這就是「無法讀取 uuid」的根因。
+     * 必須在非主 thread 調用 (HttpServer worker thread), 和
+     * queryFirmwareVersion() 同一個約束。
+     * @param timeoutMs 最多等幾耐 (建議 2000ms)
+     * @return 乾淨 SN 字串, 失敗回 null
+     */
+    public String queryRobotUuid(long timeoutMs) {
+        if (!chestReady()) {
+            Log.w(TAG, "queryRobotUuid: chest not ready (pure-direct)");
+            return null;
+        }
+        CountDownLatch latch = new CountDownLatch(1);
+        chestUuidLatch = latch;
+        chestUuidRaw = null;
+        chestUuidLen = 0;
+        boolean sent;
+        try {
+            sent = HardwareDirectManager.get(appContext).chest().readSidEeprom();
+        } catch (Exception e) {
+            Log.w(TAG, "queryRobotUuid send failed", e);
+            chestUuidLatch = null;
+            return null;
+        }
+        Log.i(TAG, "chest_readSidEeprom direct send -> " + sent);
+        if (!sent) {
+            chestUuidLatch = null;
+            return null;
+        }
+        try {
+            boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+            if (!ok) {
+                Log.w(TAG, "queryRobotUuid timeout " + timeoutMs + "ms");
+                return null;
+            }
+            if (chestUuidRaw == null) {
+                Log.w(TAG, "queryRobotUuid latch counted but raw==null");
+                return null;
+            }
+            String uuid = parseRobotUuidFrame(chestUuidRaw, chestUuidLen);
+            // 2026-09: 斬尾 (見 truncateUuidTail) + 記 log 對照: raw 係全幀 hex,
+            // parsed 係截完的真 SN。
+            if (uuid != null) {
+                int prefLen = -1;
+                try {
+                    prefLen = appContext.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE)
+                            .getInt(PREF_UUID_WRITTEN_LEN, -1);
+                } catch (Throwable ignore) {
+                }
+                uuid = truncateUuidTail(uuid, prefLen);
+            }
+            Log.i(TAG, "chest uuid raw=" + MainActivity.toHex(chestUuidRaw, chestUuidLen) + " parsed=" + uuid);
+            return uuid;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            chestUuidLatch = null;
+        }
+    }
+}

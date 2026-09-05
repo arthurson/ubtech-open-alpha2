@@ -1,0 +1,196 @@
+package com.open.alpha2;
+
+import android.content.Context;
+import android.util.Log;
+
+import com.ubtechinc.alpha.hardware.HardwareDirectManager;
+import com.ubtechinc.alpha.hardware.ubx.UbxFile;
+import com.ubtechinc.alpha.hardware.ubx.UbxParser;
+import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 內建動作直驅：actionInfo.txt + UbxPlayer。
+ *
+ * 2026-09 由 MainActivity 抽出 (拆 god object 第二刀)：動作檔尋址、
+ * 清單/播放/停止/回位原本全部係 MainActivity 私有成員，搬過嚟邏輯不變。
+ * 和 ChestQuery 一樣，UbxPlayer 由 MainActivity 傳入共用同一個實例
+ * (servo 讀寫、stopVoice、ubx/* response 仲喺嗰邊直接用緊)；胸串口經
+ * appContext 攞 HardwareDirectManager。JSON 回應繼續用
+ * MainActivity.jsonSafe 組，保持字串形狀一致。
+ */
+public final class ActionDirect {
+    private static final String TAG = "ActionDirect";
+
+    /** 一鍵全停之後補播嘅「蹲下站起」回位動作。 */
+    public static final String STOP_RECOVERY_ACTION_ID = "1510818174706";
+
+    // actionInfo.txt 行格式（GBK 编码）：<fileId>##<nameCn>##<nameEn>##<type>，
+    // 与旧 AIDL getActionList 行顺序不同（彼为 id/type/nameCn/nameEn），此处重排，
+    // 前端收到的 JSON 形状与以前完全一致，app-actions.js 无需改动。
+    private static final String ACTION_DIR = "/sdcard/actions";
+    private static final String ACTION_INFO = "/sdcard/actions/actionInfo.txt";
+
+    private final Context appContext;
+    private final UbxPlayer ubxPlayer;
+
+    private List<String[]> actionInfoCache; // 每项 [fileId, nameCn, nameEn, type]
+    private volatile java.io.File lastPlayedFile;
+
+    public ActionDirect(Context context, UbxPlayer ubxPlayer) {
+        this.appContext = context.getApplicationContext();
+        this.ubxPlayer = ubxPlayer;
+    }
+
+    /** 最後一次播緊/播過嘅檔 (ubx/speed 播緊重播用；可 null)。 */
+    public java.io.File getLastPlayedFile() {
+        return lastPlayedFile;
+    }
+
+    public void setLastPlayedFile(java.io.File f) {
+        lastPlayedFile = f;
+    }
+
+    private synchronized List<String[]> loadActionInfo() {
+        if (actionInfoCache != null) return actionInfoCache;
+        List<String[]> out = new ArrayList<>();
+        try {
+            java.io.File f = new java.io.File(ACTION_INFO);
+            byte[] data = new byte[(int) f.length()];
+            java.io.FileInputStream in = new java.io.FileInputStream(f);
+            try {
+                int off = 0;
+                while (off < data.length) {
+                    int n = in.read(data, off, data.length - off);
+                    if (n < 0) break;
+                    off += n;
+                }
+            } finally {
+                try { in.close(); } catch (Exception ignore) {}
+            }
+            String text = new String(data, "GBK");
+            for (String line : text.split("\n")) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+                String[] cols = line.split("##", -1);
+                if (cols.length < 4) continue;
+                out.add(new String[]{cols[0].trim(), cols[1].trim(), cols[2].trim(), cols[3].trim()});
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "loadActionInfo failed", e);
+        }
+        actionInfoCache = out;
+        return out;
+    }
+
+    /** 动作名/ID 解析：fileId > nameEn > nameCn，另支持 xxx.ubx / 绝对路径直通。 */
+    private java.io.File resolveActionFile(String name) {
+        if (name == null) return null;
+        String n = name.trim();
+        if (n.isEmpty()) return null;
+        if (n.indexOf('/') >= 0 || n.endsWith(".ubx")) {
+            java.io.File direct = n.indexOf('/') >= 0 ? new java.io.File(n) : new java.io.File(ACTION_DIR + "/" + n);
+            if (direct.isFile()) return direct;
+        }
+        List<String[]> info = loadActionInfo();
+        String id = null;
+        for (String[] r : info) {
+            if (r[0].equals(n)) { id = r[0]; break; }
+        }
+        if (id == null) {
+            for (String[] r : info) {
+                if (r[2].equalsIgnoreCase(n)) { id = r[0]; break; }
+            }
+        }
+        if (id == null) {
+            for (String[] r : info) {
+                if (r[1].equals(n)) { id = r[0]; break; }
+            }
+        }
+        if (id == null) return null;
+        java.io.File f = new java.io.File(ACTION_DIR + "/" + id + ".ubx");
+        return f.isFile() ? f : null;
+    }
+
+    public HttpServer.ApiResponse actionListDirect() {
+        List<String[]> info = loadActionInfo();
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"actions\":[");
+        boolean first = true;
+        for (String[] r : info) {
+            if (!first) sb.append(',');
+            first = false;
+            sb.append("{\"id\":\"").append(MainActivity.jsonSafe(r[0])).append("\",")
+                    .append("\"type\":\"").append(MainActivity.jsonSafe(r[3])).append("\",")
+                    .append("\"nameCn\":\"").append(MainActivity.jsonSafe(r[1])).append("\",")
+                    .append("\"nameEn\":\"").append(MainActivity.jsonSafe(r[2])).append("\"}");
+        }
+        sb.append("]}");
+        return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    public HttpServer.ApiResponse actionPlayDirect(String name) {
+        java.io.File f = resolveActionFile(name);
+        if (f == null) return HttpServer.ApiResponse.error("unknown action: " + name);
+        HardwareDirectManager dm = HardwareDirectManager.get(appContext);
+        if (!dm.chest().isAvailable()) return HttpServer.ApiResponse.error("chest not available");
+        UbxFile ubx;
+        try {
+            ubx = UbxParser.parseFile(f);
+        } catch (Exception e) {
+            return HttpServer.ApiResponse.error("parse failed: " + e.getMessage());
+        }
+        ubxPlayer.stop(); // 抢占：播新自动停旧
+        if (!ubxPlayer.play(ubx, f.getName(), dm.chest(), f)) {
+            return HttpServer.ApiResponse.error("cannot start: " + ubxPlayer.lastError());
+        }
+        lastPlayedFile = f;
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"code\":\"API_ERROR_SUCCEED\",\"name\":\""
+                + MainActivity.jsonSafe(f.getName()) + "\",\"total\":" + ubxPlayer.total() + "}");
+    }
+
+    /**
+     * 内部共用：pure-direct 播指定动作（fileId/中英文名/xxx.ubx 皆可），抢占式——
+     * 先停当前再播，与原厂 playActionName 打断语义一致。供手势总停、MCP tool、
+     * 语义动作、随机 filler 共用，HTTP action/play 另有「播緊先報錯」守卫故不经此。
+     */
+    public UbxErrorCode.API_ERROR_CODE playActionDirect(String nameOrId) {
+        java.io.File f = resolveActionFile(nameOrId);
+        if (f == null) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
+        HardwareDirectManager dm = HardwareDirectManager.get(appContext);
+        if (!dm.chest().isAvailable()) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
+        UbxFile ubx;
+        try {
+            ubx = UbxParser.parseFile(f);
+        } catch (Exception e) {
+            Log.w(TAG, "playActionDirect parse failed " + f, e);
+            return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
+        }
+        ubxPlayer.stop();
+        if (!ubxPlayer.play(ubx, f.getName(), dm.chest(), f)) {
+            Log.w(TAG, "playActionDirect not started: " + ubxPlayer.lastError());
+            return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
+        }
+        lastPlayedFile = f;
+        return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+    }
+
+    /**
+     * 内部共用：一键全停（动作部分）——截停 UbxPlayer 后补播 STOP_RECOVERY_ACTION_ID
+     * 蹲下站起回位。回位播唔播到唔影响返回值。供 0x5e 手势（含拍头双 pad）、
+     * MCP stop_action、HTTP action/stop 共用。
+     */
+    public UbxErrorCode.API_ERROR_CODE stopActionWithRecovery() {
+        ubxPlayer.stop();
+        try {
+            UbxErrorCode.API_ERROR_CODE rec = playActionDirect(STOP_RECOVERY_ACTION_ID);
+            if (rec != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+                Log.w(TAG, "recovery not started: " + ubxPlayer.lastError());
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "recovery play failed", e);
+        }
+        return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+    }
+}

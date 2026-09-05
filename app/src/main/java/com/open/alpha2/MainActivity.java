@@ -79,7 +79,7 @@ import java.util.concurrent.TimeUnit;
 public class MainActivity extends Activity implements SensorEventListener {
     private static final String TAG = "MainActivity";
 
-    private static final String PREFS_NAME = "robotpanel";
+    static final String PREFS_NAME = "robotpanel";
     /** 自訂小智 server 設定 - 開關開了才用 PREF_XIAOZHI_OTA_URL, 關了就跟回
      *  XiaozhiOtaClient.DEFAULT_OTA_URL (官方 api.tenclass.net)。見
      *  handleXiaozhiApi() 的 "ota_config/get"/"ota_config/set" case 和
@@ -149,13 +149,8 @@ public class MainActivity extends Activity implements SensorEventListener {
     private static final int XIAOZHI_PHOTO_WIDTH = 480;
     private static final int XIAOZHI_PHOTO_HEIGHT = 360;
 
-    // 2026-08 新增: 用戶要求所有「停止」入口 (action/stop HTTP endpoint,
-    // self.robot.stop_action MCP tool, 小智面板「⏹ 全部停止」/拍頭都經這兩個
-    // 之一) 停掉現在正在播放的動作之後, 補播回「蹲下站起」這個動作做回位 - 停掉
-    // 不應該留下機身在一個中途/不端正的姿勢。id 來自
-    // blockly-actions-data.js/xiaozhi_actions.json 現有記錄的「蹲下站起」
-    // (nameCn: 蹲下站起, nameEn: squat down up)。
-    private static final String STOP_RECOVERY_ACTION_ID = "1510818174706";
+    // 2026-09: 一鍵全停回位動作 id 搬咗去 ActionDirect.STOP_RECOVERY_ACTION_ID
+    // (蹲下站起；停止語義不變，見 actionDirect.stopActionWithRecovery())。
 
     // 2026-08 新增: 記住最近一次 self.camera.take_photo 拿到的 "async, 未完成"
     // uuid (見 xiaozhiVisionExplainRequest() 的 comment) - 給之後 LLM (GPT-5)
@@ -170,8 +165,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 槽位起播、b*timeBase 自停、切帧打断），獨立於 currentMusicPlayer/currentRadioPlayer，
     // 唔經 filler 循環/EQ/頻譜。
     private final UbxPlayer ubxPlayer = new UbxPlayer();
-    /** 最近一次播放的 .ubx 文件（供 ubx/speed 播緊時由頭重播；三個播放入口都会更新）。 */
-    private volatile java.io.File lastPlayedFile;
+    // 2026-09: 動作直驅層 (actionInfo 尋址/播放/停止/回位) 搬咗去 ActionDirect，
+    // 共用上面同一個 ubxPlayer 實例 (servo 讀寫/ubx response 仲喺呢度直接用)。
+    private ActionDirect actionDirect;
     private final HeadKeyPoller headKeyPoller = new HeadKeyPoller();
     private HttpServer httpServer;
     // 小智 (XiaoZhi) AI 對話 - 獨立於機械人 AIDL 之外的 client-side WebSocket
@@ -481,25 +477,11 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 的是 EXIT (沒人), 1 = 上次收到的是 ENTER (有人) - 用 int 不用 boolean 來
     // 保留「未有數據」這個第三種狀態, 和 lastSonarDistanceCm 用 -1 的原因一樣。
     private volatile int lastPirTriggeredState = -1;
-    // 2026-08 新增: 真實胸口/頭部 MCU 韌體版本查詢 (CHEST_READ_VERSION 51 / 0x33)
-    // 透過 IAlpha2SerialPortService.sendCommand(51) 發送，MCU 回覆的完整 wire frame
-    // (F8 8F len 01 00 33 payload sum ED) 經 onListenSerialPortRcvData / HeaderRcvData
-    // 回調送回。這組 latch/raw/len 供 queryChestFirmwareVersion() 同步阻塞等待使用
-    // (HttpServer worker thread，非主 thread)，onReceive 回調一到就 countDown。
-    private volatile CountDownLatch chestVersionLatch;
-    private volatile byte[] chestVersionRaw;
-    private volatile int chestVersionLen;
-    // 2026-09 新增: 機械人 SN/UUID 直讀 (CHEST_READ_SID_EEPROM 55 / 0x37) 用的
-    // 同步等待狀態, 和上面 chestVersionLatch 同一個 pattern (HttpServer worker
-    // thread 發送後阻塞等 onDirectChestFrame/onListenSerialPortRcvData 回調
-    // countDown)。機身已無 alpha2services, robot.requestRobotUUID() 的 broadcast
-    // 永遠無人回覆, misc/request_uuid 改走這條 pure-direct 路徑 (見
-    // queryChestRobotUuid())。
-    private volatile CountDownLatch chestUuidLatch;
-    private volatile byte[] chestUuidRaw;
-    private volatile int chestUuidLen;
+    // 2026-09: 胸口版本/UUID 同步查詢成組搬咗去 ChestQuery (第一刀拆 god
+    // object)——latch/raw/len 狀態、幀解析、阻塞查詢全部喺嗰邊，呢度淨係留個 instance。
     // 2026-09 刪除: headerVersionLatch/Raw/Len (唯一讀者 queryHeaderFirmwareVersion
     // 無 caller，一併刪除)。
+    private ChestQuery chestQuery;
     // 2026-08 新增: 胸口升級狀態 (48/49/50 協議，見 ag_chess/com/ubtechinc/h/a/a$b.java)
     // 單例升級線程，升級中 chestUpgradeInProgress=true，進度 0-100，前端經 EventBus chest_upgrade_progress / chest_upgrade_done 輪詢
     private volatile boolean chestUpgradeInProgress = false;
@@ -667,7 +649,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 Log.i(TAG, "LocalAlpha2Services direct=" + direct + " (pure-direct, no alpha2services fallback)");
                 // 用戶要求：開app自動做一次蹲下站起（伸展筋骨），只在直驅就緒先播。
                 if (direct) {
-                    if (playActionDirect(STOP_RECOVERY_ACTION_ID)
+                    if (actionDirect.playActionDirect(ActionDirect.STOP_RECOVERY_ACTION_ID)
                             != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
                         Log.w(TAG, "startup squat not started: " + ubxPlayer.lastError());
                     }
@@ -1024,7 +1006,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 playStopCue(); // distinct "stop" cue - must track STREAM_MUSIC volume
                 // pure-direct：一键全停（动作截停+蹲下站起回位，含拍头双 pad 触发），
                 // 与 HTTP action/stop 同语义。旧 robot.action_* 已无服务承载。
-                stopActionWithRecovery();
+                actionDirect.stopActionWithRecovery();
                 stopAllSpeechPlayback();
                 stopLocalMusicPlayback();
                 stopRadioPlayback();
@@ -2040,7 +2022,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                     batteryLowSquatDone = true;
                     new Thread(new Runnable() {
                         @Override public void run() {
-                            if (playActionDirect(STOP_RECOVERY_ACTION_ID)
+                            if (actionDirect.playActionDirect(ActionDirect.STOP_RECOVERY_ACTION_ID)
                                     != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
                                 Log.w(TAG, "low-battery squat not started: " + ubxPlayer.lastError());
                             }
@@ -2217,6 +2199,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         // 觸發, 已經成段刪除; chest/head 回幀只走下面的 wireDirectFrameListeners()。
         // 舊 if(false) initSpeechApi 整塊 (約 100 行回調) 一併刪除。
         robot = new RobotStub(this);
+        chestQuery = new ChestQuery(this);
+        actionDirect = new ActionDirect(this, ubxPlayer);
         EventBus.get().publish("authorize", "{\"code\":1,\"info\":\"have offline authority\"}");
         Log.i(TAG, "Authorize result: 1 have offline authority");
 
@@ -2260,7 +2244,7 @@ public class MainActivity extends Activity implements SensorEventListener {
      * 兼容长式（F8 8F LEN 00 00 CMD PAYLOAD SUM ED，MCU 回复用此式）和短式
      * （F8 8F LEN CMD PAYLOAD SUM ED，本 app 发出的式样）；找不到帧头返回 null。
      */
-    private static byte[] stripSerialFrame(byte[] frame) {
+    static byte[] stripSerialFrame(byte[] frame) {
         if (frame == null) return null;
         int n = frame.length;
         for (int i = 0; i + 5 < n; i++) {
@@ -2339,42 +2323,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return;
             }
         }
-        // 2026-09 新增: UUID/SN 回覆 latch (cmd 55)。放喺版本 latch 之前優先處理,
-        // 避免版本查詢的 fallback 誤食 uuid 幀 (uuid 幀 plen 好長, 唔係 sonar ack /
-        // obstacle, 舊 fallback 條件會當佢係版本回覆)。
-        if (chestUuidLatch != null && chestUuidLatch.getCount() > 0) {
-            boolean isUuid = isUuidFrame(frame, frame.length)
-                    || (plen >= 1 && payload[0] == RobotWire.CHEST_READ_SID_EEPROM);
-            if (isUuid) {
-                chestUuidRaw = java.util.Arrays.copyOf(frame, frame.length);
-                chestUuidLen = frame.length;
-                chestUuidLatch.countDown();
-                return;
-            }
-        }
-        // 版本 latch：完整帧优先（isVersionFrame 认 F8 8F），否则按 payload fallback
-        if (chestVersionLatch != null && chestVersionLatch.getCount() > 0) {
-            boolean isVer = isVersionFrame(frame, frame.length, RobotWire.CHEST_READ_VERSION);
-            boolean isFallback = false;
-            if (!isVer) {
-                boolean isSonarAck = (plen == 2 && payload[0] == 4 && payload[1] == 0);
-                boolean isObstacle = (plen >= 2 && payload[0] == (byte) -127);
-                boolean isUuid = (plen >= 1 && payload[0] == RobotWire.CHEST_READ_SID_EEPROM);
-                if (plen >= 1 && !isSonarAck && !isObstacle && !isUuid) {
-                    isFallback = true;
-                }
-            }
-            if (isVer || isFallback) {
-                if (isVer) {
-                    chestVersionRaw = java.util.Arrays.copyOf(frame, frame.length);
-                    chestVersionLen = frame.length;
-                } else {
-                    chestVersionRaw = java.util.Arrays.copyOf(payload, plen);
-                    chestVersionLen = plen;
-                }
-                chestVersionLatch.countDown();
-            }
-        }
+        // 版本/UUID 回覆 latch 交給 ChestQuery 認領 (升級 ACK 上面已優先處理)。
+        if (chestQuery.onFrame(frame, payload, plen)) return;
     }
 
     // -- pure-direct 状态/发送 helpers（取代 robot.waitChestReady/isChestReady 等 binder 语义） --
@@ -2532,7 +2482,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                     actionId = resolveRandomActionId();
                 }
                 if (actionId != null) {
-                    playActionDirect(actionId); // pure-direct：旧 AIDL 已无服务承载
+                    actionDirect.playActionDirect(actionId); // pure-direct：旧 AIDL 已无服务承载
                 }
             }
         }, "IflytekSemanticAction").start();
@@ -3513,13 +3463,13 @@ public class MainActivity extends Activity implements SensorEventListener {
                 }
                 String chestFw;
                 try {
-                    chestFw = queryChestFirmwareVersion(1500);
+                    chestFw = chestQuery.queryFirmwareVersion(1500);
                 } catch (Exception e) {
                     chestFw = null;
                 }
                 String chestUuid;
                 try {
-                    chestUuid = queryChestRobotUuid(1500);
+                    chestUuid = chestQuery.queryRobotUuid(1500);
                 } catch (Exception e) {
                     chestUuid = null;
                 }
@@ -4951,7 +4901,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             public void run() {
                 String randomId = resolveRandomActionId();
                 if (randomId != null) {
-                    playActionDirect(randomId); // pure-direct：旧 AIDL 已无服务承载
+                    actionDirect.playActionDirect(randomId); // pure-direct：旧 AIDL 已无服务承载
                 }
             }
         }, "XiaozhiAutoRandomAction").start();
@@ -5885,7 +5835,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                                         + "\" - call self.robot.list_actions to see valid names";
                                 break;
                             }
-                            UbxErrorCode.API_ERROR_CODE code = playActionDirect(resolvedId);
+                            UbxErrorCode.API_ERROR_CODE code = actionDirect.playActionDirect(resolvedId);
                             isError = !isOk(code);
                             resultText = String.valueOf(code) + " (matched \"" + actionName
                                     + "\" -> id " + resolvedId + ")";
@@ -5893,7 +5843,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                         }
                         case "self.robot.stop_action": {
                             // pure-direct：一键全停+蹲下站起回位，和 HTTP action/stop 同语义。
-                            UbxErrorCode.API_ERROR_CODE code = stopActionWithRecovery();
+                            UbxErrorCode.API_ERROR_CODE code = actionDirect.stopActionWithRecovery();
                             isError = !isOk(code);
                             resultText = String.valueOf(code);
                             break;
@@ -5905,7 +5855,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                                 resultText = "no random-movement actions available";
                                 break;
                             }
-                            UbxErrorCode.API_ERROR_CODE code = playActionDirect(randomId);
+                            UbxErrorCode.API_ERROR_CODE code = actionDirect.playActionDirect(randomId);
                             isError = !isOk(code);
                             resultText = String.valueOf(code) + " (played random action id " + randomId + ")";
                             break;
@@ -6315,7 +6265,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             case "chest/version": {
                 // 只回 chest MCU 真實韌體版本 (sendCommand 51)
                 long timeoutMs = ApiValidator.optionalLong(query, "timeout", 1500L);
-                String v = queryChestFirmwareVersion(timeoutMs);
+                String v = chestQuery.queryFirmwareVersion(timeoutMs);
                 if (v != null) {
                     return HttpServer.ApiResponse.ok("{\"ok\":true,\"version\":\"" + jsonSafe(v) + "\"}");
                 } else {
@@ -6367,13 +6317,13 @@ public class MainActivity extends Activity implements SensorEventListener {
             // -- Actions (pure-direct: actionInfo.txt + UbxPlayer，机身已无 alpha2services，
             // 旧 AIDL action_* 一律 NOT_INIT，此处不再经过 RobotStub) --------------
             case "action/list":
-                return actionListDirect();
+                return actionDirect.actionListDirect();
             case "action/play":
-                return actionPlayDirect(ApiValidator.require(query, "name"));
+                return actionDirect.actionPlayDirect(ApiValidator.require(query, "name"));
             case "action/stop": {
                 // 用戶要求「停止」要連帶做返「蹲下站起」回位動作：与手势总停/MCP 共用
                 // stopActionWithRecovery()，回位播唔播到唔影響停止本身回 true。
-                return codeResponse(stopActionWithRecovery());
+                return codeResponse(actionDirect.stopActionWithRecovery());
             }
 
             // -- Ubx 直播（供前端动作 tab：api() 只发 /api/alpha2/*，故在此挂一份；
@@ -6954,7 +6904,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                     robot.requestRobotUUID();
                 } catch (Throwable ignore) {
                 }
-                String uuid = queryChestRobotUuid(2000);
+                String uuid = chestQuery.queryRobotUuid(2000);
                 if (uuid != null && !uuid.isEmpty()) {
                     EventBus.get().publish("robot_uuid", "{\"uuid\":\"" + jsonSafe(uuid) + "\"}");
                     return HttpServer.ApiResponse.ok(
@@ -6964,8 +6914,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // 字串), 後者連 raw hex 一齊回, 等 logcat/前端可以直接對。
                 String diag = "";
                 try {
-                    if (chestUuidRaw != null) {
-                        diag = " raw=" + toHex(chestUuidRaw, chestUuidLen);
+                    byte[] uuidRaw = chestQuery.getLastUuidRaw();
+                    if (uuidRaw != null) {
+                        diag = " raw=" + toHex(uuidRaw, uuidRaw.length);
                     }
                 } catch (Throwable ignore) {
                 }
@@ -7041,7 +6992,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 if (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
                     try {
                         getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
-                                .putInt(PREF_UUID_WRITTEN_LEN, sn.length).apply();
+                                .putInt(ChestQuery.PREF_UUID_WRITTEN_LEN, sn.length).apply();
                     } catch (Throwable ignore) {
                     }
                 }
@@ -8303,76 +8254,9 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     // 2026-09 移除: 舊 binder actionList() (經 robot.action_getActionList 等
     // 5s latch)——機身已無 alpha2services，只會回 NOT_INIT。action/list 一律行
-    // 下面 actionListDirect() (讀 actionInfo.txt + UbxPlayer)。
-    // -- Pure-direct actions (actionInfo.txt + UbxPlayer) -----------------------
-    // actionInfo.txt 行格式（GBK 编码）：<fileId>##<nameCn>##<nameEn>##<type>，
-    // 与旧 AIDL getActionList 行顺序不同（彼为 id/type/nameCn/nameEn），此处重排，
-    // 前端收到的 JSON 形状与以前完全一致，app-actions.js 无需改动。
-    private static final String ACTION_DIR = "/sdcard/actions";
-    private static final String ACTION_INFO = "/sdcard/actions/actionInfo.txt";
-    private List<String[]> actionInfoCache; // 每项 [fileId, nameCn, nameEn, type]
-
-    private synchronized List<String[]> loadActionInfo() {
-        if (actionInfoCache != null) return actionInfoCache;
-        List<String[]> out = new ArrayList<>();
-        try {
-            java.io.File f = new java.io.File(ACTION_INFO);
-            byte[] data = new byte[(int) f.length()];
-            java.io.FileInputStream in = new java.io.FileInputStream(f);
-            try {
-                int off = 0;
-                while (off < data.length) {
-                    int n = in.read(data, off, data.length - off);
-                    if (n < 0) break;
-                    off += n;
-                }
-            } finally {
-                try { in.close(); } catch (Exception ignore) {}
-            }
-            String text = new String(data, "GBK");
-            for (String line : text.split("\n")) {
-                line = line.trim();
-                if (line.isEmpty()) continue;
-                String[] cols = line.split("##", -1);
-                if (cols.length < 4) continue;
-                out.add(new String[]{cols[0].trim(), cols[1].trim(), cols[2].trim(), cols[3].trim()});
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "loadActionInfo failed", e);
-        }
-        actionInfoCache = out;
-        return out;
-    }
-
-    /** 动作名/ID 解析：fileId > nameEn > nameCn，另支持 xxx.ubx / 绝对路径直通。 */
-    private java.io.File resolveActionFile(String name) {
-        if (name == null) return null;
-        String n = name.trim();
-        if (n.isEmpty()) return null;
-        if (n.indexOf('/') >= 0 || n.endsWith(".ubx")) {
-            java.io.File direct = n.indexOf('/') >= 0 ? new java.io.File(n) : new java.io.File(ACTION_DIR + "/" + n);
-            if (direct.isFile()) return direct;
-        }
-        List<String[]> info = loadActionInfo();
-        String id = null;
-        for (String[] r : info) {
-            if (r[0].equals(n)) { id = r[0]; break; }
-        }
-        if (id == null) {
-            for (String[] r : info) {
-                if (r[2].equalsIgnoreCase(n)) { id = r[0]; break; }
-            }
-        }
-        if (id == null) {
-            for (String[] r : info) {
-                if (r[1].equals(n)) { id = r[0]; break; }
-            }
-        }
-        if (id == null) return null;
-        java.io.File f = new java.io.File(ACTION_DIR + "/" + id + ".ubx");
-        return f.isFile() ? f : null;
-    }
-
+    // ActionDirect.actionListDirect() (讀 actionInfo.txt + UbxPlayer)。
+    // 2026-09: 動作檔尋址層 (ACTION_DIR/INFO + loadActionInfo + resolveActionFile)
+    // 搬咗去 ActionDirect (拆 god object 第二刀)，以下淨返 ubx/servo 共用實現。
     // -- Ubx 直播共用实现（/api/direct/ubx/* 与 /api/alpha2/ubx/* 同调；
     // 抢占式：播新动作自动停旧动作，与原厂 playActionName 打断语义一致）--
     private HttpServer.ApiResponse ubxListResponse() {
@@ -8409,7 +8293,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         ubxPlayer.stop(); // 抢占：停旧播新
         boolean started = ubxPlayer.play(ubx, f.getName(), dm.chest(), f);
         if (!started) return HttpServer.ApiResponse.error("cannot start: " + ubxPlayer.lastError());
-        lastPlayedFile = f;
+        actionDirect.setLastPlayedFile(f);
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"name\":\"" + jsonSafe(f.getName())
                 + "\",\"total\":" + ubxPlayer.total() + "}");
     }
@@ -8421,7 +8305,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         // 播緊時即時生效：用新速度由頭重播同一文件（内部快照隔离，旧计划安全交接）。
         boolean restarted = false;
-        java.io.File last = lastPlayedFile;
+        java.io.File last = actionDirect.getLastPlayedFile();
         if (ubxPlayer.isPlaying() && last != null && last.isFile()) {
             try {
                 UbxFile rubx = UbxParser.parseFile(last);
@@ -8429,7 +8313,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 if (rdm.chest().isAvailable()) {
                     ubxPlayer.stop();
                     restarted = ubxPlayer.play(rubx, last.getName(), rdm.chest(), last);
-                    if (restarted) lastPlayedFile = last;
+                    if (restarted) actionDirect.setLastPlayedFile(last);
                 }
             } catch (Exception e) {
                 Log.w(TAG, "speed restart failed", e);
@@ -8473,86 +8357,8 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     // 2026-09 移除: servoSendAll()——零調用 (direct servo/all 已內聯同一邏輯)。
-    private HttpServer.ApiResponse actionListDirect() {
-        List<String[]> info = loadActionInfo();
-        StringBuilder sb = new StringBuilder("{\"ok\":true,\"actions\":[");
-        boolean first = true;
-        for (String[] r : info) {
-            if (!first) sb.append(',');
-            first = false;
-            sb.append("{\"id\":\"").append(jsonSafe(r[0])).append("\",")
-                    .append("\"type\":\"").append(jsonSafe(r[3])).append("\",")
-                    .append("\"nameCn\":\"").append(jsonSafe(r[1])).append("\",")
-                    .append("\"nameEn\":\"").append(jsonSafe(r[2])).append("\"}");
-        }
-        sb.append("]}");
-        return HttpServer.ApiResponse.ok(sb.toString());
-    }
-
-    private HttpServer.ApiResponse actionPlayDirect(String name) {
-        java.io.File f = resolveActionFile(name);
-        if (f == null) return HttpServer.ApiResponse.error("unknown action: " + name);
-        HardwareDirectManager dm = HardwareDirectManager.get(this);
-        if (!dm.chest().isAvailable()) return HttpServer.ApiResponse.error("chest not available");
-        UbxFile ubx;
-        try {
-            ubx = UbxParser.parseFile(f);
-        } catch (Exception e) {
-            return HttpServer.ApiResponse.error("parse failed: " + e.getMessage());
-        }
-        ubxPlayer.stop(); // 抢占：播新自动停旧
-        if (!ubxPlayer.play(ubx, f.getName(), dm.chest(), f)) {
-            return HttpServer.ApiResponse.error("cannot start: " + ubxPlayer.lastError());
-        }
-        lastPlayedFile = f;
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"code\":\"API_ERROR_SUCCEED\",\"name\":\""
-                + jsonSafe(f.getName()) + "\",\"total\":" + ubxPlayer.total() + "}");
-    }
-
-    /**
-     * 内部共用：pure-direct 播指定动作（fileId/中英文名/xxx.ubx 皆可），抢占式——
-     * 先停当前再播，与原厂 playActionName 打断语义一致。供手势总停、MCP tool、
-     * 语义动作、随机 filler 共用，HTTP action/play 另有「播緊先報錯」守卫故不经此。
-     */
-    private UbxErrorCode.API_ERROR_CODE playActionDirect(String nameOrId) {
-        java.io.File f = resolveActionFile(nameOrId);
-        if (f == null) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
-        HardwareDirectManager dm = HardwareDirectManager.get(this);
-        if (!dm.chest().isAvailable()) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
-        UbxFile ubx;
-        try {
-            ubx = UbxParser.parseFile(f);
-        } catch (Exception e) {
-            Log.w(TAG, "playActionDirect parse failed " + f, e);
-            return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
-        }
-        ubxPlayer.stop();
-        if (!ubxPlayer.play(ubx, f.getName(), dm.chest(), f)) {
-            Log.w(TAG, "playActionDirect not started: " + ubxPlayer.lastError());
-            return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
-        }
-        lastPlayedFile = f;
-        return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
-    }
-
-    /**
-     * 内部共用：一键全停（动作部分）——截停 UbxPlayer 后补播 STOP_RECOVERY_ACTION_ID
-     * 蹲下站起回位。回位播唔播到唔影响返回值。供 0x5e 手势（含拍头双 pad）、
-     * MCP stop_action、HTTP action/stop 共用。
-     */
-    private UbxErrorCode.API_ERROR_CODE stopActionWithRecovery() {
-        ubxPlayer.stop();
-        try {
-            UbxErrorCode.API_ERROR_CODE rec = playActionDirect(STOP_RECOVERY_ACTION_ID);
-            if (rec != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-                Log.w(TAG, "recovery not started: " + ubxPlayer.lastError());
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "recovery play failed", e);
-        }
-        return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
-    }
-
+    // 2026-09: actionListDirect / actionPlayDirect / playActionDirect /
+    // stopActionWithRecovery 搬咗去 ActionDirect (拆 god object 第二刀)。
     // 动作配乐已并入 UbxPlayer 内 voice 线（a/j/a/o 官方语义），此处不再另起 MediaPlayer。
     // 配乐寻址规则见 UbxPlayer.resolveVoiceFile：ubx去扩展名/music名，缺省退回目录首首 mp3。
     // 2026-09: 舊 require()/queryOrDefault() 已全量遷移至 ApiValidator, 此處不再保留
@@ -8601,7 +8407,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 + "\",\"bindReady\":" + ready + "}");
     }
 
-    private static String jsonSafe(String s) {
+    static String jsonSafe(String s) {
         if (s == null) return "";
         // 2026-08 修正: 之前只 escape 反斜線和雙引號, 沒處理換行/回車/tab -
         // XiaozhiOtaClient 的 server 回應的 activationMessage 實測證實會帶著
@@ -8978,409 +8784,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         registerReceiver(connectivityReceiver, filter);
     }
 
-    // -- 真實 MCU 韌體版本查詢 (2026-08 新增 chest/head) ---------------------------
-    /**
-     * 判斷一段 raw serial 回調是否為版本幀 (CHEST_READ_VERSION / HEADER_READ_VERSION 51)。
-     * 標準 wire 格式: F8 8F len 01/00 00 33 payload sum ED，其中 33h=51。
-     * 為兼容多次連幀或 SDK 預剝 header 的情況，掃描整段 bytes 內任何 F8 8F 窗口。
-     */
-    private static boolean isVersionFrame(byte[] bytes, int len, byte expectedCmd) {
-        if (bytes == null || len < 8) return false;
-        int n = Math.min(len, bytes.length);
-        for (int i = 0; i + 5 < n; i++) {
-            if ((bytes[i] & 0xFF) == 0xF8 && (bytes[i + 1] & 0xFF) == 0x8F) {
-                if (i + 5 >= n) continue;
-                if (bytes[i + 5] == expectedCmd) {
-                    // 進一步確認：len byte 與實際長度大致相符 (7+payloadLen)
-                    // 不強校驗 checksum，避免韌體差異導致誤判
-                    return true;
-                }
-            }
-        }
-        // 兼容 SDK 已剝頭只剩 payload 的極端情況：單字節就是 cmd 的回顯
-        // 此分支由外層 fallback 邏輯處理，這裡只認標準幀
-        return false;
-    }
-
-    /**
-     * 從版本幀中抽出 payload 並解碼為可讀字串。
-     * 1) 若為標準 F8 8F 幀，payload = bytes[6 .. 6+payloadLen-1], payloadLen = (lenByte &0xFF)-7
-     * 2) 若非標準幀（fallback），整段 bytes 即 payload
-     * 解碼策略：先嘗試 ASCII 打印字符，若全為可打印則直接返回；否則返回點分十進制 (例如 1.18.3)
-     * 或 hex 兜底。
-     */
-    private static String parseVersionFrame(byte[] bytes, int len) {
-        if (bytes == null || len <= 0) return null;
-        int n = Math.min(len, bytes.length);
-        byte[] payload = null;
-        int payloadLen = 0;
-        // 嘗試按標準幀解析
-        for (int i = 0; i + 5 < n; i++) {
-            if ((bytes[i] & 0xFF) == 0xF8 && (bytes[i + 1] & 0xFF) == 0x8F) {
-                if (bytes[i + 5] == RobotWire.CHEST_READ_VERSION || bytes[i + 5] == RobotWire.HEADER_READ_VERSION) {
-                    int lenByte = bytes[i + 2] & 0xFF;
-                    int pl = lenByte - 7;
-                    if (pl < 0) pl = 0;
-                    if (i + 6 + pl <= n) {
-                        payload = new byte[pl];
-                        System.arraycopy(bytes, i + 6, payload, 0, pl);
-                        payloadLen = pl;
-                        break;
-                    }
-                }
-            }
-        }
-        if (payload == null) {
-            // Fallback：整段即 payload（SDK 可能已拆掉 header）
-            // 但若開頭仍是 F8 8F 則跳過 header 嘗試最後一次剝離
-            if (n >= 6 && (bytes[0] & 0xFF) == 0xF8 && (bytes[1] & 0xFF) == 0x8F) {
-                int lenByte = bytes[2] & 0xFF;
-                int pl = lenByte - 7;
-                if (pl > 0 && 6 + pl <= n) {
-                    payload = new byte[pl];
-                    System.arraycopy(bytes, 6, payload, 0, pl);
-                    payloadLen = pl;
-                } else {
-                    payload = java.util.Arrays.copyOf(bytes, n);
-                    payloadLen = n;
-                }
-            } else {
-                payload = java.util.Arrays.copyOf(bytes, n);
-                payloadLen = n;
-            }
-        }
-        if (payloadLen == 0) return "(empty payload)";
-        // 去掉尾部 0x00 padding
-        int trim = payloadLen;
-        while (trim > 0 && payload[trim - 1] == 0) trim--;
-        if (trim == 0) return toHex(payload, payloadLen);
-        // 先嘗試直接全可打印
-        boolean allPrintable = true;
-        for (int i = 0; i < trim; i++) {
-            int b = payload[i] & 0xFF;
-            if (b < 0x20 || b > 0x7E) { allPrintable = false; break; }
-        }
-        if (allPrintable) {
-            String s = new String(payload, 0, trim, StandardCharsets.US_ASCII).trim();
-            s = s.replaceAll("[^A-Za-z0-9._\\-]", "");
-            if (!s.isEmpty()) return s;
-        }
-        // 兼容真機實測：payload 開頭夾帶 cmd(0x33) + length(0x00) 等非打印前綴
-        // 掃描最長可打印連續段（例如 "ALPHA2Q-CHEST-B-V352-171031"）
-        int bestStart = -1, bestLen = 0, curStart = -1;
-        for (int i = 0; i <= trim; i++) {
-            boolean printable = i < trim && (payload[i] & 0xFF) >= 0x20 && (payload[i] & 0xFF) <= 0x7E;
-            if (printable) {
-                if (curStart == -1) curStart = i;
-            } else {
-                if (curStart != -1) {
-                    int curLen = i - curStart;
-                    if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; }
-                    curStart = -1;
-                }
-            }
-        }
-        if (bestLen >= 3) {
-            String s = new String(payload, bestStart, bestLen, StandardCharsets.US_ASCII).trim();
-            s = s.replaceAll("[^A-Za-z0-9._\\-]", "");
-            // 若最長段看起來像版本（含 V 或 - 或 . 或 ALPHA），直接返回
-            if (s.length() >= 3 && (s.contains("V") || s.contains("-") || s.contains(".") || s.contains("ALPHA"))) {
-                return s;
-            }
-            if (s.length() >= 4) return s;
-        }
-        // 二進制版本號：常見為 3-4 bytes 各為 major/minor/patch/build
-        if (trim <= 8) {
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < trim; i++) {
-                if (i > 0) sb.append('.');
-                sb.append(payload[i] & 0xFF);
-            }
-            return sb.toString() + " (hex:" + toHex(payload, trim) + ")";
-        }
-        // 兜底：返回過濾後的 ASCII + hex 對照，方便日後診斷
-        String filtered = new String(payload, 0, trim, StandardCharsets.US_ASCII).replaceAll("[^\\x20-\\x7E]", "").trim();
-        if (!filtered.isEmpty() && filtered.length() >= 4) return filtered;
-        return toHex(payload, trim);
-    }
-
-    /**
-     * 同步阻塞查詢胸口 MCU 真實韌體版本。
-     * 必須在非主 thread 調用 (HttpServer worker thread)，否則 waitForInitComplete 會立刻返回。
-     * @param timeoutMs 最多等幾耐 (建議 1500-2000ms)
-     * @return 解碼後版本字串，失敗回 null
-     */
-    private String queryChestFirmwareVersion(long timeoutMs) {
-        // pure-direct: 经 /dev/ttyS1 直发 cmd 51（旧 robot.chest_readFirmwareVersion 走 binder，已停用）。
-        // 此方法已保证不在主 thread。
-        if (!directChestReady()) {
-            Log.w(TAG, "queryChestFirmwareVersion: chest not ready (pure-direct)");
-            return null;
-        }
-        CountDownLatch latch = new CountDownLatch(1);
-        chestVersionLatch = latch;
-        chestVersionRaw = null;
-        chestVersionLen = 0;
-        boolean sent = HardwareDirectManager.get(this).chest().readVersion();
-        Log.i(TAG, "chest_readFirmwareVersion direct send -> " + sent);
-        if (!sent) {
-            chestVersionLatch = null;
-            // Fallback：用标准长式 raw 帧直接发送 (F8 8F 07 00 00 33 3A ED)
-            try {
-                byte[] rawFrame = new byte[]{(byte)0xF8,(byte)0x8F,0x07,0x00,0x00,0x33,0x3A,(byte)0xED};
-                CountDownLatch latch2 = new CountDownLatch(1);
-                chestVersionLatch = latch2;
-                boolean sent2 = HardwareDirectManager.get(this).chest().sendRaw(rawFrame);
-                Log.i(TAG, "chest_sendRaw fallback send -> " + sent2);
-                if (sent2) {
-                    boolean ok2 = latch2.await(timeoutMs, TimeUnit.MILLISECONDS);
-                    if (ok2 && chestVersionRaw != null) {
-                        String v = parseVersionFrame(chestVersionRaw, chestVersionLen);
-                        Log.i(TAG, "chest version (raw fallback) raw=" + toHex(chestVersionRaw,chestVersionLen) + " parsed=" + v);
-                        return v;
-                    }
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "chest raw fallback failed", e);
-            } finally {
-                chestVersionLatch = null;
-            }
-            return null;
-        }
-        try {
-            boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
-            if (!ok) {
-                Log.w(TAG, "queryChestFirmwareVersion timeout " + timeoutMs + "ms, try raw fallback");
-                // timeout 仍無回覆，補一次 raw 幀再等半個週期
-                chestVersionLatch = null;
-                try {
-                    byte[] rawFrame = new byte[]{(byte)0xF8,(byte)0x8F,0x07,0x00,0x00,0x33,0x3A,(byte)0xED};
-                    CountDownLatch latch2 = new CountDownLatch(1);
-                    chestVersionLatch = latch2;
-                    chestVersionRaw = null; chestVersionLen = 0;
-                    boolean sent2 = HardwareDirectManager.get(this).chest().sendRaw(rawFrame);
-                    Log.i(TAG, "chest timeout raw fallback send -> " + sent2);
-                    if (sent2) {
-                        boolean ok2 = latch2.await(Math.max(800, timeoutMs/2), TimeUnit.MILLISECONDS);
-                        if (ok2 && chestVersionRaw != null) {
-                            String v2 = parseVersionFrame(chestVersionRaw, chestVersionLen);
-                            Log.i(TAG, "chest version (timeout raw fallback) raw=" + toHex(chestVersionRaw,chestVersionLen) + " parsed=" + v2);
-                            return v2;
-                        }
-                    }
-                } catch (Exception e2) {
-                    Log.w(TAG, "chest timeout raw fallback failed", e2);
-                } finally {
-                    chestVersionLatch = null;
-                }
-                return null;
-            }
-            if (chestVersionRaw == null) {
-                Log.w(TAG, "queryChestFirmwareVersion latch counted but raw==null");
-                return null;
-            }
-            String v = parseVersionFrame(chestVersionRaw, chestVersionLen);
-            Log.i(TAG, "chest version raw=" + toHex(chestVersionRaw, chestVersionLen) + " parsed=" + v);
-            return v;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
-        } finally {
-            chestVersionLatch = null;
-        }
-    }
-
-    /**
-     * 2026-09 新增: UUID/SN 直讀回覆是否為 cmd 55 幀 (CHEST_READ_SID_EEPROM)。
-     * 同 isVersionFrame 的掃描邏輯, 認標準 F8 8F 長式幀的 cmd byte (i+5)。
-     * 已剝頭只剩 payload 的情況由外層 fallback (payload[0]==55) 覆蓋。
-     */
-    private static boolean isUuidFrame(byte[] bytes, int len) {
-        if (bytes == null || len < 8) return false;
-        int n = Math.min(len, bytes.length);
-        for (int i = 0; i + 5 < n; i++) {
-            if ((bytes[i] & 0xFF) == 0xF8 && (bytes[i + 1] & 0xFF) == 0x8F) {
-                if (i + 5 >= n) continue;
-                if (bytes[i + 5] == RobotWire.CHEST_READ_SID_EEPROM) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * 2026-09 新增: 從 cmd 55 回覆幀抽出 SN/UUID 字串。
-     * 實機證據 (見 misc/set_uuid comment 的 hex dump
-     * "f8 8f 28 01 00 37 00 42 41 ... 00 00...00 3c ed"): 標準長式幀,
-     * cmd=0x37 後的 payload = [flag byte 0x00] + SN ASCII + 0x00 padding。
-     * 解碼和 RobotEventReceiver.decodeUuidExtra / 舊 broadcast 路徑完全一致:
-     * ASCII 解碼 -> 切掉第一個 \0 之後的東西 -> 白名單只留英數/-/_ (蓋掉舊 SN
-     * 較長時殘留的非零垃圾 byte, 見 2026-08 v4 修正)。
-     * 找不到 cmd 55 幀 / 洗完是空字串就回 null。
-     */
-    private static String parseRobotUuidFrame(byte[] bytes, int len) {
-        if (bytes == null || len <= 0) return null;
-        int n = Math.min(len, bytes.length);
-        byte[] snBytes = null;
-        for (int i = 0; i + 5 < n; i++) {
-            if ((bytes[i] & 0xFF) == 0xF8 && (bytes[i + 1] & 0xFF) == 0x8F) {
-                if (i + 5 >= n) continue;
-                if (bytes[i + 5] != RobotWire.CHEST_READ_SID_EEPROM) continue;
-                int lenByte = bytes[i + 2] & 0xFF;
-                int pl = lenByte - 7;
-                if (pl < 0) pl = 0;
-                if (i + 6 + pl <= n) {
-                    snBytes = new byte[pl];
-                    System.arraycopy(bytes, i + 6, snBytes, 0, pl);
-                    break;
-                }
-            }
-        }
-        if (snBytes == null) {
-            // Fallback: 已剝頭的 payload (bytes[0] 即 cmd, 見 stripSerialFrame /
-            // 舊 AIDL onListenSerialPortRcvData 格式)。
-            byte[] payload = stripSerialFrame(bytes);
-            if (payload != null && payload.length >= 1
-                    && payload[0] == RobotWire.CHEST_READ_SID_EEPROM) {
-                snBytes = java.util.Arrays.copyOfRange(payload, 1, payload.length);
-            } else if (n >= 1 && bytes[0] == RobotWire.CHEST_READ_SID_EEPROM) {
-                snBytes = java.util.Arrays.copyOfRange(bytes, 1, n);
-            }
-        }
-        if (snBytes == null || snBytes.length == 0) return null;
-        String s;
-        try {
-            s = new String(snBytes, StandardCharsets.US_ASCII);
-        } catch (Exception e) {
-            return null;
-        }
-        // 2026-09 實測修正 (logcat 真幀 f8 8f 28 00 00 37 00 42 41...):
-        // payload 第一個 byte 是 flag 0x00, 舊寫法 indexOf('\0') 切第一個 \0
-        // 會切出空字串 -> 回 null ->「無法讀取 uuid」。先跳過開頭的 flag/padding
-        // (SN 合法字元只有英數/-/_), 再切第一個 \0 之後的尾部 padding, 最後白名單
-        // 過濾。注意尾段可能有非零殘留 (舊 SN 較長時): 白名單留唔到佢哋, 完整值照
-        // 顯示由用戶對實體貼紙核對 (見 misc/request_uuid 的 log)。
-        int start = 0;
-        while (start < s.length() && !isUuidChar(s.charAt(start))) start++;
-        s = s.substring(start);
-        int cut = s.indexOf('\0');
-        if (cut >= 0) {
-            s = s.substring(0, cut);
-        }
-        s = s.replaceAll("[^A-Za-z0-9\\-_]", "").trim();
-        return s.isEmpty() ? null : s;
-    }
-
-    /** SN/UUID 合法字元 (見 misc/set_uuid 輸入驗證): 英數/-/_ 。 */
-    private static boolean isUuidChar(char c) {
-        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
-                || (c >= '0' && c <= '9') || c == '-' || c == '_';
-    }
-
-    /** 已知 SN 版式 (實機貼紙 + uuidGenerateRandom 範圍): BAF006UBT + 8 digits。 */
-    private static final java.util.regex.Pattern KNOWN_SN_PATTERN =
-            java.util.regex.Pattern.compile("BAF006UBT\\d{8}");
-
-    /** set_uuid 經本 App 成功寫入的上次 SN 長度, 下次讀回用來截尾 (見
-     *  truncateUuidTail)。無記錄 (-1) 就行 pattern/大小寫規則。 */
-    private static final String PREF_UUID_WRITTEN_LEN = "uuid_written_len";
-
-    /**
-     * 2026-09 新增: 斬走 EEPROM 尾段非零殘留, 只留真 SN。
-     * 背景: 用戶已對實體貼紙確認, 真 SN 係 17 字 "BAF006UBT10000001",
-     * 讀返嚟 31 字尾段 "yy44567oumamae" 係舊長 SN 被短 SN 蓋過之後的殘留
-     * (EEPROM 欄位定長, 寫幾多 byte 就蓋幾多, 其餘唔郁)。規則按優先序:
-     * 1) preferredLen (本 App 上次 set_uuid 寫入長度, 有記錄就最準);
-     * 2) BAF006UBT+8digits 版式對中就取該段;
-     * 3) UBTech SN 全大寫+數字, 第一個小寫字母起即殘留 (截完要有返 >=8 字,
-     *    否則當 SN 本身含小寫, 回全串唔斬);
-     * 4) 乜都對唔中就回全串 (寧願顯示多唔顯示少)。
-     * 回 null 只代表輸入本身空/全非法。
-     */
-    static String truncateUuidTail(String s, int preferredLen) {
-        if (s == null || s.isEmpty()) return null;
-        if (preferredLen >= 1 && preferredLen <= 31 && s.length() > preferredLen) {
-            String t = s.substring(0, preferredLen).trim();
-            if (!t.isEmpty()) return t;
-        }
-        java.util.regex.Matcher m = KNOWN_SN_PATTERN.matcher(s);
-        if (m.find()) return m.group();
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c >= 'a' && c <= 'z') {
-                String t = s.substring(0, i).replaceAll("[^A-Za-z0-9\\-_]", "").trim();
-                if (t.length() >= 8) return t;
-                break;
-            }
-        }
-        return s;
-    }
-
-    /**
-     * 2026-09 新增: 同步阻塞查詢胸口 EEPROM 的 SN/UUID (pure-direct)。
-     * 取代 robot.requestRobotUUID() 的 broadcast 路徑 —— 機身已無 alpha2services,
-     * 那個 broadcast 發出去永遠無人回覆 "com.ubtechinc.robot_uuid.info",
-     * 這就是「無法讀取 uuid」的根因。
-     * 必須在非主 thread 調用 (HttpServer worker thread), 和
-     * queryChestFirmwareVersion() 同一個約束。
-     * @param timeoutMs 最多等幾耐 (建議 2000ms)
-     * @return 乾淨 SN 字串, 失敗回 null
-     */
-    private String queryChestRobotUuid(long timeoutMs) {
-        if (!directChestReady()) {
-            Log.w(TAG, "queryChestRobotUuid: chest not ready (pure-direct)");
-            return null;
-        }
-        CountDownLatch latch = new CountDownLatch(1);
-        chestUuidLatch = latch;
-        chestUuidRaw = null;
-        chestUuidLen = 0;
-        boolean sent;
-        try {
-            sent = HardwareDirectManager.get(this).chest().readSidEeprom();
-        } catch (Exception e) {
-            Log.w(TAG, "queryChestRobotUuid send failed", e);
-            chestUuidLatch = null;
-            return null;
-        }
-        Log.i(TAG, "chest_readSidEeprom direct send -> " + sent);
-        if (!sent) {
-            chestUuidLatch = null;
-            return null;
-        }
-        try {
-            boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
-            if (!ok) {
-                Log.w(TAG, "queryChestRobotUuid timeout " + timeoutMs + "ms");
-                return null;
-            }
-            if (chestUuidRaw == null) {
-                Log.w(TAG, "queryChestRobotUuid latch counted but raw==null");
-                return null;
-            }
-            String uuid = parseRobotUuidFrame(chestUuidRaw, chestUuidLen);
-            // 2026-09: 斬尾 (見 truncateUuidTail) + 記 log 對照: raw 係全幀 hex,
-            // parsed 係截完的真 SN。
-            if (uuid != null) {
-                int prefLen = -1;
-                try {
-                    prefLen = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                            .getInt(PREF_UUID_WRITTEN_LEN, -1);
-                } catch (Throwable ignore) {
-                }
-                uuid = truncateUuidTail(uuid, prefLen);
-            }
-            Log.i(TAG, "chest uuid raw=" + toHex(chestUuidRaw, chestUuidLen) + " parsed=" + uuid);
-            return uuid;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
-        } finally {
-            chestUuidLatch = null;
-        }
-    }
-
+    // 2026-09: 真實 MCU 韌體版本/UUID 查詢成組搬咗去 ChestQuery (拆 god object
+    // 第一刀)——以下淨返個位，邏輯一字不改喺嗰邊。
     // 2026-09 刪除: queryHeaderFirmwareVersion() - 無 caller (頭版本無 endpoint、
     // 前端無入口)。胸板 queryChestFirmwareVersion() 保留。
 
@@ -9423,7 +8828,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         try {
             boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
             if (!ok) {
-                Log.w(TAG, "chest upgrade ack timeout cmd=" + expectedCmd + " raw=" + (chestVersionRaw!=null?toHex(chestVersionRaw,chestVersionLen):"null"));
+                byte[] lastVer = chestQuery.getLastVersionRaw();
+                Log.w(TAG, "chest upgrade ack timeout cmd=" + expectedCmd + " raw=" + (lastVer!=null?toHex(lastVer,lastVer.length):"null"));
                 // 超時後印最近一次 chest_rcv 原始幀以便診斷 170 頁這類數據校驗失敗
                 return false;
             }
@@ -9439,8 +8845,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     private void resetChestUpgradeState() {
         try {
             chestUpgradeLatch = null;
-            chestVersionLatch = null;
-            chestUuidLatch = null;
+            chestQuery.reset();
             Thread.sleep(400);
         } catch (Exception ignored) {}
     }
@@ -9582,7 +8987,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     /** Formats raw serial bytes as space-separated uppercase hex, matching the format
      *  used by the upstream SDK's HelloAlpha example for the same callbacks. */
-    private static String toHex(byte[] bytes, int len) {
+    static String toHex(byte[] bytes, int len) {
         if (bytes == null || len <= 0) {
             return "(empty)";
         }

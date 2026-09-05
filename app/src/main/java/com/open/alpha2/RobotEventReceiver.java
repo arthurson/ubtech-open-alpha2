@@ -401,9 +401,9 @@ public class RobotEventReceiver extends BroadcastReceiver {
         }
         s = s.replaceAll("[^A-Za-z0-9\\-_]", "").trim();
         if (s.isEmpty()) return null;
-        // 2026-09: 斬尾 (EEPROM 非零殘留, 見 MainActivity.truncateUuidTail)。
+        // 2026-09: 斬尾 (EEPROM 非零殘留, 見 ChestQuery.truncateUuidTail)。
         // broadcast 路徑無 SharedPreferences 寫入長度可用, 傳 -1 行 pattern/大小寫規則。
-        return MainActivity.truncateUuidTail(s, -1);
+        return ChestQuery.truncateUuidTail(s, -1);
     }
 
     private static int toUnsignedByteInt(Object value) {
