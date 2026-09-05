@@ -21,6 +21,9 @@ import java.util.Map;
  *   MCP fuzzy + 語意路徑仲用緊同一份，唔拆散)。
  * 所有 synchronized 鎖由 MainActivity.this 轉做自己 (調用方全部經同一個
  * instance，互斥等價)；排程用傳入嘅 mainHandler (main looper)。
+ * 2026-09 dispatcher Phase 1 第四刀加：audio/volume/get、audio/volume/set
+ * (systemVolumeGet/Set — STREAM_MUSIC 系統音量，唔係 localMusicVolume
+ * 嗰個 per-player 音量)。
  */
 public final class AudioCenter {
     private static final String TAG = "AudioCenter";
@@ -914,6 +917,34 @@ public final class AudioCenter {
         return HttpServer.ApiResponse.ok("{\"ok\":true}");
     }
 
+    // -- Media volume: STREAM_MUSIC, same stream the +/- gesture buttons and
+    // the walkie-talkie/TTS playback all use (see MainActivity
+    // registerGestureController()/startVolumeRepeat()) - so this slider and
+    // the physical +/- pads stay in sync with each other. (2026-09 dispatcher
+    // Phase 1 第四刀由 handleApi 搬入；經 appContext 攞同一個 service。)
+    public HttpServer.ApiResponse systemVolumeGet() {
+        AudioManager audioManager =
+                (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
+        int max = audioManager != null
+                ? audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) : 0;
+        int cur = audioManager != null
+                ? audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) : 0;
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"volume\":" + cur
+                + ",\"max\":" + max + "}");
+    }
+
+    public HttpServer.ApiResponse systemVolumeSet(Map<String, String> query) {
+        AudioManager audioManager =
+                (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager == null) {
+            return HttpServer.ApiResponse.error("AudioManager not available");
+        }
+        int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        int vol = ApiValidator.requireInt(query, "level");
+        vol = Math.max(0, Math.min(max, vol));
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, vol, 0);
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"volume\":" + vol + ",\"max\":" + max + "}");
+    }
     // 2026-08 v2 新增: audio spectrum - 回傳最近一次 FFT 算出的頻譜
     // (MUSIC_SPECTRUM_BANDS 條, 每條 0-255), 前端 ~100ms 輪詢一次畫 bar。
     // 沒播歌/Visualizer 建不起來就全部回傳 0。

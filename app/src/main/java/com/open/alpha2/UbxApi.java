@@ -8,13 +8,18 @@ import com.ubtechinc.alpha.hardware.ubx.UbxFile;
 import com.ubtechinc.alpha.hardware.ubx.UbxParser;
 import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
 
+import java.util.Map;
+
 /**
  * Ubx 直播 + 單舵機直驅共用實現。
  *
  * 2026-09 由 MainActivity 抽出 (拆 god object 第三刀)：/api/direct/ubx/* 與
  * /api/alpha2/ubx/* 兩套路由調同一批 helper，加上 servo 單顆 cmd03 化，
  * 邏輯一字不改搬過嚟。和 ActionDirect 一樣，共用 MainActivity 傳入的同一個
- * UbxPlayer 實例 (servo 讀寫仲喺嗰邊直接用)；最近播放檔經 ActionDirect 存取。
+ * UbxPlayer 實例；最近播放檔經 ActionDirect 存取。
+ * 2026-09 dispatcher Phase 1 第二刀加：servo/one、servo/all、servo/read、
+ * servo/read-all 4 個 handleApi case body 搬入 (servo/sonar 留低——threshold
+ * state 同 sonar event/bridge 共用)。
  */
 public final class UbxApi {
     private static final String TAG = "UbxApi";
@@ -189,5 +194,59 @@ public final class UbxApi {
                     : "pose unknown (play any action first, or send full pose via servo/all)");
         }
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + id + ",\"angle\":" + (angle & 0xFF) + "}");
+    }
+
+    // -- Servo endpoint 回應層 (2026-09 dispatcher Phase 1 第二刀由 handleApi 搬入) --
+    // directChestReady() 內聯：同 MainActivity 版一字不差，經 appContext 唔使 Activity。
+    private boolean directChestReady() {
+        try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
+        catch (Exception e) { return false; }
+    }
+
+    public HttpServer.ApiResponse servoOneResponse(Map<String, String> query) {
+        // pure-direct: cmd05 在本机固件有 ACK 无动作，改走 cmd03 全帧。
+        int id = ApiValidator.requireIntRange(query, "id", 1, 20);
+        int angle = ApiValidator.requireInt(query, "angle");
+        int time = ApiValidator.optionalInt(query, "time", 1000);
+        boolean ok = servoSendOneCode(id, angle, time) == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+        return MainActivity.codeResponseReady(MainActivity.directCode(ok), directChestReady());
+    }
+
+    public HttpServer.ApiResponse servoAllResponse(Map<String, String> query) {
+        int[] angles = ApiValidator.requireAngles20(query);
+        int time = ApiValidator.optionalInt(query, "time", 1000);
+        // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
+        boolean sent = HardwareDirectManager.get(appContext).chest().setAllServos(angles, (short) time);
+        if (sent) ubxPlayer.notePose(angles);
+        return MainActivity.codeResponseReady(MainActivity.directCode(sent), directChestReady());
+    }
+
+    public HttpServer.ApiResponse servoReadResponse(Map<String, String> query) {
+        // 命令位姿追踪值：本机胸 cmd13 回包恒定（跳舞途中亦不变），无实时回授；
+        // tuner 要的是“当前摆位”，命令位姿即正确语义。未知如实报，不编 0。
+        int idInt = ApiValidator.requireIntRange(query, "id", 1, 20);
+        int[] pose = ubxPlayer.pose();
+        if (pose == null) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + idInt
+                    + ",\"error\":\"pose unknown (play any action first)\",\"known\":false}");
+        }
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + idInt
+                + ",\"angle\":" + pose[idInt - 1] + ",\"offset\":" + pose[idInt - 1]
+                + ",\"known\":true}");
+    }
+
+    public HttpServer.ApiResponse servoReadAllResponse() {
+        int[] pose = ubxPlayer.pose();
+        if (pose == null) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"known\":false,"
+                    + "\"error\":\"pose unknown (play any action first)\"}");
+        }
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"known\":true,\"angles\":[");
+        for (int i = 0; i < 20; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(pose[i]);
+        }
+        sb.append("]}");
+        return HttpServer.ApiResponse.ok(sb.toString());
     }
 }

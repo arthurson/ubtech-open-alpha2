@@ -7,6 +7,7 @@ import com.ubtechinc.alpha.hardware.HardwareDirectManager;
 import com.ubtechinc.alpha.hardware.RobotWire;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -23,6 +24,8 @@ import java.util.concurrent.TimeUnit;
  *
  * 線程：latch 欄位 volatile，和以前一樣——兩個查詢同時行會互踩
  * (後者覆蓋前者嘅 latch)，行為同未抽之前完全一致，調用方本來就唔會並行。
+ * 2026-09 dispatcher Phase 1 第三刀加：misc/request_uuid、misc/set_uuid
+ * 2 個 handleApi case body 搬入 (requestUuidResponse/setUuidResponse)。
  */
 public final class ChestQuery {
     private static final String TAG = "ChestQuery";
@@ -32,6 +35,7 @@ public final class ChestQuery {
     public static final String PREF_UUID_WRITTEN_LEN = "uuid_written_len";
 
     private final Context appContext;
+    private final RobotStub robot;
 
     // 2026-08: 真實胸口 MCU 韌體版本查詢 (CHEST_READ_VERSION 51 / 0x33) 用的
     // 同步等待狀態，供 queryFirmwareVersion() 阻塞等待 (HttpServer worker
@@ -46,8 +50,9 @@ public final class ChestQuery {
     private volatile byte[] chestUuidRaw;
     private volatile int chestUuidLen;
 
-    public ChestQuery(Context context) {
+    public ChestQuery(Context context, RobotStub robot) {
         this.appContext = context.getApplicationContext();
+        this.robot = robot;
     }
 
     private boolean chestReady() {
@@ -518,5 +523,117 @@ public final class ChestQuery {
         } finally {
             chestUuidLatch = null;
         }
+    }
+
+    // -- UUID endpoint 回應層 (2026-09 dispatcher Phase 1 第三刀由 handleApi 搬入) --
+    public HttpServer.ApiResponse requestUuidResponse() {
+        // 2026-09 修正「無法讀取 uuid」: 之前只發
+        // robot.requestRobotUUID() (broadcast "com.ubtechinc.robot_uuid.request"),
+        // 但機身已無 alpha2services, 呢個 broadcast 永遠無人回覆
+        // "com.ubtechinc.robot_uuid.info", UI 永久停喺「查詢中」。
+        // 改走 pure-direct: 經 /dev/ttyS1 直發 cmd 55 讀 chest EEPROM,
+        // 同步等回覆 (HttpServer worker thread, 可阻塞, 同版本查詢一樣),
+        // 讀到即經 EventBus 發 robot_uuid (舊 WS 路徑, 前端唔使改) +
+        // HTTP response 順手帶埋 uuid (新 fallback, 前端直接用, 唔使等 WS)。
+        // 舊 broadcast 照發 (向後相容, 有朝一日裝返 alpha2services 都唔會壞)。
+        try {
+            robot.requestRobotUUID();
+        } catch (Throwable ignore) {
+        }
+        String uuid = queryRobotUuid(2000);
+        if (uuid != null && !uuid.isEmpty()) {
+            EventBus.get().publish("robot_uuid", "{\"uuid\":\"" + MainActivity.jsonSafe(uuid) + "\"}");
+            return HttpServer.ApiResponse.ok(
+                    "{\"ok\":true,\"uuid\":\"" + MainActivity.jsonSafe(uuid) + "\"}");
+        }
+        // 2026-09: 分辨 timeout (完全無回幀) 同 parse 失敗 (有回幀但洗唔出
+        // 字串), 後者連 raw hex 一齊回, 等 logcat/前端可以直接對。
+        String diag = "";
+        try {
+            byte[] uuidRaw = getLastUuidRaw();
+            if (uuidRaw != null) {
+                diag = " raw=" + MainActivity.toHex(uuidRaw, uuidRaw.length);
+            }
+        } catch (Throwable ignore) {
+        }
+        Log.w(TAG, "misc/request_uuid direct read failed (chest cmd 55)." + diag);
+        EventBus.get().publish("robot_uuid", "{\"uuid\":null}");
+        return HttpServer.ApiResponse.ok(
+                "{\"ok\":false,\"error\":\"uuid read failed - chest cmd 55"
+                        + MainActivity.jsonSafe(diag) + "\"}");
+    }
+
+    public HttpServer.ApiResponse setUuidResponse(Map<String, String> query) {
+        // 2026-08 v2 新增: 更改機械人 ID (chest EEPROM SN 欄位)。格式由
+        // 實機逆向 + 實測確認: cmd=54 (0x36), payload = 新 SN 的 ASCII bytes
+        // (寫幾多個 byte 就幾多個, 其餘補 0), wire frame
+        // F8 8F <7+n> 00 00 36 <sn...> <sum> ED, sum=(len+0x36+Σsn)&0xFF。
+        // 寫入後即刻 requestUUID 讀返驗證 (robot_uuid event 經 WS 更新 UI)。
+        //
+        // 2026-08 v3: 曾經誤以為亂碼尾巴代表 EEPROM 定長 32 bytes 沒有被完
+        // 全覆寫, 一度改成把整個 payload padding 到 32 bytes 才寫 —— 這個
+        // 方向錯了, 已經用實機 logcat 推翻: hex dump (CHEST_READ_SID_EEPROM
+        // 回應幀 "f8 8f 28 01 00 37 00 42 41 ... 00 00...00 3c ed") 顯示
+        // 讀出來的 payload 本身很乾淨 —— [flag byte] + 17 bytes SN ASCII +
+        // 0x00 padding, 完全沒有非零垃圾。之所以那行 firmware 自己的 Java log
+        // "serialNumber=BAF006UBT10000377<方塊亂碼>" 只是 logcat/String 把
+        // 尾隨的 \0 null byte 渲染成不可見方塊字元的顯示效果, 不代表
+        // EEPROM 真的有垃圾殘留。RobotEventReceiver.java 讀取時已經用
+        // indexOf('\0') 切掉這些 padding, 不需要也不應該在寫入那邊自己
+        // padding 到某個定長 —— 太長的 payload (例如 32 bytes) 反而會讓
+        // firmware 把 len byte 也當大了, 讀出來的欄位長度也跟著變,
+        // 造成完全不同的殘留問題 (見專案內部事故記錄:「全域清零反而有
+        // 2026-09 實測補充: 上面「讀出來很乾淨」只適用舊 SN 未郁過的情況。
+        // 真幀 (f8 8f 28 00 00 37 00 42 41 46...6f 75 6d 61 6d 61 65 00 0c ed)
+        // 證實: 曾經寫入較短 SN (17B "BAF006UBT10000001") 蓋過較長舊值之後,
+        // 尾段會有 14 bytes 非零殘留 ("yy44567oumamae"), 唔係 0x00 padding。
+        // 所以讀取側唔可以靠 \0 cut; 截尾規則見 truncateUuidTail (用戶已對
+        // 實體貼紙確認真 SN 係 17 字, 尾段小寫殘留要斬走先係正確綁定 ID)。
+        // 寫入格式本身不變, 這裡保持
+        // v2 原本的 [len byte]+SN, 沒有 terminator 沒有 padding 的寫法,
+        // 這才是經實機驗證過的正確格式。
+        String v = ApiValidator.requireUuidValue(query);
+        byte[] sn = v.getBytes(StandardCharsets.US_ASCII);
+        // payload 格式實測確認是 [長度byte] + SN ASCII bytes — 沒有
+        // terminator 沒有 padding! 讀取幾個 byte 是依這個 len byte 決定 (正常機
+        // 讀出來是乾乾淨淨 N 字元 + firmware 自己 EEPROM 欄位的 0x00
+        // padding, 不會有非零尾隨 bytes)。
+        // checksum 包 LEN byte (7 + payload 總長) + cmd + Σpayload。
+        byte[] payload = new byte[sn.length + 1];
+        payload[0] = (byte) sn.length;
+        System.arraycopy(sn, 0, payload, 1, sn.length);
+        int sum = (7 + payload.length + 54) & 0xFF;
+        for (byte b : payload) sum = (sum + (b & 0xFF)) & 0xFF;
+        byte[] frame = new byte[payload.length + 9];
+        frame[0] = (byte) 0xF8;
+        frame[1] = (byte) 0x8F;
+        frame[2] = (byte) (7 + payload.length);
+        frame[3] = 0x00;
+        frame[4] = 0x00;
+        frame[5] = 54;
+        System.arraycopy(payload, 0, frame, 6, payload.length);
+        frame[6 + payload.length] = (byte) sum;
+        frame[7 + payload.length] = (byte) 0xED;
+        // pure-direct: 经 /dev/ttyS1 直发（旧 robot.chest_sendRawData 走 binder，已停用）。
+        boolean sent = HardwareDirectManager.get(appContext).chest().sendRaw(frame);
+        UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
+        Log.i(TAG, "set_uuid -> " + v + " (" + sn.length + "B) " + code.name());
+        // 2026-09 修正: 寫完唔好即刻 request_uuid —— alpha2services/firmware
+        // 會 cache 開機讀到的 SN, 即刻讀返嚟多數係舊值, 經 robot_uuid event
+        // 蓋走前端頭先樂觀顯示的新值, 睇落好似寫入失敗 (見 app-accel.js
+        // uuidWriteNew() 已經樂觀顯示新值 + 提示要重啟, 嗰個先係正確流程)。
+        // 舊碼 robot.requestRobotUUID() 而家仲係 no-op (無 alpha2services),
+        // 直接唔再叫, 等用戶重啟後先 request_uuid 讀新值。
+        // 2026-09: 記低今次寫入長度, 下次讀回截尾用 (見 truncateUuidTail
+        // 規則 1) - 只在發送成功先記。
+        if (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+            try {
+                appContext.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE).edit()
+                        .putInt(PREF_UUID_WRITTEN_LEN, sn.length).apply();
+            } catch (Throwable ignore) {
+            }
+        }
+        return HttpServer.ApiResponse.ok(
+                "{\"ok\":" + (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) + "}");
     }
 }

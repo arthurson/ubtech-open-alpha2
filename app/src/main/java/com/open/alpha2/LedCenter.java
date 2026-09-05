@@ -26,6 +26,8 @@ import java.util.Map;
  * Pad 燈 (手勢用，物理先驗到)、wifi 燈 (要切 wifi 先驗到)、PIR/避障指示
  * 留喺 MainActivity —— 遠程驗唔到嘅唔郁。只需要 Context
  * (頭串口 ready check)；嘴燈／5-mic／JNI 本身全部 static 直驅。
+ * 2026-09 dispatcher Phase 1 第二刀加：pir/set、pir/alert_enabled
+ * 2 個 handleApi case body 搬入 (PIR 警示監聽/event 路徑留低)。
  */
 public final class LedCenter {
     private static final String TAG = "LedCenter";
@@ -384,7 +386,7 @@ public final class LedCenter {
     // 避免一開機就無啦啦閃紅燈/響鈴。
     private volatile boolean alpha2PirAlertEnabled = false;
 
-    /** 由 pir/alert_enabled endpoint 經 MainActivity.setPirAlertEnabledAlpha2 轉調。 */
+    /** 由 pir/alert_enabled endpoint (pirAlertEnabledResponse) 轉調。 */
     public void setPirAlertEnabled(boolean enabled) {
         alpha2PirAlertEnabled = enabled;
         if (!enabled && alpha2PirAlertActive) {
@@ -434,6 +436,35 @@ public final class LedCenter {
         } else {
             ringtoneCenter.stopRingtonePlayback();
         }
+    }
+
+    // directChestReady() 內聯：同 MainActivity 版一字不差，經 appContext
+    // 唔使 Activity (同上面 headerReady() 一樣形狀)。
+    private boolean directChestReady() {
+        try {
+            return HardwareDirectManager.get(appContext).chest().isAvailable();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // 2026-08-15 更新: 真機已確認 cmd=72 開關生效, PIR 觸發正常 (見
+    // RobotEventReceiver/registerAlpha2PirAlertListener 的 comment)。
+    public HttpServer.ApiResponse pirSetResponse(Map<String, String> query) {
+        boolean enabled = ApiValidator.requireBoolean(query, "on");
+        boolean sent = HardwareDirectManager.get(appContext).chest().setPirEnabled(enabled);
+        return MainActivity.codeResponseReady(MainActivity.directCode(sent), directChestReady());
+    }
+
+    /** 2026-08-15 新增: 獨立於 pir/set 呢個感應器硬件開關本身, 純粹控制
+     *  「偵測到人就閃紅燈/響鈴」這個警示反應要不要開。已在實機確認 PIR 事件
+     *  本身 (cmd=-109, "PIR HUMON DETECT") 會正常觸發 (見 RobotEventReceiver
+     *  的 CHEST_ACTION case 裡面 alpha2_pir_state 那段 comment) - 這個
+     *  endpoint 就是讓前端選擇要不要對這個事件有反應。 */
+    public HttpServer.ApiResponse pirAlertEnabledResponse(Map<String, String> query) {
+        boolean enabled = ApiValidator.requireBoolean(query, "on");
+        setPirAlertEnabled(enabled);
+        return HttpServer.ApiResponse.ok("{\"ok\":true}");
     }
 
     /** Same "long" (solid, always-on) LED effect as led/head/set & led/eye/set's

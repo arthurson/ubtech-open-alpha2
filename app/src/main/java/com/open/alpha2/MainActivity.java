@@ -11,13 +11,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
 import android.media.AudioManager;
 import android.net.wifi.WifiManager;
-import android.os.BatteryManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -59,9 +54,6 @@ import java.nio.charset.StandardCharsets;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-
 /**
  * Single-activity host for the Open Alpha2 robot panel.
  *
@@ -76,7 +68,7 @@ import java.util.concurrent.TimeUnit;
  * robot has no practical on-screen use for this tool - the HTML control panel at
  * http://<robot-ip>:8888/ is the actual UI.
  */
-public class MainActivity extends Activity implements SensorEventListener {
+public class MainActivity extends Activity {
     private static final String TAG = "MainActivity";
 
     static final String PREFS_NAME = "robotpanel";
@@ -204,9 +196,6 @@ public class MainActivity extends Activity implements SensorEventListener {
     private final java.util.concurrent.atomic.AtomicBoolean xiaozhiActivationInFlight =
             new java.util.concurrent.atomic.AtomicBoolean(false);
     private RobotEventReceiver dynamicReceiver;
-    private BroadcastReceiver batteryReceiver;
-    /** 低電量蹲下 latch：10% 播過一次後不再重複，直到充過電或回升過 12% 才重置。 */
-    private boolean batteryLowSquatDone = false;
 
     // -- WiFi 指示燈 (2026-08-25) -----------------------------------------------
     // (wifi 燈成組搬咗去 LedCenter：12/13 映射、receiver、apply 三式、burst。)
@@ -323,16 +312,6 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 用來補這個缺口。
     private volatile String xiaozhiClientId;
 
-    // -- Accelerometer (IMU): standard Android SensorManager, NOT the UBTECH AIDL SDK -
-    // see docs/capabilities.md "IMU / accelerometer" in the Alpha2OpenSdk repo and the
-    // HelloAlpha example (examples/HelloAlpha), which reads it the same way. The robot's
-    // only real motion sensor; readings are gravity-relative (tilt), not true dynamic
-    // acceleration. Off by default - only registered while at least one browser tab has
-    // it toggled on via the "accelerator/set" endpoint below, so idle sessions don't pay
-    // for sensor callbacks/WebSocket traffic nobody is watching.
-    private SensorManager sensorManager;
-    private Sensor accelerometerSensor;
-    private volatile boolean accelerometerEnabled = false;
     private static final long VOLUME_REPEAT_INTERVAL_MS = 300;
     // 2026-09: 系統鈴聲層 (停止/快門/PIR 提示音 + 共用播放器 + 查表快取)
     // 搬咗去 RingtoneCenter (拆 god object 第七刀)，呢度淨係留個 instance。
@@ -368,10 +347,6 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 不會撞到, 所以之前只有 iflytek/nuance 斷斷續續, android 沒事。
     private volatile boolean robotTtsSpeaking = false;
 
-    private volatile int lastBatteryLevel = -1;
-    private volatile int lastBatteryScale = -1;
-    private volatile boolean lastBatteryCharging = false;
-    private volatile String lastBatteryStatus = "unknown";
 
     // Chest sonar trigger threshold in cm, as last set via servo/sonar. Assumption
     // (unverified on real hardware): chest_configureSonar()'s distance byte IS the
@@ -478,6 +453,8 @@ public class MainActivity extends Activity implements SensorEventListener {
     private DeviceStatus deviceStatus;
     // 2026-09: 相機拍照層搬咗去 CameraApi，呢度淨係留個 instance。
     private CameraApi cameraApi;
+    // 2026-09: Vosk 離線 ASR endpoint 層搬喷去 VoskApi (dispatcher Phase 1 第一刀)，嚺度淨係留個 instance.
+    private VoskApi voskApi;
 
     // 2026-08 新增: RobotEventReceiver 沒有 constructor/field 拿到 outer
     // MainActivity instance (它一直只經 EventBus 靜態方法送 event, 不認識
@@ -528,7 +505,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         ringtoneCenter = new RingtoneCenter(this);
         ledCenter = new LedCenter(this, mainHandler, ringtoneCenter);
         registerDynamicReceiver();
-        registerBatteryReceiver();
         ledCenter.registerWifiLedReceiver();
         registerGestureController();
         // pure-direct: 头顶 +/- pad 改由 HeadKeyPoller 直读 /dev/input/event0，
@@ -567,7 +543,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         iflytekMatcherEn = new IflytekSemanticMatcherEn(this);
         // 2026-09: Vosk 熔斷 —— vosk-android minSdk 21，API 19 機（呢個 APK 要
         // 裝到 4.4）絕對唔可以掂 org.vosk.*（native/JNA 即炒）。19 機 vosk
-        // 維持 null，所有 vosk/* endpoint 經下面 voskOrError() 回清晰錯誤。
+        // 維持 null，所有 vosk/* endpoint 經 VoskApi.voskOrError() 回清晰錯誤。
         if (android.os.Build.VERSION.SDK_INT >= 21) {
             try {
                 vosk = new VoskController(this, iflytekMatcher, iflytekMatcherEn);
@@ -583,8 +559,11 @@ public class MainActivity extends Activity implements SensorEventListener {
         ttsCenter = new TtsCenter(this, vosk);
         ttsCenter.initAndroidTts(null);
         semanticCenter = new SemanticCenter(iflytekMatcher, iflytekMatcherEn, actionDirect, ttsCenter);
-        deviceStatus = new DeviceStatus(this);
+        deviceStatus = new DeviceStatus(this, mainHandler, actionDirect, ubxPlayer);
+        // sticky broadcast 註冊時機唔敏感；原 onCreate 開頭喰次 register 搬团度 (起好先叫得)。
+        deviceStatus.registerBatteryReceiver();
         cameraApi = new CameraApi(this, cameraController, ringtoneCenter);
+        voskApi = new VoskApi(vosk);
 
         // Plain HTTP only. TLS/HTTPS was tried (self-signed cert) to make getUserMedia()
         // available for the walkie-talkie mic feature, but browsers on this device
@@ -846,9 +825,6 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private void registerGestureController() {
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        accelerometerSensor = sensorManager != null
-                ? sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) : null;
         // HeadKeyPoller 已搬入 hardware-direct module：经 Listener 直连，
         // 不再绕 EventBus "gesture" 事件（旧 direction 解析一并删除）。
         // head_key/head_key_native 照旧转送 EventBus，供 WebSocket log 备查。
@@ -985,120 +961,11 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     /**
-     * Turns the accelerometer feed on/off. Safe to call repeatedly - a no-op if already
-     * in the requested state. registerListener()/unregisterListener() must run on a
-     * thread with a Looper (per SensorManager's contract) - both are called here on the
-     * main thread, matching how registerGestureController() sets sensorManager up in
-     * onCreate().
-     */
-    private synchronized void setAccelerometerEnabled(boolean enabled) {
-        if (sensorManager == null || accelerometerSensor == null) {
-            accelerometerEnabled = false;
-            return;
-        }
-        if (enabled == accelerometerEnabled) {
-            return;
-        }
-        if (enabled) {
-            // SENSOR_DELAY_NORMAL, not _UI: verified on hardware in the Alpha2OpenSdk
-            // HelloAlpha example (see docs/capabilities.md "IMU / accelerometer") - the
-            // RK3288's gsensor driver reliably delivers events at this rate. _UI was
-            // observed to register successfully but never actually deliver events.
-            sensorManager.registerListener(this, accelerometerSensor, SensorManager.SENSOR_DELAY_NORMAL);
-        } else {
-            sensorManager.unregisterListener(this, accelerometerSensor);
-        }
-        accelerometerEnabled = enabled;
-    }
-
-    // -- SensorEventListener (accelerometer only - see setAccelerometerEnabled()) -------
-    private long lastAccelLogMs = 0;
-
-    @Override
-    public void onSensorChanged(SensorEvent event) {
-        if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER) {
-            return;
-        }
-        // Rate-limited (every ~2s) rather than per-sample: confirms whether the sensor
-        // itself is actually delivering events at all, without flooding logcat - a
-        // normal accelerometer at SENSOR_DELAY_NORMAL fires far more often than that.
-        long now = System.currentTimeMillis();
-        if (now - lastAccelLogMs > 2000) {
-            lastAccelLogMs = now;
-            Log.i(TAG, "onSensorChanged firing: x=" + event.values[0]
-                    + " y=" + event.values[1] + " z=" + event.values[2]);
-        }
-        // Published as-is (m/s^2, gravity-relative - see docs/capabilities.md). The
-        // browser-side chart/UI is responsible for any smoothing/scaling it wants.
-        EventBus.get().publish("accel", "{\"x\":" + event.values[0]
-                + ",\"y\":" + event.values[1]
-                + ",\"z\":" + event.values[2] + "}");
-    }
-
-    @Override
-    public void onAccuracyChanged(Sensor sensor, int accuracy) {
-        // No action needed - the Alpha2's accelerometer accuracy is not meaningfully
-        // actionable here (see docs/capabilities.md).
-    }
-
-    /**
-     * Battery/charging is NOT available through Alpha2RobotApi (see capabilities.md
-     * "Battery and charging") - the chest board does stream it on the serial link
-     * (CHEST_SEND_POWER), but the SDK never surfaces a getter for it. The documented,
-     * reliable path for an on-robot app is the standard Android battery intent instead.
-     * ACTION_BATTERY_CHANGED is a sticky broadcast, so this also fires immediately with
-     * the current state upon registration.
-     */
-    private void registerBatteryReceiver() {
-        batteryReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-                int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-                int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, BatteryManager.BATTERY_STATUS_UNKNOWN);
-                int plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0);
-                lastBatteryLevel = level;
-                lastBatteryScale = scale;
-                lastBatteryCharging = (status == BatteryManager.BATTERY_STATUS_CHARGING) || plugged != 0;
-                lastBatteryStatus = batteryStatusName(status);
-                EventBus.get().publish("battery", "{\"level\":" + level + ",\"scale\":" + scale
-                        + ",\"charging\":" + lastBatteryCharging + ",\"status\":\"" + lastBatteryStatus + "\"}");
-                // 用戶要求：電量跌到 10%（且不在充電）自動蹲下一次。ACTION_BATTERY_CHANGED
-                // 係 sticky broadcast，註冊即刻有一次，latch 防重複；充緊電/回升過 12% 重置。
-                int pct = (level >= 0 && scale > 0) ? (level * 100 / scale) : -1;
-                if (lastBatteryCharging || pct > 12) {
-                    batteryLowSquatDone = false;
-                } else if (pct >= 0 && pct <= 10 && !batteryLowSquatDone) {
-                    batteryLowSquatDone = true;
-                    new Thread(new Runnable() {
-                        @Override public void run() {
-                            if (actionDirect.playActionDirect(ActionDirect.STOP_RECOVERY_ACTION_ID)
-                                    != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-                                Log.w(TAG, "low-battery squat not started: " + ubxPlayer.lastError());
-                            }
-                        }
-                    }, "LowBatterySquat").start();
-                }
-            }
-        };
-        registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-    }
-
-    /**
      * 2026-08-25: WiFi 狀態 → wifi 指示燈 (2026-09 三態: wifi 熄=熄燈,
      * wifi 開但未連=紅 13, 連上 AP=藍 12)。註冊當下立即檢查一次現狀,
      * 處理「app 開啟之前已經連上/斷線」的情況。
      */
     // (wifi 燈成組搬咗去 LedCenter：register/apply 三式/burst。)
-    private static String batteryStatusName(int status) {
-        switch (status) {
-            case BatteryManager.BATTERY_STATUS_CHARGING: return "charging";
-            case BatteryManager.BATTERY_STATUS_DISCHARGING: return "discharging";
-            case BatteryManager.BATTERY_STATUS_FULL: return "full";
-            case BatteryManager.BATTERY_STATUS_NOT_CHARGING: return "not_charging";
-            default: return "unknown";
-        }
-    }
 
     private void initRobot() {
         // 2026-09: 脫離 Alpha2OpenSdk —— robot 係 RobotStub 純本地 no-op facade
@@ -1107,7 +974,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         // 觸發, 已經成段刪除; chest/head 回幀只走下面的 wireDirectFrameListeners()。
         // 舊 if(false) initSpeechApi 整塊 (約 100 行回調) 一併刪除。
         robot = new RobotStub(this);
-        chestQuery = new ChestQuery(this);
+        chestQuery = new ChestQuery(this, robot);
         actionDirect = new ActionDirect(this, ubxPlayer);
         ubxApi = new UbxApi(this, ubxPlayer, actionDirect);
         chestUpgrade = new ChestUpgrade(this, chestQuery);
@@ -1425,11 +1292,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         });
     }
 
-    /** Toggled from "pir/alert_enabled" - 見 LedCenter.setPirAlertEnabled()。 */
-    void setPirAlertEnabledAlpha2(boolean enabled) {
-        ledCenter.setPirAlertEnabled(enabled);
-    }
-
     /** Pulls the boolean after "triggered":  out of an EventBus-published "pir_state"
      *  JSON line, matching extractAbsoluteAngle()'s no-JSON-library style. */
     private static Boolean extractPirTriggered(String line) {
@@ -1466,7 +1328,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         ubxPlayer.stopVoice();
         stopMicHoldEnforcer();
         micHeldByApp = false;
-        setAccelerometerEnabled(false);
+        deviceStatus.setAccelerometerEnabled(false);
         ttsCenter.shutdown();
         headKeyPoller.setListener(null);
         try { headKeyPoller.stop(); } catch (Throwable ignored) {}
@@ -1512,12 +1374,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             } catch (IllegalArgumentException ignored) {
             }
         }
-        if (batteryReceiver != null) {
-            try {
-                unregisterReceiver(batteryReceiver);
-            } catch (IllegalArgumentException ignored) {
-            }
-        }
+        deviceStatus.unregisterBatteryReceiver();
         ledCenter.unregisterWifiLedReceiver();
         if (panelUrlReceiver != null) {
             try {
@@ -1660,10 +1517,10 @@ public class MainActivity extends Activity implements SensorEventListener {
                         .append("\"chestUuid\":").append(chestUuid != null ? "\"" + jsonSafe(chestUuid) + "\"" : "null").append(",")
                         .append("\"chestAvailable\":").append(directChestReady()).append(",")
                         .append("\"headerAvailable\":").append(directHeaderReady()).append("},");
-                sb.append("\"power\":{\"level\":").append(lastBatteryLevel).append(",")
-                        .append("\"scale\":").append(lastBatteryScale).append(",")
-                        .append("\"charging\":").append(lastBatteryCharging).append(",")
-                        .append("\"status\":\"").append(jsonSafe(lastBatteryStatus)).append("\"},");
+                sb.append("\"power\":{\"level\":").append(deviceStatus.getBatteryLevel()).append(",")
+                        .append("\"scale\":").append(deviceStatus.getBatteryScale()).append(",")
+                        .append("\"charging\":").append(deviceStatus.isBatteryCharging()).append(",")
+                        .append("\"status\":\"").append(jsonSafe(deviceStatus.getBatteryStatus())).append("\"},");
                 sb.append("\"sensors\":{\"sonarCm\":").append(lastSonarDistanceCm).append(",")
                         .append("\"sonarThresholdCm\":").append(sonarThresholdCm).append(",")
                         .append("\"pir\":").append(lastPirTriggeredState).append("},");
@@ -4029,18 +3886,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         };
     }
 
-    /** vosk/* endpoint 熔斷：vosk 係 null（API 19 機唔起 controller，或者
-     *  21+ 機 init 失敗）就回清晰錯誤，唔好逐個 case 寫 if。
-     *  return null = 可用，照行。 */
-    private HttpServer.ApiResponse voskOrError() {
-        if (vosk != null) return null;
-        if (android.os.Build.VERSION.SDK_INT < 21) {
-            return HttpServer.ApiResponse.error("Vosk needs Android 5.0+ (this device is API "
-                    + android.os.Build.VERSION.SDK_INT + ")");
-        }
-        return HttpServer.ApiResponse.error("vosk not initialised");
-    }
-
     private HttpServer.ApiResponse handleApi(String path, Map<String, String> query, String method, String body) {
         switch (path) {
             case "status":
@@ -4326,108 +4171,30 @@ public class MainActivity extends Activity implements SensorEventListener {
                         + offlineGrammarAutoSwitch + ",\"connected\":" + lastProbeOnline
                         + ",\"offlineActive\":" + offlineGrammarActive + "}");
             }
-            // -- Vosk 離線 ASR (2026-09 新增) --------------------------------------
-            // Model 放 sdcard 自動偵測 (見 VoskController.scanModels)，一次一粒。
-            // 成句結果沿用 asr_result event（前端同打字模擬同一條管線：氣泡＋
-            // 語意配對＋Android TTS＋direct 動作）。
-            // API 19 熔斷：除 models（純檔案掃描，static，邊個 API 都得）之外，
-            // 其他經 voskOrError() 回清晰錯誤，唔好逐個 case 寫 if。
-            case "vosk/models": {
-                StringBuilder sb = new StringBuilder("{\"ok\":true,\"models\":[");
-                boolean first = true;
-                for (VoskController.VoskModelInfo m : VoskController.scanModels()) {
-                    if (!first) sb.append(',');
-                    first = false;
-                    sb.append("{\"id\":\"").append(jsonSafe(m.id))
-                      .append("\",\"lang\":\"").append(jsonSafe(m.langHint))
-                      .append("\",\"sizeMb\":").append(m.sizeBytes / 1048576).append('}');
-                }
-                return HttpServer.ApiResponse.ok(sb.append("]}").toString());
-            }
-            case "vosk/load": {
-                HttpServer.ApiResponse need = voskOrError();
-                if (need != null) return need;
-                String id = ApiValidator.require(query, "model");
-                String err = vosk.loadModel(id);
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"loading\":\""
-                        + jsonSafe(id) + "\"}");
-            }
-            case "vosk/status": {
-                HttpServer.ApiResponse need = voskOrError();
-                if (need != null) return need;
-                String mid = vosk.getModelId();
-                String msg = vosk.getLastError();
-                float epTEnd = vosk.getEpTEnd();
-                return HttpServer.ApiResponse.ok("{\"ok\":true"
-                        + ",\"state\":\"" + vosk.getState().name().toLowerCase(java.util.Locale.US) + "\""
-                        + ",\"model\":" + (mid == null ? "null" : "\"" + jsonSafe(mid) + "\"")
-                        + ",\"listening\":" + vosk.isListening()
-                        + ",\"epMode\":" + vosk.getEpMode()
-                        + ",\"epTEnd\":" + (Float.isNaN(epTEnd) ? "null"
-                                : String.format(java.util.Locale.US, "%.2f", epTEnd))
-                        + (msg == null ? "" : ",\"message\":\"" + jsonSafe(msg) + "\"")
-                        + "}");
-            }
-            case "vosk/start": {
-                HttpServer.ApiResponse need = voskOrError();
-                if (need != null) return need;
-                String err = vosk.startListening();
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-            case "vosk/stop": {
-                HttpServer.ApiResponse need = voskOrError();
-                if (need != null) return need;
-                vosk.stopListening();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-            case "vosk/unload": {
-                HttpServer.ApiResponse need = voskOrError();
-                if (need != null) return need;
-                vosk.unload();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-            // 2026-09 新增: 咪測試——開 1 秒錄音計 RMS/Peak (dBFS)，幫用戶判斷
-            // 係唔係收得細。聽緊嗰陣唔做 (單 input HAL)，先㩒停止。
-            case "vosk/mic_test": {
-                HttpServer.ApiResponse need = voskOrError();
-                if (need != null) return need;
-                // micTestJson 自帶 {"ok":...}，直接透傳。
-                return HttpServer.ApiResponse.ok(vosk.micTestJson());
-            }
-            // 2026-09 新增: 收音延遲調校。mode -1/省略=跟預設，0=標準 1=短
-            // 2=長 3=很長；t_start/t_end/t_max 三個一齊俾先有效 (秒，見 vosk_api.h，
-            // t_end 係講完幾耐靜音先 finalize，0.5-1.0 左右）。在聽緊即時生效，
-            // 並 persist 跨重開；status 會帶返現值。
-            case "vosk/endpointer": {
-                HttpServer.ApiResponse need = voskOrError();
-                if (need != null) return need;
-                int mode = ApiValidator.optionalVoskEndpointerMode(query);
-                float tStart = ApiValidator.optionalFloat(query, "t_start", Float.NaN);
-                float tEnd = ApiValidator.optionalFloat(query, "t_end", Float.NaN);
-                float tMax = ApiValidator.optionalFloat(query, "t_max", Float.NaN);
-                String err = vosk.setEndpointer(mode, tStart, tEnd, tMax);
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
+            // -- Vosk 離線 ASR (body 喺 VoskApi；薄 delegate，唔好喺度加 logic) --
+            case "vosk/models":
+                return voskApi.voskModels();
+            case "vosk/load":
+                return voskApi.voskLoad(query);
+            case "vosk/status":
+                return voskApi.voskStatus();
+            case "vosk/start":
+                return voskApi.voskStart();
+            case "vosk/stop":
+                return voskApi.voskStop();
+            case "vosk/unload":
+                return voskApi.voskUnload();
+            case "vosk/mic_test":
+                return voskApi.voskMicTest();
+            case "vosk/endpointer":
+                return voskApi.voskEndpointer(query);
             // -- Servos -----------------------------------------------------------------
-            case "servo/one": {
-                // pure-direct: cmd05 在本机固件有 ACK 无动作，改走 cmd03 全帧。
-                int id = ApiValidator.requireIntRange(query, "id", 1, 20);
-                int angle = ApiValidator.requireInt(query, "angle");
-                int time = ApiValidator.optionalInt(query, "time", 1000);
-                boolean ok = ubxApi.servoSendOneCode(id, angle, time) == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
-                return codeResponseReady(directCode(ok), directChestReady());
-            }
-            case "servo/all": {
-                int[] angles = ApiValidator.requireAngles20(query);
-                int time = ApiValidator.optionalInt(query, "time", 1000);
-                // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
-                boolean sent = HardwareDirectManager.get(this).chest().setAllServos(angles, (short) time);
-                if (sent) ubxPlayer.notePose(angles);
-                return codeResponseReady(directCode(sent), directChestReady());
-            }
+            case "servo/one":
+                return ubxApi.servoOneResponse(query);
+            case "servo/all":
+                return ubxApi.servoAllResponse(query);
+            // servo/sonar 留低：threshold state (sonarThresholdCm/sonarLedActive)
+            // 同 sonar event/bridge 共用，屬跨域 orchestration，等喰邊一齊搬。
             case "servo/sonar": {
                 int distanceCm = ApiValidator.requireInt(query, "distance");
                 sonarThresholdCm = distanceCm;
@@ -4435,52 +4202,16 @@ public class MainActivity extends Activity implements SensorEventListener {
                 boolean sent = HardwareDirectManager.get(this).chest().configureSonar(distanceCm);
                 return codeResponseReady(directCode(sent), directChestReady());
             }
-            case "servo/read": {
-                // 命令位姿追踪值：本机胸 cmd13 回包恒定（跳舞途中亦不变），无实时回授；
-                // tuner 要的是“当前摆位”，命令位姿即正确语义。未知如实报，不编 0。
-                int idInt = ApiValidator.requireIntRange(query, "id", 1, 20);
-                int[] pose = ubxPlayer.pose();
-                if (pose == null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + idInt
-                            + ",\"error\":\"pose unknown (play any action first)\",\"known\":false}");
-                }
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + idInt
-                        + ",\"angle\":" + pose[idInt - 1] + ",\"offset\":" + pose[idInt - 1]
-                        + ",\"known\":true}");
-            }
-            case "servo/read-all": {
-                int[] pose = ubxPlayer.pose();
-                if (pose == null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"known\":false,"
-                            + "\"error\":\"pose unknown (play any action first)\"}");
-                }
-                StringBuilder sb = new StringBuilder("{\"ok\":true,\"known\":true,\"angles\":[");
-                for (int i = 0; i < 20; i++) {
-                    if (i > 0) sb.append(',');
-                    sb.append(pose[i]);
-                }
-                sb.append("]}");
-                return HttpServer.ApiResponse.ok(sb.toString());
-            }
+            case "servo/read":
+                return ubxApi.servoReadResponse(query);
+            case "servo/read-all":
+                return ubxApi.servoReadAllResponse();
 
-            // 2026-08-15 更新: 真機已確認 cmd=72 開關生效, PIR 觸發正常 (見
-            // RobotEventReceiver/registerAlpha2PirAlertListener 的 comment)。
-            case "pir/set": {
-                boolean enabled = ApiValidator.requireBoolean(query, "on");
-                boolean sent = HardwareDirectManager.get(this).chest().setPirEnabled(enabled);
-                return codeResponseReady(directCode(sent), directChestReady());
-            }
-
-            /** 2026-08-15 新增: 獨立於 pir/set 呢個感應器硬件開關本身, 純粹控制
-             *  「偵測到人就閃紅燈/響鈴」這個警示反應要不要開。已在實機確認 PIR 事件
-             *  本身 (cmd=-109, "PIR HUMON DETECT") 會正常觸發 (見 RobotEventReceiver
-             *  的 CHEST_ACTION case 裡面 alpha2_pir_state 那段 comment) - 這個
-             *  endpoint 就是讓前端選擇要不要對這個事件有反應。 */
-            case "pir/alert_enabled": {
-                boolean enabled = ApiValidator.requireBoolean(query, "on");
-                setPirAlertEnabledAlpha2(enabled);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
+            // -- PIR (body 喺 LedCenter；薄 delegate，唔好喺度加 logic) --
+            case "pir/set":
+                return ledCenter.pirSetResponse(query);
+            case "pir/alert_enabled":
+                return ledCenter.pirAlertEnabledResponse(query);
 
             // -- LEDs (5-mic hardware only path - server-side preset mapping) --------------
             // Colour/brightness/mode values are user-confirmed on real 5-mic hardware:
@@ -4505,115 +4236,11 @@ public class MainActivity extends Activity implements SensorEventListener {
                 boolean sent = HardwareDirectManager.get(this).head().setNoiseReduction(on);
                 return codeResponse(directCode(sent));
             }
-            case "misc/request_uuid": {
-                // 2026-09 修正「無法讀取 uuid」: 之前只發
-                // robot.requestRobotUUID() (broadcast "com.ubtechinc.robot_uuid.request"),
-                // 但機身已無 alpha2services, 呢個 broadcast 永遠無人回覆
-                // "com.ubtechinc.robot_uuid.info", UI 永久停喺「查詢中」。
-                // 改走 pure-direct: 經 /dev/ttyS1 直發 cmd 55 讀 chest EEPROM,
-                // 同步等回覆 (HttpServer worker thread, 可阻塞, 同版本查詢一樣),
-                // 讀到即經 EventBus 發 robot_uuid (舊 WS 路徑, 前端唔使改) +
-                // HTTP response 順手帶埋 uuid (新 fallback, 前端直接用, 唔使等 WS)。
-                // 舊 broadcast 照發 (向後相容, 有朝一日裝返 alpha2services 都唔會壞)。
-                try {
-                    robot.requestRobotUUID();
-                } catch (Throwable ignore) {
-                }
-                String uuid = chestQuery.queryRobotUuid(2000);
-                if (uuid != null && !uuid.isEmpty()) {
-                    EventBus.get().publish("robot_uuid", "{\"uuid\":\"" + jsonSafe(uuid) + "\"}");
-                    return HttpServer.ApiResponse.ok(
-                            "{\"ok\":true,\"uuid\":\"" + jsonSafe(uuid) + "\"}");
-                }
-                // 2026-09: 分辨 timeout (完全無回幀) 同 parse 失敗 (有回幀但洗唔出
-                // 字串), 後者連 raw hex 一齊回, 等 logcat/前端可以直接對。
-                String diag = "";
-                try {
-                    byte[] uuidRaw = chestQuery.getLastUuidRaw();
-                    if (uuidRaw != null) {
-                        diag = " raw=" + toHex(uuidRaw, uuidRaw.length);
-                    }
-                } catch (Throwable ignore) {
-                }
-                Log.w(TAG, "misc/request_uuid direct read failed (chest cmd 55)." + diag);
-                EventBus.get().publish("robot_uuid", "{\"uuid\":null}");
-                return HttpServer.ApiResponse.ok(
-                        "{\"ok\":false,\"error\":\"uuid read failed - chest cmd 55"
-                                + jsonSafe(diag) + "\"}");
-            }
-            case "misc/set_uuid": {
-                // 2026-08 v2 新增: 更改機械人 ID (chest EEPROM SN 欄位)。格式由
-                // 實機逆向 + 實測確認: cmd=54 (0x36), payload = 新 SN 的 ASCII bytes
-                // (寫幾多個 byte 就幾多個, 其餘補 0), wire frame
-                // F8 8F <7+n> 00 00 36 <sn...> <sum> ED, sum=(len+0x36+Σsn)&0xFF。
-                // 寫入後即刻 requestUUID 讀返驗證 (robot_uuid event 經 WS 更新 UI)。
-                //
-                // 2026-08 v3: 曾經誤以為亂碼尾巴代表 EEPROM 定長 32 bytes 沒有被完
-                // 全覆寫, 一度改成把整個 payload padding 到 32 bytes 才寫 —— 這個
-                // 方向錯了, 已經用實機 logcat 推翻: hex dump (CHEST_READ_SID_EEPROM
-                // 回應幀 "f8 8f 28 01 00 37 00 42 41 ... 00 00...00 3c ed") 顯示
-                // 讀出來的 payload 本身很乾淨 —— [flag byte] + 17 bytes SN ASCII +
-                // 0x00 padding, 完全沒有非零垃圾。之所以那行 firmware 自己的 Java log
-                // "serialNumber=BAF006UBT10000377<方塊亂碼>" 只是 logcat/String 把
-                // 尾隨的 \0 null byte 渲染成不可見方塊字元的顯示效果, 不代表
-                // EEPROM 真的有垃圾殘留。RobotEventReceiver.java 讀取時已經用
-                // indexOf('\0') 切掉這些 padding, 不需要也不應該在寫入那邊自己
-                // padding 到某個定長 —— 太長的 payload (例如 32 bytes) 反而會讓
-                // firmware 把 len byte 也當大了, 讀出來的欄位長度也跟著變,
-                // 造成完全不同的殘留問題 (見專案內部事故記錄:「全域清零反而有
-                // 2026-09 實測補充: 上面「讀出來很乾淨」只適用舊 SN 未郁過的情況。
-                // 真幀 (f8 8f 28 00 00 37 00 42 41 46...6f 75 6d 61 6d 61 65 00 0c ed)
-                // 證實: 曾經寫入較短 SN (17B "BAF006UBT10000001") 蓋過較長舊值之後,
-                // 尾段會有 14 bytes 非零殘留 ("yy44567oumamae"), 唔係 0x00 padding。
-                // 所以讀取側唔可以靠 \0 cut; 截尾規則見 truncateUuidTail (用戶已對
-                // 實體貼紙確認真 SN 係 17 字, 尾段小寫殘留要斬走先係正確綁定 ID)。
-                // 寫入格式本身不變, 這裡保持
-                // v2 原本的 [len byte]+SN, 沒有 terminator 沒有 padding 的寫法,
-                // 這才是經實機驗證過的正確格式。
-                String v = ApiValidator.requireUuidValue(query);
-                byte[] sn = v.getBytes(StandardCharsets.US_ASCII);
-                // payload 格式實測確認是 [長度byte] + SN ASCII bytes — 沒有
-                // terminator 沒有 padding! 讀取幾個 byte 是依這個 len byte 決定 (正常機
-                // 讀出來是乾乾淨淨 N 字元 + firmware 自己 EEPROM 欄位的 0x00
-                // padding, 不會有非零尾隨 bytes)。
-                // checksum 包 LEN byte (7 + payload 總長) + cmd + Σpayload。
-                byte[] payload = new byte[sn.length + 1];
-                payload[0] = (byte) sn.length;
-                System.arraycopy(sn, 0, payload, 1, sn.length);
-                int sum = (7 + payload.length + 54) & 0xFF;
-                for (byte b : payload) sum = (sum + (b & 0xFF)) & 0xFF;
-                byte[] frame = new byte[payload.length + 9];
-                frame[0] = (byte) 0xF8;
-                frame[1] = (byte) 0x8F;
-                frame[2] = (byte) (7 + payload.length);
-                frame[3] = 0x00;
-                frame[4] = 0x00;
-                frame[5] = 54;
-                System.arraycopy(payload, 0, frame, 6, payload.length);
-                frame[6 + payload.length] = (byte) sum;
-                frame[7 + payload.length] = (byte) 0xED;
-                // pure-direct: 经 /dev/ttyS1 直发（旧 robot.chest_sendRawData 走 binder，已停用）。
-                boolean sent = HardwareDirectManager.get(this).chest().sendRaw(frame);
-                UbxErrorCode.API_ERROR_CODE code = directCode(sent);
-                Log.i(TAG, "set_uuid -> " + v + " (" + sn.length + "B) " + code.name());
-                // 2026-09 修正: 寫完唔好即刻 request_uuid —— alpha2services/firmware
-                // 會 cache 開機讀到的 SN, 即刻讀返嚟多數係舊值, 經 robot_uuid event
-                // 蓋走前端頭先樂觀顯示的新值, 睇落好似寫入失敗 (見 app-accel.js
-                // uuidWriteNew() 已經樂觀顯示新值 + 提示要重啟, 嗰個先係正確流程)。
-                // 舊碼 robot.requestRobotUUID() 而家仲係 no-op (無 alpha2services),
-                // 直接唔再叫, 等用戶重啟後先 request_uuid 讀新值。
-                // 2026-09: 記低今次寫入長度, 下次讀回截尾用 (見 truncateUuidTail
-                // 規則 1) - 只在發送成功先記。
-                if (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-                    try {
-                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
-                                .putInt(ChestQuery.PREF_UUID_WRITTEN_LEN, sn.length).apply();
-                    } catch (Throwable ignore) {
-                    }
-                }
-                return HttpServer.ApiResponse.ok(
-                        "{\"ok\":" + (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) + "}");
-            }
+            // -- UUID (body 喺 ChestQuery；薄 delegate，唔好喺度加 logic) --
+            case "misc/request_uuid":
+                return chestQuery.requestUuidResponse();
+            case "misc/set_uuid":
+                return chestQuery.setUuidResponse(query);
 
             // -- Camera: standard Android legacy Camera API, not SDK-gated (see
             // CameraController for the front/back index quirk on this hardware). The
@@ -4769,38 +4396,15 @@ public class MainActivity extends Activity implements SensorEventListener {
             case "audio/radio/status":
                 return audioCenter.radioStatus();
 
-            // -- Media volume: STREAM_MUSIC, same stream the +/- gesture buttons and
-            // the walkie-talkie/TTS playback all use (see registerGestureController()/
-            // startVolumeRepeat() above) - so this slider and the physical +/- pads
-            // stay in sync with each other. -------------------------------------------
-            case "audio/volume/get": {
-                int max = audioManager != null
-                        ? audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) : 0;
-                int cur = audioManager != null
-                        ? audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) : 0;
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"volume\":" + cur
-                        + ",\"max\":" + max + "}");
-            }
-            case "audio/volume/set": {
-                if (audioManager == null) {
-                    return HttpServer.ApiResponse.error("AudioManager not available");
-                }
-                int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                int vol = ApiValidator.requireInt(query, "level");
-                vol = Math.max(0, Math.min(max, vol));
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, vol, 0);
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"volume\":" + vol + ",\"max\":" + max + "}");
-            }
+            // -- Media volume (body 喺 AudioCenter；薄 delegate，唔好喺度加 logic) --
+            case "audio/volume/get":
+                return audioCenter.systemVolumeGet();
+            case "audio/volume/set":
+                return audioCenter.systemVolumeSet(query);
 
-            // -- Battery/charging: NOT in Alpha2RobotApi (see capabilities.md); read via
-            // the standard Android BatteryManager broadcast this Activity already listens
-            // for and caches. ------------------------------------------------------------
+            // -- Battery (body 喺 DeviceStatus；薄 delegate，唔好喺度加 logic) --
             case "battery/status":
-                return HttpServer.ApiResponse.ok("{\"ok\":true,"
-                        + "\"level\":" + lastBatteryLevel + ","
-                        + "\"scale\":" + lastBatteryScale + ","
-                        + "\"charging\":" + lastBatteryCharging + ","
-                        + "\"status\":\"" + lastBatteryStatus + "\"}");
+                return deviceStatus.batteryStatus();
 
             // -- Wi-Fi / Bluetooth: standard Android framework, not SDK-gated. -----------
             case "wifi/status":
@@ -4813,37 +4417,11 @@ public class MainActivity extends Activity implements SensorEventListener {
             // 純粹發 broadcast 俾已不存在的 alpha2services, 回 ok:true 但實際
             // 無效 (假活)。連同舵機頁開關一齊拎走。
 
-            // -- Accelerometer (IMU): standard Android SensorManager, not SDK-gated -
-            // see setAccelerometerEnabled()/onSensorChanged() above. Readings stream out
-            // as "accel" WebSocket events while enabled, not through this JSON response. -
-            case "accelerometer/set": {
-                final boolean on = ApiValidator.requireBoolean(query, "on");
-                // registerListener()/unregisterListener() must run on the thread that
-                // owns sensorManager's Looper (the main thread here) - this handler
-                // itself runs on an HttpServer worker thread, so hop over via mainHandler
-                // and wait for it to actually apply before answering.
-                final CountDownLatch latch = new CountDownLatch(1);
-                mainHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        setAccelerometerEnabled(on);
-                        latch.countDown();
-                    }
-                });
-                try {
-                    latch.await(2000, TimeUnit.MILLISECONDS);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-                if (on && accelerometerSensor == null) {
-                    return HttpServer.ApiResponse.ok(
-                            "{\"ok\":false,\"error\":\"no accelerometer sensor available on this device\"}");
-                }
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + accelerometerEnabled + "}");
-            }
+            // -- Accelerometer (body 喺 DeviceStatus；薄 delegate，唔好喺度加 logic) --
+            case "accelerometer/set":
+                return deviceStatus.accelerometerSet(query);
             case "accelerometer/get":
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + accelerometerEnabled
-                        + ",\"available\":" + (accelerometerSensor != null) + "}");
+                return deviceStatus.accelerometerGet();
 
             // 2026-09 移除: service_config/get|set（讀寫 /sdcard/actions/
             // service_config.{json,txt}，alpha2services 專用 config，機身已無此
