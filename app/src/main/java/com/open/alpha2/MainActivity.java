@@ -80,38 +80,17 @@ public class MainActivity extends Activity implements SensorEventListener {
     private static final String TAG = "MainActivity";
 
     static final String PREFS_NAME = "robotpanel";
-    /** 自訂小智 server 設定 - 開關開了才用 PREF_XIAOZHI_OTA_URL, 關了就跟回
-     *  XiaozhiOtaClient.DEFAULT_OTA_URL (官方 api.tenclass.net)。見
-     *  handleXiaozhiApi() 的 "ota_config/get"/"ota_config/set" case 和
-     *  runXiaozhiActivationFlow() 怎麼讀這個設定。 */
-    private static final String PREF_XIAOZHI_OTA_CUSTOM_ENABLED = "xiaozhi_ota_custom_enabled";
-    private static final String PREF_XIAOZHI_OTA_URL = "xiaozhi_ota_url";
-    // 2026-08 新增: 自架 server 未必跟足官方協議形狀 (OTA response 夾著
-    // websocket url/token 一起送回來) - 有些自架方案要用戶自己手動填這幾樣東西。
-    // 全部留空 = 跟回自動流程 (由 OTA response 拿); 有填就用來覆寫對應的自動值。
-    // 只有在 PREF_XIAOZHI_OTA_CUSTOM_ENABLED 開了的時候才讀這幾個, 和 OTA URL
-    // 本身一起收在同一個「自訂小智 server」開關底下。
-    private static final String PREF_XIAOZHI_WS_URL_OVERRIDE = "xiaozhi_ws_url_override";
-    private static final String PREF_XIAOZHI_DEVICE_ID_OVERRIDE = "xiaozhi_device_id_override";
-    private static final String PREF_XIAOZHI_TOKEN_OVERRIDE = "xiaozhi_token_override";
+    // 2026-09: 小智 OTA/MCP/TTS/auto-connect prefs key 搬咗去 XiaozhiConfig
+    // (拆 god object 第五刀)， publicly 讀寫經嗰邊。
     private static final String PREF_XIAOZHI_DEVICE_ID = "xiaozhi_device_id";
     private static final String PREF_MUSIC_FILLER_ACTION_ENABLED = "music_filler_action_enabled";
     private static final String PREF_MUSIC_EQ_PRESET = "music_eq_preset";
-    // 2026-08 新增: MCP tool 個別 enable/disable 設定。總開關預設 true (保持現有
-    // 行為 - 已經在用的人不應該因為這個功能上線而工具突然全部消失)。
-    // disabled tool 清單預設空 (也就是全部 enabled), 用逗號分隔的 tool name 儲存
-    // 在同一個 SharedPreferences, 用 name 不用 index 是因為 tool 清單本身會隨版本
-    // 增減, index 會漂移, name 才是穩定的 identity。
-    private static final String PREF_XIAOZHI_MCP_ENABLED = "xiaozhi_mcp_enabled";
-    // 見 xiaozhiTtsEngine field 的 javadoc。
-    private static final String PREF_XIAOZHI_TTS_ENGINE = "xiaozhi_tts_engine";
+    // (MCP/TTS prefs key 已搬去 XiaozhiConfig。)
     /** 2026-09 新增: TTS 卡揀緊嘅 Android 語言 BCP-47 tag (空=沿用引擎目前
      *  語言)。前端 setAndroidTtsLang() 同步寫入，對話管線 speakAndroidTts()
      *  優先用佢——一揀即時跟，唔使等。 */
     private static final String PREF_ANDROID_TTS_LANG = "android_tts_lang";
-    private static final String PREF_XIAOZHI_MCP_DISABLED_TOOLS = "xiaozhi_mcp_disabled_tools";
-    /** 開app自動連接小智（小智tab開關，預設關；見 auto_connect/get|set）。 */
-    private static final String PREF_XIAOZHI_AUTO_CONNECT = "xiaozhi_auto_connect";
+    // (MCP disabled-tools / auto-connect prefs key 已搬去 XiaozhiConfig。)
     /** 官方 xiaozhi-esp32 firmware 寫死用的 vision/explain endpoint (esp32_camera.cc
      *  Explain() 實作) - 這個 URL 不會經 OTA check_version 的回應帶回來 (見
      *  runXiaozhiActivationFlow() 的 comment: response 只有 activation/websocket
@@ -166,8 +145,10 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 唔經 filler 循環/EQ/頻譜。
     private final UbxPlayer ubxPlayer = new UbxPlayer();
     // 2026-09: 動作直驅層 (actionInfo 尋址/播放/停止/回位) 搬咗去 ActionDirect，
-    // 共用上面同一個 ubxPlayer 實例 (servo 讀寫/ubx response 仲喺呢度直接用)。
+    // ubx 直播/單舵機搬咗去 UbxApi；三個共用上面同一個 ubxPlayer 實例
+    // (servo 讀寫仲喺呢度直接用)。
     private ActionDirect actionDirect;
+    private UbxApi ubxApi;
     private final HeadKeyPoller headKeyPoller = new HeadKeyPoller();
     private HttpServer httpServer;
     // 小智 (XiaoZhi) AI 對話 - 獨立於機械人 AIDL 之外的 client-side WebSocket
@@ -201,19 +182,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     // action rather than "connect, wait, then separately press mic".
     private final java.util.concurrent.atomic.AtomicBoolean xiaozhiAutoMode =
             new java.util.concurrent.atomic.AtomicBoolean(false);
-    // 小智 tab 的 TTS 輸出引擎選擇 - "xiaozhi" (預設) 也就是維持原本行為 (server
-    // 送 opus 過來, XiaozhiAudioController 解碼播放); 選 "android" 就完全靜音
-    // 那段 opus (見 xiaozhiClient.setAudioSink() 裡面對這個 field 的判斷), 改用
-    // 本地 speech/tts (Android 內置, 和 speech tab 的 speakTts() 用著同一個 API)
-    // 逐句讀出小智回覆 - 觸發時機是 xiaozhi_tts 的 "sentence_start" (對話氣泡本身
-    // 也是用這個顯示; xiaozhi_llm 的 data.text 其實是表情 emoji, 不是對話內容,
-    // 不可以用來讀), 前端用隊列排著逐句讀完才讀下一句 (見
-    // xiaozhiEnqueueTts()/xiaozhiProcessTtsQueue() javadoc)。用
-    // SharedPreferences 持久化 (和 PREF_XIAOZHI_MCP_ENABLED 等其他小智設定
-    // 一致的做法), 跨重啟記得住選了哪個。
-    // 2026-09: 舊值 "iflytek"/"nuance" 已移除 (機身已無此兩引擎, 選中只會靜音) -
-    // 開機讀到舊值會遷移到 "xiaozhi", tts_config/set 會直接拒收舊值。
-    private volatile String xiaozhiTtsEngine = "xiaozhi";
+    // 2026-09: 小智設定層 (OTA/MCP/TTS/auto-connect) 搬咗去 XiaozhiConfig
+    // (拆 god object 第五刀)，TTS 引擎選擇讀寫經 xiaozhiConfig.getTtsEngine()。
+    private XiaozhiConfig xiaozhiConfig;
     /** Tracks consecutive unexpected-disconnect reconnect attempts for
      *  xiaozhiScheduleReconnect()'s backoff - reset to 0 on any successful (re)connect
      *  (see runXiaozhiActivationFlow()'s success path) so a stable connection later
@@ -482,17 +453,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 2026-09 刪除: headerVersionLatch/Raw/Len (唯一讀者 queryHeaderFirmwareVersion
     // 無 caller，一併刪除)。
     private ChestQuery chestQuery;
-    // 2026-08 新增: 胸口升級狀態 (48/49/50 協議，見 ag_chess/com/ubtechinc/h/a/a$b.java)
-    // 單例升級線程，升級中 chestUpgradeInProgress=true，進度 0-100，前端經 EventBus chest_upgrade_progress / chest_upgrade_done 輪詢
-    private volatile boolean chestUpgradeInProgress = false;
-    private volatile int chestUpgradeProgress = 0;
-    private volatile int chestUpgradeTotalPages = 0;
-    private volatile int chestUpgradeCurrentPage = 0;
-    private volatile String chestUpgradeStatus = "idle";
-    private volatile CountDownLatch chestUpgradeLatch;
-    private volatile byte chestUpgradeExpectedCmd = 0;
-    private volatile int chestUpgradeAckStatus = -1;
-    private volatile Thread chestUpgradeThread;
+    // 2026-09: 胸口升級成組 (48/49/50 狀態+線程+ACK) 搬咗去 ChestUpgrade
+    // (拆 god object 第四刀)，呢度淨係留個 instance。
+    private ChestUpgrade chestUpgrade;
     // 2026-08 新增: listTools() (見 xiaozhiMcpBridge()) 每次被 call 都會存下一份
     // 完整、未過濾的 tool 清單到這裡 - 給 "mcp_tools/list" HTTP endpoint (MCP 設定
     // card 用) 讀, 讓這個 card 可以顯示全部 tool 連同已 disable 的那些。初始為 null
@@ -660,18 +623,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         mainHandler.postDelayed(new Runnable() {
             @Override public void run() { maybeAutoConnectXiaozhi("startup"); }
         }, 15000);
-        // 見 xiaozhiTtsEngine field 的 javadoc - 讀取上次選定的 TTS 引擎, 如果沒有存過
-        // 就用預設值 "xiaozhi" (原本行為, 不靜音)。2026-09: 舊版本存落的
-        // "iflytek"/"nuance" 已無對應引擎, 一律遷移到 "xiaozhi" 並寫返落去,
-        // 唔係隊列會經 speech/tts 打去死 binder 全程靜音。
-        xiaozhiTtsEngine = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                .getString(PREF_XIAOZHI_TTS_ENGINE, "xiaozhi");
-        if (!"xiaozhi".equals(xiaozhiTtsEngine) && !"android".equals(xiaozhiTtsEngine)) {
-            Log.i(TAG, "migrate legacy xiaozhiTtsEngine " + xiaozhiTtsEngine + " -> xiaozhi");
-            xiaozhiTtsEngine = "xiaozhi";
-            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
-                    .putString(PREF_XIAOZHI_TTS_ENGINE, "xiaozhi").apply();
-        }
+        // 小智設定層 (含 TTS 引擎讀取+舊值遷移) 喺 XiaozhiConfig 建構嗰陣做。
+        xiaozhiConfig = new XiaozhiConfig(this);
         iflytekMatcher = new IflytekSemanticMatcher(this);
         iflytekMatcherEn = new IflytekSemanticMatcherEn(this);
         // 2026-09: Vosk 熔斷 —— vosk-android minSdk 21，API 19 機（呢個 APK 要
@@ -2201,6 +2154,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         robot = new RobotStub(this);
         chestQuery = new ChestQuery(this);
         actionDirect = new ActionDirect(this, ubxPlayer);
+        ubxApi = new UbxApi(this, ubxPlayer, actionDirect);
+        chestUpgrade = new ChestUpgrade(this, chestQuery);
         EventBus.get().publish("authorize", "{\"code\":1,\"info\":\"have offline authority\"}");
         Log.i(TAG, "Authorize result: 1 have offline authority");
 
@@ -2310,19 +2265,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                 try { onPirStateReceived(pirTriggered); } catch (Throwable t) { Log.w(TAG, "onPirStateReceived failed", t); }
             }
         }
-        // 优先处理升级 ACK (48/49/50)
-        if (chestUpgradeLatch != null && chestUpgradeLatch.getCount() > 0 && plen >= 1) {
-            byte cmd = payload[0];
-            if (cmd == chestUpgradeExpectedCmd) {
-                if (cmd == 49) {
-                    chestUpgradeAckStatus = (plen >= 2 ? (payload[1] & 0xFF) : 0);
-                } else {
-                    chestUpgradeAckStatus = 0;
-                }
-                chestUpgradeLatch.countDown();
-                return;
-            }
-        }
+        // 优先处理升级 ACK (48/49/50)，交給 ChestUpgrade 認領。
+        if (chestUpgrade.onAckFrame(payload, plen)) return;
         // 版本/UUID 回覆 latch 交給 ChestQuery 認領 (升級 ACK 上面已優先處理)。
         if (chestQuery.onFrame(frame, payload, plen)) return;
     }
@@ -3597,7 +3541,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 int angle = ApiValidator.requireInt(query, "angle");
                 int time = ApiValidator.optionalInt(query, "time", 500);
                 // cmd05 在本机固件有 ACK 无动作，改走 cmd03 全帧（servoSendOne 内处理）。
-                return servoSendOne(id, angle, time);
+                return ubxApi.servoSendOne(id, angle, time);
             }
             case "servo/all": {
                 int[] arr = ApiValidator.requireAngles20(query);
@@ -3634,16 +3578,16 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
             // Ubx 直播（与 /api/alpha2/ubx/* 同 helper；抢占式：播新自动停旧）。
             case "ubx/list":
-                return ubxListResponse();
+                return ubxApi.ubxListResponse();
             case "ubx/play":
-                return ubxPlayResponse(ApiValidator.optionalNullable(query, "name"),
+                return ubxApi.ubxPlayResponse(ApiValidator.optionalNullable(query, "name"),
                         ApiValidator.optionalNullable(query, "path"));
             case "ubx/speed":
-                return ubxSpeedResponse(ApiValidator.require(query, "value"));
+                return ubxApi.ubxSpeedResponse(ApiValidator.require(query, "value"));
             case "ubx/stop":
-                return ubxStopResponse();
+                return ubxApi.ubxStopResponse();
             case "ubx/status":
-                return ubxStatusResponse();
+                return ubxApi.ubxStatusResponse();
             default:
                 return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
                         "{\"ok\":false,\"error\":\"unknown direct endpoint: " + path + "\"}");
@@ -3688,67 +3632,11 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok(sb.toString());
             }
 
-            case "ota_config/get": {
-                android.content.SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-                boolean customEnabled = prefs.getBoolean(PREF_XIAOZHI_OTA_CUSTOM_ENABLED, false);
-                String customUrl = prefs.getString(PREF_XIAOZHI_OTA_URL, "");
-                String wsUrlOverride = prefs.getString(PREF_XIAOZHI_WS_URL_OVERRIDE, "");
-                String deviceIdOverride = prefs.getString(PREF_XIAOZHI_DEVICE_ID_OVERRIDE, "");
-                String tokenOverride = prefs.getString(PREF_XIAOZHI_TOKEN_OVERRIDE, "");
-                return HttpServer.ApiResponse.ok("{\"ok\":true,"
-                        + "\"customEnabled\":" + customEnabled + ","
-                        + "\"customUrl\":\"" + jsonSafe(customUrl) + "\","
-                        + "\"defaultUrl\":\"" + jsonSafe(XiaozhiOtaClient.DEFAULT_OTA_URL) + "\","
-                        + "\"wsUrlOverride\":\"" + jsonSafe(wsUrlOverride) + "\","
-                        + "\"deviceIdOverride\":\"" + jsonSafe(deviceIdOverride) + "\","
-                        + "\"tokenOverride\":\"" + jsonSafe(tokenOverride) + "\"}");
-            }
+            case "ota_config/get":
+                return xiaozhiConfig.otaConfigGet();
 
-            case "ota_config/set": {
-                // 2026-08 修正: 之前這裡的 comment 說「主流自架 server 只需要 OTA
-                // URL, websocket url/token 由 OTA response 一併送回, 不開放獨立
-                // 欄位」- 但實測發現不是所有自架方案都能依照這個協議形狀傳回足夠資訊,
-                // 用戶手上的 server 需要手動填寫 websocket 地址、MAC/Device-Id、
-                // token 才連得上。現在這三個都開放做可選 override: 留空就繼續走
-                // 原本「只有 OTA URL, 其餘自動」那條路; 有填就用來覆蓋
-                // runXiaozhiActivationFlow() 裡對應的自動值 (見該處 comment)。
-                boolean enabled = ApiValidator.requireBoolean(query, "enabled");
-                String url = ApiValidator.optionalNullable(query, "url");
-                String wsUrlOverride = ApiValidator.optionalNullable(query, "wsUrl");
-                String deviceIdOverride = ApiValidator.optionalNullable(query, "deviceId");
-                String tokenOverride = ApiValidator.optionalNullable(query, "token");
-                if (enabled) {
-                    if (url == null) {
-                        throw new IllegalArgumentException("url is required when enabled=true");
-                    }
-                    url = url.trim();
-                    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                        throw new IllegalArgumentException("url must start with http:// or https://");
-                    }
-                    if (wsUrlOverride != null) {
-                        String trimmed = wsUrlOverride.trim();
-                        if (!trimmed.startsWith("ws://") && !trimmed.startsWith("wss://")) {
-                            throw new IllegalArgumentException("wsUrl must start with ws:// or wss://");
-                        }
-                    }
-                    if (deviceIdOverride != null && !isMacShaped(deviceIdOverride.trim())) {
-                        throw new IllegalArgumentException(
-                                "deviceId must look like a MAC address, e.g. aa:bb:cc:dd:ee:ff");
-                    }
-                    if (xiaozhiClient.isOpen()) {
-                        return HttpServer.ApiResponse.error("disconnect from XiaoZhi first before changing the server");
-                    }
-                }
-                android.content.SharedPreferences.Editor editor =
-                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit();
-                editor.putBoolean(PREF_XIAOZHI_OTA_CUSTOM_ENABLED, enabled);
-                if (url != null) editor.putString(PREF_XIAOZHI_OTA_URL, url);
-                if (wsUrlOverride != null) editor.putString(PREF_XIAOZHI_WS_URL_OVERRIDE, wsUrlOverride.trim());
-                if (deviceIdOverride != null) editor.putString(PREF_XIAOZHI_DEVICE_ID_OVERRIDE, deviceIdOverride.trim());
-                if (tokenOverride != null) editor.putString(PREF_XIAOZHI_TOKEN_OVERRIDE, tokenOverride.trim());
-                editor.apply();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
+            case "ota_config/set":
+                return xiaozhiConfig.otaConfigSet(query, xiaozhiClient.isOpen());
 
             // 2026-08 新增: MCP 設定 card 用的三個 endpoint。
             //
@@ -3775,7 +3663,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                     }
                     fullList = lastFullMcpToolList;
                 }
-                java.util.Set<String> disabledNames = getMcpDisabledToolNames();
+                java.util.Set<String> disabledNames = xiaozhiConfig.getMcpDisabledToolNames();
                 try {
                     org.json.JSONArray toolsWithState = new org.json.JSONArray();
                     for (int i = 0; i < fullList.length(); i++) {
@@ -3787,67 +3675,24 @@ public class MainActivity extends Activity implements SensorEventListener {
                     org.json.JSONObject result = new org.json.JSONObject();
                     result.put("ok", true);
                     result.put("tools", toolsWithState);
-                    result.put("mcpEnabled", isMcpEnabled());
+                    result.put("mcpEnabled", xiaozhiConfig.isMcpEnabled());
                     return HttpServer.ApiResponse.ok(result.toString());
                 } catch (org.json.JSONException e) {
                     return HttpServer.ApiResponse.error("failed to build tool list: " + e.getMessage());
                 }
             }
 
-            case "mcp_config/get": {
-                java.util.Set<String> disabledNames = getMcpDisabledToolNames();
-                org.json.JSONArray disabledArr = new org.json.JSONArray();
-                for (String n : disabledNames) disabledArr.put(n);
-                try {
-                    org.json.JSONObject result = new org.json.JSONObject();
-                    result.put("ok", true);
-                    result.put("mcpEnabled", isMcpEnabled());
-                    result.put("disabledTools", disabledArr);
-                    return HttpServer.ApiResponse.ok(result.toString());
-                } catch (org.json.JSONException e) {
-                    return HttpServer.ApiResponse.error("failed to build config: " + e.getMessage());
-                }
-            }
+            case "mcp_config/get":
+                return xiaozhiConfig.mcpConfigGet();
 
-            case "mcp_config/set": {
-                // 兩種用法, 依 query 帶的參數而定:
-                //   ?enabled=true|false                  -> 設總開關
-                //   ?tool=<name>&enabled=true|false       -> 設單一 tool
-                String toolName = ApiValidator.optionalNullable(query, "tool");
-                boolean enabled = ApiValidator.requireBoolean(query, "enabled");
-                android.content.SharedPreferences.Editor mcpEditor =
-                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit();
-                if (toolName == null || toolName.isEmpty()) {
-                    mcpEditor.putBoolean(PREF_XIAOZHI_MCP_ENABLED, enabled);
-                } else {
-                    java.util.Set<String> disabledNames = getMcpDisabledToolNames();
-                    if (enabled) {
-                        disabledNames.remove(toolName);
-                    } else {
-                        disabledNames.add(toolName);
-                    }
-                    mcpEditor.putString(PREF_XIAOZHI_MCP_DISABLED_TOOLS,
-                            android.text.TextUtils.join(",", disabledNames));
-                }
-                mcpEditor.apply();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
+            case "mcp_config/set":
+                return xiaozhiConfig.mcpConfigSet(query);
 
-            // 見 xiaozhiTtsEngine field 的 javadoc。engine 值: "xiaozhi" (預設,
-            // server 送 opus 播放) | "android" (靜音 opus, 改用本地 Android TTS
-            // 讀出)。2026-09: "iflytek"/"nuance" 已移除, 直接拒收。
             case "tts_config/get":
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"engine\":\""
-                        + jsonSafe(xiaozhiTtsEngine) + "\"}");
+                return xiaozhiConfig.ttsConfigGet();
 
-            case "tts_config/set": {
-                String engine = ApiValidator.requireXiaozhiTtsEngine(query);
-                xiaozhiTtsEngine = engine;
-                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
-                        .putString(PREF_XIAOZHI_TTS_ENGINE, engine)
-                        .apply();
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"engine\":\"" + jsonSafe(engine) + "\"}");
-            }
+            case "tts_config/set":
+                return xiaozhiConfig.ttsConfigSet(query);
 
             case "connect": {
                 if (xiaozhiClient.isOpen()) {
@@ -3942,17 +3787,10 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + "}");
             }
 
-            case "auto_connect/get": {
-                boolean autoConn = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                        .getBoolean(PREF_XIAOZHI_AUTO_CONNECT, false);
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + autoConn + "}");
-            }
-            case "auto_connect/set": {
-                boolean autoConn = ApiValidator.requireBoolean(query, "enabled");
-                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
-                        .putBoolean(PREF_XIAOZHI_AUTO_CONNECT, autoConn).apply();
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + autoConn + "}");
-            }
+            case "auto_connect/get":
+                return xiaozhiConfig.autoConnectGet();
+            case "auto_connect/set":
+                return xiaozhiConfig.autoConnectSet(query);
 
             case "send_text": {
                 String text = ApiValidator.require(query, "text");
@@ -4251,14 +4089,11 @@ public class MainActivity extends Activity implements SensorEventListener {
             // wsUrl/deviceId/token 三個可選 override (PREF_XIAOZHI_WS_URL_OVERRIDE
             // 等), 留空就繼續用 OTA response/自動產生的那個值, 有填就用來覆蓋, 應付需要
             // 手動配置的自架 server。
-            android.content.SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-            boolean customEnabled = prefs.getBoolean(PREF_XIAOZHI_OTA_CUSTOM_ENABLED, false);
-            String otaUrl = customEnabled
-                ? prefs.getString(PREF_XIAOZHI_OTA_URL, XiaozhiOtaClient.DEFAULT_OTA_URL)
-                : XiaozhiOtaClient.DEFAULT_OTA_URL;
-            String wsUrlOverride = customEnabled ? prefs.getString(PREF_XIAOZHI_WS_URL_OVERRIDE, "") : "";
-            String deviceIdOverride = customEnabled ? prefs.getString(PREF_XIAOZHI_DEVICE_ID_OVERRIDE, "") : "";
-            String tokenOverride = customEnabled ? prefs.getString(PREF_XIAOZHI_TOKEN_OVERRIDE, "") : "";
+            XiaozhiConfig.OtaConfig otaCfg = xiaozhiConfig.getOtaConfig();
+            String otaUrl = otaCfg.otaUrl;
+            String wsUrlOverride = otaCfg.wsUrl;
+            String deviceIdOverride = otaCfg.deviceId;
+            String tokenOverride = otaCfg.token;
             // deviceId override 要在 OTA client 建構之前就決定 - Device-Id header
             // 從 OTA check_version 的 request 開始就要用同一個值 (和 WebSocket 那邊一致,
             // 見 getXiaozhiDeviceId() 的 comment), 不只是影響最終 connect() 那一下。
@@ -4338,7 +4173,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                     // 完全靜音這條 cloud opus 聲軌 - 只是不 forward 到
                     // XiaozhiAudioController, decode/AudioTrack pipeline 本身
                     // 沒有改, 一切回 "xiaozhi" 就立即恢復原本行為。
-                    if (!"xiaozhi".equals(xiaozhiTtsEngine)) {
+                    if (!"xiaozhi".equals(xiaozhiConfig.getTtsEngine())) {
                         return;
                     }
                     xiaozhiAudioController.onIncomingOpusFrame(opusData);
@@ -4464,14 +4299,7 @@ public class MainActivity extends Activity implements SensorEventListener {
      * connectivity 恢復兩處觸發，唔會重複連。
      */
     private void maybeAutoConnectXiaozhi(String why) {
-        boolean enabled;
-        try {
-            enabled = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                    .getBoolean(PREF_XIAOZHI_AUTO_CONNECT, false);
-        } catch (Exception e) {
-            return;
-        }
-        if (!enabled) return;
+        if (!xiaozhiConfig.isAutoConnectEnabled()) return;
         if (xiaozhiClient == null || xiaozhiClient.isOpen()) return;
         if (!xiaozhiActivationInFlight.compareAndSet(false, true)) return;
         xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
@@ -4614,7 +4442,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         String existing = prefs.getString(PREF_XIAOZHI_DEVICE_ID, null);
-        if (existing != null && isMacShaped(existing)) {
+        if (existing != null && XiaozhiConfig.isMacShaped(existing)) {
             return existing;
         }
         String generated = syntheticMacFromUuid(java.util.UUID.randomUUID());
@@ -4638,10 +4466,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    private static boolean isMacShaped(String s) {
-        return s != null && s.matches("^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$");
-    }
-
+    // isMacShaped() 搬咗去 XiaozhiConfig (OTA 驗證同 deviceId 共用)。
     private static String syntheticMacFromUuid(java.util.UUID uuid) {
         byte[] bytes = new byte[6];
         long msb = uuid.getMostSignificantBits();
@@ -4907,37 +4732,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         }, "XiaozhiAutoRandomAction").start();
     }
 
-    /** MCP tool enable/disable 設定的讀寫 helper - 逗號分隔的 disabled tool name
-     *  清單, 存在 PREFS_NAME 這個共用 SharedPreferences (和 OTA custom 設定用
-     *  同一個, 不另開一個 file)。isMcpToolEnabled() 供 listTools()/callTool()
-     *  共用: listTools() 用來過濾哪些 tool 出現在回應中, callTool() 用來擋下一個
-     *  已經 disabled 但 LLM 手上還持有舊 tool 清單、嘗試照樣呼叫的情況
-     *  (單靠 listTools() 側過濾不夠, LLM 快取了上一次的清單就繞得過去)。
-     *  2026-08 更新: UI 側移除了「開放 MCP 工具給小智使用」總開關 - 這台機器現在
-     *  永遠對外暴露 MCP 工具 (逐項 enable/disable 不變), isMcpEnabled() 恆常
-     *  回傳 true。PREF_XIAOZHI_MCP_ENABLED 這個 pref key 保留在常數和
-     *  mcp_config/set 的寫入路徑裡沒有拆掉, 純粹是為了相容舊有經由 query string
-     *  直接打 API 的呼叫方式, 但不會再影響實際行為。 */
-    private boolean isMcpEnabled() {
-        return true;
-    }
-
-    private java.util.Set<String> getMcpDisabledToolNames() {
-        String csv = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getString(PREF_XIAOZHI_MCP_DISABLED_TOOLS, "");
-        java.util.Set<String> disabled = new java.util.HashSet<>();
-        if (!csv.isEmpty()) {
-            for (String name : csv.split(",")) {
-                String trimmed = name.trim();
-                if (!trimmed.isEmpty()) disabled.add(trimmed);
-            }
-        }
-        return disabled;
-    }
-
-    private boolean isMcpToolEnabled(String toolName, java.util.Set<String> disabledNames) {
-        return isMcpEnabled() && !disabledNames.contains(toolName);
-    }
-
+    // 2026-09: MCP 開關 helper (isMcpEnabled/getMcpDisabledToolNames/
+    // isMcpToolEnabled) 搬咗去 XiaozhiConfig，bridge 經 xiaozhiConfig.* 用。
     /** Reads an InputStream fully into a UTF-8 string - mirrors XiaozhiOtaClient's own
      *  readFully() (same need, this class just doesn't share that one since it's
      *  private there). Used by xiaozhiVisionExplainRequest()'s response handling. */
@@ -5024,7 +4820,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             visionUrl = serverProvidedUrl;
             token = xiaozhiClient.getVisionToken();
         } else {
-            visionUrl = prefs.getBoolean(PREF_XIAOZHI_OTA_CUSTOM_ENABLED, false)
+            visionUrl = xiaozhiConfig.isOtaCustomEnabled()
                     ? prefs.getString(PREF_XIAOZHI_VISION_URL, DEFAULT_VISION_URL)
                     : DEFAULT_VISION_URL;
             if (visionUrl == null || visionUrl.trim().isEmpty()) {
@@ -5074,7 +4870,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             visionUrl = serverProvidedUrl;
             token = xiaozhiClient.getVisionToken();
         } else {
-            visionUrl = prefs.getBoolean(PREF_XIAOZHI_OTA_CUSTOM_ENABLED, false)
+            visionUrl = xiaozhiConfig.isOtaCustomEnabled()
                     ? prefs.getString(PREF_XIAOZHI_VISION_URL, DEFAULT_VISION_URL)
                     : DEFAULT_VISION_URL;
             if (visionUrl == null || visionUrl.trim().isEmpty()) {
@@ -5760,10 +5556,10 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // 一次就夠, 不用逐個 tools.put() 前面加 if, 減少改動、不用擔心漏了
                 // 哪一個。總開關關閉就回傳完全空的 tools array (等於告訴 LLM「這台
                 // 機器現在沒有任何工具」); 開啟就逐一取得個別 tool 的 enabled 狀態
-                // 過濾。見 isMcpToolEnabled()/getMcpDisabledToolNames() 的 comment。
+                // 過濾。見 XiaozhiConfig isMcpToolEnabled()/getMcpDisabledToolNames() 的 comment。
                 org.json.JSONArray filteredTools = new org.json.JSONArray();
-                if (isMcpEnabled()) {
-                    java.util.Set<String> disabledNames = getMcpDisabledToolNames();
+                if (xiaozhiConfig.isMcpEnabled()) {
+                    java.util.Set<String> disabledNames = xiaozhiConfig.getMcpDisabledToolNames();
                     for (int i = 0; i < tools.length(); i++) {
                         org.json.JSONObject tool = tools.getJSONObject(i);
                         if (!disabledNames.contains(tool.optString("name"))) {
@@ -5791,8 +5587,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // 2026-08 新增: 單靠 listTools() 側過濾不夠 - LLM 可能還拿著上一次
                 // (disable 之前) 取得的 tool 清單, 照樣試著呼叫一個現在已經 disabled
                 // 的 tool name, 這裡多做一重防護。和 listTools() 用同一套
-                // isMcpEnabled()/getMcpDisabledToolNames() 邏輯, 保證兩邊判斷一致。
-                if (!isMcpToolEnabled(name, getMcpDisabledToolNames())) {
+                // XiaozhiConfig isMcpEnabled()/getMcpDisabledToolNames() 邏輯, 保證兩邊判斷一致。
+                if (!xiaozhiConfig.isMcpToolEnabled(name, xiaozhiConfig.getMcpDisabledToolNames())) {
                     org.json.JSONArray disabledContent = new org.json.JSONArray();
                     org.json.JSONObject disabledBlock = new org.json.JSONObject();
                     disabledBlock.put("type", "text");
@@ -6274,7 +6070,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
             case "chest/upgrade": {
                 // 觸發胸口升級：讀 /sdcard/AlphaII_CHEST_kernel.bin 經 48/49/50 協議升級
-                String err = startChestUpgrade();
+                String err = chestUpgrade.startChestUpgrade();
                 if (err == null) {
                     return HttpServer.ApiResponse.ok("{\"ok\":true,\"started\":true}");
                 } else {
@@ -6282,18 +6078,16 @@ public class MainActivity extends Activity implements SensorEventListener {
                 }
             }
             case "chest/upgrade/status": {
-                return HttpServer.ApiResponse.ok("{\"ok\":true," + getChestUpgradeStatusJson().substring(1));
+                return HttpServer.ApiResponse.ok("{\"ok\":true," + chestUpgrade.getChestUpgradeStatusJson().substring(1));
             }
             case "chest/upgrade/resume": {
                 int from = ApiValidator.optionalInt(query, "from", 0);
-                String err = startChestUpgradeFrom(from);
+                String err = chestUpgrade.startChestUpgradeFrom(from);
                 if (err == null) return HttpServer.ApiResponse.ok("{\"ok\":true,\"resumed\":true,\"from\":"+from+"}");
                 else return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(err) + "\"}");
             }
             case "chest/upgrade/abort": {
-                resetChestUpgradeState();
-                chestUpgradeInProgress = false;
-                chestUpgradeStatus = "aborted";
+                chestUpgrade.abort();
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"aborted\":true}");
             }
             case "chest/page": {
@@ -6330,18 +6124,18 @@ public class MainActivity extends Activity implements SensorEventListener {
             // /api/direct/ubx/* 那份调同一 helper，行为一致；/api/ubx/* 裸路径经
             // fallthrough 亦到此）--------------
             case "ubx/list":
-                return ubxListResponse();
+                return ubxApi.ubxListResponse();
             case "ubx/play":
-                return ubxPlayResponse(ApiValidator.optionalNullable(query, "name"),
+                return ubxApi.ubxPlayResponse(ApiValidator.optionalNullable(query, "name"),
                         ApiValidator.optionalNullable(query, "path"));
             case "ubx/stop":
-                return ubxStopResponse();
+                return ubxApi.ubxStopResponse();
             case "ubx/status":
-                return ubxStatusResponse();
+                return ubxApi.ubxStatusResponse();
             case "ubx/speed":
                 // 枚舉校驗在 ubxSpeedResponse 內經 ApiValidator.parseUbxSpeedValue 統一做,
                 // 這裡只保證必填 (缺席即 400), 避免兩次 parse。
-                return ubxSpeedResponse(ApiValidator.require(query, "value"));
+                return ubxApi.ubxSpeedResponse(ApiValidator.require(query, "value"));
 
             // -- Speech / TTS -----------------------------------------------------------
             // engine: nuance | iflytek | android. voice only applies to iflytek (its
@@ -6683,7 +6477,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 int id = ApiValidator.requireIntRange(query, "id", 1, 20);
                 int angle = ApiValidator.requireInt(query, "angle");
                 int time = ApiValidator.optionalInt(query, "time", 1000);
-                boolean ok = servoSendOneCode(id, angle, time) == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+                boolean ok = ubxApi.servoSendOneCode(id, angle, time) == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
                 return codeResponseReady(directCode(ok), directChestReady());
             }
             case "servo/all": {
@@ -8259,103 +8053,8 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 搬咗去 ActionDirect (拆 god object 第二刀)，以下淨返 ubx/servo 共用實現。
     // -- Ubx 直播共用实现（/api/direct/ubx/* 与 /api/alpha2/ubx/* 同调；
     // 抢占式：播新动作自动停旧动作，与原厂 playActionName 打断语义一致）--
-    private HttpServer.ApiResponse ubxListResponse() {
-        java.io.File dir = new java.io.File("/sdcard/actions");
-        String[] names = dir.list();
-        if (names == null) return HttpServer.ApiResponse.error("no /sdcard/actions");
-        StringBuilder sb = new StringBuilder("{\"ok\":true,\"files\":[");
-        boolean first = true;
-        for (String n : names) {
-            java.io.File f = new java.io.File(dir, n);
-            if (!f.isFile()) continue;
-            if (!first) sb.append(',');
-            first = false;
-            sb.append("{\"name\":\"").append(jsonSafe(n)).append("\",\"size\":").append(f.length()).append('}');
-        }
-        sb.append("]}");
-        return HttpServer.ApiResponse.ok(sb.toString());
-    }
-
-    private HttpServer.ApiResponse ubxPlayResponse(String name, String p) {
-        java.io.File f;
-        if (p != null) f = new java.io.File(p);
-        else if (name != null) f = new java.io.File("/sdcard/actions/" + name);
-        else return HttpServer.ApiResponse.error("name or path required");
-        if (!f.isFile()) return HttpServer.ApiResponse.error("not found: " + f.getPath());
-        HardwareDirectManager dm = HardwareDirectManager.get(this);
-        if (!dm.chest().isAvailable()) return HttpServer.ApiResponse.error("chest not available");
-        UbxFile ubx;
-        try {
-            ubx = UbxParser.parseFile(f);
-        } catch (Exception e) {
-            return HttpServer.ApiResponse.error("parse failed: " + e.getMessage());
-        }
-        ubxPlayer.stop(); // 抢占：停旧播新
-        boolean started = ubxPlayer.play(ubx, f.getName(), dm.chest(), f);
-        if (!started) return HttpServer.ApiResponse.error("cannot start: " + ubxPlayer.lastError());
-        actionDirect.setLastPlayedFile(f);
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"name\":\"" + jsonSafe(f.getName())
-                + "\",\"total\":" + ubxPlayer.total() + "}");
-    }
-
-    private HttpServer.ApiResponse ubxSpeedResponse(String v) {
-        float f = ApiValidator.parseUbxSpeedValue(v);
-        if (!ubxPlayer.setSpeed(f)) {
-            throw new IllegalArgumentException("parameter 'value' must be one of [0.5, 0.67, 1, 1.5, 2], got: " + v);
-        }
-        // 播緊時即時生效：用新速度由頭重播同一文件（内部快照隔离，旧计划安全交接）。
-        boolean restarted = false;
-        java.io.File last = actionDirect.getLastPlayedFile();
-        if (ubxPlayer.isPlaying() && last != null && last.isFile()) {
-            try {
-                UbxFile rubx = UbxParser.parseFile(last);
-                HardwareDirectManager rdm = HardwareDirectManager.get(this);
-                if (rdm.chest().isAvailable()) {
-                    ubxPlayer.stop();
-                    restarted = ubxPlayer.play(rubx, last.getName(), rdm.chest(), last);
-                    if (restarted) actionDirect.setLastPlayedFile(last);
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "speed restart failed", e);
-            }
-        }
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"code\":\"API_ERROR_SUCCEED\",\"speed\":" + ubxPlayer.getSpeed()
-                + ",\"restarted\":" + restarted + "}");
-    }
-
-    private HttpServer.ApiResponse ubxStopResponse() {
-        ubxPlayer.stop();
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
-    }
-
-    private HttpServer.ApiResponse ubxStatusResponse() {
-        return HttpServer.ApiResponse.ok(ubxPlayer.statusJson());
-    }
-
-    // -- Servo 命令位姿（cmd03 化）--------------------------------------------------
-    // 本机胸固件只执行 cmd 3：单舵机 = 全帧改一轴后整帧发；读角 = 命令位姿追踪
-    // （ServoPoseTracker，开机未动过则 unknown，绝不编造）。
-    /** 单舵机经 cmd03 全帧发送；返回 code（pose unknown 时 FAILED，调用方各自组 JSON）。 */
-    private UbxErrorCode.API_ERROR_CODE servoSendOneCode(int id, int angle, int timeMs) {
-        int[] cur = ubxPlayer.pose();
-        if (cur == null) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
-        cur[id - 1] = angle & 0xFF;
-        boolean sent = HardwareDirectManager.get(this).chest().setAllServos(cur, (short) timeMs);
-        if (!sent) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
-        ubxPlayer.notePose(cur);
-        return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
-    }
-
-    private HttpServer.ApiResponse servoSendOne(int id, int angle, int timeMs) {
-        UbxErrorCode.API_ERROR_CODE code = servoSendOneCode(id, angle, timeMs);
-        if (code != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-            boolean known = ubxPlayer.poseKnown();
-            return HttpServer.ApiResponse.error(known ? "direct not ready"
-                    : "pose unknown (play any action first, or send full pose via servo/all)");
-        }
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + id + ",\"angle\":" + (angle & 0xFF) + "}");
-    }
-
+    // 2026-09: ubx 直播共用實現 (list/play/speed/stop/status) 同單舵機 cmd03 化
+    // (servoSendOne/Code) 搬咗去 UbxApi (拆 god object 第三刀)。
     // 2026-09 移除: servoSendAll()——零調用 (direct servo/all 已內聯同一邏輯)。
     // 2026-09: actionListDirect / actionPlayDirect / playActionDirect /
     // stopActionWithRecovery 搬咗去 ActionDirect (拆 god object 第二刀)。
@@ -8790,201 +8489,8 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 前端無入口)。胸板 queryChestFirmwareVersion() 保留。
 
     // -- 胸口升級實作 (48/49/50，鏡像 alpha2services h.a.a$b) ---------------------------
-    private int getBatteryPercentForUpgrade() {
-        try {
-            android.content.IntentFilter f = new android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED);
-            android.content.Intent b = registerReceiver(null, f);
-            if (b == null) return -1;
-            int level = b.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-            int scale = b.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-            int status = b.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
-            boolean charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL;
-            if (charging) return 100;
-            if (level < 0 || scale <= 0) return -1;
-            return (level * 100) / scale;
-        } catch (Exception e) { return -1; }
-    }
-
-    private boolean isPowerEnoughForUpgrade() {
-        int pct = getBatteryPercentForUpgrade();
-        return pct < 0 || pct >= 50; // 未知時放行，已知需 >=50，與 AlphaMainSeviceImpl.java:13 MIN_UPDATE_POWER 一致
-    }
-
-    private byte[] md5OfFile(java.io.File file) throws Exception {
-        java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
-        try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) > 0) md.update(buf, 0, n);
-        }
-        return md.digest();
-    }
-
-    private boolean waitForChestAck(byte expectedCmd, long timeoutMs) {
-        chestUpgradeExpectedCmd = expectedCmd;
-        chestUpgradeAckStatus = -1;
-        CountDownLatch latch = new CountDownLatch(1);
-        chestUpgradeLatch = latch;
-        try {
-            boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
-            if (!ok) {
-                byte[] lastVer = chestQuery.getLastVersionRaw();
-                Log.w(TAG, "chest upgrade ack timeout cmd=" + expectedCmd + " raw=" + (lastVer!=null?toHex(lastVer,lastVer.length):"null"));
-                // 超時後印最近一次 chest_rcv 原始幀以便診斷 170 頁這類數據校驗失敗
-                return false;
-            }
-            if (expectedCmd == 49 && chestUpgradeAckStatus != 0) {
-                Log.w(TAG, "chest page ack status=" + chestUpgradeAckStatus + " (page data may be rejected, check offset " + (chestUpgradeCurrentPage*128) + ")");
-                return false;
-            }
-            return true;
-        } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
-        finally { chestUpgradeLatch = null; }
-    }
-
-    private void resetChestUpgradeState() {
-        try {
-            chestUpgradeLatch = null;
-            chestQuery.reset();
-            Thread.sleep(400);
-        } catch (Exception ignored) {}
-    }
-
-    /** 真正升級線程：48(檔長)->49*2048頁(128B)->50(MD5)，鏡像 h.a.a$b:63，加入重啟後首頁即失敗的復位 */
-    private void doChestUpgradeFrom(final java.io.File file, final int startPage) {
-        final int fileLen = (int) file.length();
-        final int totalPages = (fileLen + 127) / 128;
-        chestUpgradeTotalPages = totalPages;
-        chestUpgradeCurrentPage = 0;
-        chestUpgradeProgress = 0;
-        chestUpgradeStatus = "start";
-        EventBus.get().publish("chest_upgrade_progress", "{\"state\":\"start\",\"progress\":0,\"total\":"+totalPages+"}");
-        Log.i(TAG, "chest upgrade start len=" + fileLen + " pages=" + totalPages);
-        // 起始前強制復位，避免重啟後首頁即 01 失敗（殘留升級態）
-        resetChestUpgradeState();
-        try { Thread.sleep(400); } catch (InterruptedException ignored) {}
-        try {
-            // pure-direct: 升级经 /dev/ttyS1 直发 48/49/50。
-            if (!directChestReady()) { throw new Exception("chest not ready (pure-direct)"); }
-            // 48 START — 若連續3次仍 01，嘗試先發 END 清狀態再重試
-            chestUpgradeStatus = "sending start";
-            boolean startOk = false;
-            for (int retry = 0; retry < 3; retry++) {
-                boolean s = HardwareDirectManager.get(this).chest().startUpdate(fileLen);
-                if (!s) { Thread.sleep(500); continue; }
-                if (waitForChestAck((byte)48, 5000)) { startOk = true; break; }
-                if (retry == 1) { Log.w(TAG, "start retry with reset"); resetChestUpgradeState(); try{Thread.sleep(600);}catch(Exception ignored){} }
-            }
-            if (!startOk) throw new Exception("start ack timeout");
-            Thread.sleep(150); // 原廠線程無連發，給 MCU 準備
-            chestUpgradeStatus = "sending pages";
-            // 49 PAGES — 每頁間 30ms 間隔，避免連發撞上心跳 8d 幀；失敗頁會完整印 hex 供定位 170 頁這類點
-            // 若 startPage>0，跳過前面已成功的頁（斷點續傳，解決 170 頁後重試首頁即 01）
-            try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
-                // 先跳過 startPage*128 字節
-                if (startPage > 0) {
-                    long toSkip = (long) startPage * 128L;
-                    long skipped = 0;
-                    while (skipped < toSkip) {
-                        long n = in.skip(toSkip - skipped);
-                        if (n <= 0) break;
-                        skipped += n;
-                    }
-                    Log.i(TAG, "resume from page " + startPage + " skipped=" + skipped);
-                }
-                byte[] pageBuf = new byte[128];
-                int pageIdx = startPage;
-                int read;
-                while ((read = in.read(pageBuf, 0, 128)) != -1) {
-                    if (Thread.currentThread().isInterrupted()) throw new Exception("interrupted");
-                    byte[] sendBuf = java.util.Arrays.copyOf(pageBuf, read);
-                    boolean pageOk = false;
-                    for (int retry = 0; retry < 3; retry++) {
-                        boolean s = HardwareDirectManager.get(this).chest().updatePage(sendBuf, read);
-                        if (!s) { Thread.sleep(300); continue; }
-                        if (waitForChestAck((byte)49, 4000)) { pageOk = true; break; }
-                        Log.w(TAG, "page " + pageIdx + " retry " + retry + " dataHead=" + toHex(sendBuf, Math.min(16,read)));
-                        Thread.sleep(200);
-                    }
-                    if (!pageOk) {
-                        Log.e(TAG, "page " + pageIdx + " failed data=" + toHex(sendBuf, Math.min(32,read)) + " offset=" + (pageIdx*128));
-                        throw new Exception("page " + pageIdx + " failed after 3 retries");
-                    }
-                    pageIdx++;
-                    chestUpgradeCurrentPage = pageIdx;
-                    chestUpgradeProgress = (pageIdx * 100) / totalPages;
-                    EventBus.get().publish("chest_upgrade_progress",
-                        "{\"state\":\"page\",\"page\":"+pageIdx+",\"total\":"+totalPages+",\"progress\":"+chestUpgradeProgress+"}");
-                    if (pageIdx % 20 == 0) Log.i(TAG, "chest page " + pageIdx + "/" + totalPages + " " + chestUpgradeProgress + "%");
-                    Thread.sleep(30);
-                }
-            }
-            // 50 END (MD5)
-            chestUpgradeStatus = "sending end";
-            byte[] md5 = md5OfFile(file);
-            Log.i(TAG, "chest upgrade md5 " + toHex(md5, md5.length));
-            boolean endOk = false;
-            for (int retry = 0; retry < 3; retry++) {
-                boolean s = HardwareDirectManager.get(this).chest().endUpdate(md5);
-                if (!s) { Thread.sleep(500); continue; }
-                if (waitForChestAck((byte)50, 5000)) { endOk = true; break; }
-            }
-            if (!endOk) throw new Exception("end ack timeout");
-            chestUpgradeProgress = 100;
-            chestUpgradeStatus = "success";
-            EventBus.get().publish("chest_upgrade_done", "{\"ok\":true,\"progress\":100}");
-            Log.i(TAG, "chest upgrade success");
-            // 成功後由用戶手動重啟或自動重啟（alpha2services 原流程會重啟）
-            EventBus.get().publish("chest_upgrade_progress", "{\"state\":\"success\",\"progress\":100}");
-        } catch (Exception e) {
-            chestUpgradeStatus = "failed: " + e.getMessage();
-            Log.w(TAG, "chest upgrade failed", e);
-            EventBus.get().publish("chest_upgrade_done", "{\"ok\":false,\"error\":\"" + jsonSafe(e.getMessage()) + "\"}");
-            EventBus.get().publish("chest_upgrade_progress", "{\"state\":\"failed\",\"error\":\"" + jsonSafe(e.getMessage()) + "\"}");
-        } finally {
-            chestUpgradeInProgress = false;
-            chestUpgradeThread = null;
-        }
-    }
-
-    public synchronized String startChestUpgrade() { return startChestUpgradeFrom(0); }
-    public synchronized String startChestUpgradeFrom(int startPage) {
-        if (chestUpgradeInProgress) return "already running";
-        java.io.File f = new java.io.File("/sdcard/AlphaII_CHEST_kernel.bin");
-        if (!f.exists()) return "file not found: /sdcard/AlphaII_CHEST_kernel.bin";
-        if (f.length() != 262144) Log.w(TAG, "chest file size unusual: " + f.length());
-        if (!isPowerEnoughForUpgrade()) {
-            int pct = getBatteryPercentForUpgrade();
-            return "power not enough (" + pct + "%), need >=50%";
-        }
-        // pure-direct: 就绪即直驱串口可用，不再 waitChestReady()/binder。
-        if (!directChestReady()) {
-            resetChestUpgradeState();
-            try { Thread.sleep(800); } catch (InterruptedException ignored) {}
-            if (!directChestReady()) return "chest not ready (pure-direct)";
-        }
-        if (chestUpgradeStatus.startsWith("failed")) {
-            try { Thread.sleep(800); } catch (InterruptedException ignored) {}
-            resetChestUpgradeState();
-        }
-        chestUpgradeInProgress = true;
-        chestUpgradeProgress = startPage * 100 / ((int)(f.length()+127)/128);
-        chestUpgradeCurrentPage = startPage;
-        chestUpgradeStatus = "starting from " + startPage;
-        final int sp = startPage;
-        chestUpgradeThread = new Thread(new Runnable() { @Override public void run() { doChestUpgradeFrom(f, sp); } }, "ChestUpgrade");
-        chestUpgradeThread.start();
-        return null;
-    }
-// (2026-09: 兼容舊 doChestUpgrade(File) 轉調已刪 - 全部 caller 直接用
-// doChestUpgradeFrom(file, startPage)。)
-
-    public String getChestUpgradeStatusJson() {
-        return "{\"inProgress\":" + chestUpgradeInProgress + ",\"progress\":" + chestUpgradeProgress
-            + ",\"currentPage\":" + chestUpgradeCurrentPage + ",\"totalPages\":" + chestUpgradeTotalPages
-            + ",\"status\":\"" + jsonSafe(chestUpgradeStatus) + "\"}";
-    }
-
+    // 2026-09: 胸升級實裝 (電量/MD5/ACK/升級線程/啟動/狀態) 搬咗去 ChestUpgrade
+    // (拆 god object 第四刀)。
     /** Formats raw serial bytes as space-separated uppercase hex, matching the format
      *  used by the upstream SDK's HelloAlpha example for the same callbacks. */
     static String toHex(byte[] bytes, int len) {
