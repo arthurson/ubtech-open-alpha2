@@ -42,7 +42,6 @@ import com.ubtechinc.alpha.hardware.HardwareDirectManager;
 import com.ubtechinc.alpha.hardware.HeadKeyPoller;
 import com.ubtechinc.alpha.hardware.LocalAlpha2Services;
 import com.ubtechinc.alpha.hardware.MouthLedData;
-import com.ubtechinc.alpha.hardware.WakeupAngleDriver;
 import com.ubtechinc.alpha.hardware.ubx.UbxFile;
 import com.ubtechinc.alpha.hardware.ubx.UbxParser;
 import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
@@ -113,8 +112,6 @@ public class MainActivity extends Activity implements SensorEventListener {
     private static final String PREF_XIAOZHI_MCP_DISABLED_TOOLS = "xiaozhi_mcp_disabled_tools";
     /** 開app自動連接小智（小智tab開關，預設關；見 auto_connect/get|set）。 */
     private static final String PREF_XIAOZHI_AUTO_CONNECT = "xiaozhi_auto_connect";
-    /** 喚醒轉頭（語音tab開關；bringup 未完成前暫預設關，見 WakeupAngleDriver）。 */
-    private static final String PREF_SPEECH_WAKEUP_TRACK = "speech_wakeup_track";
     /** 官方 xiaozhi-esp32 firmware 寫死用的 vision/explain endpoint (esp32_camera.cc
      *  Explain() 實作) - 這個 URL 不會經 OTA check_version 的回應帶回來 (見
      *  runXiaozhiActivationFlow() 的 comment: response 只有 activation/websocket
@@ -176,8 +173,6 @@ public class MainActivity extends Activity implements SensorEventListener {
     /** 最近一次播放的 .ubx 文件（供 ubx/speed 播緊時由頭重播；三個播放入口都会更新）。 */
     private volatile java.io.File lastPlayedFile;
     private final HeadKeyPoller headKeyPoller = new HeadKeyPoller();
-    /** 喚醒詞聲源定向（CAE）。開關見 speech/wakeup_track，角度經 speech_direction 推 servo19。 */
-    private final WakeupAngleDriver wakeupDriver = new WakeupAngleDriver();
     private HttpServer httpServer;
     // 小智 (XiaoZhi) AI 對話 - 獨立於機械人 AIDL 之外的 client-side WebSocket
     // 連線, 連出去 xiaozhi.me。單一 instance, 在 onCreate() 才建立 (要用
@@ -680,24 +675,9 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
         }, "LocalServicesInit").start();
         xiaozhiClient = new XiaozhiClient(getXiaozhiDeviceId());
-        // 開app自動連接小智（小智tab開關，預設關）。延遲 15s 等網絡穩定，
-        // 連線恢復時 connectivityReceiver 亦會再試，helper 內有 gate 保證單飛。
         mainHandler.postDelayed(new Runnable() {
             @Override public void run() { maybeAutoConnectXiaozhi("startup"); }
         }, 15000);
-        // 喚醒轉頭（預設開）：引擎+mic 全本地，不等網絡；遲幾秒等開機 I/O 定。
-        mainHandler.postDelayed(new Runnable() {
-            @Override public void run() {
-                boolean enabled;
-                try {
-                    enabled = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                            .getBoolean(PREF_SPEECH_WAKEUP_TRACK, false);
-                } catch (Exception e) {
-                    enabled = false;
-                }
-                if (enabled) startWakeupTrack();
-            }
-        }, 8000);
         // 見 xiaozhiTtsEngine field 的 javadoc - 讀取上次選定的 TTS 引擎, 如果沒有存過
         // 就用預設值 "xiaozhi" (原本行為, 不靜音)。2026-09: 舊版本存落的
         // "iflytek"/"nuance" 已無對應引擎, 一律遷移到 "xiaozhi" 並寫返落去,
@@ -6540,26 +6520,6 @@ public class MainActivity extends Activity implements SensorEventListener {
                 stopAllSpeechPlayback();
                 return codeResponse(UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED);
 
-            case "speech/wakeup_track/get": {
-                boolean enabled = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                        .getBoolean(PREF_SPEECH_WAKEUP_TRACK, false);
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled
-                        + ",\"running\":" + wakeupDriver.isRunning() + "}");
-            }
-            case "speech/wakeup_track/set": {
-                String v = query.get("enabled");
-                boolean enabled = "true".equalsIgnoreCase(v) || "1".equals(v);
-                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
-                        .putBoolean(PREF_SPEECH_WAKEUP_TRACK, enabled).apply();
-                if (enabled) {
-                    startWakeupTrack();
-                } else {
-                    wakeupDriver.stop();
-                }
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled
-                        + ",\"running\":" + wakeupDriver.isRunning() + "}");
-            }
-
             // Android TTS 語言揀擇 - 淨係 engine=android 用得 (Nuance/iFlytek
             // 兩個 AIDL engine 沒有語言參數選擇, lang 已經由 engine 本身固定死,
             // 見下面 speech/tts 的 android 分支)。ui_lang ("zh"/"en") 控制的是
@@ -8684,62 +8644,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         sb.append("]}");
         return HttpServer.ApiResponse.ok(sb.toString());
-    }
-
-    /**
-     * 起喚醒轉頭：assets/ivw/*.jet 解壓到 files/ivw（CAENew 要檔案路徑），
-     * 交 WakeupAngleDriver 在背景跑；角度經 speech_direction 推既有 servo19 管道。
-     * 可重入（已跑緊即返 true）。
-     */
-    private boolean startWakeupTrack() {
-        if (wakeupDriver.isRunning()) return true;
-        final java.io.File resFile;
-        try {
-            resFile = ensureWakeupJet();
-        } catch (Exception e) {
-            Log.w(TAG, "wakeup res extract failed", e);
-            return false;
-        }
-        if (resFile == null) return false;
-        final WakeupAngleDriver.Listener listener = new WakeupAngleDriver.Listener() {
-            @Override public void onWakeup(int angle, int beam, String keyword, float power, int score) {
-                // 同 RobotEventReceiver 收到 SPEECH_DIRECTION 完全同形，直入既有管線。
-                try {
-                    EventBus.get().publish("speech_direction", "{\"absoluteAngle\":" + angle + "}");
-                } catch (Throwable t) {
-                    Log.w(TAG, "publish speech_direction failed", t);
-                }
-            }
-        };
-        new Thread(new Runnable() {
-            @Override public void run() {
-                wakeupDriver.start(resFile, listener);
-            }
-        }, "WakeupTrackStart").start();
-        return true;
-    }
-
-    /** assets/ivw/ivw_resource_three_cn.jet → files/ivw/（不存在或太細先解壓）。 */
-    private java.io.File ensureWakeupJet() throws java.io.IOException {
-        java.io.File dir = new java.io.File(getFilesDir(), "ivw");
-        if (!dir.isDirectory() && !dir.mkdirs()) {
-            throw new java.io.IOException("mkdir failed: " + dir);
-        }
-        java.io.File out = new java.io.File(dir, "ivw_resource_three_cn.jet");
-        if (out.isFile() && out.length() > 900000) return out;
-        java.io.InputStream in = null;
-        java.io.OutputStream os = null;
-        try {
-            in = getAssets().open("ivw/ivw_resource_three_cn.jet");
-            os = new java.io.FileOutputStream(out);
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
-        } finally {
-            if (in != null) { try { in.close(); } catch (Exception ignore) {} }
-            if (os != null) { try { os.close(); } catch (Exception ignore) {} }
-        }
-        return out.isFile() ? out : null;
     }
 
     private HttpServer.ApiResponse actionPlayDirect(String name) {

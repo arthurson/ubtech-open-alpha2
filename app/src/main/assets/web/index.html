@@ -241,23 +241,6 @@
       </div>
     </section>
 
-    <!-- 喚醒轉頭：CAE 引擎聽到喚醒詞即量聲源方位，servo19 轉過去。開關預設開，
-         詳見 speech/wakeup_track/get|set。 -->
-    <section class="card">
-      <h2 data-i18n="wakeup_track_heading">👂 喚醒轉頭</h2>
-      <div class="row">
-        <label class="switch-label">
-          <span class="toggle-switch">
-            <input type="checkbox" id="wakeupTrackToggle" onchange="setWakeupTrack(this.checked)">
-            <span class="toggle-track"></span>
-          </span>
-          <span data-i18n="wakeup_track_label">開＝聽到喚醒詞轉頭望過去</span>
-        </label>
-        <span id="wakeupTrackState" class="hint">—</span>
-      </div>
-      <p class="hint" data-i18n="wakeup_track_hint">全本地引擎（免上網）；同小智咪/串流搶咪，有衝突先關呢個。</p>
-    </section>
-
     <!-- 2026-09: Vosk 離線 ASR 卡 - 頂替已移除的 ASR/離線文法卡。Model 放
          sdcard (頂層 vosk-* 目錄, 有 am/final.mdl 即算)，開頁自動掃描列出；
          載入後「開始聆聽」即時辨識，成句經 asr_result 入返對話管線 (氣泡＋語意

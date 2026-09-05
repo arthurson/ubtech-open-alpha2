@@ -526,16 +526,6 @@ const Alpha2Api = (function() {
     return api('speech/tts_languages', params);
   }
 
-  function speechWakeupTrackGet(params) {
-    // 讀取「喚醒轉頭」開關（含引擎運行狀態 running）
-    return api('speech/wakeup_track/get', params);
-  }
-
-  function speechWakeupTrackSet(params) {
-    // 設定「喚醒轉頭」開關（開即刻起 CAE 引擎；喚醒詞觸發 servo19 轉向聲源）
-    return api('speech/wakeup_track/set', params);
-  }
-
   function voskEndpointer(params) {
     // 收音延遲調校 (mode/t_start/t_end/t_max，省略=跟預設並 persist)
     return api('vosk/endpointer', params);
@@ -819,8 +809,6 @@ const Alpha2Api = (function() {
     speechTts,
     speechTtsEngines,
     speechTtsLanguages,
-    speechWakeupTrackGet,
-    speechWakeupTrackSet,
     voskEndpointer,
     voskLoad,
     voskMicTest,

@@ -2387,7 +2387,7 @@
               "type": "string",
               "enum": [
                 "breathing",
-                "off"
+                "'off'"
               ],
               "default": "breathing"
             }
@@ -2443,8 +2443,8 @@
             "schema": {
               "type": "string",
               "enum": [
-                "off",
-                true,
+                "'off'",
+                "on",
                 "eye",
                 "head"
               ]

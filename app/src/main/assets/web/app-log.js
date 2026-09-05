@@ -235,7 +235,6 @@ window.addEventListener("DOMContentLoaded", function () {
   refreshVolume();
   disableTalkFabIfInsecureContext();
   // 2026-09 移除: 離線文法/模式指示燈初始化 (卡已拎走, 見 index.html)。
-  if (typeof loadWakeupTrack === "function") loadWakeupTrack();
   connectWs();
   musicInit();
   if (typeof radioInit === "function") radioInit();

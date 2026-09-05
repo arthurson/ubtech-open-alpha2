@@ -238,21 +238,3 @@ function stopTts() {
 // grammarStart/grammarStop/setOfflineAutoSwitch/refreshOfflineAutoSwitch) -
 // 卡已拎走 (見 index.html), 背後 iFlytek 本地引擎唔存在；backend
 // init/start/stop_grammar endpoint 一併刪除，get_default_grammar 照讀本地 asset。
-/** 喚醒轉頭開關讀寫（後端 speech/wakeup_track/get|set，開頁同步一次）。 */
-function loadWakeupTrack() {
-  Alpha2Api.speechWakeupTrackGet().then(function (res) {
-    const toggle = document.getElementById("wakeupTrackToggle");
-    const state = document.getElementById("wakeupTrackState");
-    if (toggle) toggle.checked = !!(res && res.ok && res.enabled);
-    if (state) state.textContent = (res && res.ok && res.running) ? "RUN" : "";
-  });
-}
-
-function setWakeupTrack(checked) {
-  Alpha2Api.speechWakeupTrackSet({ enabled: checked ? "true" : "false" }).then(function (res) {
-    const toggle = document.getElementById("wakeupTrackToggle");
-    const state = document.getElementById("wakeupTrackState");
-    if (toggle) toggle.checked = !!(res && res.ok && res.enabled);
-    if (state) state.textContent = (res && res.ok && res.running) ? "RUN" : "";
-  });
-}
