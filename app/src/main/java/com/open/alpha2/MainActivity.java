@@ -85,10 +85,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     private static final String PREF_XIAOZHI_DEVICE_ID = "xiaozhi_device_id";
     // (本地音樂 prefs key 已搬去 AudioCenter。)
     // (MCP/TTS prefs key 已搬去 XiaozhiConfig。)
-    /** 2026-09 新增: TTS 卡揀緊嘅 Android 語言 BCP-47 tag (空=沿用引擎目前
-     *  語言)。前端 setAndroidTtsLang() 同步寫入，對話管線 speakAndroidTts()
-     *  優先用佢——一揀即時跟，唔使等。 */
-    private static final String PREF_ANDROID_TTS_LANG = "android_tts_lang";
+    // (TTS 卡語言 pref 搬咗去 TtsCenter。)
     // (MCP disabled-tools / auto-connect prefs key 已搬去 XiaozhiConfig。)
     /** 官方 xiaozhi-esp32 firmware 寫死用的 vision/explain endpoint (esp32_camera.cc
      *  Explain() 實作) - 這個 URL 不會經 OTA check_version 的回應帶回來 (見
@@ -369,25 +366,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     private Sensor accelerometerSensor;
     private volatile boolean accelerometerEnabled = false;
     private static final long VOLUME_REPEAT_INTERVAL_MS = 300;
-    private static final String STOP_CUE_RINGTONE_TITLE = "Proxima";
-    private android.net.Uri stopCueUri; // resolved lazily, cached after the first lookup
-    private boolean stopCueLookupDone = false;
-    // Camera shutter cue (played on the robot's own speaker, not the browser) - see
-    // takePhoto()/HttpServer "camera/shutter_sound". "Sirrah" is a built-in Android
-    // system ringtone title, matched the same lazy/cached-by-title way as the
-    // Proxima stop cue above.
-    private static final String SHUTTER_CUE_RINGTONE_TITLE = "Sirrah";
-    private android.net.Uri shutterCueUri;
-    private boolean shutterCueLookupDone = false;
-
-    // PIR alert cue - "Heaven" 是 Android 內建系統鈴聲標題, 和 STOP_CUE/SHUTTER_CUE
-    // 一樣做法 (lazy lookup by title, cache 住那個 content:// Uri)。播放時機見
-    // registerAlpha2PirAlertListener() - alpha2_pir_state broadcast
-    // (RobotEventReceiver.java) 一到 triggered=true 就立刻播, triggered=false 立刻停
-    // (跟 sonar 的 purple LED 一樣, 不等整首歌播完)。
-    private static final String PIR_ALERT_RINGTONE_TITLE = "Heaven";
-    private android.net.Uri pirAlertUri;
-    private boolean pirAlertLookupDone = false;
+    // 2026-09: 系統鈴聲層 (停止/快門/PIR 提示音 + 共用播放器 + 查表快取)
+    // 搬咗去 RingtoneCenter (拆 god object 第七刀)，呢度淨係留個 instance。
+    private RingtoneCenter ringtoneCenter;
 
     // 2026-09 刪除: speechReady field - 無 ASR，舊 binder speech service 永遠
     // ready 不了（唯一設 true 嘅舊 initOver 已刪），恆 false 無意義。
@@ -518,29 +499,12 @@ public class MainActivity extends Activity implements SensorEventListener {
         }, "XiaozhiPirEventPush").start();
     }
 
-    // Android system TTS (a third engine option alongside the robot's own Nuance/
-    // iFlytek, used directly rather than via ISpeechInterface). No voice selection -
-    // voice choice is only meaningful for iFlytek's named voices.
-    // volatile: initAndroidTts() reassigns this from an HTTP worker thread when
-    // switching engines, and it's read from other worker threads on every speech/tts
-    // call - a plain field could let one thread see a stale/half-published reference.
-    private volatile TextToSpeech androidTts;
-    private volatile boolean androidTtsReady = false;
-    private volatile String androidTtsEnginePkg = ""; // package of the engine androidTts is currently bound to
+    // 2026-09: Android TTS 層 (引擎綁定/讀出/語言表) 搬咗去 TtsCenter
+    // (拆 god object 第九刀)，呢度淨係留個 instance。
+    private TtsCenter ttsCenter;
 
-    // listAndroidTtsLanguages() 的 legacy fallback (SVOX Pico 沒實作
-    // getVoices(), IPC 層直接 throw "NullPointerException: collection ==
-    // null" - 不是回空 collection, 是完全沒實作) 用的 blocking 狀態, 見
-    // checkTtsDataSyncLegacy()/onActivityResult() javadoc。
-    private final Object ttsDataCheckLock = new Object();
-    private CountDownLatch ttsDataCheckLatch;
-    private volatile ArrayList<String> ttsDataCheckResult;
-    private static final int TTS_DATA_CHECK_REQUEST_CODE = 0x7454; // "T T" leetspeak-ish, 只是要一個穩定、未用過的 code
-
-    // Speed used for the mouth LED breathing effect auto-triggered around TTS speech
-    // (see startMouthLedForTts()/stopMouthLedForTts()) - matches the web UI slider's
-    // default (0-5000 range, default 0).
-    private static final int TTS_MOUTH_LED_SPEED = 0;
+    // (TTS 嘴燈 bracket 搬咗去 LedCenter。)
+    private LedCenter ledCenter;
 
     // 2026-08 新增: RobotEventReceiver 沒有 constructor/field 拿到 outer
     // MainActivity instance (它一直只經 EventBus 靜態方法送 event, 不認識
@@ -636,11 +600,10 @@ public class MainActivity extends Activity implements SensorEventListener {
             Log.i(TAG, "Vosk disabled: need API 21+, this device is API "
                     + android.os.Build.VERSION.SDK_INT);
         }
-        // Constructs (or re-constructs, when switching engines) androidTts. Pulled out
-        // of onCreate()'s inline block into its own method so speech/set_tts_engine can
-        // call it again later without duplicating the OnInitListener/
-        // UtteranceProgressListener wiring.
-        initAndroidTts(null); // null = device's current default engine, same as before
+        // Android TTS 層喺 TtsCenter 建構 (vosk 之後起，等 listener 嘅
+        // vosk pause/resume 有嘢掂)。null = 用機身目前預設引擎，同以前一樣。
+        ttsCenter = new TtsCenter(this, vosk);
+        ttsCenter.initAndroidTts(null);
 
         // Plain HTTP only. TLS/HTTPS was tried (self-signed cert) to make getUserMedia()
         // available for the walkie-talkie mic feature, but browsers on this device
@@ -952,7 +915,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 padPlusHeld = true;
                 padLedUpdate();
                 stopVolumeRepeat(); // in case one pad was already held down
-                playStopCue(); // distinct "stop" cue - must track STREAM_MUSIC volume
+                ringtoneCenter.playStopCue(); // distinct "stop" cue - must track STREAM_MUSIC volume
                 // pure-direct：一键全停（动作截停+蹲下站起回位，含拍头双 pad 触发），
                 // 与 HTTP action/stop 同语义。旧 robot.action_* 已无服务承载。
                 actionDirect.stopActionWithRecovery();
@@ -1090,128 +1053,9 @@ public class MainActivity extends Activity implements SensorEventListener {
         return false;
     }
 
-    /**
-     * Plays the "Proxima" system ringtone as the "stop" cue, on STREAM_MUSIC so its
-     * loudness tracks the same media volume that +/- control - not the notification/
-     * ring volume a plain Ringtone.play() would follow instead.
-     *
-     * Ringtone/RingtoneManager.getRingtone() always plays on the ringtone's own stream
-     * type (TYPE_NOTIFICATION -> STREAM_NOTIFICATION), which can't be overridden - so
-     * this resolves "Proxima" to a content:// Uri via RingtoneManager (matching by
-     * title, since that's the only stable way to name a specific built-in system sound),
-     * cached after the first lookup, and plays that Uri through a plain MediaPlayer with
-     * setAudioStreamType(STREAM_MUSIC) instead, which does follow the stream we set.
-     */
-    private void playStopCue() {
-        if (!stopCueLookupDone) {
-            stopCueUri = findRingtoneByTitle(STOP_CUE_RINGTONE_TITLE);
-            stopCueLookupDone = true;
-            if (stopCueUri == null) {
-                Log.w(TAG, "Could not find a system ringtone titled \"" + STOP_CUE_RINGTONE_TITLE
-                        + "\" - stop cue will be skipped");
-            }
-        }
-        playRingtoneUri(stopCueUri);
-    }
+    // (停止/快門提示音 + 共用播放器搬咗去 RingtoneCenter。)
 
-    /**
-     * Plays the "Sirrah" system ringtone as the camera shutter cue, out of the robot's
-     * own speaker (this Activity runs on the robot's onboard Android system, not the
-     * phone/browser controlling it - see robotpanel README) rather than synthesizing a
-     * sound in the browser. Same lazy-lookup-by-title-then-cache approach as
-     * playStopCue()/STOP_CUE_RINGTONE_TITLE above - title is the only stable way to
-     * name a specific built-in system sound across devices/Android versions.
-     */
-    private void playShutterCue() {
-        if (!shutterCueLookupDone) {
-            shutterCueUri = findRingtoneByTitle(SHUTTER_CUE_RINGTONE_TITLE);
-            shutterCueLookupDone = true;
-            if (shutterCueUri == null) {
-                Log.w(TAG, "Could not find a system ringtone titled \"" + SHUTTER_CUE_RINGTONE_TITLE
-                        + "\" - shutter cue will be skipped");
-            }
-        }
-        playRingtoneUri(shutterCueUri);
-    }
-
-    // 2026-08 新增 (修 bug): 之前 playRingtoneUri() 每次都開一個全新、完全沒有留下
-    // reference 的 MediaPlayer, fire-and-forget, 播完/出錯後自己 release —— 這個
-    // 做法有兩個問題: (1) 使用者在鈴聲還沒播完之前多次按下「播放」(或者 Blockly
-    // 的「範例 5」多次執行), 就會有多個 MediaPlayer 同時各自播放, 聲音疊在
-    // 一起, 聽起來像是「停不下來一直響」; (2) 完全沒有任何方法可以從外部 (前端「停止播放」
-    // 按鈕) 中斷它, 一定要等整首歌/鈴聲自然播完。修法: 用這個 field 記住「目前正在播放
-    // 的那個」MediaPlayer, 每次開新的之前先停掉舊的, 並且加入
-    // audio/ringtones/stop 這個 endpoint 讓前端隨時可以中斷。
-    private android.media.MediaPlayer currentRingtonePlayer;
-
-    /** Shared playback: STREAM_MUSIC (see playStopCue()'s javadoc for why not a plain
-     *  Ringtone.play()). Stops/releases whatever ringtone was previously playing before
-     *  starting the new one, and keeps a reference so audio/ringtones/stop (or the next
-     *  call to this method) can interrupt it early instead of only ever letting it run
-     *  to completion. No-ops silently if uri is null (title lookup found nothing on this
-     *  device). */
-    private synchronized void playRingtoneUri(android.net.Uri uri) {
-        stopRingtonePlaybackLocked();
-        if (uri == null) {
-            return;
-        }
-        try {
-            android.media.MediaPlayer player = new android.media.MediaPlayer();
-            player.setAudioStreamType(AudioManager.STREAM_MUSIC);
-            player.setDataSource(this, uri);
-            player.setOnPreparedListener(android.media.MediaPlayer::start);
-            player.setOnCompletionListener(mp -> {
-                synchronized (MainActivity.this) {
-                    mp.release();
-                    if (currentRingtonePlayer == mp) {
-                        currentRingtonePlayer = null;
-                    }
-                }
-            });
-            player.setOnErrorListener((mp, what, extra) -> {
-                synchronized (MainActivity.this) {
-                    mp.release();
-                    if (currentRingtonePlayer == mp) {
-                        currentRingtonePlayer = null;
-                    }
-                }
-                return true;
-            });
-            currentRingtonePlayer = player;
-            player.prepareAsync(); // don't block the main thread; starts once ready
-        } catch (Exception e) {
-            Log.w(TAG, "Failed to play ringtone cue " + uri, e);
-        }
-    }
-
-    /** Stops whatever ringtone/notification-sound MediaPlayer is currently playing (if
-     *  any) and releases it. Safe to call when nothing is playing - simply no-ops.
-     *  Must hold the same lock as playRingtoneUri() so a stop() can never race a
-     *  concurrent start(); callers already inside a `synchronized(this)` block (i.e.
-     *  playRingtoneUri() itself) should call the *Locked variant instead of re-entering. */
-    private synchronized void stopRingtonePlayback() {
-        stopRingtonePlaybackLocked();
-    }
-
-    private void stopRingtonePlaybackLocked() {
-        if (currentRingtonePlayer != null) {
-            try {
-                currentRingtonePlayer.stop();
-            } catch (Exception e) {
-                // MediaPlayer.stop() throws IllegalStateException if called from certain
-                // states (e.g. still in the middle of prepareAsync()'s Prepared callback
-                // race) - release()  still happens below either way, so this is safe to
-                // swallow.
-            }
-            try {
-                currentRingtonePlayer.release();
-            } catch (Exception e) {
-                // already released/invalid - ignore
-            }
-            currentRingtonePlayer = null;
-        }
-    }
-
+    // (提示音/共用播放器搬咗去 RingtoneCenter。)
     // 2026-09: 本地音樂 + 電台播放中心搬咗去 AudioCenter (拆 god object 第六刀)——
     // 播放器/EQ/頻譜/filler 循環/搜尋/上載全部喺嗰邊，呢度淨係留個 instance。
     private AudioCenter audioCenter;
@@ -1230,9 +1074,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     private void stopAllSpeechPlayback() {
         lastSpeechStopAtMs = System.currentTimeMillis();
         robotTtsSpeaking = false; // 見 robotTtsSpeaking field javadoc - 手動/總停鍵停止時都要立即放行 mic enforcer
-        if (androidTts != null) {
-            androidTts.stop();
-        }
+        ttsCenter.stop();
         // 2026-09: 手動全部停止都要 resume Vosk（上面 UtteranceProgressListener
         // 嘅 onDone 唔一定會嚟）。
         if (vosk != null) {
@@ -1242,65 +1084,11 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
         }
         xiaozhiAudioController.stopPlayback();
-        stopMouthLedForTts();
+        LedCenter.stopMouthLedForTts();
     }
 
     // (本地音樂停止/電台播放器搬咗去 AudioCenter。)
-    // 2026-08 更新 (修 bug): findRingtoneByTitle() 之前每次呼叫都 `new
-    // RingtoneManager(this)`, 用完立刻拋棄那個 object, 但 Android 官方文件明確說明
-    // RingtoneManager.getCursor() 每次取得的是*同一個*底層 cursor, 不應該由
-    // 使用者自己 close() —— 它的生命週期本身是跟著 RingtoneManager instance
-    // 走的, 如果沒有用 RingtoneManager(Activity) 這個會自動與 activity 生命週期綁定
-    // 的 constructor (這裡用的是 RingtoneManager(Context), 沒有自動綁定), 就要自己
-    // 保住這個 RingtoneManager instance, 不要用完即丟, 否則底層的 cursor 沒人釋放,
-    // 一直洩漏 (實測 logcat 看到 CursorWindowAllocationException, # Open Cursors
-    // 累積到 991 個, 就是這個 bug 導致的)。修法: 用 rmType (TYPE_RINGTONE /
-    // TYPE_NOTIFICATION) 做 key, 快取住那兩個 RingtoneManager instance,
-    // 整個 app 生命週期裡只 new 一次, 之後所有呼叫都取快取的那個來重用
-    // (RingtoneManager.getCursor() 內部自己會 requery(), 不需要我們手動 refresh)。
-    private final java.util.Map<Integer, android.media.RingtoneManager> ringtoneManagerCache = new java.util.HashMap<>();
-
-    private synchronized android.media.RingtoneManager getCachedRingtoneManager(int rmType) {
-        android.media.RingtoneManager cached = ringtoneManagerCache.get(rmType);
-        if (cached != null) return cached;
-        android.media.RingtoneManager manager = new android.media.RingtoneManager(this);
-        manager.setType(rmType);
-        ringtoneManagerCache.put(rmType, manager);
-        return manager;
-    }
-
-    /** Scans every ringtone RingtoneManager knows about (notifications + ringtones)
-     *  for one whose title matches exactly (case-insensitive), returning its Uri, or
-     *  null if none match. Title is the only stable way to name a specific built-in
-     *  system sound - resource IDs/file paths vary by OEM and Android version. */
-    private android.net.Uri findRingtoneByTitle(String title) {
-        return findRingtoneByTitle(title, android.media.RingtoneManager.TYPE_ALL);
-    }
-
-    /** Same as findRingtoneByTitle(String) but restricted to a single RingtoneManager
-     *  type (TYPE_RINGTONE / TYPE_NOTIFICATION) - used by "audio/ringtones/play_by_title"
-     *  so a phone-ringtone lookup can never accidentally match a notification sound (or
-     *  vice versa) that happens to share the same title. Uses getCachedRingtoneManager()
-     *  (see its javadoc) instead of `new RingtoneManager(this)` per call - the previous
-     *  per-call instantiation leaked a Cursor every time this ran, since nothing ever
-     *  released it (Android's RingtoneManager has no close()/release() of its own to call). */
-    private android.net.Uri findRingtoneByTitle(String title, int rmType) {
-        android.media.RingtoneManager manager = getCachedRingtoneManager(rmType);
-        android.database.Cursor cursor = manager.getCursor();
-        int position = 0;
-        while (cursor.moveToNext()) {
-            String candidateTitle = cursor.getString(android.media.RingtoneManager.TITLE_COLUMN_INDEX);
-            if (title.equalsIgnoreCase(candidateTitle)) {
-                // getRingtoneUri() takes the cursor POSITION (0-based row index within
-                // this RingtoneManager's result set), not a raw content-provider id -
-                // Cursor has no getUri(); this is the correct API for it.
-                return manager.getRingtoneUri(position);
-            }
-            position++;
-        }
-        return null;
-    }
-
+    // (查表快取搬咗去 RingtoneCenter，連上面成段 cursor 洩漏註解一齊。)
     /**
      * Starts (or restarts) a repeating volume step every VOLUME_REPEAT_INTERVAL_MS,
      * simulating press-and-hold behaviour on top of AudioManager's single-step API.
@@ -1602,6 +1390,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         actionDirect = new ActionDirect(this, ubxPlayer);
         ubxApi = new UbxApi(this, ubxPlayer, actionDirect);
         chestUpgrade = new ChestUpgrade(this, chestQuery);
+        ringtoneCenter = new RingtoneCenter(this);
+        ledCenter = new LedCenter(this);
         audioCenter = new AudioCenter(this, ubxPlayer, actionDirect, mainHandler);
         EventBus.get().publish("authorize", "{\"code\":1,\"info\":\"have offline authority\"}");
         Log.i(TAG, "Authorize result: 1 have offline authority");
@@ -1729,7 +1519,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         catch (Exception e) { return false; }
     }
 
-    private static UbxErrorCode.API_ERROR_CODE directCode(boolean ok) {
+    static UbxErrorCode.API_ERROR_CODE directCode(boolean ok) {
         return ok ? UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED
                 : UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
     }
@@ -1841,9 +1631,9 @@ public class MainActivity extends Activity implements SensorEventListener {
             @Override
             public void run() {
                 if (ttsAnswer != null && !ttsAnswer.isEmpty()) {
-                    startMouthLedForTts();
-                    if (!speakAndroidTts(ttsAnswer, ttsLocale)) {
-                        stopMouthLedForTts();
+                    LedCenter.startMouthLedForTts();
+                    if (!ttsCenter.speakAndroidTts(ttsAnswer, ttsLocale)) {
+                        LedCenter.stopMouthLedForTts();
                     }
                 }
                 if (result.actionId == null) {
@@ -2015,7 +1805,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 xiaozhiAutoMode.set(false);
                 xiaozhiReconnectAttempts.set(0);
                 stopXiaozhiMic();
-                stopMouthLedForTts();
+                LedCenter.stopMouthLedForTts();
                 xiaozhiClient.disconnect();
                 Log.i(TAG, "mute key -> xiaozhi DISCONNECT");
             } else {
@@ -2171,9 +1961,9 @@ public class MainActivity extends Activity implements SensorEventListener {
             Log.w(TAG, "applyAlpha2PirLedAndSound: 5-mic head/eye LED path failed", t);
         }
         if (triggered) {
-            playPirAlertCue(); // lazy-lookup 好的 "Heaven" 鈴聲, 見 playPirAlertCue()
+            ringtoneCenter.playPirAlertCue(); // lazy-lookup 好的 "Heaven" 鈴聲
         } else {
-            stopRingtonePlayback();
+            ringtoneCenter.stopRingtonePlayback();
         }
     }
 
@@ -2189,453 +1979,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         return null;
     }
 
-    /** Plays the "Heaven" system ringtone as the PIR trigger alert - same lazy
-     *  lookup-by-title-then-cache approach as playStopCue()/playShutterCue() (see
-     *  playStopCue()'s javadoc for why title lookup + STREAM_MUSIC via playRingtoneUri()
-     *  instead of a plain Ringtone.play()). */
-    private void playPirAlertCue() {
-        if (!pirAlertLookupDone) {
-            pirAlertUri = findRingtoneByTitle(PIR_ALERT_RINGTONE_TITLE);
-            pirAlertLookupDone = true;
-            if (pirAlertUri == null) {
-                Log.w(TAG, "Could not find a system ringtone titled \"" + PIR_ALERT_RINGTONE_TITLE
-                        + "\" - PIR alert cue will be skipped");
-            }
-        }
-        playRingtoneUri(pirAlertUri);
-    }
-
-
-    /** 列出目前 androidTts 綁定的那個 engine 支援的所有語言/國家變體, 供
-     *  speech/tts_languages endpoint 使用 (選了 engine=android 才顯示語言選擇)。
-     *  getVoices() (API 21+) 做主要來源, 得到空清單才退回
-     *  ACTION_CHECK_TTS_DATA legacy fallback - SVOX Pico 完全沒有實作
-     *  getVoices(), IPC 層直接 throw "NullPointerException: collection ==
-     *  null" (不是回傳空 collection, 已經用 try/catch 接住不會 crash, 但結果是空
-     *  清單), Google TTS 則用 getVoices() 取得完整清單, 不需要走 legacy 這條路。
-     *
-     *  用 getVoices() 而不是 ACTION_CHECK_TTS_DATA 做主要來源的原因: 這台機器沒有
-     *  Google Play Store, Google TTS 的 ACTION_CHECK_TTS_DATA 只能答出出廠
-     *  內建的那一個國家變體 (中文只有 zh-TW, 英文只有 en-US) - getVoices() 直接問
-     *  engine 自己完整的 voice metadata, 不受這個限制。 */
-    private List<TtsLanguageOption> listAndroidTtsLanguages(Locale displayLocale) {
-        List<TtsLanguageOption> viaVoices = checkTtsDataViaGetVoices(displayLocale);
-        if (!viaVoices.isEmpty()) {
-            return viaVoices;
-        }
-        // getVoices() 得到空清單 (engine 未 ready、丟出 exception 被接住、
-        // 或者根本沒實作) - 不要就這樣把空清單給用戶, 退回舊方法再試一次。
-        return checkTtsDataSyncLegacy(displayLocale);
-    }
-
-    /** 用 TextToSpeech.getVoices() 窮舉目前 androidTts 綁定的那個 engine 支援的所有
-     *  voice/語言變體 - 見 listAndroidTtsLanguages() javadoc 解釋為何選這個
-     *  API 做主要來源。 */
-    private List<TtsLanguageOption> checkTtsDataViaGetVoices(Locale displayLocale) {
-        if (androidTts == null) {
-            return new ArrayList<>();
-        }
-        Set<Voice> voices;
-        try {
-            voices = androidTts.getVoices();
-        } catch (Exception e) {
-            // user-confirmed 有 OEM engine 會在這裡 throw NPE/IllegalStateException
-            // 而不是正常回傳 null - 當作沒有資料處理, 退回 legacy 方法。
-            Log.e(TAG, "androidTts.getVoices() failed", e);
-            return new ArrayList<>();
-        }
-        if (voices == null || voices.isEmpty()) {
-            return new ArrayList<>();
-        }
-        Map<String, TtsLanguageOption> options = new HashMap<>();
-        for (Voice voice : voices) {
-            Locale locale = voice.getLocale();
-            if (locale == null) continue;
-            String tag = locale.toLanguageTag();
-            if (tag == null || tag.isEmpty() || "und".equals(tag)) continue;
-            if (options.containsKey(tag)) continue;
-            String displayName = locale.getDisplayName(displayLocale);
-            if (displayName == null || displayName.isEmpty() || displayName.equals(tag)) {
-                displayName = tag;
-            }
-            options.put(tag, new TtsLanguageOption(tag, displayName));
-        }
-        List<TtsLanguageOption> result = new ArrayList<>(options.values());
-        Collections.sort(result, new Comparator<TtsLanguageOption>() {
-            @Override
-            public int compare(TtsLanguageOption a, TtsLanguageOption b) {
-                return a.displayName.compareTo(b.displayName);
-            }
-        });
-        return result;
-    }
-
-    /** Fires TextToSpeech.Engine.ACTION_CHECK_TTS_DATA at whichever engine androidTts
-     *  is currently bound to, and blocks (with a timeout) for the result -同 Android
-     *  自己「文字轉語音輸出」設定畫面建立「已安裝」清單所用的 intent 一樣。Result
-     *  extras 用 lang-COUNTRY-variant 3 個字母 ISO code (例如 "eng-USA"), 不是
-     *  BCP-47 - iso3ToIso1Language()/iso3ToIso1Country() 轉做 2 個字母先起
-     *  Locale。 */
-    private List<TtsLanguageOption> checkTtsDataSyncLegacy(Locale displayLocale) {
-        String enginePkg = androidTtsEnginePkg;
-        if (enginePkg == null || enginePkg.isEmpty()) {
-            return new ArrayList<>();
-        }
-        CountDownLatch latch;
-        synchronized (ttsDataCheckLock) {
-            latch = new CountDownLatch(1);
-            ttsDataCheckLatch = latch;
-            ttsDataCheckResult = null;
-        }
-        try {
-            Intent checkIntent = new Intent();
-            checkIntent.setAction(TextToSpeech.Engine.ACTION_CHECK_TTS_DATA);
-            checkIntent.setPackage(enginePkg); // 指定該 engine, 不是「隨便哪個應用程式搶到就用哪個」
-            startActivityForResult(checkIntent, TTS_DATA_CHECK_REQUEST_CODE);
-        } catch (Exception e) {
-            Log.e(TAG, "ACTION_CHECK_TTS_DATA launch failed for engine=" + enginePkg, e);
-            return new ArrayList<>();
-        }
-        try {
-            // 3 秒對一個正常應該即時、不涉及網路/磁碟 IO 的本機查詢來說已經很夠 - 超過
-            // 還沒回應就代表有問題 (engine 沒有回應), 應該回傳空清單給 caller, 不應該
-            // 令個 HTTP request 無限期卡住。
-            if (!latch.await(3, TimeUnit.SECONDS)) {
-                Log.e(TAG, "ACTION_CHECK_TTS_DATA timed out for engine=" + enginePkg);
-                return new ArrayList<>();
-            }
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            return new ArrayList<>();
-        }
-        ArrayList<String> raw = ttsDataCheckResult;
-        if (raw == null) {
-            return new ArrayList<>();
-        }
-        Map<String, TtsLanguageOption> options = new HashMap<>();
-        for (String voice : raw) {
-            // "eng" 或 "eng-USA" 或 "eng-USA-FEMALE" - 拆開, 淨係要 lang[-country],
-            // 去除第 4 段開始的任何 variant 後綴 (不是 Locale 的 country, 也
-            // 不是 toLanguageTag() 任何位置會放置的 engine-specific variant 標籤)。
-            String[] parts = voice.split("-");
-            if (parts.length == 0 || parts[0].isEmpty()) continue;
-            // 兩段都是 ISO-639-2/ISO-3166-1 ALPHA-3 (3 個字母), 例如 "eng"/"USA" -
-            // user-confirmed 實機 bug: new Locale("eng").toLanguageTag() 不會變回
-            // "en" 這樣 (只有 2 個字母時才會)。Locale 的 constructor 完全不會將 3 個字母
-            // 的 ISO code 轉成 2 個字母的對應版本 - 它只是把傳入的字串原樣存起來,
-            // 所以 toLanguageTag() 之前會直接漏出原始的 3 字母 code ("ara",
-            // "ben", "eng", ...), 而不是正確的 BCP-47 tag。iso3ToIso1Language()/
-            // iso3ToIso1Country() 就是在做這個轉換, 靠 Locale.getAvailableLocales()
-            // 反查, 因為 Locale 本身沒有「3 個字母轉 2 個字母」的直接 API。
-            String lang2 = iso3ToIso1Language(parts[0]);
-            if (lang2 == null) {
-                // 不是一個有 2 個字母對應版本的 3 個字母 ISO-639-2 code -
-                // user-confirmed 真實 case: "yue" (粵語) 根本沒有 ISO-639-1 2 個
-                // 字母 code, 所以 iso3ToIso1Language("yue") 合理地回傳 null, 之前
-                // 這裡會直接 "continue" (跳過整個 entry), 悄悄地漏掉了粵語, 雖然
-                // Google TTS 確實裝了 (logcat 看到 "Download of yue-hk started"/
-                // "Download yue-hk Success true")。BCP-47 (和 Java 的 Locale)
-                // 都接受 3 個字母的 primary language subtag 直接使用 (IANA 的
-                // language subtag registry 本身有列出 "yue" 作為合法 primary
-                // subtag) - 所以退回用 3 個字母 code 原樣, 不要去掉整個語言。
-                lang2 = parts[0];
-            }
-            String country2 = null;
-            if (parts.length >= 2 && !parts[1].isEmpty()) {
-                country2 = iso3ToIso1Country(parts[1]);
-                if (country2 == null) {
-                    // 和上面語言那句一樣的道理 - 保留原本 3 個字母 country code
-                    // 比去掉好 (雖然不是 ISO-3166-1 alpha-2, 但仍然有意義)。
-                    country2 = parts[1];
-                }
-            }
-            Locale locale = (country2 != null) ? new Locale(lang2, country2) : new Locale(lang2);
-            String tag = locale.toLanguageTag();
-            if (options.containsKey(tag)) continue;
-            String displayName = locale.getDisplayName(displayLocale);
-            if (displayName == null || displayName.isEmpty() || displayName.equals(tag)) {
-                displayName = tag;
-            }
-            options.put(tag, new TtsLanguageOption(tag, displayName));
-        }
-        List<TtsLanguageOption> result = new ArrayList<>(options.values());
-        Collections.sort(result, new Comparator<TtsLanguageOption>() {
-            @Override
-            public int compare(TtsLanguageOption a, TtsLanguageOption b) {
-                return a.displayName.compareTo(b.displayName);
-            }
-        });
-        return result;
-    }
-
-    private static volatile Map<String, String> iso3LanguageMap;
-    private static volatile Map<String, String> iso3CountryMap;
-
-    /** Lazily builds (一次過, cache 落 static field) 一個由 ISO-639-2 3 個字母語言
-     *  code 到 ISO-639-1 2 個字母 code 的反查表, 因為 java.util.Locale 沒有這個方向
-     *  的直接 API - 只有正向的 Locale.getISO3Language() (由一個已經是 2 個字母
-     *  的 Locale 出發)。用 Locale.getAvailableLocales() (這個 JVM 支援的全部
-     *  Locale) 起, 覆蓋範圍遠比手寫一個表齊全。 */
-    private static String iso3ToIso1Language(String iso3) {
-        Map<String, String> map = iso3LanguageMap;
-        if (map == null) {
-            map = new HashMap<>();
-            for (Locale l : Locale.getAvailableLocales()) {
-                String lang2 = l.getLanguage();
-                if (lang2.isEmpty()) continue;
-                try {
-                    String lang3 = l.getISO3Language();
-                    // 用 containsKey()+put() 而不是 putIfAbsent() - user-confirmed
-                    // 真機 crash: 呢部機 Android 版本早過 API 24 (Nougat),
-                    // Map.putIfAbsent() 係 default method, 淨係 API 24 開始先有
-                    // (呢個 app 自己個 minSdkVersion 係 19) - call 落去會 throw
-                    // NoSuchMethodError 令成個 app 死埋。containsKey()+put() 用
-                    // pre-Java-8/pre-API-24 都支援的 Map method 做出同樣「keep the
-                    // first mapping seen」的效果。
-                    if (lang3 != null && !lang3.isEmpty() && !map.containsKey(lang3)) {
-                        map.put(lang3, lang2);
-                    }
-                } catch (Exception ignored) {
-                    // 有部分 Locale 會在這裡 throw MissingResourceException - 只是
-                    // 代表那一個貢獻不了映射, 不是要中止建立整個表的理由。
-                }
-            }
-            iso3LanguageMap = map;
-        }
-        return map.get(iso3);
-    }
-
-    /** 和 iso3ToIso1Language() 想法一樣, 但是轉 ISO-3166-1 alpha-3 國家 code
-     *  (例如 "USA" -> "US")。 */
-    private static String iso3ToIso1Country(String iso3) {
-        Map<String, String> map = iso3CountryMap;
-        if (map == null) {
-            map = new HashMap<>();
-            for (Locale l : Locale.getAvailableLocales()) {
-                String country2 = l.getCountry();
-                if (country2.isEmpty()) continue;
-                try {
-                    String country3 = l.getISO3Country();
-                    // 見上面 iso3ToIso1Language() 為何不用 putIfAbsent()。
-                    if (country3 != null && !country3.isEmpty() && !map.containsKey(country3)) {
-                        map.put(country3, country2);
-                    }
-                } catch (Exception ignored) {
-                }
-            }
-            iso3CountryMap = map;
-        }
-        return map.get(iso3);
-    }
-
-    /** langTag 傳回給 speak(text, langTag)/setLanguage(), displayName 是提供給 UI 顯示
-     *  的名稱 - 在 server 端經由 Locale.getDisplayName() 建立, 不用讓前端自己維護一份
-     *  tag->name 對照表。 */
-    private static final class TtsLanguageOption {
-        final String langTag;
-        final String displayName;
-        TtsLanguageOption(String langTag, String displayName) {
-            this.langTag = langTag;
-            this.displayName = displayName;
-        }
-    }
-
-    /** 列出機身已安裝的全部 Android TTS 引擎 package name (已排序) - 供
-     *  speech/tts_engines endpoint 使用, 讓 speech tab 的 Android 選項可以選擇哪個
-     *  引擎發音。用一個 throwaway TextToSpeech instance 取得這個裝置層面的清單,
-     *  不綁定目前使用中的 androidTts field - getEngines() 本身不是
-     *  engine-specific, 不用等 androidTtsReady 才能查詢, 用 live 的
-     *  androidTts 反而有可能取得「舊 engine 時捕捉到」的過時清單。 */
-    private List<String> listAndroidTtsEngines() {
-        List<String> result = new ArrayList<>();
-        TextToSpeech probe = null;
-        try {
-            final CountDownLatch initLatch = new CountDownLatch(1);
-            probe = new TextToSpeech(this, status -> initLatch.countDown());
-            // getEngines() 本身不需要 init 完成 (不是 engine-specific), 但稍等一下
-            // 避免和 constructor 自己的 async setup 互相衝突 (部分 OEM engine 見過)。
-            try {
-                initLatch.await(500, TimeUnit.MILLISECONDS);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-            }
-            List<TextToSpeech.EngineInfo> engines = probe.getEngines();
-            if (engines != null) {
-                Set<String> pkgs = new TreeSet<>();
-                for (TextToSpeech.EngineInfo e : engines) {
-                    pkgs.add(e.name);
-                }
-                result.addAll(pkgs);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "androidTts.getEngines failed", e);
-        } finally {
-            if (probe != null) {
-                probe.shutdown();
-            }
-        }
-        return result;
-    }
-
-    /** (Re)binds androidTts to a specific TTS engine and wires up the same
-     *  OnInitListener/UtteranceProgressListener behaviour every time - called once from
-     *  onCreate() with enginePackage=null (device default) and again from
-     *  speech/set_tts_engine whenever the user switches engines. The old instance
-     *  (if any) is stopped and shut down first, since Android
-     *  has no API to rebind an existing TextToSpeech to a different engine in place -
-     *  switching means tearing down and constructing a fresh one bound to the new
-     *  engine's Service. androidTtsReady is set false for the duration of the rebind so
-     *  speak() calls that land mid-switch fail fast (see the "speech/tts" case below)
-     *  instead of silently going to whichever instance happened to still be assigned. */
-    private void initAndroidTts(String enginePackage) {
-        TextToSpeech old = androidTts;
-        androidTtsReady = false;
-        if (old != null) {
-            old.stop();
-            old.shutdown();
-        }
-        // Holder so initListener can reference the instance being constructed even if
-        // onInit() fires synchronously (before the constructor returns and "created"/
-        // the androidTts field get assigned) - some OEM engines do call back inline on
-        // failure rather than always posting asynchronously.
-        final TextToSpeech[] holder = new TextToSpeech[1];
-        TextToSpeech.OnInitListener initListener = status -> {
-            androidTtsReady = (status == TextToSpeech.SUCCESS);
-            if (androidTtsReady) {
-                // Use the REQUESTED enginePackage, not getDefaultEngine() - user-
-                // confirmed bug on real hardware: getDefaultEngine() reports the
-                // device's system-wide default TTS engine (a Settings-level concept),
-                // NOT "which engine this particular TextToSpeech instance is bound
-                // to". After switching to Pico via the 3-arg constructor below,
-                // getDefaultEngine() kept reporting com.google.android.tts (the
-                // system default, unchanged) - so androidTtsEnginePkg silently stayed
-                // wrong after every switch, and checkTtsDataSync() went on querying
-                // the OLD engine's languages while the UI showed the NEW engine's name
-                // (visible in logcat: ACTION_CHECK_TTS_DATA fired with
-                // cmp=.../CheckVoiceData targeting com.google.android.tts right after
-                // switching to com.svox.pico). If enginePackage is null (device-default
-                // request, e.g. the very first init in onCreate()), fall back to
-                // getDefaultEngine() since there's no explicit request to trust instead.
-                androidTtsEnginePkg = (enginePackage != null && !enginePackage.isEmpty())
-                        ? enginePackage
-                        : (holder[0] != null ? holder[0].getDefaultEngine() : "");
-            } else {
-                // status == LANG_MISSING_DATA/ERROR usually means this engine has no
-                // usable voice data on this device, or (if enginePackage was invalid)
-                // the package doesn't exist / isn't a TTS engine - either way, this app
-                // can't fix that without bundling engine/voice data itself.
-                Log.e(TAG, "Android TTS init failed, status=" + status + ", engine="
-                        + (enginePackage != null ? enginePackage : "(default)"));
-            }
-        };
-        TextToSpeech created = (enginePackage != null && !enginePackage.isEmpty())
-                ? new TextToSpeech(this, initListener, enginePackage)
-                : new TextToSpeech(this, initListener);
-        holder[0] = created;
-        // Unlike onServerPlayEnd (robot-side TTS), Android system TTS reports per-
-        // utterance completion only through this listener, not through onInit - needed
-        // to know when to stop the mouth LED breathing effect started in speech/tts's
-        // engine=android branch. "panel_tts" is the utteranceId passed to speak() there;
-        // onStart/onDone/onError all fire on whichever id is currently in flight since
-        // QUEUE_FLUSH means only one utterance is ever in flight from this app at a time.
-        created.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            @Override
-            public void onStart(String utteranceId) {
-                // no-op: the mouth LED is already started right before speak() is
-                // called, not here, so it lights up without waiting for this callback's
-                // round-trip.
-                // 2026-09: Vosk 聆聽緊就 pause 返，唔好將自己把聲認返入去無限迴音。
-                // mic 照 hold 住（pause 唔放 recorder），播完 onDone  resume。
-                if (vosk != null) {
-                    try {
-                        vosk.setPaused(true);
-                    } catch (Throwable ignore) {
-                    }
-                }
-            }
-
-            @Override
-            public void onDone(String utteranceId) {
-                stopMouthLedForTts();
-                if (vosk != null) {
-                    try {
-                        vosk.setPaused(false);
-                    } catch (Throwable ignore) {
-                    }
-                }
-                // 和 robot-side TTS 的 onServerPlayEnd 一致, publish tts_end
-                // 讓前端知道這句讀完了 - 小智 tab 選了本地引擎的時候靠這個 event
-                // 排隊讀多句回覆 (見 xiaozhiTtsQueue 相關 comment)。isEnd 固定
-                // true, Android TTS 沒有對應 onServerPlayEnd 的 isEnd 語意, 這裡
-                // 沒有對應的 false case。
-                EventBus.get().publish("tts_end", "{\"isEnd\":true}");
-            }
-
-            @Override
-            public void onError(String utteranceId) {
-                stopMouthLedForTts();
-                if (vosk != null) {
-                    try {
-                        vosk.setPaused(false);
-                    } catch (Throwable ignore) {
-                    }
-                }
-                // 出錯也要 publish, 不然前端的 queue 會卡在那裡等一個永遠不會來
-                // 的 tts_end, 之後所有排隊的句子都讀不到。
-                EventBus.get().publish("tts_end", "{\"isEnd\":true}");
-            }
-        });
-        androidTts = created;
-    }
-
-    /**
-     * 2026-09 新增: 經 Android 內置 TTS 讀一句 (供語意配對答案等唔經 speech/tts
-     * endpoint 的內部調用)。同 speech/tts engine=android 分支同一個語義:
-     * 2026-09 更新: locale 參數而家只係 fallback —— TTS 卡有明確選擇
-     * (PREF_ANDROID_TTS_LANG 非空) 就優先用卡嘅選擇，對話 TTS 即時跟卡走；
-     * 卡留空 ("沿用引擎目前語言") 先用傳入嘅自動判斷值。
-     * 嘗試切 locale (唔支援就記 warning 照用引擎現有語言讀, 唔靜音),
-     * QUEUE_FLUSH 單句播放。嘴 LED 由 UtteranceProgressListener 負責熄,
-     * 呼叫方開始前點亮、失敗時自己熄即可。
-     * @return true = 已送去播放, false = Android TTS 未 ready (呼叫方要自己熄燈)
-     */
-    private boolean speakAndroidTts(String text, java.util.Locale locale) {
-        TextToSpeech tts = androidTts;
-        if (tts == null || !androidTtsReady || text == null || text.isEmpty()) {
-            Log.w(TAG, "speakAndroidTts: Android TTS not ready, drop: " + text);
-            return false;
-        }
-        // TTS 卡優先：有明確選擇就用佢，否則用傳入嘅自動判斷值。
-        java.util.Locale effective = locale;
-        try {
-            String cardLang = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                    .getString(PREF_ANDROID_TTS_LANG, "");
-            if (cardLang != null && !cardLang.isEmpty()) {
-                effective = java.util.Locale.forLanguageTag(cardLang);
-            }
-        } catch (Throwable ignore) {
-        }
-        locale = effective;
-        if (locale != null) {
-            try {
-                int r = tts.setLanguage(locale);
-                if (r < TextToSpeech.LANG_AVAILABLE) {
-                    Log.w(TAG, "speakAndroidTts: locale " + locale.toLanguageTag()
-                            + " not supported, speak with current language instead");
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "speakAndroidTts setLanguage failed", e);
-            }
-        }
-        try {
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "semantic_tts");
-            return true;
-        } catch (Exception e) {
-            Log.w(TAG, "speakAndroidTts speak failed", e);
-            return false;
-        }
-    }
-
+    // (PIR 提示音搬咗去 RingtoneCenter.playPirAlertCue()。)
+    // (TTS 語言表/legacy fallback/iso3/引擎表/init/讀出成組搬咗去 TtsCenter。)
     /** 接住 checkTtsDataSyncLegacy() 發出的 ACTION_CHECK_TTS_DATA 結果。只
      *  處理這個 app 自己認得的 requestCode, 其他一律交回給 super (雖然目前這個
      *  app 沒有其他地方用 startActivityForResult(), 但這是基本禮貌, 不應該
@@ -2643,17 +1988,8 @@ public class MainActivity extends Activity implements SensorEventListener {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == TTS_DATA_CHECK_REQUEST_CODE) {
-            CountDownLatch latch;
-            synchronized (ttsDataCheckLock) {
-                latch = ttsDataCheckLatch;
-                ttsDataCheckResult = (data != null)
-                        ? data.getStringArrayListExtra(TextToSpeech.Engine.EXTRA_AVAILABLE_VOICES)
-                        : null;
-            }
-            if (latch != null) {
-                latch.countDown();
-            }
+        if (requestCode == TtsCenter.TTS_DATA_CHECK_REQUEST_CODE) {
+            ttsCenter.onTtsDataResult(data);
         }
     }
 
@@ -2668,11 +2004,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         stopMicHoldEnforcer();
         micHeldByApp = false;
         setAccelerometerEnabled(false);
-        TextToSpeech tts = androidTts; // snapshot - see initAndroidTts() javadoc on why
-        if (tts != null) {
-            tts.stop();
-            tts.shutdown();
-        }
+        ttsCenter.shutdown();
         headKeyPoller.setListener(null);
         try { headKeyPoller.stop(); } catch (Throwable ignored) {}
         if (localServices != null) {
@@ -2749,7 +2081,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         // onDestroy() 釋放 - single-thread executor 的 core thread 不會自己結束,
         // 補上跟其他 controller.shutdown() 一致的清理。
         padLedExecutor.shutdownNow();
-        stopRingtonePlayback();
+        ringtoneCenter.stopRingtonePlayback();
         // 2026-08 新增: 之前這裡沒有呼叫 stopLocalMusicPlayback()/stopRadioPlayback() -
         // onDestroy() 就算執行了也不會釋放正在播放的 currentMusicPlayer/currentRadioPlayer,
         // 一直以來都是個 leak (MediaPlayer native resource 沒有 release())。加入
@@ -3185,7 +2517,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 xiaozhiAutoMode.set(false);
                 xiaozhiReconnectAttempts.set(0);
                 stopXiaozhiMic();
-                stopMouthLedForTts();
+                LedCenter.stopMouthLedForTts();
                 xiaozhiClient.disconnect();
                 // 2026-08 v2: mute 鍵 LED = 小智連線指示燈 - web UI 斷線都要熄燈。
                 setChestMuteLed(false);
@@ -3616,7 +2948,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             xiaozhiClient.setAudioSink(new XiaozhiClient.AudioSink() {
                 @Override
                 public void onIncomingOpusFrame(byte[] opusData) {
-                    // 選了本地 TTS 引擎 (見 xiaozhiTtsEngine field javadoc) 就
+                    // 選了本地 TTS 引擎 (見 XiaozhiConfig.getTtsEngine()) 就
                     // 完全靜音這條 cloud opus 聲軌 - 只是不 forward 到
                     // XiaozhiAudioController, decode/AudioTrack pipeline 本身
                     // 沒有改, 一切回 "xiaozhi" 就立即恢復原本行為。
@@ -3642,7 +2974,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 @Override
                 public void onTtsState(String stateValue) {
                     if ("start".equals(stateValue)) {
-                        startMouthLedForTts();
+                        LedCenter.startMouthLedForTts();
                         // 2026-08 修正: 用戶要求「random 動作要和 tts 一起發生, 而不是
                         // 講完才做」- 之前錯放在 "stop" (整段回應播完) 才觸發, 用戶
                         // 看到的是機器人站定不動聽完整句才動, 不是想要的「講話時
@@ -3653,7 +2985,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                         // 一樣的「動一下讓它看起來生動一點」效果。
                         audioCenter.triggerRandomFillerAction();
                     } else if ("stop".equals(stateValue)) {
-                        stopMouthLedForTts();
+                        LedCenter.stopMouthLedForTts();
                         if (xiaozhiAutoMode.get()) {
                             startXiaozhiMic();
                         }
@@ -3676,7 +3008,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                     // 收到 "start" 但還沒收到對應的 "stop"), 嘴部 LED 會停留在點亮的
                     // breathing 狀態, 沒有任何東西會再觸發熄滅它 - 這裡保證斷線一定會
                     // 熄掉燈, 不論之前有沒有成功收到 "stop"。
-                    stopMouthLedForTts();
+                    LedCenter.stopMouthLedForTts();
                     // 2026-08 修正: 之前這裡沒有立即將 xiaozhiActivationStatus
                     // reset - 斷線之後它會停留在斷線前的值 (通常是 CONNECTED),
                     // 一直留到 xiaozhiScheduleReconnect() 的 5 秒 backoff delay
@@ -3849,9 +3181,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                 Thread.currentThread().interrupt();
             }
         }
-        startMouthLedForTts();
-        if (!speakAndroidTts(text, java.util.Locale.SIMPLIFIED_CHINESE)) {
-            stopMouthLedForTts();
+        LedCenter.startMouthLedForTts();
+        if (!ttsCenter.speakAndroidTts(text, java.util.Locale.SIMPLIFIED_CHINESE)) {
+            LedCenter.stopMouthLedForTts();
             Log.w(TAG, "Failed to speak XiaoZhi activation code via Android TTS");
         }
         // Not awaited synchronously (unlike the HTTP "speech/tts" endpoint, which
@@ -5164,10 +4496,10 @@ public class MainActivity extends Activity implements SensorEventListener {
                                     Thread.currentThread().interrupt();
                                 }
                             }
-                            startMouthLedForTts();
+                            LedCenter.startMouthLedForTts();
                             UbxErrorCode.API_ERROR_CODE code = robot.speech_startTTS("en_us", text, null);
                             if (!isOk(code)) {
-                                stopMouthLedForTts();
+                                LedCenter.stopMouthLedForTts();
                             }
                             isError = !isOk(code);
                             resultText = String.valueOf(code);
@@ -5314,7 +4646,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                         + "\"apiLevel\":" + android.os.Build.VERSION.SDK_INT + ","
                         + "\"chestAvailable\":" + directChestReady() + ","
                         + "\"headerAvailable\":" + directHeaderReady() + ","
-                        + "\"androidTtsReady\":" + androidTtsReady + "}");
+                        + "\"androidTtsReady\":" + ttsCenter.isReady() + "}");
 
             case "chest/version": {
                 // 只回 chest MCU 真實韌體版本 (sendCommand 51)
@@ -5413,26 +4745,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                 String text = ApiValidator.require(query, "text");
                 String engine = ApiValidator.requireSpeechEngine(query);
                 if ("android".equals(engine)) {
-                    if (androidTts == null || !androidTtsReady) {
-                        return HttpServer.ApiResponse.error("Android TTS not ready");
-                    }
-                    // 語言選擇 - lang 是 speech/tts_languages 回傳的 BCP-47
-                    // tag (例如 "zh-HK"/"en-US"), null/留空就沿用 engine 目前
-                    // 已經生效的語言, 不強行切換。LANG_MISSING_DATA/
-                    // LANG_NOT_SUPPORTED 都是負數, 只有 engine 真的接受了才
-                    // 繼續讀, 否則報錯回去, 不要悄悄用原本的語言讀 (不是用戶
-                    // 要求的結果)。
-                    String lang = ApiValidator.optional(query, "lang", "");
-                    if (!lang.isEmpty()) {
-                        Locale locale = Locale.forLanguageTag(lang);
-                        int result = androidTts.setLanguage(locale);
-                        if (result < TextToSpeech.LANG_AVAILABLE) {
-                            return HttpServer.ApiResponse.error(
-                                    "Android TTS engine does not support language: " + lang);
-                        }
-                    }
-                    startMouthLedForTts();
-                    androidTts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "panel_tts");
+                    String ttsErr = ttsCenter.speakPanelTts(text, ApiValidator.optional(query, "lang", ""));
+                    if (ttsErr != null) return HttpServer.ApiResponse.error(ttsErr);
                     return HttpServer.ApiResponse.ok("{\"ok\":true}");
                 }
                 String voice = "iflytek".equals(engine) ? ApiValidator.optionalNullable(query, "voice") : null; // may be null
@@ -5450,13 +4764,13 @@ public class MainActivity extends Activity implements SensorEventListener {
                         Thread.currentThread().interrupt();
                     }
                 }
-                startMouthLedForTts();
+                LedCenter.startMouthLedForTts();
                 UbxErrorCode.API_ERROR_CODE res = robot.speech_startTTS(lang, text, voice);
                 if (!isOk(res)) {
                     // speech_startTTS failed synchronously - onServerPlayEnd will never
                     // fire for this attempt, so nothing will turn the mouth LED back off
                     // unless we do it here.
-                    stopMouthLedForTts();
+                    LedCenter.stopMouthLedForTts();
                 } else {
                     // 見 robotTtsSpeaking field javadoc - 觸發成功先算「開始
                     // 播緊」, onServerPlayEnd 會揭返做 false。
@@ -5472,71 +4786,30 @@ public class MainActivity extends Activity implements SensorEventListener {
             // 兩個 AIDL engine 沒有語言參數選擇, lang 已經由 engine 本身固定死,
             // 見下面 speech/tts 的 android 分支)。ui_lang ("zh"/"en") 控制的是
             // displayName 用邊種語言顯示。
-            case "speech/tts_languages": {
-                boolean english = "en".equals(ApiValidator.optionalUiLang(query));
-                List<TtsLanguageOption> langs = listAndroidTtsLanguages(
-                        english ? Locale.ENGLISH : Locale.TRADITIONAL_CHINESE);
-                StringBuilder sb = new StringBuilder("{\"ok\":true,\"languages\":[");
-                for (int i = 0; i < langs.size(); i++) {
-                    if (i > 0) sb.append(',');
-                    TtsLanguageOption opt = langs.get(i);
-                    sb.append("{\"tag\":\"").append(jsonSafe(opt.langTag))
-                      .append("\",\"name\":\"").append(jsonSafe(opt.displayName)).append("\"}");
-                }
-                sb.append("]}");
-                return HttpServer.ApiResponse.ok(sb.toString());
-            }
+            case "speech/tts_languages":
+                return ttsCenter.ttsLanguages(query);
 
             // Android TTS 引擎選擇 - 機身可能裝了不只一個系統 TTS 引擎 (例如出廠
             // 內建 + Google TTS + SVOX Pico), 這三個 endpoint 供 speech tab 選擇
             // speech/tts 的 engine=android 分支實際用哪個發音, 不涉及 Nuance/
             // iFlytek。
-            case "speech/tts_engines": {
-                List<String> engines = listAndroidTtsEngines();
-                StringBuilder sb = new StringBuilder("{\"ok\":true,\"engines\":[");
-                for (int i = 0; i < engines.size(); i++) {
-                    if (i > 0) sb.append(',');
-                    sb.append('"').append(jsonSafe(engines.get(i))).append('"');
-                }
-                sb.append("]}");
-                return HttpServer.ApiResponse.ok(sb.toString());
-            }
+            case "speech/tts_engines":
+                return ttsCenter.ttsEngines();
 
-            case "speech/set_tts_engine": {
-                String enginePkg = ApiValidator.require(query, "engine");
-                initAndroidTts(enginePkg);
-                // 呢個切換本身係 async (initAndroidTts() 拆舊起新一個
-                // TextToSpeech instance, 再等 OnInitListener 先真正 ready) -
-                // 這裡的 "ok" 只是說已經觸發了切換, 不代表立即可以講話, 前端
-                // 應該延遲少少先再 poll speech/cur_tts_engine。
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
+            case "speech/set_tts_engine":
+                return ttsCenter.setTtsEngine(query);
 
             case "speech/cur_tts_engine":
-                return HttpServer.ApiResponse.ok(
-                        "{\"ok\":true,\"engine\":\"" + jsonSafe(androidTtsEnginePkg) + "\"}");
+                return ttsCenter.curTtsEngine();
 
             // 2026-09 新增: TTS 卡語言選擇嘅後端 pref (BCP-47 tag，空=沿用引擎
             // 目前語言)。前端 setAndroidTtsLang() 同步寫入；對話管線
             // speakAndroidTts() 優先讀佢——一揀即時跟。
-            case "speech/set_tts_lang": {
-                String lang = ApiValidator.optional(query, "lang", "");
-                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
-                        .putString(PREF_ANDROID_TTS_LANG, lang == null ? "" : lang).apply();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
+            case "speech/set_tts_lang":
+                return ttsCenter.setTtsLang(query);
 
-            case "speech/cur_tts_lang": {
-                String lang;
-                try {
-                    lang = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                            .getString(PREF_ANDROID_TTS_LANG, "");
-                } catch (Throwable e) {
-                    lang = "";
-                }
-                return HttpServer.ApiResponse.ok(
-                        "{\"ok\":true,\"lang\":\"" + jsonSafe(lang == null ? "" : lang) + "\"}");
-            }
+            case "speech/cur_tts_lang":
+                return ttsCenter.curTtsLang();
 
             case "speech/set_mic": {
                 boolean wake = ApiValidator.requireBoolean(query, "wake");
@@ -5806,135 +5079,16 @@ public class MainActivity extends Activity implements SensorEventListener {
             //   brightness: 1 (dimmest) .. 9 (brightest)
             //   preset -> (p5 upTime, p6 downTime, p7 runTime, p8 mode) mapping below.
             //   mode codes differ between head and eye - see Alpha2RobotApi javadoc.
-            case "led/head/set": {
-                // pure-direct: 5-mic 经 libhead_led.so JNI 直驱（DirectLedController），不再经 binder。
-                String preset = ApiValidator.requireLedHeadPreset(query);
-                if ("stop".equals(preset)) {
-                    boolean stopped = DirectLedController.stopHead5Mic();
-                    return codeResponseReady(directCode(stopped), directHeaderReady());
-                }
-                int color = ApiValidator.requireColor(query);
-                int brightness = ApiValidator.requireBrightness(query);
-                int p5, p6, p8;
-                switch (preset) {
-                    case "flash":   p5 = 100; p6 = 100; p8 = 0; break;
-                    case "breathe": p5 = 5;   p6 = 20;  p8 = 1; break;
-                    case "chase":   p5 = 100; p6 = 0;   p8 = 3; break;
-                    case "dual":    p5 = 500; p6 = 0;   p8 = 5; break;
-                    case "long":
-                    default:        p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
-                }
-                boolean sent = DirectLedController.setHead5MicRaw(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8);
-                return codeResponseReady(directCode(sent), directHeaderReady());
-            }
-            case "led/eye/set": {
-                String preset = ApiValidator.requireLedEyePreset(query);
-                if ("stop".equals(preset)) {
-                    boolean stopped = DirectLedController.stopEye5Mic();
-                    return codeResponseReady(directCode(stopped), directHeaderReady());
-                }
-                int color = ApiValidator.requireColor(query);
-                int brightness = ApiValidator.requireBrightness(query);
-                int p5, p6, p8;
-                switch (preset) {
-                    case "flash": p5 = 100; p6 = 100; p8 = 0; break;
-                    case "chase": p5 = 100; p6 = 0;   p8 = 1; break;
-                    case "dual":  p5 = 500; p6 = 0;   p8 = 3; break;
-                    case "long":
-                    default:      p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
-                }
-                boolean sent = DirectLedController.setEye5MicRaw(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8);
-                return codeResponseReady(directCode(sent), directHeaderReady());
-            }
-            // NOTE: unlike led/head/set and led/eye/set above, this does NOT go through
-            // Alpha2RobotApi/AIDL at all - there is no AIDL "mouth LED" method. It calls
-            // com.ubtechinc.alpha.jni.LedControl directly (a native JNI class backed by
-            // libhead_led.so 3.002), a completely separate control path found in a different
-            // demo app, not gated by isHeaderReady()/waitHeaderReady() since it has
-            // nothing to do with the header serial AIDL bind. See MouthLedData's
-            // javadoc for the confirmed field semantics and the same-device-contention
-            // caveat before relying on this alongside led/head/set or led/eye/set.
-            //
-            // Simplified to the two effects confirmed usable on this hardware: a
-            // breathing effect (speed adjustable, 0-5000ms) and off. effectMode values
-            // other than 1 produced no light in testing, so there's no third "always
-            // solid, no breathing" preset here - see README for what was tried. Also
-            // triggered automatically around TTS start/end - see startMouthLedForTts()/
-            // stopMouthLedForTts() below and their call sites in speech/tts,
-            // onServerPlayEnd, and the Android TTS UtteranceProgressListener.
-            case "led/mouth/set": {
-                String mouthPreset = ApiValidator.requireMouthPreset(query);
-                if ("off".equals(mouthPreset)) {
-                    boolean ok = MouthLedData.off().apply();
-                    return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
-                }
-                int speed = ApiValidator.requireMouthSpeed(query);
-                boolean ok = MouthLedData.breathing(speed).apply();
-                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
-            }
-
-            case "debug/jni/led": {
-                // 2026-08-25 新增: 直接試 /dev/led_eye 這個 JNI driver 的各個 native
-                // function - 這塊 5-mic 板上眼/頭/嘴部 LED 全部走這條路, 兩顆 pad 燈
-                // 很可能也是同一個 driver 另一個 ioctl (例如尚未用過的 ledSetOn(i))。
-                // func=on&i=N -> ledSetOn(N); func=eye/head&a1..a8 -> 對應 setter。
-                String func = ApiValidator.requireDebugLedFunc(query);
-                if ("off".equals(func)) {
-                    boolean openOk = LedControl.open();
-                    boolean r = LedControl.ledSetOFF(0);
-                    LedControl.close();
-                    Log.i(TAG, "ledSetOFF open=" + openOk + " raw=" + r);
-                    return HttpServer.ApiResponse.ok(
-                            "{\"open\":" + openOk + ",\"raw\":" + r + "}");
-                }
-                boolean openOk = LedControl.open();
-                try {
-                    if ("on".equals(func)) {
-                        int i = ApiValidator.optionalInt(query, "i", 0);
-                        boolean r = LedControl.ledSetOn(i);
-                        Log.i(TAG, "ledSetOn(" + i + ") open=" + openOk + " raw=" + r);
-                        return HttpServer.ApiResponse.ok(
-                                "{\"open\":" + openOk + ",\"raw\":" + r + "}");
-                    }
-                    int[] a = new int[8];
-                    for (int k = 0; k < 8; k++) {
-                        a[k] = ApiValidator.optionalInt(query, "a" + (k + 1), 0);
-                    }
-                    boolean r;
-                    if ("eye".equals(func)) {
-                        r = LedControl.ledSetEye(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
-                    } else {
-                        r = LedControl.ledSetHead(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
-                    }
-                    Log.i(TAG, "ledSet" + func + " open=" + openOk
-                            + " raw=" + r + " args=" + java.util.Arrays.toString(a));
-                    return HttpServer.ApiResponse.ok("{\"open\":" + openOk
-                            + ",\"raw\":" + r + ",\"args\":"
-                            + java.util.Arrays.toString(a).replace(" ", "") + "}");
-                } finally {
-                    LedControl.close();
-                }
-            }
-
-            case "debug/serial/send": {
-                // 2026-08-25 新增: raw serial 發送測試端點, 用來反推音量鍵 LED 和
-                // 胸口 mute 鍵 LED 的控制指令 (headboard v1.1 上 alpha2services v1.0
-                // 協議不合, 只要它一動作 MCU 就不再自動點燈, 要自己 app 補上)。port=head
-                // 走 header_sendRawData (ttyS3), port=chest 走 chest_sendRawData
-                // (ttyS1); hex 是完整 wire frame (f8 ... ed), 我們在 PC 側組好再送出。
-                String port = ApiValidator.optionalSerialPort(query);
-                byte[] data = parseHexBytes(ApiValidator.require(query, "hex"));
-                // pure-direct: 经 DirectSerialPort.sendRaw 透传完整 wire 帧。
-                boolean sent = "chest".equals(port)
-                        ? HardwareDirectManager.get(this).chest().sendRaw(data)
-                        : HardwareDirectManager.get(this).head().sendRaw(data);
-                UbxErrorCode.API_ERROR_CODE code = directCode(sent);
-                Log.i(TAG, "debug/serial/send port=" + port + " hex=" + toHex(data, data.length)
-                        + " -> " + code.name());
-                return HttpServer.ApiResponse.ok("{\"ok\":"
-                        + (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) + ",\"code\":\""
-                        + code.name() + "\"}");
-            }
+            case "led/head/set":
+                return ledCenter.ledHeadSet(query);
+            case "led/eye/set":
+                return ledCenter.ledEyeSet(query);
+            case "led/mouth/set":
+                return ledCenter.ledMouthSet(query);
+            case "debug/jni/led":
+                return ledCenter.debugJniLed(query);
+            case "debug/serial/send":
+                return ledCenter.debugSerialSend(query);
 
             // -- Head / misc ---------------------------------------------------------------
             case "head/noise": {
@@ -6153,7 +5307,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             // successful camera/snapshot, instead of synthesizing a click sound in
             // the browser itself.
             case "camera/shutter_sound":
-                playShutterCue();
+                ringtoneCenter.playShutterCue();
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             case "camera/info":
                 return HttpServer.ApiResponse.ok("{\"ok\":true,"
@@ -6250,50 +5404,10 @@ public class MainActivity extends Activity implements SensorEventListener {
             // takes the numbered index back and plays it through the same STREAM_MUSIC
             // MediaPlayer path as playRingtoneUri() (so it follows the media volume
             // slider, not the separate ringer/notification volume). -------------------
-            case "audio/ringtones/list": {
-                String type = ApiValidator.optionalRingtoneType(query);
-                int rmType = "notification".equals(type)
-                        ? android.media.RingtoneManager.TYPE_NOTIFICATION
-                        : android.media.RingtoneManager.TYPE_RINGTONE;
-                // 2026-08 更新 (修 bug): 改用 getCachedRingtoneManager() 不再每次
-                // new RingtoneManager 用完即丟 —— 見 findRingtoneByTitle() 上面
-                // 那個 cache function 的 javadoc, 這裡是同一種 cursor 洩漏, 一起修。
-                android.media.RingtoneManager manager = getCachedRingtoneManager(rmType);
-                android.database.Cursor cursor = manager.getCursor();
-                StringBuilder sb = new StringBuilder("{\"ok\":true,\"type\":\"" + jsonSafe(type) + "\",\"sounds\":[");
-                int position = 0;
-                boolean first = true;
-                while (cursor.moveToNext()) {
-                    String title = cursor.getString(android.media.RingtoneManager.TITLE_COLUMN_INDEX);
-                    if (!first) sb.append(",");
-                    first = false;
-                    sb.append("{\"index\":").append(position).append(",\"title\":\"")
-                            .append(jsonSafe(title == null ? "" : title)).append("\"}");
-                    position++;
-                }
-                sb.append("]}");
-                return HttpServer.ApiResponse.ok(sb.toString());
-            }
-            case "audio/ringtones/play": {
-                String type = ApiValidator.optionalRingtoneType(query);
-                int index = ApiValidator.requireInt(query, "index");
-                int rmType = "notification".equals(type)
-                        ? android.media.RingtoneManager.TYPE_NOTIFICATION
-                        : android.media.RingtoneManager.TYPE_RINGTONE;
-                // 2026-08 更新 (修 bug): 同上, 改用 cached manager。
-                android.media.RingtoneManager manager = getCachedRingtoneManager(rmType);
-                android.net.Uri uri;
-                try {
-                    uri = manager.getRingtoneUri(index);
-                } catch (Exception e) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"invalid index\"}");
-                }
-                if (uri == null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"sound not found\"}");
-                }
-                playRingtoneUri(uri);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
+            case "audio/ringtones/list":
+                return ringtoneCenter.ringtonesList(query);
+            case "audio/ringtones/play":
+                return ringtoneCenter.ringtonesPlay(query);
 
             // 2026-08 新增: 用 title 查找鈴聲, 不再用 audio/ringtones/list 的 numbered
             // index (見上面 findRingtoneByTitle() 的 javadoc: cursor position 不保證
@@ -6303,26 +5417,13 @@ public class MainActivity extends Activity implements SensorEventListener {
             // 旁邊的 blockly-ringtone-data.js), 選了 title 直接送這個 API, 沿用
             // findRingtoneByTitle() 這個已經被 playStopCue()/playShutterCue() 使用、
             // 驗證過穩健的「查 title 轉 Uri」機制, 完全不用理會 index 排序這個問題。
-            case "audio/ringtones/play_by_title": {
-                String type = ApiValidator.optionalRingtoneType(query);
-                String title = ApiValidator.require(query, "title");
-                int rmType = "notification".equals(type)
-                        ? android.media.RingtoneManager.TYPE_NOTIFICATION
-                        : android.media.RingtoneManager.TYPE_RINGTONE;
-                android.net.Uri uri = findRingtoneByTitle(title, rmType);
-                if (uri == null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"sound not found\"}");
-                }
-                playRingtoneUri(uri);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
+            case "audio/ringtones/play_by_title":
+                return ringtoneCenter.ringtonesPlayByTitle(query);
 
             // 2026-08 新增: 停止目前正在播放的系統鈴聲/通知聲 (play / play_by_title 兩個
             // endpoint 播放的那個), 對應 Blockly「範例 5」的「停止播放」按鈕。
-            case "audio/ringtones/stop": {
-                stopRingtonePlayback();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
+            case "audio/ringtones/stop":
+                return ringtoneCenter.ringtonesStop();
 
             // -- Local music (/mnt/internal_sd/music/): 用戶自己放在機身的音樂檔,
             // 和上面 audio/ringtones/* 那些系統鈴聲是兩回事, 各自獨立一套 endpoint/
@@ -7011,30 +6112,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     // 2026-09: 舊 require()/queryOrDefault() 已全量遷移至 ApiValidator, 此處不再保留
     // (Map.getOrDefault 在 API 22 會 NoSuchMethodError, 一律經 ApiValidator.optional()
     // 取代; 空字串同缺席一樣回 default, 非法值拋 IllegalArgumentException → 400)。
-    /**
-     * Starts the mouth LED breathing effect for the duration of a TTS utterance. Called
-     * right after kicking off speech (both robot-side speech_startTTS and Android
-     * system TTS), paired with stopMouthLedForTts() called when that speech actually
-     * finishes (onServerPlayEnd for robot TTS; UtteranceProgressListener.onDone/onError
-     * for Android TTS - see androidTts setup in onCreate).
-     *
-     * Note this can't be timed to the utterance's real length in advance: neither
-     * speech_startTTS nor Android TextToSpeech.speak() reports how long the resulting
-     * audio will be before/while it's produced (the robot's TTS engine synthesizes and
-     * plays it internally; length depends on synthesis the caller doesn't control), so
-     * "flash the mouth for exactly N seconds" is implemented as bracket-and-release
-     * around the actual speech rather than a precomputed fixed duration -
-     * MouthLedData.breathing() is left running (playDurationMs=MAX) until the
-     * corresponding stop call arrives from whichever completion signal fires.
-     */
-    private static void startMouthLedForTts() {
-        MouthLedData.breathing(TTS_MOUTH_LED_SPEED).apply();
-    }
-
-    private static void stopMouthLedForTts() {
-        MouthLedData.off().apply();
-    }
-
+    // (TTS 嘴燈 bracket 搬咗去 LedCenter.start/stopMouthLedForTts()。)
     private static boolean isOk(UbxErrorCode.API_ERROR_CODE code) {
         return code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
@@ -7049,7 +6127,7 @@ public class MainActivity extends Activity implements SensorEventListener {
      * at the time of the call. pure-direct: no AIDL bind exists any more;
      * API_ERROR_SUCCEED means the frame was written to /dev/ttyS1/S3.
      */
-    private static HttpServer.ApiResponse codeResponseReady(UbxErrorCode.API_ERROR_CODE code, boolean ready) {
+    static HttpServer.ApiResponse codeResponseReady(UbxErrorCode.API_ERROR_CODE code, boolean ready) {
         return HttpServer.ApiResponse.ok("{\"ok\":" + isOk(code) + ",\"code\":\"" + code
                 + "\",\"bindReady\":" + ready + "}");
     }
@@ -7456,15 +6534,5 @@ public class MainActivity extends Activity implements SensorEventListener {
         return sb.toString();
     }
 
-    /** Parses "f8 8f 08 ..." style hex (spaces/colons optional, case-insensitive) back
-     *  into raw bytes for the debug/serial/send endpoint. Returns empty array on junk. */
-    private static byte[] parseHexBytes(String hex) {
-        String cleaned = hex.replaceAll("[^0-9a-fA-F]", "");
-        int n = cleaned.length() / 2;
-        byte[] out = new byte[n];
-        for (int i = 0; i < n; i++) {
-            out[i] = (byte) Integer.parseInt(cleaned.substring(i * 2, i * 2 + 2), 16);
-        }
-        return out;
-    }
+    // (parseHexBytes 搬咗去 LedCenter，debug/serial/send 專用。)
 }
