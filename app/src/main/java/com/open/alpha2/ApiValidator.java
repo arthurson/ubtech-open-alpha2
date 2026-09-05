@@ -1,16 +1,14 @@
 package com.open.alpha2;
 
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * 輕量 OpenAPI 驅動的參數校驗層 (1+2 方案的第1層)。
  *
  * 對應 {@code openapi/open-alpha2-openapi.yml} 的 parameters / schema 定義，
- * 將 {@code MainActivity.require / queryOrDefault / Integer.parseInt / enum 檢查}
- * 這些散在 155 個 case 的重複 boilerplate 集中到一處。
+ * 將舊 {@code MainActivity.require / queryOrDefault / Integer.parseInt / enum 檢查}
+ * 這些散在各 handle*Api case 的重複 boilerplate 集中到一處。
  *
  * 設計原則：
  *  - 零額外依賴 (只用 Map/String)，符合此專案 "Android framework + JDK only" 政策 (見 HttpServer.java:34)。
@@ -93,6 +91,15 @@ public final class ApiValidator {
         return iv;
     }
 
+    public static long requireLong(Map<String, String> q, String key) {
+        String v = require(q, key);
+        try {
+            return Long.parseLong(v);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
+        }
+    }
+
     public static long optionalLong(Map<String, String> q, String key, long defaultValue) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return defaultValue;
@@ -101,6 +108,71 @@ public final class ApiValidator {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
         }
+    }
+
+    // ── 浮點 (vosk/endpointer t_*, ubx/speed value) ──────────────────
+    public static float requireFloat(Map<String, String> q, String key) {
+        String v = require(q, key);
+        try {
+            return Float.parseFloat(v.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
+        }
+    }
+
+    public static float optionalFloat(Map<String, String> q, String key, float defaultValue) {
+        String v = q.get(key);
+        if (v == null || v.isEmpty()) return defaultValue;
+        try {
+            return Float.parseFloat(v.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
+        }
+    }
+
+    public static double requireDouble(Map<String, String> q, String key) {
+        String v = require(q, key);
+        try {
+            return Double.parseDouble(v.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
+        }
+    }
+
+    public static double optionalDouble(Map<String, String> q, String key, double defaultValue) {
+        String v = q.get(key);
+        if (v == null || v.isEmpty()) return defaultValue;
+        try {
+            return Double.parseDouble(v.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
+        }
+    }
+
+    // ── Nullable (缺席/空字串回 null, 有值則嚴格解析, 非法拋錯) ──────
+    // 用於「兩個可選參數要一齊俾先有效」(camera w/h) 同「有參數=設定, 無=查詢」
+    // (speech/offline_auto_switch on) 這類三態邏輯, 取代 query.get() + 手動判空。
+    public static Integer optionalInteger(Map<String, String> q, String key) {
+        String v = q.get(key);
+        if (v == null || v.isEmpty()) return null;
+        try {
+            return Integer.valueOf(Integer.parseInt(v.trim()));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
+        }
+    }
+
+    public static Boolean optionalBooleanObject(Map<String, String> q, String key) {
+        String v = q.get(key);
+        if (v == null || v.isEmpty()) return null;
+        if ("true".equalsIgnoreCase(v) || "1".equals(v)) return Boolean.TRUE;
+        if ("false".equalsIgnoreCase(v) || "0".equals(v)) return Boolean.FALSE;
+        throw new IllegalArgumentException("parameter '" + key + "' must be true/false, got: " + v);
+    }
+
+    public static String optionalNullable(Map<String, String> q, String key) {
+        String v = q.get(key);
+        return (v != null && !v.isEmpty()) ? v : null;
     }
 
     // ── 枚舉 ────────────────────────────────────────────────────────
@@ -166,7 +238,77 @@ public final class ApiValidator {
     }
 
     public static String requireSpeechEngine(Map<String, String> q) {
-        return optionalEnum(q, "engine", new String[]{"nuance","iflytek","android"}, "nuance");
+        return optionalEnum(q, "engine", new String[]{"nuance","iflytek","android"}, "android");
+    }
+
+    public static String optionalRingtoneType(Map<String, String> q) {
+        return optionalEnum(q, "type", new String[]{"ringtone","notification"}, "ringtone");
+    }
+
+    public static String optionalSerialPort(Map<String, String> q) {
+        return optionalEnum(q, "port", new String[]{"head","chest"}, "head");
+    }
+
+    public static String optionalUiLang(Map<String, String> q) {
+        return optionalEnum(q, "ui_lang", new String[]{"zh","en"}, "zh");
+    }
+
+    public static String requireDebugLedFunc(Map<String, String> q) {
+        return requireEnum(q, "func", new String[]{"off","on","eye","head"});
+    }
+
+    public static String requireXiaozhiTtsEngine(Map<String, String> q) {
+        return requireEnum(q, "engine", new String[]{"xiaozhi","android"});
+    }
+
+    /** ubx/speed value: 0.5|0.67|1|1.5|2 (見 openapi enum + UbxPlayer.setSpeed)。 */
+    public static float requireUbxSpeed(Map<String, String> q) {
+        return parseUbxSpeedValue(require(q, "value"));
+    }
+
+    /** 共用字串版 (供 ubxSpeedResponse 這類已抽出 query 的 helper覆用, 同一套 enum)。 */
+    public static float parseUbxSpeedValue(String v) {
+        if (v == null || v.isEmpty()) {
+            throw new IllegalArgumentException("missing required parameter: value");
+        }
+        float f;
+        try {
+            f = Float.parseFloat(v.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("parameter 'value' must be one of [0.5, 0.67, 1, 1.5, 2], got: " + v);
+        }
+        float[] allowed = new float[]{0.5f, 0.67f, 1.0f, 1.5f, 2.0f};
+        for (float a : allowed) {
+            if (Math.abs(f - a) < 0.001f) return a;
+        }
+        throw new IllegalArgumentException("parameter 'value' must be one of [0.5, 0.67, 1, 1.5, 2], got: " + v);
+    }
+
+    /** misc/set_uuid value: 1-31 ASCII 字元 (見 openapi minLength/maxLength)。 */
+    public static String requireUuidValue(Map<String, String> q) {
+        String v = require(q, "value");
+        if (v.length() < 1 || v.length() > 31) {
+            throw new IllegalArgumentException("parameter 'value' must be 1-31 ascii chars, got length: " + v.length());
+        }
+        for (int i = 0; i < v.length(); i++) {
+            char c = v.charAt(i);
+            if (c < 0x20 || c > 0x7E) {
+                throw new IllegalArgumentException("parameter 'value' must be 1-31 ascii chars, got non-ascii at index " + i);
+            }
+        }
+        return v;
+    }
+
+    public static int requireVolumePercent(Map<String, String> q) {
+        return requireIntRange(q, "percent", 0, 100);
+    }
+
+    public static int requireVolumePercent(Map<String, String> q, String key) {
+        return requireIntRange(q, key, 0, 100);
+    }
+
+    public static int optionalVoskEndpointerMode(Map<String, String> q) {
+        return optionalIntRange(q, "mode", -1, 3, -1);
     }
 
     public static int[] requireAngles20(Map<String, String> q) {

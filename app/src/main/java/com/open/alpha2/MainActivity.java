@@ -3580,7 +3580,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
 
             case "music/play": {
-                String p = query.get("path");
+                String p = ApiValidator.require(query, "path");
                 String err = musicController.play(p);
                 if (err != null) return HttpServer.ApiResponse.error(err);
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
@@ -3605,26 +3605,14 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
 
             case "music/seek": {
-                String msStr = query.get("ms");
-                int ms;
-                try {
-                    ms = Integer.parseInt(msStr);
-                } catch (Exception e) {
-                    return HttpServer.ApiResponse.error("ms must be an integer");
-                }
+                int ms = ApiValidator.requireInt(query, "ms");
                 String err = musicController.seekTo(ms);
                 if (err != null) return HttpServer.ApiResponse.error(err);
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
 
             case "music/volume": {
-                String pctStr = query.get("percent");
-                int pct;
-                try {
-                    pct = Integer.parseInt(pctStr);
-                } catch (Exception e) {
-                    return HttpServer.ApiResponse.error("percent must be an integer");
-                }
+                int pct = ApiValidator.requireVolumePercent(query, "percent");
                 String err = musicController.setVolume(pct);
                 if (err != null) return HttpServer.ApiResponse.error(err);
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
@@ -3660,50 +3648,34 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"direct\":" + direct + ",\"chest\":" + chest + ",\"head\":" + head + "}");
             }
             case "servo/one": {
-                String idStr = query.get("id"), angleStr = query.get("angle"), timeStr = query.get("time");
-                if (idStr == null || angleStr == null) return HttpServer.ApiResponse.error("id and angle required");
-                try {
-                    int id = Integer.parseInt(idStr);
-                    int angle = Integer.parseInt(angleStr);
-                    int time = timeStr != null ? Integer.parseInt(timeStr) : 500;
-                    if (id < 1 || id > 20) return HttpServer.ApiResponse.error("id 1-20");
-                    // cmd05 在本机固件有 ACK 无动作，改走 cmd03 全帧（servoSendOne 内处理）。
-                    return servoSendOne(id, angle, time);
-                } catch (Exception e) { return HttpServer.ApiResponse.error(e.getMessage()); }
+                int id = ApiValidator.requireIntRange(query, "id", 1, 20);
+                int angle = ApiValidator.requireInt(query, "angle");
+                int time = ApiValidator.optionalInt(query, "time", 500);
+                // cmd05 在本机固件有 ACK 无动作，改走 cmd03 全帧（servoSendOne 内处理）。
+                return servoSendOne(id, angle, time);
             }
             case "servo/all": {
-                String angles = query.get("angles"); // comma separated 20 ints
-                String timeStr = query.get("time");
-                if (angles == null) return HttpServer.ApiResponse.error("angles=1,2,3...20 required");
-                try {
-                    String[] parts = angles.split(",");
-                    if (parts.length != 20) return HttpServer.ApiResponse.error("need 20 angles");
-                    int[] arr = new int[20];
-                    for (int i=0;i<20;i++) arr[i] = Integer.parseInt(parts[i].trim()) & 0xFF;
-                    int time = timeStr != null ? Integer.parseInt(timeStr) : 500;
-                    // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
-                    boolean sent = HardwareDirectManager.get(this).chest().setAllServos(arr, (short) time);
-                    if (!sent) return HttpServer.ApiResponse.error("direct not ready");
-                    ubxPlayer.notePose(arr);
-                    return HttpServer.ApiResponse.ok("{\"ok\":true}");
-                } catch (Exception e) { return HttpServer.ApiResponse.error(e.getMessage()); }
+                int[] arr = ApiValidator.requireAngles20(query);
+                for (int i = 0; i < 20; i++) arr[i] &= 0xFF;
+                int time = ApiValidator.optionalInt(query, "time", 500);
+                // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
+                boolean sent = HardwareDirectManager.get(this).chest().setAllServos(arr, (short) time);
+                if (!sent) return HttpServer.ApiResponse.error("direct not ready");
+                ubxPlayer.notePose(arr);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
             case "sonar/config": {
-                String d = query.get("distance");
-                if (d == null) return HttpServer.ApiResponse.error("distance required");
-                try {
-                    int cm = Integer.parseInt(d);
-                    boolean ok = com.ubtechinc.alpha.hardware.HardwareDirectManager.get(this).chest().configureSonar(cm);
-                    return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
-                } catch (Exception e) { return HttpServer.ApiResponse.error(e.getMessage()); }
+                int cm = ApiValidator.requireInt(query, "distance");
+                boolean ok = com.ubtechinc.alpha.hardware.HardwareDirectManager.get(this).chest().configureSonar(cm);
+                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
             }
             case "led/head": {
-                String c = query.get("color"), m = query.get("mode");
-                int color = c != null ? Integer.parseInt(c) : 3;
-                int mode = m != null ? Integer.parseInt(m) : 0;
+                int color = ApiValidator.optionalInt(query, "color", 3);
+                Integer modeOpt = ApiValidator.optionalInteger(query, "mode");
+                int mode = modeOpt != null ? modeOpt.intValue() : 0;
                 boolean ok = localServices.ledHead(color);
                 // also try direct with mode
-                if (m != null) ok = com.ubtechinc.alpha.hardware.DirectLedController.setHead5Mic(color, 9, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, mode);
+                if (modeOpt != null) ok = com.ubtechinc.alpha.hardware.DirectLedController.setHead5Mic(color, 9, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, mode);
                 return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
             }
             case "led/off": {
@@ -3711,8 +3683,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
             }
             case "led/mouth": {
-                String s = query.get("breathe");
-                int sp = s != null ? Integer.parseInt(s) : 500;
+                int sp = ApiValidator.optionalInt(query, "breathe", 500);
                 boolean ok = localServices.ledMouthBreathe(sp);
                 return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
             }
@@ -3720,9 +3691,10 @@ public class MainActivity extends Activity implements SensorEventListener {
             case "ubx/list":
                 return ubxListResponse();
             case "ubx/play":
-                return ubxPlayResponse(query.get("name"), query.get("path"));
+                return ubxPlayResponse(ApiValidator.optionalNullable(query, "name"),
+                        ApiValidator.optionalNullable(query, "path"));
             case "ubx/speed":
-                return ubxSpeedResponse(query.get("value"));
+                return ubxSpeedResponse(ApiValidator.require(query, "value"));
             case "ubx/stop":
                 return ubxStopResponse();
             case "ubx/status":
@@ -3795,28 +3767,27 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // token 才連得上。現在這三個都開放做可選 override: 留空就繼續走
                 // 原本「只有 OTA URL, 其餘自動」那條路; 有填就用來覆蓋
                 // runXiaozhiActivationFlow() 裡對應的自動值 (見該處 comment)。
-                boolean enabled = "true".equals(query.get("enabled"));
-                String url = query.get("url");
-                String wsUrlOverride = query.get("wsUrl");
-                String deviceIdOverride = query.get("deviceId");
-                String tokenOverride = query.get("token");
+                boolean enabled = ApiValidator.requireBoolean(query, "enabled");
+                String url = ApiValidator.optionalNullable(query, "url");
+                String wsUrlOverride = ApiValidator.optionalNullable(query, "wsUrl");
+                String deviceIdOverride = ApiValidator.optionalNullable(query, "deviceId");
+                String tokenOverride = ApiValidator.optionalNullable(query, "token");
                 if (enabled) {
-                    if (url == null || url.trim().isEmpty()) {
-                        return HttpServer.ApiResponse.error("url is required when enabled=true");
+                    if (url == null) {
+                        throw new IllegalArgumentException("url is required when enabled=true");
                     }
                     url = url.trim();
                     if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                        return HttpServer.ApiResponse.error("url must start with http:// or https://");
+                        throw new IllegalArgumentException("url must start with http:// or https://");
                     }
-                    if (wsUrlOverride != null && !wsUrlOverride.trim().isEmpty()) {
+                    if (wsUrlOverride != null) {
                         String trimmed = wsUrlOverride.trim();
                         if (!trimmed.startsWith("ws://") && !trimmed.startsWith("wss://")) {
-                            return HttpServer.ApiResponse.error("wsUrl must start with ws:// or wss://");
+                            throw new IllegalArgumentException("wsUrl must start with ws:// or wss://");
                         }
                     }
-                    if (deviceIdOverride != null && !deviceIdOverride.trim().isEmpty()
-                            && !isMacShaped(deviceIdOverride.trim())) {
-                        return HttpServer.ApiResponse.error(
+                    if (deviceIdOverride != null && !isMacShaped(deviceIdOverride.trim())) {
+                        throw new IllegalArgumentException(
                                 "deviceId must look like a MAC address, e.g. aa:bb:cc:dd:ee:ff");
                     }
                     if (xiaozhiClient.isOpen()) {
@@ -3897,12 +3868,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // 兩種用法, 依 query 帶的參數而定:
                 //   ?enabled=true|false                  -> 設總開關
                 //   ?tool=<name>&enabled=true|false       -> 設單一 tool
-                String toolName = query.get("tool");
-                String enabledStr = query.get("enabled");
-                if (enabledStr == null) {
-                    return HttpServer.ApiResponse.error("enabled is required");
-                }
-                boolean enabled = "true".equals(enabledStr);
+                String toolName = ApiValidator.optionalNullable(query, "tool");
+                boolean enabled = ApiValidator.requireBoolean(query, "enabled");
                 android.content.SharedPreferences.Editor mcpEditor =
                         getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit();
                 if (toolName == null || toolName.isEmpty()) {
@@ -3929,11 +3896,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                         + jsonSafe(xiaozhiTtsEngine) + "\"}");
 
             case "tts_config/set": {
-                String engine = ApiValidator.require(query, "engine");
-                if (!"xiaozhi".equals(engine) && !"android".equals(engine)) {
-                    return HttpServer.ApiResponse.error(
-                            "engine must be one of: xiaozhi, android (iflytek/nuance removed - no such engine on device)");
-                }
+                String engine = ApiValidator.requireXiaozhiTtsEngine(query);
                 xiaozhiTtsEngine = engine;
                 getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
                         .putString(PREF_XIAOZHI_TTS_ENGINE, engine)
@@ -4040,8 +4003,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + autoConn + "}");
             }
             case "auto_connect/set": {
-                String v = query.get("enabled");
-                boolean autoConn = "true".equalsIgnoreCase(v) || "1".equals(v);
+                boolean autoConn = ApiValidator.requireBoolean(query, "enabled");
                 getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
                         .putBoolean(PREF_XIAOZHI_AUTO_CONNECT, autoConn).apply();
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + autoConn + "}");
@@ -6340,16 +6302,6 @@ public class MainActivity extends Activity implements SensorEventListener {
         return HttpServer.ApiResponse.error("vosk not initialised");
     }
 
-    /** vosk/endpointer 用：空/錯即 NaN（=跟預設）。 */
-    private static float parseEpFloat(String v) {
-        if (v == null || v.isEmpty()) return Float.NaN;
-        try {
-            return Float.parseFloat(v);
-        } catch (Exception e) {
-            return Float.NaN;
-        }
-    }
-
     private HttpServer.ApiResponse handleApi(String path, Map<String, String> query, String method, String body) {
         switch (path) {
             case "status":
@@ -6368,8 +6320,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
             case "chest/version": {
                 // 只回 chest MCU 真實韌體版本 (sendCommand 51)
-                long timeoutMs = 1500;
-                try { timeoutMs = Long.parseLong(ApiValidator.optional(query, "timeout", "1500")); } catch (Exception ignored) {}
+                long timeoutMs = ApiValidator.optionalLong(query, "timeout", 1500L);
                 String v = queryChestFirmwareVersion(timeoutMs);
                 if (v != null) {
                     return HttpServer.ApiResponse.ok("{\"ok\":true,\"version\":\"" + jsonSafe(v) + "\"}");
@@ -6390,8 +6341,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true," + getChestUpgradeStatusJson().substring(1));
             }
             case "chest/upgrade/resume": {
-                int from = 0;
-                try { from = ApiValidator.optionalInt(query, "from", 0); } catch (Exception ignored) {}
+                int from = ApiValidator.optionalInt(query, "from", 0);
                 String err = startChestUpgradeFrom(from);
                 if (err == null) return HttpServer.ApiResponse.ok("{\"ok\":true,\"resumed\":true,\"from\":"+from+"}");
                 else return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(err) + "\"}");
@@ -6404,8 +6354,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
             case "chest/page": {
                 // 調試：讀指定頁 offset 的 32B hex，用於定位 170 頁這類點
-                int page = 0;
-                try { page = ApiValidator.requireInt(query, "page"); } catch (Exception e) { return HttpServer.ApiResponse.error("page required"); }
+                int page = ApiValidator.requireInt(query, "page");
                 java.io.File f = new java.io.File("/sdcard/AlphaII_CHEST_kernel.bin");
                 if (!f.exists()) return HttpServer.ApiResponse.error("file not found");
                 try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
@@ -6439,13 +6388,16 @@ public class MainActivity extends Activity implements SensorEventListener {
             case "ubx/list":
                 return ubxListResponse();
             case "ubx/play":
-                return ubxPlayResponse(query.get("name"), query.get("path"));
+                return ubxPlayResponse(ApiValidator.optionalNullable(query, "name"),
+                        ApiValidator.optionalNullable(query, "path"));
             case "ubx/stop":
                 return ubxStopResponse();
             case "ubx/status":
                 return ubxStatusResponse();
             case "ubx/speed":
-                return ubxSpeedResponse(query.get("value"));
+                // 枚舉校驗在 ubxSpeedResponse 內經 ApiValidator.parseUbxSpeedValue 統一做,
+                // 這裡只保證必填 (缺席即 400), 避免兩次 parse。
+                return ubxSpeedResponse(ApiValidator.require(query, "value"));
 
             // -- Speech / TTS -----------------------------------------------------------
             // engine: nuance | iflytek | android. voice only applies to iflytek (its
@@ -6474,8 +6426,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                     // LANG_NOT_SUPPORTED 都是負數, 只有 engine 真的接受了才
                     // 繼續讀, 否則報錯回去, 不要悄悄用原本的語言讀 (不是用戶
                     // 要求的結果)。
-                    String lang = query.get("lang");
-                    if (lang != null && !lang.isEmpty()) {
+                    String lang = ApiValidator.optional(query, "lang", "");
+                    if (!lang.isEmpty()) {
                         Locale locale = Locale.forLanguageTag(lang);
                         int result = androidTts.setLanguage(locale);
                         if (result < TextToSpeech.LANG_AVAILABLE) {
@@ -6487,7 +6439,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                     androidTts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "panel_tts");
                     return HttpServer.ApiResponse.ok("{\"ok\":true}");
                 }
-                String voice = "iflytek".equals(engine) ? query.get("voice") : null; // may be null
+                String voice = "iflytek".equals(engine) ? ApiValidator.optionalNullable(query, "voice") : null; // may be null
                 String lang = "iflytek".equals(engine) ? "zh_cn" : "en_us"; // no language picker; engine implies it
                 // See STOP_TO_TTS_MIN_GAP_MS above: if speech/stop just ran, give the
                 // robot side's async audio teardown a minimum window to finish before
@@ -6525,7 +6477,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             // 見下面 speech/tts 的 android 分支)。ui_lang ("zh"/"en") 控制的是
             // displayName 用邊種語言顯示。
             case "speech/tts_languages": {
-                boolean english = "en".equals(query.get("ui_lang"));
+                boolean english = "en".equals(ApiValidator.optionalUiLang(query));
                 List<TtsLanguageOption> langs = listAndroidTtsLanguages(
                         english ? Locale.ENGLISH : Locale.TRADITIONAL_CHINESE);
                 StringBuilder sb = new StringBuilder("{\"ok\":true,\"languages\":[");
@@ -6621,9 +6573,11 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
             // 2026-09 移除: speech/reset、speech/start_asr、speech/set_voice、
             // speech/set_language、speech/self_interrupt、speech/inject (以上全部
-            // 經已不存在的 alpha2services binder, 只會回 NOT_INIT)。Blockly
-            // speech 積木會因此收到 404 {ok:false} (同之前 NOT_INIT 一樣只彈 banner
-            // 繼續行, 唔會 throw - 見 app-core.js api()), 積木本身留待下批處理。
+            // 經已不存在的 alpha2services binder)。對應 Blockly 積木
+            // (alpha_speech_start_asr/set_voice/set_language/self_interrupt)
+            // 已經一齊拎走 (定義/toolbox/i18n/run case)——之前係送出先 404，
+            // 而家連砌都砌唔到。舊 .xml 程式有用過呢幾粒的話，匯入嗰粒會
+            // load 唔到，要手動刪咗佢。
             case "speech/iflytek_simulate":
                 // 2026-08 新增: "打字當作自己說了這句" - 直接把輸入文字當成 iFlytek
                 // 引擎已經辨識完的結果, 送去 handleIflytekSemanticText() 做 1000 條
@@ -6667,9 +6621,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // 2026-08 新增: 自動跟網路切換開關。沒有 on 參數 = 查詢現狀;
                 // 有 on=true/false = 設定 (寫入 SharedPreferences, 重啟 App 都記得),
                 // 設定完即刻按目前網絡狀態套用一次。
-                String onParam = ApiValidator.optional(query, "on", "");
-                if (!onParam.isEmpty()) {
-                    boolean on = Boolean.parseBoolean(onParam);
+                Boolean onOpt = ApiValidator.optionalBooleanObject(query, "on");
+                if (onOpt != null) {
+                    boolean on = onOpt.booleanValue();
                     offlineGrammarAutoSwitch = on;
                     getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                             .edit().putBoolean(PREF_OFFLINE_AUTO, on).commit();
@@ -6771,10 +6725,10 @@ public class MainActivity extends Activity implements SensorEventListener {
             case "vosk/endpointer": {
                 HttpServer.ApiResponse need = voskOrError();
                 if (need != null) return need;
-                int mode = ApiValidator.optionalInt(query, "mode", -1);
-                float tStart = parseEpFloat(query.get("t_start"));
-                float tEnd = parseEpFloat(query.get("t_end"));
-                float tMax = parseEpFloat(query.get("t_max"));
+                int mode = ApiValidator.optionalVoskEndpointerMode(query);
+                float tStart = ApiValidator.optionalFloat(query, "t_start", Float.NaN);
+                float tEnd = ApiValidator.optionalFloat(query, "t_end", Float.NaN);
+                float tMax = ApiValidator.optionalFloat(query, "t_max", Float.NaN);
                 String err = vosk.setEndpointer(mode, tStart, tEnd, tMax);
                 if (err != null) return HttpServer.ApiResponse.error(err);
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
@@ -6928,7 +6882,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // function - 這塊 5-mic 板上眼/頭/嘴部 LED 全部走這條路, 兩顆 pad 燈
                 // 很可能也是同一個 driver 另一個 ioctl (例如尚未用過的 ledSetOn(i))。
                 // func=on&i=N -> ledSetOn(N); func=eye/head&a1..a8 -> 對應 setter。
-                String func = ApiValidator.optional(query, "func", "");
+                String func = ApiValidator.requireDebugLedFunc(query);
                 if ("off".equals(func)) {
                     boolean openOk = LedControl.open();
                     boolean r = LedControl.ledSetOFF(0);
@@ -6953,10 +6907,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                     boolean r;
                     if ("eye".equals(func)) {
                         r = LedControl.ledSetEye(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
-                    } else if ("head".equals(func)) {
-                        r = LedControl.ledSetHead(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
                     } else {
-                        return HttpServer.ApiResponse.error("func must be on/eye/head");
+                        r = LedControl.ledSetHead(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
                     }
                     Log.i(TAG, "ledSet" + func + " open=" + openOk
                             + " raw=" + r + " args=" + java.util.Arrays.toString(a));
@@ -6974,7 +6926,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // 協議不合, 只要它一動作 MCU 就不再自動點燈, 要自己 app 補上)。port=head
                 // 走 header_sendRawData (ttyS3), port=chest 走 chest_sendRawData
                 // (ttyS1); hex 是完整 wire frame (f8 ... ed), 我們在 PC 側組好再送出。
-                String port = ApiValidator.optional(query, "port", "head");
+                String port = ApiValidator.optionalSerialPort(query);
                 byte[] data = parseHexBytes(ApiValidator.require(query, "hex"));
                 // pure-direct: 经 DirectSerialPort.sendRaw 透传完整 wire 帧。
                 boolean sent = "chest".equals(port)
@@ -7058,12 +7010,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                 // 寫入格式本身不變, 這裡保持
                 // v2 原本的 [len byte]+SN, 沒有 terminator 沒有 padding 的寫法,
                 // 這才是經實機驗證過的正確格式。
-                String v = ApiValidator.require(query, "value");
+                String v = ApiValidator.requireUuidValue(query);
                 byte[] sn = v.getBytes(StandardCharsets.US_ASCII);
-                if (sn.length < 1 || sn.length > 31) {
-                    return HttpServer.ApiResponse.ok(
-                            "{\"ok\":false,\"error\":\"id must be 1-31 ascii chars\"}");
-                }
                 // payload 格式實測確認是 [長度byte] + SN ASCII bytes — 沒有
                 // terminator 沒有 padding! 讀取幾個 byte 是依這個 len byte 決定 (正常機
                 // 讀出來是乾乾淨淨 N 字元 + firmware 自己 EEPROM 欄位的 0x00
@@ -7131,12 +7079,13 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
             case "camera/snapshot_save": {
                 // 齊 9 檔影相並存入 Android：可選 w/h，未提供則用當前 preview 解像度；存至 /sdcard/DCIM/Alpha2
-                String wStr = query.get("w");
-                String hStr = query.get("h");
+                Integer wOpt = ApiValidator.optionalInteger(query, "w");
+                Integer hOpt = ApiValidator.optionalInteger(query, "h");
                 int reqW = 0, reqH = 0;
-                boolean hasSize = false;
-                if (wStr != null && hStr != null) {
-                    try { reqW = Integer.parseInt(wStr); reqH = Integer.parseInt(hStr); hasSize = true; } catch (Exception ignored) {}
+                boolean hasSize = wOpt != null && hOpt != null;
+                if (hasSize) {
+                    reqW = wOpt.intValue();
+                    reqH = hOpt.intValue();
                 }
                 int prevW = cameraController.getPreviewWidth();
                 int prevH = cameraController.getPreviewHeight();
@@ -7177,15 +7126,9 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
             case "camera/take_photo_save": {
                 // 真正單張拍攝（picture 尺寸，經 Camera.takePicture 完整 ISP），存入 Android
-                String wStr = query.get("w");
-                String hStr = query.get("h");
-                int reqW = 0, reqH = 0;
-                boolean hasSize = false;
-                if (wStr != null && hStr != null) {
-                    try { reqW = Integer.parseInt(wStr); reqH = Integer.parseInt(hStr); hasSize = true; } catch (Exception ignored) {}
-                }
-                // 若未指定，用最大 picture 尺寸
-                if (!hasSize) { reqW = 4208; reqH = 3120; }
+                // 若未指定，用最大 picture 尺寸 (見 openapi default w=4208 h=3120)。
+                int reqW = ApiValidator.optionalInt(query, "w", 4208);
+                int reqH = ApiValidator.optionalInt(query, "h", 3120);
                 CameraController.StartResult started = cameraController.start(8000);
                 if (started.error != null) {
                     return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(started.error) + "\"}");
@@ -7311,7 +7254,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             // MediaPlayer path as playRingtoneUri() (so it follows the media volume
             // slider, not the separate ringer/notification volume). -------------------
             case "audio/ringtones/list": {
-                String type = ApiValidator.optional(query, "type", "ringtone");
+                String type = ApiValidator.optionalRingtoneType(query);
                 int rmType = "notification".equals(type)
                         ? android.media.RingtoneManager.TYPE_NOTIFICATION
                         : android.media.RingtoneManager.TYPE_RINGTONE;
@@ -7335,7 +7278,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok(sb.toString());
             }
             case "audio/ringtones/play": {
-                String type = ApiValidator.optional(query, "type", "ringtone");
+                String type = ApiValidator.optionalRingtoneType(query);
                 int index = ApiValidator.requireInt(query, "index");
                 int rmType = "notification".equals(type)
                         ? android.media.RingtoneManager.TYPE_NOTIFICATION
@@ -7364,7 +7307,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             // findRingtoneByTitle() 這個已經被 playStopCue()/playShutterCue() 使用、
             // 驗證過穩健的「查 title 轉 Uri」機制, 完全不用理會 index 排序這個問題。
             case "audio/ringtones/play_by_title": {
-                String type = ApiValidator.optional(query, "type", "ringtone");
+                String type = ApiValidator.optionalRingtoneType(query);
                 String title = ApiValidator.require(query, "title");
                 int rmType = "notification".equals(type)
                         ? android.media.RingtoneManager.TYPE_NOTIFICATION
@@ -7451,13 +7394,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 }
             }
             case "audio/local_music/seek": {
-                String msStr = ApiValidator.require(query, "ms");
-                int ms;
-                try {
-                    ms = Integer.parseInt(msStr);
-                } catch (NumberFormatException e) {
-                    return HttpServer.ApiResponse.error("ms must be an integer");
-                }
+                int ms = ApiValidator.requireInt(query, "ms");
                 synchronized (this) {
                     if (currentMusicPlayer == null) {
                         return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"no track loaded\"}");
@@ -7472,14 +7409,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
             case "audio/local_music/volume": {
-                String pctStr = ApiValidator.require(query, "percent");
-                int pct;
-                try {
-                    pct = Integer.parseInt(pctStr);
-                } catch (NumberFormatException e) {
-                    return HttpServer.ApiResponse.error("percent must be an integer");
-                }
-                float v = Math.max(0, Math.min(100, pct)) / 100f;
+                int pct = ApiValidator.requireVolumePercent(query);
+                float v = pct / 100f;
                 synchronized (this) {
                     if (currentMusicPlayer == null) {
                         return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"no track loaded\"}");
@@ -7577,13 +7508,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 }
             }
             case "audio/local_music/eq/set": {
-                String idxStr = ApiValidator.require(query, "index");
-                int idx;
-                try {
-                    idx = Integer.parseInt(idxStr);
-                } catch (NumberFormatException e) {
-                    return HttpServer.ApiResponse.error("index must be an integer");
-                }
+                int idx = ApiValidator.requireInt(query, "index");
                 // 存下選擇 (不理會現在是否正在播放), 等下一首歌開始播時
                 // setupMusicEqualizerLocked() 都會跟返呢個 preset。
                 getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
@@ -7613,7 +7538,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                         + isMusicFillerActionEnabled() + "}");
             }
             case "audio/local_music/filler_action/set": {
-                boolean enabled = "true".equals(query.get("enabled"));
+                boolean enabled = ApiValidator.requireBoolean(query, "enabled");
                 getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
                         .putBoolean(PREF_MUSIC_FILLER_ACTION_ENABLED, enabled).apply();
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + "}");
@@ -7668,10 +7593,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
             case "audio/radio/play_url": {
                 String url = ApiValidator.require(query, "url");
-                String nameHint = query.get("name");
-                if (url == null || url.trim().isEmpty()) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"url is required\"}");
-                }
+                String nameHint = ApiValidator.optionalNullable(query, "name");
                 try {
                     // 2026-08 新增: 供前端直連 radio-browser.info fallback 用 — 瀏覽器自己
                     // fetch 完搜尋結果 (繞過機械人本身 DNS/無外網問題看列表), 再將選中台的
@@ -8560,15 +8482,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     private HttpServer.ApiResponse ubxSpeedResponse(String v) {
-        if (v == null) return HttpServer.ApiResponse.error("value required (0.5|0.67|1|1.5|2)");
-        float f;
-        try {
-            f = Float.parseFloat(v.trim());
-        } catch (Exception e) {
-            return HttpServer.ApiResponse.error("bad speed: " + v);
-        }
+        float f = ApiValidator.parseUbxSpeedValue(v);
         if (!ubxPlayer.setSpeed(f)) {
-            return HttpServer.ApiResponse.error("bad speed (0.5|0.67|1|1.5|2)");
+            throw new IllegalArgumentException("parameter 'value' must be one of [0.5, 0.67, 1, 1.5, 2], got: " + v);
         }
         // 播緊時即時生效：用新速度由頭重播同一文件（内部快照隔离，旧计划安全交接）。
         boolean restarted = false;
@@ -8712,37 +8628,9 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     // 动作配乐已并入 UbxPlayer 内 voice 线（a/j/a/o 官方语义），此处不再另起 MediaPlayer。
     // 配乐寻址规则见 UbxPlayer.resolveVoiceFile：ubx去扩展名/music名，缺省退回目录首首 mp3。
-    private static String require(Map<String, String> query, String key) {
-        String v = query.get(key);
-        if (v == null) {
-            throw new IllegalArgumentException("missing required parameter: " + key);
-        }
-        return v;
-    }
-
-    /**
-     * Map.getOrDefault() is a Java 8 default method added to the java.util.Map
-     * *interface* only in API 24 (Android 7.0). The robot runs Android 5.1 (API 22),
-     * whose core-libart.jar Map interface predates it, so calling query.getOrDefault(...)
-     * throws NoSuchMethodError at runtime even though it compiles fine (desugaring
-     * rewrites lambdas/language sugar, not missing platform API surface). Use this
-     * instead of Map.getOrDefault anywhere query params need a fallback value.
-     */
-    /**
-     * Falls back to defaultValue both when the key is absent (v == null) AND when it's
-     * present but empty (v.isEmpty()) - e.g. a query string ending in "...&mode=" with
-     * no value after the "=", which a number input left blank in the web UI can send.
-     * Originally only checked for null; a real request (led/mouth/set?mode=&...) hit
-     * the empty-string gap and reached Integer.parseInt(""), throwing
-     * NumberFormatException and 500-ing the handler (see logcat_recording_2026-07-03,
-     * MainActivity.java:848). Every endpoint that wraps this in Integer.parseInt(...)
-     * shares the same fix now, not just led/mouth/set.
-     */
-    private static String queryOrDefault(Map<String, String> query, String key, String defaultValue) {
-        String v = query.get(key);
-        return (v != null && !v.isEmpty()) ? v : defaultValue;
-    }
-
+    // 2026-09: 舊 require()/queryOrDefault() 已全量遷移至 ApiValidator, 此處不再保留
+    // (Map.getOrDefault 在 API 22 會 NoSuchMethodError, 一律經 ApiValidator.optional()
+    // 取代; 空字串同缺席一樣回 default, 非法值拋 IllegalArgumentException → 400)。
     /**
      * Starts the mouth LED breathing effect for the duration of a TTS utterance. Called
      * right after kicking off speech (both robot-side speech_startTTS and Android

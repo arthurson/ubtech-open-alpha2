@@ -682,8 +682,7 @@ paths:
       summary: 播 TTS（只有 engine=android 會真係出聲）
       description: 機身已無 Nuance/iFlytek 引擎（alpha2services 已移除，binder
         回 NOT_INIT）。engine=nuance/iflytek 照收但必定回 {ok:false,
-        code:API_ERROR_NOT_INIT} 全程靜音；預設 engine=nuance，即預設唔出聲，
-        要出聲請用 engine=android。
+        code:API_ERROR_NOT_INIT} 全程靜音；預設 engine=android（唯一會出聲嘅引擎）。
       parameters:
       - name: text
         in: query
@@ -698,8 +697,8 @@ paths:
           - nuance
           - iflytek
           - android
-          default: nuance
-        description: 只有 android 會出聲；nuance=機身（已無引擎，必靜音），iflytek=機身（已無引擎，必靜音）
+          default: android
+        description: 預設 android；只有 android 會出聲；nuance=機身（已無引擎，必靜音），iflytek=機身（已無引擎，必靜音）
       - name: voice
         in: query
         schema:
@@ -875,12 +874,6 @@ paths:
       summary: 轉移麥克風擁有權（底層 setWakeState 已無對象，恒回成功；只記 app 側旗標）
       description: 機身 wake-word 引擎已隨 alpha2services 移除，實際無收放動作；
         held/keepHeld 照記照報，供前端顯示。
-      parameters:
-      - name: wake
-        in: query
-        required: true
-        schema:
-          type: boolean
       parameters:
       - name: wake
         in: query
@@ -1486,8 +1479,8 @@ paths:
         schema:
           type: string
           enum:
-          - 'off'
-          - on
+          - "off"
+          - "on"
           - eye
           - head
       - name: i

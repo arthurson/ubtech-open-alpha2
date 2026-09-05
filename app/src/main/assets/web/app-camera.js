@@ -264,8 +264,9 @@ async function capturePhotoAtResolution(w,h,btnEl,isPicture) {
   const mode = isPicture ? "單張高清" : "快照";
   if (hint) hint.textContent = "正在以 " + w + "x" + h + " " + mode + " 影相…";
   try {
-    const endpoint = isPicture ? "camera/take_photo_save" : "camera/snapshot_save";
-    const res = await hwApi(endpoint, {w:w,h:h});
+    const res = isPicture
+      ? await Alpha2Api.cameraTakePhotoSave({w:w,h:h})
+      : await Alpha2Api.cameraSnapshotSave({w:w,h:h});
     if (!res.ok) throw new Error(res.error||"unknown");
     if (hint) hint.textContent = "✓ 已存 " + w + "x" + h + " → " + res.path + " (" + (res.bytes||"?") + " bytes)";
     try { Alpha2Api.cameraShutterSound(); } catch(e){}

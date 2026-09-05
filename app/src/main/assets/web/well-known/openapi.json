@@ -1130,7 +1130,7 @@
           "speech"
         ],
         "summary": "播 TTS（只有 engine=android 會真係出聲）",
-        "description": "機身已無 Nuance/iFlytek 引擎（alpha2services 已移除，binder 回 NOT_INIT）。engine=nuance/iflytek 照收但必定回 {ok:false, code:API_ERROR_NOT_INIT} 全程靜音；預設 engine=nuance，即預設唔出聲， 要出聲請用 engine=android。",
+        "description": "機身已無 Nuance/iFlytek 引擎（alpha2services 已移除，binder 回 NOT_INIT）。engine=nuance/iflytek 照收但必定回 {ok:false, code:API_ERROR_NOT_INIT} 全程靜音；預設 engine=android（唯一會出聲嘅引擎）。",
         "parameters": [
           {
             "name": "text",
@@ -1150,9 +1150,9 @@
                 "iflytek",
                 "android"
               ],
-              "default": "nuance"
+              "default": "android"
             },
-            "description": "只有 android 會出聲；nuance=機身（已無引擎，必靜音），iflytek=機身（已無引擎，必靜音）"
+            "description": "預設 android；只有 android 會出聲；nuance=機身（已無引擎，必靜音），iflytek=機身（已無引擎，必靜音）"
           },
           {
             "name": "voice",
@@ -2387,7 +2387,7 @@
               "type": "string",
               "enum": [
                 "breathing",
-                "'off'"
+                "off"
               ],
               "default": "breathing"
             }
@@ -2443,7 +2443,7 @@
             "schema": {
               "type": "string",
               "enum": [
-                "'off'",
+                "off",
                 "on",
                 "eye",
                 "head"

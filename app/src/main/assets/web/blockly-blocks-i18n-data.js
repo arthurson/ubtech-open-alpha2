@@ -65,28 +65,14 @@ window.ALPHA_BLOCK_I18N = {
   speech_set_mic__label:     { zh: '麥克風擁有權：', en: 'Mic ownership:' },
   speech_set_mic__release:   { zh: '釋放給機械人 (機械人可以自己聽)', en: 'Release to robot (robot can listen itself)' },
   speech_set_mic__take:      { zh: 'App 取回 (機械人不會聽)', en: 'App takes it back (robot won\u2019t listen)' },
-  speech_set_mic__tooltip:   { zh: '⚠️ 這個不是「開始聆聽」！只是轉手 mic 擁有權, 不會觸發辨識, 也不會主動開始聽。想立刻開始聽請用「開始聆聽 (即時辨識)」那顆 block。(/api/speech/set_mic)',
-                                en: '⚠️ This is NOT "start listening"! It only hands over mic ownership — it does not trigger recognition or start listening. To start listening immediately, use the "Start listening (live recognition)" block. (/api/speech/set_mic)' },
+  speech_set_mic__tooltip:   { zh: '⚠️ 這個不是「開始聆聽」！只是轉手 mic 擁有權, 不會觸發辨識, 也不會主動開始聽。(/api/speech/set_mic)',
+                                en: '⚠️ This is NOT "start listening"! It only hands over mic ownership — it does not trigger recognition or start listening. (/api/speech/set_mic)' },
 
-  // -- alpha_speech_start_asr --
-  speech_start_asr__label:   { zh: '開始聆聽 (即時辨識, 不用等 wake word)', en: 'Start listening (live recognition, no wake word needed)' },
-  speech_start_asr__tooltip: { zh: '直接開始 ASR 辨識, 不用等機械人硬體偵測到 wake word。結果會經「當收到 語音辨識結果」事件送回來。(/api/speech/start_asr)',
-                                en: 'Start ASR recognition directly, without waiting for the robot\u2019s hardware to detect a wake word. Results arrive via the "on speech recognition result" event. (/api/speech/start_asr)' },
-
-  // -- alpha_speech_set_voice --
-  speech_set_voice__label:   { zh: '設定 TTS 聲音', en: 'Set TTS voice' },
-  speech_set_voice__tooltip: { zh: '設定 TTS 聲音, 淨係 iFlytek 命名聲音先有效。(/api/speech/set_voice)', en: 'Set the TTS voice. Only takes effect for named iFlytek voices. (/api/speech/set_voice)' },
-
-  // -- alpha_speech_set_language --
-  speech_set_lang__label:    { zh: '設定辨識語言', en: 'Set recognition language' },
-  speech_set_lang__zh:       { zh: '中文 zh_cn (iFlytek)', en: 'Chinese zh_cn (iFlytek)' },
-  speech_set_lang__en:       { zh: '英文 en_us (Nuance)', en: 'English en_us (Nuance)' },
-
-  // -- alpha_speech_self_interrupt --
-  speech_self_interrupt__label: { zh: '自我打斷 (中文限定)：', en: 'Self-interrupt (Chinese only):' },
+  // 2026-09 移除: alpha_speech_start_asr / alpha_speech_set_voice /
+  // alpha_speech_set_language / alpha_speech_self_interrupt 嘅 i18n (block 已拎走)。
+  // toggle_on/toggle_off 保留 (其他 block 仲用緊)。
   toggle_on:                 { zh: '開啟', en: 'On' },
   toggle_off:                { zh: '關閉', en: 'Off' },
-  speech_self_interrupt__tooltip: { zh: '開關「機械人講嘢中途畀人講嘢打斷」。(/api/speech/self_interrupt)', en: 'Toggle whether the robot can be interrupted mid-speech by a person talking. (/api/speech/self_interrupt)' },
 
   // -- makeRingtoneBlock --
   ringtone_phone__label:     { zh: '📞 播放電話鈴聲', en: '📞 Play phone ringtone' },
@@ -303,10 +289,8 @@ window.ALPHA_BLOCK_I18N = {
   run_mic_ownership:         { zh: '🎙 麥克風擁有權 → {owner}', en: '🎙 Mic ownership \u2192 {owner}' },
   run_mic_owner_robot:       { zh: '機械人', en: 'robot' },
   run_mic_owner_app:         { zh: 'App', en: 'app' },
-  run_start_listening:       { zh: '🎙 開始聆聽 (即時辨識)', en: '🎙 Start listening (live recognition)' },
-  run_set_voice:             { zh: '🔈 設定 TTS 聲音: {name}', en: '🔈 Set TTS voice: {name}' },
-  run_set_lang:              { zh: '🌐 設定辨識語言: {lang}', en: '🌐 Set recognition language: {lang}' },
-  run_self_interrupt:        { zh: '✋ 自我打斷: {on}', en: '✋ Self-interrupt: {on}' },
+  // 2026-09 移除: run_start_listening / run_set_voice / run_set_lang /
+  // run_self_interrupt (死 block 嘅 log 字串，一齊拎走)。
   run_no_ringtone_selected:  { zh: '⚠ 未揀鈴聲', en: '⚠ No ringtone selected' },
   run_ringtone_play:         { zh: '🔔 播放系統鈴聲: {type} {title}{durationNote}', en: '🔔 Play system sound: {type} {title}{durationNote}' },
   run_ringtone_type_notification: { zh: '通知', en: 'notification' },

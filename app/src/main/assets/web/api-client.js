@@ -345,7 +345,7 @@ const Alpha2Api = (function() {
 
   // ── led ──────────────────────────────────────────────
   function debugJniLed(params) {
-    if (params && params.func != null) assertEnum(params.func, ['off', True, 'eye', 'head'], 'func');
+    if (params && params.func != null) assertEnum(params.func, ['off', 'on', 'eye', 'head'], 'func');
     // 原始 JNI LED 測試 (LedControl.open/ledSetOFF/ledSetOn/ledSetEye/ledSetHead)
     return api('debug/jni/led', params);
   }

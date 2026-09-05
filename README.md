@@ -51,8 +51,8 @@ ACTIONS（動作列表＋分類＋播放/停止＋**變速 0.5/0.67/1/1.5/2**）
   `ubx/*`、`servo/*`、`speech/*`、`led/*`、`audio/*`（本地音樂/電台）、`chest/*`、
   `system/*`、`xiaozhi/*`；另有 `/api/direct/*`（底層直調）、`/upload/*`、
   `/stream/*`、`/ws`（RFC6455 即時事件）。
-- OpenAPI 3.0（`openapi/open-alpha2-openapi.yml`，129 paths）係單一真相源；
-  `app/.../web/api-client.js`（`Alpha2Api.*`，126 個 wrapper）由
+- OpenAPI 3.0（`openapi/open-alpha2-openapi.yml`，140 paths）係單一真相源；
+  `app/.../web/api-client.js`（`Alpha2Api.*`，132 個 wrapper）由
   `scripts/generate-api-client.py` 生成，改 spec 必重 gen；
   `scripts/check-openapi-drift.py` 保 code↔spec 對齊；另有 AsyncAPI
   （`/ws` 事件）同 MCP 對齊表（`mcp-openapi-sync.yml`）。

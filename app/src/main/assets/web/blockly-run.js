@@ -5,8 +5,8 @@
 //     (interpretBlock), 咁樣可以喺 wait/repeat 中途逐格 highlight, 亦可以隨時
 //     `running = false` 安全中斷, 唔會有半行 JS 卡死喺 eval 入面嘅問題。
 //  2. 每個「動作類」block (播放動作/TTS/LED/伺服...) 對應現有已驗證嘅 /api/* 端點,
-//     直接 fetch, 唔重新定義呢層 API — 呼叫嘅係 index.html 已經有嘅 api() helper
-//     (由 app-core.js 提供), 保證同「面板」分頁行為完全一致。
+//     經型別化 Alpha2Api.* wrapper 呼叫 (api-client.js, 內建 assertEnum/assertRange,
+//     同後端 ApiValidator 同一套規則), 保證同「面板」分頁行為完全一致。
 //  3. 事件 block (alpha_event_accel_threshold / alpha_event_sonar_triggered /
 //     alpha_event_pir_triggered) 唔喺主程式流程之內執行, 而係喺 workspace
 //     load 嗰陣就註冊做 WebSocket listener,
@@ -73,11 +73,11 @@
   // ---- 伺服 / 舵機 ----
   // Alpha2: servo/one { id, angle, time }, servo/all { angles: "a,b,c,..", time }
   async function servoOneAdapter(id, angle, time) {
-    await window.api('servo/one', { id: id, angle: angle, time: time });
+    await Alpha2Api.servoOne({ id: id, angle: angle, time: time });
   }
   async function servoAllAdapter(angles, time) {
     // angles: 長度 20 嘅 number 陣列, index 0 對應 servo id 1。
-    await window.api('servo/all', { angles: angles.join(','), time: time });
+    await Alpha2Api.servoAll({ angles: angles.join(','), time: time });
   }
 
   // ---- LED ----
@@ -86,17 +86,17 @@
   async function ledHeadAdapter(preset, color, brightness) {
     const params = { preset: preset };
     if (preset !== 'stop') { params.color = color; params.brightness = brightness; }
-    await window.api('led/head/set', params);
+    await Alpha2Api.ledHeadSet(params);
   }
   async function ledEyeAdapter(preset, color, brightness) {
     const params = { preset: preset };
     if (preset !== 'stop') { params.color = color; params.brightness = brightness; }
-    await window.api('led/eye/set', params);
+    await Alpha2Api.ledEyeSet(params);
   }
   // 嘴部 LED：淨係得「off / breathe(speed)」兩態 (冇 solid-on)。
   async function ledMouthAdapter(mode, speed) {
-    if (mode === 'off') await window.api('led/mouth/set', { preset: 'off' });
-    else await window.api('led/mouth/set', { speed: speed });
+    if (mode === 'off') await Alpha2Api.ledMouthSet({ preset: 'off' });
+    else await Alpha2Api.ledMouthSet({ speed: speed });
   }
 
   // ---- 語音 TTS ----
@@ -104,7 +104,7 @@
   async function speechTtsAdapter(text, engine, voice) {
     const params = { text: text, engine: engine };
     if (voice) params.voice = voice;
-    await window.api('speech/tts', params);
+    await Alpha2Api.speechTts(params);
   }
 
   // ------------------------------------------------------------------
@@ -304,7 +304,7 @@
 
   function sendActionPlay(name) {
     const gated = actionBusyPromise.then(function () {
-      return window.api('action/play', { name: name });
+      return Alpha2Api.actionPlay({ name: name });
     });
     // 下一個排隊嘅 action/play 要等「呢個動作真正播完」先可以送出, 唔係淨係
     // 等 HTTP round-trip ——見上面大段註解。無論今次 API 呼叫成功/失敗/收到
@@ -398,7 +398,7 @@
       }
       case 'alpha_action_stop':
         logLine(t('run_action_stop'));
-        await window.api('action/stop');
+        await Alpha2Api.actionStop();
         return;
       case 'alpha_action_wait_done': {
         const timeout = Number(block.getFieldValue('TIMEOUT')) * 1000;
@@ -426,28 +426,15 @@
       }
       case 'alpha_speech_stop':
         logLine(t('run_tts_stop'));
-        await window.api('speech/stop');
+        await Alpha2Api.speechStop();
         return;
       case 'alpha_speech_set_mic':
         logLine(t('run_mic_ownership', { owner: (block.getFieldValue('WAKE') === 'true' ? t('run_mic_owner_robot') : t('run_mic_owner_app')) }));
-        await window.api('speech/set_mic', { wake: block.getFieldValue('WAKE') });
+        await Alpha2Api.speechSetMic({ wake: block.getFieldValue('WAKE') });
         return;
-      case 'alpha_speech_start_asr':
-        logLine(t('run_start_listening'));
-        await window.api('speech/start_asr');
-        return;
-      case 'alpha_speech_set_voice':
-        logLine(t('run_set_voice', { name: block.getFieldValue('NAME') }));
-        await window.api('speech/set_voice', { name: block.getFieldValue('NAME') });
-        return;
-      case 'alpha_speech_set_language':
-        logLine(t('run_set_lang', { lang: block.getFieldValue('LANG') }));
-        await window.api('speech/set_language', { lang: block.getFieldValue('LANG') });
-        return;
-      case 'alpha_speech_self_interrupt':
-        logLine(t('run_self_interrupt', { on: block.getFieldValue('ON') }));
-        await window.api('speech/self_interrupt', { on: block.getFieldValue('ON') });
-        return;
+      // 2026-09 移除: alpha_speech_start_asr / alpha_speech_set_voice /
+      // alpha_speech_set_language / alpha_speech_self_interrupt —— 對應後端
+      // endpoint 已經唔存在 (404)，block 定義、toolbox、i18n 一齊拎走。
       // 2026-08 更新: 電話鈴聲 / 通知鈴聲已經拆做兩粒獨立 block (以前係一粒
       // alpha_speech_ringtone + TYPE dropdown), type 依家寫死喺呢兩個 case。
       // 播放依家送 title (唔再送 index), call 新增嘅 /api/audio/ringtones/play_by_title
@@ -475,19 +462,19 @@
           title: title,
           durationNote: (duration > 0 ? t('run_ringtone_duration_note', { duration: duration }) : t('run_ringtone_duration_full')),
         }));
-        await window.api('audio/ringtones/play_by_title', { type: type, title: title });
+        await Alpha2Api.audioRingtonesPlayByTitle({ type: type, title: title });
         if (duration > 0) {
           await sleep(duration * 1000);
           // 就算 stopRequested (用家撳咗「停止程式」), 都要停返個鈴聲,
           // 唔係佢會繼續喺機械人度播落去 (Java 個 MediaPlayer 唔會因為
           // 呢個網頁 loop 停咗就自動停)。
-          await window.api('audio/ringtones/stop', {});
+          await Alpha2Api.audioRingtonesStop();
         }
         return;
       }
       case 'alpha_speech_ringtone_stop':
         logLine(t('run_ringtone_stop'));
-        await window.api('audio/ringtones/stop', {});
+        await Alpha2Api.audioRingtonesStop();
         return;
 
       // ---------------- 伺服 ----------------
@@ -543,7 +530,7 @@
       }
       case 'alpha_servo_sonar':
         logLine(t('run_sonar_distance', { dist: block.getFieldValue('DIST') }));
-        await window.api('servo/sonar', { distance: block.getFieldValue('DIST') });
+        await Alpha2Api.servoSonar({ distance: block.getFieldValue('DIST') });
         return;
 
       // ---------------- LED ----------------
@@ -577,19 +564,19 @@
       // ---------------- 感應/裝置 ----------------
       case 'alpha_sensor_accel_toggle':
         logLine(t('run_accel_toggle', { on: block.getFieldValue('ON') }));
-        await window.api('accelerometer/set', { on: block.getFieldValue('ON') });
+        await Alpha2Api.accelerometerSet({ on: block.getFieldValue('ON') });
         return;
       case 'alpha_sensor_sonar_toggle': {
         const on = block.getFieldValue('ON') === 'true';
         const dist = on ? block.getFieldValue('DIST') : '0';
         logLine(t('run_sonar_toggle', { on: block.getFieldValue('ON'), thresholdNote: (on ? t('run_sonar_toggle_threshold', { dist: dist }) : '') }));
-        await window.api('servo/sonar', { distance: dist });
+        await Alpha2Api.servoSonar({ distance: dist });
         return;
       }
       case 'alpha_sensor_pir_toggle': {
         const on = block.getFieldValue('ON');
         logLine(t('run_pir_toggle', { on: on }));
-        await window.api('pir/set', { on: on });
+        await Alpha2Api.pirSet({ on: on });
         return;
       }
 
@@ -1051,7 +1038,7 @@
   // ------------------------------------------------------------------
   async function refreshActionDropdown() {
     logLine(t('run_fetching_action_list'), 'sys');
-    const r = await window.api('action/list');
+    const r = await Alpha2Api.actionList();
     if (r && r.ok && Array.isArray(r.actions)) {
       window.__alphaActionOptions = r.actions.map(function (a) {
         const catKey = window.ALPHA_ACTION_CATEGORY_OF ? window.ALPHA_ACTION_CATEGORY_OF(a.id) : '';

@@ -286,59 +286,9 @@
     }
   };
 
-  Blockly.Blocks['alpha_speech_start_asr'] = {
-    init: function () {
-      this.appendDummyInput().appendField(t('speech_start_asr__label'));
-      this.setPreviousStatement(true, null);
-      this.setNextStatement(true, null);
-      this.setColour(clr.speech);
-      this.setTooltip(t('speech_start_asr__tooltip'));
-    }
-  };
-
-  Blockly.Blocks['alpha_speech_set_voice'] = {
-    init: function () {
-      this.appendDummyInput()
-        .appendField(t('speech_set_voice__label'))
-        .appendField(new Blockly.FieldDropdown([
-          ['catherine', 'catherine'],
-          ['john', 'john'],
-          ['小峯 xiaofeng', 'xiaofeng'],
-          ['小欣 xiaoyan', 'xiaoyan'],
-        ]), 'NAME');
-      this.setPreviousStatement(true, null);
-      this.setNextStatement(true, null);
-      this.setColour(clr.speech);
-      this.setTooltip(t('speech_set_voice__tooltip'));
-    }
-  };
-
-  Blockly.Blocks['alpha_speech_set_language'] = {
-    init: function () {
-      this.appendDummyInput()
-        .appendField(t('speech_set_lang__label'))
-        .appendField(new Blockly.FieldDropdown([
-          [t('speech_set_lang__zh'), 'zh_cn'],
-          [t('speech_set_lang__en'), 'en_us'],
-        ]), 'LANG');
-      this.setPreviousStatement(true, null);
-      this.setNextStatement(true, null);
-      this.setColour(clr.speech);
-      this.setTooltip('(/api/speech/set_language)');
-    }
-  };
-
-  Blockly.Blocks['alpha_speech_self_interrupt'] = {
-    init: function () {
-      this.appendDummyInput()
-        .appendField(t('speech_self_interrupt__label'))
-        .appendField(new Blockly.FieldDropdown([[t('toggle_on'), 'true'], [t('toggle_off'), 'false']]), 'ON');
-      this.setPreviousStatement(true, null);
-      this.setNextStatement(true, null);
-      this.setColour(clr.speech);
-      this.setTooltip(t('speech_self_interrupt__tooltip'));
-    }
-  };
+  // 2026-09 移除: alpha_speech_start_asr / alpha_speech_set_voice /
+  // alpha_speech_set_language / alpha_speech_self_interrupt —— 對應後端
+  // endpoint 已經唔存在 (送出只會 404)，定義、toolbox、i18n、run case 一齊拎走。
 
   // Android 內置電話鈴聲 / 通知鈴聲 —— 清單依家內嵌喺 blockly-ringtone-data.js
   // (由實機 adb 抓一次靜態化, 唔再即時查 /api/audio/ringtones/list)。

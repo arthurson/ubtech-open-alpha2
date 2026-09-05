@@ -1,6 +1,6 @@
 # MCP ↔ OpenAPI 參數對齊表 (1+2 方案第2層延伸)
 # 來源：
-#   - MCP 定義：MainActivity.java:5091 xiaozhiMcpBridge() listTools()/callTool()
+#   - MCP 定義：MainActivity.java:5396 xiaozhiMcpBridge() listTools()/callTool()
 #   - OpenAPI 定義：openapi/open-alpha2-openapi.yml
 # 用途：確保 LLM 經 MCP 調用的參數與 HTTP 直接調用走同一套校驗 (ApiValidator.java + api-client.js)
 # 再生：對照此表手動更新兩邊，或未來用腳本自動由 openapi 生成 MCP inputSchema
@@ -144,4 +144,4 @@ mappings:
 
 # 驗證方式：
 #   python -c "import yaml; yaml.safe_load(open('openapi/mcp-openapi-sync.yml'))"
-# 未來可擴展為：由 openapi 自動生成 MCP inputSchema，替換 MainActivity.java:5091 手寫 JSON
+# 未來可擴展為：由 openapi 自動生成 MCP inputSchema，替換 MainActivity.java:5396 手寫 JSON
