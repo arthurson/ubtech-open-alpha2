@@ -227,7 +227,7 @@ public class MainActivity extends Activity {
      *  自動再搶一次回來」。見 micHoldEnforcer 這條背景 thread。 */
     private volatile boolean micHoldEnforced = false;
     private Thread micHoldEnforcerThread;
-    private static final long MIC_HOLD_ENFORCER_INTERVAL_MS = 2000;
+    static final long MIC_HOLD_ENFORCER_INTERVAL_MS = 2000;
 
     /** true = XiaoZhi (小智) 語音對話現在持有著 mic 擁有權 (releaseMicForAudioIo()
      *  已經 call 了, AudioRecord 已經開著)。獨立於 micHeldByApp (Speech/Mic tab 專用) -
@@ -335,7 +335,7 @@ public class MainActivity extends Activity {
     // STOP_TO_TTS_MIN_GAP_MS has elapsed since that stop. 400ms was enough headroom
     // in testing for the teardown to finish without being long enough to feel like
     // a UI stall for a normal stop-then-speak flow.
-    private static final long STOP_TO_TTS_MIN_GAP_MS = 400;
+    static final long STOP_TO_TTS_MIN_GAP_MS = 400;
     private volatile long lastSpeechStopAtMs = 0L;
     // 追蹤機身 robot-side TTS (nuance/iflytek, 經 robot.speech_startTTS() 走)
     // 現在是不是正在播 - 由 startXiaozhiMicHoldEnforcer()/startMicHoldEnforcer()
@@ -559,7 +559,7 @@ public class MainActivity extends Activity {
         ttsCenter = new TtsCenter(this, vosk);
         ttsCenter.initAndroidTts(null);
         semanticCenter = new SemanticCenter(iflytekMatcher, iflytekMatcherEn, actionDirect, ttsCenter);
-        deviceStatus = new DeviceStatus(this, mainHandler, actionDirect, ubxPlayer);
+        deviceStatus = new DeviceStatus(this, mainHandler, actionDirect, ubxPlayer, ttsCenter);
         // sticky broadcast 註冊時機唔敏感；原 onCreate 開頭喰次 register 搬团度 (起好先叫得)。
         deviceStatus.registerBatteryReceiver();
         cameraApi = new CameraApi(this, cameraController, ringtoneCenter);
@@ -3888,19 +3888,9 @@ public class MainActivity extends Activity {
 
     private HttpServer.ApiResponse handleApi(String path, Map<String, String> query, String method, String body) {
         switch (path) {
+            // -- 健康狀態聚合 (body 喺 DeviceStatus；薄 delegate，唔好喺度加 logic) --
             case "status":
-                String appVer = "?";
-                try {
-                    appVer = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-                } catch (Exception ignored) {}
-                // pure-direct: chest/header 可用性改由直驱串口报告，不再经 binder。
-                // 2026-09: speechReady key 已移除 (無 ASR，舊 binder service 永遠唔會 ready)。
-                return HttpServer.ApiResponse.ok("{\"ok\":true,"
-                        + "\"appVersion\":\"" + appVer + "\","
-                        + "\"apiLevel\":" + android.os.Build.VERSION.SDK_INT + ","
-                        + "\"chestAvailable\":" + directChestReady() + ","
-                        + "\"headerAvailable\":" + directHeaderReady() + ","
-                        + "\"androidTtsReady\":" + ttsCenter.isReady() + "}");
+                return deviceStatus.statusResponse();
 
             case "chest/version": {
                 // 只回 chest MCU 真實韌體版本 (sendCommand 51)
@@ -3934,22 +3924,9 @@ public class MainActivity extends Activity {
                 chestUpgrade.abort();
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"aborted\":true}");
             }
-            case "chest/page": {
-                // 調試：讀指定頁 offset 的 32B hex，用於定位 170 頁這類點
-                int page = ApiValidator.requireInt(query, "page");
-                java.io.File f = new java.io.File("/sdcard/AlphaII_CHEST_kernel.bin");
-                if (!f.exists()) return HttpServer.ApiResponse.error("file not found");
-                try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
-                    long skip = (long)page * 128L;
-                    long s = 0;
-                    while (s < skip) { long n = in.skip(skip - s); if (n<=0) break; s+=n; }
-                    byte[] buf = new byte[128];
-                    int n = in.read(buf);
-                    if (n <= 0) return HttpServer.ApiResponse.error("page out of range");
-                    String hex = toHex(buf, n);
-                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"page\":"+page+",\"offset\":"+skip+",\"hex\":\""+hex+"\"}");
-                } catch (Exception e) { return HttpServer.ApiResponse.error(String.valueOf(e.getMessage())); }
-            }
+            // -- 升級鏡像讀頁 (body 喺 ChestUpgrade；薄 delegate，唔好喺度加 logic) --
+            case "chest/page":
+                return chestUpgrade.chestPageResponse(query);
 
 
             // -- Actions (pure-direct: actionInfo.txt + UbxPlayer，机身已无 alpha2services，
@@ -4101,38 +4078,9 @@ public class MainActivity extends Activity {
             // 已經一齊拎走 (定義/toolbox/i18n/run case)——之前係送出先 404，
             // 而家連砌都砌唔到。舊 .xml 程式有用過呢幾粒的話，匯入嗰粒會
             // load 唔到，要手動刪咗佢。
+            // -- 語義模擬 (body 喺 SemanticCenter；薄 delegate，唔好喺度加 logic) --
             case "speech/iflytek_simulate":
-                // 2026-08 新增: "打字當作自己說了這句" - 直接把輸入文字當成 iFlytek
-                // 引擎已經辨識完的結果, 送去 handleIflytekSemanticText() 做 1000 條
-                // 問法配對 (中英文各 1000 條, 依輸入文字有沒有漢字自動判斷用哪份 - 見
-                // looksChinese()), 命中就立即執行悠聊原本的「TTS200ms動作」流程。
-                // 和 speech/inject 不同: 這裡不經任何機身 AIDL (不靠
-                // speech_startRecognized()/onSpeech() 這條 "不確定會不會真的觸發辨識"
-                // 的路), 純粹是本地 JSON 配對 + 直接呼叫 robot.speech_startTTS()/
-                // robot.action_PlayActionName(), 所以不需要 speechReady gate, 只
-                // 需要 robot 本身已經 initRobot() 完成 (onCreate() 一開始就做了)。
-                // response 即時告訴前端有沒有配對到 (matched/question/type/
-                // operation/answer/actionId), 不用等 WebSocket event - 方便對話
-                // 界面直接顯示配對結果, 不用一直等 EventBus。
-                //
-                // 2026-08 新增: match() 現在找不到問法也會回傳一個「聽不懂」的
-                // fallback 回應 (不再是 null), 所以 matched:false 分支現在只
-                // 剩返「輸入係空白字串」呢種 edge case 先會行到。
-                {
-                    String simText = ApiValidator.require(query, "text");
-                    IflytekSemanticMatcher.MatchResult simResult = semanticCenter.handleIflytekSemanticText(simText, false);
-                    if (simResult == null) {
-                        return HttpServer.ApiResponse.ok(
-                                "{\"ok\":true,\"matched\":false,\"input\":\"" + jsonSafe(simText) + "\"}");
-                    }
-                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"matched\":true,"
-                            + "\"input\":\"" + jsonSafe(simText) + "\","
-                            + "\"question\":\"" + jsonSafe(simResult.question) + "\","
-                            + "\"type\":\"" + jsonSafe(simResult.type) + "\","
-                            + "\"operation\":\"" + jsonSafe(simResult.operation) + "\","
-                            + "\"answer\":\"" + jsonSafe(simResult.answer) + "\","
-                            + "\"actionId\":\"" + jsonSafe(simResult.actionId) + "\"}");
-                }
+                return semanticCenter.iflytekSimulateResponse(query);
             // 2026-09 移除: speech/stop_inject (同上, 死 binder)。
             // 2026-09 移除: speech/init_grammar、speech/start_grammar、
             // speech/stop_grammar 三個 endpoint（機身已無 iFlytek 引擎，
@@ -4428,8 +4376,7 @@ public class MainActivity extends Activity {
             // 服務，對 open alpha2 無用；連同 preset 常數一齊拎走。reboot 保留
             // （UUID 卡重開機掣仲用緊）。
             case "service_config/reboot":
-                // 獨立 endpoint，用戶隨時手動重開機。
-                return systemReboot();
+                return deviceStatus.rebootResponse();
 
             default:
                 return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
@@ -4437,25 +4384,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** 觸發機身重開機（UUID 卡重開機掣用，經 PowerManager）。 */
-    private HttpServer.ApiResponse systemReboot() {
-        try {
-            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
-            if (pm == null) {
-                return HttpServer.ApiResponse.error("PowerManager unavailable");
-            }
-            pm.reboot("robotpanel_service_config_change");
-            return HttpServer.ApiResponse.ok("{\"ok\":true,\"rebooting\":true}");
-        } catch (SecurityException e) {
-            // REBOOT permission 在很多機身/ROM 只給 system app 用, 第三方 app (即使
-            // 有 manifest 聲明) 都可能在這裡被 SecurityException 拒絕 - 這是
-            // 意料之內的失敗模式, 不是 bug, 前端應該提示用戶手動長按電源鍵重開機。
-            return HttpServer.ApiResponse.error(
-                    "REBOOT permission denied by system (common on locked-down firmware) - "
-                            + "please power-cycle the robot manually for the config change to take effect: "
-                            + e.getMessage());
-        }
-    }
 
     // -- Camera streaming (MJPEG over "/stream/camera") -------------------------------
 
@@ -4881,7 +4809,7 @@ public class MainActivity extends Activity {
     // (Map.getOrDefault 在 API 22 會 NoSuchMethodError, 一律經 ApiValidator.optional()
     // 取代; 空字串同缺席一樣回 default, 非法值拋 IllegalArgumentException → 400)。
     // (TTS 嘴燈 bracket 搬咗去 LedCenter.start/stopMouthLedForTts()。)
-    private static boolean isOk(UbxErrorCode.API_ERROR_CODE code) {
+    static boolean isOk(UbxErrorCode.API_ERROR_CODE code) {
         return code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
 

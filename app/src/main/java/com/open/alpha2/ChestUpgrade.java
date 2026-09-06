@@ -9,6 +9,8 @@ import com.ubtechinc.alpha.hardware.HardwareDirectManager;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import java.util.Map;
+
 /**
  * 胸口固件升級 (48/49/50 協議，鏡像 alpha2services h.a.a$b)。
  *
@@ -18,6 +20,8 @@ import java.util.concurrent.TimeUnit;
  * 查詢側 latch 共用 ChestQuery (升級開始前要一齊清)。
  * 進度經 EventBus chest_upgrade_progress / chest_upgrade_done 發布，
  * 前端輪詢 chest/upgrade/status。
+ * 2026-09 dispatcher Phase 1 第六刀加：chest/page 调試讀頁
+ * (chestPageResponse) 搬入——讀同一個升級鏡像檔。
  */
 public final class ChestUpgrade {
     private static final String TAG = "ChestUpgrade";
@@ -271,5 +275,23 @@ public final class ChestUpgrade {
         return "{\"inProgress\":" + chestUpgradeInProgress + ",\"progress\":" + chestUpgradeProgress
             + ",\"currentPage\":" + chestUpgradeCurrentPage + ",\"totalPages\":" + chestUpgradeTotalPages
             + ",\"status\":\"" + MainActivity.jsonSafe(chestUpgradeStatus) + "\"}";
+    }
+
+    // 調試：讀指定頁 offset 的 32B hex，用於定位 170 頁這類點
+    // (2026-09 dispatcher Phase 1 第六刀由 handleApi chest/page 搬入)。
+    public HttpServer.ApiResponse chestPageResponse(Map<String, String> query) {
+        int page = ApiValidator.requireInt(query, "page");
+        java.io.File f = new java.io.File("/sdcard/AlphaII_CHEST_kernel.bin");
+        if (!f.exists()) return HttpServer.ApiResponse.error("file not found");
+        try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+            long skip = (long)page * 128L;
+            long s = 0;
+            while (s < skip) { long n = in.skip(skip - s); if (n<=0) break; s+=n; }
+            byte[] buf = new byte[128];
+            int n = in.read(buf);
+            if (n <= 0) return HttpServer.ApiResponse.error("page out of range");
+            String hex = MainActivity.toHex(buf, n);
+            return HttpServer.ApiResponse.ok("{\"ok\":true,\"page\":"+page+",\"offset\":"+skip+",\"hex\":\""+hex+"\"}");
+        } catch (Exception e) { return HttpServer.ApiResponse.error(String.valueOf(e.getMessage())); }
     }
 }

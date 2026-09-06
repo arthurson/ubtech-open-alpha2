@@ -15,6 +15,7 @@ import android.os.Handler;
 import android.text.format.Formatter;
 import android.util.Log;
 
+import com.ubtechinc.alpha.hardware.HardwareDirectManager;
 import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
 
 import java.util.Map;
@@ -30,6 +31,9 @@ import java.util.concurrent.TimeUnit;
  * battery/status、accelerometer set/get + SensorEventListener，連註解搬入。
  * 低電量蹲下經傳入嘅同一個 ActionDirect；synchronized 鎖由 MainActivity.this
  * 轉做自己 (調用方全部經同一個 instance，互斥等價；見 AudioCenter 同例)。
+ * 2026-09 dispatcher Phase 1 第七刀加：handleApi status 健康聚合 +
+ * service_config/reboot (statusResponse/rebootResponse)；TtsCenter
+ * readiness 經傳入嘅同一個 instance 讀。
  */
 public final class DeviceStatus implements SensorEventListener {
     private static final String TAG = "DeviceStatus";
@@ -38,13 +42,15 @@ public final class DeviceStatus implements SensorEventListener {
     private final Handler mainHandler;
     private final ActionDirect actionDirect;
     private final UbxPlayer ubxPlayer;
+    private final TtsCenter ttsCenter;
 
     public DeviceStatus(Context context, Handler mainHandler, ActionDirect actionDirect,
-            UbxPlayer ubxPlayer) {
+            UbxPlayer ubxPlayer, TtsCenter ttsCenter) {
         this.appContext = context.getApplicationContext();
         this.mainHandler = mainHandler;
         this.actionDirect = actionDirect;
         this.ubxPlayer = ubxPlayer;
+        this.ttsCenter = ttsCenter;
         // 原 registerGestureController() 嗰兩行搬入：sensorManager 經 appContext
         // 攞，同 Activity 嗰個係同一個 service (audioManager 唔郁，留喺手勢嗰邊)。
         sensorManager = (SensorManager) appContext.getSystemService(Context.SENSOR_SERVICE);
@@ -277,5 +283,52 @@ public final class DeviceStatus implements SensorEventListener {
     public HttpServer.ApiResponse accelerometerGet() {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + accelerometerEnabled
                 + ",\"available\":" + (accelerometerSensor != null) + "}");
+    }
+
+    // -- 健康狀態聚合 (2026-09 dispatcher Phase 1 第七刀由 handleApi status 搬入) --
+    // chest/header readiness 內聯：同 MainActivity 版一字不差，經 appContext 唔使 Activity。
+    private boolean directChestReady() {
+        try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
+        catch (Exception e) { return false; }
+    }
+
+    private boolean directHeaderReady() {
+        try { return HardwareDirectManager.get(appContext).head().isAvailable(); }
+        catch (Exception e) { return false; }
+    }
+
+    public HttpServer.ApiResponse statusResponse() {
+        String appVer = "?";
+        try {
+            appVer = appContext.getPackageManager().getPackageInfo(appContext.getPackageName(), 0).versionName;
+        } catch (Exception ignored) {}
+        // pure-direct: chest/header 可用性改由直驱串口报告，不再经 binder。
+        // 2026-09: speechReady key 已移除 (無 ASR，舊 binder service 永遠唔會 ready)。
+        return HttpServer.ApiResponse.ok("{\"ok\":true,"
+                + "\"appVersion\":\"" + appVer + "\","
+                + "\"apiLevel\":" + android.os.Build.VERSION.SDK_INT + ","
+                + "\"chestAvailable\":" + directChestReady() + ","
+                + "\"headerAvailable\":" + directHeaderReady() + ","
+                + "\"androidTtsReady\":" + ttsCenter.isReady() + "}");
+    }
+
+    /** 觸發機身重開機（UUID 卡重開機掣用，經 PowerManager）。獨立 endpoint，用戶隨時手動重開機。 */
+    public HttpServer.ApiResponse rebootResponse() {
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) appContext.getSystemService(Context.POWER_SERVICE);
+            if (pm == null) {
+                return HttpServer.ApiResponse.error("PowerManager unavailable");
+            }
+            pm.reboot("robotpanel_service_config_change");
+            return HttpServer.ApiResponse.ok("{\"ok\":true,\"rebooting\":true}");
+        } catch (SecurityException e) {
+            // REBOOT permission 在很多機身/ROM 只給 system app 用, 第三方 app (即使
+            // 有 manifest 聲明) 都可能在這裡被 SecurityException 拒絕 - 這是
+            // 意料之內的失敗模式, 不是 bug, 前端應該提示用戶手動長按電源鍵重開機。
+            return HttpServer.ApiResponse.error(
+                    "REBOOT permission denied by system (common on locked-down firmware) - "
+                            + "please power-cycle the robot manually for the config change to take effect: "
+                            + e.getMessage());
+        }
     }
 }

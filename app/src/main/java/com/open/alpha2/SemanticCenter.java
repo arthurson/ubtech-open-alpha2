@@ -2,6 +2,8 @@ package com.open.alpha2;
 
 import android.util.Log;
 
+import java.util.Map;
+
 /**
  * 本地語意配對膠水：中英 matcher 二揀一 + TTS/動作執行。
  *
@@ -10,6 +12,8 @@ import android.util.Log;
  * Matcher 實例由 MainActivity 起好傳入 (Vosk 都要用同一份)；播動作經
  * ActionDirect，讀答案經 TtsCenter。 speech/iflytek_simulate endpoint
  * 經呢度一次驗晒成條鏈。
+ * 2026-09 dispatcher Phase 1 第六刀加：speech/iflytek_simulate response
+ * (iflytekSimulateResponse) 搬入。
  */
 public final class SemanticCenter {
     private static final String TAG = "SemanticCenter";
@@ -149,5 +153,38 @@ public final class SemanticCenter {
             }
         }, "IflytekSemanticAction").start();
         return result;
+    }
+
+    // 2026-08 新增: "打字當作自己說了這句" - 直接把輸入文字當成 iFlytek
+    // 引擎已經辨識完的結果, 送去 handleIflytekSemanticText() 做 1000 條
+    // 問法配對 (中英文各 1000 條, 依輸入文字有沒有漢字自動判斷用哪份 - 見
+    // looksChinese()), 命中就立即執行悠聊原本的「TTS200ms動作」流程。
+    // 和 speech/inject 不同: 這裡不經任何機身 AIDL (不靠
+    // speech_startRecognized()/onSpeech() 這條 "不確定會不會真的觸發辨識"
+    // 的路), 純粹是本地 JSON 配對 + 直接呼叫 robot.speech_startTTS()/
+    // robot.action_PlayActionName(), 所以不需要 speechReady gate, 只
+    // 需要 robot 本身已經 initRobot() 完成 (onCreate() 一開始就做了)。
+    // response 即時告訴前端有沒有配對到 (matched/question/type/
+    // operation/answer/actionId), 不用等 WebSocket event - 方便對話
+    // 界面直接顯示配對結果, 不用一直等 EventBus。
+    //
+    // 2026-08 新增: match() 現在找不到問法也會回傳一個「聽不懂」的
+    // fallback 回應 (不再是 null), 所以 matched:false 分支現在只
+    // 剩返「輸入係空白字串」呢種 edge case 先會行到。
+    // (2026-09 dispatcher Phase 1 第六刀由 handleApi speech/iflytek_simulate 搬入。)
+    public HttpServer.ApiResponse iflytekSimulateResponse(Map<String, String> query) {
+        String simText = ApiValidator.require(query, "text");
+        IflytekSemanticMatcher.MatchResult simResult = handleIflytekSemanticText(simText, false);
+        if (simResult == null) {
+            return HttpServer.ApiResponse.ok(
+                    "{\"ok\":true,\"matched\":false,\"input\":\"" + MainActivity.jsonSafe(simText) + "\"}");
+        }
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"matched\":true,"
+                + "\"input\":\"" + MainActivity.jsonSafe(simText) + "\","
+                + "\"question\":\"" + MainActivity.jsonSafe(simResult.question) + "\","
+                + "\"type\":\"" + MainActivity.jsonSafe(simResult.type) + "\","
+                + "\"operation\":\"" + MainActivity.jsonSafe(simResult.operation) + "\","
+                + "\"answer\":\"" + MainActivity.jsonSafe(simResult.answer) + "\","
+                + "\"actionId\":\"" + MainActivity.jsonSafe(simResult.actionId) + "\"}");
     }
 }
