@@ -11,6 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SPEC = ROOT / "openapi" / "open-alpha2-openapi.yml"
 MAIN = ROOT / "app" / "src" / "main" / "java" / "com" / "open" / "alpha2" / "MainActivity.java"
 XZ = ROOT / "app" / "src" / "main" / "java" / "com" / "open" / "alpha2" / "XiaozhiBridge.java"
+DISP = ROOT / "app" / "src" / "main" / "java" / "com" / "open" / "alpha2" / "ApiDispatcher.java"
 
 spec = yaml.safe_load(open(SPEC, encoding='utf-8'))
 spec_paths = set(p.lstrip('/') for p in spec['paths'].keys())
@@ -25,8 +26,9 @@ for p in spec_paths:
 # Also add bare system/xiaozhi variants: for spec's system/music/list, also consider music/list as bare? No, system is namespace, so keep as is.
 
 text = MAIN.read_text(encoding='utf-8')
-# xiaozhi cases 住喺 XiaozhiBridge.handleXiaozhiApi，一齊掃。
-text += "\n" + XZ.read_text(encoding='utf-8')
+# xiaozhi cases 住喺 XiaozhiBridge.handleXiaozhiApi，/api/alpha2/* cases 住喺
+# ApiDispatcher.handleApi，一齊掃。
+text += "\n" + XZ.read_text(encoding='utf-8') + "\n" + DISP.read_text(encoding='utf-8')
 # Find all case "x": include those inside handleApi/handleSystemApi/handleXiaozhiApi
 cases = set(re.findall(r'case "([^"]+)"', text))
 # Filter to API-like: contains / or known singletons

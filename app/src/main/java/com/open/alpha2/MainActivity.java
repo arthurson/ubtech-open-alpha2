@@ -68,7 +68,7 @@ import org.json.JSONObject;
  * robot has no practical on-screen use for this tool - the HTML control panel at
  * http://<robot-ip>:8888/ is the actual UI.
  */
-public class MainActivity extends Activity implements XiaozhiBridge.HostState {
+public class MainActivity extends Activity implements XiaozhiBridge.HostState, ApiDispatcher.Host {
     private static final String TAG = "MainActivity";
 
     static final String PREFS_NAME = "robotpanel";
@@ -147,40 +147,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState {
     /** 2026-09 新增: Vosk 離線 ASR controller (語音 tab)。單例，onCreate 起，
      *  onDestroy 停。Model 放 sdcard 自動偵測，見 VoskController。 */
     private VoskController vosk;
-
-    /** 2026-08 新增: 離線文法辨識 (iFlytek local BNF grammar) 模式現在開不開。
-     *  開了之後, 機身 alpha2services 會用 engine_type=local + APK 裡面的
-     *  assets/asr/common.jet 離線資源做本地文法辨識 (完全不用上網), 辨識結果
-     *  經 grammar listener 這條路徑回來。同時 onServerCallBack() 那條正常聽寫
-     *  路徑會被 gate 住 - 因為 mSpeechServiceUtil 和 mAsrServiceUtil 是兩個
-     *  獨立 binding, firmware 有機會將同一句結果派給兩邊, 如果兩邊都各自
-     *  觸發語意配對 + TTS, 就會重複答兩次 (2026-08 移除舊 grammar endpoints
-     *  那時見過的問題)。只有 grammar listener 一條路徑會觸發回應。 */
-    private volatile boolean offlineGrammarActive = false;
-
-    /** 2026-08 新增: 最後一次 speech/init_grammar 的機身構建結果 - errorCode==0
-     *  才算成功。speech/start_grammar 會用它做 gate: 文法未構建成功就開始辨識,
-     *  機身會因為沒有本地 grammar 而將所有語音跌落雲端聽寫 fallback, 離線時變成
-     *  「說什麼都是網路錯誤」(實測 logcat: 10114/20002), 所以這裡早一步擋住。 */
-    private volatile boolean lastGrammarBuildOk = false;
-
-    /** 2026-08 新增: 「自動跟網路切換」開關 - 開了的話, 沒網路時自動入離線文法
-     *  模式, 有網路時自動退出來走回雲端聽寫。偏好存 SharedPreferences (共用
-     *  頂頭那個 PREFS_NAME), 預設開。 */
-    public static final String PREF_OFFLINE_AUTO = "offline_grammar_auto";
-    private volatile boolean offlineGrammarAutoSwitch = true;
-    /** 離線文法構建中/剛構建完, 等著自動開始辨識的 pending flag - 由
-     *  grammar init callback 成功之後接手做 start。 */
-    private volatile boolean pendingOfflineEnable = false;
-    /** 2026-08 新增: init_grammar 進行中的防重入鎖 - 開機那時 speech_ready
-     *  和 connectivity_change 兩個觸發可以幾乎同時到達, 疊兩次 buildGrammar
-     *  會讓 firmware destroyASR 再重建, 打壞剛起好的辨識 session (實測:
-     *  離線模式開了但完全沒反應)。 */
-    private volatile boolean grammarInitInFlight = false;
-    /** 最後一次模式切換時間 (ms) - 防止網路飄忽讓模式不停翻轉 (每次翻轉都
-     *  會 stop/start 文法, 中間那段說話是沒反應的)。 */
-    private volatile long lastModeSwitchMs = 0;
-    private static final long MODE_SWITCH_MIN_INTERVAL_MS = 15000;
 
     // (電台搜尋 cache 搬咗去 AudioCenter。)
 
@@ -318,6 +284,11 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState {
     // 2026-09: 小智包搬咗去 XiaozhiBridge (整包：HTTP API/mic/activation/vision/MCP/mute 鍵)，
     // 呢度淨係留個 instance (client/audio/config 由佢擁有)。
     private XiaozhiBridge xiaozhiBridge;
+    // 2026-09: /api/alpha2/* dispatcher 成段搬咗去 ApiDispatcher (switch＋shaping)，
+    // 呢度淨係留個 instance；跨域缺口經下面 Host override 調返嚟。
+    private ApiDispatcher apiDispatcher;
+    // 2026-09: 離線文法包搬咗去 GrammarCenter，呢度淨係留個 instance。
+    private GrammarCenter grammarCenter;
 
     // -- XiaozhiBridge.HostState (宿主縫)：留低未搬嘅 TTS/sonar state，一行一個。 --
     @Override public boolean isRobotTtsSpeaking() { return robotTtsSpeaking; }
@@ -389,11 +360,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState {
         // 旧 come.ubt.alpha2.gesture broadcast 已随 alpha2services 消失。
         // 仍 publish 同格式 EventBus "gesture" 事件，后续走既有 onGestureCode 管道。
         try { headKeyPoller.start(); } catch (Throwable t) { Log.w(TAG, "headKeyPoller start failed", t); }
-        registerConnectivityReceiver();
-        // 讀返「自動跟網絡切換」偏好 (預設開) - speech_ready 之後會即刻按目前
-        // 網路狀態套用一次, 開機時如果已經離線的話也會自動進入離線文法模式。
-        offlineGrammarAutoSwitch = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                .getBoolean(PREF_OFFLINE_AUTO, true);
         initRobot();
         // pure-direct：胸 /dev/ttyS1 + 头 /dev/ttyS3 + libhead_led.so JNI，
         // 机身已无 alpha2services，无 binder fallback，失败直接报错。
@@ -443,7 +409,15 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState {
         // 起喺 voskApi 之前——voskStart() 後開搶 mic 要經佢。
         xiaozhiBridge = new XiaozhiBridge(this, mainHandler, actionDirect, audioCenter,
                 robot, ttsCenter, vosk, cameraController, ledCenter, this);
+        grammarCenter = new GrammarCenter(this, robot, xiaozhiBridge);
+        // sticky broadcast，註冊即刻有現狀；原 onCreate 開頭嗰次 register 搬嚟呢度 (起好先叫得)。
+        grammarCenter.registerConnectivityReceiver();
         voskApi = new VoskApi(vosk, xiaozhiBridge);
+        // dispatcher 包晒上面全部 controller (+robot/audioPlayback/this 做 Host)。
+        // 放最尾——要等齊所有 collaborator (上面 voskApi 最遲)。
+        apiDispatcher = new ApiDispatcher(this, this, this, actionDirect, ubxApi, chestQuery,
+                chestUpgrade, ttsCenter, voskApi, ledCenter, semanticCenter, deviceStatus,
+                cameraApi, audioCenter, ringtoneCenter, audioPlaybackController, robot, grammarCenter);
 
         // Plain HTTP only. TLS/HTTPS was tried (self-signed cert) to make getUserMedia()
         // available for the walkie-talkie mic feature, but browsers on this device
@@ -470,7 +444,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState {
                     return handleDirectApi(path.substring(7), query, method, body);
                 }
                 if (path.startsWith("alpha2/")) {
-                    return handleApi(path.substring(7), query, method, body);
+                    return apiDispatcher.handleApi(path.substring(7), query, method, body);
                 }
                 if (path.startsWith("system/")) {
                     return handleSystemApi(path.substring(7), query, method, body);
@@ -480,7 +454,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState {
                 }
                 // Back-compat: requests with no backend prefix (older cached browser
                 // tab) fall through to the Alpha2 dispatch.
-                return handleApi(path, query, method, body);
+                return apiDispatcher.handleApi(path, query, method, body);
             }
         }, new HttpServer.StreamHandler() {
             @Override
@@ -1151,10 +1125,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState {
             } catch (IllegalArgumentException ignored) {
             }
         }
-        try {
-            unregisterReceiver(connectivityReceiver);
-        } catch (IllegalArgumentException ignored) {
-        }
+        grammarCenter.unregisterConnectivityReceiver();
         // 2026-09: offline watchdog thread 已成組移除，無嘢要 quit。
         cameraController.shutdown();
         audioController.shutdown();
@@ -1481,501 +1452,77 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState {
         return new String(buf.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
     }
 
-    private HttpServer.ApiResponse handleApi(String path, Map<String, String> query, String method, String body) {
-        switch (path) {
-            // -- 健康狀態聚合 (body 喺 DeviceStatus；薄 delegate，唔好喺度加 logic) --
-            case "status":
-                return deviceStatus.statusResponse();
-
-            case "chest/version": {
-                // 只回 chest MCU 真實韌體版本 (sendCommand 51)
-                long timeoutMs = ApiValidator.optionalLong(query, "timeout", 1500L);
-                String v = chestQuery.queryFirmwareVersion(timeoutMs);
-                if (v != null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"version\":\"" + jsonSafe(v) + "\"}");
-                } else {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"version\":\"not found\"}");
-                }
-            }
-            case "chest/upgrade": {
-                // 觸發胸口升級：讀 /sdcard/AlphaII_CHEST_kernel.bin 經 48/49/50 協議升級
-                String err = chestUpgrade.startChestUpgrade();
-                if (err == null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"started\":true}");
-                } else {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(err) + "\"}");
-                }
-            }
-            case "chest/upgrade/status": {
-                return HttpServer.ApiResponse.ok("{\"ok\":true," + chestUpgrade.getChestUpgradeStatusJson().substring(1));
-            }
-            case "chest/upgrade/resume": {
-                int from = ApiValidator.optionalInt(query, "from", 0);
-                String err = chestUpgrade.startChestUpgradeFrom(from);
-                if (err == null) return HttpServer.ApiResponse.ok("{\"ok\":true,\"resumed\":true,\"from\":"+from+"}");
-                else return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(err) + "\"}");
-            }
-            case "chest/upgrade/abort": {
-                chestUpgrade.abort();
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"aborted\":true}");
-            }
-            // -- 升級鏡像讀頁 (body 喺 ChestUpgrade；薄 delegate，唔好喺度加 logic) --
-            case "chest/page":
-                return chestUpgrade.chestPageResponse(query);
-
-            // -- Actions (pure-direct: actionInfo.txt + UbxPlayer，机身已无 alpha2services，
-            // 旧 AIDL action_* 一律 NOT_INIT，此处不再经过 RobotStub) --------------
-            case "action/list":
-                return actionDirect.actionListDirect();
-            case "action/play":
-                return actionDirect.actionPlayDirect(ApiValidator.require(query, "name"));
-            case "action/stop": {
-                // 用戶要求「停止」要連帶做返「蹲下站起」回位動作：与手势总停/MCP 共用
-                // stopActionWithRecovery()，回位播唔播到唔影響停止本身回 true。
-                return codeResponse(actionDirect.stopActionWithRecovery());
-            }
-
-            // -- Ubx 直播（供前端动作 tab：api() 只发 /api/alpha2/*，故在此挂一份；
-            // /api/direct/ubx/* 那份调同一 helper，行为一致；/api/ubx/* 裸路径经
-            // fallthrough 亦到此）--------------
-            case "ubx/list":
-                return ubxApi.ubxListResponse();
-            case "ubx/play":
-                return ubxApi.ubxPlayResponse(ApiValidator.optionalNullable(query, "name"),
-                        ApiValidator.optionalNullable(query, "path"));
-            case "ubx/stop":
-                return ubxApi.ubxStopResponse();
-            case "ubx/status":
-                return ubxApi.ubxStatusResponse();
-            case "ubx/speed":
-                // 枚舉校驗在 ubxSpeedResponse 內經 ApiValidator.parseUbxSpeedValue 統一做,
-                // 這裡只保證必填 (缺席即 400), 避免兩次 parse。
-                return ubxApi.ubxSpeedResponse(ApiValidator.require(query, "value"));
-
-            // -- Speech / TTS -----------------------------------------------------------
-            // engine: nuance | iflytek | android. voice only applies to iflytek (its
-            // named voices - catherine/john/xiaofeng/xiaoyan); nuance and android use
-            // their own respective default voice, no selection exposed.
-            //
-            // All robot-side speech goes through the single generic "SpeechServices"
-            // binding (robot.speech_startTTS). This firmware only ever routes that alias
-            // to one underlying engine, so which engine actually speaks is fixed by the
-            // robot itself, not by this dropdown - the "engine" query param only steers
-            // the language/voice hint passed to that same engine. Multi-engine direct
-            // binding (Alpha2Intent.ALPHA_NUANCE_SPEECH_MAIN_SERVER /
-            // ALPHA_IFLYTEK_SPEECH_MAIN_SERVER) was tried and reverted: it broke playback
-            // entirely, including for the engine that worked fine through the generic
-            // binding alone.
-            case "speech/tts": {
-                String text = ApiValidator.require(query, "text");
-                String engine = ApiValidator.requireSpeechEngine(query);
-                if ("android".equals(engine)) {
-                    String ttsErr = ttsCenter.speakPanelTts(text, ApiValidator.optional(query, "lang", ""));
-                    if (ttsErr != null) return HttpServer.ApiResponse.error(ttsErr);
-                    return HttpServer.ApiResponse.ok("{\"ok\":true}");
-                }
-                String voice = "iflytek".equals(engine) ? ApiValidator.optionalNullable(query, "voice") : null; // may be null
-                String lang = "iflytek".equals(engine) ? "zh_cn" : "en_us"; // no language picker; engine implies it
-                // See STOP_TO_TTS_MIN_GAP_MS above: if speech/stop just ran, give the
-                // robot side's async audio teardown a minimum window to finish before
-                // starting a new AIDL TTS session, to avoid crashing the Nuance TTS
-                // session. Runs on this HTTP worker thread only (newCachedThreadPool),
-                // so it never blocks other in-flight requests.
-                long sinceStopMs = System.currentTimeMillis() - lastSpeechStopAtMs;
-                if (sinceStopMs >= 0 && sinceStopMs < STOP_TO_TTS_MIN_GAP_MS) {
-                    try {
-                        Thread.sleep(STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
-                LedCenter.startMouthLedForTts();
-                UbxErrorCode.API_ERROR_CODE res = robot.speech_startTTS(lang, text, voice);
-                if (!isOk(res)) {
-                    // speech_startTTS failed synchronously - onServerPlayEnd will never
-                    // fire for this attempt, so nothing will turn the mouth LED back off
-                    // unless we do it here.
-                    LedCenter.stopMouthLedForTts();
-                } else {
-                    // 見 robotTtsSpeaking field javadoc - 觸發成功先算「開始
-                    // 播緊」, onServerPlayEnd 會揭返做 false。
-                    robotTtsSpeaking = true;
-                }
-                return codeResponse(res);
-            }
-            case "speech/stop":
-                stopAllSpeechPlayback();
-                return codeResponse(UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED);
-
-            // Android TTS 語言揀擇 - 淨係 engine=android 用得 (Nuance/iFlytek
-            // 兩個 AIDL engine 沒有語言參數選擇, lang 已經由 engine 本身固定死,
-            // 見下面 speech/tts 的 android 分支)。ui_lang ("zh"/"en") 控制的是
-            // displayName 用邊種語言顯示。
-            case "speech/tts_languages":
-                return ttsCenter.ttsLanguages(query);
-
-            // Android TTS 引擎選擇 - 機身可能裝了不只一個系統 TTS 引擎 (例如出廠
-            // 內建 + Google TTS + SVOX Pico), 這三個 endpoint 供 speech tab 選擇
-            // speech/tts 的 engine=android 分支實際用哪個發音, 不涉及 Nuance/
-            // iFlytek。
-            case "speech/tts_engines":
-                return ttsCenter.ttsEngines();
-
-            case "speech/set_tts_engine":
-                return ttsCenter.setTtsEngine(query);
-
-            case "speech/cur_tts_engine":
-                return ttsCenter.curTtsEngine();
-
-            // 2026-09 新增: TTS 卡語言選擇嘅後端 pref (BCP-47 tag，空=沿用引擎
-            // 目前語言)。前端 setAndroidTtsLang() 同步寫入；對話管線
-            // speakAndroidTts() 優先讀佢——一揀即時跟。
-            case "speech/set_tts_lang":
-                return ttsCenter.setTtsLang(query);
-
-            case "speech/cur_tts_lang":
-                return ttsCenter.curTtsLang();
-
-            case "speech/set_mic": {
-                boolean wake = ApiValidator.requireBoolean(query, "wake");
-                robot.speech_SetMIC(wake);
-                // 記住這個狀態, 讓 handleMicStream() 斷線時知道用戶是否透過 TTS
-                // tab 主動要求長期持有 mic - 見 micHeldByApp 的 field javadoc。
-                micHeldByApp = wake;
-                // 用戶手動交還給機器人 (wake=false) 就自動關閉「持續搶佔 mic」,
-                // 不然 enforcer 兩秒之後又會把 mic 搶回來, 用戶的「交還」動作
-                // 會看起來像沒效果一樣, 很令人困惑。
-                if (!wake && micHoldEnforced) {
-                    stopMicHoldEnforcer();
-                }
-                EventBus.get().publish("mic_state",
-                        "{\"held\":" + micHeldByApp + ",\"keepHeld\":" + micHoldEnforced + "}");
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"held\":" + micHeldByApp
-                        + ",\"keepHeld\":" + micHoldEnforced + "}");
-            }
-            case "speech/set_mic_keep_held": {
-                boolean keep = ApiValidator.requireBoolean(query, "keep");
-                if (keep) {
-                    startMicHoldEnforcer();
-                } else {
-                    stopMicHoldEnforcer();
-                }
-                EventBus.get().publish("mic_state",
-                        "{\"held\":" + micHeldByApp + ",\"keepHeld\":" + micHoldEnforced + "}");
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"held\":" + micHeldByApp
-                        + ",\"keepHeld\":" + micHoldEnforced + "}");
-            }
-            // 2026-09 移除: speech/reset、speech/start_asr、speech/set_voice、
-            // speech/set_language、speech/self_interrupt、speech/inject (以上全部
-            // 經已不存在的 alpha2services binder)。對應 Blockly 積木
-            // (alpha_speech_start_asr/set_voice/set_language/self_interrupt)
-            // 已經一齊拎走 (定義/toolbox/i18n/run case)——之前係送出先 404，
-            // 而家連砌都砌唔到。舊 .xml 程式有用過呢幾粒的話，匯入嗰粒會
-            // load 唔到，要手動刪咗佢。
-            // -- 語義模擬 (body 喺 SemanticCenter；薄 delegate，唔好喺度加 logic) --
-            case "speech/iflytek_simulate":
-                return semanticCenter.iflytekSimulateResponse(query);
-            // 2026-09 移除: speech/stop_inject (同上, 死 binder)。
-            // 2026-09 移除: speech/init_grammar、speech/start_grammar、
-            // speech/stop_grammar 三個 endpoint（機身已無 iFlytek 引擎，
-            // 恒回 NOT_INIT）。內部 doInitGrammar/doStartGrammar/doStopGrammar
-            // 保留（離線自動切換內部流程仲用緊），get_default_grammar 照讀本地 asset。
-            case "speech/get_default_grammar":
-                return getDefaultGrammar();
-            case "speech/offline_auto_switch": {
-                // 2026-08 新增: 自動跟網路切換開關。沒有 on 參數 = 查詢現狀;
-                // 有 on=true/false = 設定 (寫入 SharedPreferences, 重啟 App 都記得),
-                // 設定完即刻按目前網絡狀態套用一次。
-                Boolean onOpt = ApiValidator.optionalBooleanObject(query, "on");
-                if (onOpt != null) {
-                    boolean on = onOpt.booleanValue();
-                    offlineGrammarAutoSwitch = on;
-                    getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                            .edit().putBoolean(PREF_OFFLINE_AUTO, on).commit();
-                    // 立即在背景 probe 一次並套用 - 不用等下一個 30 秒週期。
-                    // join 最多 10 秒等探測完才回應, 讓回應的 connected/offlineActive
-                    // 是新鮮結果而不是上一輪的殘值。
-                    Thread probeThread = new Thread(new Runnable() {
-                        @Override
-                        public void run() {
-                            boolean online = hasRealInternet();
-                            lastProbeOnline = online;
-                            applyConnectivityMode(online, "toggle");
-                        }
-                    }, "conn-probe-toggle");
-                    probeThread.start();
-                    try {
-                        probeThread.join(10000);
-                    } catch (InterruptedException ignored) {
-                    }
-                }
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"auto\":"
-                        + offlineGrammarAutoSwitch + ",\"connected\":" + lastProbeOnline
-                        + ",\"offlineActive\":" + offlineGrammarActive + "}");
-            }
-            // -- Vosk 離線 ASR (body 喺 VoskApi；薄 delegate，唔好喺度加 logic) --
-            case "vosk/models":
-                return voskApi.voskModels();
-            case "vosk/load":
-                return voskApi.voskLoad(query);
-            case "vosk/status":
-                return voskApi.voskStatus();
-            case "vosk/start":
-                return voskApi.voskStart();
-            case "vosk/stop":
-                return voskApi.voskStop();
-            case "vosk/unload":
-                return voskApi.voskUnload();
-            case "vosk/mic_test":
-                return voskApi.voskMicTest();
-            case "vosk/endpointer":
-                return voskApi.voskEndpointer(query);
-            // -- Servos -----------------------------------------------------------------
-            case "servo/one":
-                return ubxApi.servoOneResponse(query);
-            case "servo/all":
-                return ubxApi.servoAllResponse(query);
-            // servo/sonar 留低：threshold state (sonarThresholdCm/sonarLedActive)
-            // 同 sonar event/bridge 共用，屬跨域 orchestration，等喰邊一齊搬。
-            case "servo/sonar": {
-                int distanceCm = ApiValidator.requireInt(query, "distance");
-                sonarThresholdCm = distanceCm;
-                sonarLedActive = false; // threshold changed - next frame decides fresh, don't carry over stale LED state
-                boolean sent = HardwareDirectManager.get(this).chest().configureSonar(distanceCm);
-                return codeResponseReady(directCode(sent), directChestReady());
-            }
-            case "servo/read":
-                return ubxApi.servoReadResponse(query);
-            case "servo/read-all":
-                return ubxApi.servoReadAllResponse();
-
-            // -- PIR (body 喺 LedCenter；薄 delegate，唔好喺度加 logic) --
-            case "pir/set":
-                return ledCenter.pirSetResponse(query);
-            case "pir/alert_enabled":
-                return ledCenter.pirAlertEnabledResponse(query);
-
-            // -- LEDs (5-mic hardware only path - server-side preset mapping) --------------
-            // Colour/brightness/mode values are user-confirmed on real 5-mic hardware:
-            //   color: 1=紅 2=綠 3=藍 4=黃 5=紫 6=青 7=白
-            //   brightness: 1 (dimmest) .. 9 (brightest)
-            //   preset -> (p5 upTime, p6 downTime, p7 runTime, p8 mode) mapping below.
-            //   mode codes differ between head and eye - see Alpha2RobotApi javadoc.
-            case "led/head/set":
-                return ledCenter.ledHeadSet(query);
-            case "led/eye/set":
-                return ledCenter.ledEyeSet(query);
-            case "led/mouth/set":
-                return ledCenter.ledMouthSet(query);
-            case "debug/jni/led":
-                return ledCenter.debugJniLed(query);
-            case "debug/serial/send":
-                return ledCenter.debugSerialSend(query);
-
-            // -- Head / misc ---------------------------------------------------------------
-            case "head/noise": {
-                boolean on = ApiValidator.requireBoolean(query, "on");
-                boolean sent = HardwareDirectManager.get(this).head().setNoiseReduction(on);
-                return codeResponse(directCode(sent));
-            }
-            // -- UUID (body 喺 ChestQuery；薄 delegate，唔好喺度加 logic) --
-            case "misc/request_uuid":
-                return chestQuery.requestUuidResponse();
-            case "misc/set_uuid":
-                return chestQuery.setUuidResponse(query);
-
-            // -- Camera: standard Android legacy Camera API, not SDK-gated (see
-            // CameraController for the front/back index quirk on this hardware). The
-            // live feed itself is served at GET /stream/camera (see handleStream()) as
-            // MJPEG, not through this JSON api/ path - a continuous multipart response
-            // doesn't fit the single-JSON-body ApiResponse shape. This single-frame
-            // snapshot endpoint just starts the camera (if it isn't already streaming)
-            // and returns whatever the most recent preview frame is, for callers that
-            // want one still image rather than opening the stream. -----------------------
-            case "camera/snapshot":
-                return cameraApi.snapshot();
-            case "camera/snapshot_save":
-                return cameraApi.snapshotSave(query);
-            case "camera/take_photo_save":
-                return cameraApi.takePhotoSave(query);
-            // Plays the "Sirrah" shutter cue out of the robot's own speaker (see
-            // playShutterCue() javadoc) - called by the browser right after a
-            // successful camera/snapshot, instead of synthesizing a click sound in
-            // the browser itself.
-            case "camera/shutter_sound":
-                return cameraApi.shutterSound();
-            case "camera/info":
-                return cameraApi.info();
-            case "camera/fps":
-                return cameraApi.fps();
-            case "camera/supported_sizes":
-                return cameraApi.supportedSizes();
-            case "camera/resolution":
-                return cameraApi.resolution(query);
-
-            // -- Walkie-talkie: browser mic -> robot speaker. See AudioPlaybackController's
-            // javadoc - whether the speaker is reachable via a standard AudioTrack at all
-            // is unverified; this test-tone endpoint exists to answer that on the physical
-            // unit before relying on the real streaming path (POST /upload/audio) below.
-            case "audio/testtone": {
-                releaseMicForAudioIo();
-                AudioPlaybackController.StartResult result =
-                        audioPlaybackController.playTestTone(3000);
-                if (result.error != null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
-                            + jsonSafe(result.error) + "\"}");
-                }
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-            case "audio/diagnose": {
-                releaseMicForAudioIo();
-                String sweep = audioPlaybackController.diagnoseAudioTrack(10000);
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"results\":\""
-                        + jsonSafe(sweep).replace("\n", "\\n") + "\"}");
-            }
-            case "audio/play/start": {
-                releaseMicForAudioIo();
-                AudioPlaybackController.StartResult result = audioPlaybackController.start(3000);
-                if (result.error != null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
-                            + jsonSafe(result.error) + "\"}");
-                }
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-            case "audio/play/stop":
-                audioPlaybackController.stop();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-
-            // -- System ringtones/notification sounds: exposes every ringtone Android
-            // knows about (via RingtoneManager, same mechanism findRingtoneByTitle()
-            // above already uses to look up "Proxima"/"Sirrah" by name) as a numbered
-            // list, so the Blockly page can offer a dropdown without hardcoding titles
-            // that vary by OEM/Android version. "list" returns titles+type; "play"
-            // takes the numbered index back and plays it through the same STREAM_MUSIC
-            // MediaPlayer path as playRingtoneUri() (so it follows the media volume
-            // slider, not the separate ringer/notification volume). -------------------
-            case "audio/ringtones/list":
-                return ringtoneCenter.ringtonesList(query);
-            case "audio/ringtones/play":
-                return ringtoneCenter.ringtonesPlay(query);
-
-            // 2026-08 新增: 用 title 查找鈴聲, 不再用 audio/ringtones/list 的 numbered
-            // index (見上面 findRingtoneByTitle() 的 javadoc: cursor position 不保證
-            // 跨機一致, 因為 RingtoneManager 內部排序邏輯不一定和 adb content query
-            // 手動加 --sort 那個排序一樣)。Blockly 頁面現在內嵌一份靜態 title 清單
-            // (由實機 adb content query 執行一次抓回來, 見 blockly-actions-data.js
-            // 旁邊的 blockly-ringtone-data.js), 選了 title 直接送這個 API, 沿用
-            // findRingtoneByTitle() 這個已經被 playStopCue()/playShutterCue() 使用、
-            // 驗證過穩健的「查 title 轉 Uri」機制, 完全不用理會 index 排序這個問題。
-            case "audio/ringtones/play_by_title":
-                return ringtoneCenter.ringtonesPlayByTitle(query);
-
-            // 2026-08 新增: 停止目前正在播放的系統鈴聲/通知聲 (play / play_by_title 兩個
-            // endpoint 播放的那個), 對應 Blockly「範例 5」的「停止播放」按鈕。
-            case "audio/ringtones/stop":
-                return ringtoneCenter.ringtonesStop();
-
-            // -- Local music (/mnt/internal_sd/music/): 用戶自己放在機身的音樂檔,
-            // 和上面 audio/ringtones/* 那些系統鈴聲是兩回事, 各自獨立一套 endpoint/
-            // MediaPlayer, 詳見 listLocalMusicFiles()/playLocalMusicFile() 的
-            // javadoc。"list" 沒有 index (檔案清單會隨用戶自己增減歌曲而變, 不像
-            // ringtone 那些系統清單那麼穩定), "play" 直接用檔名 (含副檔名) 選取。
-            // (本地音樂 endpoint 搬咗去 AudioCenter。)
-            case "audio/local_music/list":
-                return audioCenter.localMusicList();
-            case "audio/local_music/play":
-                return audioCenter.localMusicPlay(query);
-            case "audio/local_music/stop":
-                return audioCenter.localMusicStop();
-            case "audio/local_music/status":
-                return audioCenter.localMusicStatus();
-            case "audio/local_music/seek":
-                return audioCenter.localMusicSeek(query);
-            case "audio/local_music/volume":
-                return audioCenter.localMusicVolume(query);
-            case "audio/local_music/spectrum":
-                return audioCenter.localMusicSpectrum();
-            case "audio/local_music/pause":
-                return audioCenter.localMusicPause();
-            case "audio/local_music/resume":
-                return audioCenter.localMusicResume();
-
-            // 2026-08 新增: Equalizer presets - 用返 android.media.audiofx.Equalizer
-            // 自己的 preset 清單 (由裝置/廠商決定有多少個、叫什麼名, 例如 "Normal"、
-            // "Classical"、"Rock" 等, 不是這個 app 自己定義的一套), 保證和這台機器
-            // 實際安裝的 audio effect engine 一致, 不會出現選了個 UI 名但
-            // usePreset() 對不上的情況。沒播歌 (musicEqualizer 尚未建立) 也要給出
-            // 清單 (建一個臨時 Equalizer 取得清單再立即放掉), 讓用戶還沒播歌也能看到
-            // 有咩 preset 可以揀。
-            case "audio/local_music/eq/presets":
-                return audioCenter.localMusicEqPresets();
-            case "audio/local_music/eq/set":
-                return audioCenter.localMusicEqSet(query);
-            case "audio/local_music/filler_action/get":
-                return audioCenter.fillerActionGet();
-            case "audio/local_music/filler_action/set":
-                return audioCenter.fillerActionSet(query);
-
-            // -- FM/網絡電台 (經 Radio Browser API, radio-browser.info, 動態搜全
-            // 世界公開電台 - 見 searchRadioStations()/resolveRadioStation() 的
-            // javadoc, 這台機器不再內建任何寫死的電台清單) - "search" 對應
-            // self.media.search_radio, "play" 用 resolveRadioStation() 做人類
-            // 語言名比對 (先比對 lastRadioSearchResults, 比對不到就直接當新搜尋詞打
-            // API)。多加一個 "status" 供前端面板顯示「目前正在播哪個台」用 (電台沒有
-            // 檔名那麼直觀, 用戶自己按「轉台」之後有需要知道結果)。這兩個 endpoint
-            // 內部會打網路, 和 MCP tool 那邊不同 (那邊有外層 try/catch(Exception)
-            // 包住整個 switch), handleApi() 沒有, 所以這裡自己要包一層 try/catch
-            // 把 IOException/JSONException 轉成正常的 {"ok":false,...} 回應,
-            // 不可以讓 exception 直接飛出 handleApi()。
-            case "audio/radio/search":
-                return audioCenter.radioSearch(query);
-            case "audio/radio/play":
-                return audioCenter.radioPlay(query);
-            case "audio/radio/play_url":
-                return audioCenter.radioPlayUrl(query);
-            case "audio/radio/stop":
-                return audioCenter.radioStop();
-            case "audio/radio/status":
-                return audioCenter.radioStatus();
-
-            // -- Media volume (body 喺 AudioCenter；薄 delegate，唔好喺度加 logic) --
-            case "audio/volume/get":
-                return audioCenter.systemVolumeGet();
-            case "audio/volume/set":
-                return audioCenter.systemVolumeSet(query);
-
-            // -- Battery (body 喺 DeviceStatus；薄 delegate，唔好喺度加 logic) --
-            case "battery/status":
-                return deviceStatus.batteryStatus();
-
-            // -- Wi-Fi / Bluetooth: standard Android framework, not SDK-gated. -----------
-            case "wifi/status":
-                return deviceStatus.wifiStatus();
-            case "bt/status":
-                return deviceStatus.btStatus();
-
-            // -- Robot-service broadcasts with simple boolean extras. --------------------
-            // 2026-09 移除: misc/power_save（見下）與 misc/charge_play ——
-            // 純粹發 broadcast 俾已不存在的 alpha2services, 回 ok:true 但實際
-            // 無效 (假活)。連同舵機頁開關一齊拎走。
-
-            // -- Accelerometer (body 喺 DeviceStatus；薄 delegate，唔好喺度加 logic) --
-            case "accelerometer/set":
-                return deviceStatus.accelerometerSet(query);
-            case "accelerometer/get":
-                return deviceStatus.accelerometerGet();
-
-            // 2026-09 移除: service_config/get|set（讀寫 /sdcard/actions/
-            // service_config.{json,txt}，alpha2services 專用 config，機身已無此
-            // 服務，對 open alpha2 無用；連同 preset 常數一齊拎走。reboot 保留
-            // （UUID 卡重開機掣仲用緊）。
-            case "service_config/reboot":
-                return deviceStatus.rebootResponse();
-
-            default:
-                return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
-                        "{\"ok\":false,\"error\":\"unknown endpoint: " + path + "\"}");
+    // -- handleApi 缺口 (TTS/mic/grammar core 未搬)：dispatcher 經 Host 調返嚟，
+    // core 搬埋嗰陣跟埋走。 --
+    @Override public HttpServer.ApiResponse handleSpeechTts(Map<String, String> query) {
+        String text = ApiValidator.require(query, "text");
+        String engine = ApiValidator.requireSpeechEngine(query);
+        if ("android".equals(engine)) {
+            String ttsErr = ttsCenter.speakPanelTts(text, ApiValidator.optional(query, "lang", ""));
+            if (ttsErr != null) return HttpServer.ApiResponse.error(ttsErr);
+            return HttpServer.ApiResponse.ok("{\"ok\":true}");
         }
+        String voice = "iflytek".equals(engine) ? ApiValidator.optionalNullable(query, "voice") : null; // may be null
+        String lang = "iflytek".equals(engine) ? "zh_cn" : "en_us"; // no language picker; engine implies it
+        // See STOP_TO_TTS_MIN_GAP_MS above: if speech/stop just ran, give the
+        // robot side's async audio teardown a minimum window to finish before
+        // starting a new AIDL TTS session, to avoid crashing the Nuance TTS
+        // session. Runs on this HTTP worker thread only (newCachedThreadPool),
+        // so it never blocks other in-flight requests.
+        long sinceStopMs = System.currentTimeMillis() - lastSpeechStopAtMs;
+        if (sinceStopMs >= 0 && sinceStopMs < STOP_TO_TTS_MIN_GAP_MS) {
+            try {
+                Thread.sleep(STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        LedCenter.startMouthLedForTts();
+        UbxErrorCode.API_ERROR_CODE res = robot.speech_startTTS(lang, text, voice);
+        if (!isOk(res)) {
+            // speech_startTTS failed synchronously - onServerPlayEnd will never
+            // fire for this attempt, so nothing will turn the mouth LED back off
+            // unless we do it here.
+            LedCenter.stopMouthLedForTts();
+        } else {
+            // 見 robotTtsSpeaking field javadoc - 觸發成功先算「開始
+            // 播緊」, onServerPlayEnd 會揭返做 false。
+            robotTtsSpeaking = true;
+        }
+        return codeResponse(res);
+    }
+    @Override public HttpServer.ApiResponse handleSpeechStop() {
+        stopAllSpeechPlayback();
+        return codeResponse(UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED);
+    }
+    @Override public HttpServer.ApiResponse handleSetMic(Map<String, String> query) {
+        boolean wake = ApiValidator.requireBoolean(query, "wake");
+        robot.speech_SetMIC(wake);
+        // 記住這個狀態, 讓 handleMicStream() 斷線時知道用戶是否透過 TTS
+        // tab 主動要求長期持有 mic - 見 micHeldByApp 的 field javadoc。
+        micHeldByApp = wake;
+        // 用戶手動交還給機器人 (wake=false) 就自動關閉「持續搶佔 mic」,
+        // 不然 enforcer 兩秒之後又會把 mic 搶回來, 用戶的「交還」動作
+        // 會看起來像沒效果一樣, 很令人困惑。
+        if (!wake && micHoldEnforced) {
+            stopMicHoldEnforcer();
+        }
+        EventBus.get().publish("mic_state",
+                "{\"held\":" + micHeldByApp + ",\"keepHeld\":" + micHoldEnforced + "}");
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"held\":" + micHeldByApp
+                + ",\"keepHeld\":" + micHoldEnforced + "}");
+    }
+    @Override public HttpServer.ApiResponse handleSetMicKeepHeld(Map<String, String> query) {
+        boolean keep = ApiValidator.requireBoolean(query, "keep");
+        if (keep) {
+            startMicHoldEnforcer();
+        } else {
+            stopMicHoldEnforcer();
+        }
+        EventBus.get().publish("mic_state",
+                "{\"held\":" + micHeldByApp + ",\"keepHeld\":" + micHoldEnforced + "}");
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"held\":" + micHeldByApp
+                + ",\"keepHeld\":" + micHoldEnforced + "}");
     }
 
     // -- Camera streaming (MJPEG over "/stream/camera") -------------------------------
@@ -2406,7 +1953,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState {
         return code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
 
-    private static HttpServer.ApiResponse codeResponse(UbxErrorCode.API_ERROR_CODE code) {
+    static HttpServer.ApiResponse codeResponse(UbxErrorCode.API_ERROR_CODE code) {
         return HttpServer.ApiResponse.ok("{\"ok\":" + isOk(code) + ",\"code\":\"" + code + "\"}");
     }
 
@@ -2436,366 +1983,13 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState {
                 .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
 
-    /** 2026-08 新增: onServerCallBack() 收到的 raw 字串, 在「語法識別」(grammar,
-     *  logcat type:1) 路徑底下是一個未解析的 iFlytek JSON, 例如
-     *  {"text":"你的爸爸是谁啊","rc":4}, 而不是純文字 (純文字是「聽寫識別」
-     *  dictation, type:0, 那條路徑才有的格式)。這個 method 判斷輸入是否這種
-     *  JSON 格式, 是的話就抽出 text field, 不是 (或 parse 失敗/text field
-     *  不存在) 就原封不動退回原字串, 使 type:0 路徑和 "Local_Result:..." 路徑
-     *  完全不受影響。*/
-    private static String extractGrammarResultText(String raw) {
-        if (raw == null) return null;
-        String trimmed = raw.trim();
-        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
-            return raw; // 不是 JSON 格式 (例如 "Local_Result:..." 或純文字聽寫結果), 原樣返回
-        }
-        try {
-            JSONObject obj = new JSONObject(trimmed);
-            if (obj.has("text")) {
-                return obj.getString("text");
-            }
-            // 2026-08 新增: 離線本地文法 (engine_type=local buildGrammar bnf) 的
-            // 結果格式沒有 top-level text field! 實測 payload (WS capture):
-            //   {"sn":1,"ls":true,"ws":[{"slot":"<phrase>","cw":[{"w":"你叫什么名字",
-            //    "id":65535,"sc":0,"gm":0}]}],"sc":51}
-            // 識別到的字在 ws[].cw[].w 裡 (cw 是候選, 第一個是最高分)。逐個 ws 取
-            // 第一個非空的 cw[0].w 直接串接 (中文不加空格), 使對話界面/語意配對
-            // 取得乾淨文字。
-            org.json.JSONArray wsArr = obj.optJSONArray("ws");
-            if (wsArr != null && wsArr.length() > 0) {
-                StringBuilder sb = new StringBuilder();
-                for (int i = 0; i < wsArr.length(); i++) {
-                    org.json.JSONObject wsItem = wsArr.getJSONObject(i);
-                    org.json.JSONArray cw = wsItem.optJSONArray("cw");
-                    if (cw == null || cw.length() == 0) continue;
-                    String word = cw.getJSONObject(0).optString("w", "");
-                    if (word != null && !word.isEmpty()) {
-                        sb.append(word);
-                    }
-                }
-                if (sb.length() > 0) {
-                    return sb.toString();
-                }
-            }
-        } catch (JSONException e) {
-            // parse 不到就當它不是這種格式, 原樣返回 - 避免因為格式猜錯而搞壞
-            // 其他沒問題的 ASR 路徑
-        }
-        return raw;
-    }
-
-    /** 2026-08 最終版: 預設文法是一份預先在 PC 上做好的靜態檔案
-     *  (assets/iflytek/default_grammar.bnf: 中文 1212 句 (q0-q12) + greet
-     *  slot 裡的 hello/hi 兩個英文字, 全繁體, 無重複, 已剔除乘數表)。來源 =
-     *  語意庫 + 悠聊原裝 call.bnf 合併轉換, App 不再做任何運行時生成/解析/
-     *  簡繁轉換, 淨係讀檔。
-     *
-     *  2026-08 移除: 曾經試過加 3000 個英文常用字 (e0-e29 slot) 撐英文離線
-     *  覆蓋率, 但訊飛官方文檔明文「离线命令词只支持中文普通话，暂不支持英文」
-     *  ——已反編譯確認 common.jet 聲學模型沒有英文音素, 連字符/串接等 BNF 花招
-     *  都試過, 只有單字偶爾因為發音像某個中文音才「僥倖」被識別到, 不穩定也沒有
-     *  實際離線英文句子辨識能力。3000 個詞塞進 grammar 只會拖慢 build 速度
-     *  和增加與中文詞的聲學碰撞機會, 對真正想要的中文識別率有害無益, 所以
-     *  全部剔除。離線英文需求已改用 Nuance 內建文法或未來的第三方引擎
-     *  (Vosk) 方案, 不再在這個 iFlytek BNF grammar 上勉強。 */
-    private String readDefaultGrammarAsset() {
-        try {
-            java.io.InputStream in = getAssets().open("iflytek/default_grammar.bnf");
-            try {
-                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-                byte[] buf = new byte[4096];
-                int n;
-                while ((n = in.read(buf)) > 0) {
-                    out.write(buf, 0, n);
-                }
-                return out.toString("UTF-8");
-            } finally {
-                in.close();
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "readDefaultGrammarAsset failed: " + e.getMessage());
-            return null;
-        }
-    }
-
-    /** 2026-08 新增: 將預設 BNF 文法原樣 (JSON string) 回傳給前端, 讓 textarea
-     *  有內容可顯示、用戶可以直接改完再 init_grammar。 */
-    private HttpServer.ApiResponse getDefaultGrammar() {
-        String bnf = readDefaultGrammarAsset();
-        if (bnf == null) {
-            return HttpServer.ApiResponse.error("assets/iflytek/default_grammar.bnf unreadable");
-        }
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"bnf\":\"" + jsonSafe(bnf) + "\"}");
-    }
-
-    // -- 離線文法模式: 共用內部方法 + 自動跟網絡切換 ---------------------------------
-    //
-    // 2026-08 新增。原本淨係得 HTTP endpoint 直接叫 robot.speech_*Grammar();
-    // 現在抽出三個內部方法 (doInitGrammar/doStartGrammar/doStopGrammar), 供
-    // 「自動跟網路切換」和 HTTP endpoint 兩邊共用。自動切換規則 (開啟
-    // offlineGrammarAutoSwitch 才生效):
-    //   沒網路 → 確保 iFlytek binding → 文法未構建就先構建 → 構建成功立即 start
-    //   有網路 → 離線模式開著的話就 stop, 回到雲端聽寫 (自由講話)
-    // 狀態變化會 publish "offline_mode" event 供前端 UI 更新。
-
-    // 2026-09 刪除: isNetworkConnected() - 無 caller (實際探測行 hasRealInternet())。
-
-    /** 2026-08 新增: 真正的「雲端聽寫能不能用」探測。唔可以用 WiFi link 狀態
-     *  代替 (2026-09: 舊 isNetworkConnected() 已刪) - 連著一個沒有後備網路的手機 hotspot 時照樣回報
-     *  connected, 但實際上不了網。而且單純「有網際網路」也不夠: 如果網路
-     *  封鎖了訊飛伺服器, 雲端聽寫照樣全部網路錯誤 (實測 logcat: 10114/20002)
-     *  - 這種情況對語音來說應該當成離線走本地文法。
-     *
-     *  探測目標是反編譯 alpha2services 找到的、機身 MSC 實際使用的雲端主域:
-     *  SpeechUtility init 字串 "appid=56652373" +
-     *  "server_url=http://ubtek.openspeech.cn/index.htm", 另加 openspeech 主域
-     *  和舊版 voicecloud.cn 做 fallback。任一 TCP handshake 通過 = 當作 online。
-     *  Blocking call (最長 ~7.5s), 只供背景 thread 呼叫。 */
-    private static boolean hasRealInternet() {
-        // 第一個目標用反編譯找到的 server_url host; 另外加上 IP 直連 fallback -
-        // 手機數據底下 DNS 有時慢/斷斷續續, hostname 解析失敗不代表這條路真的不通。
-        String[][] targets = {
-                {"ubtek.openspeech.cn", "80"},
-                {"openspeech.cn", "80"},
-                {"voicecloud.cn", "443"},
-                {"121.37.220.137", "80"} // ubtek.openspeech.cn 的 IP (2026-08 實測), 免 DNS
-        };
-        for (String[] t : targets) {
-            try {
-                java.net.Socket s = new java.net.Socket();
-                s.connect(new java.net.InetSocketAddress(t[0], Integer.parseInt(t[1])), 2500);
-                s.close();
-                return true;
-            } catch (Exception e) {
-                android.util.Log.d(TAG, "probe " + t[0] + ":" + t[1] + " fail: "
-                        + e.getClass().getSimpleName());
-            }
-        }
-        return false;
-    }
-
-    /** 最近一次探測結果 - 開機預設樂觀當有網, 第一次 probe 之後就會校正。 */
-    private volatile boolean lastProbeOnline = true;
-    // 2026-09 移除: 30 秒週期 watchdog 成組 (offlineProbeLoop / PROBE_CONFIRM_N
-    // 計數器 / HandlerThread / startOfflineWatchdog)——啟動點 (舊 binder initOver)
-    // 早已刪除，loop 從來唔會跑，留喺度只會令人以為仲有背景探測。探測入口而家得返
-    // 兩個：speech/offline_auto_switch toggle 即時 probe 同下面 triggerWakeupProbe()。
-    // (注意：probe 一定要背景 thread，之前用 MainLooper 會即刻彈
-    // NetworkOnMainThreadException——2026-08 實測 bug，唔好倒返轉頭。)
-
-    /** 2026-08 新增: 「從第一句對答就知道是否離線」- 喚醒詞觸發的當下 (用戶開口)
-     *  立即探測一次雲端連通性。單次結果即時生效 - 用戶實際開口那一刻的證據
-     *  最可信, 而且探測 (~1-7s) 和講話+辨識並行, 機器人回答時模式已經和現實
-     *  一致。由 RobotEventReceiver 的 tts_hint_wakeup case 叫。
-     *
-     *  2026-09: watchdog HandlerThread 已移除，改用即開即走嘅 plain thread
-     *  (同 speech/offline_auto_switch toggle 嗰個 probeThread 同一 pattern)——
-     *  之前靠 handler 導致呢個方法永遠 early-return，wakeup probe 實際無行過。
-     *  一定要背景 thread (hasRealInternet() 會 block；Main thread 會彈
-     *  NetworkOnMainThreadException)。只喺 auto-switch 開住先做。 */
+    /** RobotEventReceiver tts_hint_wakeup 交俾 GrammarCenter (wakeup probe)。 */
     public static void triggerWakeupProbe() {
-        final MainActivity inst = sInstance;
-        if (inst == null || !inst.offlineGrammarAutoSwitch) {
+        MainActivity m = sInstance;
+        if (m == null || m.grammarCenter == null) {
             return;
         }
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    boolean online = hasRealInternet();
-                    if (online != inst.lastProbeOnline) {
-                        Log.i(TAG, "wakeup probe: internet " + (online ? "UP" : "DOWN")
-                                + " -> switching mode now");
-                        inst.lastProbeOnline = online;
-                        inst.applyConnectivityMode(online, "wakeup");
-                    }
-                } catch (Exception e) {
-                    Log.w(TAG, "wakeup probe error: " + e.getMessage());
-                }
-            }
-        }, "wakeup-probe").start();
-    }
-
-    /** 自動切換的入口 - 網路狀態變化或 App 啟動 (speech_ready 之後) 都會執行。
-     *
-     *  2026-08 修正 (實測網路飄忽的教訓):
-     *  - 轉「離線」即時生效 (挽救講不了話的情況, 代價低)
-     *  - 轉「雲端」要 MODE_SWITCH_MIN_INTERVAL_MS 內沒有再翻轉才執行, 避免
-     *    stop/start 文法循環使中間那段時間講話完全沒反應
-     *  - 只有 lastGrammarBuildOk==false 時才重新構建; 已經構建過就直接
-     *    startGrammar, 不要無謂地 destroyASR。 */
-    private void applyConnectivityMode(boolean connected, String reason) {
-        // 2026-09: 舊 !speechReady early-return 已刪 (field 一併移除)。
-        if (!offlineGrammarAutoSwitch) {
-            return;
-        }
-        Log.i(TAG, "applyConnectivityMode(" + connected + ", " + reason + ")"
-                + " offlineActive=" + offlineGrammarActive
-                + " lastGrammarBuildOk=" + lastGrammarBuildOk);
-        long now = android.os.SystemClock.elapsedRealtime();
-        if (!connected) {
-            if (offlineGrammarActive || grammarInitInFlight) {
-                return; // 已經在離線模式/已經構建中, 不用重複開啟
-            }
-            // 確保 ASR binding 走 iFlytek (zh_cn), 這個 call 對已綁定的情況無害
-            try {
-                robot.speech_setRecognizedLanguage("zh_cn");
-            } catch (Exception e) {
-                Log.w(TAG, "setRecognizedLanguage failed during auto switch: " + e.getMessage());
-            }
-            if (!lastGrammarBuildOk) {
-                // 未構建過/上次失敗 - 用預設文法構建, 成功之後 callback 會接手 start
-                pendingOfflineEnable = true;
-                String bnf = readDefaultGrammarAsset();
-                if (bnf != null) {
-                    UbxErrorCode.API_ERROR_CODE code = doInitGrammar(bnf);
-                    Log.i(TAG, "auto init grammar -> " + code);
-                } else {
-                    pendingOfflineEnable = false;
-                    Log.w(TAG, "auto init grammar: default asset unreadable");
-                }
-            } else {
-                UbxErrorCode.API_ERROR_CODE code = doStartGrammar();
-                Log.i(TAG, "auto start grammar -> " + code);
-                if (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-                    lastModeSwitchMs = now;
-                    publishOfflineMode(true, reason);
-                }
-                // start 失敗: 不要立即重構建 - 等下個 watchdog 週期再試, 避免疊 build
-            }
-        } else {
-            // 轉雲端: 加冷卻期 - 如果 15 秒內剛切換過模式, 很可能是網路
-            // 飄忽, 不要跟著翻轉 (stop/start 文法成本高, 講什麼都沒反應更糟)
-            if (offlineGrammarActive && now - lastModeSwitchMs < MODE_SWITCH_MIN_INTERVAL_MS) {
-                Log.i(TAG, "online but within cooldown (" + (now - lastModeSwitchMs)
-                        + "ms) - keeping offline grammar mode");
-                return;
-            }
-            pendingOfflineEnable = false;
-            if (offlineGrammarActive) {
-                UbxErrorCode.API_ERROR_CODE code = doStopGrammar();
-                Log.i(TAG, "auto stop grammar -> " + code);
-                lastModeSwitchMs = now;
-                publishOfflineMode(false, reason);
-            }
-        }
-    }
-
-    private void publishOfflineMode(boolean active, String reason) {
-        EventBus.get().publish("offline_mode",
-                "{\"active\":" + active
-                        + ",\"connected\":" + lastProbeOnline
-                        + ",\"reason\":\"" + jsonSafe(reason) + "\"}");
-    }
-
-    /** 初始化 (構建) 本地文法。結果係 async - grammar_init event/callback 收貨,
-     *  errorCode==0 先算數 (lastGrammarBuildOk)。
-     *  2026-08 加防重入鎖: 構建進行中再叫呢個 method 會直接略過 - firmware
-     *  每次都 destroyASR 重建, 疊 build 會打壞剛建好的辨識 session。 */
-    private UbxErrorCode.API_ERROR_CODE doInitGrammar(final String bnf) {
-        if (grammarInitInFlight) {
-            Log.i(TAG, "doInitGrammar skipped - already in flight");
-            return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
-        }
-        grammarInitInFlight = true;
-        lastGrammarBuildOk = false;
-        // 2026-09: 舊 speechReady gate 刪咗之後，呢度第一次就會直達 stub；
-        // stub 即時回 NOT_INIT 且永遠唔 callback，不及時清 flag 的話下次會誤判
-        // "already in flight" 回 SUCCEED。之前 gate 擋住所以撞唔到呢個情況。
-        UbxErrorCode.API_ERROR_CODE initCode = robot.speech_initGrammar(bnf,
-                new RobotStub.IAlpha2SpeechGrammarInitListener() {
-                    @Override
-                    public void speechGrammarInitCallback(String grammarId, int errorCode) {
-                        Log.i(TAG, "initGrammar callback: grammarId=" + grammarId
-                                + " errorCode=" + errorCode);
-                        if (errorCode == 0) {
-                            lastGrammarBuildOk = true;
-                        }
-                        EventBus.get().publish("grammar_init",
-                                "{\"grammarId\":\"" + jsonSafe(grammarId == null ? "" : grammarId)
-                                        + "\",\"errorCode\":" + errorCode + "}");
-                        // 自動切換: 構建成功而又有 pending start 就接手開始辨識
-                        if (errorCode == 0 && pendingOfflineEnable && offlineGrammarAutoSwitch) {
-                            pendingOfflineEnable = false;
-                            UbxErrorCode.API_ERROR_CODE startCode = doStartGrammar();
-                            Log.i(TAG, "pending auto start grammar -> " + startCode);
-                            if (startCode == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-                                lastModeSwitchMs = android.os.SystemClock.elapsedRealtime();
-                                publishOfflineMode(true, "auto");
-                            }
-                        }
-                        grammarInitInFlight = false;
-                    }
-                });
-        if (initCode != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-            // 即時失敗（例如 stub NOT_INIT）唔會有 callback 嚟清 flag，呢度即刻清，
-            // 否則下次會誤判 "already in flight"。
-            grammarInitInFlight = false;
-        }
-        return initCode;
-    }
-
-    private UbxErrorCode.API_ERROR_CODE doStartGrammar() {
-        offlineGrammarActive = true;
-        UbxErrorCode.API_ERROR_CODE startCode = robot.speech_startGrammar(
-                new RobotStub.IAlpha2SpeechGrammarListener() {
-                    @Override
-                    public void onSpeechGrammarResult(int type, String result) {
-                        // type: firmware SpeechManager d.a(int,String) 那邊
-                        // "语法识别成功:<result> type:<n>" 的同一個 int -
-                        // type=1 是辨識文字結果 (iFlytek JSON {"text":..,"rc":..}),
-                        // 其他 type 是 focus/state 類訊號, 原樣轉發給前端查看。
-                        String text = extractGrammarResultText(result);
-                        EventBus.get().publish("grammar_result",
-                                "{\"type\":" + type
-                                        + ",\"raw\":\"" + jsonSafe(result == null ? "" : result)
-                                        + "\",\"text\":\"" + jsonSafe(text == null ? "" : text) + "\"}");
-                    }
-
-                    @Override
-                    public void onSpeechGrammarError(int errorCode) {
-                        Log.w(TAG, "startGrammar onError: " + errorCode);
-                        EventBus.get().publish("grammar_error",
-                                "{\"errorCode\":" + errorCode + "}");
-                    }
-                });
-        if (startCode != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-            // SDK 層面立即失敗 (例如未 bind) 就不要進入離線模式, 等 asr_result
-            // 路徑照常運作。
-            offlineGrammarActive = false;
-        }
-        return startCode;
-    }
-
-    private UbxErrorCode.API_ERROR_CODE doStopGrammar() {
-        offlineGrammarActive = false;
-        pendingOfflineEnable = false;
-        return robot.speech_stopGrammar();
-    }
-
-    /** 監察網路連線狀態 - CONNECTIVITY_ACTION 在 API 22 (這台機器) 仍是標準做法。
-     *  收到廣播就在背景 thread 做真正網路探測再 applyConnectivityMode() - 探測
-     *  是 blocking call (TCP connect), 不可以放到 main thread。 */
-    private final android.content.BroadcastReceiver connectivityReceiver =
-            new android.content.BroadcastReceiver() {
-                @Override
-                public void onReceive(Context context, android.content.Intent intent) {
-                    new Thread(new Runnable() {
-                        @Override
-                        public void run() {
-                            boolean online = hasRealInternet();
-                            lastProbeOnline = online;
-                            applyConnectivityMode(online, "connectivity_change");
-                            if (online) xiaozhiBridge.maybeAutoConnect("connectivity");
-                        }
-                    }, "conn-probe").start();
-                }
-            };
-
-    private void registerConnectivityReceiver() {
-        android.content.IntentFilter filter =
-                new android.content.IntentFilter(android.net.ConnectivityManager.CONNECTIVITY_ACTION);
-        registerReceiver(connectivityReceiver, filter);
+        m.grammarCenter.triggerWakeupProbe();
     }
 
     // 2026-09: 真實 MCU 韌體版本/UUID 查詢成組搬咗去 ChestQuery (拆 god object
