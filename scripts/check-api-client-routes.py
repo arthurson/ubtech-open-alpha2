@@ -6,7 +6,7 @@ Caller 對後端路由 (見 MainActivity dispatch + app-core.js helper)：
   api('X')        -> /api/alpha2/X   -> handleApi case X
   sysApi('X')     -> /api/system/X   -> handleSystemApi case X
   directApi('X')  -> /api/direct/X   -> handleDirectApi case X
-  xiaozhiApi('X') -> /api/xiaozhi/X  -> handleXiaozhiApi case X
+  xiaozhiApi('X') -> /api/xiaozhi/X  -> XiaozhiBridge.handleXiaozhiApi case X
 
 之前試過 generator 語無倫次出 `api('system/...')` → 打去
 /api/alpha2/system/... → handleApi 404，而 drift check 睇唔到
@@ -21,16 +21,18 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MAIN = ROOT / "app" / "src" / "main" / "java" / "com" / "open" / "alpha2" / "MainActivity.java"
+XZ = ROOT / "app" / "src" / "main" / "java" / "com" / "open" / "alpha2" / "XiaozhiBridge.java"
 CLIENT = ROOT / "app" / "src" / "main" / "assets" / "web" / "api-client.js"
 
 text = MAIN.read_text(encoding="utf-8")
+xztext = XZ.read_text(encoding="utf-8")
 
 
-def handler_cases(name: str) -> set:
+def handler_cases(name: str, src: str = text) -> set:
     """抽某 handle*Api() 方法體內全部 case "..." (裸路徑)。"""
     m = re.search(
-        r"private HttpServer\.ApiResponse " + name + r"\(.*?\)\s*\{(.*?)\n    private ",
-        text, re.DOTALL)
+        r"(?:private|public) HttpServer\.ApiResponse " + name + r"\(.*?\)\s*\{(.*?)\n    (?:private|public) ",
+        src, re.DOTALL)
     assert m, f"{name} body not found"
     return set(re.findall(r'case "([^"]+)"', m.group(1)))
 
@@ -39,7 +41,7 @@ cases = {
     "api": handler_cases("handleApi"),
     "sysApi": handler_cases("handleSystemApi"),
     "directApi": handler_cases("handleDirectApi"),
-    "xiaozhiApi": handler_cases("handleXiaozhiApi"),
+    "xiaozhiApi": handler_cases("handleXiaozhiApi", xztext),
 }
 
 client = CLIENT.read_text(encoding="utf-8")

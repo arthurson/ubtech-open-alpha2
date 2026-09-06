@@ -9,12 +9,17 @@ import java.util.Map;
  * 8 個 case body，邏輯一字不改搬過嚟。硬件經傳入嘅同一個 VoskController
  * (可 null：API 19 機唔起 controller，經 voskOrError() 回清晰錯誤——同 TtsCenter
  * 一樣，null 唔係 bug，唔好喺度加 null 以外嘅狀態)。
+ * 2026-09: 後開者得 mic —— voskStart() 先經 XiaozhiBridge.yieldMicToVosk()
+ * 停小智讓出單 input HAL (同 startXiaozhiMic 停 vosk 對稱；唔係 SpeechService
+ * 開 recorder 撞 HAL 會成條 recognizer thread 炒 FATAL)。
  */
 public final class VoskApi {
     private final VoskController vosk;
+    private final XiaozhiBridge xiaozhiBridge;
 
-    public VoskApi(VoskController vosk) {
+    public VoskApi(VoskController vosk, XiaozhiBridge xiaozhiBridge) {
         this.vosk = vosk;
+        this.xiaozhiBridge = xiaozhiBridge;
     }
 
     /** vosk/* endpoint 熔斷：vosk 係 null（API 19 機唔起 controller，或者
@@ -78,6 +83,9 @@ public final class VoskApi {
     public HttpServer.ApiResponse voskStart() {
         HttpServer.ApiResponse need = voskOrError();
         if (need != null) return need;
+        // 後開者得 mic：小智拎緊就成個停咗先開 recorder (同 startXiaozhiMic
+        // 停 vosk 對稱；唔自動幫小智重開——對稱嗰邊都唔自動重開 vosk)。
+        xiaozhiBridge.yieldMicToVosk();
         String err = vosk.startListening();
         if (err != null) return HttpServer.ApiResponse.error(err);
         return HttpServer.ApiResponse.ok("{\"ok\":true}");

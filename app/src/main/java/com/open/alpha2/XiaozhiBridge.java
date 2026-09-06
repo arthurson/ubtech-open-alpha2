@@ -49,7 +49,7 @@ public final class XiaozhiBridge {
         boolean isRobotTtsSpeaking();
         long getLastSpeechStopAtMs();
         int getSonarDistanceCm();
-        int getSonarThresholdCm();
+        int getSonarThreshold();
         int getPirTriggeredState();
         void applySonarThreshold(int distanceCm);
     }
@@ -648,7 +648,8 @@ public final class XiaozhiBridge {
         try {
             xiaozhiClient.sendListenDetectText(text);
         } catch (java.io.IOException e) {
-            if (micWasActive && xiaozhiAutoMode.get()) {
+            if (micWasActive && xiaozhiAutoMode.get()
+                    && (vosk == null || !vosk.isListening())) {
                 startXiaozhiMic();
             }
             return e.getMessage();
@@ -667,7 +668,10 @@ public final class XiaozhiBridge {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            startXiaozhiMic();
+            // 後開者得 mic：呢段時間 vosk 搶咗 mic 就唔回搶（等用戶手動 mic/start）。
+            if (vosk == null || !vosk.isListening()) {
+                startXiaozhiMic();
+            }
         }
         return null;
     }
@@ -698,6 +702,17 @@ public final class XiaozhiBridge {
             robot.speech_SetMIC(false); // 硬體都還沒開就立即放棄, 將 mic 還給機器人
             return HttpServer.ApiResponse.error("failed to signal listen-start: " + e.getMessage());
         }
+        // 後開者得 mic (單 input HAL)：vosk 個 recorder 一日唔停，呢度開
+        // playback/capture 就撞 HAL（開唔到／讀垃圾／成條 recognizer thread 炒
+        // FATAL，見實測）。先停 vosk 再開自己，同 VoskApi.voskStart 經
+        // yieldMicToVosk 停小智對稱。唔自動重開——vosk_state event 會話返前端
+        // 轉灰燈，用戶手動返去撳開始。
+        // (之前擺喺 capture 成功之後先停——錯序：vosk 拎緊嗰陣 capture 根本開唔到，
+        // 永遠行唔到停嗰步，小智永遠搶唔到。)
+        if (vosk != null && vosk.isListening()) {
+            vosk.stopListening();
+            Log.i(TAG, "vosk stopped to yield mic to xiaozhi");
+        }
         // Playback is started alongside capture (not lazily on first incoming frame)
         // so the AudioTrack is already open and prebuffering by the time the server's
         // reply audio starts arriving - opening it reactively on the first
@@ -709,14 +724,6 @@ public final class XiaozhiBridge {
         if (playbackResult.error != null) {
             robot.speech_SetMIC(false);
             return HttpServer.ApiResponse.error("failed to start playback: " + playbackResult.error);
-        }
-        // 2026-09: opus 十秒內就會出聲，Vosk 聆聽緊就 pause 返防迴音
-        // (mic 照 hold，session 完 stopXiaozhiMic／stopAll 會 resume)。
-        if (vosk != null) {
-            try {
-                vosk.setPaused(true);
-            } catch (Throwable ignore) {
-            }
         }
         // 2026-08 修正: 呢度之前即刻跟住開 startCapture(), 但 logcat 顯示
         // AudioHardwareTiny 岩岩開完 AudioTrack (output) 個 pthread 仲未 settle
@@ -752,13 +759,6 @@ public final class XiaozhiBridge {
         }
         // Mic 擁有權和硬體都成功取得 - 通知前端將燈號轉綠 (見 index.html
         // #xiaozhiMicLed / app-xiaozhi.js 的 xiaozhi_mic_state 事件處理)。
-        // 2026-09: Vosk 聆聽緊就成個停咗讓 mic (單 input HAL 容唔落兩個
-        // recorder；pause 唔放 mic，唔夠)。唔自動重開——vosk_state event 會
-        // 話返前端轉灰燈，用戶手動返去撳開始。
-        if (vosk != null && vosk.isListening()) {
-            vosk.stopListening();
-            Log.i(TAG, "vosk stopped to yield mic to xiaozhi");
-        }
         xiaozhiMicHeld = true;
         startXiaozhiMicHoldEnforcer();
         EventBus.get().publish(XIAOZHI_MIC_STATE_EVENT, "{\"held\":true}");
@@ -801,6 +801,15 @@ public final class XiaozhiBridge {
             xiaozhiMicHeld = false;
             EventBus.get().publish(XIAOZHI_MIC_STATE_EVENT, "{\"held\":false}");
         }
+    }
+
+    /** 後開者得 mic 嘅 vosk 方向：vosk/start 調用（見 VoskApi.voskStart），小智拎緊
+     *  mic 就成個停咗讓出單 input HAL，等 vosk 先開到 recorder——同 startXiaozhiMic()
+     *  停 vosk 對稱。唔自動幫小智重開（對稱嗰邊停完 vosk 都唔自動重開，要開用戶自己撳）。
+     *  冇拎緊就即刻返（平時 vosk 起停零額外開銷）。 */
+    public void yieldMicToVosk() {
+        if (!xiaozhiMicHeld && !xiaozhiAudioController.isCapturing()) return;
+        stopXiaozhiMic();
     }
 
     /** 和 startMicHoldEnforcer() (Mic tab 專用) 對應的 XiaoZhi 版本 - 背景 thread
@@ -984,7 +993,10 @@ public final class XiaozhiBridge {
                     } else if ("stop".equals(stateValue)) {
                         LedCenter.stopMouthLedForTts();
                         if (xiaozhiAutoMode.get()) {
-                            startXiaozhiMic();
+                            // 後開者得 mic：vosk 搶咗 mic 就唔回搶（等用戶手動 mic/start）。
+                            if (vosk == null || !vosk.isListening()) {
+                                startXiaozhiMic();
+                            }
                         }
                     }
                 }
@@ -2318,7 +2330,7 @@ public final class XiaozhiBridge {
                         }
                         case "self.sensors.get_sonar": {
                             resultText = "{\"distance_cm\":" + hostState.getSonarDistanceCm()
-                                    + ",\"threshold_cm\":" + hostState.getSonarThresholdCm() + "}";
+                                     + ",\"threshold_cm\":" + hostState.getSonarThreshold() + "}";
                             break;
                         }
                         case "self.sensors.set_sonar_threshold": {

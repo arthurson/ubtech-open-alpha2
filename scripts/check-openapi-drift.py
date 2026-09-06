@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-檢查 code ↔ spec 漂移：確保 MainActivity handleApi/handleSystemApi/handleXiaozhiApi 的 case 名稱皆在 openapi 中有對應。
+檢查 code ↔ spec 漂移：確保 handleApi/handleSystemApi/handleXiaozhiApi
+（前兩者在 MainActivity，後者在 XiaozhiBridge）的 case 名稱皆在 openapi 中有對應。
 用法: python scripts/check-openapi-drift.py
 回傳 0=無漂移, 1=有漂移 (適合 CI)。
 """
@@ -9,6 +10,7 @@ import pathlib, re, yaml, sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SPEC = ROOT / "openapi" / "open-alpha2-openapi.yml"
 MAIN = ROOT / "app" / "src" / "main" / "java" / "com" / "open" / "alpha2" / "MainActivity.java"
+XZ = ROOT / "app" / "src" / "main" / "java" / "com" / "open" / "alpha2" / "XiaozhiBridge.java"
 
 spec = yaml.safe_load(open(SPEC, encoding='utf-8'))
 spec_paths = set(p.lstrip('/') for p in spec['paths'].keys())
@@ -23,6 +25,8 @@ for p in spec_paths:
 # Also add bare system/xiaozhi variants: for spec's system/music/list, also consider music/list as bare? No, system is namespace, so keep as is.
 
 text = MAIN.read_text(encoding='utf-8')
+# xiaozhi cases 住喺 XiaozhiBridge.handleXiaozhiApi，一齊掃。
+text += "\n" + XZ.read_text(encoding='utf-8')
 # Find all case "x": include those inside handleApi/handleSystemApi/handleXiaozhiApi
 cases = set(re.findall(r'case "([^"]+)"', text))
 # Filter to API-like: contains / or known singletons
@@ -32,7 +36,7 @@ api_cases = set(c for c in cases if '/' in c or c in ['status','supported','mic/
 # already stripped (path.substring(7)), so its case labels are relative
 # ("ubx/list") while spec paths are full ("direct/ubx/list"). Model that here:
 # drop the bare relative forms, require the prefixed forms instead.
-m = re.search(r'private HttpServer\.ApiResponse handleDirectApi\(.*?\)\s*\{(.*?)\n    private HttpServer\.ApiResponse handleXiaozhiApi',
+m = re.search(r'private HttpServer\.ApiResponse handleDirectApi\(.*?\)\s*\{(.*?)\n    private ',
               text, re.DOTALL)
 if m:
     direct_cases = set(re.findall(r'case "([^"]+)"', m.group(1)))
