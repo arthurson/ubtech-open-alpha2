@@ -27,7 +27,8 @@ import java.util.Map;
  * 留喺 MainActivity —— 遠程驗唔到嘅唔郁。只需要 Context
  * (頭串口 ready check)；嘴燈／5-mic／JNI 本身全部 static 直驅。
  * 2026-09 dispatcher Phase 1 第二刀加：pir/set、pir/alert_enabled
- * 2 個 handleApi case body 搬入 (PIR 警示監聽/event 路徑留低)。
+ * 2 個 handleApi case body 搬入；小件拼盤加埋 PIR 事件接線
+ * (registerAlpha2PirAlertListener，警示反應本身早已喺呢度)。
  */
 public final class LedCenter {
     private static final String TAG = "LedCenter";
@@ -436,6 +437,44 @@ public final class LedCenter {
         } else {
             ringtoneCenter.stopRingtonePlayback();
         }
+    }
+
+    // -- PIR 事件接線 (2026-09 小件拼盤由 MainActivity.registerAlpha2PirAlertListener
+    // 搬入；警示反應本體 applyAlpha2PirLedAndSound 早已喺呢度) --
+    public void registerAlpha2PirAlertListener() {
+        EventBus.get().subscribe(new EventBus.Listener() {
+            @Override
+            public void onEvent(String line) {
+                if (!line.contains("\"type\":\"alpha2_pir_state\"")) {
+                    return;
+                }
+                final Boolean triggered = extractPirTriggered(line);
+                if (triggered == null) {
+                    return;
+                }
+                // onEvent() 在 main thread 執行 - AIDL/JNI LED call 搬到 background
+                // thread, 不要用主執行緒, 和專案一貫做法一致 (見
+                // registerPirAlertListener()/registerChestMuteKeyTestListener())。
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        applyAlpha2PirLedAndSound(triggered);
+                    }
+                }).start();
+            }
+        });
+    }
+
+    /** Pulls the boolean after "triggered":  out of an EventBus-published "pir_state"
+     *  JSON line, matching extractAbsoluteAngle()'s no-JSON-library style. */
+    private static Boolean extractPirTriggered(String line) {
+        String key = "\"triggered\":";
+        int i = line.indexOf(key);
+        if (i < 0) return null;
+        int start = i + key.length();
+        if (line.startsWith("true", start)) return true;
+        if (line.startsWith("false", start)) return false;
+        return null;
     }
 
     // directChestReady() 內聯：同 MainActivity 版一字不差，經 appContext

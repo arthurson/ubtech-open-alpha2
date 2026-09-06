@@ -42,8 +42,9 @@ def handler_cases(name: str, src: str = text, tail: str = r"\n    (?:private|pub
 cases = {
     # handleApi 成段搬咗去 ApiDispatcher (檔尾，最後一個 method)。
     "api": handler_cases("handleApi", disptext, tail=r"\n\}\s*$"),
-    "sysApi": handler_cases("handleSystemApi"),
-    "directApi": handler_cases("handleDirectApi"),
+    # handleSystemApi/directApi 跟埋搬過去 (system 在中間，direct 喺檔尾)。
+    "sysApi": handler_cases("handleSystemApi", disptext),
+    "directApi": handler_cases("handleDirectApi", disptext, tail=r"\n\}\s*$"),
     "xiaozhiApi": handler_cases("handleXiaozhiApi", xztext),
 }
 

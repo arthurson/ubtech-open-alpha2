@@ -2,7 +2,10 @@ package com.open.alpha2;
 
 import android.content.Context;
 
+import com.ubtechinc.alpha.hardware.DirectLedController;
 import com.ubtechinc.alpha.hardware.HardwareDirectManager;
+import com.ubtechinc.alpha.hardware.LocalAlpha2Services;
+import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
 
 import java.util.Map;
 
@@ -19,8 +22,12 @@ import java.util.Map;
  * （speech/offline_auto_switch、get_default_grammar 搬咗去 GrammarCenter，
  * 經下面 grammarCenter 直調，Host 唔經手。）
  * threshold state 經 sensorState（XiaozhiBridge.HostState，現成共用，
- * 唔另開縫）；directChestReady/releaseMicForAudioIo 係內聯副本
+ * 唔另開縫）；directChestReady/directHeaderReady/releaseMicForAudioIo 係內聯副本
  * （同 UbxApi/LedCenter/ChestQuery/XiaozhiBridge 一樣做法）。
+ * 2026-09 dispatcher Phase 2 加：handleSystemApi（discover＋music/*，
+ * 要 UbxPlayer pose＋MusicController＋deviceStatus.getWifiIp()）同
+ * handleDirectApi（servo/led/sonar/ubx 直驅，要 LocalAlpha2Services＋
+ * UbxPlayer notePose），邏輯逐字搬。
  */
 public final class ApiDispatcher {
     private static final String TAG = "ApiDispatcher";
@@ -53,6 +60,9 @@ public final class ApiDispatcher {
     private final AudioPlaybackController audioPlaybackController;
     private final RobotStub robot;
     private final GrammarCenter grammarCenter;
+    private final UbxPlayer ubxPlayer;
+    private final MusicController musicController;
+    private final LocalAlpha2Services localServices;
 
     public ApiDispatcher(Context context, Host host, XiaozhiBridge.HostState sensorState,
             ActionDirect actionDirect, UbxApi ubxApi, ChestQuery chestQuery,
@@ -60,7 +70,8 @@ public final class ApiDispatcher {
             LedCenter ledCenter, SemanticCenter semanticCenter, DeviceStatus deviceStatus,
             CameraApi cameraApi, AudioCenter audioCenter, RingtoneCenter ringtoneCenter,
             AudioPlaybackController audioPlaybackController, RobotStub robot,
-            GrammarCenter grammarCenter) {
+            GrammarCenter grammarCenter, UbxPlayer ubxPlayer, MusicController musicController,
+            LocalAlpha2Services localServices) {
         this.appContext = context.getApplicationContext();
         this.host = host;
         this.sensorState = sensorState;
@@ -79,11 +90,20 @@ public final class ApiDispatcher {
         this.audioPlaybackController = audioPlaybackController;
         this.robot = robot;
         this.grammarCenter = grammarCenter;
+        this.ubxPlayer = ubxPlayer;
+        this.musicController = musicController;
+        this.localServices = localServices;
     }
 
     // directChestReady() 內聯：同 MainActivity 版一字不差，經 appContext 唔使 Activity。
     private boolean directChestReady() {
         try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
+        catch (Exception e) { return false; }
+    }
+
+    // directHeaderReady() 內聯：同上（handleSystemApi discover＋handleDirectApi status 用）。
+    private boolean directHeaderReady() {
+        try { return HardwareDirectManager.get(appContext).head().isAvailable(); }
         catch (Exception e) { return false; }
     }
 
@@ -97,6 +117,20 @@ public final class ApiDispatcher {
             Thread.currentThread().interrupt();
         }
     }
+
+    /**
+     * Routes "/api/<name>" calls to the matching Alpha2RobotApi method. Runs on an
+     * HttpServer worker thread (not the main thread) - every SDK call used here is safe
+     * to invoke off the main thread (the *ServiceUtil classes only marshal Binder calls),
+     * matching how the SDK's own AGENTS.md describes bind/call safety.
+     */
+
+    /**
+     * Routes "/api/<name>" calls to the matching Alpha2RobotApi method. Runs on an
+     * HttpServer worker thread (not the main thread) - every SDK call used here is safe
+     * to invoke off the main thread (the *ServiceUtil classes only marshal Binder calls),
+     * matching how the SDK's own AGENTS.md describes bind/call safety.
+     */
 
     public HttpServer.ApiResponse handleApi(String path, Map<String, String> query, String method, String body) {
         switch (path) {
@@ -502,4 +536,211 @@ public final class ApiDispatcher {
                         "{\"ok\":false,\"error\":\"unknown endpoint: " + path + "\"}");
         }
     }
+
+    // -- /api/system/* + /api/direct/* (2026-09 dispatcher Phase 2 由 MainActivity 搬入) --
+
+    /**
+     * Small namespace ("/api/system/...") for things not tied to the robot AIDL
+     * surface itself.
+     */
+    public HttpServer.ApiResponse handleSystemApi(String path, Map<String, String> query, String method, String body) {
+        switch (path) {
+            // 一野搜齊機器資料（lynx 年代 sys/* 七連發的 pure-direct 版，一個回包齊晒，
+            // 慢 query 各 1.5s 上限）。電池版本字串本機胸固件無此命令，如實缺席；
+            // 電量/充電走 Android 系統廣播。
+            case "discover": {
+                String appVer = "?";
+                try {
+                    appVer = appContext.getPackageManager().getPackageInfo(appContext.getPackageName(), 0).versionName;
+                } catch (Exception ignored) {
+                }
+                String chestFw;
+                try {
+                    chestFw = chestQuery.queryFirmwareVersion(1500);
+                } catch (Exception e) {
+                    chestFw = null;
+                }
+                String chestUuid;
+                try {
+                    chestUuid = chestQuery.queryRobotUuid(1500);
+                } catch (Exception e) {
+                    chestUuid = null;
+                }
+                int[] pose = ubxPlayer.pose();
+                StringBuilder sb = new StringBuilder("{\"ok\":true,");
+                sb.append("\"app\":{\"package\":\"").append(MainActivity.jsonSafe(appContext.getPackageName())).append("\",")
+                        .append("\"version\":\"").append(MainActivity.jsonSafe(appVer)).append("\",")
+                        .append("\"panel\":\"http://").append(MainActivity.jsonSafe(deviceStatus.getWifiIp())).append(":")
+                        .append(HttpServer.PORT).append("/\"},");
+                sb.append("\"robot\":{\"chestFw\":").append(chestFw != null ? "\"" + MainActivity.jsonSafe(chestFw) + "\"" : "null").append(",")
+                        .append("\"chestUuid\":").append(chestUuid != null ? "\"" + MainActivity.jsonSafe(chestUuid) + "\"" : "null").append(",")
+                        .append("\"chestAvailable\":").append(directChestReady()).append(",")
+                        .append("\"headerAvailable\":").append(directHeaderReady()).append("},");
+                sb.append("\"power\":{\"level\":").append(deviceStatus.getBatteryLevel()).append(",")
+                        .append("\"scale\":").append(deviceStatus.getBatteryScale()).append(",")
+                        .append("\"charging\":").append(deviceStatus.isBatteryCharging()).append(",")
+                        .append("\"status\":\"").append(MainActivity.jsonSafe(deviceStatus.getBatteryStatus())).append("\"},");
+                sb.append("\"sensors\":{\"sonarCm\":").append(sensorState.getSonarDistanceCm()).append(",")
+                        .append("\"sonarThresholdCm\":").append(sensorState.getSonarThreshold()).append(",")
+                        .append("\"pir\":").append(sensorState.getPirTriggeredState()).append("},");
+                sb.append("\"servo\":{\"poseKnown\":").append(pose != null);
+                if (pose != null) {
+                    sb.append(",\"angles\":[");
+                    for (int i = 0; i < 20; i++) {
+                        if (i > 0) sb.append(',');
+                        sb.append(pose[i]);
+                    }
+                    sb.append("]");
+                }
+                sb.append("}}");
+                return HttpServer.ApiResponse.ok(sb.toString());
+            }
+            // ---------------- 本地音樂播放 ----------------
+            // "/api/system/music/..." - 播放機身 SD 卡裡面 (/sdcard/Music 等) 已有的
+            // 音樂檔, 經由 MusicController (standard android.media.MediaPlayer,
+            // STREAM_MUSIC 由機器人喇叭輸出) 播放, 和 AIDL 機器人 API 完全無關,
+            // 所以放在 system 這個 namespace 底下, 和 camera/audio-testtone 那類
+            // 純硬體功能看齊。
+
+            case "music/list": {
+                java.util.List<MusicController.Track> tracks = musicController.listTracks();
+                StringBuilder sb = new StringBuilder();
+                sb.append("{\"ok\":true,\"tracks\":[");
+                for (int i = 0; i < tracks.size(); i++) {
+                    if (i > 0) sb.append(",");
+                    MusicController.Track t = tracks.get(i);
+                    sb.append("{\"path\":\"").append(MainActivity.jsonSafe(t.path)).append("\",")
+                      .append("\"name\":\"").append(MainActivity.jsonSafe(t.name)).append("\",")
+                      .append("\"sizeBytes\":").append(t.sizeBytes).append("}");
+                }
+                sb.append("]}");
+                return HttpServer.ApiResponse.ok(sb.toString());
+            }
+
+            case "music/play": {
+                String p = ApiValidator.require(query, "path");
+                String err = musicController.play(p);
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "music/pause": {
+                String err = musicController.pause();
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "music/resume": {
+                String err = musicController.resume();
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "music/stop": {
+                String err = musicController.stop();
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "music/seek": {
+                int ms = ApiValidator.requireInt(query, "ms");
+                String err = musicController.seekTo(ms);
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "music/volume": {
+                int pct = ApiValidator.requireVolumePercent(query, "percent");
+                String err = musicController.setVolume(pct);
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+
+            case "music/status": {
+                MusicController.Status s = musicController.status();
+                return HttpServer.ApiResponse.ok("{\"ok\":true,"
+                        + "\"hasTrack\":" + s.hasTrack + ","
+                        + "\"playing\":" + s.playing + ","
+                        + "\"prepared\":" + s.prepared + ","
+                        + "\"path\":" + (s.path != null ? "\"" + MainActivity.jsonSafe(s.path) + "\"" : "null") + ","
+                        + "\"positionMs\":" + s.positionMs + ","
+                        + "\"durationMs\":" + s.durationMs + "}");
+            }
+
+            default:
+                return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
+                        "{\"ok\":false,\"error\":\"unknown system endpoint: " + path + "\"}");
+        }
+    }
+
+    public HttpServer.ApiResponse handleDirectApi(String path, Map<String, String> query, String method, String body) {
+        if (localServices == null) {
+            return HttpServer.ApiResponse.error("direct not initialized");
+        }
+        switch (path) {
+            case "status": {
+                boolean direct = localServices.isDirectActive();
+                boolean chest = false, head = false;
+                try { chest = localServices.isDirectActive() && HardwareDirectManager.get(appContext).chest().isAvailable(); } catch (Exception ignore) {}
+                try { head = HardwareDirectManager.get(appContext).head().isAvailable(); } catch (Exception ignore) {}
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"direct\":" + direct + ",\"chest\":" + chest + ",\"head\":" + head + "}");
+            }
+            case "servo/one": {
+                int id = ApiValidator.requireIntRange(query, "id", 1, 20);
+                int angle = ApiValidator.requireInt(query, "angle");
+                int time = ApiValidator.optionalInt(query, "time", 500);
+                // cmd05 在本机固件有 ACK 无动作，改走 cmd03 全帧（servoSendOne 内处理）。
+                return ubxApi.servoSendOne(id, angle, time);
+            }
+            case "servo/all": {
+                int[] arr = ApiValidator.requireAngles20(query);
+                for (int i = 0; i < 20; i++) arr[i] &= 0xFF;
+                int time = ApiValidator.optionalInt(query, "time", 500);
+                // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
+                boolean sent = HardwareDirectManager.get(appContext).chest().setAllServos(arr, (short) time);
+                if (!sent) return HttpServer.ApiResponse.error("direct not ready");
+                ubxPlayer.notePose(arr);
+                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+            }
+            case "sonar/config": {
+                int cm = ApiValidator.requireInt(query, "distance");
+                boolean ok = HardwareDirectManager.get(appContext).chest().configureSonar(cm);
+                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+            }
+            case "led/head": {
+                int color = ApiValidator.optionalInt(query, "color", 3);
+                Integer modeOpt = ApiValidator.optionalInteger(query, "mode");
+                int mode = modeOpt != null ? modeOpt.intValue() : 0;
+                boolean ok = localServices.ledHead(color);
+                // also try direct with mode
+                if (modeOpt != null) ok = DirectLedController.setHead5Mic(color, 9, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, mode);
+                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+            }
+            case "led/off": {
+                boolean ok = localServices.ledOff();
+                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+            }
+            case "led/mouth": {
+                int sp = ApiValidator.optionalInt(query, "breathe", 500);
+                boolean ok = localServices.ledMouthBreathe(sp);
+                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+            }
+            // Ubx 直播（与 /api/alpha2/ubx/* 同 helper；抢占式：播新自动停旧）。
+            case "ubx/list":
+                return ubxApi.ubxListResponse();
+            case "ubx/play":
+                return ubxApi.ubxPlayResponse(ApiValidator.optionalNullable(query, "name"),
+                        ApiValidator.optionalNullable(query, "path"));
+            case "ubx/speed":
+                return ubxApi.ubxSpeedResponse(ApiValidator.require(query, "value"));
+            case "ubx/stop":
+                return ubxApi.ubxStopResponse();
+            case "ubx/status":
+                return ubxApi.ubxStatusResponse();
+            default:
+                return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
+                        "{\"ok\":false,\"error\":\"unknown direct endpoint: " + path + "\"}");
+        }
+    }
+
 }

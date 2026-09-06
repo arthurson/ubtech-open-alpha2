@@ -38,7 +38,7 @@ api_cases = set(c for c in cases if '/' in c or c in ['status','supported','mic/
 # already stripped (path.substring(7)), so its case labels are relative
 # ("ubx/list") while spec paths are full ("direct/ubx/list"). Model that here:
 # drop the bare relative forms, require the prefixed forms instead.
-m = re.search(r'private HttpServer\.ApiResponse handleDirectApi\(.*?\)\s*\{(.*?)\n    private ',
+m = re.search(r'(?:private|public) HttpServer\.ApiResponse handleDirectApi\(.*?\)\s*\{(.*?)(?:\n    (?:private|public) |\n\}\s*$)',
               text, re.DOTALL)
 if m:
     direct_cases = set(re.findall(r'case "([^"]+)"', m.group(1)))

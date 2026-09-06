@@ -331,4 +331,37 @@ public final class DeviceStatus implements SensorEventListener {
                             + e.getMessage());
         }
     }
+
+    // 面板 URL/顯示用本機 IP (2026-09 dispatcher Phase 2 由 MainActivity.getWifiIp
+    // 搬入；updatePanelUrlDisplay/複製連結經呢度讀)。
+    public String getWifiIp() {
+        try {
+            WifiManager wm = (WifiManager) appContext.getSystemService(Context.WIFI_SERVICE);
+            int ipInt = wm.getConnectionInfo().getIpAddress();
+            String wifiIp = Formatter.formatIpAddress(ipInt);
+            if (wifiIp != null && !wifiIp.equals("0.0.0.0") && !wifiIp.isEmpty()) {
+                return wifiIp;
+            }
+            // 热点 AP 模式或未連接作 STA 時，WifiManager 回 0.0.0.0；改列舉網卡找 site-local
+            try {
+                java.util.Enumeration<java.net.NetworkInterface> en = java.net.NetworkInterface.getNetworkInterfaces();
+                while (en != null && en.hasMoreElements()) {
+                    java.net.NetworkInterface intf = en.nextElement();
+                    java.util.Enumeration<java.net.InetAddress> addrs = intf.getInetAddresses();
+                    while (addrs.hasMoreElements()) {
+                        java.net.InetAddress addr = addrs.nextElement();
+                        if (!addr.isLoopbackAddress() && addr instanceof java.net.Inet4Address) {
+                            String host = addr.getHostAddress();
+                            if (host != null && (host.startsWith("192.168.") || host.startsWith("10."))) {
+                                return host;
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+            return wifiIp != null ? wifiIp : "<device-ip>";
+        } catch (Exception e) {
+            return "<device-ip>";
+        }
+    }
 }

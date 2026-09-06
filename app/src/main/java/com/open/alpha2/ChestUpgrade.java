@@ -294,4 +294,26 @@ public final class ChestUpgrade {
             return HttpServer.ApiResponse.ok("{\"ok\":true,\"page\":"+page+",\"offset\":"+skip+",\"hex\":\""+hex+"\"}");
         } catch (Exception e) { return HttpServer.ApiResponse.error(String.valueOf(e.getMessage())); }
     }
+
+    /** 胸板固件上載 - 接收 256KB 的 ALPHA2Q-CHEST-*.bin，寫入 /sdcard/AlphaII_CHEST_kernel.bin
+     *  (2026-09 小件拼盤由 MainActivity.handleChestUpload 搬入——升級鏡像入口歸升級層)。 */
+    public HttpServer.ApiResponse handleChestUpload(Map<String, String> query, byte[] body) {
+        if (body == null || body.length == 0) {
+            return HttpServer.ApiResponse.error("empty file body");
+        }
+        if (body.length != 256 * 1024) {
+            // 仍允許寫入，但提示大小不正確
+            Log.w(TAG, "Chest upload size mismatch: " + body.length + " bytes, expected 262144");
+        }
+        try {
+            java.io.File dest = new java.io.File("/sdcard/AlphaII_CHEST_kernel.bin");
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(dest)) {
+                fos.write(body);
+            }
+            return HttpServer.ApiResponse.ok("{\"ok\":true,\"path\":\"" + dest.getAbsolutePath() + "\",\"sizeBytes\":" + body.length + "}");
+        } catch (Exception e) {
+            Log.w(TAG, "Chest upload failed", e);
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + MainActivity.jsonSafe(String.valueOf(e.getMessage())) + "\"}");
+        }
+    }
 }

@@ -417,7 +417,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         // 放最尾——要等齊所有 collaborator (上面 voskApi 最遲)。
         apiDispatcher = new ApiDispatcher(this, this, this, actionDirect, ubxApi, chestQuery,
                 chestUpgrade, ttsCenter, voskApi, ledCenter, semanticCenter, deviceStatus,
-                cameraApi, audioCenter, ringtoneCenter, audioPlaybackController, robot, grammarCenter);
+                cameraApi, audioCenter, ringtoneCenter, audioPlaybackController, robot, grammarCenter,
+                ubxPlayer, musicController, localServices);
 
         // Plain HTTP only. TLS/HTTPS was tried (self-signed cert) to make getUserMedia()
         // available for the walkie-talkie mic feature, but browsers on this device
@@ -432,7 +433,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         // constructor overload removed) - walkie-talkie (which needs a secure context)
         // stays permanently disabled in the UI (see app-mic.js) and everything else works
         // reliably over plain HTTP/WS.
-        String ip = getWifiIp();
+        String ip = deviceStatus.getWifiIp();
 
         httpServer = new HttpServer(getAssets(), new HttpServer.ApiHandler() {
             @Override
@@ -441,13 +442,13 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
                 // (handleApi, unchanged below). "/api/system/..." is a small namespace
                 // for things not tied to the robot SDK itself.
                 if (path.startsWith("direct/")) {
-                    return handleDirectApi(path.substring(7), query, method, body);
+                    return apiDispatcher.handleDirectApi(path.substring(7), query, method, body);
                 }
                 if (path.startsWith("alpha2/")) {
                     return apiDispatcher.handleApi(path.substring(7), query, method, body);
                 }
                 if (path.startsWith("system/")) {
-                    return handleSystemApi(path.substring(7), query, method, body);
+                    return apiDispatcher.handleSystemApi(path.substring(7), query, method, body);
                 }
                 if (path.startsWith("xiaozhi/")) {
                     return xiaozhiBridge.handleXiaozhiApi(path.substring(8), query, method, body);
@@ -508,7 +509,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         View.OnClickListener copyAction = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String urlToCopy = currentPanelUrl != null ? currentPanelUrl : ("http://" + getWifiIp() + ":" + HttpServer.PORT + "/");
+                String urlToCopy = currentPanelUrl != null ? currentPanelUrl : ("http://" + deviceStatus.getWifiIp() + ":" + HttpServer.PORT + "/");
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                 if (clipboard != null) {
                     clipboard.setPrimaryClip(ClipData.newPlainText("Alpha2 panel URL", urlToCopy));
@@ -848,7 +849,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
 
         ubxApi.registerWakeupDirectionListener();
         registerChestMuteKeyTestListener();
-        registerAlpha2PirAlertListener();
+        ledCenter.registerAlpha2PirAlertListener();
     }
 
     // -- pure-direct frame wiring -----------------------------------------------
@@ -1028,43 +1029,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         m.xiaozhiBridge.toggleChestMuteLed();
     }
 
-    // (PIR 警示旗標 + 反應搬咗去 LedCenter；下面淨返 EventBus 接線同開關入口。)
-
-    private void registerAlpha2PirAlertListener() {
-        EventBus.get().subscribe(new EventBus.Listener() {
-            @Override
-            public void onEvent(String line) {
-                if (!line.contains("\"type\":\"alpha2_pir_state\"")) {
-                    return;
-                }
-                final Boolean triggered = extractPirTriggered(line);
-                if (triggered == null) {
-                    return;
-                }
-                // onEvent() 在 main thread 執行 - AIDL/JNI LED call 搬到 background
-                // thread, 不要用主執行緒, 和專案一貫做法一致 (見
-                // registerPirAlertListener()/registerChestMuteKeyTestListener())。
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        ledCenter.applyAlpha2PirLedAndSound(triggered);
-                    }
-                }).start();
-            }
-        });
-    }
-
-    /** Pulls the boolean after "triggered":  out of an EventBus-published "pir_state"
-     *  JSON line, matching extractAbsoluteAngle()'s no-JSON-library style. */
-    private static Boolean extractPirTriggered(String line) {
-        String key = "\"triggered\":";
-        int i = line.indexOf(key);
-        if (i < 0) return null;
-        int start = i + key.length();
-        if (line.startsWith("true", start)) return true;
-        if (line.startsWith("false", start)) return false;
-        return null;
-    }
+    // (PIR 事件接線搬咗去 LedCenter.registerAlpha2PirAlertListener()。)
 
     // (PIR 提示音搬咗去 RingtoneCenter.playPirAlertCue()。)
     // (TTS 語言表/legacy fallback/iso3/引擎表/init/讀出成組搬咗去 TtsCenter。)
@@ -1143,39 +1108,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         audioCenter.stopRadioPlayback();
     }
 
-    private String getWifiIp() {
-        try {
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-            int ipInt = wm.getConnectionInfo().getIpAddress();
-            String wifiIp = Formatter.formatIpAddress(ipInt);
-            if (wifiIp != null && !wifiIp.equals("0.0.0.0") && !wifiIp.isEmpty()) {
-                return wifiIp;
-            }
-            // 热点 AP 模式或未連接作 STA 時，WifiManager 回 0.0.0.0；改列舉網卡找 site-local
-            try {
-                java.util.Enumeration<java.net.NetworkInterface> en = java.net.NetworkInterface.getNetworkInterfaces();
-                while (en != null && en.hasMoreElements()) {
-                    java.net.NetworkInterface intf = en.nextElement();
-                    java.util.Enumeration<java.net.InetAddress> addrs = intf.getInetAddresses();
-                    while (addrs.hasMoreElements()) {
-                        java.net.InetAddress addr = addrs.nextElement();
-                        if (!addr.isLoopbackAddress() && addr instanceof java.net.Inet4Address) {
-                            String host = addr.getHostAddress();
-                            if (host != null && (host.startsWith("192.168.") || host.startsWith("10."))) {
-                                return host;
-                            }
-                        }
-                    }
-                }
-            } catch (Exception ignored) {}
-            return wifiIp != null ? wifiIp : "<device-ip>";
-        } catch (Exception e) {
-            return "<device-ip>";
-        }
-    }
-
     private void updatePanelUrlDisplay() {
-        final String newIp = getWifiIp();
+        final String newIp = deviceStatus.getWifiIp();
         final String newUrl = "http://" + newIp + ":" + HttpServer.PORT + "/";
         currentPanelUrl = newUrl;
         if (panelLinkView != null) {
@@ -1212,216 +1146,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
     }
 
     // -- API dispatch ----------------------------------------------------------------
-
-    /**
-     * Routes "/api/<name>" calls to the matching Alpha2RobotApi method. Runs on an
-     * HttpServer worker thread (not the main thread) - every SDK call used here is safe
-     * to invoke off the main thread (the *ServiceUtil classes only marshal Binder calls),
-     * matching how the SDK's own AGENTS.md describes bind/call safety.
-     */
-    /**
-     * Small namespace ("/api/system/...") for things not tied to the robot AIDL
-     * surface itself.
-     */
-    private HttpServer.ApiResponse handleSystemApi(String path, Map<String, String> query, String method, String body) {
-        switch (path) {
-            // 一野搜齊機器資料（lynx 年代 sys/* 七連發的 pure-direct 版，一個回包齊晒，
-            // 慢 query 各 1.5s 上限）。電池版本字串本機胸固件無此命令，如實缺席；
-            // 電量/充電走 Android 系統廣播。
-            case "discover": {
-                String appVer = "?";
-                try {
-                    appVer = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-                } catch (Exception ignored) {
-                }
-                String chestFw;
-                try {
-                    chestFw = chestQuery.queryFirmwareVersion(1500);
-                } catch (Exception e) {
-                    chestFw = null;
-                }
-                String chestUuid;
-                try {
-                    chestUuid = chestQuery.queryRobotUuid(1500);
-                } catch (Exception e) {
-                    chestUuid = null;
-                }
-                int[] pose = ubxPlayer.pose();
-                StringBuilder sb = new StringBuilder("{\"ok\":true,");
-                sb.append("\"app\":{\"package\":\"").append(jsonSafe(getPackageName())).append("\",")
-                        .append("\"version\":\"").append(jsonSafe(appVer)).append("\",")
-                        .append("\"panel\":\"http://").append(jsonSafe(getWifiIp())).append(":")
-                        .append(HttpServer.PORT).append("/\"},");
-                sb.append("\"robot\":{\"chestFw\":").append(chestFw != null ? "\"" + jsonSafe(chestFw) + "\"" : "null").append(",")
-                        .append("\"chestUuid\":").append(chestUuid != null ? "\"" + jsonSafe(chestUuid) + "\"" : "null").append(",")
-                        .append("\"chestAvailable\":").append(directChestReady()).append(",")
-                        .append("\"headerAvailable\":").append(directHeaderReady()).append("},");
-                sb.append("\"power\":{\"level\":").append(deviceStatus.getBatteryLevel()).append(",")
-                        .append("\"scale\":").append(deviceStatus.getBatteryScale()).append(",")
-                        .append("\"charging\":").append(deviceStatus.isBatteryCharging()).append(",")
-                        .append("\"status\":\"").append(jsonSafe(deviceStatus.getBatteryStatus())).append("\"},");
-                sb.append("\"sensors\":{\"sonarCm\":").append(lastSonarDistanceCm).append(",")
-                        .append("\"sonarThresholdCm\":").append(sonarThresholdCm).append(",")
-                        .append("\"pir\":").append(lastPirTriggeredState).append("},");
-                sb.append("\"servo\":{\"poseKnown\":").append(pose != null);
-                if (pose != null) {
-                    sb.append(",\"angles\":[");
-                    for (int i = 0; i < 20; i++) {
-                        if (i > 0) sb.append(',');
-                        sb.append(pose[i]);
-                    }
-                    sb.append("]");
-                }
-                sb.append("}}");
-                return HttpServer.ApiResponse.ok(sb.toString());
-            }
-            // ---------------- 本地音樂播放 ----------------
-            // "/api/system/music/..." - 播放機身 SD 卡裡面 (/sdcard/Music 等) 已有的
-            // 音樂檔, 經由 MusicController (standard android.media.MediaPlayer,
-            // STREAM_MUSIC 由機器人喇叭輸出) 播放, 和 AIDL 機器人 API 完全無關,
-            // 所以放在 system 這個 namespace 底下, 和 camera/audio-testtone 那類
-            // 純硬體功能看齊。
-
-            case "music/list": {
-                java.util.List<MusicController.Track> tracks = musicController.listTracks();
-                StringBuilder sb = new StringBuilder();
-                sb.append("{\"ok\":true,\"tracks\":[");
-                for (int i = 0; i < tracks.size(); i++) {
-                    if (i > 0) sb.append(",");
-                    MusicController.Track t = tracks.get(i);
-                    sb.append("{\"path\":\"").append(jsonSafe(t.path)).append("\",")
-                      .append("\"name\":\"").append(jsonSafe(t.name)).append("\",")
-                      .append("\"sizeBytes\":").append(t.sizeBytes).append("}");
-                }
-                sb.append("]}");
-                return HttpServer.ApiResponse.ok(sb.toString());
-            }
-
-            case "music/play": {
-                String p = ApiValidator.require(query, "path");
-                String err = musicController.play(p);
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-
-            case "music/pause": {
-                String err = musicController.pause();
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-
-            case "music/resume": {
-                String err = musicController.resume();
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-
-            case "music/stop": {
-                String err = musicController.stop();
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-
-            case "music/seek": {
-                int ms = ApiValidator.requireInt(query, "ms");
-                String err = musicController.seekTo(ms);
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-
-            case "music/volume": {
-                int pct = ApiValidator.requireVolumePercent(query, "percent");
-                String err = musicController.setVolume(pct);
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-
-            case "music/status": {
-                MusicController.Status s = musicController.status();
-                return HttpServer.ApiResponse.ok("{\"ok\":true,"
-                        + "\"hasTrack\":" + s.hasTrack + ","
-                        + "\"playing\":" + s.playing + ","
-                        + "\"prepared\":" + s.prepared + ","
-                        + "\"path\":" + (s.path != null ? "\"" + jsonSafe(s.path) + "\"" : "null") + ","
-                        + "\"positionMs\":" + s.positionMs + ","
-                        + "\"durationMs\":" + s.durationMs + "}");
-            }
-
-            default:
-                return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
-                        "{\"ok\":false,\"error\":\"unknown system endpoint: " + path + "\"}");
-        }
-    }
-
-    private HttpServer.ApiResponse handleDirectApi(String path, Map<String, String> query, String method, String body) {
-        if (localServices == null) {
-            return HttpServer.ApiResponse.error("direct not initialized");
-        }
-        switch (path) {
-            case "status": {
-                boolean direct = localServices.isDirectActive();
-                boolean chest = false, head = false;
-                try { chest = localServices.isDirectActive() && com.ubtechinc.alpha.hardware.HardwareDirectManager.get(this).chest().isAvailable(); } catch (Exception ignore) {}
-                try { head = com.ubtechinc.alpha.hardware.HardwareDirectManager.get(this).head().isAvailable(); } catch (Exception ignore) {}
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"direct\":" + direct + ",\"chest\":" + chest + ",\"head\":" + head + "}");
-            }
-            case "servo/one": {
-                int id = ApiValidator.requireIntRange(query, "id", 1, 20);
-                int angle = ApiValidator.requireInt(query, "angle");
-                int time = ApiValidator.optionalInt(query, "time", 500);
-                // cmd05 在本机固件有 ACK 无动作，改走 cmd03 全帧（servoSendOne 内处理）。
-                return ubxApi.servoSendOne(id, angle, time);
-            }
-            case "servo/all": {
-                int[] arr = ApiValidator.requireAngles20(query);
-                for (int i = 0; i < 20; i++) arr[i] &= 0xFF;
-                int time = ApiValidator.optionalInt(query, "time", 500);
-                // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
-                boolean sent = HardwareDirectManager.get(this).chest().setAllServos(arr, (short) time);
-                if (!sent) return HttpServer.ApiResponse.error("direct not ready");
-                ubxPlayer.notePose(arr);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-            case "sonar/config": {
-                int cm = ApiValidator.requireInt(query, "distance");
-                boolean ok = com.ubtechinc.alpha.hardware.HardwareDirectManager.get(this).chest().configureSonar(cm);
-                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
-            }
-            case "led/head": {
-                int color = ApiValidator.optionalInt(query, "color", 3);
-                Integer modeOpt = ApiValidator.optionalInteger(query, "mode");
-                int mode = modeOpt != null ? modeOpt.intValue() : 0;
-                boolean ok = localServices.ledHead(color);
-                // also try direct with mode
-                if (modeOpt != null) ok = com.ubtechinc.alpha.hardware.DirectLedController.setHead5Mic(color, 9, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, mode);
-                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
-            }
-            case "led/off": {
-                boolean ok = localServices.ledOff();
-                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
-            }
-            case "led/mouth": {
-                int sp = ApiValidator.optionalInt(query, "breathe", 500);
-                boolean ok = localServices.ledMouthBreathe(sp);
-                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
-            }
-            // Ubx 直播（与 /api/alpha2/ubx/* 同 helper；抢占式：播新自动停旧）。
-            case "ubx/list":
-                return ubxApi.ubxListResponse();
-            case "ubx/play":
-                return ubxApi.ubxPlayResponse(ApiValidator.optionalNullable(query, "name"),
-                        ApiValidator.optionalNullable(query, "path"));
-            case "ubx/speed":
-                return ubxApi.ubxSpeedResponse(ApiValidator.require(query, "value"));
-            case "ubx/stop":
-                return ubxApi.ubxStopResponse();
-            case "ubx/status":
-                return ubxApi.ubxStatusResponse();
-            default:
-                return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
-                        "{\"ok\":false,\"error\":\"unknown direct endpoint: " + path + "\"}");
-        }
-    }
 
     // ---------------- 小智 (XiaoZhi) AI 對話 ----------------
     //
@@ -1557,30 +1281,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
             return audioCenter.handleMusicUpload(query, body);
         }
         if ("chest".equals(path)) {
-            return handleChestUpload(query, body);
+            return chestUpgrade.handleChestUpload(query, body);
         }
         return HttpServer.ApiResponse.error("Unknown upload path: " + path);
-    }
-
-    /** 胸板固件上載 - 接收 256KB 的 ALPHA2Q-CHEST-*.bin，寫入 /sdcard/AlphaII_CHEST_kernel.bin */
-    private HttpServer.ApiResponse handleChestUpload(Map<String, String> query, byte[] body) {
-        if (body == null || body.length == 0) {
-            return HttpServer.ApiResponse.error("empty file body");
-        }
-        if (body.length != 256 * 1024) {
-            // 仍允許寫入，但提示大小不正確
-            android.util.Log.w(TAG, "Chest upload size mismatch: " + body.length + " bytes, expected 262144");
-        }
-        try {
-            java.io.File dest = new java.io.File("/sdcard/AlphaII_CHEST_kernel.bin");
-            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(dest)) {
-                fos.write(body);
-            }
-            return HttpServer.ApiResponse.ok("{\"ok\":true,\"path\":\"" + dest.getAbsolutePath() + "\",\"sizeBytes\":" + body.length + "}");
-        } catch (Exception e) {
-            android.util.Log.w(TAG, "Chest upload failed", e);
-            return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + jsonSafe(String.valueOf(e.getMessage())) + "\"}");
-        }
     }
 
     // (音樂上載搬咗去 AudioCenter.handleMusicUpload。)
