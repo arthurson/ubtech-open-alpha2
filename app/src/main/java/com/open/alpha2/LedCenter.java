@@ -477,8 +477,8 @@ public final class LedCenter {
         return null;
     }
 
-    // directChestReady() 內聯：同 MainActivity 版一字不差，經 appContext
-    // 唔使 Activity (同上面 headerReady() 一樣形狀)。
+    // directChestReady() 內聯：經 appContext
+    // 唔使 Activity (同上面 headerReady() 一樣形狀；原 MainActivity 私有版 2026-09 刪)。
     private boolean directChestReady() {
         try {
             return HardwareDirectManager.get(appContext).chest().isAvailable();

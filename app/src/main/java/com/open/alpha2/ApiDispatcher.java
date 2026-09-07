@@ -100,7 +100,8 @@ public final class ApiDispatcher {
         this.sonarCenter = sonarCenter;
     }
 
-    // directChestReady() 內聯：同 MainActivity 版一字不差，經 appContext 唔使 Activity。
+    // directChestReady() 內聯：經 appContext 唔使 Activity（各 center 自帶副本；
+    // 原 MainActivity 私有版 2026-09 刪，零調用）。
     private boolean directChestReady() {
         try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
         catch (Exception e) { return false; }

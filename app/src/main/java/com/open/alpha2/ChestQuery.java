@@ -451,9 +451,10 @@ public final class ChestQuery {
      * 2026-09-06 晚新增：寫舵機 trim/偏差 (cmd 12)，官方 PC tuner 同款。
      * 發送 f8 8f 0a 05 00 0c &lt;id&gt; &lt;hi&gt; &lt;lo&gt; &lt;sum&gt; ed，
      * 阻塞等 MCU 回覆。
-     * @return TRUE = MCU 回 OK；FALSE = 該軸回 error／超時；null = 發送失敗。
-     * 注意寫入掉電保持（chest EEPROM）——調用方必須經用戶明確寫入動作。
-     * 此方法已保證不在主 thread。
+     * @return TRUE = MCU 回 OK；FALSE = 該軸回 error 幀（ definitive NAK，
+     * 如本機 5/6 號）；null = 超時／發送失敗（機身官方 service 爭食回覆 bytes
+     * 時常見，調用方應該重試）。注意寫入掉電保持（chest EEPROM）——調用方
+     * 必須經用戶明確寫入動作。此方法已保證不在主 thread。
      */
     public Boolean writeServoTrim(int id, int trim, long timeoutMs) {
         if (id < 1 || id > 20) return null;
@@ -482,13 +483,14 @@ public final class ChestQuery {
             boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
             if (!ok) {
                 Log.w(TAG, "writeServoTrim timeout id=" + id + " " + timeoutMs + "ms");
-                return Boolean.FALSE;
+                return null;
             }
             Log.i(TAG, "writeServoTrim id=" + id + " ack=" + trimOk);
-            return trimOk != null ? trimOk : Boolean.FALSE;
+            if (trimOk == null) return null;
+            return trimOk;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return Boolean.FALSE;
+            return null;
         } finally {
             trimLatch = null;
         }

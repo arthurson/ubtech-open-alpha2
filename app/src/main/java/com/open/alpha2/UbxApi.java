@@ -207,7 +207,8 @@ public final class UbxApi {
     }
 
     // -- Servo endpoint 回應層 (2026-09 dispatcher Phase 1 第二刀由 handleApi 搬入) --
-    // directChestReady() 內聯：同 MainActivity 版一字不差，經 appContext 唔使 Activity。
+    // directChestReady() 內聯：經 appContext 唔使 Activity（各 center 自帶副本；
+    // 原 MainActivity 私有版 2026-09 刪，零調用）。
     private boolean directChestReady() {
         try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
         catch (Exception e) { return false; }
@@ -323,15 +324,15 @@ public final class UbxApi {
     }
 
     /**
-     * 帶重試的 trim 寫入（2 次 × 250ms）。回 TRUE/FALSE（ACK 語意），
-     * 發送失敗回 null。
+     * 帶重試的 trim 寫入（3 次 × 250ms，與實讀同級——官方 service 爭食回覆
+     * bytes 時超時常見）。回 TRUE/FALSE（ACK 語意）；全部超時／發送失敗回 null。
      */
     private Boolean writeServoTrimLive(int id, int trim) {
         if (chestQuery == null || !directChestReady()) return null;
-        for (int attempt = 0; attempt < 2; attempt++) {
+        for (int attempt = 0; attempt < 3; attempt++) {
             Boolean r = chestQuery.writeServoTrim(id, trim, 250);
             if (r != null) return r;
-            if (attempt == 1) break;
+            if (attempt == 2) break;
             try { Thread.sleep(30); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
         }
         return null;

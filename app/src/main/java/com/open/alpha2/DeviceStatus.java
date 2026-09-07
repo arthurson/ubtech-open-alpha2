@@ -286,7 +286,8 @@ public final class DeviceStatus implements SensorEventListener {
     }
 
     // -- 健康狀態聚合 (2026-09 dispatcher Phase 1 第七刀由 handleApi status 搬入) --
-    // chest/header readiness 內聯：同 MainActivity 版一字不差，經 appContext 唔使 Activity。
+    // chest/header readiness 內聯：經 appContext 唔使 Activity（各 center 自帶副本；
+    // 原 MainActivity 私有版 2026-09 刪，零調用）。
     private boolean directChestReady() {
         try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
         catch (Exception e) { return false; }

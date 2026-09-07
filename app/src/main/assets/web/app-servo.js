@@ -378,7 +378,7 @@ function buildAdvTuner() {
       '<div style="font-weight:600;font-size:12px">#' + id + ' ' + name + '</div>' +
       '<div style="font-size:11px;color:var(--muted)">' + t('servo_tuner_range') + ' ' + cal.min + '-' + cal.max + ' home ' + cal.home + '</div>' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;font-size:12px">' +
-        '<span>' + t('servo_tuner_angle') + ' <input type="number" id="advServoVal_' + id + '" value="' + cal.home + '" min="' + cal.min + '" max="' + cal.max + '" style="width:60px" onkeydown="if(event.key===\'Enter\'){advTunerSend(' + id + ');}"></span>' +
+        '<span>' + t('servo_tuner_angle') + ' <input type="number" id="advServoVal_' + id + '" value="' + cal.home + '" min="' + cal.min + '" max="' + cal.max + '" style="width:60px" onkeydown="if(event.key===\'Enter\'){advTunerSend(' + id + ', true);}"></span>' +
         '<span>' + t('servo_tuner_offset') + ' <span id="advServoOff_' + id + '" style="font-weight:600">-</span></span>' +
       '</div>' +
         '<div style="margin:4px 0"><button onmousedown="advHoldStart(' + id + ',1)" onmouseup="advHoldStop()" onmouseleave="advHoldStop()" ontouchstart="advHoldStart(' + id + ',1)" ontouchend="advHoldStop()" onclick="advTunerInc(' + id + ')" style="width:100%;padding:6px;background:#16a34a;color:white;border:none;border-radius:6px;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none">+1</button></div>' +
@@ -392,11 +392,15 @@ function buildAdvTuner() {
   grid.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   grid.addEventListener('selectstart', function(e){ e.preventDefault(); });
   for (let i = 1; i <= 20; i++) advRefreshOffComputed(i);
+  advTrimScanned = {};
   // 版本標記：驗瀏覽器有無食舊 JS（見唔到呢行即係 cache 緊舊版，做 Ctrl+F5）。
   const statusEl = document.getElementById("advTunerStatus");
-  if (statusEl) statusEl.textContent = "tuner 0906e 就緒（offset 即時 = 格內值±3×角度變化，掃描讀 chest 存值）";
+  if (statusEl) statusEl.textContent = "tuner 0906f 就緒（加減淨郁角度；Enter 寫入連掃描過嘅 trim；掃描讀 chest 存值）";
 }
 let advPrevAngle = {};
+// 本 session 掃描／還原過 trim 的 id：Enter 寫入只跟呢啲去存 EEPROM，
+// 唔會用新頁計出嚟嘅數覆蓋出廠 trim（官方工具連線即讀，永遠有 baseline）。
+let advTrimScanned = {};
 function advTunerToggle(){
   const en = document.getElementById("advTunerEnabled").checked;
   document.getElementById("advTunerBody").style.display = en ? "block" : "none";
@@ -442,7 +446,16 @@ function advNudgeOff(id, deltaAngle) {
   if (isNaN(cur)) { advRefreshOffComputed(id); return; }
   el.textContent = advFmtOff(cur + deltaAngle * 3) + " (即時)";
 }
-function advTunerSend(id) {
+function advTunerSend(id, withTrim, timeMs) {
+  // 2026-09-06 晚（官方 ServoCalibration 流程定案）：
+  // - 加減（withTrim=false）：淨送角度 cmd05，time=100ms（官方 drag 同值，
+  //   貼手跟；舊 500ms 會同 120ms 連發疊 glide 變慢半拍）。offset 格照 ±3 跟
+  //   （pending，不存入 chest）。
+  // - 輸入格 Enter（withTrim=true）：tune 完明確寫入，角度 + 格內 trim 經 cmd12
+  //   存入 chest EEPROM（官方「校准」掣同款）。trim 只喺本 session 掃描／還原
+  //   過先跟去——新頁未掃描就淨寫角度，唔會用計出嚟嘅數覆蓋出廠 trim。
+  if (withTrim === undefined) withTrim = false;
+  if (timeMs === undefined || timeMs === null) timeMs = advServoTime();
   const inp = document.getElementById("advServoVal_" + id);
   let v = parseInt(inp.value, 10);
   v = clampServoAngle(id, isNaN(v) ? SERVO_CALIBRATION[id].home : v);
@@ -453,20 +466,21 @@ function advTunerSend(id) {
   if (delta !== 0) advNudgeOff(id, delta);
   const statusEl = document.getElementById("advTunerStatus");
   statusEl.textContent = "寫入 #" + id + " -> " + v + "...";
-  // 2026-09-06 晚：連 offset 格個 trim 一齊寫入 chest EEPROM（官方 tuner 同款；
-  // 格內無數就淨寫角度）。掉電保持，寫之前最好先備份。
   let trim = null;
-  const offEl = document.getElementById("advServoOff_" + id);
-  if (offEl) {
-    const t = parseInt(offEl.textContent, 10);
-    if (!isNaN(t)) trim = t;
+  if (withTrim && advTrimScanned[id]) {
+    const offEl = document.getElementById("advServoOff_" + id);
+    if (offEl) {
+      const t = parseInt(offEl.textContent, 10);
+      if (!isNaN(t)) trim = t;
+    }
   }
-  const params = { id: id, angle: v, time: advServoTime() };
+  const params = { id: id, angle: v, time: timeMs };
   if (trim !== null) params.trim = trim;
   return Alpha2Api.servoOne(params).then(function(json){
     if (json.ok) {
       let msg = "寫入 #" + id + " 成功 (" + v + ")";
       if (trim !== null) msg += json.trimWritten ? "，trim " + advFmtOff(trim) + " 已存" : "，trim 寫入失敗";
+      else if (withTrim) msg += "（trim 未掃描，只寫角度）";
       statusEl.textContent = msg;
     }
     else statusEl.textContent = "寫入 #" + id + " 失敗: " + (json.error || JSON.stringify(json));
@@ -478,14 +492,14 @@ function advTunerInc(id) {
   let v = parseInt(inp.value, 10) || SERVO_CALIBRATION[id].home;
   v = clampServoAngle(id, v + 1);
   inp.value = v;
-  return advTunerSend(id);
+  return advTunerSend(id, false, 100);
 }
 function advTunerDec(id) {
   const inp = document.getElementById("advServoVal_" + id);
   let v = parseInt(inp.value, 10) || SERVO_CALIBRATION[id].home;
   v = clampServoAngle(id, v - 1);
   inp.value = v;
-  return advTunerSend(id);
+  return advTunerSend(id, false, 100);
 }
 function advTunerRead(id) {
   const statusEl = document.getElementById("advTunerStatus");
@@ -495,6 +509,7 @@ function advTunerRead(id) {
     // angle 輸入格唔郁（trim 唔係絕對角度）。讀唔到顯示讀失敗。
     if (json.ok && json.live && json.trim !== undefined && json.trim !== null) {
       document.getElementById("advServoOff_" + id).textContent = advFmtOff(json.trim) + " (實讀)";
+      advTrimScanned[id] = true;
       statusEl.textContent = "#" + id + " trim " + advFmtOff(json.trim);
     } else {
       document.getElementById("advServoOff_" + id).textContent = "讀失敗";
@@ -518,6 +533,7 @@ function advTunerReadAll() {
       } else {
         okCount++;
         document.getElementById("advServoOff_" + i).textContent = advFmtOff(v) + " (實讀)";
+        advTrimScanned[i] = true;
       }
     }
     const fails = (json.failed && json.failed.length) ? "，無回授: #" + json.failed.join(",#") : "";
@@ -671,6 +687,7 @@ function advImport(input) {
           const el = document.getElementById("advServoOff_" + i);
           if (el) {
             el.textContent = (num > 0 ? "+" + num : String(num));
+            advTrimScanned[i] = true;
             countOff++;
           }
           // if angles not supplied, sync prevAngle to current input so後續 delta 正確

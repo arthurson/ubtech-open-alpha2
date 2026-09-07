@@ -3,7 +3,6 @@ package com.open.alpha2;
 import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
-import android.bluetooth.BluetoothAdapter;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -16,10 +15,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Build;
-import android.speech.tts.TextToSpeech;
-import android.speech.tts.UtteranceProgressListener;
-import android.speech.tts.Voice;
-import android.text.format.Formatter;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
@@ -30,27 +25,17 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.ubtechinc.alpha.hardware.DirectLedController;
-import com.ubtechinc.alpha.hardware.RobotWire;import com.ubtechinc.alpha.jni.LedControl;
+// 2026-09 刪除 dead imports (拆分完成後零引用，各自正本：bluetooth＋Formatter→
+// DeviceStatus，tts trio→TtsCenter，DirectLedController／LedControl／
+// MouthLedData→LedCenter，UbxFile／UbxParser→ActionDirect，collections／
+// Locale／json→各 center；Build 留低係 Vosk 熔斷仲用緊)。
+import com.ubtechinc.alpha.hardware.RobotWire;
 import com.ubtechinc.alpha.hardware.HardwareDirectManager;
 import com.ubtechinc.alpha.hardware.LocalAlpha2Services;
-import com.ubtechinc.alpha.hardware.MouthLedData;
-import com.ubtechinc.alpha.hardware.ubx.UbxFile;
-import com.ubtechinc.alpha.hardware.ubx.UbxParser;
 import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
 import java.nio.charset.StandardCharsets;
-import org.json.JSONException;
-import org.json.JSONObject;
 
 /**
  * Single-activity host for the Open Alpha2 robot panel.
@@ -309,11 +294,20 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // sticky broadcast 註冊時機唔敏感；原 onCreate 開頭喰次 register 搬团度 (起好先叫得)。
         deviceStatus.registerBatteryReceiver();
         cameraApi = new CameraApi(this, cameraController, ringtoneCenter);
+        // Sonar＋PIR sensors 包：淨要 ledCenter (紫燈指示)，喺 xiaozhiBridge 之前起——
+        // MCP sensors 4 tool 經 ctor 拎佢 (2026-09 MCP 收斂；斷 cycle：PIR 推送
+        // uplink 經下面 setUplink 後補，見 SonarCenter javadoc 縫設計)。
+        sonarCenter = new SonarCenter(this, ledCenter);
         // 小智包 (HTTP API/mic/activation/vision/MCP/mute 鍵開關)：collaborator 齊喺呢度起。
         // xiaozhiClient/xiaozhiAudioController/xiaozhiConfig 由佢擁有 (原 onCreate 頭段嗰兩次建構搬入 ctor)。
         // 起喺 voskApi 之前——voskStart() 後開搶 mic 要經佢。
+        // (sonarCenter 放最尾傳入；MCP 收斂，呢度起好先叫得。)
         xiaozhiBridge = new XiaozhiBridge(this, mainHandler, actionDirect, audioCenter,
-                robot, ttsCenter, vosk, cameraController, ledCenter, this);
+                robot, ttsCenter, vosk, cameraController, ledCenter, this, sonarCenter);
+        // PIR 推送 uplink 後補 (同一個 onCreate thread，httpServer 起之前一定到；
+        // 未補前嘅 PIR edge 照存 state、push 跳過——窗口得幾行，比以前
+        // registerDynamicReceiver→sonarCenter 更窄)。
+        sonarCenter.setUplink(xiaozhiBridge);
         micCenter = new MicCenter(robot, ledCenter, audioController, audioPlaybackController, this);
         // (apiDispatcher 嗰次一齊傳入；呢度起好先叫得。)
         // 手勢包 (head pad + 音量連發 + 雙鍵總停)：actionDirect/audioCenter 齊喺呢度起 (initRobot 之後)。
@@ -327,13 +321,12 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // TTS orchestration 包 (speech/tts＋stop＋總停)：要 xiaozhiBridge
         // (經 stopSpeechPlayback 停小智管道)，放 voskApi 之後、dispatcher 之前。
         speechCenter = new SpeechCenter(robot, ttsCenter, vosk, xiaozhiBridge);
-        // Sonar＋PIR sensors 包：要 ledCenter (紫燈指示)＋xiaozhiBridge
-        // (PIR 事件推送)，放 speechCenter 之後、dispatcher 之前。
-        sonarCenter = new SonarCenter(this, ledCenter, xiaozhiBridge);
+        // (sonarCenter 已喺上面 xiaozhiBridge 之前起好——MCP 收斂施工順序；
+        // dispatcher 照舊放最尾。)
         // dispatcher 包晒上面全部 controller (+speechCenter 做 Host；sensorState
-        // 繼續經 this——TTS／sonar 全部轉交緊對應 center；servo/sonar 直調下面
+        // 繼續經 this——TTS／sonar 全部轉交緊對應 center；servo/sonar 直調
         // sonarCenter)。
-        // 放最尾——要等齊所有 collaborator (上面 sonarCenter 最遲)。
+        // 放最尾——要等齊所有 collaborator (上面 speechCenter 最遲)。
         apiDispatcher = new ApiDispatcher(this, speechCenter, this, actionDirect, ubxApi, chestQuery,
                 chestUpgrade, ttsCenter, voskApi, ledCenter, semanticCenter, deviceStatus,
                 cameraApi, audioCenter, ringtoneCenter, micCenter, robot, grammarCenter,

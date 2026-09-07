@@ -21,9 +21,11 @@ import java.util.Map;
  * 邏輯一字不改搬過嚟（機械改寫只限：包可見 helper 加 MainActivity. 前綴、
  * instance readiness 內聯經 appContext、跨域讀寫經下面 HostState）。
  * 擁有關係：
- * - MainActivity 只留：implements HostState（TTS 兩法轉交 SpeechCenter、
- *   sonar 四法一行一個）、接線
+ * - MainActivity 只留：implements HostState（TTS 兩法＋sonar 四法，轉交緊
+ *   SpeechCenter／SonarCenter）、接線
  *   （onCreate 建構、onDestroy shutdown()、router 轉發、PIR/mute key 兩個硬件入口）。
+ *   呢度 sonar state 唔再經 HostState——MCP sensors 4 tool（2026-09 收斂）
+ *   經下面 sonarCenter 直調 SonarCenter。
  * - xiaozhiClient/xiaozhiAudioController/xiaozhiConfig 全部由呢度擁有
  *   （前兩者之前係 MainActivity field，後者之前喺 onCreate 起）。
  * - stopAllSpeechPlayback() 搬咗去 SpeechCenter（TTS core 第一刀，跨域
@@ -40,10 +42,9 @@ public final class XiaozhiBridge {
     private static final String TAG = "XiaozhiBridge";
 
     /**
-     * 宿主縫：TTS／sonar state，搬過嚟嘅碼經呢度讀寫。
-     * 由 MainActivity 實現：TTS 兩法轉交 SpeechCenter（TTS core 第一刀），
-     * sonar 四法轉交 SonarCenter（Sonar 第一刀；MCP 4 tool 經呢度照讀，
-     * 收斂到 SonarCenter 將來先做）。
+     * 宿主縫：TTS state（enforcer＋gap 計時經呢度讀）。sonar state 唔再經呢度——
+     * MCP sensors 4 tool（2026-09 收斂）經上面 sonarCenter 直調 SonarCenter。
+     * 由 MainActivity 實現。
      */
     public interface HostState {
         boolean isRobotTtsSpeaking();
@@ -64,11 +65,14 @@ public final class XiaozhiBridge {
     private final CameraController cameraController;
     private final LedCenter ledCenter;
     private final HostState hostState;
+    // 2026-09 MCP 收斂加：sensors 4 tool 經呢度直調 (放最尾，慣例)。
+    private final SonarCenter sonarCenter;
     private XiaozhiConfig xiaozhiConfig;
 
     public XiaozhiBridge(Context context, Handler mainHandler, ActionDirect actionDirect,
             AudioCenter audioCenter, RobotStub robot, TtsCenter ttsCenter, VoskController vosk,
-            CameraController cameraController, LedCenter ledCenter, HostState hostState) {
+            CameraController cameraController, LedCenter ledCenter, HostState hostState,
+            SonarCenter sonarCenter) {
         this.appContext = context.getApplicationContext();
         this.mainHandler = mainHandler;
         this.actionDirect = actionDirect;
@@ -79,6 +83,7 @@ public final class XiaozhiBridge {
         this.cameraController = cameraController;
         this.ledCenter = ledCenter;
         this.hostState = hostState;
+        this.sonarCenter = sonarCenter;
         // 小智設定層 (含 TTS 引擎讀取+舊值遷移) 喺呢度建構 (原 MainActivity.onCreate 起嗰次)。
         this.xiaozhiConfig = new XiaozhiConfig(context);
         // device id 讀 prefs (原 onCreate 嗰次 new XiaozhiClient(getXiaozhiDeviceId()))。
@@ -132,8 +137,8 @@ public final class XiaozhiBridge {
         }
     }
 
-    // directChestReady/directHeaderReady 內聯：同 MainActivity 版一字不差，
-    // 經 appContext 唔使 Activity (同 UbxApi/LedCenter/ChestQuery 一樣做法)。
+    // directChestReady/directHeaderReady 內聯：經 appContext 唔使 Activity
+    // (各 center 自帶副本；原 MainActivity 私有版 2026-09 刪，零調用)。
     private boolean directChestReady() {
         try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
         catch (Exception e) { return false; }
@@ -2318,46 +2323,29 @@ public final class XiaozhiBridge {
                             resultText = "ok=" + ok;
                             break;
                         }
+                        // sensors 4 tool 本體喺 SonarCenter (2026-09 MCP 收斂)；薄 delegate。
                         case "self.sensors.get_pir": {
-                            int state = hostState.getPirTriggeredState();
-                            String stateStr = state < 0 ? "unknown" : (state == 1 ? "triggered" : "clear");
-                            resultText = "{\"state\":\"" + stateStr + "\"}";
+                            SonarCenter.McpResult r = sonarCenter.mcpGetPir();
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.sensors.set_pir_enabled": {
-                            if (!arguments.has("enabled")) {
-                                isError = true;
-                                resultText = "enabled is required";
-                                break;
-                            }
-                            boolean enabled = arguments.optBoolean("enabled");
-                            // pure-direct: 经 /dev/ttyS1 直发 cmd 72。
-                            boolean sent = HardwareDirectManager.get(appContext).chest().setPirEnabled(enabled);
-                            UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
-                            boolean ready = directChestReady();
-                            isError = !MainActivity.isOk(code) || !ready;
-                            resultText = String.valueOf(code) + " (chestReady=" + ready + ")";
+                            SonarCenter.McpResult r = sonarCenter.mcpSetPirEnabled(arguments);
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.sensors.get_sonar": {
-                            resultText = "{\"distance_cm\":" + hostState.getSonarDistanceCm()
-                                     + ",\"threshold_cm\":" + hostState.getSonarThreshold() + "}";
+                            SonarCenter.McpResult r = sonarCenter.mcpGetSonar();
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.sensors.set_sonar_threshold": {
-                            if (!arguments.has("distance_cm")) {
-                                isError = true;
-                                resultText = "distance_cm is required";
-                                break;
-                            }
-                            int distanceCm = arguments.optInt("distance_cm");
-                            hostState.applySonarThreshold(distanceCm);
-                            // pure-direct: 经 /dev/ttyS1 直发 cmd 4。
-                            boolean sent = HardwareDirectManager.get(appContext).chest().configureSonar(distanceCm);
-                            UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
-                            boolean ready = directChestReady();
-                            isError = !MainActivity.isOk(code) || !ready;
-                            resultText = String.valueOf(code) + " (chestReady=" + ready + ")";
+                            SonarCenter.McpResult r = sonarCenter.mcpSetSonarThreshold(arguments);
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
 

@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * Sonar＋PIR sensors 包：threshold state、讀數 cache、事件入口、紫燈指示、
- * servo/sonar 端點。
+ * servo/sonar 端點、MCP sensors 4 tool 本體。
  *
  * 2026-09 由 MainActivity＋ApiDispatcher 抽出 (Sonar 第一刀)：sonarThresholdCm／
  * sonarLedActive／lastSonarDistanceCm／lastPirTriggeredState、onPirStateReceived()、
@@ -16,12 +16,16 @@ import java.util.Map;
  * 邏輯一字不改搬過嚟（機械改寫只限：codeResponseReady/directCode 加 MainActivity.
  * 前綴、directChestReady 內聯經 appContext——同 UbxApi/LedCenter/ChestQuery／
  * ApiDispatcher 一樣做法）。
+ * 2026-09 MCP 收斂 (Sonar 第二刀)：XiaozhiBridge callTool switch 嗰 4 個
+ * self.sensors.* case 本體搬入下面 mcp*()（isError＋resultText 經 McpResult
+ * 帶返出去，validation 先行、硬件直發 verbatim）。
  * 擁有關係：
  * - MainActivity 只留：static 縫（getSonarThresholdCm／onSonarDistanceReceived／
  *   onPirStateReceived 轉交呢度，簽名不變）、implements XiaozhiBridge.HostState
- *   其中 sonar 四法轉交呢度、接線（onCreate 建構、ApiDispatcher 加 param 直調）。
+ *   其中 sonar 四法轉交呢度、接線（onCreate 建構＋setUplink、ApiDispatcher 直調）。
  * - ApiDispatcher servo/sonar case 經下面 servoSonarResponse() 直調（ctor 尾加
  *   param，慣例）。
+ * - XiaozhiBridge MCP 4 tool 經下面 mcp*() 直調（ctor 尾加 param，慣例）。
  * - RobotEventReceiver 零改動（繼續叫 MainActivity static 縫）。
  *
  * 縫設計（同 TTS core 第一刀一樣題目）：
@@ -30,16 +34,18 @@ import java.util.Map;
  *   05 00 頭＋壞舵機短幀——嗰區一隻字唔郁，call site 行緊嘅 static 簽名不變）。
  *   所以 MainActivity 繼續做 static＋HostState 提供者，全部轉交呢度
  *   （null-guard：onCreate 同一 thread 先後建構；destroy 窗口預設 30／no-op 安全）。
- * - PIR push 要 xiaozhiBridge（isConnected＋sendDetectText）——ctor 直接收
- *   XiaozhiBridge collaborator（同 SpeechCenter 收法一致），建構放 xiaozhiBridge
- *   之後、dispatcher 之前，單向無循環（XiaozhiBridge 唔拎呢度）。
+ * - 斷 cycle（MCP 收斂）：呢度建構只收 (Context, LedCenter)，起喺 xiaozhiBridge
+ *   之前；PIR 推送要嘅 XiaozhiBridge 經 setUplink() 後補（同一個 onCreate
+ *   thread；未補前嘅 PIR edge 照存 state、push 跳過——窗口得幾行，比以前
+ *   registerDynamicReceiver→sonarCenter 更窄）。XiaozhiBridge 反過來經 ctor
+ *   拎呢度（final，唔使 guard）——類層面互指（Java 合法），施工順序經 setter
+ *   解開，運行時無循環初始化問題。
  *
  * 未驗／跟進（行為照搬，唔改）：
  * - PIR 真觸發要人喺機側驗（-109 broadcast／push thread E2E）；離線可驗：
  *   system/discover sensors 三值（經 HostState delegate）、servo/sonar 缺參 400。
- * - MCP 4 tool（self.sensors.get_pir／set_pir_enabled／get_sonar／
- *   set_sonar_threshold）留喺 XiaozhiBridge——經 HostState 讀緊呢度 state，
- *   行為不變；收斂到呢度要解 XiaozhiBridge↔SonarCenter 雙向引用，將來先做。
+ * - MCP 4 tool 本體已收斂入下面 mcp*()；E2E 要上線先驗到（callTool 經小智
+ *   websocket 觸發，無 HTTP 直調路；寫路徑唔打真值）。
  * - direct/sonar/config（DirectApi）直發 configureSonar 唔經 applySonarThreshold，
  *   threshold cache 會滯後——舊行為照搬，唔喺呢刀改（改即係行為變更）。
  */
@@ -48,16 +54,24 @@ public final class SonarCenter {
 
     private final Context appContext;
     private final LedCenter ledCenter;
-    private final XiaozhiBridge xiaozhiBridge; // PIR 事件推送經 isConnected＋sendDetectText
+    // PIR 事件推送經 isConnected＋sendDetectText——經 setUplink() 後補（斷 cycle
+    // 用，見上面縫設計；volatile 保證 onCreate thread 寫入對 broadcast／HTTP
+    // thread 可見）。未補前 null：state 照存，push 跳過。
+    private volatile XiaozhiBridge uplink;
 
-    public SonarCenter(Context context, LedCenter ledCenter, XiaozhiBridge xiaozhiBridge) {
+    public SonarCenter(Context context, LedCenter ledCenter) {
         this.appContext = context.getApplicationContext();
         this.ledCenter = ledCenter;
-        this.xiaozhiBridge = xiaozhiBridge;
     }
 
-    // directChestReady() 內聯：同 MainActivity／ApiDispatcher 版一字不差，
-    // 經 appContext 唔使 Activity。
+    /** onCreate 接線用：補 PIR 推送 uplink（必喺 xiaozhiBridge 建構之後、同一個
+     *  thread；httpServer 起之前一定到，request 入唔到嚟先嘅窗口）。 */
+    public void setUplink(XiaozhiBridge uplink) {
+        this.uplink = uplink;
+    }
+
+    // directChestReady() 內聯：經 appContext 唔使 Activity（同 ApiDispatcher
+    // 一樣做法；原 MainActivity 私有版 2026-09 刪，零調用）。
     private boolean directChestReady() {
         try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
         catch (Exception e) { return false; }
@@ -140,13 +154,14 @@ public final class SonarCenter {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                if (xiaozhiBridge == null || !xiaozhiBridge.isConnected()) {
+                final XiaozhiBridge up = uplink; // volatile 一次讀快照，未 setUplink 跳過
+                if (up == null || !up.isConnected()) {
                     return;
                 }
                 String text = triggered
                         ? "[系統事件] PIR 人體感應器偵測到有人在附近。"
                         : "[系統事件] PIR 人體感應器偵測不到人在附近了。";
-                String err = xiaozhiBridge.sendDetectText(text);
+                String err = up.sendDetectText(text);
                 if (err != null) {
                     android.util.Log.w("XiaozhiPir", "failed to push PIR event to XiaoZhi: " + err);
                 }
@@ -212,5 +227,65 @@ public final class SonarCenter {
         applySonarThreshold(distanceCm);
         boolean sent = HardwareDirectManager.get(appContext).chest().configureSonar(distanceCm);
         return MainActivity.codeResponseReady(MainActivity.directCode(sent), directChestReady());
+    }
+
+    // -- MCP tools (XiaozhiBridge callTool switch 轉調；2026-09 MCP 收斂，
+    // case 本體逐字搬入，isError＋resultText 經下面 McpResult 帶返出去) --
+
+    /** MCP tool 共用回包：對應 XiaozhiBridge callTool switch 嗰兩個 local
+     *  (isError/resultText)，經下面 mcp*() 帶返出去。 */
+    public static final class McpResult {
+        public final boolean isError;
+        public final String resultText;
+        McpResult(boolean isError, String resultText) {
+            this.isError = isError;
+            this.resultText = resultText;
+        }
+        static McpResult ok(String resultText) { return new McpResult(false, resultText); }
+        static McpResult err(String resultText) { return new McpResult(true, resultText); }
+    }
+
+    /** self.sensors.get_pir 本體 (XiaozhiBridge 轉調)。純讀，唔掂硬件。 */
+    public McpResult mcpGetPir() {
+        int state = getPirTriggeredState();
+        String stateStr = state < 0 ? "unknown" : (state == 1 ? "triggered" : "clear");
+        return McpResult.ok("{\"state\":\"" + stateStr + "\"}");
+    }
+
+    /** self.sensors.set_pir_enabled 本體 (XiaozhiBridge 轉調)。
+     *  pure-direct: 经 /dev/ttyS1 直发 cmd 72。 */
+    public McpResult mcpSetPirEnabled(org.json.JSONObject arguments) {
+        if (!arguments.has("enabled")) {
+            return McpResult.err("enabled is required");
+        }
+        boolean enabled = arguments.optBoolean("enabled");
+        // pure-direct: 经 /dev/ttyS1 直发 cmd 72。
+        boolean sent = HardwareDirectManager.get(appContext).chest().setPirEnabled(enabled);
+        UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
+        boolean ready = directChestReady();
+        return new McpResult(!MainActivity.isOk(code) || !ready,
+                String.valueOf(code) + " (chestReady=" + ready + ")");
+    }
+
+    /** self.sensors.get_sonar 本體 (XiaozhiBridge 轉調)。純讀，唔掂硬件。 */
+    public McpResult mcpGetSonar() {
+        return McpResult.ok("{\"distance_cm\":" + getSonarDistanceCm()
+                + ",\"threshold_cm\":" + getSonarThreshold() + "}");
+    }
+
+    /** self.sensors.set_sonar_threshold 本體 (XiaozhiBridge 轉調)。
+     *  pure-direct: 经 /dev/ttyS1 直发 cmd 4。 */
+    public McpResult mcpSetSonarThreshold(org.json.JSONObject arguments) {
+        if (!arguments.has("distance_cm")) {
+            return McpResult.err("distance_cm is required");
+        }
+        int distanceCm = arguments.optInt("distance_cm");
+        applySonarThreshold(distanceCm);
+        // pure-direct: 经 /dev/ttyS1 直发 cmd 4。
+        boolean sent = HardwareDirectManager.get(appContext).chest().configureSonar(distanceCm);
+        UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
+        boolean ready = directChestReady();
+        return new McpResult(!MainActivity.isOk(code) || !ready,
+                String.valueOf(code) + " (chestReady=" + ready + ")");
     }
 }
