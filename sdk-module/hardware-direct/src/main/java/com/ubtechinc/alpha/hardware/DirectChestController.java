@@ -45,9 +45,10 @@ public final class DirectChestController {
     }
 
     /**
-     * 全舵機 20 個角度。注意：本机胸固件只执行 <b>cmd 3</b>（dance 通道）——
-     * cmd 52 有 ACK 但舵机不动（真机多人眼确认），故此处直接发 cmd 3，
-     * 调用方“摆全组位姿”语义不变。位姿追踪见 {@link ServoPoseTracker}。
+     * 全舵機 20 個角度。注意：cmd 52 有 ACK 但舵机不动（旧实测），故播放/全组
+     * 位姿一律走 cmd 3（dance 通道，a.m 私有发送原文）。單舵機微調則走 cmd 5
+     *（setSingleServo，2026-09-06 官方 PC tuner 實測可郁，用戶目視確認）。
+     * 位姿追踪见 {@link ServoPoseTracker}。
      */
     public boolean setAllServos(int[] angles20, short time) {
         return playAllServos(angles20, time);
@@ -71,6 +72,21 @@ public final class DirectChestController {
     /** 讀舵機角度 (cmd 13) - 回幀走 OnFrameListener 解析 */
     public boolean readServo(byte servoId) {
         return port.send((byte) 13, new byte[]{servoId});
+    }
+
+    /**
+     * 寫舵機 trim/偏差 (cmd 12, param [id][BE16 signed])。2026-09-06 官方 PC
+     * tuner 實測還原：editor 約每分鐘自動全組寫一次，值≈3×(命令角度−home)；
+     * 回覆 {@code 09 05 00 0c 00 <id>} = OK，{@code 01 <id>} = 該軸無回授。
+     * 寫入掉電保持（官方寫入值橫跨多次重啟照讀返，見 2026-09-06 分析），即
+     * chest EEPROM——亂寫會改出廠校準，調用方須經用戶明確寫入動作先好 call。
+     */
+    public boolean writeServoTrim(byte servoId, int trim) {
+        if (servoId < 1 || servoId > 20) return false;
+        if (trim < -32768) trim = -32768;
+        if (trim > 32767) trim = 32767;
+        byte[] p = new byte[]{(byte) servoId, (byte) ((trim >> 8) & 0xFF), (byte) (trim & 0xFF)};
+        return port.send((byte) 12, p);
     }
 
     /** 讀胸板固件版本 cmd 51 */

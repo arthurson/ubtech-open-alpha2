@@ -14,7 +14,7 @@ import java.util.Map;
  * Ubx 直播 + 單舵機直驅共用實現。
  *
  * 2026-09 由 MainActivity 抽出 (拆 god object 第三刀)：/api/direct/ubx/* 與
- * /api/alpha2/ubx/* 兩套路由調同一批 helper，加上 servo 單顆 cmd03 化，
+ * /api/alpha2/ubx/* 兩套路由調同一批 helper，加上 servo 單顆 cmd05 直發，
  * 邏輯一字不改搬過嚟。和 ActionDirect 一樣，共用 MainActivity 傳入的同一個
  * UbxPlayer 實例；最近播放檔經 ActionDirect 存取。
  * 2026-09 dispatcher Phase 1 第二刀加：servo/one、servo/all、servo/read、
@@ -27,11 +27,13 @@ public final class UbxApi {
     private final Context appContext;
     private final UbxPlayer ubxPlayer;
     private final ActionDirect actionDirect;
+    private final ChestQuery chestQuery;
 
-    public UbxApi(Context context, UbxPlayer ubxPlayer, ActionDirect actionDirect) {
+    public UbxApi(Context context, UbxPlayer ubxPlayer, ActionDirect actionDirect, ChestQuery chestQuery) {
         this.appContext = context.getApplicationContext();
         this.ubxPlayer = ubxPlayer;
         this.actionDirect = actionDirect;
+        this.chestQuery = chestQuery;
     }
 
     public HttpServer.ApiResponse ubxListResponse() {
@@ -107,17 +109,27 @@ public final class UbxApi {
         return HttpServer.ApiResponse.ok(ubxPlayer.statusJson());
     }
 
-    // -- Servo 命令位姿（cmd03 化）--------------------------------------------------
-    // 本机胸固件只执行 cmd 3：单舵机 = 全帧改一轴后整帧发；读角 = 命令位姿追踪
-    // （ServoPoseTracker，开机未动过则 unknown，绝不编造）。
-    /** 单舵机经 cmd03 全帧发送；返回 code（pose unknown 时 FAILED，调用方各自组 JSON）。 */
+    // -- Servo 單舵機直發（cmd05）--------------------------------------------------
+    // 2026-09-06 由 cmd03 全幀改回 cmd05 單發：官方 PC tuner 實測證實 cmd05
+    //（05 00 頭）正常驅動本機舵機，用戶目視確認。舊 cmd03 全幀寫法有安全問題：
+    // 它用位姿追踪（dead reckoning）補齊其餘 19 軸，追踪值一過時（重啟/跳舞後）
+    // 就會一次過將 19 粒舵機扯去錯位姿——即「一寫入就發狂」。cmd05 只郁目標
+    // 一粒，其他軸完全唔掂，天然安全；亦唔再需要 pose 已知先郁得。
+    /** 單舵機經 cmd05 直發；只在串口不可用時 FAILED。 */
     public UbxErrorCode.API_ERROR_CODE servoSendOneCode(int id, int angle, int timeMs) {
-        int[] cur = ubxPlayer.pose();
-        if (cur == null) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
-        cur[id - 1] = angle & 0xFF;
-        boolean sent = HardwareDirectManager.get(appContext).chest().setAllServos(cur, (short) timeMs);
+        if (id < 1 || id > 20) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
+        if (angle < 0) angle = 0;
+        if (angle > 255) angle = 255;
+        if (timeMs < 20) timeMs = 20;
+        boolean sent = HardwareDirectManager.get(appContext).chest()
+                .setSingleServo((byte) id, angle, (short) timeMs);
         if (!sent) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
-        ubxPlayer.notePose(cur);
+        // 位姿追踪有值就順手更新嗰一軸（ keeping 其餘 19 軸），未知就唔編造。
+        int[] cur = ubxPlayer.pose();
+        if (cur != null) {
+            cur[id - 1] = angle & 0xFF;
+            ubxPlayer.notePose(cur);
+        }
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
 
@@ -189,9 +201,7 @@ public final class UbxApi {
     public HttpServer.ApiResponse servoSendOne(int id, int angle, int timeMs) {
         UbxErrorCode.API_ERROR_CODE code = servoSendOneCode(id, angle, timeMs);
         if (code != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-            boolean known = ubxPlayer.poseKnown();
-            return HttpServer.ApiResponse.error(known ? "direct not ready"
-                    : "pose unknown (play any action first, or send full pose via servo/all)");
+            return HttpServer.ApiResponse.error("direct not ready");
         }
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + id + ",\"angle\":" + (angle & 0xFF) + "}");
     }
@@ -204,12 +214,35 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoOneResponse(Map<String, String> query) {
-        // pure-direct: cmd05 在本机固件有 ACK 无动作，改走 cmd03 全帧。
+        // pure-direct: 單舵機經 cmd05 直發（2026-09-06 官方 tuner 實測可郁，用戶目視確認）。
+        // 2026-09-06 晚加：可選 trim 參數——有帶就接著經 cmd12 寫入 chest EEPROM
+        //（官方 tuner 同款持久化；掉電保持，亂寫會改出廠校準，用戶明確先好用）。
         int id = ApiValidator.requireIntRange(query, "id", 1, 20);
         int angle = ApiValidator.requireInt(query, "angle");
         int time = ApiValidator.optionalInt(query, "time", 1000);
+        Integer trim = null;
+        if (query.containsKey("trim") && query.get("trim") != null && !query.get("trim").isEmpty()) {
+            try {
+                trim = Integer.parseInt(query.get("trim").trim());
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("parameter 'trim' must be an integer");
+            }
+            if (trim < -1000 || trim > 1000) {
+                throw new IllegalArgumentException("parameter 'trim' must be within [-1000,1000]");
+            }
+        }
         boolean ok = servoSendOneCode(id, angle, time) == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
-        return MainActivity.codeResponseReady(MainActivity.directCode(ok), directChestReady());
+        if (!ok || trim == null) {
+            return MainActivity.codeResponseReady(MainActivity.directCode(ok), directChestReady());
+        }
+        Boolean written = writeServoTrimLive(id, trim);
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"code\":\"API_ERROR_SUCCEED\"");
+        sb.append(",\"bindReady\":").append(directChestReady());
+        sb.append(",\"id\":").append(id).append(",\"angle\":").append(angle & 0xFF);
+        sb.append(",\"trim\":").append(trim);
+        sb.append(",\"trimWritten\":").append(written != null && written);
+        sb.append('}');
+        return HttpServer.ApiResponse.ok(sb.toString());
     }
 
     public HttpServer.ApiResponse servoAllResponse(Map<String, String> query) {
@@ -222,31 +255,85 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoReadResponse(Map<String, String> query) {
-        // 命令位姿追踪值：本机胸 cmd13 回包恒定（跳舞途中亦不变），无实时回授；
-        // tuner 要的是“当前摆位”，命令位姿即正确语义。未知如实报，不编 0。
+        // 2026-09-06 改行 live 實讀 (cmd 13)：官方 PC tuner 同款問法。注意回的是
+        // chest 存住的 trim（偏差，官方角:偏 = 1:3），<b>不是</b>絕對角度——8 號
+        // 例子：位姿 65 不變，橫跨幾次動作都係讀返 -33（見官方 session logcat
+        // 比較）。trim 即 offset 原值，前端照 show，唔使再減 home。
+        // 讀唔到（超時／舵機回 01 error，如本機 5/6 號硬件壞；17/18 號手指
+        // 天生無回授）如實報 ok:false，不編 0。
         int idInt = ApiValidator.requireIntRange(query, "id", 1, 20);
+        Integer live = readServoLive(idInt);
         int[] pose = ubxPlayer.pose();
-        if (pose == null) {
-            return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + idInt
-                    + ",\"error\":\"pose unknown (play any action first)\",\"known\":false}");
+        Integer commanded = (pose != null) ? pose[idInt - 1] : null;
+        if (live == null) {
+            StringBuilder sb = new StringBuilder("{\"ok\":false,\"id\":" + idInt + ",\"live\":false");
+            sb.append(",\"commanded\":").append(commanded != null ? commanded : "null");
+            sb.append(",\"known\":").append(commanded != null);
+            sb.append(",\"error\":\"no feedback (timeout or faulty servo)\"}");
+            return HttpServer.ApiResponse.ok(sb.toString());
         }
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + idInt
-                + ",\"angle\":" + pose[idInt - 1] + ",\"offset\":" + pose[idInt - 1]
+                + ",\"trim\":" + live + ",\"live\":true"
+                + ",\"commanded\":" + (commanded != null ? commanded : "null")
                 + ",\"known\":true}");
     }
 
     public HttpServer.ApiResponse servoReadAllResponse() {
-        int[] pose = ubxPlayer.pose();
-        if (pose == null) {
-            return HttpServer.ApiResponse.ok("{\"ok\":false,\"known\":false,"
-                    + "\"error\":\"pose unknown (play any action first)\"}");
+        // 2026-09-06 改行 20 連讀 trim（官方 tuner 節奏：逐粒約十幾 ms 間隔）。
+        // trims[i] = 該軸 chest 存住的偏差原值，讀唔到嗰粒記 null 並列入 failed。
+        // 注意：呢度唔係絕對角度，唔好攞去填 angle 輸入格。
+        Integer[] trims = new Integer[20];
+        StringBuilder failed = new StringBuilder("[");
+        boolean firstFail = true;
+        for (int i = 1; i <= 20; i++) {
+            Integer v = readServoLive(i);
+            trims[i - 1] = v;
+            if (v == null) {
+                if (!firstFail) failed.append(',');
+                failed.append(i);
+                firstFail = false;
+            } else {
+                try { Thread.sleep(15); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+            }
         }
-        StringBuilder sb = new StringBuilder("{\"ok\":true,\"known\":true,\"angles\":[");
+        failed.append(']');
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"live\":true,\"trims\":[");
         for (int i = 0; i < 20; i++) {
             if (i > 0) sb.append(',');
-            sb.append(pose[i]);
+            sb.append(trims[i] != null ? trims[i] : "null");
         }
-        sb.append("]}");
+        sb.append("],\"failed\":").append(failed).append('}');
         return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    /**
+     * 帶重試的單粒實讀。機身仲有官方 alpha2services 同揸 ttyS1，回覆 bytes
+     * 會被搶食，偶發超時屬預期之內，故重試 3 次（官方 ACK 約 10-15ms，
+     * 250ms timeout 好闊綽）。
+     */
+    private Integer readServoLive(int id) {
+        if (chestQuery == null || !directChestReady()) return null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            Integer v = chestQuery.queryServoAngle(id, 250);
+            if (v != null) return v;
+            if (attempt == 2) break;
+            try { Thread.sleep(30); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
+        }
+        return null;
+    }
+
+    /**
+     * 帶重試的 trim 寫入（2 次 × 250ms）。回 TRUE/FALSE（ACK 語意），
+     * 發送失敗回 null。
+     */
+    private Boolean writeServoTrimLive(int id, int trim) {
+        if (chestQuery == null || !directChestReady()) return null;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            Boolean r = chestQuery.writeServoTrim(id, trim, 250);
+            if (r != null) return r;
+            if (attempt == 1) break;
+            try { Thread.sleep(30); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
+        }
+        return null;
     }
 }

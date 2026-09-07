@@ -1141,7 +1141,8 @@ paths:
     get:
       tags:
       - servo
-      summary: 控制單顆舵機角度
+      summary: 控制單顆舵機角度（cmd05 單發；可選連 trim 經 cmd12 寫入 chest EEPROM）
+      description: 只郁目標一粒。trim 有帶就接著寫入（掉電保持，亂寫會改出廠校準；掃描驗證）。17/18 號手指天生無回授，trim 寫入會報失敗
       parameters:
       - name: id
         in: query
@@ -1161,13 +1162,31 @@ paths:
           type: integer
           default: 1000
         description: 執行時間 ms
+      - name: trim
+        in: query
+        schema:
+          type: integer
+          minimum: -1000
+          maximum: 1000
+        description: 偏差值（signed），經 cmd12 寫入 chest EEPROM 並掉電保持；唔帶就淨郁角度
       responses:
         '200':
-          description: 結果
+          description: 結果（含 trim 寫入狀態）
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ReadyResponse'
+                allOf:
+                - $ref: '#/components/schemas/ReadyResponse'
+                - type: object
+                  properties:
+                    id:
+                      type: integer
+                    angle:
+                      type: integer
+                    trim:
+                      type: integer
+                    trimWritten:
+                      type: boolean
       operationId: servoOne_get
   /api/servo/all:
     get:
@@ -1199,8 +1218,8 @@ paths:
     get:
       tags:
       - servo
-      summary: 讀取單顆舵機角度（命令位姿追踪；胸 cmd13 回包恒定，無實時回授）
-      description: 回最後一次 cmd3 的該軸命令值；開機未動過則 ok:false + known:false
+      summary: 實讀單顆舵機 trim（胸 cmd13 live query，官方 tuner 同款）
+      description: 發 f8 8f 08 05 00 0d <id> 讀 chest 存住的偏差原值（官方角:偏 = 1:3），不是絕對角度；8 號例：位姿 65 下橫跨多次讀數恒為 -33。讀唔到（超時／舵機回 01 error，如本機 5/6 號硬件壞；17/18 號手指天生無回授）報 ok:false。commanded 係命令位姿追踪值，僅供參考
       parameters:
       - name: id
         in: query
@@ -1211,7 +1230,7 @@ paths:
           maximum: 20
       responses:
         '200':
-          description: 命令角度（或 unknown）
+          description: trim 實讀值（或讀失敗）
           content:
             application/json:
               schema:
@@ -1221,21 +1240,28 @@ paths:
                   properties:
                     id:
                       type: integer
-                    angle:
+                    trim:
                       type: integer
-                    offset:
+                      description: chest 存住的偏差原值 signed（成功先有）
+                    live:
+                      type: boolean
+                    commanded:
                       type: integer
+                      nullable: true
+                      description: 命令位姿追踪值（可 null），僅供參考
                     known:
                       type: boolean
+                    error:
+                      type: string
       operationId: servoRead_get
   /api/servo/read-all:
     get:
       tags:
       - servo
-      summary: 一次讀回全部 20 軸命令位姿（tuner 備份用）
+      summary: 逐顆實讀全部 20 軸 trim（tuner 掃描 offset 用，官方節奏約十幾 ms 一粒）
       responses:
         '200':
-          description: 20 軸命令值（或 unknown）
+          description: 20 軸 trim 原值；讀唔到嗰粒記 null 並列入 failed
           content:
             application/json:
               schema:
@@ -1243,9 +1269,14 @@ paths:
                 - $ref: '#/components/schemas/OkWrapper'
                 - type: object
                   properties:
-                    known:
+                    live:
                       type: boolean
-                    angles:
+                    trims:
+                      type: array
+                      items:
+                        type: integer
+                        nullable: true
+                    failed:
                       type: array
                       items:
                         type: integer

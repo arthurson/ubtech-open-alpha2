@@ -15,15 +15,19 @@ import java.util.Map;
  * action/stop、ubx/speed、servo/sonar、walkie、head/noise ——逐字搬，
  * 註解跟埋走）。
  *
- * 跨域 core 未搬，switch 經下面 Host 縫調返 MainActivity（每個 core 搬埋嗰陣，
+ * 跨域 core 未搬，switch 經下面 Host 縫調返（每個 core 搬埋嗰陣，
  * 對應 handle* 跟埋走）：
- * - speech/tts、speech/stop（TTS orchestration：stopAllSpeechPlayback 留低）
- * - speech/set_mic、set_mic_keep_held（mic orchestration：MicIo cut 收）
+ * - speech/tts、speech/stop 直實現喺 SpeechCenter（TTS core 第一刀已搬；
+ *   MainActivity 唔再 implements Host）
+ * （speech/set_mic、set_mic_keep_held 搬咗去 MicCenter，經下面 micCenter 直調。）
  * （speech/offline_auto_switch、get_default_grammar 搬咗去 GrammarCenter，
  * 經下面 grammarCenter 直調，Host 唔經手。）
- * threshold state 經 sensorState（XiaozhiBridge.HostState，現成共用，
- * 唔另開縫）；directChestReady/directHeaderReady/releaseMicForAudioIo 係內聯副本
+ * （servo/sonar 搬咗去 SonarCenter，經下面 sonarCenter 直調——discover 嘅
+ * sensors 三值繼續經 sensorState 照讀，轉交緊同一個 SonarCenter。）
+ * directChestReady/directHeaderReady 係內聯副本
  * （同 UbxApi/LedCenter/ChestQuery/XiaozhiBridge 一樣做法）。
+ * 2026-09 MicIo 加：walkie testtone/diagnose/play 搬咗去 MicCenter
+ * （releaseMic 正本跟埋走，呢度個副本刪咗），經下面 micCenter 直調。
  * 2026-09 dispatcher Phase 2 加：handleSystemApi（discover＋music/*，
  * 要 UbxPlayer pose＋MusicController＋deviceStatus.getWifiIp()）同
  * handleDirectApi（servo/led/sonar/ubx 直驅，要 LocalAlpha2Services＋
@@ -33,13 +37,11 @@ public final class ApiDispatcher {
     private static final String TAG = "ApiDispatcher";
 
     /**
-     * 宿主縫：switch 入面少數仲掂緊 MainActivity 未搬 core 嘅 case。
+     * 宿主縫：speech/tts、speech/stop 由 SpeechCenter 直實現（TTS core 第一刀）。
      */
     public interface Host {
         HttpServer.ApiResponse handleSpeechTts(Map<String, String> query);
         HttpServer.ApiResponse handleSpeechStop();
-        HttpServer.ApiResponse handleSetMic(Map<String, String> query);
-        HttpServer.ApiResponse handleSetMicKeepHeld(Map<String, String> query);
     }
 
     private final Context appContext;
@@ -57,21 +59,23 @@ public final class ApiDispatcher {
     private final CameraApi cameraApi;
     private final AudioCenter audioCenter;
     private final RingtoneCenter ringtoneCenter;
-    private final AudioPlaybackController audioPlaybackController;
+    private final MicCenter micCenter;
     private final RobotStub robot;
     private final GrammarCenter grammarCenter;
     private final UbxPlayer ubxPlayer;
     private final MusicController musicController;
     private final LocalAlpha2Services localServices;
+    // 2026-09: Sonar 第一刀加——servo/sonar 直調呢度 (放最尾，慣例)。
+    private final SonarCenter sonarCenter;
 
     public ApiDispatcher(Context context, Host host, XiaozhiBridge.HostState sensorState,
             ActionDirect actionDirect, UbxApi ubxApi, ChestQuery chestQuery,
             ChestUpgrade chestUpgrade, TtsCenter ttsCenter, VoskApi voskApi,
             LedCenter ledCenter, SemanticCenter semanticCenter, DeviceStatus deviceStatus,
             CameraApi cameraApi, AudioCenter audioCenter, RingtoneCenter ringtoneCenter,
-            AudioPlaybackController audioPlaybackController, RobotStub robot,
+            MicCenter micCenter, RobotStub robot,
             GrammarCenter grammarCenter, UbxPlayer ubxPlayer, MusicController musicController,
-            LocalAlpha2Services localServices) {
+            LocalAlpha2Services localServices, SonarCenter sonarCenter) {
         this.appContext = context.getApplicationContext();
         this.host = host;
         this.sensorState = sensorState;
@@ -87,12 +91,13 @@ public final class ApiDispatcher {
         this.cameraApi = cameraApi;
         this.audioCenter = audioCenter;
         this.ringtoneCenter = ringtoneCenter;
-        this.audioPlaybackController = audioPlaybackController;
+        this.micCenter = micCenter;
         this.robot = robot;
         this.grammarCenter = grammarCenter;
         this.ubxPlayer = ubxPlayer;
         this.musicController = musicController;
         this.localServices = localServices;
+        this.sonarCenter = sonarCenter;
     }
 
     // directChestReady() 內聯：同 MainActivity 版一字不差，經 appContext 唔使 Activity。
@@ -106,24 +111,6 @@ public final class ApiDispatcher {
         try { return HardwareDirectManager.get(appContext).head().isAvailable(); }
         catch (Exception e) { return false; }
     }
-
-    /** 同 MainActivity.releaseMicForAudioIo() 一字不差嘅副本 (speech_SetMIC(true) +
-     *  300ms) - walkie testtone/diagnose/play:start 專用；MicIo 核心搬埋嗰陣合流返一處。 */
-    private void releaseMicForAudioIo() {
-        robot.speech_SetMIC(true);
-        try {
-            Thread.sleep(300);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    /**
-     * Routes "/api/<name>" calls to the matching Alpha2RobotApi method. Runs on an
-     * HttpServer worker thread (not the main thread) - every SDK call used here is safe
-     * to invoke off the main thread (the *ServiceUtil classes only marshal Binder calls),
-     * matching how the SDK's own AGENTS.md describes bind/call safety.
-     */
 
     /**
      * Routes "/api/<name>" calls to the matching Alpha2RobotApi method. Runs on an
@@ -252,9 +239,9 @@ public final class ApiDispatcher {
                 return ttsCenter.curTtsLang();
 
             case "speech/set_mic":
-                return host.handleSetMic(query);
+                return micCenter.setMic(query);
             case "speech/set_mic_keep_held":
-                return host.handleSetMicKeepHeld(query);
+                return micCenter.setMicKeepHeld(query);
             // 2026-09 移除: speech/reset、speech/start_asr、speech/set_voice、
             // speech/set_language、speech/self_interrupt、speech/inject (以上全部
             // 經已不存在的 alpha2services binder)。對應 Blockly 積木
@@ -296,13 +283,9 @@ public final class ApiDispatcher {
                 return ubxApi.servoOneResponse(query);
             case "servo/all":
                 return ubxApi.servoAllResponse(query);
-            // threshold state經sensorState讀寫
-            case "servo/sonar": {
-                int distanceCm = ApiValidator.requireInt(query, "distance");
-                sensorState.applySonarThreshold(distanceCm);
-                boolean sent = HardwareDirectManager.get(appContext).chest().configureSonar(distanceCm);
-                return MainActivity.codeResponseReady(MainActivity.directCode(sent), directChestReady());
-            }
+            // threshold state 經 sonarCenter 直調 (Sonar 第一刀)。
+            case "servo/sonar":
+                return sonarCenter.servoSonarResponse(query);
             case "servo/read":
                 return ubxApi.servoReadResponse(query);
             case "servo/read-all":
@@ -371,39 +354,15 @@ public final class ApiDispatcher {
                 return cameraApi.supportedSizes();
             case "camera/resolution":
                 return cameraApi.resolution(query);
-
-            // -- Walkie-talkie: browser mic -> robot speaker. See AudioPlaybackController's
-            // javadoc - whether the speaker is reachable via a standard AudioTrack at all
-            // is unverified; this test-tone endpoint exists to answer that on the physical
-            // unit before relying on the real streaming path (POST /upload/audio) below.
-            case "audio/testtone": {
-                releaseMicForAudioIo();
-                AudioPlaybackController.StartResult result =
-                        audioPlaybackController.playTestTone(3000);
-                if (result.error != null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
-                            + MainActivity.jsonSafe(result.error) + "\"}");
-                }
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
-            case "audio/diagnose": {
-                releaseMicForAudioIo();
-                String sweep = audioPlaybackController.diagnoseAudioTrack(10000);
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"results\":\""
-                        + MainActivity.jsonSafe(sweep).replace("\n", "\\n") + "\"}");
-            }
-            case "audio/play/start": {
-                releaseMicForAudioIo();
-                AudioPlaybackController.StartResult result = audioPlaybackController.start(3000);
-                if (result.error != null) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
-                            + MainActivity.jsonSafe(result.error) + "\"}");
-                }
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
-            }
+            // -- Walkie-talkie (body 喺 MicCenter；薄 delegate，唔好喺度加 logic) --
+            case "audio/testtone":
+                return micCenter.testTone();
+            case "audio/diagnose":
+                return micCenter.diagnoseAudio();
+            case "audio/play/start":
+                return micCenter.playStart();
             case "audio/play/stop":
-                audioPlaybackController.stop();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+                return micCenter.playStop();
 
             // -- System ringtones/notification sounds: exposes every ringtone Android
             // knows about (via RingtoneManager, same mechanism findRingtoneByTitle()
@@ -689,7 +648,7 @@ public final class ApiDispatcher {
                 int id = ApiValidator.requireIntRange(query, "id", 1, 20);
                 int angle = ApiValidator.requireInt(query, "angle");
                 int time = ApiValidator.optionalInt(query, "time", 500);
-                // cmd05 在本机固件有 ACK 无动作，改走 cmd03 全帧（servoSendOne 内处理）。
+                // 2026-09-06: cmd05 單發（官方 tuner 實測本機可郁），見 servoSendOneCode。
                 return ubxApi.servoSendOne(id, angle, time);
             }
             case "servo/all": {

@@ -1,17 +1,18 @@
 package com.ubtechinc.alpha.hardware;
 
 /**
- * 命令位姿追踪（dead reckoning）。
+ * 命令位姿追踪（dead reckoning）：記下最後一次經本 App 發出的 20 軸命令值。
  *
- * <p>背景：本机胸固件（1.1.7.3 系）UART 上<b>无实时角度回授</b>——实测
- * {@code cmd 13} 回包恒定不变（跳舞途中亦然），且只有 {@code cmd 3}
- * 能驱动舵机（{@code cmd 5/52} 有 ACK 但不动作）。3.0.0.2 的读角走自家
- * motor driver 通道，与胸 UART 不是同一条路，本机无此服务。</p>
+ * <p>2026-09-06 修正舊認知：cmd 13 回包<b>不是</b>恒定的——官方 PC tuner
+ * 實測回的是會變的 signed 實測值（且本 App 已改行 live 實讀）；cmd 5
+ *（05 00 頭）<b>能</b>驱动本机舵机（官方 tuner ＋用戶目視確認）。舊「只有
+ * cmd 3 能動、cmd13 恒定」結論疑似源於舊 00 00 發送頭，作廢。</p>
  *
- * <p>因此“读角度”只能是<b>命令位姿</b>（最后一次经 {@code cmd 3} 发出的
- * 20 轴），而非测量值。对 tuner 备份/恢复/搬运位姿这个用途，命令位姿
- * 恰好就是正确语义。开机到首次 {@code cmd 3} 之前位姿未知
- * （{@link #snapshot()} 返回 null），调用方须如实报 unknown，不可编造。</p>
+ * <p>追踪值只代表「最後一次命令」，不等於實際位置，跳舞/重啟/官方 tuner
+ * 郁過之後即過時——因此<b>禁止</b>用佢嚟補齊全幀發送（曾導致 19 軸齊扯錯位
+ * 的「發狂」事故）。單舵機一律走 cmd05 只郁目標一粒。開機到首次全量發送
+ * 之前位姿未知（{@link #snapshot()} 返回 null），調用方須如實報 unknown，
+ * 不可编造。</p>
  */
 public final class ServoPoseTracker {
     private final int[] pose = new int[20];

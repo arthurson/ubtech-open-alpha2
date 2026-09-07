@@ -49,6 +49,20 @@ public final class ChestQuery {
     private volatile CountDownLatch chestUuidLatch;
     private volatile byte[] chestUuidRaw;
     private volatile int chestUuidLen;
+    // 2026-09-06: 單舵機實讀 (cmd 13 / 0x0d) 用的同步等待狀態。官方 PC tuner
+    // 實測 wire 格式：查詢 f8 8f 08 05 00 0d <id> <sum> ed；正常回覆
+    // f8 8f 0b 05 00 0d 00 <id> <hi> <lo> <sum> ed（BE16 signed），
+    // 壞舵機（如本機 5/6 號，硬件問題）回短 error 幀
+    // f8 8f 09 05 00 0d 01 <id> <sum> ed（無角度值）。
+    private volatile CountDownLatch servoLatch;
+    private volatile int servoExpectId = -1;
+    private volatile Integer servoValue = null;
+    private volatile boolean servoError = false;
+    // 2026-09-06 晚：trim 寫入 (cmd 12) 回覆 latch。回覆 09 05 00 0c 00 <id>
+    // = OK，01 <id> = 該軸無回授（同 0d 一樣，本機 5/6 號即此例）。
+    private volatile CountDownLatch trimLatch;
+    private volatile int trimExpectId = -1;
+    private volatile Boolean trimOk = null;
 
     public ChestQuery(Context context, RobotStub robot) {
         this.appContext = context.getApplicationContext();
@@ -82,6 +96,47 @@ public final class ChestQuery {
                 return true;
             }
         }
+        // 2026-09-06: 舵機實讀回覆 latch (cmd 13)。只認領等待中那顆 id，
+        // 其他 id 的回覆交還（return false），免得 20 連讀時食錯幀。
+        if (servoLatch != null && servoLatch.getCount() > 0
+                && plen >= 3 && payload[0] == 13) {
+            int rid = payload[2] & 0xFF;
+            if (rid == servoExpectId) {
+                if (plen >= 5 && payload[1] == 0) {
+                    int hi = payload[3] & 0xFF, lo = payload[4] & 0xFF;
+                    servoValue = (int) (short) ((hi << 8) | lo);
+                    servoError = false;
+                    servoLatch.countDown();
+                    return true;
+                }
+                if (plen == 3 && payload[1] == 1) {
+                    // 短 error 幀：舵機無回授（本機 5/6 號硬件壞即此例）
+                    servoValue = null;
+                    servoError = true;
+                    servoLatch.countDown();
+                    return true;
+                }
+            }
+            return false;
+        }
+        // 2026-09-06 晚：trim 寫入回覆 latch (cmd 12)。同樣只認領等待中那顆 id。
+        if (trimLatch != null && trimLatch.getCount() > 0
+                && plen >= 3 && payload[0] == 12) {
+            int rid = payload[2] & 0xFF;
+            if (rid == trimExpectId) {
+                if (payload[1] == 0) {
+                    trimOk = Boolean.TRUE;
+                    trimLatch.countDown();
+                    return true;
+                }
+                if (plen == 3 && payload[1] == 1) {
+                    trimOk = Boolean.FALSE;
+                    trimLatch.countDown();
+                    return true;
+                }
+            }
+            return false;
+        }
         // 版本 latch：完整帧优先（isVersionFrame 认 F8 8F），否则按 payload fallback
         if (chestVersionLatch != null && chestVersionLatch.getCount() > 0) {
             boolean isVer = isVersionFrame(frame, frame.length, RobotWire.CHEST_READ_VERSION);
@@ -113,6 +168,10 @@ public final class ChestQuery {
     public void reset() {
         chestVersionLatch = null;
         chestUuidLatch = null;
+        servoLatch = null;
+        servoExpectId = -1;
+        trimLatch = null;
+        trimExpectId = -1;
     }
 
     /** 最後一次版本回覆原幀 (拷貝，可 null)，供升級超時診斷 log 用。 */
@@ -335,6 +394,103 @@ public final class ChestQuery {
             return null;
         } finally {
             chestVersionLatch = null;
+        }
+    }
+
+    /**
+     * 2026-09-06 新增：單舵機實讀 (cmd 13 / 0x0d)，官方 PC tuner 同款問法。
+     * 發送 f8 8f 08 05 00 0d &lt;id&gt; &lt;sum&gt; ed，阻塞等回覆。
+     * @return signed 角度（BE16）；null = 超時或舵機回 error（無回授，
+     * 如本機 5/6 號硬件壞）。此方法已保證不在主 thread。
+     */
+    public Integer queryServoAngle(int id, long timeoutMs) {
+        if (id < 1 || id > 20) return null;
+        if (!chestReady()) {
+            Log.w(TAG, "queryServoAngle: chest not ready (pure-direct)");
+            return null;
+        }
+        CountDownLatch latch = new CountDownLatch(1);
+        servoExpectId = id;
+        servoValue = null;
+        servoError = false;
+        servoLatch = latch;
+        boolean sent;
+        try {
+            sent = HardwareDirectManager.get(appContext).chest().readServo((byte) id);
+        } catch (Exception e) {
+            Log.w(TAG, "queryServoAngle send failed", e);
+            servoLatch = null;
+            return null;
+        }
+        Log.d(TAG, "queryServoAngle send id=" + id + " -> " + sent);
+        if (!sent) {
+            servoLatch = null;
+            return null;
+        }
+        try {
+            boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+            if (!ok) {
+                Log.w(TAG, "queryServoAngle timeout id=" + id + " " + timeoutMs + "ms");
+                return null;
+            }
+            if (servoError) {
+                Log.i(TAG, "queryServoAngle id=" + id + " no feedback (servo error frame)");
+                return null;
+            }
+            Log.d(TAG, "queryServoAngle id=" + id + " value=" + servoValue);
+            return servoValue;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            servoLatch = null;
+        }
+    }
+
+    /**
+     * 2026-09-06 晚新增：寫舵機 trim/偏差 (cmd 12)，官方 PC tuner 同款。
+     * 發送 f8 8f 0a 05 00 0c &lt;id&gt; &lt;hi&gt; &lt;lo&gt; &lt;sum&gt; ed，
+     * 阻塞等 MCU 回覆。
+     * @return TRUE = MCU 回 OK；FALSE = 該軸回 error／超時；null = 發送失敗。
+     * 注意寫入掉電保持（chest EEPROM）——調用方必須經用戶明確寫入動作。
+     * 此方法已保證不在主 thread。
+     */
+    public Boolean writeServoTrim(int id, int trim, long timeoutMs) {
+        if (id < 1 || id > 20) return null;
+        if (!chestReady()) {
+            Log.w(TAG, "writeServoTrim: chest not ready (pure-direct)");
+            return null;
+        }
+        CountDownLatch latch = new CountDownLatch(1);
+        trimExpectId = id;
+        trimOk = null;
+        trimLatch = latch;
+        boolean sent;
+        try {
+            sent = HardwareDirectManager.get(appContext).chest().writeServoTrim((byte) id, trim);
+        } catch (Exception e) {
+            Log.w(TAG, "writeServoTrim send failed", e);
+            trimLatch = null;
+            return null;
+        }
+        Log.i(TAG, "writeServoTrim send id=" + id + " trim=" + trim + " -> " + sent);
+        if (!sent) {
+            trimLatch = null;
+            return null;
+        }
+        try {
+            boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+            if (!ok) {
+                Log.w(TAG, "writeServoTrim timeout id=" + id + " " + timeoutMs + "ms");
+                return Boolean.FALSE;
+            }
+            Log.i(TAG, "writeServoTrim id=" + id + " ack=" + trimOk);
+            return trimOk != null ? trimOk : Boolean.FALSE;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Boolean.FALSE;
+        } finally {
+            trimLatch = null;
         }
     }
 

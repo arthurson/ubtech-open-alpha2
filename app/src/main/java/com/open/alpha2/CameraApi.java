@@ -3,6 +3,8 @@ package com.open.alpha2;
 import android.content.Context;
 import android.content.Intent;
 
+import java.nio.charset.StandardCharsets;
+
 import java.util.Map;
 
 /**
@@ -210,4 +212,86 @@ public final class CameraApi {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"requestedWidth\":" + w
                 + ",\"requestedHeight\":" + h + "}");
     }
+
+    // -- Camera streaming (MJPEG over "/stream/camera") -------------------------------
+
+    private static final String MJPEG_BOUNDARY = "alpha2testpanelframe";
+    /**
+     * Serves the live camera feed as "multipart/x-mixed-replace" MJPEG - the format
+     * every browser's plain &lt;img src="..."&gt; already knows how to render as a live
+     * video-like feed with zero client-side JS, which is why this is a stream/ HTTP
+     * route rather than a WebSocket: an &lt;img&gt; tag can't speak WebSocket, but it can
+     * point straight at a URL that never stops responding.
+     *
+     * Runs on an HttpServer worker thread and blocks for as long as the client stays
+     * connected, same as WebSocketServer.Connection.readLoop() does for "/ws" - both
+     * rely on the pool's cached-thread-per-connection model rather than needing NIO.
+     */
+    public void handleCameraStream(java.net.Socket socket) throws java.io.IOException {
+        CameraController.StartResult started = cameraController.start(8000);
+        java.io.OutputStream out = socket.getOutputStream();
+        if (started.error != null) {
+            byte[] msg = ("Camera unavailable: " + started.error).getBytes(StandardCharsets.UTF_8);
+            out.write(("HTTP/1.1 503 Service Unavailable\r\nContent-Length: " + msg.length
+                    + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1));
+            out.write(msg);
+            out.flush();
+            return;
+        }
+
+        out.write(("HTTP/1.1 200 OK\r\n"
+                + "Content-Type: multipart/x-mixed-replace; boundary=" + MJPEG_BOUNDARY + "\r\n"
+                + "Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\n"
+                + "Access-Control-Allow-Origin: *\r\n"
+                + "Connection: close\r\n"
+                + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
+        out.flush();
+
+        // BlockingQueue rather than writing directly from onFrame(): onFrame() runs on
+        // CameraController's own camera thread and must return immediately (it's also
+        // fanning the same frame out to every other connected stream client) - it must
+        // not block on this connection's socket write, which can stall arbitrarily long
+        // on a slow/stuck client. capacity 1 + offer-that-drops-the-oldest keeps this
+        // socket's writer thread always working from the newest frame rather than
+        // buffering up a backlog if the network can't keep up with 30fps.
+        final java.util.concurrent.ArrayBlockingQueue<CameraController.Frame> queue =
+                new java.util.concurrent.ArrayBlockingQueue<>(1);
+        CameraController.FrameListener listener = new CameraController.FrameListener() {
+            @Override
+            public void onFrame(CameraController.Frame frame) {
+                queue.poll(); // drop whatever stale frame was waiting, if any
+                queue.offer(frame);
+            }
+        };
+        cameraController.subscribe(listener);
+        try {
+            while (true) {
+                CameraController.Frame frame;
+                try {
+                    frame = queue.poll(10, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                if (frame == null) {
+                    // No frame in 10s - camera likely died; stop rather than hold the
+                    // connection (and the pool thread) open forever with a frozen image.
+                    break;
+                }
+                out.write(("--" + MJPEG_BOUNDARY + "\r\n"
+                        + "Content-Type: image/jpeg\r\n"
+                        + "Content-Length: " + frame.jpeg.length + "\r\n"
+                        + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
+                out.write(frame.jpeg);
+                out.write("\r\n".getBytes(StandardCharsets.ISO_8859_1));
+                out.flush(); // each part must reach the client promptly, not batch up
+            }
+        } finally {
+            cameraController.unsubscribe(listener);
+            // Only actually releases the camera once every other stream client (if any)
+            // has also disconnected - see CameraController.stopIfIdle() javadoc.
+            cameraController.stopIfIdle();
+        }
+    }
+
 }

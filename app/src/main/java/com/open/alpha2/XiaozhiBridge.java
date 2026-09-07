@@ -21,12 +21,13 @@ import java.util.Map;
  * 邏輯一字不改搬過嚟（機械改寫只限：包可見 helper 加 MainActivity. 前綴、
  * instance readiness 內聯經 appContext、跨域讀寫經下面 HostState）。
  * 擁有關係：
- * - MainActivity 只留：implements HostState（6 個一行 getter/setter）、接線
+ * - MainActivity 只留：implements HostState（TTS 兩法轉交 SpeechCenter、
+ *   sonar 四法一行一個）、接線
  *   （onCreate 建構、onDestroy shutdown()、router 轉發、PIR/mute key 兩個硬件入口）。
  * - xiaozhiClient/xiaozhiAudioController/xiaozhiConfig 全部由呢度擁有
  *   （前兩者之前係 MainActivity field，後者之前喺 onCreate 起）。
- * - stopAllSpeechPlayback() 留喺 MainActivity（跨域 orchestration），經
- *   stopSpeechPlayback() 掂 xiaozhi 嗰條播放管道。
+ * - stopAllSpeechPlayback() 搬咗去 SpeechCenter（TTS core 第一刀，跨域
+ *   orchestration），經 stopSpeechPlayback() 掂 xiaozhi 嗰條播放管道。
  *
  * 線程：沿用舊安排——HTTP handler thread 可阻塞；activation/reconnect 自開
  * 背景 thread；mic hold enforcer 獨立 thread；mainHandler 只做延遲計時。
@@ -39,11 +40,10 @@ public final class XiaozhiBridge {
     private static final String TAG = "XiaozhiBridge";
 
     /**
-     * 宿主縫：留低未搬嘅 TTS/sonar state，搬過嚟嘅碼經呢度讀寫。
-     * 由 MainActivity 實現（純 field 讀寫，一行一個）。
-     * TTS 核心（speech/tts、stopAllSpeechPlayback）搬埋嗰陣收返
-     * isRobotTtsSpeaking/getLastSpeechStopAtMs；sonar orchestration
-     * （servo/sonar、event 入口、bridge 工具）搬埋嗰陣收返其餘四個。
+     * 宿主縫：TTS／sonar state，搬過嚟嘅碼經呢度讀寫。
+     * 由 MainActivity 實現：TTS 兩法轉交 SpeechCenter（TTS core 第一刀），
+     * sonar 四法轉交 SonarCenter（Sonar 第一刀；MCP 4 tool 經呢度照讀，
+     * 收斂到 SonarCenter 將來先做）。
      */
     public interface HostState {
         boolean isRobotTtsSpeaking();
@@ -293,6 +293,17 @@ public final class XiaozhiBridge {
     private static final long MUTE_PRESS_DEBOUNCE_MS = 400;
     private final java.util.concurrent.atomic.AtomicLong lastMutePressMs =
             new java.util.concurrent.atomic.AtomicLong(0);
+
+    /** 胸口 mute 鍵 (-111) 硬件入口本體 (2026-09 由 MainActivity static 搬入)。
+     *  pressed=true (按下) 就 toggle mute LED (小智開關); pressed=false (放開)
+     *  不理。static 縫留喺 MainActivity.onMuteKeyEvent (RobotEventReceiver／
+     *  frozen onDirectChestFrame 經嗰度入，簽名不變)。 */
+    public void onMuteKeyEvent(final boolean pressed) {
+        if (!pressed) {
+            return;
+        }
+        toggleChestMuteLed();
+    }
 
     public void toggleChestMuteLed() {
         long now = android.os.SystemClock.elapsedRealtime();
@@ -825,7 +836,7 @@ public final class XiaozhiBridge {
             @Override
             public void run() {
                 while (xiaozhiMicHoldEnforced && !Thread.currentThread().isInterrupted()) {
-                    // 見 robotTtsSpeaking field javadoc - 機身 robot-side TTS
+                    // 見 SpeechCenter robotTtsSpeaking field javadoc - 機身 robot-side TTS
                     // (iflytek/nuance) 正在播放就跳過這一輪, 不要用
                     // speech_SetMIC(true) 打斷它。跳過也不會讓 mic 太久沒人持有:
                     // 下一個 tick (MainActivity.MIC_HOLD_ENFORCER_INTERVAL_MS 之後) 會再檢查
@@ -1167,7 +1178,7 @@ public final class XiaozhiBridge {
      *  as individual digits rather than a single large number. Reads the message twice
      *  with a pause, matching how a person might naturally repeat something they want
      *  written down. Mirrors the existing "speech/tts" endpoint's
-     *  MainActivity.STOP_TO_TTS_MIN_GAP_MS race guard and mouth-LED bracket (see handleApi() below)
+     *  SpeechCenter.STOP_TO_TTS_MIN_GAP_MS race guard and mouth-LED bracket (see handleApi() below)
      *  since this runs from a background thread, not through that HTTP endpoint. */
     /** 讀出小智配對碼。2026-09: 由機身 TTS (robot.speech_startTTS, 無
      *  alpha2services 下永遠靜音) 轉行 Android 內置 TTS (同小智頁揀 "Android"
@@ -1183,9 +1194,9 @@ public final class XiaozhiBridge {
         }
         String text = "配對碼是 " + spoken + "。請去 xiaozhi 點 me 輸入這個碼。再說一次，配對碼是 " + spoken + "。";
         long sinceStopMs = System.currentTimeMillis() - hostState.getLastSpeechStopAtMs();
-        if (sinceStopMs >= 0 && sinceStopMs < MainActivity.STOP_TO_TTS_MIN_GAP_MS) {
+        if (sinceStopMs >= 0 && sinceStopMs < SpeechCenter.STOP_TO_TTS_MIN_GAP_MS) {
             try {
-                Thread.sleep(MainActivity.STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
+                Thread.sleep(SpeechCenter.STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
             }
@@ -2420,7 +2431,7 @@ public final class XiaozhiBridge {
                                 break;
                             }
                             // Mirrors the "speech/tts" HTTP endpoint below (handleApi()) -
-                            // same MainActivity.STOP_TO_TTS_MIN_GAP_MS race guard against a just-issued
+                            // same SpeechCenter.STOP_TO_TTS_MIN_GAP_MS race guard against a just-issued
                             // speech/stop, same mouth-LED bracket, same 3-arg
                             // speech_startTTS(lang, text, voice) signature (Alpha2RobotApi
                             // exposes no high-priority/interrupting TTS variant, so this
@@ -2430,9 +2441,9 @@ public final class XiaozhiBridge {
                             // consistent with defaulting away from iFlytek's per-call voice
                             // picker, which has no equivalent argument in this tool's schema.
                             long sinceStopMs = System.currentTimeMillis() - hostState.getLastSpeechStopAtMs();
-                            if (sinceStopMs >= 0 && sinceStopMs < MainActivity.STOP_TO_TTS_MIN_GAP_MS) {
+                            if (sinceStopMs >= 0 && sinceStopMs < SpeechCenter.STOP_TO_TTS_MIN_GAP_MS) {
                                 try {
-                                    Thread.sleep(MainActivity.STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
+                                    Thread.sleep(SpeechCenter.STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
                                 } catch (InterruptedException ie) {
                                     Thread.currentThread().interrupt();
                                 }

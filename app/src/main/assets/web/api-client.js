@@ -440,18 +440,19 @@ const Alpha2Api = (function() {
 
   function servoOne(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
-    // 控制單顆舵機角度
+    if (params && params.trim != null) assertRange(Number(params.trim), -1000, 1000, 'trim');
+    // 控制單顆舵機角度（cmd05 單發；可選連 trim 經 cmd12 寫入 chest EEPROM）
     return api('servo/one', params);
   }
 
   function servoRead(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
-    // 讀取單顆舵機角度（命令位姿追踪；胸 cmd13 回包恒定，無實時回授）
+    // 實讀單顆舵機 trim（胸 cmd13 live query，官方 tuner 同款）
     return api('servo/read', params);
   }
 
   function servoReadAll(params) {
-    // 一次讀回全部 20 軸命令位姿（tuner 備份用）
+    // 逐顆實讀全部 20 軸 trim（tuner 掃描 offset 用，官方節奏約十幾 ms 一粒）
     return api('servo/read-all', params);
   }
 

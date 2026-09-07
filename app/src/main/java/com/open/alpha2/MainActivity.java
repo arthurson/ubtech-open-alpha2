@@ -11,7 +11,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
-import android.media.AudioManager;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
@@ -34,7 +33,6 @@ import android.widget.Toast;
 import com.ubtechinc.alpha.hardware.DirectLedController;
 import com.ubtechinc.alpha.hardware.RobotWire;import com.ubtechinc.alpha.jni.LedControl;
 import com.ubtechinc.alpha.hardware.HardwareDirectManager;
-import com.ubtechinc.alpha.hardware.HeadKeyPoller;
 import com.ubtechinc.alpha.hardware.LocalAlpha2Services;
 import com.ubtechinc.alpha.hardware.MouthLedData;
 import com.ubtechinc.alpha.hardware.ubx.UbxFile;
@@ -68,7 +66,7 @@ import org.json.JSONObject;
  * robot has no practical on-screen use for this tool - the HTML control panel at
  * http://<robot-ip>:8888/ is the actual UI.
  */
-public class MainActivity extends Activity implements XiaozhiBridge.HostState, ApiDispatcher.Host {
+public class MainActivity extends Activity implements XiaozhiBridge.HostState, GestureCenter.Host {
     private static final String TAG = "MainActivity";
 
     static final String PREFS_NAME = "robotpanel";
@@ -93,7 +91,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
     // (servo 讀寫仲喺呢度直接用)。
     private ActionDirect actionDirect;
     private UbxApi ubxApi;
-    private final HeadKeyPoller headKeyPoller = new HeadKeyPoller();
     private HttpServer httpServer;
     private RobotEventReceiver dynamicReceiver;
 
@@ -105,28 +102,15 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
     private final CameraController cameraController = new CameraController();
     private final AudioController audioController = new AudioController();
     private final AudioPlaybackController audioPlaybackController = new AudioPlaybackController();
+    // 2026-09: mic 包搬咗去 MicCenter，呢度淨係留個 instance (同 ubxPlayer 一樣由呢度擁有)。
+    private MicCenter micCenter;
+    // 2026-09: 手勢包搬咗去 GestureCenter，呢度淨係留個 instance。
+    private GestureCenter gestureCenter;
     private final MusicController musicController = new MusicController();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private Runnable volumeRepeater;
-    private AudioManager audioManager;
 
     // (Pad 燈成組搬咗去 LedCenter：executor/postPadLed/旗標/worker/burst。)
 
-    /** true = 用戶在 TTS tab 按了「釋放麥克風給 App」，想長期持有 mic 給 app 用，
-     *  沒按回「交回麥克風給機器人」之前不算完。見 handleMicStream() finally 段的
-     *  用法 - Mic Listen 的 stream 斷開不應該在這個狀態是 true 的時候將 mic
-     *  還給機械人，否則「釋放」狀態會被 Mic Listen 的斷線清掉，讓用戶要不斷
-     *  重新按「釋放麥克風給 App」。 */
-    private volatile boolean micHeldByApp = false;
-
-    /** true = 用戶開了「持續搶 mic」這個選項 (mic card 那顆 checkbox)。和
-     *  micHeldByApp 不同 - micHeldByApp 只是記住「現在這個狀態是不是 app 持有」,
-     *  這個 flag 是說「就算 firmware 自己內部側面拿回了 (例如 setWakeState
-     *  這個 call 本身在 firmware bytecode 裡面會順便觸發 IflytekWakeUp5mic.
-     *  startRecording() 這個 side effect - 不是用戶自己按了「交回」), 都要
-     *  自動再搶一次回來」。見 micHoldEnforcer 這條背景 thread。 */
-    private volatile boolean micHoldEnforced = false;
-    private Thread micHoldEnforcerThread;
     static final long MIC_HOLD_ENFORCER_INTERVAL_MS = 2000;
 
     // (xiaozhi_actions.json catalog 搬咗去 ActionDirect。)
@@ -150,7 +134,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
 
     // (電台搜尋 cache 搬咗去 AudioCenter。)
 
-    private static final long VOLUME_REPEAT_INTERVAL_MS = 300;
     // 2026-09: 系統鈴聲層 (停止/快門/PIR 提示音 + 共用播放器 + 查表快取)
     // 搬咗去 RingtoneCenter (拆 god object 第七刀)，呢度淨係留個 instance。
     private RingtoneCenter ringtoneCenter;
@@ -158,53 +141,12 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
     // 2026-09 刪除: speechReady field - 無 ASR，舊 binder speech service 永遠
     // ready 不了（唯一設 true 嘅舊 initOver 已刪），恆 false 無意義。
 
-    // speech/stop -> speech/tts race guard.
-    //
-    // speech_StopTTS() (AIDL onStopPlay) is fire-and-forget: the call returns as
-    // soon as the binder transaction is queued, but the robot side's audio
-    // teardown (tearing down the current Nuance/iFlytek playback session) happens
-    // asynchronously after that. If speech/tts starts a new TTS session while that
-    // teardown is still in flight, Nuance's SpeakerPlayerSink can throw an
-    // IllegalStateException that kills the TTS session until the robot reboots.
-    //
-    // Fix: record the wall-clock time of the last speech/stop, and have speech/tts
-    // block (on the HTTP worker thread only - safe because HttpServer uses
-    // newCachedThreadPool, so this never stalls other requests) until at least
-    // STOP_TO_TTS_MIN_GAP_MS has elapsed since that stop. 400ms was enough headroom
-    // in testing for the teardown to finish without being long enough to feel like
-    // a UI stall for a normal stop-then-speak flow.
-    static final long STOP_TO_TTS_MIN_GAP_MS = 400;
-    private volatile long lastSpeechStopAtMs = 0L;
-    // 追蹤機身 robot-side TTS (nuance/iflytek, 經 robot.speech_startTTS() 走)
-    // 現在是不是正在播 - 由 startXiaozhiMicHoldEnforcer()/startMicHoldEnforcer()
-    // 用來決定要不要跳過這一輪 speech_SetMIC(true)。背景: 兩條 mic-hold
-    // enforcer thread 每 MIC_HOLD_ENFORCER_INTERVAL_MS (2 秒) 就會無條件搶一次
-    // mic, 一句超過 2 秒才讀完的句子播到一半就被 speech_SetMIC(true) 打斷
-    // (真機 logcat 見過 "ttsGenerationFinished ... success = false" 接著立刻
-    // "setWakeState onWake:true") - Android system TTS 不經這個 AIDL 通道,
-    // 不會撞到, 所以之前只有 iflytek/nuance 斷斷續續, android 沒事。
-    private volatile boolean robotTtsSpeaking = false;
+    // 2026-09: TTS core (gap 旗＋speech/tts＋stopAllSpeechPlayback) 搬咗去
+    // SpeechCenter (TTS core 第一刀)——STOP_TO_TTS_MIN_GAP_MS／lastSpeechStopAtMs／
+    // robotTtsSpeaking 連註解跟埋走，呢度唔留副本。
 
-    // Chest sonar trigger threshold in cm, as last set via servo/sonar. Assumption
-    // (unverified on real hardware): chest_configureSonar()'s distance byte IS the
-    // threshold in cm directly (0-100 fits a single byte with room to spare) - kept
-    // here purely so the obstacle-triggered purple-LED logic below knows what
-    // threshold is currently active, and so the front-end chart can draw it as a
-    // reference line against live sonar readings.
-    private volatile int sonarThresholdCm = 30;
-    private volatile boolean sonarLedActive = false;
-    // 2026-08 新增: onSonarDistanceReceived() 之前只是用來判斷 triggered 有沒有改變
-    // (驅動 LED), 沒有存下實際讀數本身 - XiaoZhi MCP tool (self.sensors.get_sonar)
-    // 要給 LLM 隨時查詢「現在距離多少」, 不只「有沒有觸發」, 所以這裡加一個 cache
-    // 著最新讀數的 field。-1 代表「未收過任何讀數」, 和真實距離 (恆為非負) 區分開,
-    // 給 MCP tool 可以告訴 LLM 這是「未有數據」而不是「距離 0cm」。
-    private volatile int lastSonarDistanceCm = -1;
-    // 2026-08 新增: 和 lastSonarDistanceCm 同一個目的 - PIR 事件之前只是即時
-    // publish 去 EventBus (見 RobotEventReceiver 的 "com.ubtechinc.key"/-109 case),
-    // 沒存下最新狀態給 MCP tool 隨時查詢。-1 = 未收過任何 PIR 事件, 0 = 上次收到
-    // 的是 EXIT (沒人), 1 = 上次收到的是 ENTER (有人) - 用 int 不用 boolean 來
-    // 保留「未有數據」這個第三種狀態, 和 lastSonarDistanceCm 用 -1 的原因一樣。
-    private volatile int lastPirTriggeredState = -1;
+    // 2026-09: Sonar＋PIR sensors 包 (threshold／讀數 cache／PIR state) 搬咗去
+    // SonarCenter (Sonar 第一刀)——連註解跟埋走，呢度唔留副本。
     // 2026-09: 胸口版本/UUID 同步查詢成組搬咗去 ChestQuery (第一刀拆 god
     // object)——latch/raw/len 狀態、幀解析、阻塞查詢全部喺嗰邊，呢度淨係留個 instance。
     // 2026-09 刪除: headerVersionLatch/Raw/Len (唯一讀者 queryHeaderFirmwareVersion
@@ -226,50 +168,17 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
     // 拿掉了這個字段和相關的 set 語句 (曾經在 play_action/stop_action/
     // play_random_action 三個 case 出現過), 因為現在這個時機邏輯已經不需要它。
 
-    /** RobotEventReceiver 的 "alpha2_pir_state" publish 之後順手 call 這個, 讓
-     *  self.sensors.get_pir MCP tool 可以讀到最新狀態, 不用自己另外訂閱
-     *  EventBus。沒 instance 就靜靜地不做事 (和 onSonarDistanceReceived() 一致的
-     *  處理)。
-     *
-     *  ⚠️ 這個方法是在 RobotEventReceiver (一個 BroadcastReceiver) 的
-     *  onReceive() 裡面直接被 call, 也就是說這個方法本身、和它叫的任何東西, 都
-     *  **一定不可以有阻塞式操作** (Thread.sleep、網路 IO、等等) - BroadcastReceiver.
-     *  onReceive() 有嚴格時限 (通常十秒內要返回), 密集的 PIR broadcast 一波接一波
-     *  的時候, 阻塞邏輯會連環卡住, 輕則觸發 ANR, 重則 (2026-08 一次粗心的版本
-     *  真機實測證實) 直接 hold 死整個 system 連 adb 都沒反應。所以這裡只做
-     *  最輕的 field 寫入, 任何要送 WebSocket 訊息的耗時邏輯都必須包多一層獨立
-     *  thread 才可以做 (見下面 new Thread(...).start())。 */
+    /** PIR 事件 static 縫 (RobotEventReceiver／onDirectChestFrame 入口，簽名不變)：
+     *  轉交 SonarCenter（javadoc 連 code 跟埋走）；sInstance／sonarCenter 任一
+     *  null 即 no-op——onCreate 同一 thread 先後建構（sonarCenter 遲過
+     *  registerDynamicReceiver），起動嗰幾 ms 內嘅 PIR edge 會跌咗，行為同其他
+     *  center 嘅 null-guard 一致。非阻塞約束見 SonarCenter.onPirStateReceived。 */
     static void onPirStateReceived(final boolean triggered) {
         final MainActivity m = sInstance;
-        if (m == null) {
+        if (m == null || m.sonarCenter == null) {
             return;
         }
-        int newState = triggered ? 1 : 0;
-        if (newState == m.lastPirTriggeredState) {
-            return; // 狀態沒變, 不重複推播 (和 sonar 的 dedup pattern 一致)
-        }
-        m.lastPirTriggeredState = newState;
-        // 2026-08 新增: 用戶要求「不是叫一次做一次, 而是只要 PIR 開了, 每次
-        // broadcast 回報有不同都要有反應」- 也就是要事件驅動、主動告訴小智知道,
-        // 不是只給 LLM 隨時查詢。這段一定要包在獨立 thread 裡才可以做
-        // (xiaozhiSendDetectTextSafely() 裡面有 Thread.sleep + 阻塞式 WebSocket
-        // send, 原因見上面 class javadoc 段的慘痛教訓), 保持 onReceive() 本身
-        // 立刻返回, 不會阻住這個 broadcast dispatch。
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                if (m.xiaozhiBridge == null || !m.xiaozhiBridge.isConnected()) {
-                    return;
-                }
-                String text = triggered
-                        ? "[系統事件] PIR 人體感應器偵測到有人在附近。"
-                        : "[系統事件] PIR 人體感應器偵測不到人在附近了。";
-                String err = m.xiaozhiBridge.sendDetectText(text);
-                if (err != null) {
-                    android.util.Log.w("XiaozhiPir", "failed to push PIR event to XiaoZhi: " + err);
-                }
-            }
-        }, "XiaozhiPirEventPush").start();
+        m.sonarCenter.onPirStateReceived(triggered);
     }
 
     // 2026-09: Android TTS 層 (引擎綁定/讀出/語言表) 搬咗去 TtsCenter
@@ -289,16 +198,23 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
     private ApiDispatcher apiDispatcher;
     // 2026-09: 離線文法包搬咗去 GrammarCenter，呢度淨係留個 instance。
     private GrammarCenter grammarCenter;
+    // 2026-09: TTS orchestration 包搬咗去 SpeechCenter (TTS core 第一刀)，
+    // 呢度淨係留個 instance。
+    private SpeechCenter speechCenter;
+    // 2026-09: Sonar＋PIR sensors 包搬咗去 SonarCenter (Sonar 第一刀)，
+    // 呢度淨係留個 instance。
+    private SonarCenter sonarCenter;
 
-    // -- XiaozhiBridge.HostState (宿主縫)：留低未搬嘅 TTS/sonar state，一行一個。 --
-    @Override public boolean isRobotTtsSpeaking() { return robotTtsSpeaking; }
-    @Override public long getLastSpeechStopAtMs() { return lastSpeechStopAtMs; }
-    @Override public int getSonarDistanceCm() { return lastSonarDistanceCm; }
-    @Override public int getSonarThreshold() { return sonarThresholdCm; }
-    @Override public int getPirTriggeredState() { return lastPirTriggeredState; }
+    // -- XiaozhiBridge.HostState (宿主縫)：TTS 兩法轉交 SpeechCenter，sonar 四法
+    // 轉交 SonarCenter（delegate＋null-guard；sonar orchestration 第一刀已搬，
+    // MCP 4 tool 經呢度照讀）。 --
+    @Override public boolean isRobotTtsSpeaking() { return speechCenter != null && speechCenter.isRobotTtsSpeaking(); }
+    @Override public long getLastSpeechStopAtMs() { return speechCenter != null ? speechCenter.getLastSpeechStopAtMs() : 0L; }
+    @Override public int getSonarDistanceCm() { return sonarCenter != null ? sonarCenter.getSonarDistanceCm() : -1; }
+    @Override public int getSonarThreshold() { return sonarCenter != null ? sonarCenter.getSonarThreshold() : 30; }
+    @Override public int getPirTriggeredState() { return sonarCenter != null ? sonarCenter.getPirTriggeredState() : -1; }
     @Override public void applySonarThreshold(int distanceCm) {
-        sonarThresholdCm = distanceCm;
-        sonarLedActive = false; // threshold changed - next frame decides fresh, don't carry over stale LED state
+        if (sonarCenter != null) sonarCenter.applySonarThreshold(distanceCm);
     }
     // 2026-09: 相機拍照層搬咗去 CameraApi，呢度淨係留個 instance。
     private CameraApi cameraApi;
@@ -312,34 +228,28 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
     // static instance reference, 在 onCreate/onDestroy set/clear, 讓
     // RobotEventReceiver 可以經 MainActivity.getSonarThresholdCm() /
     // MainActivity.onSonarDistanceReceived() 這兩個 static bridge 方法接回
-    // instance 邏輯, 而不用將 RobotEventReceiver 的 constructor 簽名擴大 (這樣會
+    // instance 邏輯 (2026-09: 正本搬咗去 SonarCenter，static 簽名不變轉交),
+    // 而不用將 RobotEventReceiver 的 constructor 簽名擴大 (這樣會
     // 影響到整個 registerDynamicReceiver() 的 new RobotEventReceiver() call 位)。
     private static volatile MainActivity sInstance;
 
     /** SONAR_DISTANCE_ACTION 觸發的 broadcast 未到之前, RobotEventReceiver 都要知道
-     *  現在的門檻才計得到 "triggered"。沒 instance (例如 Activity 未起好/已destroy
-     *  中間那段窗口) 就當沒門檻, 不會誤判 triggered。 */
+     *  現在的門檻才計得到 "triggered"。沒 instance／sonarCenter (例如 Activity
+     *  未起好/已destroy 中間那段窗口) 就當沒門檻, 不會誤判 triggered。 */
     static int getSonarThresholdCm() {
         MainActivity m = sInstance;
-        return m != null ? m.sonarThresholdCm : 30;
+        return (m != null && m.sonarCenter != null) ? m.sonarCenter.getSonarThreshold() : 30;
     }
 
-    /** RobotEventReceiver 收到 SONAR_DISTANCE_ACTION 之後的入口, 負責將
-     *  distanceCm/triggered 接到 applyObstacleIndicator() (5-mic + mouth LED
-     *  雙路徑, 見該方法 javadoc)。和 handleChestObstacleFrame() 一樣, 只在
-     *  triggered 狀態實際改變那一刻才重新驅動 LED, 避免每秒 ~1 幀的重複讀數不斷
-     *  重送同一個 LED command。 */
+    /** RobotEventReceiver 收到 SONAR_DISTANCE_ACTION 之後的入口 (正本喺
+     *  SonarCenter#onSonarDistanceReceived，javadoc 連 code 跟埋走)：轉交；
+     *  沒 instance／sonarCenter 就靜靜地不做事。 */
     static void onSonarDistanceReceived(int distanceCm, boolean triggered) {
         MainActivity m = sInstance;
-        if (m == null) {
+        if (m == null || m.sonarCenter == null) {
             return;
         }
-        m.lastSonarDistanceCm = distanceCm;
-        if (triggered == m.sonarLedActive) {
-            return;
-        }
-        m.sonarLedActive = triggered;
-        m.ledCenter.applyObstacleIndicator(triggered);
+        m.sonarCenter.onSonarDistanceReceived(distanceCm, triggered);
     }
 
     @Override
@@ -355,11 +265,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         ledCenter = new LedCenter(this, mainHandler, ringtoneCenter);
         registerDynamicReceiver();
         ledCenter.registerWifiLedReceiver();
-        registerGestureController();
-        // pure-direct: 头顶 +/- pad 改由 HeadKeyPoller 直读 /dev/input/event0，
-        // 旧 come.ubt.alpha2.gesture broadcast 已随 alpha2services 消失。
-        // 仍 publish 同格式 EventBus "gesture" 事件，后续走既有 onGestureCode 管道。
-        try { headKeyPoller.start(); } catch (Throwable t) { Log.w(TAG, "headKeyPoller start failed", t); }
         initRobot();
         // pure-direct：胸 /dev/ttyS1 + 头 /dev/ttyS3 + libhead_led.so JNI，
         // 机身已无 alpha2services，无 binder fallback，失败直接报错。
@@ -409,16 +314,30 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         // 起喺 voskApi 之前——voskStart() 後開搶 mic 要經佢。
         xiaozhiBridge = new XiaozhiBridge(this, mainHandler, actionDirect, audioCenter,
                 robot, ttsCenter, vosk, cameraController, ledCenter, this);
+        micCenter = new MicCenter(robot, ledCenter, audioController, audioPlaybackController, this);
+        // (apiDispatcher 嗰次一齊傳入；呢度起好先叫得。)
+        // 手勢包 (head pad + 音量連發 + 雙鍵總停)：actionDirect/audioCenter 齊喺呢度起 (initRobot 之後)。
+        gestureCenter = new GestureCenter(this, mainHandler, ledCenter, ringtoneCenter,
+                actionDirect, audioCenter, this);
+        gestureCenter.start();
         grammarCenter = new GrammarCenter(this, robot, xiaozhiBridge);
         // sticky broadcast，註冊即刻有現狀；原 onCreate 開頭嗰次 register 搬嚟呢度 (起好先叫得)。
         grammarCenter.registerConnectivityReceiver();
         voskApi = new VoskApi(vosk, xiaozhiBridge);
-        // dispatcher 包晒上面全部 controller (+robot/audioPlayback/this 做 Host)。
-        // 放最尾——要等齊所有 collaborator (上面 voskApi 最遲)。
-        apiDispatcher = new ApiDispatcher(this, this, this, actionDirect, ubxApi, chestQuery,
+        // TTS orchestration 包 (speech/tts＋stop＋總停)：要 xiaozhiBridge
+        // (經 stopSpeechPlayback 停小智管道)，放 voskApi 之後、dispatcher 之前。
+        speechCenter = new SpeechCenter(robot, ttsCenter, vosk, xiaozhiBridge);
+        // Sonar＋PIR sensors 包：要 ledCenter (紫燈指示)＋xiaozhiBridge
+        // (PIR 事件推送)，放 speechCenter 之後、dispatcher 之前。
+        sonarCenter = new SonarCenter(this, ledCenter, xiaozhiBridge);
+        // dispatcher 包晒上面全部 controller (+speechCenter 做 Host；sensorState
+        // 繼續經 this——TTS／sonar 全部轉交緊對應 center；servo/sonar 直調下面
+        // sonarCenter)。
+        // 放最尾——要等齊所有 collaborator (上面 sonarCenter 最遲)。
+        apiDispatcher = new ApiDispatcher(this, speechCenter, this, actionDirect, ubxApi, chestQuery,
                 chestUpgrade, ttsCenter, voskApi, ledCenter, semanticCenter, deviceStatus,
-                cameraApi, audioCenter, ringtoneCenter, audioPlaybackController, robot, grammarCenter,
-                ubxPlayer, musicController, localServices);
+                cameraApi, audioCenter, ringtoneCenter, micCenter, robot, grammarCenter,
+                ubxPlayer, musicController, localServices, sonarCenter);
 
         // Plain HTTP only. TLS/HTTPS was tried (self-signed cert) to make getUserMedia()
         // available for the walkie-talkie mic feature, but browsers on this device
@@ -614,26 +533,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
     }
 
     /**
-     * Reacts to the head touch-pad "gestures" broadcast via {@code come.ubt.alpha2.gesture}.
-     *
-     * These are NOT documented in the SDK (docs/sensors-and-events.md only lists the raw
-     * `come.ubt.alpha2.gesture` action/extra name, not what values it carries) - the values
-     * below were captured from a real robot's WebSocket event log:
-     *
-     *   "-" pad pressed  -> 23041 (0x5a01)      "-" pad released -> 23297 (0x5b01)
-     *   "+" pad pressed  -> 23553 (0x5c01)      "+" pad released -> 23809 (0x5d01)
-     *   both pressed     -> 24065 (0x5e01, high byte 94 decimal)   both released -> 24321 (0x5f01)
-     *
-     * Every value's low byte is 0x01; the high byte (0x5a-0x5f, 90-95) is a distinct,
-     * sequential event code for each of the 6 press/release combinations - i.e. this
-     * extra carries a compound (eventCode << 8 | 0x01) value here, not the plain
-     * "direction" the field name suggests. Mapped to: "-"/"+" press-and-hold repeats
-     * volume down/up every VOLUME_REPEAT_INTERVAL_MS until release; pressing both (high
-     * byte 94, decimal) triggers a full stop-everything (action/speech/local music/
-     * radio - see stopAllSpeechPlayback()/onGestureCode()'s 0x5e case), matching the
-     * XiaoZhi panel's "⏹ 全部停止" button; releasing both does nothing extra.
-     */
-    /**
      * Installs a default uncaught-exception handler so any crash anywhere in this
      * process schedules a restart instead of leaving the robot's control panel dead
      * until someone physically walks over and re-launches the app.
@@ -678,74 +577,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         });
     }
 
-    private void registerGestureController() {
-        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        // HeadKeyPoller 已搬入 hardware-direct module：经 Listener 直连，
-        // 不再绕 EventBus "gesture" 事件（旧 direction 解析一并删除）。
-        // head_key/head_key_native 照旧转送 EventBus，供 WebSocket log 备查。
-        headKeyPoller.setListener(new HeadKeyPoller.Listener() {
-            @Override public void onGesture(int eventCode) {
-                mainHandler.post(() -> onGestureCode(eventCode));
-            }
-            @Override public void onHeadKey(int code, int value) {
-                EventBus.get().publish("head_key", "{\"code\":" + code + ",\"value\":" + value + "}");
-            }
-            @Override public void onHeadKeyNative(int code) {
-                EventBus.get().publish("head_key_native", "{\"code\":" + code + "}");
-            }
-        });
-    }
-
-    private void onGestureCode(int code) {
-        switch (code) {
-            case 0x5a: // "-" pressed: start repeating volume-down
-                ledCenter.setPadMinusHeld(true);
-                ledCenter.padLedUpdate();
-                startVolumeRepeat(false);
-                break;
-            case 0x5b: // "-" released
-                ledCenter.setPadMinusHeld(false);
-                stopVolumeRepeat();
-                ledCenter.padLedUpdate();
-                break;
-            case 0x5c: // "+" pressed: start repeating volume-up
-                ledCenter.setPadPlusHeld(true);
-                ledCenter.padLedUpdate();
-                startVolumeRepeat(true);
-                break;
-            case 0x5d: // "+" released
-                ledCenter.setPadPlusHeld(false);
-                stopVolumeRepeat();
-                ledCenter.padLedUpdate();
-                break;
-            case 0x5e: // both pressed (raw gesture code 94, decimal) - 全部停止:
-                       // 用戶要求將總停鍵的效果搬到這顆實體鍵上, 之前這裡只有
-                       // action_StopAction(), 現在跟小智面板那顆「⏹ 全部停止」
-                       // 按鈕 (xiaozhiStopAll(), 見 app-xiaozhi.js) 看齊, 一次
-                       // 停止動作/小智說話/本地音樂/電台這四樣東西。
-                ledCenter.setPadMinusHeld(true);
-                ledCenter.setPadPlusHeld(true);
-                ledCenter.padLedUpdate();
-                stopVolumeRepeat(); // in case one pad was already held down
-                ringtoneCenter.playStopCue(); // distinct "stop" cue - must track STREAM_MUSIC volume
-                // pure-direct：一键全停（动作截停+蹲下站起回位，含拍头双 pad 触发），
-                // 与 HTTP action/stop 同语义。旧 robot.action_* 已无服务承载。
-                actionDirect.stopActionWithRecovery();
-                stopAllSpeechPlayback();
-                audioCenter.stopLocalMusicPlayback();
-                audioCenter.stopRadioPlayback();
-                break;
-            case 0x5f: // both released: nothing further to do
-                ledCenter.setPadMinusHeld(false);
-                ledCenter.setPadPlusHeld(false);
-                ledCenter.padLedUpdate();
-                break;
-            default:
-                // Unknown gesture code - not one of the 6 confirmed above; ignore.
-                break;
-        }
-    }
-
     // (Pad 燈成組搬咗去 LedCenter。)
     // (停止/快門提示音 + 共用播放器搬咗去 RingtoneCenter。)
 
@@ -756,64 +587,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
 
     // (播歌 filler 循環搬咗去 AudioCenter。)
     // (本地播歌/EQ 搬咗去 AudioCenter。)
-    /** 2026-08 新增: 停止「小智說話/回覆」這一種播放 - 抽出來做共用 method, 供
-     *  handleApi() 的 "speech/stop" HTTP endpoint 和 onGestureCode() 的 0x5e
-     *  (雙鍵齊按, 也就是「94 鍵」) 一起使用。停止 Android TTS 和小智語音回覆
-     *  的音訊 (XiaozhiAudioController, WebSocket 收 Opus frame -> 解碼 ->
-     *  AudioTrack, 詳見 XiaozhiAudioController.onIncomingOpusFrame()/
-     *  stopPlayback() 的 javadoc) - 互相獨立的播放管道, 停一條不會連帶讓另一條
-     *  也停, 之前用戶回報「停不了小智說話」就是因為漏了 XiaozhiAudioController
-     *  這條路。2026-09: 機身本地 TTS (Nuance/iflytek) 已隨 alpha2services 移除，
-     *  無嘢要停，舊 robot.speech_StopTTS() call 拎走。 */
-    private void stopAllSpeechPlayback() {
-        lastSpeechStopAtMs = System.currentTimeMillis();
-        robotTtsSpeaking = false; // 見 robotTtsSpeaking field javadoc - 手動/總停鍵停止時都要立即放行 mic enforcer
-        ttsCenter.stop();
-        // 2026-09: 手動全部停止都要 resume Vosk（上面 UtteranceProgressListener
-        // 嘅 onDone 唔一定會嚟）。
-        if (vosk != null) {
-            try {
-                vosk.setPaused(false);
-            } catch (Throwable ignore) {
-            }
-        }
-        xiaozhiBridge.stopSpeechPlayback();
-        LedCenter.stopMouthLedForTts();
-    }
-
-    // (本地音樂停止/電台播放器搬咗去 AudioCenter。)
-    // (查表快取搬咗去 RingtoneCenter，連上面成段 cursor 洩漏註解一齊。)
-    /**
-     * Starts (or restarts) a repeating volume step every VOLUME_REPEAT_INTERVAL_MS,
-     * simulating press-and-hold behaviour on top of AudioManager's single-step API.
-     *
-     * FLAG_PLAY_SOUND makes Android play its own built-in volume-change sound on each
-     * real step - the same sound a hardware volume key produces - so there's no need
-     * for a separately synthesized beep here; it only actually sounds on ticks where
-     * the stream truly moved (Android itself no-ops silently once at min/max).
-     */
-    private void startVolumeRepeat(boolean up) {
-        stopVolumeRepeat();
-        volumeRepeater = new Runnable() {
-            @Override
-            public void run() {
-                if (audioManager != null) {
-                    audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
-                            up ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER,
-                            AudioManager.FLAG_SHOW_UI | AudioManager.FLAG_PLAY_SOUND);
-                }
-                mainHandler.postDelayed(this, VOLUME_REPEAT_INTERVAL_MS);
-            }
-        };
-        mainHandler.post(volumeRepeater);
-    }
-
-    private void stopVolumeRepeat() {
-        if (volumeRepeater != null) {
-            mainHandler.removeCallbacks(volumeRepeater);
-            volumeRepeater = null;
-        }
-    }
+    // 2026-09: stopAllSpeechPlayback() 搬咗去 SpeechCenter (TTS core 第一刀)——
+    // javadoc 連 code 跟埋走，呢度唔留副本。
 
     /**
      * 2026-08-25: WiFi 狀態 → wifi 指示燈 (2026-09 三態: wifi 熄=熄燈,
@@ -831,7 +606,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         robot = new RobotStub(this);
         chestQuery = new ChestQuery(this, robot);
         actionDirect = new ActionDirect(this, ubxPlayer);
-        ubxApi = new UbxApi(this, ubxPlayer, actionDirect);
+        ubxApi = new UbxApi(this, ubxPlayer, actionDirect, chestQuery);
         chestUpgrade = new ChestUpgrade(this, chestQuery);
         // (ringtoneCenter/ledCenter 已喺 onCreate 頭段起好，見上面。)
         audioCenter = new AudioCenter(this, ubxPlayer, actionDirect, mainHandler);
@@ -848,15 +623,16 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         // 已經成段刪除：機身無 alpha2services，永遠唔會執行。
 
         ubxApi.registerWakeupDirectionListener();
-        registerChestMuteKeyTestListener();
+        // 2026-09 刪除: registerChestMuteKeyTestListener()——純 no-op subscribe
+        // (filter＋comment，無任何動作)，chest_mute_key 事件經 EventBus 照常上 WebSocket。
         ledCenter.registerAlpha2PirAlertListener();
     }
 
     // -- pure-direct frame wiring -----------------------------------------------
     //
     // 胸/头 MCU 回帧經 HardwareDirectManager 直收：DirectSerialPort 送出的是完整
-    // wire 帧（F8 8F ... ED，回复含 00 00 头），先經 stripSerialFrame() 剥到
-    // payload 层（bytes[0] 即 cmd）再走 latch/EventBus 逻辑。对外发布的
+    // wire 帧（F8 8F ... ED，官方 05 00 头或 MCU 事件 00 00 头），先經 stripSerialFrame()
+    // 剥到 payload 层（bytes[0] 即 cmd）再走 latch/EventBus 逻辑。对外发布的
     // chest_rcv/head_rcv 事件用完整帧 hex（信息更多，前端事件 Log 照常显示）。
     private void wireDirectFrameListeners() {
         try {
@@ -875,8 +651,12 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
 
     /**
      * 把完整 wire 帧剥到 payload 层（bytes[0] 即 cmd，与旧 AIDL 回调格式一致）。
-     * 兼容长式（F8 8F LEN 00 00 CMD PAYLOAD SUM ED，MCU 回复用此式）和短式
-     * （F8 8F LEN CMD PAYLOAD SUM ED，本 app 发出的式样）；找不到帧头返回 null。
+     * 兼容长式（F8 8F LEN SRC DST CMD PAYLOAD SUM ED；SRC DST = 05 00 官方式
+     * 或 00 00 事件式，cmd 在 i+5）和短式（F8 8F LEN CMD PAYLOAD SUM ED，
+     * 旧兼容）；找不到帧头返回 null。
+     * 注：cmd 13 读舵机在坏舵机（如本机 5/6 号）上回短 error 帧
+     * （payload [0x0d, 0x01, id]，无角度值），调用方须按 plen/首字节 status
+     * 区分 [00 id hi lo] 正常回覆，不可当角度解析。
      */
     static byte[] stripSerialFrame(byte[] frame) {
         if (frame == null) return null;
@@ -884,8 +664,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         for (int i = 0; i + 5 < n; i++) {
             if ((frame[i] & 0xFF) == 0xF8 && (frame[i + 1] & 0xFF) == 0x8F) {
                 int lenByte = frame[i + 2] & 0xFF;
-                // 长式：[i+3],[i+4] 为 00 00，cmd 在 i+5
-                if (frame[i + 3] == 0 && frame[i + 4] == 0) {
+                // 长式：[i+3] 为 05（官方）或 00（事件），[i+4] 为 00，cmd 在 i+5
+                if (frame[i + 4] == 0 && (frame[i + 3] == 0x05 || frame[i + 3] == 0)) {
                     int pl = lenByte - 7;
                     if (pl < 0) pl = 0;
                     if (i + 6 + pl > n) pl = Math.max(0, n - (i + 6));
@@ -950,17 +730,11 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         if (chestQuery.onFrame(frame, payload, plen)) return;
     }
 
-    // -- pure-direct 状态/发送 helpers（取代 robot.waitChestReady/isChestReady 等 binder 语义） --
-    private boolean directChestReady() {
-        try { return HardwareDirectManager.get(this).chest().isAvailable(); }
-        catch (Exception e) { return false; }
-    }
-
-    private boolean directHeaderReady() {
-        try { return HardwareDirectManager.get(this).head().isAvailable(); }
-        catch (Exception e) { return false; }
-    }
-
+    // -- pure-direct 共用回包 helper (directCode／codeResponse／codeResponseReady／
+    // jsonSafe／toHex／readFully 留喺度，各 center 經 MainActivity. 直用) --
+    // 2026-09 刪除: private directChestReady()/directHeaderReady()——零調用
+    // (各 center 全部內聯咗自己經 appContext 嘅副本：UbxApi／LedCenter／
+    // ChestQuery／XiaozhiBridge／ApiDispatcher／DeviceStatus／SonarCenter)。
     static UbxErrorCode.API_ERROR_CODE directCode(boolean ok) {
         return ok ? UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED
                 : UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
@@ -989,44 +763,19 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
 
     // (喚醒轉頭成組搬咗去 UbxApi.registerWakeupDirectionListener()。)
 
-    // -- 心口 mute 鍵 (-111) 測試: 撳一下紫燈長開, 再撳一下熄燈 ------------------------
-    // 2026-08 新增: 純粹用來目視確認 RobotEventReceiver 那個 CHEST_ACTION case 有沒有
-    // 真的收到胸口 mute 鍵 (chest cmd = -111) 的 broadcast - 這不是最終功能,
-    // 純粹一個「有沒有反應」的測試訊號 (見 RobotEventReceiver 那個 case 的 comment)。
-    // 官方 firmware 這顆鍵本身完全沒有連任何 LED, 這裡的紫燈完全是這個專案自己加的,
-    // 和 sonar obstacle 用的是同一個 setHeadEyeLedLong(5, 9) helper (5=紫,
-    // 9=最光, 見 applyObstacleIndicator() 個 comment)。
-    // (2026-09: chestMuteKeyLedOn field 已刪 - 純寫入、從無讀取。注意同
-    // setChestMuteLed() 用的 chestMuteLedOn 係兩個 field，嗰個仲用緊。)
-
-    private void registerChestMuteKeyTestListener() {
-        EventBus.get().subscribe(new EventBus.Listener() {
-            @Override
-            public void onEvent(String line) {
-                if (!line.contains("\"type\":\"chest_mute_key\"")) {
-                    return;
-                }
-                // 2026-08-25: 之前這裡是紫燈測試 (head/eye 5-mic LED toggle), 現在
-                // 換成真正的 mute 燈 - 實機掃描確認 chest serial cmd=68 (0x44):
-                // data [01]=點亮, [00]=熄滅 (wire frame F8 8F 08 00 00 44 <d> <sum> ED,
-                // sum=(8+0x44+d)&0xFF)。onMuteKeyEvent(pressed) 由 RobotEventReceiver
-                // 在收到 -111 broadcast 的當下直接呼叫 (按下=true/放開=false),
-                // 這個 listener 只負責轉發事件給前端 Event Log。
-            }
-        });
-    }
-
-    /** RobotEventReceiver 收到胸口 mute 鍵 (-111) broadcast 時直接呼叫。
-     *  pressed=true (按下) 就 toggle mute LED; pressed=false (放開) 不理。 */
+    // 2026-09: 心口 mute 鍵 (-111) 入口本體搬咗去 XiaozhiBridge.onMuteKeyEvent
+    // (mute LED＋小智開關嗰邊擁有)；舊紫燈測試 header 註解一併拎走 (被 68[01/00]
+    // 真 mute 燈取代已久)。static 縫留喺度 (frozen onDirectChestFrame／
+    // RobotEventReceiver 經呢度入，簽名不變)。
+    /** RobotEventReceiver／onDirectChestFrame 收到胸口 mute 鍵 (-111) 時直接呼叫
+     *  (簽名不變)：轉交 XiaozhiBridge；sInstance／xiaozhiBridge 任一 null 即
+     *  no-op (舊 code 呢個窗口會 NPE 跌入 caller 嘅 try/catch，而家靜默處理)。 */
     public static void onMuteKeyEvent(final boolean pressed) {
-        if (!pressed) {
-            return;
-        }
         final MainActivity m = sInstance;
-        if (m == null) {
+        if (m == null || m.xiaozhiBridge == null) {
             return;
         }
-        m.xiaozhiBridge.toggleChestMuteLed();
+        m.xiaozhiBridge.onMuteKeyEvent(pressed);
     }
 
     // (PIR 事件接線搬咗去 LedCenter.registerAlpha2PirAlertListener()。)
@@ -1051,14 +800,11 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         if (sInstance == this) {
             sInstance = null;
         }
-        stopVolumeRepeat();
+        gestureCenter.shutdown();
         ubxPlayer.stopVoice();
-        stopMicHoldEnforcer();
-        micHeldByApp = false;
+        micCenter.shutdownMicHold();
         deviceStatus.setAccelerometerEnabled(false);
         ttsCenter.shutdown();
-        headKeyPoller.setListener(null);
-        try { headKeyPoller.stop(); } catch (Throwable ignored) {}
         if (localServices != null) {
             try { localServices.stop(); } catch (Throwable ignored) {}
         }
@@ -1176,94 +922,13 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         return new String(buf.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
     }
 
-    // -- handleApi 缺口 (TTS/mic/grammar core 未搬)：dispatcher 經 Host 調返嚟，
+    // -- handleApi 缺口 (mic/grammar core 未搬)：dispatcher 經 Host 調返嚟，
     // core 搬埋嗰陣跟埋走。 --
-    @Override public HttpServer.ApiResponse handleSpeechTts(Map<String, String> query) {
-        String text = ApiValidator.require(query, "text");
-        String engine = ApiValidator.requireSpeechEngine(query);
-        if ("android".equals(engine)) {
-            String ttsErr = ttsCenter.speakPanelTts(text, ApiValidator.optional(query, "lang", ""));
-            if (ttsErr != null) return HttpServer.ApiResponse.error(ttsErr);
-            return HttpServer.ApiResponse.ok("{\"ok\":true}");
-        }
-        String voice = "iflytek".equals(engine) ? ApiValidator.optionalNullable(query, "voice") : null; // may be null
-        String lang = "iflytek".equals(engine) ? "zh_cn" : "en_us"; // no language picker; engine implies it
-        // See STOP_TO_TTS_MIN_GAP_MS above: if speech/stop just ran, give the
-        // robot side's async audio teardown a minimum window to finish before
-        // starting a new AIDL TTS session, to avoid crashing the Nuance TTS
-        // session. Runs on this HTTP worker thread only (newCachedThreadPool),
-        // so it never blocks other in-flight requests.
-        long sinceStopMs = System.currentTimeMillis() - lastSpeechStopAtMs;
-        if (sinceStopMs >= 0 && sinceStopMs < STOP_TO_TTS_MIN_GAP_MS) {
-            try {
-                Thread.sleep(STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        LedCenter.startMouthLedForTts();
-        UbxErrorCode.API_ERROR_CODE res = robot.speech_startTTS(lang, text, voice);
-        if (!isOk(res)) {
-            // speech_startTTS failed synchronously - onServerPlayEnd will never
-            // fire for this attempt, so nothing will turn the mouth LED back off
-            // unless we do it here.
-            LedCenter.stopMouthLedForTts();
-        } else {
-            // 見 robotTtsSpeaking field javadoc - 觸發成功先算「開始
-            // 播緊」, onServerPlayEnd 會揭返做 false。
-            robotTtsSpeaking = true;
-        }
-        return codeResponse(res);
-    }
-    @Override public HttpServer.ApiResponse handleSpeechStop() {
-        stopAllSpeechPlayback();
-        return codeResponse(UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED);
-    }
-    @Override public HttpServer.ApiResponse handleSetMic(Map<String, String> query) {
-        boolean wake = ApiValidator.requireBoolean(query, "wake");
-        robot.speech_SetMIC(wake);
-        // 記住這個狀態, 讓 handleMicStream() 斷線時知道用戶是否透過 TTS
-        // tab 主動要求長期持有 mic - 見 micHeldByApp 的 field javadoc。
-        micHeldByApp = wake;
-        // 用戶手動交還給機器人 (wake=false) 就自動關閉「持續搶佔 mic」,
-        // 不然 enforcer 兩秒之後又會把 mic 搶回來, 用戶的「交還」動作
-        // 會看起來像沒效果一樣, 很令人困惑。
-        if (!wake && micHoldEnforced) {
-            stopMicHoldEnforcer();
-        }
-        EventBus.get().publish("mic_state",
-                "{\"held\":" + micHeldByApp + ",\"keepHeld\":" + micHoldEnforced + "}");
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"held\":" + micHeldByApp
-                + ",\"keepHeld\":" + micHoldEnforced + "}");
-    }
-    @Override public HttpServer.ApiResponse handleSetMicKeepHeld(Map<String, String> query) {
-        boolean keep = ApiValidator.requireBoolean(query, "keep");
-        if (keep) {
-            startMicHoldEnforcer();
-        } else {
-            stopMicHoldEnforcer();
-        }
-        EventBus.get().publish("mic_state",
-                "{\"held\":" + micHeldByApp + ",\"keepHeld\":" + micHoldEnforced + "}");
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"held\":" + micHeldByApp
-                + ",\"keepHeld\":" + micHoldEnforced + "}");
-    }
+    // (speech/tts、speech/stop 搬咗去 SpeechCenter，直實現 ApiDispatcher.Host。)
 
-    // -- Camera streaming (MJPEG over "/stream/camera") -------------------------------
+    // -- GestureCenter.Host (0x5e 總停鍵)：轉交 SpeechCenter (TTS orchestration)。 --
+    @Override public void stopAllSpeech() { if (speechCenter != null) speechCenter.stopAllSpeech(); }
 
-    private static final String MJPEG_BOUNDARY = "alpha2testpanelframe";
-
-    /**
-     * Serves the live camera feed as "multipart/x-mixed-replace" MJPEG - the format
-     * every browser's plain &lt;img src="..."&gt; already knows how to render as a live
-     * video-like feed with zero client-side JS, which is why this is a stream/ HTTP
-     * route rather than a WebSocket: an &lt;img&gt; tag can't speak WebSocket, but it can
-     * point straight at a URL that never stops responding.
-     *
-     * Runs on an HttpServer worker thread and blocks for as long as the client stays
-     * connected, same as WebSocketServer.Connection.readLoop() does for "/ws" - both
-     * rely on the pool's cached-thread-per-connection model rather than needing NIO.
-     */
     /** Handles POST /upload/audio: raw PCM bytes (16kHz mono 16-bit, matching
      *  AudioPlaybackController's format - see AudioPlaybackController.SAMPLE_RATE_HZ
      *  and app-mic.js's TALK_TARGET_SAMPLE_RATE; 2026-08 改返 16kHz - 當初落 8kHz
@@ -1289,9 +954,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
     // (音樂上載搬咗去 AudioCenter.handleMusicUpload。)
     private void handleStream(String path, Map<String, String> query, java.net.Socket socket) throws java.io.IOException {
         if ("camera".equals(path)) {
-            handleCameraStream(socket);
+            cameraApi.handleCameraStream(socket);
         } else if ("mic".equals(path)) {
-            handleMicStream(socket);
+            micCenter.handleMicStream(socket);
         } else {
             byte[] msg = ("Not found: /stream/" + path).getBytes(StandardCharsets.UTF_8);
             java.io.OutputStream out = socket.getOutputStream();
@@ -1302,327 +967,12 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
         }
     }
 
-    private void handleCameraStream(java.net.Socket socket) throws java.io.IOException {
-        CameraController.StartResult started = cameraController.start(8000);
-        java.io.OutputStream out = socket.getOutputStream();
-        if (started.error != null) {
-            byte[] msg = ("Camera unavailable: " + started.error).getBytes(StandardCharsets.UTF_8);
-            out.write(("HTTP/1.1 503 Service Unavailable\r\nContent-Length: " + msg.length
-                    + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1));
-            out.write(msg);
-            out.flush();
-            return;
-        }
-
-        out.write(("HTTP/1.1 200 OK\r\n"
-                + "Content-Type: multipart/x-mixed-replace; boundary=" + MJPEG_BOUNDARY + "\r\n"
-                + "Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\n"
-                + "Access-Control-Allow-Origin: *\r\n"
-                + "Connection: close\r\n"
-                + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
-        out.flush();
-
-        // BlockingQueue rather than writing directly from onFrame(): onFrame() runs on
-        // CameraController's own camera thread and must return immediately (it's also
-        // fanning the same frame out to every other connected stream client) - it must
-        // not block on this connection's socket write, which can stall arbitrarily long
-        // on a slow/stuck client. capacity 1 + offer-that-drops-the-oldest keeps this
-        // socket's writer thread always working from the newest frame rather than
-        // buffering up a backlog if the network can't keep up with 30fps.
-        final java.util.concurrent.ArrayBlockingQueue<CameraController.Frame> queue =
-                new java.util.concurrent.ArrayBlockingQueue<>(1);
-        CameraController.FrameListener listener = new CameraController.FrameListener() {
-            @Override
-            public void onFrame(CameraController.Frame frame) {
-                queue.poll(); // drop whatever stale frame was waiting, if any
-                queue.offer(frame);
-            }
-        };
-        cameraController.subscribe(listener);
-        try {
-            while (true) {
-                CameraController.Frame frame;
-                try {
-                    frame = queue.poll(10, java.util.concurrent.TimeUnit.SECONDS);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-                if (frame == null) {
-                    // No frame in 10s - camera likely died; stop rather than hold the
-                    // connection (and the pool thread) open forever with a frozen image.
-                    break;
-                }
-                out.write(("--" + MJPEG_BOUNDARY + "\r\n"
-                        + "Content-Type: image/jpeg\r\n"
-                        + "Content-Length: " + frame.jpeg.length + "\r\n"
-                        + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
-                out.write(frame.jpeg);
-                out.write("\r\n".getBytes(StandardCharsets.ISO_8859_1));
-                out.flush(); // each part must reach the client promptly, not batch up
-            }
-        } finally {
-            cameraController.unsubscribe(listener);
-            // Only actually releases the camera once every other stream client (if any)
-            // has also disconnected - see CameraController.stopIfIdle() javadoc.
-            cameraController.stopIfIdle();
-        }
-    }
-
-    // Each part is a complete, independently-decodable WAV file. multipart/mixed (not
-    // x-mixed-replace, which specifically means "each part replaces the last" - fine
-    // for MJPEG video frames but wrong for audio chunks that should all play in
-    // sequence) is the correct MIME semantics here, though the client-side JS still
-    // parses the boundary manually since fetch()+ReadableStream is used rather than
-    // relying on any browser-native multipart handling.
-    private static final String MIC_BOUNDARY = "opensdktestpanelaudio";
-
     // (setHeadEyeLedLong/applyObstacleIndicator 搬咗去 LedCenter。)
-    /** Parses raw chest-serial receive frames looking for CHES_SEND_OBSTACLE (command
-     *  byte -127 / 0x81, per Alpha2RobotApi#chest_configureSonar javadoc), which the
-     *  chest board sends unprompted once servo/sonar has configured a trigger distance.
-     *  ASSUMPTION (unverified on real hardware, needs confirming from a logged frame):
-     *  bytes[0] is the command byte and bytes[1] is param[0], mirroring the symmetric
-     *  layout sendCommand() uses on the way out (cmd byte + param array). If real
-     *  frames turn out to carry a different header/offset, only this method needs
-     *  adjusting - the purple-LED behaviour and "sonar_obstacle" event stay the same.
-     *  On trigger (param[0] != 0): solid purple (color=5) head+eye LEDs, brightness 9.
-     *  On clear (param[0] == 0): LEDs turned off. Also published as "sonar_obstacle" so
-     *  the front-end chart can plot live triggered/clear state against the threshold
-     *  line set via servo/sonar.
-     *
-     *  2026-08 更新: 實機 (firmware 1.1.1.14) 證實這個 0x81 幀假設完全沒撞中 -
-     *  sonar 讀數根本不會經 IAlpha2SerialPortService 的 AIDL rcv callback 送達,
-     *  onListenSerialPortRcvData() 只收到 app 自己送出 chest_configureSonar()
-     *  那個 config command 的 2-byte ack "04 00"。中途一度誤以為 sonar 讀數會
-     *  經由 "com.ubtechinc.services.chest" (RobotWire.CHEST_ACTION) 這個全域
-     *  broadcast 重新發送, 但反編譯官方 UBTech alpha2demo.apk 之後證實這也
-     *  是錯的 - CHEST_ACTION 官方 demo 自己也只是用來 log 機身內部 raw command
-     *  byte (見 RobotEventReceiver 的 CHEST_ACTION case), 不是 sonar 讀數。
-     *  真正的 sonar 讀數是經由另一個獨立、之前完全沒診斷到的 broadcast action
-     *  "com.ubtechinc.sonar.distance" (RobotWire.SONAR_DISTANCE_ACTION) 送出,
-     *  extra 已經是 parse 好的 int (key "sonar_distance",
-     *  RobotWire.SONAR_DISTANCE_EXTRA), 不需要自己再解 raw wire frame - 見
-     *  RobotEventReceiver 的 SONAR_DISTANCE_ACTION case 和
-     *  MainActivity#onSonarDistanceReceived()。而且就算 0x81 幀真的經由 AIDL
-     *  path 送達, 實測 raw wire frame 也是 "f8 8f 0a 00 00 8b eb 04 81 05 ed" -
-     *  0x81 出現在幀中間 (index 8), 不是 bytes[0], 所以這裡原本的
-     *  offset 假設連框架格式都對不上, 不只是「這台機器不走這條路」那麼簡單。
-     *  這個方法連同它的 0x81 假設保留不刪 - 留給其他機身/firmware 版本,
-     *  如果真的會送出 0x81 開頭的 AIDL rcv 幀, 這條路徑才有意義；在這台機器上它
-     *  單純不會撞到 (cmd 恆等於 4, 在 "cmd != -127" 那行提早 return), 不影響
-     *  真正生效的那條 SONAR_DISTANCE_ACTION 路徑。 */
+    // 2026-09: handleChestObstacleFrame() (0x81 legacy path) 搬咗去 SonarCenter
+    // (Sonar 第一刀)——javadoc 連 code 跟埋走。呢度留薄 shim 唔直改 call site，
+    // 因為 onDirectChestFrame 區間凍結（有人同時改緊 serial frame 解析，嗰區一隻字唔郁）。
     private void handleChestObstacleFrame(byte[] bytes, int len) {
-        if (bytes == null || len < 2) {
-            return;
-        }
-        int cmd = bytes[0]; // signed byte compare against -127 on purpose - CHES_SEND_OBSTACLE is negative
-        if (cmd != -127) {
-            return;
-        }
-        boolean triggered = bytes[1] != 0;
-        EventBus.get().publish("sonar_obstacle",
-                "{\"triggered\":" + triggered + ",\"thresholdCm\":" + sonarThresholdCm + "}");
-        if (triggered == sonarLedActive) {
-            return; // avoid re-sending the same LED state on every repeated frame
-        }
-        sonarLedActive = triggered;
-        ledCenter.applyObstacleIndicator(triggered);
-    }
-
-    /**
-     * Releases alpha2services' hold on the shared audio hardware before this app opens
-     * its own AudioRecord/AudioTrack. alpha2services' own speech/wakeup engine
-     * (IflyteckASR5mic) holds the mic input open continuously for wake-word detection,
-     * and this hardware's audio HAL (AudioHardwareTiny) does not support concurrent
-     * input/output streams from multiple processes - confirmed from logcat on both
-     * sides: mic recording failed outright with "status -38" (AudioPolicyManager:
-     * "startInput failed: other input already started"), and AudioTrack construction
-     * for speaker playback failed with state=0/STATE_UNINITIALIZED while
-     * alpha2services' own audio pipeline was active. speech_SetMIC(true) is the release
-     * call - true means "release the mic/audio hardware to this app" (matching the
-     * Speech tab's manual "釋放麥克風給 App" button), not "false".
-     *
-     * setWakeState() dispatches asynchronously (an AIDL call into alpha2services, which
-     * itself does a sendBroadcast internally per logcat) - it does not block until the
-     * hardware is actually free. The short sleep here is what actually avoids the
-     * rejection race, not just calling speech_SetMIC() alone.
-     *
-     * IMPORTANT side effect confirmed from logcat (2026-08-23 session): alpha2services'
-     * own AlphaMainSeviceImpl reacts to this same setWakeState(true) call by internally
-     * broadcasting LED_ACTION control_type:2 ("stop ear led"), turning the head/eye LED
-     * back off - entirely outside this app's control, and racing against whatever LED
-     * state the browser had just asked for (e.g. the green "listening" cue - see
-     * app-mic.js's setListenLed()). Depending on scheduling this broadcast could land
-     * either before or after this app's own LED call, which is why the green LED "有時
-     * 亮,有時不亮" (sometimes lit, sometimes not) - a pure race, not a code bug in the
-     * LED call itself. The fix is ordering: setHeadEyeLedLong() below is called from
-     * handleMicStream() only *after* this method (and its sleep) returns, guaranteeing
-     * this app's LED command is always the last one sent and therefore always wins the
-     * race, rather than leaving the browser to fire its own LED call at roughly the
-     * same time speech_SetMIC(true) is dispatched from the client side.
-     */
-    private void releaseMicForAudioIo() {
-        robot.speech_SetMIC(true);
-        try {
-            Thread.sleep(300);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    /** 持續搶 mic 背景 thread - 見 micHoldEnforced 個 field javadoc。每
-     *  MIC_HOLD_ENFORCER_INTERVAL_MS 就重新 call 一次 speech_SetMIC(true),
-     *  確保就算 firmware 內部從旁奪回了 mic (例如 setWakeState 本身在
-     *  firmware bytecode 裡會順便觸發 IflytekWakeUp5mic.startRecording()
-     *  這個 side effect - 見 AIDL_REFERENCE_ALPHA2.md「⚠️ 重要行為」段), app
-     *  都會很快搶回來, 不用等用戶自己發現麥克風靜音了才手動再按一次。
-     *
-     *  用獨立 thread + sleep 而不是靠 handleMicStream() 的 loop, 是因為兩者
-     *  用途不同: handleMicStream() 只在有人真的開啟 /stream/mic 才執行, 而
-     *  這個 enforcer 是只要用戶在 mic card 開啟了「持續搶佔 mic」開關, 就算沒人
-     *  開著 mic stream 也要生效 (例如只想用 TTS, 但不想讓機器人自己的
-     *  wake-word 引擎不時搶返支 mic)。 */
-    private void startMicHoldEnforcer() {
-        if (micHoldEnforcerThread != null) return;
-        micHoldEnforced = true;
-        micHoldEnforcerThread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                while (micHoldEnforced && !Thread.currentThread().isInterrupted()) {
-                    // 和 startXiaozhiMicHoldEnforcer() 一樣的原因 (見
-                    // robotTtsSpeaking field javadoc) - 機身 robot-side TTS
-                    // 正在播放就跳過這一輪, 不要打斷它。
-                    if (micHeldByApp && !robotTtsSpeaking) {
-                        robot.speech_SetMIC(true);
-                    }
-                    try {
-                        Thread.sleep(MIC_HOLD_ENFORCER_INTERVAL_MS);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-            }
-        }, "MicHoldEnforcer");
-        micHoldEnforcerThread.start();
-    }
-
-    private void stopMicHoldEnforcer() {
-        micHoldEnforced = false;
-        if (micHoldEnforcerThread != null) {
-            micHoldEnforcerThread.interrupt();
-            micHoldEnforcerThread = null;
-        }
-    }
-
-    private void handleMicStream(java.net.Socket socket) throws java.io.IOException {
-        releaseMicForAudioIo();
-        ledCenter.setHeadEyeLedLong(2, 9); // 綠燈長開 - 正在聽機器人說話, 一定要在上面那行之後才呼叫,
-                                 // 見 releaseMicForAudioIo() javadoc 解釋為何順序很重要
-
-        AudioController.StartResult started = audioController.start(5000);
-        java.io.OutputStream out = socket.getOutputStream();
-        if (started.error != null) {
-            byte[] msg = ("Mic unavailable: " + started.error).getBytes(StandardCharsets.UTF_8);
-            out.write(("HTTP/1.1 503 Service Unavailable\r\nContent-Length: " + msg.length
-                    + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1));
-            out.write(msg);
-            out.flush();
-            return;
-        }
-
-        out.write(("HTTP/1.1 200 OK\r\n"
-                + "Content-Type: multipart/mixed; boundary=" + MIC_BOUNDARY + "\r\n"
-                + "Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\n"
-                + "Access-Control-Allow-Origin: *\r\n"
-                + "Connection: close\r\n"
-                + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
-        out.flush();
-
-        // Capacity 2 rather than camera's 1: audio chunks must all be delivered in
-        // order (dropping one produces an audible gap/glitch, unlike a skipped video
-        // frame which is imperceptible), so this queue absorbs a little jitter instead
-        // of discarding outright. Kept deliberately short (~1s at CHUNK_MS=500) since
-        // this is meant to feel like a live walkie-talkie - a large buffer would trade
-        // away responsiveness for smoothness, and if the client falls this far behind
-        // something is already wrong (dead connection, GC pause) where further
-        // buffering would just add latency without fixing the underlying stall.
-        final java.util.concurrent.ArrayBlockingQueue<AudioController.Chunk> queue =
-                new java.util.concurrent.ArrayBlockingQueue<>(2);
-        AudioController.ChunkListener listener = new AudioController.ChunkListener() {
-            @Override
-            public void onChunk(AudioController.Chunk chunk) {
-                if (!queue.offer(chunk)) {
-                    queue.poll(); // drop the oldest to make room, keep chunks in order
-                    queue.offer(chunk);
-                }
-            }
-        };
-        audioController.subscribe(listener);
-        try {
-            while (true) {
-                AudioController.Chunk chunk;
-                try {
-                    // 2026-08 修正 (用家要求): 之前呢度用 poll(10, SECONDS), 10 秒
-                    // 拿不到 chunk 就當「mic 死了」自動 break, 接著下面的 finally
-                    // 就會 speech_SetMIC(false) 主動把 mic 還給機器人 —— 但用家
-                    // 想要的是「只有用家自己按停才還機, 不理會有沒有聲音都不應該自動
-                    // 還」。改用沒有 timeout 的 take(), 只是阻塞式等待下一個 chunk,
-                    // 不會因為靜音就自行斷開。stream connection 本身斷了
-                    // (用家關掉瀏覽器分頁/收起 tab) 會由下面 out.write() 拋出
-                    // IOException 讓 loop 自然跳出, 不用靠這裡的逾時判斷。
-                    //
-                    // Trade-off: 如果 AudioController.readLoop() 本身真的故障
-                    // (AudioRecord.read() 持續讀錯, 見 AudioController 那邊 n<0
-                    // 那段), readLoop() 會自己 release 掉 AudioRecord 並停止, 但
-                    // 不會再有新 chunk 送進來, 這裡的 take() 會永久阻塞, 這條 HTTP
-                    // thread 唯一釋放方法是用家自己在瀏覽器裡按「停止聽」
-                    // (讓 fetch abort, socket close, out.write() 才會拋出 IOException
-                    // 讓 loop 跳出)。這是刻意換來的代價 - 為了完全消除「靜音
-                    // 就自動還機」這個不想要的行為, 不會再有任何逾時自動釋放。
-                    chunk = queue.take();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-                out.write(("--" + MIC_BOUNDARY + "\r\n"
-                        + "Content-Type: audio/wav\r\n"
-                        + "Content-Length: " + chunk.wav.length + "\r\n"
-                        + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
-                out.write(chunk.wav);
-                out.write("\r\n".getBytes(StandardCharsets.ISO_8859_1));
-                out.flush();
-            }
-        } finally {
-            audioController.unsubscribe(listener);
-            boolean wasLastListener = audioController.hasNoListeners();
-            audioController.stopIfIdle();
-            if (wasLastListener) {
-                // Give the mic back to alpha2services' own wake-word engine now that
-                // nobody is listening to the mic stream - otherwise voice wakeup would
-                // stay silently disabled until someone went to the Speech tab and
-                // manually re-enabled it, same as it used to require to enable it.
-                // false = "交還麥克風給機器人" (hand back to the robot), matching
-                // setMic(false) in app-speech.js - true is the opposite, "release to app".
-                //
-                // 例外: 如果用家在 TTS tab 按了「釋放麥克風給 App」(micHeldByApp),
-                // 就代表他想長期由 app 持有 mic - 這個 stream 斷開 (背景化分頁/
-                // 網路短暫中斷都會觸發這個 finally) 不應該把 mic 悄悄還給機器人,
-                // 否則個「釋放」狀態就會被呢度無聲蓋走, 要用家自己再撳一次先頂到住。
-                if (!micHeldByApp) {
-                    robot.speech_SetMIC(false);
-                }
-                // Safety net: turn the green "listening" LED back off here too, not
-                // just relying on the browser's stopMicListen() sending preset=stop -
-                // if this stream connection just drops (backgrounded tab, network
-                // blip, browser closed) rather than being stopped via the button, the
-                // browser-side call never happens and the LED would otherwise stay
-                // stuck on indefinitely. pure-direct: 经 JNI 直关。
-                DirectLedController.stopHead5Mic();
-                DirectLedController.stopEye5Mic();
-            }
-        }
+        if (sonarCenter != null) sonarCenter.handleChestObstacleFrame(bytes, len);
     }
 
     // (waitForFrame 搬咗去 CameraApi。)
@@ -1662,7 +1012,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, A
 
     /**
      * Same as codeResponse but also reports whether the underlying chest/header
-     * direct serial port was actually open (directChestReady()/directHeaderReady())
+     * direct serial port was actually open (caller 經自己內聯嘅
+     * directChestReady()/directHeaderReady() 傳入 ready，見各 center)
      * at the time of the call. pure-direct: no AIDL bind exists any more;
      * API_ERROR_SUCCEED means the frame was written to /dev/ttyS1/S3.
      */
