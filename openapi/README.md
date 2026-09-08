@@ -17,7 +17,7 @@
 
 - 源：`openapi/open-alpha2-openapi.yml`
 - 生成器：`scripts/generate-api-client.py` → `app/src/main/assets/web/api-client.js`
-- 內容：`Alpha2Api.servoOne({id,angle,time})` 等 132 個 typed wrapper，內建 `assertEnum` / `assertRange`（鏡像後端校驗）
+- 內容：`Alpha2Api.servoOne({id,angle,time})` 等 134 個 typed wrapper，內建 `assertEnum` / `assertRange`（鏡像後端校驗）
 - 路由：按 OpenAPI path 前綴自動揀 caller——`api()`（`/api/alpha2/*`）、`sysApi()`（`/api/system/*`）、`directApi()`（`/api/direct/*`）、`xiaozhiApi()`（`/api/xiaozhi/*`）；直接用 `api('system/...')` 會 404，`scripts/check-api-client-routes.py` 會擋
 - 依賴：`app-core.js` 的 `api()`（`index.html` 緊接其後載入；`blockly.html` 用 `blockly-page.js` 提供嘅同名 helper，一樣要載喺 `api-client.js` 之前）
 
@@ -61,7 +61,7 @@ spec 加參數而 sync 未表態（加白名單或加 `exclude`）會生成失�
 
 ```bash
 python -c "import yaml; yaml.safe_load(open('openapi/open-alpha2-openapi.yml'))"
-python scripts/generate-api-client.py  # 132 functions
+python scripts/generate-api-client.py  # 134 functions
 ```
 
 License: GPL-3.0-only (https://github.com/arthurson/ubtech-open-alpha2)

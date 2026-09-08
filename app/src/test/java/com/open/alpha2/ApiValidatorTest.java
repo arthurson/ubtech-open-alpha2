@@ -169,6 +169,11 @@ public final class ApiValidatorTest {
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireDebugLedFunc(q("func", "blink")); } }, "debugFunc.bad");
         eq("xiaozhi", ApiValidator.requireXiaozhiTtsEngine(q("engine", "xiaozhi")), "xiaozhiTts.ok");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireXiaozhiTtsEngine(q("engine", "nuance")); } }, "xiaozhiTts.bad");
+        eq("off", ApiValidator.requireBootVoiceMode(q("mode", "off")), "bootVoice.off");
+        eq("xiaozhi", ApiValidator.requireBootVoiceMode(q("mode", "xiaozhi")), "bootVoice.xiaozhi");
+        eq("vosk", ApiValidator.requireBootVoiceMode(q("mode", "vosk")), "bootVoice.vosk");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireBootVoiceMode(q("mode", "bad")); } }, "bootVoice.bad");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireBootVoiceMode(q()); } }, "bootVoice.missing");
 
         // ── ubx speed ──
         eq(1.0f, ApiValidator.requireUbxSpeed(q("value", "1")), "ubxSpeed.one");

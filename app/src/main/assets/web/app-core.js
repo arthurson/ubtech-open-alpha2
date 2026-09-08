@@ -33,7 +33,6 @@ const I18N = {
   nav_status:             { zh: "📊 狀態",          en: "📊 Status" },
   nav_actions:            { zh: "🕺 動作",          en: "🕺 Actions" },
   nav_servo:              { zh: "⚙️ 舵機",          en: "⚙️ Servo" },
-  nav_motor:              { zh: "⚙️ 舵機",          en: "⚙️ Servo" },
   nav_speech:             { zh: "🗣️ 語音",          en: "🗣️ Speech" },
   nav_led:                { zh: "💡 LED",           en: "💡 LED" },
   nav_camera:             { zh: "📷 相機",          en: "📷 Camera" },
@@ -41,9 +40,7 @@ const I18N = {
   nav_blockly_title:      { zh: "在新分頁開啟 Blockly 積木編程", en: "Open Blockly visual programming in a new tab" },
 
   // -- status tab --
-  status_system_label:   { zh: "系統：", en: "System:" },
   lang_switch_label:     { zh: "語言：", en: "Language:" },
-  status_heading:        { zh: "系統狀態",        en: "Status" },
   device_info_heading:   { zh: "裝置資訊",        en: "Device Info" },
   device_battery:        { zh: "🔋 電池",         en: "🔋 Battery" },
   device_wifi:           { zh: "📶 WiFi",         en: "📶 WiFi" },
@@ -62,7 +59,6 @@ const I18N = {
   accel_turn_on_failed_hint: { zh: "開啟失敗", en: "Failed to turn on" },
   accel_move_hint:       { zh: "鬱動 / 傾斜機身睇下數據變化", en: "Move / tilt the robot to see the readings change" },
   uuid_querying_hint:    { zh: "查詢中…", en: "Querying…" },
-  uuid_card_heading:     { zh: "🤖 機械人 ID / QR code", en: "🤖 Robot ID / QR code" },
   uuid_qr_hint:          { zh: "掃描 QR code 綁定設備", en: "Scan the QR code to bind equipment" },
   uuid_write_btn:        { zh: "寫入 EEPROM", en: "Write EEPROM" },
   uuid_write_confirm:    { zh: "確定更改機械人 ID 為：", en: "Confirm changing robot ID to:" },
@@ -117,26 +113,14 @@ const I18N = {
   servo_tuner_restore_detail: { zh: "（offset {off}；逐粒撳輸入格 Enter 先會送到舵機）", en: "({off} offsets; press Enter per row to send to servos)" },
   servo_tuner_backup_fail:   { zh: "備份失敗",           en: "Backup failed" },
   servo_tuner_unscanned:     { zh: "（{n}/20 未讀）…",   en: "({n}/20 unread)…" },
-  // 2026-09-06 晚補：servo_calib_* 之前成區缺 key（t() 回 key 名，狀態列一路顯示 raw key）。
-  servo_calib_selected:      { zh: "已選 #{id}",         en: "Selected #{id}" },
-  servo_calib_resetting:     { zh: "重置緊…",            en: "Resetting…" },
-  servo_calib_reset_done:    { zh: "重置完成",            en: "Reset done" },
-  servo_calib_reading:       { zh: "讀緊…",              en: "Reading…" },
-  servo_calib_read_ok:       { zh: "讀到：角度 {angle}，offset {offset}", en: "Read: angle {angle}, offset {offset}" },
-  servo_calib_read_fail:     { zh: "讀失敗：{error}",     en: "Read failed: {error}" },
-  servo_calib_read_err:      { zh: "讀取錯誤：{err}",     en: "Read error: {err}" },
-  servo_calib_reading_all:   { zh: "讀緊全部…",          en: "Reading all…" },
-  servo_calib_read_all_progress: { zh: "讀緊 {cur}/{total}…", en: "Reading {cur}/{total}…" },
-  servo_calib_read_all_done: { zh: "全部讀完", en: "All read" },
-  servo_calib_saving:        { zh: "儲存緊…",            en: "Saving…" },
-  servo_calib_save_todo:     { zh: "#{id} 號校準儲存未實作（offset {offset}）", en: "Save #{id} not implemented (offset {offset})" },
+  // 2026-09: calib* 整簇已刪 (舊校準卡無 UI，function 無人 call)，key 一齊清。
+
   // 2026-09-06 晚加：adv tuner 動態狀態字（之前硬編碼中文）。
   servo_tuner_ready:         { zh: "tuner {v} 就緒（加減/輸入=淨郁角度；校准先成組寫 EEPROM）", en: "tuner {v} ready (+/- and input move only; Calibrate writes EEPROM)" },
   servo_tuner_read_all:      { zh: "一鍵實讀全部 trim 1-20（約幾秒）…", en: "Reading all 20 trims (a few seconds)…" },
   servo_tuner_read_done:     { zh: "實讀完成 {ok}/20",   en: "Read done {ok}/20" },
   servo_tuner_read_fails:    { zh: "，無回授：{ids}",   en: ", no feedback: {ids}" },
-  servo_tuner_read_one:      { zh: "讀取 #{id} trim…",   en: "Reading #{id} trim…" },
-  servo_tuner_read_one_ok:   { zh: "#{id} trim {v}",     en: "#{id} trim {v}" },
+  // 2026-09: servo_tuner_read_one(_ok) 已刪 (advTunerRead 無人 call)。
   servo_tuner_read_fail:     { zh: "#{id} 讀失敗",       en: "#{id} read failed" },
   servo_tuner_read_err:      { zh: "讀取錯誤：{e}",      en: "Read error: {e}" },
   servo_tuner_nudge_ok:      { zh: "微調 #{id} → {v}（trim 未存，要存撳「校准」）", en: "Tuned #{id} → {v} (trim not saved — press Calibrate)" },
@@ -195,7 +179,6 @@ const I18N = {
   // 2026-09 移除: MIC 卡成組 i18n (卡已拎走, 見 index.html)。
   // (原 mic_card_heading/mic_release_btn/mic_return_btn/
   // mic_state_on/mic_state_off/mic_keep_held_label)
-  volume_heading:        { zh: "媒體音量",         en: "Media Volume" },
   volume_hint:           { zh: "控制機械人喇叭的媒體音量 (STREAM_MUSIC)，和實體 +/- 按鈕共用同一個音量。",
                             en: "Controls the robot speaker's media volume (STREAM_MUSIC) — shares the same level as the physical +/- buttons." },
 
@@ -259,7 +242,6 @@ const I18N = {
   speech_test_enter_text_alert: { zh: "請輸入文字", en: "Please enter some text" },
   // 2026-09 移除: asr_engine_ready_hint/asr_current_engine_prefix/
   // asr_current_engine_is (ASR 卡同 speech_ready handler 一齊拎走)。
-  log_error_code_prefix:  { zh: "錯誤 (code=", en: "Error (code=" },
 
   // 2026-09 移除: offline grammar 成組 (卡已拎走, 見 index.html)。
   // (原 offline_grammar_heading/hint/load_default/init_btn/start_btn/stop_btn/
@@ -345,14 +327,9 @@ const I18N = {
   music_playall_btn:            { zh: "▶ 全部",                en: "▶ All" },
   music_play_btn_title:         { zh: "播放",                  en: "Play" },
   music_pause_btn_title:        { zh: "暫停",                  en: "Pause" },
-  music_eq_heading:             { zh: "🎚️ 均衡器 (Equalizer)", en: "🎚️ Equalizer" },
-  music_eq_hint:                { zh: "揀一個預設風格，落一首歌開始就會套用",
-                                   en: "Pick a preset — applies from the next track you play" },
   music_eq_none:                { zh: "無 (Flat)",             en: "None (Flat)" },
   music_eq_unavailable:         { zh: "這台機器不支援 equalizer", en: "Equalizer not supported on this device" },
   music_filler_heading:         { zh: "💃 隨機動作",            en: "💃 Random Movement" },
-  music_filler_hint:            { zh: "開啟的話，播歌期間機械人會不定時自己動，等這首歌播完才停",
-                                   en: "When on, the robot moves on its own while music plays, and stops when the track ends" },
   music_filler_on:              { zh: "開",                    en: "On" },
   music_filler_off:              { zh: "關",                    en: "Off" },
   music_upload_uploading:       { zh: "上載緊…",               en: "Uploading…" },
@@ -360,23 +337,18 @@ const I18N = {
   music_upload_failed:          { zh: "上載失敗",              en: "Upload failed" },
   // -- radio (radio-browser.info) --
   radio_heading:                { zh: "📻 網絡電台",           en: "📻 Internet Radio" },
-  radio_hint:                   { zh: "由 radio-browser.info 提供全球公開電台，輸入關鍵字即搜即播（例如 BBC、Jazz、香港）",
-                                   en: "Powered by radio-browser.info — search any keyword and play worldwide stations instantly (e.g. BBC, Jazz, Hong Kong)" },
   radio_search_placeholder:     { zh: "搜尋電台名稱、國家、標籤…", en: "Search station name, country or tag…" },
   radio_search_btn:             { zh: "🔍 搜尋",               en: "🔍 Search" },
-  radio_stop_btn:               { zh: "⏹ 停止電台",            en: "⏹ Stop Radio" },
   radio_search_empty_hint:      { zh: "請先輸入關鍵字",         en: "Enter a keyword first" },
   radio_search_loading:         { zh: "搜尋中…",               en: "Searching…" },
   radio_search_no_result:       { zh: "未搵到相關電台，試下其他關鍵字", en: "No stations found — try another keyword" },
   radio_search_found_prefix:    { zh: "搵到 ",                  en: "Found " },
   radio_search_found_suffix:    { zh: " 個電台，點擊即播",      en: " stations — tap to play" },
   radio_list_empty_hint:        { zh: "輸入關鍵字後按搜尋",      en: "Enter a keyword and hit Search" },
-  radio_now_playing_label:      { zh: "正在播放：",             en: "Now Playing:" },
   radio_now_playing_none:       { zh: "未播放電台",             en: "No radio playing" },
   radio_playing_prefix:         { zh: "正在連接：",             en: "Connecting: " },
   radio_play_ok_prefix:         { zh: "已開始播放：",           en: "Playing: " },
   radio_stopped:                { zh: "已停止電台",             en: "Radio stopped" },
-  radio_status_refresh_btn:     { zh: "🔄 重新整理狀態",        en: "🔄 Refresh Status" },
   xiaozhi_text_placeholder:   { zh: "打字同小智傾偈…",       en: "Type a message to XiaoZhi…" },
   xiaozhi_send_text:          { zh: "送出",                 en: "Send" },
   xiaozhi_clear_btn:          { zh: "清空",                 en: "Clear" },

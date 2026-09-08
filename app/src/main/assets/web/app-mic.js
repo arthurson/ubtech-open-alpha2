@@ -334,60 +334,10 @@ function micAudioProcessCallback(event) {
   }
 }
 
-// 2026-08 修正: 呢兩個 function 對應嘅 server 端點 (audio/testtone,
-// audio/diagnose - 見 MainActivity.java) 依然實際存在同有效, 但 index.html 冇
-// 任何按鈕/入口綁住呢兩個 function (交叉核對成個 index.html 搵唔到
-// testToneBtn/audioDiagBtn 呢兩個 id) —— 應該係之前「相機/音效」分類被移除
-// (見 blockly-blocks.js/blockly-toolbox.js 對應 comment) 嗰次改動連帶清埋
-// 咗按鈕, 但呢兩個 function 本身冇一齊刪。冇入口即係實際上唔會俾人 call 到,
-// 但之前完全冇 null check 就直接用 btn.textContent/btn.disabled——一旦將來
-// 補返個按鈕但 id 打錯, 或者由 console 手動 call, 就會即刻 TypeError。
-// 加返同 toggleMicListen() 一類 function 睇齊嘅 if (btn) guard, 冇按鈕就靜
-// 靜哋跳過個 UI 更新, 唔阻住實際 API 呼叫本身。
-async function playTestTone() {
-  const btn = document.getElementById("testToneBtn");
-  const original = btn ? btn.textContent : null;
-  if (btn) {
-    btn.textContent = "🔔 播放緊…";
-    btn.disabled = true;
-  }
-  try {
-    const resp = await Alpha2Api.audioTesttone( {});
-    if (!resp || resp.ok === false) {
-      showError("測試喇叭", (resp && resp.error ? resp.error : "未知錯誤"));
-    }
-  } finally {
-    setTimeout(function () {
-      if (btn) {
-        btn.textContent = original;
-        btn.disabled = false;
-      }
-    }, 1200);
-  }
-}
-
-async function runAudioDiagnose() {
-  const btn = document.getElementById("audioDiagBtn");
-  const original = btn ? btn.textContent : null;
-  if (btn) {
-    btn.textContent = "🔍 測試緊…";
-    btn.disabled = true;
-  }
-  try {
-    const resp = await Alpha2Api.audioDiagnose( {});
-    if (resp && resp.results) {
-      alert("音頻參數掃描結果:\n\n" + resp.results);
-    } else {
-      showError("音訊診斷", "得不到結果");
-    }
-  } finally {
-    if (btn) {
-      btn.textContent = original;
-      btn.disabled = false;
-    }
-  }
-}
-
+// 2026-09: playTestTone/runAudioDiagnose 已刪 (server 端點 audio/testtone、
+// audio/diagnose 仲有效—要加返 UI 入口先至寫過，唔留無人 call 嘅 function)。
+// 原本係 2026-08 修過 null-guard 嘅版本：對應按鈕 (testToneBtn/audioDiagBtn)
+// 早喺「相機/音效」分類移除嗰次一齊清走咗，function 本體一直冇入口。
 
 /** Double-click/double-tap on the viewport toggles native fullscreen on that
  *  element, so the video (well - photo sequence) fills the whole screen. */

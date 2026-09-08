@@ -111,6 +111,13 @@ public final class VoskApi {
     public HttpServer.ApiResponse voskMicTest() {
         HttpServer.ApiResponse need = voskOrError();
         if (need != null) return need;
+        // 單 input HAL：小智拎緊 mic 就唔開第二個 recorder（撞 HAL；同 voskStart
+        // 未 yieldMicToVosk 之前開 recorder 炒 FATAL 同一類）。唔似 voskStart 咁
+        // 踢斷小智——1 秒測試唔值得，直接叫用戶先停小智 mic（同 micTestJson 擋
+        // 自己 listen 緊對稱；spec 話「聽緊嗰陣唔做」）。
+        if (xiaozhiBridge.isMicCapturing()) {
+            return HttpServer.ApiResponse.error("xiaozhi holds the mic - stop xiaozhi mic first (mic/stop)");
+        }
         // micTestJson 自帶 {"ok":...}，直接透傳。
         return HttpServer.ApiResponse.ok(vosk.micTestJson());
     }

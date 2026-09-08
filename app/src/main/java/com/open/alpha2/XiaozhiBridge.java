@@ -828,6 +828,14 @@ public final class XiaozhiBridge {
      *  順序重要：先落 autoMode 再斷線——DisconnectListener 靠佢決定係咪
      *  自動重連；用戶主動 disconnect() 本身唔會觸發 listener（見 XiaozhiClient）。
      *  冇開緊、冇拎緊、autoMode 又冇開就即刻返（平時 vosk 起停零額外開銷）。 */
+    /** Vosk mic_test 用：小智拎緊 mic 就唔好另開 recorder（單 input HAL，
+     *  同 voskStart 未讓 mic 之前開 recorder 撞 HAL 炒 FATAL 同一類）。
+     *  唔似 voskStart 咁讓 mic——1 秒測試唔值得踢斷成個小智 session，直接叫
+     *  用戶先停小智 mic（同 micTestJson 擋自己 listen 緊對稱）。 */
+    public boolean isMicCapturing() {
+        return xiaozhiMicHeld || xiaozhiAudioController.isCapturing();
+    }
+
     public void yieldMicToVosk() {
         boolean open = xiaozhiClient.isOpen();
         if (!open && !xiaozhiMicHeld && !xiaozhiAudioController.isCapturing() && !xiaozhiAutoMode.get()) return;

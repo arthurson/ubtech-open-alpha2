@@ -51,8 +51,8 @@ ACTIONS（動作列表＋分類＋播放/停止＋**變速 0.5/0.67/1/1.5/2**）
   `ubx/*`、`servo/*`、`speech/*`、`led/*`、`audio/*`（本地音樂/電台）、`chest/*`、
   `system/*`、`xiaozhi/*`；另有 `/api/direct/*`（底層直調）、`/upload/*`、
   `/stream/*`、`/ws`（RFC6455 即時事件）。
-- OpenAPI 3.0（`openapi/open-alpha2-openapi.yml`，140 paths）係單一真相源；
-  `app/.../web/api-client.js`（`Alpha2Api.*`，132 個 wrapper）由
+- OpenAPI 3.0（`openapi/open-alpha2-openapi.yml`，142 paths，其中 140 條 API＋`/`、`blockly.html`）係單一真相源；
+  `app/.../web/api-client.js`（`Alpha2Api.*`，134 個 wrapper）由
   `scripts/generate-api-client.py` 生成，改 spec 必重 gen；
   `scripts/check-openapi-drift.py` 保 code↔spec 對齊；另有 AsyncAPI
   （`/ws` 事件）同 MCP 聲明表（`mcp-openapi-sync.yml` v2）。
@@ -91,7 +91,7 @@ prebuilt `.so`（`head_led/head_key_mgr/serial_port`）一律喺
 - 出 APK 必 `dexdump` **方法級**驗（類表唔夠；`dexdump -d classes.dex`，APK 直 dump 會 mmap 死，先 unzip）。
 - `ApiResponse.error()` 天生回 500；`Get-Content` 量行數試過唔準（以實測為準）。
 - 寫路徑齋打缺參 400，唔打真值：`misc/set_uuid`、`pir/set`、`servo/*`、
-  `service_config/reboot`、`vosk/endpointer`。
+  `vosk/endpointer`。
 - 每輪必做：compile＋`test-apivalidator.py`（104）＋routes＋drift＋dexdump＋
   裝機＋端點＋logcat `FATAL EXCEPTION`。
 - `C:/Users/user/AppData/Local/Temp/opencode` 有舊 session 幾百 MB log，唔好理。

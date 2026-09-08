@@ -306,19 +306,7 @@ function musicTogglePlayPause() {
   }
 }
 
-function musicStop() {
-  musicPlayAllMode = false;
-  musicHasLoadedTrack = false;
-  Alpha2Api.audioLocalMusicStop().then(function (res) {
-    if (!res.ok) return;
-    musicStopStatusPolling();
-    musicCurrentName = null;
-    musicRenderList();
-    musicApplyStatus({ ok: true, hasTrack: false, playing: false,
-      positionMs: 0, durationMs: 0, name: null });
-  });
-}
-
+// 2026-09: musicStop 已刪 (live 路徑係 musicStopAll；單軌版無人 call)。
 /**
  * 2026-08 v2 新增: 音樂 tab 嘅「⏹ 全部停止」- 同語音 tab 嗰粒總停鍵
  * (xiaozhiStopAll(), 見 app-xiaozhi.js) 睇齊: action/stop + speech/stop +
@@ -363,12 +351,8 @@ function musicSeekTo(value) {
   });
 }
 
-function musicOnVolumeInput(value) {
-}
-
-function musicSetVolume(value) {
-  Alpha2Api.audioLocalMusicVolume( { percent: String(Math.round(Number(value))) });
-}
+// 2026-09: musicOnVolumeInput (空殼) + musicSetVolume 已刪 (live 路徑係
+// 共用 STREAM_MUSIC 滑桿 setSharedVolume；單軌音量無 UI 入口)。
 
 // 共用音量（系統 STREAM_MUSIC，同時影響本地與電台）— 前端共用滑桿
 function onSharedVolumeInput(value) {
