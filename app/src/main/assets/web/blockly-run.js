@@ -100,8 +100,15 @@
   }
 
   // ---- 語音 TTS ----
-  // speech/tts 支援揀引擎 (engine: android/nuance/iflytek) + voice。
+  // speech/tts 得 android 先會響：nuance/iflytek 經機身 speech_startTTS
+  // 恒回 NOT_INIT（無 alpha2services，見 RobotStub）。舊存檔可能仲帶住
+  // 嗰兩個值，呢度一律轉 android＋warn，唔靜默吞（VOICE 照傳，後端 android
+  // 分支無視）。
   async function speechTtsAdapter(text, engine, voice) {
+    if (engine !== 'android') {
+      console.warn('[blockly] TTS engine "' + engine + '" 已死，轉用 android');
+      engine = 'android';
+    }
     const params = { text: text, engine: engine };
     if (voice) params.voice = voice;
     await Alpha2Api.speechTts(params);

@@ -14,7 +14,7 @@ import java.util.Set;
  *
  * 2026-09 由 MainActivity 抽出 (拆 god object 第五刀)：8 個
  * handleXiaozhiApi case (ota_config/get|set、mcp_config/get|set、
- * tts_config/get|set、auto_connect/get|set) + prefs key + 細 helper，
+ * tts_config/get|set、boot_voice/get|set) + prefs key + 細 helper，
  * 邏輯一字不改搬過嚟。留低喺 MainActivity 的繼續經呢度讀寫：
  * activation 流程 / vision (OTA 設定)、MCP bridge (開關判斷)、
  * TTS 隊列 (引擎選擇)、開機 auto-connect。
@@ -45,7 +45,14 @@ public final class XiaozhiConfig {
     public static final String PREF_XIAOZHI_MCP_DISABLED_TOOLS = "xiaozhi_mcp_disabled_tools";
     // 見 getTtsEngine() 的 javadoc。
     public static final String PREF_XIAOZHI_TTS_ENGINE = "xiaozhi_tts_engine";
-    /** 開app自動連接小智（小智tab開關，預設關；見 auto_connect/get|set）。 */
+    /** 開機語音模式三選一（實驗 tab 卡，見 boot_voice/get|set）：off＝乜都唔自動起、
+     *  xiaozhi＝開app自動連接小智、vosk＝開app自動載 model 起 Vosk 聆聽。預設 off。 */
+    public static final String PREF_BOOT_VOICE_MODE = "boot_voice_mode";
+    public static final String BOOT_VOICE_OFF = "off";
+    public static final String BOOT_VOICE_XIAOZHI = "xiaozhi";
+    public static final String BOOT_VOICE_VOSK = "vosk";
+    /** 舊版小智 tab「開app自動連接」boolean（已由上面三態取代）。key 保留只為
+     *  開機遷移：未存過新值、舊值係 true 就當 xiaozhi 並寫返落去，之後唔再讀。 */
     public static final String PREF_XIAOZHI_AUTO_CONNECT = "xiaozhi_auto_connect";
 
     /** OTA 自架設定快照 (activation / vision 讀一次攞齊，唔使逐個 key 查)。 */
@@ -114,12 +121,27 @@ public final class XiaozhiConfig {
         }
     }
 
-    public boolean isAutoConnectEnabled() {
+    /** 開機語音模式（off/xiaozhi/vosk），帶舊 boolean 遷移，未存過一律 off。 */
+    public String getBootVoiceMode() {
         try {
-            return prefs().getBoolean(PREF_XIAOZHI_AUTO_CONNECT, false);
+            String mode = prefs().getString(PREF_BOOT_VOICE_MODE, null);
+            if (mode == null) {
+                boolean legacy = prefs().getBoolean(PREF_XIAOZHI_AUTO_CONNECT, false);
+                mode = legacy ? BOOT_VOICE_XIAOZHI : BOOT_VOICE_OFF;
+                prefs().edit().putString(PREF_BOOT_VOICE_MODE, mode).apply();
+            }
+            if (!BOOT_VOICE_OFF.equals(mode) && !BOOT_VOICE_XIAOZHI.equals(mode)
+                    && !BOOT_VOICE_VOSK.equals(mode)) {
+                mode = BOOT_VOICE_OFF;
+            }
+            return mode;
         } catch (Exception e) {
-            return false;
+            return BOOT_VOICE_OFF;
         }
+    }
+
+    public boolean isAutoConnectEnabled() {
+        return BOOT_VOICE_XIAOZHI.equals(getBootVoiceMode());
     }
 
     /** MCP tool enable/disable 設定的讀寫 helper - 逗號分隔的 disabled tool name
@@ -269,13 +291,15 @@ public final class XiaozhiConfig {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"engine\":\"" + MainActivity.jsonSafe(engine) + "\"}");
     }
 
-    public HttpServer.ApiResponse autoConnectGet() {
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + isAutoConnectEnabled() + "}");
+    public HttpServer.ApiResponse bootVoiceGet() {
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"mode\":\""
+                + MainActivity.jsonSafe(getBootVoiceMode()) + "\"}");
     }
 
-    public HttpServer.ApiResponse autoConnectSet(Map<String, String> query) {
-        boolean autoConn = ApiValidator.requireBoolean(query, "enabled");
-        prefs().edit().putBoolean(PREF_XIAOZHI_AUTO_CONNECT, autoConn).apply();
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + autoConn + "}");
+    public HttpServer.ApiResponse bootVoiceSet(Map<String, String> query) {
+        String mode = ApiValidator.requireBootVoiceMode(query);
+        prefs().edit().putString(PREF_BOOT_VOICE_MODE, mode).apply();
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"mode\":\""
+                + MainActivity.jsonSafe(mode) + "\"}");
     }
 }

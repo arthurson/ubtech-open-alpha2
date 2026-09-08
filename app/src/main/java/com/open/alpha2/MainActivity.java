@@ -268,7 +268,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
             }
         }, "LocalServicesInit").start();
         mainHandler.postDelayed(new Runnable() {
-            @Override public void run() { xiaozhiBridge.maybeAutoConnect("startup"); }
+            @Override public void run() { xiaozhiBridge.maybeBootVoice("startup"); }
         }, 15000);
         iflytekMatcher = new IflytekSemanticMatcher(this);
         iflytekMatcherEn = new IflytekSemanticMatcherEn(this);

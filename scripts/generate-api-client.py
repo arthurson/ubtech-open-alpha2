@@ -19,6 +19,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SPEC = ROOT / "openapi" / "open-alpha2-openapi.yml"
 OUT = ROOT / "app" / "src" / "main" / "assets" / "web" / "api-client.js"
 
+def js_value(v):
+    # enum 值轉 JS 字面值。YAML 1.1 地雷：off/on/yes/no 唔加引號會 parse 做
+    # boolean，直接 f-string 會漏出 Python 字面值（False/True/None）整壞 JS。
+    if v is True: return "true"
+    if v is False: return "false"
+    if v is None: return "null"
+    return repr(v)
+
 def to_camel(path: str) -> str:
     # /api/servo/one -> servoOne, /api/speech/tts_engines -> speechTtsEngines
     # strip /api/ and /api/system/ and /api/xiaozhi/ prefixes for brevity but keep namespace
@@ -160,7 +168,8 @@ for tag in sorted(grouped.keys()):
             schema = p.get("schema", {})
             enum_vals = schema.get("enum")
             if enum_vals:
-                lines.append(f"    if (params && params.{name} != null) assertEnum(params.{name}, {enum_vals}, '{name}');")
+                js_list = "[" + ", ".join(js_value(v) for v in enum_vals) + "]"
+                lines.append(f"    if (params && params.{name} != null) assertEnum(params.{name}, {js_list}, '{name}');")
             if schema.get("type") == "integer" and ("minimum" in schema or "maximum" in schema):
                 mn = schema.get("minimum", -1e9)
                 mx = schema.get("maximum", 1e9)
@@ -201,7 +210,7 @@ lines.append("")
 lines.append("// Usage examples:")
 lines.append("//   Alpha2Api.status()")
 lines.append("//   Alpha2Api.servoOne({id:1, angle:90, time:1000})")
-lines.append("//   Alpha2Api.speechTts({text:'你好', engine:'iflytek'})")
+lines.append("//   Alpha2Api.speechTts({text:'你好', engine:'android'})")
 lines.append("//   Alpha2Api.ledHeadSet({color:1, brightness:9, preset:'breathe'})")
 lines.append("//   Alpha2Api.xiaozhiConnect()")
 

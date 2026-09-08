@@ -35,14 +35,14 @@ function cameraElements() {
     resolution: document.getElementById("cameraResolution"),
     crosshairPad: document.getElementById("crosshairPad"),
     crosshairMark: document.getElementById("crosshairMark"),
-    // "featureEnabled" is the single master checkbox that now gates all three
-    // overlay features together (head-aim joystick pad, mic-listen headphone FAB,
-    // talk FAB) - kept under the name crosshairToggle here since all the existing
+    // "featureEnabled" is the single master checkbox that now gates both
+    // overlay features together (head-aim joystick pad, mic-listen headphone FAB)
+    // - kept under the name crosshairToggle here since all the existing
     // crosshair drag-to-aim code below already reads els.crosshairToggle.
+    // (2026-09: walkie-talkie talk FAB 已成串移除，唔再受呢個掣管。)
     crosshairToggle: document.getElementById("featureEnabled"),
     fabRow: document.getElementById("fabRow"),
     micListenFab: document.getElementById("micListenFab"),
-    talkFab: document.getElementById("talkFab"),
   };
 }
 
@@ -533,11 +533,11 @@ function updateCrosshairVisibility() {
     els.fabRow.classList.toggle("active", shouldShow);
   }
   // Unticking the master checkbox (or stopping the camera) must not leave mic-listen
-  // or push-to-talk silently running with their FABs hidden - force both off so the
+  // silently running with its FAB hidden - force it off so the
   // control state always matches what's actually visible on screen.
+  // (2026-09: walkie-talkie talk 端已成串移除，呢度唔使再理 talkActive。)
   if (!shouldShow) {
     if (micListening) stopMicListen();
-    if (talkActive) stopTalk();
   }
 }
 
@@ -680,12 +680,7 @@ function setupCrosshairIfNeeded() {
       }
       return;
     }
-    if (evt.key === " " || evt.code === "Space") {
-      evt.preventDefault(); // stop Space from also activating a focused button/etc.
-      if (!evt.repeat) startTalk(); // ignore the browser's own key-repeat firing, since
-                                      // startTalk() is idempotent (talkActive guard) but
-                                      // there's no need to call it repeatedly anyway
-    }
+    // 2026-09 刪除: Space push-to-talk shortcut (walkie-talkie 發射端已成串移除)。
   });
 
   els.viewport.addEventListener("keyup", function (evt) {
@@ -698,14 +693,12 @@ function setupCrosshairIfNeeded() {
       }
       return;
     }
-    if (evt.key === " " || evt.code === "Space") {
-      stopTalk();
-    }
+    // 2026-09 刪除: Space keyup stopTalk (同上，walkie-talkie 已移除)。
   });
 
   // If the viewport loses keyboard focus entirely (Tab away, click elsewhere) while a
   // key was physically still held down, the corresponding keyup event never reaches
-  // this listener - without this, the head or mic could get stuck "on" until some
+  // this listener - without this, the head could get stuck "on" until some
   // other event happened to reset it.
   els.viewport.addEventListener("blur", function () {
     if (heldArrowKeys.size > 0) {
@@ -713,27 +706,11 @@ function setupCrosshairIfNeeded() {
       setKnobPosition(0, 0);
       sendServoForAxis(0, 0);
     }
-    if (talkActive) stopTalk();
+    // 2026-09 刪除: blur 時 stopTalk (walkie-talkie 已移除)。
   });
 
-  // ---- Talk FAB: press-and-hold (mouse/touch), mirroring a physical walkie-talkie's
-  // call button - replaces the old dedicated #talkBtn's inline onmousedown/ontouchstart
-  // attributes now that the button is generated inside the viewport rather than in the
-  // static toolbar row. ----
-  if (els.talkFab) {
-    els.talkFab.addEventListener("pointerdown", function (evt) {
-      evt.preventDefault();
-      // Capture the pointer so pointerup still fires on this element even if the
-      // finger/mouse drags off the FAB before releasing - without this, dragging off
-      // while still pressed would leave talkActive stuck "on" until pointerleave
-      // (which covers mouse hover-out, but not always a moved touch-point reliably).
-      try { els.talkFab.setPointerCapture(evt.pointerId); } catch (e) { /* ignore */ }
-      startTalk();
-    });
-    els.talkFab.addEventListener("pointerup", function () { stopTalk(); });
-    els.talkFab.addEventListener("pointerleave", function () { stopTalk(); });
-    els.talkFab.addEventListener("pointercancel", function () { stopTalk(); });
-  }
+  // 2026-09 刪除: Talk FAB press-and-hold 成串 (walkie-talkie 發射端已移除，
+  // #talkFab 掣一併拎走)。
 }
 
 /** (Re)points the viewport's <img> at a fresh /stream/camera connection. A query-string

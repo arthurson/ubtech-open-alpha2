@@ -267,7 +267,7 @@ function typeLabel(t) {
 
 function playAction() {
   const name = document.getElementById("actionName").value.trim();
-  if (!name) return alert("請輸入動作名稱");
+  if (!name) { showError("播放動作", "請輸入動作名稱"); return; }
   return Alpha2Api.actionPlay( { name: name });
 }
 

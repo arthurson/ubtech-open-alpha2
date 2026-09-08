@@ -229,11 +229,15 @@ window.addEventListener("DOMContentLoaded", function () {
     voskRefreshModels();
   }
   // 2026-09 移除: MIC 指示燈初始化 (卡已拎走, 見 index.html)。
-  refreshStatus();
+  // 2026-09: 系統狀態 JSON card 已移除 (refreshStatus 一併刪)；裝置資訊 UUID＋
+  // 胸板固件改入頁自動直顯 (唔使再撳掣)。
   refreshDeviceInfo();
+  requestUuid();
+  refreshChestFw();
   applyUiLanguage();
   refreshVolume();
-  disableTalkFabIfInsecureContext();
+  // 2026-09 刪除: disableTalkFabIfInsecureContext() (walkie-talkie #talkFab
+  // 掣一併拎走，唔使再 disable)。
   // 2026-09 移除: 離線文法/模式指示燈初始化 (卡已拎走, 見 index.html)。
   connectWs();
   musicInit();
@@ -242,15 +246,5 @@ window.addEventListener("DOMContentLoaded", function () {
   if (typeof buildCameraPhoto9Grid === "function") buildCameraPhoto9Grid();
 });
 
-/**
- * 講嘢 (🎤 walkie-talkie 咪) 功能已經永久停用 - 唔止喺 http:// (非安全來源) 先停用,
- * 而係一律 disable, 唔理 secure context 定唔係。掣本身 disable 咗之後瀏覽器唔會再
- * fire pointerdown/click 呢啲事件 (見 startTalk() 頂部個 no-op guard 做多一層保險)。
- */
-function disableTalkFabIfInsecureContext() {
-  const fab = document.getElementById("talkFab");
-  if (!fab) return;
-  fab.disabled = true;
-  fab.classList.add("disabled");
-  fab.title = "講嘢功能已停用";
-}
+  // 2026-09 刪除: disableTalkFabIfInsecureContext() 全個 (walkie-talkie
+  // #talkFab 掣一併拎走，唔使再 disable)。

@@ -261,6 +261,11 @@ public final class ApiValidator {
         return requireEnum(q, "engine", new String[]{"xiaozhi","android"});
     }
 
+    /** 開機語音模式三選一（見 XiaozhiConfig boot_voice/get|set，實驗 tab 卡）。 */
+    public static String requireBootVoiceMode(Map<String, String> q) {
+        return requireEnum(q, "mode", new String[]{"off","xiaozhi","vosk"});
+    }
+
     /** ubx/speed value: 0.5|0.67|1|1.5|2 (見 openapi enum + UbxPlayer.setSpeed)。 */
     public static float requireUbxSpeed(Map<String, String> q) {
         return parseUbxSpeedValue(require(q, "value"));

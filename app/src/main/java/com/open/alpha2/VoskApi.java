@@ -83,7 +83,8 @@ public final class VoskApi {
     public HttpServer.ApiResponse voskStart() {
         HttpServer.ApiResponse need = voskOrError();
         if (need != null) return need;
-        // 後開者得 mic：小智拎緊就成個停咗先開 recorder (同 startXiaozhiMic
+        // 後開者得 mic：小智開緊就成條 session 踢斷（斷線＋熄 mute 燈，同
+        // "disconnect" case 同順序），先開 recorder (同 startXiaozhiMic
         // 停 vosk 對稱；唔自動幫小智重開——對稱嗰邊都唔自動重開 vosk)。
         xiaozhiBridge.yieldMicToVosk();
         String err = vosk.startListening();

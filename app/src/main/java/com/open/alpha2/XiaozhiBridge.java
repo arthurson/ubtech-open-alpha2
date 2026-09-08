@@ -578,11 +578,11 @@ public final class XiaozhiBridge {
                 }
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + "}");
             }
+            case "boot_voice/get":
+                return xiaozhiConfig.bootVoiceGet();
 
-            case "auto_connect/get":
-                return xiaozhiConfig.autoConnectGet();
-            case "auto_connect/set":
-                return xiaozhiConfig.autoConnectSet(query);
+            case "boot_voice/set":
+                return xiaozhiConfig.bootVoiceSet(query);
 
             case "send_text": {
                 String text = ApiValidator.require(query, "text");
@@ -819,13 +819,27 @@ public final class XiaozhiBridge {
         }
     }
 
-    /** 後開者得 mic 嘅 vosk 方向：vosk/start 調用（見 VoskApi.voskStart），小智拎緊
-     *  mic 就成個停咗讓出單 input HAL，等 vosk 先開到 recorder——同 startXiaozhiMic()
-     *  停 vosk 對稱。唔自動幫小智重開（對稱嗰邊停完 vosk 都唔自動重開，要開用戶自己撳）。
-     *  冇拎緊就即刻返（平時 vosk 起停零額外開銷）。 */
+    /** 後開者得 mic 嘅 vosk 方向：vosk/start 調用（見 VoskApi.voskStart）。
+     *  小智開緊（連線 and/or 拎緊 mic）就成條 session 踢斷——唔止停 mic，
+     *  同 "disconnect" case / mute 鍵斷線同一個清理順序（落 autoMode、停 mic、
+     *  熄嘴燈、斷線、熄胸燈），等 vosk 先開到 recorder（單 input HAL）。
+     *  同 startXiaozhiMic() 停 vosk 對稱。唔自動幫小智重開（對稱嗰邊停完
+     *  vosk 都唔自動重開，要開用戶自己撳 mute 鍵/auto_mode）。
+     *  順序重要：先落 autoMode 再斷線——DisconnectListener 靠佢決定係咪
+     *  自動重連；用戶主動 disconnect() 本身唔會觸發 listener（見 XiaozhiClient）。
+     *  冇開緊、冇拎緊、autoMode 又冇開就即刻返（平時 vosk 起停零額外開銷）。 */
     public void yieldMicToVosk() {
-        if (!xiaozhiMicHeld && !xiaozhiAudioController.isCapturing()) return;
+        boolean open = xiaozhiClient.isOpen();
+        if (!open && !xiaozhiMicHeld && !xiaozhiAudioController.isCapturing() && !xiaozhiAutoMode.get()) return;
+        xiaozhiAutoMode.set(false);
+        xiaozhiReconnectAttempts.set(0);
         stopXiaozhiMic();
+        LedCenter.stopMouthLedForTts();
+        if (open) {
+            xiaozhiClient.disconnect();
+            Log.i(TAG, "vosk start -> xiaozhi DISCONNECT (mic yielded)");
+        }
+        setChestMuteLed(false);
     }
 
     /** 和 startMicHoldEnforcer() (Mic tab 專用) 對應的 XiaoZhi 版本 - 背景 thread
@@ -1098,7 +1112,72 @@ public final class XiaozhiBridge {
     }
 
     /**
-     * 開app自動連接小智（設定見 auto_connect/get|set，預設關）。冪等：
+     * 開機語音模式分派（實驗 tab「開機語音」卡三選一，開機延遲任務唯一入口）。
+     * off＝乜都唔做；xiaozhi＝沿用 maybeAutoConnect；vosk＝等 model READY
+     * 即起聆聽（背景 thread，唔塞開機）。冪等：模式唔啱／已在聽直接返。
+     */
+    public void maybeBootVoice(final String why) {
+        final String mode = xiaozhiConfig.getBootVoiceMode();
+        if (XiaozhiConfig.BOOT_VOICE_XIAOZHI.equals(mode)) {
+            maybeAutoConnect(why);
+            return;
+        }
+        if (!XiaozhiConfig.BOOT_VOICE_VOSK.equals(mode)) return;
+        if (vosk == null) {
+            Log.w(TAG, "boot voice vosk skipped: need API 21+");
+            return;
+        }
+        new Thread(new Runnable() {
+            @Override public void run() {
+                // Model 載入中（VoskController 建構嗰陣已背景起載上次嗰粒）就等，
+                // 等到 READY 即起；中途轉咗模式／load 炒咗／等極唔 ready 就收工。
+                for (int i = 0; i < 45; i++) {
+                    if (!XiaozhiConfig.BOOT_VOICE_VOSK.equals(xiaozhiConfig.getBootVoiceMode())) {
+                        Log.i(TAG, "boot voice vosk cancelled (mode changed)");
+                        return;
+                    }
+                    VoskController.State st = vosk.getState();
+                    if (st == VoskController.State.READY) break;
+                    if (st == VoskController.State.LISTENING) return;
+                    if (st == VoskController.State.ERROR) {
+                        Log.w(TAG, "boot voice vosk skipped: " + vosk.getLastError());
+                        return;
+                    }
+                    if (st == VoskController.State.IDLE) {
+                        // 冇載入緊、冇載好：唔使等，直接收工（等極都唔會變 READY）。
+                        if (VoskController.scanModels().isEmpty()) {
+                            Log.w(TAG, "boot voice vosk skipped: no model on sdcard");
+                        } else {
+                            Log.w(TAG, "boot voice vosk skipped: no model loaded"
+                                    + " (pick one in 語音 tab first)");
+                        }
+                        return;
+                    }
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+                if (vosk.getState() != VoskController.State.READY) {
+                    Log.w(TAG, "boot voice vosk skipped: model not ready in time");
+                    return;
+                }
+                // 同 VoskApi.voskStart 同順序：先讓小智讓 mic（開機正常係 no-op），再起聽。
+                yieldMicToVosk();
+                String err = vosk.startListening();
+                if (err != null) {
+                    Log.w(TAG, "boot voice vosk start failed: " + err);
+                } else {
+                    Log.i(TAG, "boot voice vosk listening (" + why + ")");
+                }
+            }
+        }, "BootVoiceVosk").start();
+    }
+
+    /**
+     * 開app自動連接小智（開機語音模式＝xiaozhi 嗰陣先行，見 maybeBootVoice；
      * 開關冇開/已連線/已有 activation 在飛都直接返，由開機延遲任務同
      * connectivity 恢復兩處觸發，唔會重複連。
      */
@@ -1687,409 +1766,11 @@ public final class XiaozhiBridge {
         return new XiaozhiClient.McpBridge() {
             @Override
             public org.json.JSONObject listTools() throws org.json.JSONException {
-                org.json.JSONArray tools = new org.json.JSONArray();
-
-                // 2026-08 修正: 之前 "name" 要求 LLM 傳回 self.robot.list_actions 的
-                // id (一串沒有語意的 timestamp 數字), 但實測小智完全不遵守這個指示,
-                // 純粹憑印象亂編一個 id (見下面 play_action tool description 的
-                // 詳細 comment)。現在 "name" 改為接受人類可讀的中文/英文動作名,
-                // 由 callTool 的 self.robot.play_action case 做 fuzzy match 轉成真正
-                // id - 這裡不再需要把 202 個 id 全塞進 enum。
-                org.json.JSONObject listActions = new org.json.JSONObject();
-                listActions.put("name", "self.robot.list_actions");
-                listActions.put("description", "List all built-in robot actions with their id, "
-                        + "Chinese name, and English name. Useful for browsing what actions "
-                        + "exist, but self.robot.play_action can now be called directly with a "
-                        + "Chinese or English action name (fuzzy-matched server-side) - you do "
-                        + "not need to call this first just to play a known action.");
-                org.json.JSONObject listActionsSchema = new org.json.JSONObject();
-                listActionsSchema.put("type", "object");
-                listActionsSchema.put("properties", new org.json.JSONObject());
-                listActions.put("inputSchema", listActionsSchema);
-                tools.put(listActions);
-
-                // 2026-08 修正 (實測發現): 之前 "name" 要求 LLM 一定要傳返
-                // self.robot.list_actions 的 id (一串沒有語意的 timestamp 數字), 但
-                // 實測小智完全不遵守這個指示 - 它從來沒呼叫過 list_actions, 純粹憑
-                // "印象" 亂編一個 id (實測見過叫它舉左手, 它傳了 "1464835936031",
-                // 實際是「向後走」那個 id - 完全動錯了)。這不是 enum 沒約束合法值的
-                // 問題 (enum 確保了傳過來的一定是真實存在的檔案, 不會再撞上
-                // "開不了檔案" 那種崩潰), 而是 LLM 面對一堆完全沒語意的純數字 id,
-                // 根本記不住哪個 id 對應哪個動作, 就算 description 再怎麼強調
-                // "call list_actions first" 也沒用。
-                //
-                // 現在做法: "name" 改為接受人類可讀的中文或英文動作名 (例如
-                // "舉左手" 或 "take left hand"), 由這裡 (callTool 的
-                // self.robot.play_action case) 做 fuzzy match 轉成真正的 id 再傳給
-                // action_PlayActionName() - 詳見 resolveActionId()。LLM 不用再記
-                // id, 只要說出自己生成的語意名就好, 大幅減低選錯的機會。
-                org.json.JSONObject playAction = new org.json.JSONObject();
-                playAction.put("name", "self.robot.play_action");
-                playAction.put("description", "Play a named built-in robot action/animation. "
-                        + "Pass the action's Chinese or English name in natural language (e.g. "
-                        + "\"舉左手\" or \"take left hand\", \"跳舞\" or \"dance\") - it will be "
-                        + "matched against the robot's actual action list automatically. Only "
-                        + "actions that exist in the robot's list can actually play, so if in "
-                        + "doubt call self.robot.list_actions to see exact names first.");
-                org.json.JSONObject playActionSchema = new org.json.JSONObject();
-                playActionSchema.put("type", "object");
-                org.json.JSONObject playActionProps = new org.json.JSONObject();
-                org.json.JSONObject nameProp = new org.json.JSONObject();
-                nameProp.put("type", "string");
-                nameProp.put("description", "Chinese or English action name, e.g. \"舉左手\" or \"take left hand\".");
-                playActionProps.put("name", nameProp);
-                playActionSchema.put("properties", playActionProps);
-                playActionSchema.put("required", new org.json.JSONArray().put("name"));
-                playAction.put("inputSchema", playActionSchema);
-                tools.put(playAction);
-
-                org.json.JSONObject stopAction = new org.json.JSONObject();
-                stopAction.put("name", "self.robot.stop_action");
-                stopAction.put("description", "Stop whatever action is currently playing.");
-                org.json.JSONObject stopActionSchema = new org.json.JSONObject();
-                stopActionSchema.put("type", "object");
-                stopActionSchema.put("properties", new org.json.JSONObject());
-                stopAction.put("inputSchema", stopActionSchema);
-                tools.put(stopAction);
-
-                // 2026-08 新增: 骨架先行, 選哪個動作只靠隨機 (見
-                // resolveRandomActionId()), 還沒做任何 emotion-to-action 對應 - 那部分
-                // 之後再做。這個 tool 存在的意義是讓 LLM 自己判斷「這一刻適不適合
-                // 加個動作看起來生動一點」, 不是跟著 emotion 字段機械式觸發 (每句對話
-                // 都附帶 emotion 字段, 如果 client 側看到就自動播放, 會太頻繁太吵) - 主導
-                // 權留在 LLM 側, 由它自己決定何時呼叫。
-                org.json.JSONObject playRandomAction = new org.json.JSONObject();
-                playRandomAction.put("name", "self.robot.play_random_action");
-                playRandomAction.put("description", "Play a random filler movement to make the "
-                        + "robot look more alive/expressive - use this when it feels natural to "
-                        + "add a bit of physical animation, not necessarily tied to any specific "
-                        + "emotion or reply content. Takes no arguments. IMPORTANT ordering rule: "
-                        + "if the user's request also calls for a specific action via "
-                        + "self.robot.play_action (e.g. they asked you to wave, dance, nod, etc.), "
-                        + "call that specific action instead of (not in addition to) this random "
-                        + "one for this turn - only reach for play_random_action when there is no "
-                        + "other action already planned for this reply.");
-                org.json.JSONObject playRandomActionSchema = new org.json.JSONObject();
-                playRandomActionSchema.put("type", "object");
-                playRandomActionSchema.put("properties", new org.json.JSONObject());
-                playRandomAction.put("inputSchema", playRandomActionSchema);
-                tools.put(playRandomAction);
-
-                // 2026-08 新增: 全套硬件控制 MCP tools (servo/LED/PIR/sonar), 跟返
-                // 這個 bridge 已有的 pattern (schema 用 org.json 組建, 執行時直驅
-                // 硬件——2026-09 已無 AIDL wrapper / waitXxxReady) - 詳細參數含義/
-                // 已驗證行為見 handleApi() 裡對應的 "servo/*"、"led/*"、"pir/*"
-                // case (這些 MCP tool 純粹是那些 case 的薄包裝, 沒有重複定義邏輯)。
-
-                org.json.JSONObject servoOne = new org.json.JSONObject();
-                servoOne.put("name", "self.robot.servo_set_one");
-                servoOne.put("description", "Move a single servo to an angle. Servo ids and their "
-                        + "valid angle ranges are specific to this robot's build - if unsure, use "
-                        + "small movements first.");
-                org.json.JSONObject servoOneSchema = new org.json.JSONObject();
-                servoOneSchema.put("type", "object");
-                org.json.JSONObject servoOneProps = new org.json.JSONObject();
-                servoOneProps.put("id", new org.json.JSONObject().put("type", "integer")
-                        .put("description", "Servo id (1-20)."));
-                servoOneProps.put("angle", new org.json.JSONObject().put("type", "integer")
-                        .put("description", "Target angle in degrees."));
-                servoOneProps.put("time_ms", new org.json.JSONObject().put("type", "integer")
-                        .put("description", "Movement duration in milliseconds. Default 1000."));
-                servoOneSchema.put("properties", servoOneProps);
-                servoOneSchema.put("required", new org.json.JSONArray().put("id").put("angle"));
-                servoOne.put("inputSchema", servoOneSchema);
-                tools.put(servoOne);
-
-                org.json.JSONObject servoAll = new org.json.JSONObject();
-                servoAll.put("name", "self.robot.servo_set_all");
-                servoAll.put("description", "Move all 20 servos at once to a full-body pose. "
-                        + "angles must have exactly 20 comma-separated integers, one per servo id "
-                        + "in order.");
-                org.json.JSONObject servoAllSchema = new org.json.JSONObject();
-                servoAllSchema.put("type", "object");
-                org.json.JSONObject servoAllProps = new org.json.JSONObject();
-                servoAllProps.put("angles", new org.json.JSONObject().put("type", "string")
-                        .put("description", "20 comma-separated angle values, e.g. \"0,0,0,...\"."));
-                servoAllProps.put("time_ms", new org.json.JSONObject().put("type", "integer")
-                        .put("description", "Movement duration in milliseconds. Default 1000."));
-                servoAllSchema.put("properties", servoAllProps);
-                servoAllSchema.put("required", new org.json.JSONArray().put("angles"));
-                servoAll.put("inputSchema", servoAllSchema);
-                tools.put(servoAll);
-
-                org.json.JSONObject ledHead = new org.json.JSONObject();
-                ledHead.put("name", "self.robot.led_set_head");
-                ledHead.put("description", "Set the head 5-mic LED ring. color: 1=red 2=green "
-                        + "3=blue 4=yellow 5=purple 6=cyan 7=white. brightness: 1 (dimmest) to 9 "
-                        + "(brightest). preset: \"long\" (solid), \"flash\", \"breathe\", \"chase\", "
-                        + "\"dual\", or \"stop\" (turns the ring off - color/brightness ignored).");
-                org.json.JSONObject ledHeadSchema = new org.json.JSONObject();
-                ledHeadSchema.put("type", "object");
-                org.json.JSONObject ledHeadProps = new org.json.JSONObject();
-                ledHeadProps.put("preset", new org.json.JSONObject().put("type", "string")
-                        .put("enum", new org.json.JSONArray()
-                                .put("long").put("flash").put("breathe").put("chase").put("dual").put("stop"))
-                        .put("description", "Effect preset. Default \"long\"."));
-                ledHeadProps.put("color", new org.json.JSONObject().put("type", "integer")
-                        .put("description", "1-7, required unless preset=stop."));
-                ledHeadProps.put("brightness", new org.json.JSONObject().put("type", "integer")
-                        .put("description", "1-9, required unless preset=stop."));
-                ledHeadSchema.put("properties", ledHeadProps);
-                ledHead.put("inputSchema", ledHeadSchema);
-                tools.put(ledHead);
-
-                org.json.JSONObject ledEye = new org.json.JSONObject();
-                ledEye.put("name", "self.robot.led_set_eye");
-                ledEye.put("description", "Set the eye 5-mic LED ring. Same color/brightness/preset "
-                        + "semantics as self.robot.led_set_head (preset \"breathe\" is not available "
-                        + "for the eye ring - only \"long\", \"flash\", \"chase\", \"dual\", \"stop\").");
-                org.json.JSONObject ledEyeSchema = new org.json.JSONObject();
-                ledEyeSchema.put("type", "object");
-                org.json.JSONObject ledEyeProps = new org.json.JSONObject();
-                ledEyeProps.put("preset", new org.json.JSONObject().put("type", "string")
-                        .put("enum", new org.json.JSONArray()
-                                .put("long").put("flash").put("chase").put("dual").put("stop"))
-                        .put("description", "Effect preset. Default \"long\"."));
-                ledEyeProps.put("color", new org.json.JSONObject().put("type", "integer")
-                        .put("description", "1-7, required unless preset=stop."));
-                ledEyeProps.put("brightness", new org.json.JSONObject().put("type", "integer")
-                        .put("description", "1-9, required unless preset=stop."));
-                ledEyeSchema.put("properties", ledEyeProps);
-                ledEye.put("inputSchema", ledEyeSchema);
-                tools.put(ledEye);
-
-                org.json.JSONObject ledMouth = new org.json.JSONObject();
-                ledMouth.put("name", "self.robot.led_set_mouth");
-                ledMouth.put("description", "Set the mouth LED. preset \"breathing\" pulses at the "
-                        + "given speed (0-5000ms, 0=fastest); preset \"off\" turns it off. Note: "
-                        + "this is driven automatically during XiaoZhi TTS playback, so calling it "
-                        + "manually mid-conversation may fight with that.");
-                org.json.JSONObject ledMouthSchema = new org.json.JSONObject();
-                ledMouthSchema.put("type", "object");
-                org.json.JSONObject ledMouthProps = new org.json.JSONObject();
-                ledMouthProps.put("preset", new org.json.JSONObject().put("type", "string")
-                        .put("enum", new org.json.JSONArray().put("breathing").put("off"))
-                        .put("description", "Default \"breathing\"."));
-                ledMouthProps.put("speed_ms", new org.json.JSONObject().put("type", "integer")
-                        .put("description", "Breathing speed 0-5000ms, only used when preset=breathing. Default 0."));
-                ledMouthSchema.put("properties", ledMouthProps);
-                ledMouth.put("inputSchema", ledMouthSchema);
-                tools.put(ledMouth);
-
-                org.json.JSONObject pirGet = new org.json.JSONObject();
-                pirGet.put("name", "self.sensors.get_pir");
-                pirGet.put("description", "Read the last known PIR motion-sensor state (whether "
-                        + "someone was last detected entering/present nearby). This is the most "
-                        + "recently received event, not a live poll - if the sensor is disabled or "
-                        + "no event has arrived yet, state will be \"unknown\".");
-                org.json.JSONObject pirGetSchema = new org.json.JSONObject();
-                pirGetSchema.put("type", "object");
-                pirGetSchema.put("properties", new org.json.JSONObject());
-                pirGet.put("inputSchema", pirGetSchema);
-                tools.put(pirGet);
-
-                org.json.JSONObject pirSet = new org.json.JSONObject();
-                pirSet.put("name", "self.sensors.set_pir_enabled");
-                pirSet.put("description", "Turn the PIR motion sensor hardware on or off.");
-                org.json.JSONObject pirSetSchema = new org.json.JSONObject();
-                pirSetSchema.put("type", "object");
-                org.json.JSONObject pirSetProps = new org.json.JSONObject();
-                pirSetProps.put("enabled", new org.json.JSONObject().put("type", "boolean"));
-                pirSetSchema.put("properties", pirSetProps);
-                pirSetSchema.put("required", new org.json.JSONArray().put("enabled"));
-                pirSet.put("inputSchema", pirSetSchema);
-                tools.put(pirSet);
-
-                org.json.JSONObject sonarGet = new org.json.JSONObject();
-                sonarGet.put("name", "self.sensors.get_sonar");
-                sonarGet.put("description", "Read the last known ultrasonic sonar distance reading "
-                        + "(centimeters) and the currently configured trigger threshold. This is the "
-                        + "most recently received reading, not a live poll - if no reading has "
-                        + "arrived yet, distance_cm will be -1.");
-                org.json.JSONObject sonarGetSchema = new org.json.JSONObject();
-                sonarGetSchema.put("type", "object");
-                sonarGetSchema.put("properties", new org.json.JSONObject());
-                sonarGet.put("inputSchema", sonarGetSchema);
-                tools.put(sonarGet);
-
-                org.json.JSONObject sonarSet = new org.json.JSONObject();
-                sonarSet.put("name", "self.sensors.set_sonar_threshold");
-                sonarSet.put("description", "Configure the sonar obstacle-trigger distance "
-                        + "threshold in centimeters.");
-                org.json.JSONObject sonarSetSchema = new org.json.JSONObject();
-                sonarSetSchema.put("type", "object");
-                org.json.JSONObject sonarSetProps = new org.json.JSONObject();
-                sonarSetProps.put("distance_cm", new org.json.JSONObject().put("type", "integer"));
-                sonarSetSchema.put("properties", sonarSetProps);
-                sonarSetSchema.put("required", new org.json.JSONArray().put("distance_cm"));
-                sonarSet.put("inputSchema", sonarSetSchema);
-                tools.put(sonarSet);
-
-                // 沿用官方 xiaozhi-esp32 firmware 的 self.camera.take_photo 命名/協議
-                // 形狀 (見 esp32_camera.cc 的 Explain() 實作): 拍一張相, 用 multipart
-                // HTTP POST 去 vision/explain endpoint (JPEG + question), server 回傳
-                // {"success":true,"text":"..."} 的圖片描述文字, 由 LLM 讀出來。相片
-                // 不會經由 MCP JSONRPC result 直接塞入 image content (這個 xiaozhi 協議
-                // 不支援) - explain 完全在 device <-> vision endpoint 之間進行, MCP tool
-                // 只取回一段描述文字。解析度固定 480x360 (用戶指定, 比官方範例的
-                // 640x480, 換取更快上傳/處理), 見 CAMERA_PHOTO_WIDTH/HEIGHT 同
-                // xiaozhiVisionExplain()。
-                org.json.JSONObject takePhoto = new org.json.JSONObject();
-                takePhoto.put("name", "self.camera.take_photo");
-                takePhoto.put("description", "Take a photo with the robot's camera and get a "
-                        + "description of what it sees. Optionally pass a specific question to "
-                        + "focus the description on (e.g. \"how many people are there\"), "
-                        + "otherwise a general description is returned.");
-                org.json.JSONObject takePhotoSchema = new org.json.JSONObject();
-                takePhotoSchema.put("type", "object");
-                org.json.JSONObject takePhotoProps = new org.json.JSONObject();
-                org.json.JSONObject questionProp = new org.json.JSONObject();
-                questionProp.put("type", "string");
-                questionProp.put("description", "Optional question to focus the photo description on.");
-                takePhotoProps.put("question", questionProp);
-                takePhotoSchema.put("properties", takePhotoProps);
-                takePhoto.put("inputSchema", takePhotoSchema);
-                tools.put(takePhoto);
-
-                // 2026-08 新增: 帳戶用 GPT-5 做 LLM provider 時, vision/explain
-                // 實測 (見 xiaozhiVisionExplainRequest() 的詳細 comment) 不會立即
-                // 回覆相片描述, 而是先回一個 {"success":true,"uuid":"...",
-                // "message":"Please call the tool `image_to_text` ..."} - 也就是說
-                // server 期望 LLM 自己懂得再發一次 MCP tools/call 去呼叫這個
-                // "image_to_text" tool 才能拿到真正描述。之前 device 這邊沒有註冊過
-                // 這個 tool, 使 GPT-5 就算依指示想呼叫也沒有這個 tool 可以呼叫,
-                // 對話卡死, 4 次都是這個情況。這個 tool 名/形狀屬於 xiaozhi.me
-                // console 這個特定 agent/GPT-5 組合才有的非官方行為 (官方
-                // mcp-protocol.md 完全沒記載), 沿用 server 訊息原文用的名字
-                // "image_to_text", 掛在 self.camera 底下和 take_photo 同一個
-                // namespace。inputSchema 沒有強制要求 uuid (LLM 可能會/不會帶),
-                // device 這邊會用 lastPendingPhotoUuid 做 fallback 核對, 見
-                // callTool() 的 "self.camera.image_to_text" case。
-                org.json.JSONObject imageToText = new org.json.JSONObject();
-                imageToText.put("name", "self.camera.image_to_text");
-                imageToText.put("description", "Get the text description for a photo previously "
-                        + "captured via self.camera.take_photo. Call this after take_photo tells "
-                        + "you to, using the uuid it gave you.");
-                org.json.JSONObject imageToTextSchema = new org.json.JSONObject();
-                imageToTextSchema.put("type", "object");
-                org.json.JSONObject imageToTextProps = new org.json.JSONObject();
-                org.json.JSONObject uuidProp = new org.json.JSONObject();
-                uuidProp.put("type", "string");
-                uuidProp.put("description", "The uuid returned by self.camera.take_photo.");
-                imageToTextProps.put("uuid", uuidProp);
-                imageToTextSchema.put("properties", imageToTextProps);
-                imageToText.put("inputSchema", imageToTextSchema);
-                tools.put(imageToText);
-
-                org.json.JSONObject speak = new org.json.JSONObject();
-                speak.put("name", "self.robot.speak");
-                speak.put("description", "Speak a short phrase out loud through the robot's TTS.");
-                org.json.JSONObject speakSchema = new org.json.JSONObject();
-                speakSchema.put("type", "object");
-                org.json.JSONObject speakProps = new org.json.JSONObject();
-                org.json.JSONObject textProp = new org.json.JSONObject();
-                textProp.put("type", "string");
-                textProp.put("description", "Text to speak.");
-                speakProps.put("text", textProp);
-                speakSchema.put("properties", speakProps);
-                speakSchema.put("required", new org.json.JSONArray().put("text"));
-                speak.put("inputSchema", speakSchema);
-                tools.put(speak);
-
-                // 2026-08 新增: 本地音樂播放 (/mnt/internal_sd/music/, 見
-                // listLocalMusicFiles()/resolveLocalMusicFile() 的 javadoc) - 沿用
-                // self.robot.play_action 那套「人類語言名 + fuzzy match」做法, 不用
-                // LLM 記實際檔名/副檔名。
-                org.json.JSONObject listMusic = new org.json.JSONObject();
-                listMusic.put("name", "self.media.list_music");
-                listMusic.put("description", "List all local music files available to play "
-                        + "on the robot.");
-                org.json.JSONObject listMusicSchema = new org.json.JSONObject();
-                listMusicSchema.put("type", "object");
-                listMusicSchema.put("properties", new org.json.JSONObject());
-                listMusic.put("inputSchema", listMusicSchema);
-                tools.put(listMusic);
-
-                org.json.JSONObject playMusic = new org.json.JSONObject();
-                playMusic.put("name", "self.media.play_music");
-                playMusic.put("description", "Play a local music file on the robot. Pass the "
-                        + "song name in natural language (it will be fuzzy-matched against the "
-                        + "actual filenames) - call self.media.list_music first if unsure what "
-                        + "is available.");
-                org.json.JSONObject playMusicSchema = new org.json.JSONObject();
-                playMusicSchema.put("type", "object");
-                org.json.JSONObject playMusicProps = new org.json.JSONObject();
-                org.json.JSONObject musicNameProp = new org.json.JSONObject();
-                musicNameProp.put("type", "string");
-                musicNameProp.put("description", "Song name or filename to play (fuzzy-matched).");
-                playMusicProps.put("name", musicNameProp);
-                playMusicSchema.put("properties", playMusicProps);
-                playMusicSchema.put("required", new org.json.JSONArray().put("name"));
-                playMusic.put("inputSchema", playMusicSchema);
-                tools.put(playMusic);
-
-                org.json.JSONObject stopMusic = new org.json.JSONObject();
-                stopMusic.put("name", "self.media.stop_music");
-                stopMusic.put("description", "Stop whatever local music track is currently playing.");
-                org.json.JSONObject stopMusicSchema = new org.json.JSONObject();
-                stopMusicSchema.put("type", "object");
-                stopMusicSchema.put("properties", new org.json.JSONObject());
-                stopMusic.put("inputSchema", stopMusicSchema);
-                tools.put(stopMusic);
-
-                // 2026-08 更新: FM/網絡電台 (經 Radio Browser API,
-                // radio-browser.info, 動態搜全世界公開電台 - 見
-                // searchRadioStations()/resolveRadioStation() 的 javadoc, 這台機器
-                // 不再內建任何寫死的電台清單) - self.media.list_radio 換成了
-                // self.media.search_radio (搜尋型 API 拿不到「全部」電台, 只
-                // 「search_radio 先取得候選、play_radio 再選播」這個 flow 才合理)。
-                org.json.JSONObject searchRadio = new org.json.JSONObject();
-                searchRadio.put("name", "self.media.search_radio");
-                searchRadio.put("description", "Search for live FM/internet radio stations from "
-                        + "around the world (station name, e.g. a city, country, broadcaster or "
-                        + "genre). Returns a list of matching stations - call "
-                        + "self.media.play_radio with one of the returned names afterwards to "
-                        + "actually play it.");
-                org.json.JSONObject searchRadioSchema = new org.json.JSONObject();
-                searchRadioSchema.put("type", "object");
-                org.json.JSONObject searchRadioProps = new org.json.JSONObject();
-                org.json.JSONObject searchRadioQueryProp = new org.json.JSONObject();
-                searchRadioQueryProp.put("type", "string");
-                searchRadioQueryProp.put("description", "Search text, e.g. \"BBC\", \"jazz\", \"Tokyo\", \"香港電台\".");
-                searchRadioProps.put("query", searchRadioQueryProp);
-                searchRadioSchema.put("properties", searchRadioProps);
-                searchRadioSchema.put("required", new org.json.JSONArray().put("query"));
-                searchRadio.put("inputSchema", searchRadioSchema);
-                tools.put(searchRadio);
-
-                org.json.JSONObject playRadio = new org.json.JSONObject();
-                playRadio.put("name", "self.media.play_radio");
-                playRadio.put("description", "Play (or switch to) a live FM/internet radio "
-                        + "station on the robot. Pass a station name in natural language - if it "
-                        + "matches one of the stations returned by a previous "
-                        + "self.media.search_radio call, that exact station is played; "
-                        + "otherwise this will search for it directly. Switching straight to a "
-                        + "different station is fine, no need to call self.media.stop_radio first.");
-                org.json.JSONObject playRadioSchema = new org.json.JSONObject();
-                playRadioSchema.put("type", "object");
-                org.json.JSONObject playRadioProps = new org.json.JSONObject();
-                org.json.JSONObject radioNameProp = new org.json.JSONObject();
-                radioNameProp.put("type", "string");
-                radioNameProp.put("description", "Station name, e.g. \"BBC World Service\" or \"香港電台第一台\".");
-                playRadioProps.put("name", radioNameProp);
-                playRadioSchema.put("properties", playRadioProps);
-                playRadioSchema.put("required", new org.json.JSONArray().put("name"));
-                playRadio.put("inputSchema", playRadioSchema);
-                tools.put(playRadio);
-
-                org.json.JSONObject stopRadio = new org.json.JSONObject();
-                stopRadio.put("name", "self.media.stop_radio");
-                stopRadio.put("description", "Stop whatever radio station is currently playing.");
-                org.json.JSONObject stopRadioSchema = new org.json.JSONObject();
-                stopRadioSchema.put("type", "object");
-                stopRadioSchema.put("properties", new org.json.JSONObject());
-                stopRadio.put("inputSchema", stopRadioSchema);
-                tools.put(stopRadio);
+                // 全部自動生成：tool 定義由 scripts/generate-mcp-tools.py
+                // 讀 openapi/open-alpha2-openapi.yml + openapi/mcp-openapi-sync.yml
+                // 生成 McpToolsGenerated.buildTools()，此處不再手寫 inputSchema。
+                // callTool() 分發維持手寫（fuzzy match / 硬件直驅無法由 spec 推導）。
+                org.json.JSONArray tools = McpToolsGenerated.buildTools();
 
                 // Bug fix (2026-08): "nextCursor":"" was always present, and the
                 // xiaozhi.me server treats *presence* of nextCursor as "there is a next
@@ -2101,8 +1782,8 @@ public final class XiaozhiBridge {
                 // nextCursor must be omitted entirely here to signal "no more pages".
                 //
                 // 2026-08 新增: MCP 設定 card 的 enable/disable 在這裡一次性生效 -
-                // 整個 tools array 已經全部組好了 (上面全部 tools.put(...)), 這裡過濾
-                // 一次就夠, 不用逐個 tools.put() 前面加 if, 減少改動、不用擔心漏了
+                // tools 已由 McpToolsGenerated.buildTools() 起好，
+                // 這裡過濾一次就夠, 不用逐個 tool 加 if, 減少改動、不用擔心漏了
                 // 哪一個。總開關關閉就回傳完全空的 tools array (等於告訴 LLM「這台
                 // 機器現在沒有任何工具」); 開啟就逐一取得個別 tool 的 enabled 狀態
                 // 過濾。見 XiaozhiConfig isMcpToolEnabled()/getMcpDisabledToolNames() 的 comment。

@@ -31,8 +31,9 @@ import java.util.concurrent.TimeUnit;
  * battery/status、accelerometer set/get + SensorEventListener，連註解搬入。
  * 低電量蹲下經傳入嘅同一個 ActionDirect；synchronized 鎖由 MainActivity.this
  * 轉做自己 (調用方全部經同一個 instance，互斥等價；見 AudioCenter 同例)。
- * 2026-09 dispatcher Phase 1 第七刀加：handleApi status 健康聚合 +
- * service_config/reboot (statusResponse/rebootResponse)；TtsCenter
+ * 2026-09 dispatcher Phase 1 第七刀加：handleApi status 健康聚合
+ * (statusResponse)；rebootResponse 已移除 (App 無 REBOOT 權限，實機 verified
+ * 永遠 SecurityException，UUID 卡掣一併拎走)；TtsCenter
  * readiness 經傳入嘅同一個 instance 讀。
  */
 public final class DeviceStatus implements SensorEventListener {
@@ -313,25 +314,12 @@ public final class DeviceStatus implements SensorEventListener {
                 + "\"androidTtsReady\":" + ttsCenter.isReady() + "}");
     }
 
-    /** 觸發機身重開機（UUID 卡重開機掣用，經 PowerManager）。獨立 endpoint，用戶隨時手動重開機。 */
-    public HttpServer.ApiResponse rebootResponse() {
-        try {
-            android.os.PowerManager pm = (android.os.PowerManager) appContext.getSystemService(Context.POWER_SERVICE);
-            if (pm == null) {
-                return HttpServer.ApiResponse.error("PowerManager unavailable");
-            }
-            pm.reboot("robotpanel_service_config_change");
-            return HttpServer.ApiResponse.ok("{\"ok\":true,\"rebooting\":true}");
-        } catch (SecurityException e) {
-            // REBOOT permission 在很多機身/ROM 只給 system app 用, 第三方 app (即使
-            // 有 manifest 聲明) 都可能在這裡被 SecurityException 拒絕 - 這是
-            // 意料之內的失敗模式, 不是 bug, 前端應該提示用戶手動長按電源鍵重開機。
-            return HttpServer.ApiResponse.error(
-                    "REBOOT permission denied by system (common on locked-down firmware) - "
-                            + "please power-cycle the robot manually for the config change to take effect: "
-                            + e.getMessage());
-        }
-    }
+    // 2026-09 移除 rebootResponse (PowerManager.reboot)：App 係第三方 sideload，
+    // 無 REBOOT 權限 (signature|system)，實機回 "Neither user 10020 nor current
+    // process has android.permission.REBOOT"，su 亦喺 app context 攞唔到
+    // (Permission denied)——UUID 卡改做手動重開機提示，endpoint＋spec 一齊清走。
+
+    // 面板 URL/顯示用本機 IP (2026-09 dispatcher Phase 2 由 MainActivity.getWifiIp
 
     // 面板 URL/顯示用本機 IP (2026-09 dispatcher Phase 2 由 MainActivity.getWifiIp
     // 搬入；updatePanelUrlDisplay/複製連結經呢度讀)。

@@ -378,20 +378,3 @@ function uuidCopyFallback(text, done) {
   }
   document.body.removeChild(ta);
 }
-
-// UUID 卡個獨立重開機掣 (2026-09: speech tab 個 rebootRobot() 已隨離線對話卡
-// 一齊移除, 得返呢個), 用 service_config/reboot API。
-function advancedRebootRobot() {
-  const status = document.getElementById("advancedRebootStatus");
-  if (!confirm(t("service_config_reboot_confirm"))) return Promise.resolve();
-  if (status) status.textContent = t("service_config_rebooting");
-  return Alpha2Api.serviceConfigReboot().then(function (res) {
-    if (!status) return;
-    if (res && res.ok) {
-      status.textContent = t("service_config_reboot_ok");
-    } else {
-      status.textContent = t("service_config_reboot_failed_prefix") +
-        (res && res.error ? res.error : t("asr_reset_failed_unknown")) + t("service_config_reboot_failed_suffix");
-    }
-  });
-}

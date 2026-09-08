@@ -63,6 +63,13 @@ public final class ChestQuery {
     private volatile CountDownLatch trimLatch;
     private volatile int trimExpectId = -1;
     private volatile Boolean trimOk = null;
+    // 2026-09-08 新增：單舵機絕對角度實讀 (cmd 6 / 0x06) latch。實機 verified
+    // 格式：查詢 f8 8f 08 00 00 06 <id> <sum> ed；回覆
+    // f8 8f 0b 00 00 06 00 <id> <hi> <lo> <sum> ed（BE16，同 servo/one 同單位，
+    // 跟位誤差約 1°——注意唔係 cmd 13 嗰個 trim/偏差）。只認領等待中那顆 id。
+    private volatile CountDownLatch absAngleLatch;
+    private volatile int absAngleExpectId = -1;
+    private volatile Integer absAngleValue = null;
 
     public ChestQuery(Context context, RobotStub robot) {
         this.appContext = context.getApplicationContext();
@@ -137,6 +144,22 @@ public final class ChestQuery {
             }
             return false;
         }
+        // 2026-09-08 新增: 絕對角度回覆 latch (cmd 6)。只認領等待中那顆 id，
+        // 其他交還（return false），免得 20 連讀時食錯幀。注意放喺版本
+        // fallback 之前——06 回覆 plen=5 會被舊 fallback 誤食。
+        if (absAngleLatch != null && absAngleLatch.getCount() > 0
+                && plen >= 5 && payload[0] == 6) {
+            int rid = payload[2] & 0xFF;
+            if (rid == absAngleExpectId) {
+                if (payload[1] == 0) {
+                    int hi = payload[3] & 0xFF, lo = payload[4] & 0xFF;
+                    absAngleValue = (hi << 8) | lo;
+                    absAngleLatch.countDown();
+                    return true;
+                }
+            }
+            return false;
+        }
         // 版本 latch：完整帧优先（isVersionFrame 认 F8 8F），否则按 payload fallback
         if (chestVersionLatch != null && chestVersionLatch.getCount() > 0) {
             boolean isVer = isVersionFrame(frame, frame.length, RobotWire.CHEST_READ_VERSION);
@@ -172,6 +195,8 @@ public final class ChestQuery {
         servoExpectId = -1;
         trimLatch = null;
         trimExpectId = -1;
+        absAngleLatch = null;
+        absAngleExpectId = -1;
     }
 
     /** 最後一次版本回覆原幀 (拷貝，可 null)，供升級超時診斷 log 用。 */
@@ -444,6 +469,58 @@ public final class ChestQuery {
             return null;
         } finally {
             servoLatch = null;
+        }
+    }
+
+    /**
+     * 2026-09-08 新增：單舵機絕對角度實讀 (cmd 6 / 0x06)，實機 verified。
+     * 發送 f8 8f 08 00 00 06 &lt;id&gt; &lt;sum&gt; ed，阻塞等回覆
+     * f8 8f 0b 00 00 06 00 &lt;id&gt; &lt;hi&gt; &lt;lo&gt; &lt;sum&gt; ed
+     *（BE16 unsigned，同 servo/one 同單位；跟位實測誤差約 1°）。
+     * 注意唔係 cmd 13 嗰個 trim/偏差（嗰個唔跟位）。發送沿用實測過嘅 00 00
+     * 頭原幀（唔用 port.send 嘅 05 00 頭，cmd 6 未驗證過嗰個形）。
+     * @return 即時角度；null = 超時（暫未知有無短 error 幀，有待實測補）。
+     * 此方法已保證不在主 thread。
+     */
+    public Integer queryServoAbsAngle(int id, long timeoutMs) {
+        if (id < 1 || id > 20) return null;
+        if (!chestReady()) {
+            Log.w(TAG, "queryServoAbsAngle: chest not ready (pure-direct)");
+            return null;
+        }
+        CountDownLatch latch = new CountDownLatch(1);
+        absAngleExpectId = id;
+        absAngleValue = null;
+        absAngleLatch = latch;
+        boolean sent;
+        try {
+            int sum = (8 + 6 + id) & 0xFF;
+            byte[] frame = new byte[]{(byte) 0xF8, (byte) 0x8F, 0x08, 0x00, 0x00,
+                    0x06, (byte) id, (byte) sum, (byte) 0xED};
+            sent = HardwareDirectManager.get(appContext).chest().sendRaw(frame);
+        } catch (Exception e) {
+            Log.w(TAG, "queryServoAbsAngle send failed", e);
+            absAngleLatch = null;
+            return null;
+        }
+        Log.d(TAG, "queryServoAbsAngle send id=" + id + " -> " + sent);
+        if (!sent) {
+            absAngleLatch = null;
+            return null;
+        }
+        try {
+            boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+            if (!ok) {
+                Log.w(TAG, "queryServoAbsAngle timeout id=" + id + " " + timeoutMs + "ms");
+                return null;
+            }
+            Log.d(TAG, "queryServoAbsAngle id=" + id + " value=" + absAngleValue);
+            return absAngleValue;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            absAngleLatch = null;
         }
     }
 

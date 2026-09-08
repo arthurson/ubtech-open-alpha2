@@ -124,12 +124,8 @@ public final class UbxApi {
         boolean sent = HardwareDirectManager.get(appContext).chest()
                 .setSingleServo((byte) id, angle, (short) timeMs);
         if (!sent) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
-        // 位姿追踪有值就順手更新嗰一軸（ keeping 其餘 19 軸），未知就唔編造。
-        int[] cur = ubxPlayer.pose();
-        if (cur != null) {
-            cur[id - 1] = angle & 0xFF;
-            ubxPlayer.notePose(cur);
-        }
+        // 位姿追踪：記低呢一軸命令值（逐軸 known；命令位姿榜／commanded 回讀用）。
+        ubxPlayer.notePoseOne(id, angle & 0xFF);
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
 
@@ -241,7 +237,10 @@ public final class UbxApi {
         sb.append(",\"bindReady\":").append(directChestReady());
         sb.append(",\"id\":").append(id).append(",\"angle\":").append(angle & 0xFF);
         sb.append(",\"trim\":").append(trim);
+        // 2026-09-06 深夜修：written==null（回覆被官方 service 搶食晒）唔等於
+        // 寫失敗——id2 實測零 ACK 照存入。報 unknown 唔報失敗，叫前端重掃驗證。
         sb.append(",\"trimWritten\":").append(written != null && written);
+        sb.append(",\"trimUnknown\":").append(written == null);
         sb.append('}');
         return HttpServer.ApiResponse.ok(sb.toString());
     }
@@ -264,8 +263,7 @@ public final class UbxApi {
         // 天生無回授）如實報 ok:false，不編 0。
         int idInt = ApiValidator.requireIntRange(query, "id", 1, 20);
         Integer live = readServoLive(idInt);
-        int[] pose = ubxPlayer.pose();
-        Integer commanded = (pose != null) ? pose[idInt - 1] : null;
+        Integer commanded = ubxPlayer.poseBoxed()[idInt - 1];
         if (live == null) {
             StringBuilder sb = new StringBuilder("{\"ok\":false,\"id\":" + idInt + ",\"live\":false");
             sb.append(",\"commanded\":").append(commanded != null ? commanded : "null");
@@ -276,13 +274,14 @@ public final class UbxApi {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + idInt
                 + ",\"trim\":" + live + ",\"live\":true"
                 + ",\"commanded\":" + (commanded != null ? commanded : "null")
-                + ",\"known\":true}");
+                + ",\"known\":" + (commanded != null) + "}");
     }
 
     public HttpServer.ApiResponse servoReadAllResponse() {
         // 2026-09-06 改行 20 連讀 trim（官方 tuner 節奏：逐粒約十幾 ms 間隔）。
         // trims[i] = 該軸 chest 存住的偏差原值，讀唔到嗰粒記 null 並列入 failed。
         // 注意：呢度唔係絕對角度，唔好攞去填 angle 輸入格。
+        // 2026-09-08 連發打窒胸板事故後改：逐粒之間一律等 100ms（成功失敗都等）。
         Integer[] trims = new Integer[20];
         StringBuilder failed = new StringBuilder("[");
         boolean firstFail = true;
@@ -293,8 +292,9 @@ public final class UbxApi {
                 if (!firstFail) failed.append(',');
                 failed.append(i);
                 firstFail = false;
-            } else {
-                try { Thread.sleep(15); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+            }
+            if (i < 20) {
+                try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
             }
         }
         failed.append(']');
@@ -307,10 +307,97 @@ public final class UbxApi {
         return HttpServer.ApiResponse.ok(sb.toString());
     }
 
+    public HttpServer.ApiResponse servoAngleResponse(Map<String, String> query) {
+        // 2026-09-08 新增：單舵機絕對角度實讀 (cmd 6)。同 servo/one 同單位，
+        // 跟位實測誤差約 1°——注意唔係 servo/read 嗰個 trim/偏差。
+        // 讀唔到（超時）如實報 ok:false，不編 0。
+        // 注意：讀本身會令嗰粒鬆力（firmware 行為，兩部機證實），要上返力就行
+        // servo/angle-restore（讀寫原子）或隨便郁佢一郁。
+        int idInt = ApiValidator.requireIntRange(query, "id", 1, 20);
+        Integer angle = readServoAbsLive(idInt);
+        if (angle == null) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + idInt
+                    + ",\"error\":\"no feedback (timeout)\"}");
+        }
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + idInt
+                + ",\"angle\":" + angle + "}");
+    }
+
+    public HttpServer.ApiResponse servoAngleRestoreResponse(Map<String, String> query) {
+        // 2026-09-08 新增：讀＋即寫回原子操作。cmd6 讀會鬆開嗰粒（見上），
+        // 呢度讀到即用 servo/one（cmd05）寫返同一個位上力，全程後端內完成、
+        // 唔經瀏覽器來回——鬆力窗口得幾十毫秒，跌都未跌得切，肉眼唔覺郁。
+        // time 用最細 20ms：純粹為快趣上力，唔係為郁。
+        int idInt = ApiValidator.requireIntRange(query, "id", 1, 20);
+        Integer angle = readServoAbsLive(idInt);
+        if (angle == null) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + idInt
+                    + ",\"error\":\"no feedback (timeout)\"}");
+        }
+        boolean restored = servoSendOneCode(idInt, angle, 20)
+                == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + idInt
+                + ",\"angle\":" + angle + ",\"restored\":" + restored + "}");
+    }
+
+    public HttpServer.ApiResponse servoAngleAllResponse() {
+        // 2026-09-08：20 連讀＋逐粒即寫回（每粒讀寫原子，粒與粒之間隔 100ms）。
+        // 背景：純連讀（唔寫回）已被兩部機證實會逐粒整冧出力；但單粒讀＋即寫回
+        // 已證實無鬆無郁，故連讀版都係同一個原子操作逐粒做。讀唔到嗰粒唔寫回、
+        // 記 null 入 failed。未知能否全程企穩——實測中。
+        Integer[] angles = new Integer[20];
+        boolean[] restored = new boolean[20];
+        StringBuilder failed = new StringBuilder("[");
+        boolean firstFail = true;
+        for (int i = 1; i <= 20; i++) {
+            Integer v = readServoAbsLive(i);
+            angles[i - 1] = v;
+            if (v == null) {
+                if (!firstFail) failed.append(',');
+                failed.append(i);
+                firstFail = false;
+            } else {
+                restored[i - 1] = servoSendOneCode(i, v, 20)
+                        == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+            }
+            if (i < 20) {
+                try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+            }
+        }
+        failed.append(']');
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"live\":true,\"angles\":[");
+        for (int i = 0; i < 20; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(angles[i] != null ? angles[i] : "null");
+        }
+        sb.append("],\"restored\":[");
+        for (int i = 0; i < 20; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(restored[i]);
+        }
+        sb.append("],\"failed\":").append(failed).append('}');
+        return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    /**
+     * 帶重試的單粒絕對角度實讀（3 次 × 250ms；重試之間隔 100ms，同連讀同級，
+     * 唔好密 hammer 胸板——見 servoAngleAllResponse 事故 comment）。
+     */
+    private Integer readServoAbsLive(int id) {
+        if (chestQuery == null || !directChestReady()) return null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            Integer v = chestQuery.queryServoAbsAngle(id, 250);
+            if (v != null) return v;
+            if (attempt == 2) break;
+            try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
+        }
+        return null;
+    }
+
     /**
      * 帶重試的單粒實讀。機身仲有官方 alpha2services 同揸 ttyS1，回覆 bytes
      * 會被搶食，偶發超時屬預期之內，故重試 3 次（官方 ACK 約 10-15ms，
-     * 250ms timeout 好闊綽）。
+     * 250ms timeout 好闊綽；重試之間隔 100ms，唔好密 hammer 胸板）。
      */
     private Integer readServoLive(int id) {
         if (chestQuery == null || !directChestReady()) return null;
@@ -318,7 +405,7 @@ public final class UbxApi {
             Integer v = chestQuery.queryServoAngle(id, 250);
             if (v != null) return v;
             if (attempt == 2) break;
-            try { Thread.sleep(30); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
+            try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
         }
         return null;
     }

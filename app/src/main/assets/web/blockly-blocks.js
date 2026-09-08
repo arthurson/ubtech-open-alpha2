@@ -240,8 +240,9 @@
         .setCheck('String')
         .appendField(t('speech_tts__label'))
         .appendField(new Blockly.FieldDropdown([
-          [t('speech_tts__engine_nuance'), 'nuance'],
-          [t('speech_tts__engine_iflytek'), 'iflytek'],
+          // 2026-09: 只留 android——機身已無 alpha2services，nuance/iflytek
+          // 經 speech_startTTS 恒回 NOT_INIT 全程靜音（見 RobotStub）。
+          // 舊存檔 ENGINE=nuance/iflytek 會跌回第一項 android 照響。
           [t('speech_tts__engine_android'), 'android'],
         ]), 'ENGINE');
       this.appendDummyInput()

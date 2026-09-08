@@ -192,7 +192,7 @@ function setAndroidTtsLang() {
 
 function speakTts() {
   const text = document.getElementById("ttsText").value.trim();
-  if (!text) return alert(t("speech_test_enter_text_alert"));
+  if (!text) { showError("語音", t("speech_test_enter_text_alert")); return; }
   // 2026-09: 恆行 Android TTS。lang 有揀先帶 (空字串=沿用引擎目前語言)。
   const params = { text: text, engine: "android" };
   // 空字串=沿用引擎目前語言 (見後端 speech/tts 個 android 分支 comment)。
@@ -231,8 +231,9 @@ function stopTts() {
 // (死 binder), 前端早已無入口再 call 佢哋。
 
 // 2026-09 移除: 離線對話設定成組 (setServiceConfigPreset/rebootRobot) - 卡已
-// 拎走 (見 index.html)。注意 app-accel.js advancedRebootRobot() 係另一粒獨立
-// 掣 (UUID 卡用), 唔受影響。service_config/get|set 已刪除，reboot 保留。
+// 拎走 (見 index.html)。service_config/get|set 已刪除；UUID 卡嗰個獨立重開機掣
+// (advancedRebootRobot) 亦已證實 App 無 REBOOT 權限、永遠失敗，一併移除，
+// service_config/reboot endpoint 同 spec 一齊清走。
 
 // 2026-09 移除: 離線文法辨識成組 function (grammarLoadDefault/grammarInit/
 // grammarStart/grammarStop/setOfflineAutoSwitch/refreshOfflineAutoSwitch) -

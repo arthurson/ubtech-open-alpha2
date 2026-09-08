@@ -44,8 +44,8 @@
         <span id="volumeVal" class="volume-val">-</span>
         <span class="hint" data-i18n="volume_hint" style="margin-left:8px">控制機械人喇叭的媒體音量 (STREAM_MUSIC)，和實體 +/- 按鈕共用同一個音量。</span>
       </div>
-      <h2 data-i18n="status_heading">系統狀態</h2>
-      <pre id="statusOut">-</pre>
+      <!-- 2026-09 移除: 系統狀態 JSON card (statusOut)——同 discover 重複，
+           呢卡淨返語言＋音量。 -->
     </section>
 
     <section class="card">
@@ -65,9 +65,12 @@
         </div>
         <div class="device-tile">
           <div class="device-label" data-i18n="device_uuid">🤖 機械人 UUID</div>
-          <div id="uuidOut" class="device-value">
-            <button onclick="requestUuid()" data-i18n="uuid_query_btn">查詢</button>
-          </div>
+          <!-- 2026-09: UUID 直接顯示——入頁自動查 (requestUuid)，唔使再撳掣。 -->
+          <div id="uuidOut" class="device-value" data-i18n="uuid_querying_hint">-</div>
+        </div>
+        <div class="device-tile">
+          <div class="device-label" data-i18n="device_chest_fw">🧠 胸板固件</div>
+          <div id="chestFwOut" class="device-value">-</div>
         </div>
       </div>
     </section>
@@ -206,6 +209,11 @@
         <!-- 2026-09: 省電開關已移除 - misc/power_save 純粹發 broadcast 俾已不
              存在的 alpha2services, 回 ok 但實際無效。 -->
       </div>
+      <div class="row">
+        <button onclick="servoReadAllAngles()" data-i18n="servo_read_all_btn">📖 讀取全部</button>
+        <span id="servoReadStatus" class="hint"></span>
+      </div>
+      <p class="hint" data-i18n="servo_read_hint">讀指定一顆或一次過讀全部舵機即時角度（讀完即寫回上力），顯示喺對應行右邊；讀不到顯示 -。全部約 6 秒，讀取時請固定好機械人。</p>
       <div id="servoGroups"></div>
     </section>
   </div>
@@ -297,8 +305,7 @@
 
     <!-- 2026-09: 🎙️ MIC 控制卡已移除 (搶/還 MIC + 持續搶佔開關)。
          2026-09: ⚙️ 離線對話設定卡已移除 (wake word preset + 重開機 - 全部
-         針對已不存在的機身 speech service; UUID 卡嗰個獨立重開機掣唔受影響,
-         見 app-accel.js advancedRebootRobot())。 -->
+         針對已不存在的機身 speech service)。 -->
 
   </div>
 
@@ -400,7 +407,7 @@
         <button id="photoFab" class="fab-btn" onclick="capturePhotoAtResolution(4208,3120, this, true)">📷</button>
         <button id="recordFab" class="fab-btn" onclick="toggleRecording()">⏺</button>
         <button id="micListenFab" class="fab-btn" onclick="toggleMicListen()">🎧</button>
-        <button id="talkFab" class="fab-btn">🎤</button>
+        <!-- 2026-09 刪除: #talkFab walkie-talkie 掣 (發射端永久停用，成串移除，唔留永遠 disabled 嘅掣)。 -->
       </div>
       <span class="camera-kbd-hint" id="cameraKbdHint"></span>
     </div>
@@ -440,16 +447,6 @@
         <span data-i18n="xiaozhi_session_toggle_label">🤖 小智（開＝連線並隨時語音對話，關＝斷開）</span>
       </label>
       <span id="xiaozhiStatusBadge" class="hint" data-i18n="xiaozhi_status_disconnected">未連接</span>
-    </div>
-
-    <div class="row">
-      <label class="switch-label">
-        <span class="toggle-switch">
-          <input type="checkbox" id="xiaozhiAutoConnectToggle" onchange="xiaozhiSetAutoConnect(this.checked)">
-          <span class="toggle-track"></span>
-        </span>
-        <span data-i18n="xiaozhi_auto_connect_label">🔌 開app自動連接小智</span>
-      </label>
     </div>
 
     <div class="row">
@@ -679,15 +676,58 @@
   <!-- ============ TAB: ADVANCED ============ -->
   <!-- 2026-08 v4 簡化: 三張 card 合併做一張 - 查詢/複製/QR 顯示、打新 ID 即時
        喺同一個 canvas 換上新 QR 預覽(oninput, 未寫入 EEPROM)、寫入 EEPROM、
-       reboot, 全部一張 card 走晒一條 flow, 冇再要「更改 ID/取消」呢種切換編輯
+       手動重開機提示, 全部一張 card 走晒一條 flow, 冇再要「更改 ID/取消」呢種切換編輯
        模式嘅步驟。QR 內容格式 "robotSeq=<ID>" (同官方 app 個 bind QR 一致),
        離線生成 (app-qr.js)。詳見 uuidUpdateCard()/uuidOnInputChange()/
-       uuidWriteNew()/advancedRebootRobot()。
+       uuidWriteNew()。
+       重開機掣已移除：App 無 REBOOT 權限 (uid 10020, 實機 verified)，PowerManager
+       永遠 SecurityException；寫入後請用戶長按電源鍵手動重開機。
        2026-08 v5 新增: card 內容預設收埋, 用開關 (toggle-switch, 同 sonar/PIR
        嗰啲一致嘅樣式) 揭開先顯示 — 呢個功能屬於高風險操作 (直接寫 chest
        EEPROM), 唔想用戶不小心撞到。每次入返呢個 tab / 重新整頁都預設關閉
        (冇用 localStorage 記住), 詳見 uuidCardToggle()。 -->
   <div id="tab-advanced" class="tab-page">
+    <!-- 開機語音模式三選一：先用開關展開內容，radio 3 選 1（off／開機連小智／開機用 Vosk），
+         選擇即儲存、下次開 App 生效，不會立刻連線／立刻開始聆聽。後端見
+         XiaozhiConfig boot_voice/get|set＋XiaozhiBridge.maybeBootVoice()。 -->
+    <section class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0" data-i18n="boot_voice_heading">🔌 開機語音模式</h2>
+        <label class="switch-label">
+          <span class="toggle-switch">
+            <input type="checkbox" id="bootVoiceCardEnabled" onchange="bootVoiceCardToggle()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
+      <p id="bootVoiceCardDisabledHint" class="hint" data-i18n="boot_voice_disabled_hint">開啟後才會顯示開機語音設定</p>
+      <div id="bootVoiceCardBody" style="display:none">
+        <p class="hint" data-i18n="boot_voice_hint">請選擇其中一個：會在下次開啟 App 時自動執行。現在選擇只會儲存設定，不會立刻連線或立刻開始聆聽。</p>
+        <div class="row">
+          <label class="switch-label">
+            <input type="radio" name="bootVoiceMode" value="off" onchange="bootVoiceSet('off')">
+            <span data-i18n="boot_voice_opt_off">💤 全部手動</span>
+          </label>
+        </div>
+        <p class="hint" style="margin-left:24px" data-i18n="boot_voice_opt_off_desc">開啟 App 後不自動執行任何項目，需要時再手動開啟。</p>
+        <div class="row">
+          <label class="switch-label">
+            <input type="radio" name="bootVoiceMode" value="xiaozhi" onchange="bootVoiceSet('xiaozhi')">
+            <span data-i18n="boot_voice_opt_xiaozhi">🤖 開機自動連接小智</span>
+          </label>
+        </div>
+        <p class="hint" style="margin-left:24px" data-i18n="boot_voice_opt_xiaozhi_desc">開啟 App 約 15 秒後自動連接小智，可直接對話（需要網路連線，且已完成配對）。</p>
+        <div class="row">
+          <label class="switch-label">
+            <input type="radio" name="bootVoiceMode" value="vosk" onchange="bootVoiceSet('vosk')">
+            <span data-i18n="boot_voice_opt_vosk">🗣️ 開機自動啟用 Vosk</span>
+          </label>
+        </div>
+        <p class="hint" style="margin-left:24px" data-i18n="boot_voice_opt_vosk_desc">開啟 App 並載入模型後，自動開始離線聆聽，不需要網路（須先在語音頁面載入模型）。</p>
+        <p id="bootVoiceStatus" class="hint"></p>
+      </div>
+    </section>
+
     <section class="card" oncontextmenu="return false" style="-webkit-touch-callout:none;-webkit-user-select:none;user-select:none">
       <div class="row" style="justify-content:space-between;align-items:center">
         <h2 style="margin:0" data-i18n="servo_tuner_heading">🔧 Servo Angle Tuner (20ch)</h2>
@@ -702,11 +742,10 @@
       <div id="advTunerBody" style="display:none" oncontextmenu="return false">
         <p class="hint" data-i18n="servo_tuner_hint">獨立於舵機分頁的進階微調器 — 直接修改 20 顆 servo 角度，±1° 精調，一鍵讀取全部目前角度。與原廠 1.0.0.4 校準工具相同佈局（1-20 對應肩/肘/髖/膝/踝/手/頭）。長按 ±1 連發時已禁用系統複製選單。</p>
         <div class="row">
-          <button onclick="advTunerReset()" class="secondary" data-i18n="servo_tuner_standby">準備</button>
-          <button onclick="advTunerSetAll()" class="danger-btn" style="background:#dc2626;color:white" data-i18n="servo_tuner_write_all">全部寫入</button>
+          <button onclick="advTunerReset()" class="secondary" data-i18n="servo_tuner_standby">復位+掃描</button>
+          <button onclick="advCalibrateAll()" class="danger-btn" style="background:#dc2626;color:white" data-i18n="servo_tuner_calibrate">校准</button>
         </div>
         <div class="row">
-          <button onclick="advTunerReadAll()" class="secondary" data-i18n="servo_tuner_scan">掃描 offset</button>
           <button onclick="advBackup()" class="secondary" data-i18n="servo_tuner_backup">備份 offset</button>
           <button onclick="document.getElementById('advImportFile').click()" class="secondary" data-i18n="servo_tuner_restore">還原 offset</button>
           <input type="file" id="advImportFile" accept=".json" style="display:none" onchange="advImport(this)">
@@ -743,10 +782,7 @@
           <button class="danger-btn" onclick="uuidWriteNew()" data-i18n="uuid_write_btn">寫入 EEPROM</button>
         </div>
         <p id="uuidWriteStatus" class="hint"></p>
-        <div class="row">
-          <button class="danger-btn" onclick="advancedRebootRobot()" data-i18n="advanced_reboot_btn">🔁 立即重開機</button>
-        </div>
-        <p id="advancedRebootStatus" class="hint"></p>
+        <p class="hint" data-i18n="uuid_manual_reboot_hint">寫入後請手動重開機（長按機身電源鍵關機再開），新 ID 先會生效。App 沒有系統權限自動重開機。</p>
       </div>
     </section>
 

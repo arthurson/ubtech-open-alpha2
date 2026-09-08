@@ -1,147 +1,317 @@
-# MCP ↔ OpenAPI 參數對齊表 (1+2 方案第2層延伸)
+# MCP <-> OpenAPI 聲明源 (v2：自動生成用，唯一真相源之一)
 # 來源：
-#   - MCP 定義：MainActivity.java:5396 xiaozhiMcpBridge() listTools()/callTool()
+#   - MCP tool 定義：XiaozhiBridge.java xiaozhiMcpBridge() listTools()/callTool()
+#     現已改為全部自動生成：inputSchema 由 scripts/generate-mcp-tools.py
+#     讀本檔 + openapi/open-alpha2-openapi.yml 生成
+#     app/src/main/java/com/open/alpha2/McpToolsGenerated.java，
+#     XiaozhiBridge.listTools() 只做 enable/disable 過濾，不再手寫 org.json。
 #   - OpenAPI 定義：openapi/open-alpha2-openapi.yml
 # 用途：確保 LLM 經 MCP 調用的參數與 HTTP 直接調用走同一套校驗 (ApiValidator.java + api-client.js)
-# 再生：對照此表手動更新兩邊，或未來用腳本自動由 openapi 生成 MCP inputSchema
+# 再生：
+#   python scripts/generate-mcp-tools.py
+#   python scripts/generate-mcp-tools.py --check   # CI 用：生成結果與已提交檔比對
+#
+# 規則：
+# - params 白名單制：只列出 MCP 對外暴露的參數；spec 有但此處無 = 刻意不暴露
+#   （見各條 exclude 說明，例如 servo trim、speech engine/voice/lang）。
+# - params 每條 {mcp, openapi, required, desc}：type/enum/minimum/maximum/default
+#   預設自動繼承 spec 對應 openapi 參數的 schema；如需覆寫才顯式寫 type/enum/minimum/maximum/default。
+# - alias：mcp 名 ≠ openapi 名時（time_ms→time、enabled→on、distance_cm→distance、
+#   speed_ms→speed），生成器用 spec 的約束、MCP 的名；callTool() 側讀 MCP 名
+#   （見 XiaozhiBridge callTool switch + SonarCenter mcp*()），屬薄轉調不重複校驗。
+# - required 指 MCP schema 的 required（LLM 視角），可比 spec 鬆：
+#   LED color/brightness 在 spec 必填，但在 MCP 為 optional（preset=stop 時免填，
+#   由 callTool 內 required_if 邏輯執行，與舊手寫行為一致）。
+# - mcp_only：spec 無、MCP 獨有參數（take_photo.question、image_to_text.uuid）。
+# - description：LLM -facing 英文，保持舊手寫文案逐字搬入，改文案只改此檔再重 gen。
+# - openapi: null：無直接 HTTP 對應（play_random_action、get_pir、get_sonar、
+#   image_to_text），schema 全由本檔 mcp_only/params 描述。
 
-sync_version: 1.0
+sync_version: 2.0
 generated_from: openapi/open-alpha2-openapi.yml
-# 規則：MCP tool 的 inputSchema 必須與對應 OpenAPI path 的 parameters 保持語意一致
-# 若 OpenAPI 新增 enum/range，MCP 側亦須同步，否則 LLM 會傳非法值被 ApiValidator 擋下
+generator: scripts/generate-mcp-tools.py
+output: app/src/main/java/com/open/alpha2/McpToolsGenerated.java
 
 mappings:
   - mcp: self.robot.list_actions
     openapi: /api/action/list
     method: GET
+    description: >-
+      List all built-in robot actions with their id, Chinese name, and English name.
+      Useful for browsing what actions exist, but self.robot.play_action can now be
+      called directly with a Chinese or English action name (fuzzy-matched server-side)
+      - you do not need to call this first just to play a known action.
     params: []
-    note: 無參數，純查詢
 
   - mcp: self.robot.play_action
     openapi: /api/action/play
     method: GET
+    description: >-
+      Play a named built-in robot action/animation. Pass the action's Chinese or English
+      name in natural language (e.g. "舉左手" or "take left hand", "跳舞" or "dance") -
+      it will be matched against the robot's actual action list automatically. Only actions
+      that exist in the robot's list can actually play, so if in doubt call
+      self.robot.list_actions to see exact names first.
     params:
-      - { mcp: name, openapi: name, type: string, required: true, desc: 中/英文動作名 fuzzy match }
-    note: MCP 用人類可讀名，HTTP 用精確名；兩者皆經 resolveActionId()
+      - mcp: name
+        openapi: name
+        required: true
+        desc: 'Chinese or English action name, e.g. "舉左手" or "take left hand".'
+    note: MCP 用人類可讀名 fuzzy match（resolveActionId），HTTP 用精確名
 
   - mcp: self.robot.stop_action
     openapi: /api/action/stop
     method: POST
+    description: Stop whatever action is currently playing.
     params: []
 
   - mcp: self.robot.play_random_action
-    openapi: null # 無直接 HTTP 對應，隨機選動作
+    openapi: null
+    description: >-
+      Play a random filler movement to make the robot look more alive/expressive - use this
+      when it feels natural to add a bit of physical animation, not necessarily tied to any
+      specific emotion or reply content. Takes no arguments. IMPORTANT ordering rule: if the
+      user's request also calls for a specific action via self.robot.play_action (e.g. they
+      asked you to wave, dance, nod, etc.), call that specific action instead of (not in
+      addition to) this random one for this turn - only reach for play_random_action when
+      there is no other action already planned for this reply.
     params: []
+    note: 無直接 HTTP 對應，隨機選動作（resolveRandomActionId）
 
   - mcp: self.robot.servo_set_one
     openapi: /api/servo/one
     method: GET
+    description: >-
+      Move a single servo to an angle. Servo ids and their valid angle ranges are specific
+      to this robot's build - if unsure, use small movements first.
     params:
-      - { mcp: id, openapi: id, type: integer, range: 1-20 }
-      - { mcp: angle, openapi: angle, type: integer }
-      - { mcp: time_ms, openapi: time, type: integer, default: 1000, alias: true }
+      - mcp: id
+        openapi: id
+        required: true
+        desc: Servo id (1-20).
+      - mcp: angle
+        openapi: angle
+        required: true
+        desc: Target angle in degrees.
+      - mcp: time_ms
+        openapi: time
+        required: false
+        desc: Movement duration in milliseconds. Default 1000.
+    exclude: [trim]
+    note: trim 刻意不暴露（經 cmd12 寫 EEPROM，MCP 不提供）；time_ms alias time
 
   - mcp: self.robot.servo_set_all
     openapi: /api/servo/all
     method: GET
+    description: >-
+      Move all 20 servos at once to a full-body pose. angles must have exactly 20
+      comma-separated integers, one per servo id in order.
     params:
-      - { mcp: angles, openapi: angles, type: string, desc: "20 comma-separated ints" }
-      - { mcp: time_ms, openapi: time, type: integer, default: 1000, alias: true }
+      - mcp: angles
+        openapi: angles
+        required: true
+        desc: 20 comma-separated angle values, e.g. "0,0,0,...".
+      - mcp: time_ms
+        openapi: time
+        required: false
+        desc: Movement duration in milliseconds. Default 1000.
 
   - mcp: self.robot.led_set_head
     openapi: /api/led/head/set
     method: GET
+    description: >-
+      Set the head 5-mic LED ring. color: 1=red 2=green 3=blue 4=yellow 5=purple 6=cyan
+      7=white. brightness: 1 (dimmest) to 9 (brightest). preset: "long" (solid), "flash",
+      "breathe", "chase", "dual", or "stop" (turns the ring off - color/brightness ignored).
     params:
-      - { mcp: preset, openapi: preset, type: string, enum: [long, flash, breathe, chase, dual, stop] }
-      - { mcp: color, openapi: color, type: integer, range: 1-7, required_if: "preset != stop" }
-      - { mcp: brightness, openapi: brightness, type: integer, range: 1-9, required_if: "preset != stop" }
+      - mcp: preset
+        openapi: preset
+        required: false
+        desc: Effect preset. Default "long".
+      - mcp: color
+        openapi: color
+        required: false
+        desc: 1-7, required unless preset=stop.
+      - mcp: brightness
+        openapi: brightness
+        required: false
+        desc: 1-9, required unless preset=stop.
+    note: spec 上 color/brightness 必填，MCP 放寬為 optional（preset=stop 免填，由 callTool 執行 required_if）
 
   - mcp: self.robot.led_set_eye
     openapi: /api/led/eye/set
     method: GET
+    description: >-
+      Set the eye 5-mic LED ring. Same color/brightness/preset semantics as
+      self.robot.led_set_head (preset "breathe" is not available for the eye ring - only
+      "long", "flash", "chase", "dual", "stop").
     params:
-      - { mcp: preset, openapi: preset, type: string, enum: [long, flash, chase, dual, stop] }
-      - { mcp: color, openapi: color, type: integer, range: 1-7 }
-      - { mcp: brightness, openapi: brightness, type: integer, range: 1-9 }
+      - mcp: preset
+        openapi: preset
+        required: false
+        desc: Effect preset. Default "long".
+      - mcp: color
+        openapi: color
+        required: false
+        desc: 1-7, required unless preset=stop.
+      - mcp: brightness
+        openapi: brightness
+        required: false
+        desc: 1-9, required unless preset=stop.
 
   - mcp: self.robot.led_set_mouth
     openapi: /api/led/mouth/set
     method: GET
+    description: >-
+      Set the mouth LED. preset "breathing" pulses at the given speed (0-5000ms, 0=fastest);
+      preset "off" turns it off. Note: this is driven automatically during XiaoZhi TTS
+      playback, so calling it manually mid-conversation may fight with that.
     params:
-      - { mcp: preset, openapi: preset, type: string, enum: [breathing, off] }
-      - { mcp: speed, openapi: speed, type: integer, range: 0-5000 }
+      - mcp: preset
+        openapi: preset
+        required: false
+        desc: Default "breathing".
+      - mcp: speed_ms
+        openapi: speed
+        required: false
+        desc: Breathing speed 0-5000ms, only used when preset=breathing. Default 0.
+        minimum: 0
+        maximum: 5000
+    note: v1 誤寫 mcp 名 speed，實際 code/callTool 讀 speed_ms（MouthLedData.breathing），v2 以 code 為準修正
 
   - mcp: self.sensors.get_pir
-    openapi: null # 對應 broadcast 查詢，無 HTTP GET，僅 WebSocket pir_state
+    openapi: null
+    description: >-
+      Read the last known PIR motion-sensor state (whether someone was last detected
+      entering/present nearby). This is the most recently received event, not a live poll -
+      if the sensor is disabled or no event has arrived yet, state will be "unknown".
     params: []
+    note: 對應 broadcast 查詢，無 HTTP GET，僅 WebSocket pir_state
 
   - mcp: self.sensors.set_pir_enabled
     openapi: /api/pir/set
     method: GET
+    description: Turn the PIR motion sensor hardware on or off.
     params:
-      - { mcp: enabled, openapi: "on", type: boolean }
+      - mcp: enabled
+        openapi: "on"
+        required: true
+        desc: true=on, false=off.
 
   - mcp: self.sensors.get_sonar
-    openapi: null # 讀數經 WebSocket sonar_distance，配置經 /api/servo/sonar
+    openapi: null
+    description: >-
+      Read the last known ultrasonic sonar distance reading (centimeters) and the currently
+      configured trigger threshold. This is the most recently received reading, not a live
+      poll - if no reading has arrived yet, distance_cm will be -1.
     params: []
+    note: 讀數經 WebSocket sonar_distance，配置經 /api/servo/sonar
 
   - mcp: self.sensors.set_sonar_threshold
     openapi: /api/servo/sonar
     method: GET
+    description: Configure the sonar obstacle-trigger distance threshold in centimeters.
     params:
-      - { mcp: distance_cm, openapi: distance, type: integer }
+      - mcp: distance_cm
+        openapi: distance
+        required: true
+        desc: cm.
 
   - mcp: self.camera.take_photo
     openapi: /api/camera/snapshot
     method: GET
+    description: >-
+      Take a photo with the robot's camera and get a description of what it sees.
+      Optionally pass a specific question to focus the description on (e.g. "how many people
+      are there"), otherwise a general description is returned.
     params: []
-    note: MCP 回傳 base64，HTTP 同
+    mcp_only:
+      - mcp: question
+        type: string
+        required: false
+        desc: Optional question to focus the photo description on.
+    note: question 為 MCP 獨有（vision/explain 用），HTTP snapshot 無此參數
 
   - mcp: self.camera.image_to_text
-    openapi: null # 無直接 HTTP，MCP 側自行處理視覺
-    params:
-      - { mcp: image_base64, type: string }
+    openapi: null
+    description: >-
+      Get the text description for a photo previously captured via self.camera.take_photo.
+      Call this after take_photo tells you to, using the uuid it gave you.
+    params: []
+    mcp_only:
+      - mcp: uuid
+        type: string
+        required: false
+        desc: The uuid returned by self.camera.take_photo.
+    note: v1 誤寫 image_base64，實際 code 讀 uuid（lastPendingPhotoUuid fallback），v2 以 code 為準修正；屬 xiaozhi.me vision async flow 非官方行為
 
   - mcp: self.robot.speak
     openapi: /api/speech/tts
     method: GET
+    description: Speak a short phrase out loud through the robot's TTS.
     params:
-      - { mcp: text, openapi: text, type: string, required: true }
-      - { mcp: engine, openapi: engine, type: string, enum: [nuance, iflytek, android], default: nuance, optional: true }
+      - mcp: text
+        openapi: text
+        required: true
+        desc: Text to speak.
+    exclude: [engine, voice, lang]
+    note: engine/voice/lang 刻意不暴露（callTool 固定 speech_startTTS en_us，與舊手寫行為一致；v1 誤寫 engine 預設 nuance 已移除）
 
   - mcp: self.media.list_music
     openapi: /api/audio/local_music/list
     method: GET
+    description: List all local music files available to play on the robot.
     params: []
 
   - mcp: self.media.play_music
     openapi: /api/audio/local_music/play
     method: GET
+    description: >-
+      Play a local music file on the robot. Pass the song name in natural language (it will
+      be fuzzy-matched against the actual filenames) - call self.media.list_music first if
+      unsure what is available.
     params:
-      - { mcp: name, openapi: name, type: string }
+      - mcp: name
+        openapi: name
+        required: true
+        desc: Song name or filename to play (fuzzy-matched).
 
   - mcp: self.media.stop_music
     openapi: /api/audio/local_music/stop
     method: GET
+    description: Stop whatever local music track is currently playing.
     params: []
 
   - mcp: self.media.search_radio
     openapi: /api/audio/radio/search
     method: GET
+    description: >-
+      Search for live FM/internet radio stations from around the world (station name, e.g. a
+      city, country, broadcaster or genre). Returns a list of matching stations - call
+      self.media.play_radio with one of the returned names afterwards to actually play it.
     params:
-      - { mcp: query, openapi: query, type: string }
+      - mcp: query
+        openapi: query
+        required: true
+        desc: Search text, e.g. "BBC", "jazz", "Tokyo", "香港電台".
 
   - mcp: self.media.play_radio
     openapi: /api/audio/radio/play
     method: GET
+    description: >-
+      Play (or switch to) a live FM/internet radio station on the robot. Pass a station name
+      in natural language - if it matches one of the stations returned by a previous
+      self.media.search_radio call, that exact station is played; otherwise this will search
+      for it directly. Switching straight to a different station is fine, no need to call
+      self.media.stop_radio first.
     params:
-      - { mcp: name, openapi: name, type: string }
+      - mcp: name
+        openapi: name
+        required: true
+        desc: Station name, e.g. "BBC World Service" or "香港電台第一台".
 
   - mcp: self.media.stop_radio
     openapi: /api/audio/radio/stop
     method: GET
+    description: Stop whatever radio station is currently playing.
     params: []
-
-# 驗證方式：
-#   python -c "import yaml; yaml.safe_load(open('openapi/mcp-openapi-sync.yml'))"
-# 未來可擴展為：由 openapi 自動生成 MCP inputSchema，替換 MainActivity.java:5396 手寫 JSON

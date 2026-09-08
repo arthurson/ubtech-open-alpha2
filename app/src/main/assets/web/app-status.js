@@ -1,6 +1,7 @@
 // Open Alpha2 — client logic (app-status.js)
-// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: Tab 切換、狀態頁、裝置資訊 (電量/WiFi/藍牙)。
-// (2026-09: 省電開關已移除, 見 index.html。)
+// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: Tab 切換、裝置資訊
+// (電量/WiFi/藍牙/UUID直顯/胸板固件)。
+// (2026-09: 系統狀態 JSON card 已移除 refreshStatus() 一併刪；省電開關已移除。)
 // 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
 // <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
 
@@ -13,16 +14,9 @@ function switchTab(tabId) {
   document.querySelector(".tab-btn[data-tab=\"" + tabId + "\"]").classList.add("active");
 }
 
-// ---------------- Status ----------------
-
-function refreshStatus() {
-  const out = document.getElementById("statusOut");
-  return Alpha2Api.status().then(function (data) {
-    out.textContent = JSON.stringify(data, null, 2);
-  });
-}
-
-// ---------------- Device info: battery / WiFi / Bluetooth / UUID ----------------
+// ---------------- Device info: battery / WiFi / Bluetooth ----------------
+// (2026-09 刪除 refreshStatus(): 系統狀態 JSON card 已移除。
+// UUID 直顯見 app-accel.js requestUuid()，胸板固件見下面 refreshChestFw()。)
 
 function refreshDeviceInfo() {
   return Alpha2Api.batteryStatus().then(function (battery) {
@@ -41,6 +35,19 @@ function refreshDeviceInfo() {
     document.getElementById("btOut").textContent = bt.ok
       ? (bt.available ? ((bt.name || "(未命名)") + " — " + (bt.enabled ? "已開啟" : "已關閉")) : "不支援")
       : "讀取失敗";
+  });
+}
+
+// ---------------- 胸板固件直顯 (2026-09 新增) ----------------
+// 同 ADVANCED 卡 chestCheck() 讀同一個 chest/version，呢度寫自己格 (chestFwOut)。
+// 入頁自動查一次；胸 MCU 唔覆會顯示 not found（同 ADVANCED 卡一致，唔係 bug）。
+function refreshChestFw() {
+  const out = document.getElementById("chestFwOut");
+  if (out) out.textContent = t("uuid_querying_hint");
+  return Alpha2Api.chestVersion().then(function (json) {
+    if (out) out.textContent = (json && json.version) || "not found";
+  }).catch(function (err) {
+    if (out) out.textContent = "錯誤: " + err.message;
   });
 }
 

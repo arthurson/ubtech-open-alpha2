@@ -6,17 +6,31 @@ on:
     paths:
       - 'openapi/**'
       - 'app/src/main/java/com/open/alpha2/MainActivity.java'
+      - 'app/src/main/java/com/open/alpha2/XiaozhiBridge.java'
+      - 'app/src/main/java/com/open/alpha2/McpToolsGenerated.java'
       - 'app/src/main/java/com/open/alpha2/ApiValidator.java'
       - 'app/src/main/assets/web/api-client.js'
       - 'scripts/**'
+      - 'sdk-module/**'
+      - 'app/src/main/assets/web/openapi.yml'
+      - 'app/src/main/assets/web/asyncapi.yml'
+      - 'app/src/main/assets/web/.well-known/**'
+      - 'app/src/main/assets/web/well-known/**'
       - '.github/workflows/check-openapi.yml'
   pull_request:
     paths:
       - 'openapi/**'
       - 'app/src/main/java/com/open/alpha2/MainActivity.java'
+      - 'app/src/main/java/com/open/alpha2/XiaozhiBridge.java'
+      - 'app/src/main/java/com/open/alpha2/McpToolsGenerated.java'
       - 'app/src/main/java/com/open/alpha2/ApiValidator.java'
       - 'app/src/main/assets/web/api-client.js'
       - 'scripts/**'
+      - 'sdk-module/**'
+      - 'app/src/main/assets/web/openapi.yml'
+      - 'app/src/main/assets/web/asyncapi.yml'
+      - 'app/src/main/assets/web/.well-known/**'
+      - 'app/src/main/assets/web/well-known/**'
   workflow_dispatch:
 
 jobs:
@@ -41,12 +55,18 @@ jobs:
           git diff --exit-code -- app/src/main/assets/web/api-client.js || (echo "::error::api-client.js drift - run python scripts/generate-api-client.py and commit"; git diff -- app/src/main/assets/web/api-client.js; exit 1)
       - name: Check api-client routes (caller prefix matches backend)
         run: python scripts/check-api-client-routes.py
+      - name: Check MCP tools are up-to-date (openapi+sync → McpToolsGenerated.java)
+        run: python scripts/generate-mcp-tools.py --check
       - name: Validate openapi yaml
         run: python -c "import yaml, pathlib; yaml.safe_load(open('openapi/open-alpha2-openapi.yml', encoding='utf-8')); print('openapi.yml OK')"
       - name: Validate asyncapi yaml
         run: python -c "import yaml, pathlib; yaml.safe_load(open('openapi/asyncapi.yml', encoding='utf-8')); print('asyncapi.yml OK')"
       - name: Run ApiValidator unit tests
         run: python scripts/test-apivalidator.py
+      - name: Run SerialFrameCodec unit tests
+        run: python scripts/test-serialcodec.py
+      - name: Check web spec copies are in sync with openapi/
+        run: python scripts/check-spec-copies.py
       - name: Check version sync (build.gradle vs openapi)
         run: |
           GRADLE_VER=$(grep -oP 'versionName\s*"\K[^"]+' app/build.gradle)

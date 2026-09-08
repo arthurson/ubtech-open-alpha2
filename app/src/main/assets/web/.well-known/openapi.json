@@ -1965,6 +1965,10 @@
                         },
                         "trimWritten": {
                           "type": "boolean"
+                        },
+                        "trimUnknown": {
+                          "type": "boolean",
+                          "description": "true = 已送出但回覆被搶食（未知寫入否，重掃驗證；實測零 ACK 照存入）"
                         }
                       }
                     }
@@ -2126,6 +2130,171 @@
           }
         },
         "operationId": "servoReadAll_get"
+      }
+    },
+    "/api/servo/angle": {
+      "get": {
+        "tags": [
+          "servo"
+        ],
+        "summary": "實讀單顆舵機絕對角度（胸 cmd6 live query）",
+        "description": "發 f8 8f 08 00 00 06 <id> 讀即時角度（同 servo/one 同單位；跟位實測誤差約 1°）。注意唔係 servo/read 嗰個 trim/偏差。讀唔到（超時）報 ok:false",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "絕對角度實讀值（或讀失敗）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "angle": {
+                          "type": "integer",
+                          "description": "即時絕對角度（成功先有）"
+                        },
+                        "error": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "servoAngle_get"
+      }
+    },
+    "/api/servo/angle-restore": {
+      "get": {
+        "tags": [
+          "servo"
+        ],
+        "summary": "讀單顆舵機絕對角度並即寫回上力（原子操作）",
+        "description": "先 cmd6 實讀（會鬆開嗰粒），即用 servo/one（cmd05）寫返同一個位上力，全程後端內完成。讀唔到（超時）報 ok:false 且唔寫回",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "絕對角度＋有無寫回上力（或讀失敗）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "angle": {
+                          "type": "integer",
+                          "description": "即時絕對角度（成功先有）"
+                        },
+                        "restored": {
+                          "type": "boolean",
+                          "description": "有無即寫回上力（成功先有）"
+                        },
+                        "error": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "servoAngleRestore_get"
+      }
+    },
+    "/api/servo/angle-all": {
+      "get": {
+        "tags": [
+          "servo"
+        ],
+        "summary": "連讀 20 軸絕對角度，每粒即寫回上力（100ms 間隔）",
+        "description": "逐粒 cmd6 實讀＋即 servo/one 寫返同位（讀會鬆開嗰粒，寫回即上力；單粒已證實無鬆無郁，20 連讀實測中）。讀唔到嗰粒記 null 並列入 failed，且唔寫回",
+        "responses": {
+          "200": {
+            "description": "20 軸即時角度＋逐粒有無寫回；讀唔到嗰粒記 null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "live": {
+                          "type": "boolean",
+                          "description": "恆 true（即時讀數）"
+                        },
+                        "angles": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer",
+                            "nullable": true
+                          }
+                        },
+                        "restored": {
+                          "type": "array",
+                          "description": "逐粒有無即寫回上力",
+                          "items": {
+                            "type": "boolean"
+                          }
+                        },
+                        "failed": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "servoAngleAll_get"
       }
     },
     "/api/servo/sonar": {
@@ -4176,27 +4345,6 @@
         "operationId": "miscSetUuid_get"
       }
     },
-    "/api/service_config/reboot": {
-      "get": {
-        "tags": [
-          "core"
-        ],
-        "summary": "重開機 (PowerManager reboot)",
-        "responses": {
-          "200": {
-            "description": "已觸發",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OkWrapper"
-                }
-              }
-            }
-          }
-        },
-        "operationId": "serviceConfigReboot_get"
-      }
-    },
     "/api/system/music/list": {
       "get": {
         "tags": [
@@ -5065,15 +5213,15 @@
         "operationId": "xiaozhiAutoMode_get"
       }
     },
-    "/api/xiaozhi/auto_connect/get": {
+    "/api/xiaozhi/boot_voice/get": {
       "get": {
         "tags": [
           "xiaozhi"
         ],
-        "summary": "讀取「開app自動連接小智」開關",
+        "summary": "讀取開機語音模式三選一（off/xiaozhi/vosk，下次開app生效）",
         "responses": {
           "200": {
-            "description": "開關狀態",
+            "description": "目前模式",
             "content": {
               "application/json": {
                 "schema": {
@@ -5084,8 +5232,13 @@
                     {
                       "type": "object",
                       "properties": {
-                        "enabled": {
-                          "type": "boolean"
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "xiaozhi",
+                            "vosk"
+                          ]
                         }
                       }
                     }
@@ -5095,23 +5248,29 @@
             }
           }
         },
-        "operationId": "xiaozhiAutoConnect_get"
+        "operationId": "xiaozhiBootVoice_get"
       }
     },
-    "/api/xiaozhi/auto_connect/set": {
+    "/api/xiaozhi/boot_voice/set": {
       "get": {
         "tags": [
           "xiaozhi"
         ],
-        "summary": "設定「開app自動連接小智」開關（下次開app生效）",
+        "summary": "設定開機語音模式三選一（下次開app生效）",
         "parameters": [
           {
-            "name": "enabled",
+            "name": "mode",
             "in": "query",
             "required": true,
             "schema": {
-              "type": "boolean"
-            }
+              "type": "string",
+              "enum": [
+                "off",
+                "xiaozhi",
+                "vosk"
+              ]
+            },
+            "description": "off=乜都唔自動起，xiaozhi=開app自動連接小智，vosk=開app自動起Vosk聆聽"
           }
         ],
         "responses": {
@@ -5127,8 +5286,13 @@
                     {
                       "type": "object",
                       "properties": {
-                        "enabled": {
-                          "type": "boolean"
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "xiaozhi",
+                            "vosk"
+                          ]
                         }
                       }
                     }
@@ -5138,7 +5302,7 @@
             }
           }
         },
-        "operationId": "xiaozhiAutoConnect_set"
+        "operationId": "xiaozhiBootVoice_set"
       }
     },
     "/api/xiaozhi/send_text": {

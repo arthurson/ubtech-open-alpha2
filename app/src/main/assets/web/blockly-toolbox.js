@@ -174,16 +174,11 @@ window.buildAlphaToolbox = function () {
       // 資料值唔係顯示文字, 一樣要保持原文。
       kind: 'category', name: t('toolbox_cat_examples'), colour: '15',
       contents: (function () {
-        // 例子 1 嘅 TTS engine 要跟住顯示語言變: 中文用 iflytek, 英文用
-        // nuance (對照 AIDL_REFERENCE_ALPHA2.md 1.1 節: iFlytek 對應 zh_cn, Nuance
-        // 對應 en_us, 呢個係機身引擎本身嘅語言限制, 唔係隨便揀)。原始 XML
-        // (用家喺 workspace 度手動組出嚟嘅) 淨係得一個固定語言版本, 兩句
-        // TTS 都係 iflytek —— 但依家個示範文字本身已經跟 uiLang 切換
-        // (toolbox_example1_hello/happy), 如果 ENGINE 唔跟住變, 英文模式就會
-        // 變成「用中文引擎讀緊英文字」呢種錯配, 所以呢度用 function 動態決定,
-        // 唔係好似 SUBCATEGORY/TITLE 咁固定唔變 (嗰啲係機身查表用嘅 data key,
-        // 呢度嘅 ENGINE 係「示範用嘅參數」, 性質唔同)。
-        const ttsEngine = ((window.getUiLanguage && window.getUiLanguage()) || 'zh') === 'zh' ? 'iflytek' : 'nuance';
+        // 例子 1 嘅 TTS engine：2026-09 一律 android——機身已無 alpha2services，
+        // nuance／iflytek 經 speech_startTTS 恒回 NOT_INIT 全程靜音，舊嗰套
+        // 「中文用 iflytek、英文用 nuance」AIDL 語言配對已死。VOICE 只對
+        // iflytek 有義，android 無視，例子留空。
+        const ttsEngine = 'android';
         return [
         // 例子 1: 來電效果 —— 電話鈴聲 → 打招呼 → 播動作 (唔等) → 再講嘢 →
         // 等 7 秒 → 手動停止鈴聲。示範: 鈴聲 + 語音 + 動作點樣夾埋一齊玩,

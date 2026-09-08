@@ -49,6 +49,7 @@ const I18N = {
   device_wifi:           { zh: "📶 WiFi",         en: "📶 WiFi" },
   device_bluetooth:      { zh: "🔷 藍牙",         en: "🔷 Bluetooth" },
   device_uuid:           { zh: "🤖 機械人 UUID",  en: "🤖 Robot UUID" },
+  device_chest_fw:       { zh: "🧠 胸板固件",    en: "🧠 Chest FW" },
   uuid_query_btn:        { zh: "查詢",            en: "Query" },
   uuid_random_btn:       { zh: "🎲 隨機碼",       en: "🎲 Random" },
   sonar_heading:         { zh: "聲納",            en: "Sonar" },
@@ -72,8 +73,10 @@ const I18N = {
   uuid_write_done_prefix:{ zh: "目前 ID：", en: "Current ID: " },
   uuid_copy_btn:         { zh: "📋 複製 ID", en: "📋 Copy ID" },
   uuid_copied:           { zh: "已複製 ✓", en: "Copied ✓" },
-  uuid_write_restart_hint:{ zh: "已寫入 EEPROM，要重啟 alpha2services／重開機先會顯示新 ID",
-                           en: "Written to EEPROM — restart alpha2services/reboot to see it" },
+  uuid_write_restart_hint:{ zh: "已寫入 EEPROM，請手動重開機後再查詢，新 ID 先會生效",
+                           en: "Written to EEPROM — reboot manually, then query again to see it" },
+  uuid_manual_reboot_hint:{ zh: "寫入後請手動重開機（長按機身電源鍵關機再開），新 ID 先會生效。App 沒有系統權限自動重開機。",
+                           en: "After writing, reboot manually (long-press the power button) for the new ID to take effect. The app has no system permission to reboot itself." },
 
   // -- actions tab --
   actions_heading:       { zh: "動作 (Actions)",  en: "Actions" },
@@ -88,23 +91,69 @@ const I18N = {
   servo_hint:            { zh: "拖動滑桿, 放手即送出, 自動限制在安全範圍內。", en: "Drag a slider and release to send — values are auto-clamped to a safe range." },
   servo_time_label:      { zh: "時間(ms)：",       en: "Time (ms):" },
   servo_reset_btn:       { zh: "全部回到原位",     en: "Reset All to Home" },
+  servo_read_all_btn:    { zh: "📖 讀取全部",       en: "📖 Read all" },
+  servo_read_hint:       { zh: "讀指定一顆或一次過讀全部舵機即時角度（讀完即寫回上力），顯示喺對應行右邊；讀不到顯示 -。全部約 6 秒，讀取時請固定好機械人。",
+                           en: "Reads one or all live servo angles (written straight back to restore torque) into their rows; unreadable joints show -. All takes ~6s; keep the robot secured." },
+  servo_reading_hint:    { zh: "讀取中…",             en: "Reading…" },
+  servo_read_done:       { zh: "✅ 已更新",            en: "✅ Updated" },
+  servo_read_failed_prefix: { zh: "❌ 讀取失敗：",     en: "❌ Read failed: " },
   // 2026-09: servo_power_save 已移除 (開關 + endpoint 一齊拎走)。
   servo_tuner_heading:   { zh: "🔧 舵機角度調整", en: "🔧 Servo Angle Tuner" },
   servo_tuner_hint:      { zh: "獨立於舵機分頁的進階微調器 — 直接修改 20 顆 servo 角度，±1° 精調，一鍵讀取全部目前角度。與原廠 1.0.0.4 校準工具相同佈局（1-20 對應肩/肘/髖/膝/踝/手/頭）。長按 ±1 連發時已禁用系統複製選單。", en: "Standalone tuner — tune 20 servos directly, ±1° fine-tune, one-click read. Matches factory 1.0.0.4 layout (1-20: shoulder/elbow/hip/knee/ankle/hand/head). Long-press ±1 repeats, copy menu disabled." },
-  servo_tuner_standby:   { zh: "準備",               en: "standby" },
-  servo_tuner_write_all:{ zh: "全部寫入",           en: "Write All" },
+  servo_tuner_standby:   { zh: "復位+掃描",         en: "reset+scan" },
+  servo_tuner_calibrate: { zh: "校准",               en: "Calibrate" },
   servo_tuner_angle:     { zh: "角度",               en: "Angle" },
   servo_tuner_offset:    { zh: "偏移",               en: "Offset" },
   servo_tuner_range:     { zh: "範圍",               en: "Range" },
   servo_tuner_disabled_hint: { zh: "開啟後才顯示 20ch 微調器（長按 ±1 連發，offset 即時計算，已禁用長按選單）", en: "Turn on to show 20ch tuner (long-press ±1 repeats, offset live, copy menu disabled)" },
   servo_tuner_backup:        { zh: "備份 offset",       en: "Backup offsets" },
   servo_tuner_restore:       { zh: "還原 offset",       en: "Restore offsets" },
-  servo_tuner_backup_done:   { zh: "已備份 offset + 角度", en: "Backed up offsets + angles" },
+  servo_tuner_backup_done:   { zh: "已備份 offset",       en: "Backed up offsets" },
   servo_tuner_restore_done:  { zh: "已還原 offset 備份", en: "Offsets restored" },
-  servo_tuner_scan:          { zh: "掃描 offset",        en: "Scan offsets" },
-  servo_tuner_scan_done:     { zh: "掃描完成",           en: "Scan done" },
   servo_tuner_backup_need_scan: { zh: "備份前自動掃描 offset（否則交白卷）…", en: "Auto-scanning offsets before backup…" },
   servo_tuner_restore_fail:  { zh: "還原失敗",           en: "Restore failed" },
+  servo_tuner_restore_empty: { zh: "：無有效數據",       en: ": no valid data" },
+  servo_tuner_restore_readerr: { zh: "：讀檔失敗",       en: ": file read error" },
+  servo_tuner_restore_detail: { zh: "（offset {off}；逐粒撳輸入格 Enter 先會送到舵機）", en: "({off} offsets; press Enter per row to send to servos)" },
+  servo_tuner_backup_fail:   { zh: "備份失敗",           en: "Backup failed" },
+  servo_tuner_unscanned:     { zh: "（{n}/20 未讀）…",   en: "({n}/20 unread)…" },
+  // 2026-09-06 晚補：servo_calib_* 之前成區缺 key（t() 回 key 名，狀態列一路顯示 raw key）。
+  servo_calib_selected:      { zh: "已選 #{id}",         en: "Selected #{id}" },
+  servo_calib_resetting:     { zh: "重置緊…",            en: "Resetting…" },
+  servo_calib_reset_done:    { zh: "重置完成",            en: "Reset done" },
+  servo_calib_reading:       { zh: "讀緊…",              en: "Reading…" },
+  servo_calib_read_ok:       { zh: "讀到：角度 {angle}，offset {offset}", en: "Read: angle {angle}, offset {offset}" },
+  servo_calib_read_fail:     { zh: "讀失敗：{error}",     en: "Read failed: {error}" },
+  servo_calib_read_err:      { zh: "讀取錯誤：{err}",     en: "Read error: {err}" },
+  servo_calib_reading_all:   { zh: "讀緊全部…",          en: "Reading all…" },
+  servo_calib_read_all_progress: { zh: "讀緊 {cur}/{total}…", en: "Reading {cur}/{total}…" },
+  servo_calib_read_all_done: { zh: "全部讀完", en: "All read" },
+  servo_calib_saving:        { zh: "儲存緊…",            en: "Saving…" },
+  servo_calib_save_todo:     { zh: "#{id} 號校準儲存未實作（offset {offset}）", en: "Save #{id} not implemented (offset {offset})" },
+  // 2026-09-06 晚加：adv tuner 動態狀態字（之前硬編碼中文）。
+  servo_tuner_ready:         { zh: "tuner {v} 就緒（加減/輸入=淨郁角度；校准先成組寫 EEPROM）", en: "tuner {v} ready (+/- and input move only; Calibrate writes EEPROM)" },
+  servo_tuner_read_all:      { zh: "一鍵實讀全部 trim 1-20（約幾秒）…", en: "Reading all 20 trims (a few seconds)…" },
+  servo_tuner_read_done:     { zh: "實讀完成 {ok}/20",   en: "Read done {ok}/20" },
+  servo_tuner_read_fails:    { zh: "，無回授：{ids}",   en: ", no feedback: {ids}" },
+  servo_tuner_read_one:      { zh: "讀取 #{id} trim…",   en: "Reading #{id} trim…" },
+  servo_tuner_read_one_ok:   { zh: "#{id} trim {v}",     en: "#{id} trim {v}" },
+  servo_tuner_read_fail:     { zh: "#{id} 讀失敗",       en: "#{id} read failed" },
+  servo_tuner_read_err:      { zh: "讀取錯誤：{e}",      en: "Read error: {e}" },
+  servo_tuner_nudge_ok:      { zh: "微調 #{id} → {v}（trim 未存，要存撳「校准」）", en: "Tuned #{id} → {v} (trim not saved — press Calibrate)" },
+  servo_tuner_nudge_fail:    { zh: "微調 #{id} 失敗：{e}", en: "Tune #{id} failed: {e}" },
+  servo_tuner_nudge_err:     { zh: "微調 #{id} 錯誤：{e}", en: "Tune #{id} error: {e}" },
+  servo_tuner_cal_none:      { zh: "校准：無有效 trim（先復位+掃描）", en: "Calibrate: no valid trims (reset+scan first)" },
+  servo_tuner_cal_progress:  { zh: "校准中 {i}/{n}（#{id} {v}）…", en: "Calibrating {i}/{n} (#{id} {v})…" },
+  servo_tuner_cal_done:      { zh: "校准完成 {ok}/{n}",  en: "Calibrated {ok}/{n}" },
+  servo_tuner_cal_unknown:   { zh: "，未確認：{ids}（重掃驗證）", en: ", unconfirmed: {ids} (rescan to verify)" },
+  servo_tuner_cal_failed:    { zh: "，失敗：{ids}",     en: ", failed: {ids}" },
+  servo_tuner_cal_skipped:   { zh: "（跳過未掃描：{ids}）", en: "(skipped unscanned: {ids})" },
+  servo_tuner_reset_sending: { zh: "送復位姿勢中…",      en: "Sending reset pose…" },
+  servo_tuner_reset_fail:    { zh: "復位失敗：{e}",      en: "Reset failed: {e}" },
+  servo_tuner_reset_done:    { zh: "已復位，1.5 秒後重掃 trim…", en: "Reset done, rescanning trims in 1.5s…" },
+  servo_tuner_no_feedback:   { zh: "讀失敗",             en: "no feedback" },
+  servo_tuner_live_suffix:   { zh: " (即時)",            en: " (live)" },
+  servo_tuner_err_nofeedback: { zh: "無回授（超時或壞舵機）", en: "no feedback (timeout or faulty servo)" },
 
   // -- speech tab --
   // 2026-08 新增: 對話界面 (全抄小智 tab 做法, 見 app-speech.js 個
@@ -205,12 +254,8 @@ const I18N = {
 
   // -- Alpha2 speech tab (service config + 3-in-1 test dynamic strings) --
   // 2026-09 移除: service_config_writing/write_ok/write_failed_prefix
-  // (preset 掣已拎走); 下面 reboot_* 保留 (UUID 卡用緊)。
-  service_config_reboot_confirm: { zh: "確定要立即重開機？", en: "Reboot now?" },
-  service_config_rebooting: { zh: "重開機緊…", en: "Rebooting…" },
-  service_config_reboot_ok: { zh: "✅ 重開機緊…", en: "✅ Rebooting…" },
-  service_config_reboot_failed_prefix: { zh: "❌ 重開機失敗：", en: "❌ Reboot failed: " },
-  service_config_reboot_failed_suffix: { zh: "（請手動 power-cycle）", en: " (please power-cycle manually)" },
+  // (preset 掣已拎走); reboot_* 成組亦已移除 (UUID 卡重開機掣證實 App 無 REBOOT
+  // 權限、永遠失敗，掣同 service_config/reboot endpoint 一齊清走)。
   speech_test_enter_text_alert: { zh: "請輸入文字", en: "Please enter some text" },
   // 2026-09 移除: asr_engine_ready_hint/asr_current_engine_prefix/
   // asr_current_engine_is (ASR 卡同 speech_ready handler 一齊拎走)。
@@ -235,7 +280,21 @@ const I18N = {
                                  en: "Please enter the pairing code below at <a href=\"https://xiaozhi.me/console/\" target=\"_blank\" rel=\"noopener\">xiaozhi.me</a>:" },
   xiaozhi_activation_modal_dismiss: { zh: "知道喇", en: "Got it" },
   xiaozhi_session_toggle_label: { zh: "🤖 小智（開＝連線並隨時語音對話，關＝斷開）", en: "🤖 XiaoZhi (on = connect & voice chat anytime, off = disconnect)" },
-  xiaozhi_auto_connect_label: { zh: "🔌 開app自動連接小智", en: "🔌 Auto-connect XiaoZhi on app start" },
+  // -- 開機語音模式三選一（實驗 tab 卡，後端 boot_voice/get|set） --
+  boot_voice_heading:        { zh: "🔌 開機語音模式", en: "🔌 Voice mode on boot" },
+  boot_voice_disabled_hint:  { zh: "開啟後才會顯示開機語音設定", en: "Turn on to show the boot voice settings" },
+  boot_voice_hint:           { zh: "請選擇其中一個：會在下次開啟 App 時自動執行。現在選擇只會儲存設定，不會立刻連線或立刻開始聆聽。",
+                               en: "Pick one: runs automatically next time the app starts. Saving only — won't connect or listen right now." },
+  boot_voice_opt_off:        { zh: "💤 全部手動", en: "💤 Start nothing automatically" },
+  boot_voice_opt_off_desc:   { zh: "開啟 App 後不自動執行任何項目，需要時再手動開啟。", en: "Do nothing on boot; start things manually when needed." },
+  boot_voice_opt_xiaozhi:    { zh: "🤖 開機自動連接小智", en: "🤖 Auto-connect XiaoZhi on boot" },
+  boot_voice_opt_xiaozhi_desc: { zh: "開啟 App 約 15 秒後自動連接小智，可直接對話（需要網路連線，且已完成配對）。",
+                                 en: "Auto-connects XiaoZhi ~15s after app start, ready to chat (needs internet + pairing)." },
+  boot_voice_opt_vosk:       { zh: "🗣️ 開機自動啟用 Vosk", en: "🗣️ Auto-start Vosk on boot" },
+  boot_voice_opt_vosk_desc:  { zh: "開啟 App 並載入模型後，自動開始離線聆聽，不需要網路（須先在語音頁面載入模型）。",
+                               en: "Auto-starts offline listening once the model loads, no internet needed (load a model in the Speech tab first)." },
+  boot_voice_saved:          { zh: "✅ 已儲存，將在下次開啟 App 時生效", en: "✅ Saved, takes effect on next app start" },
+  boot_voice_failed_prefix:  { zh: "❌ 儲存失敗：", en: "❌ Failed to save: " },
   xiaozhi_status_disconnected:{ zh: "未連接",               en: "Disconnected" },
   xiaozhi_status_checking:    { zh: "檢查中…",              en: "Checking…" },
   xiaozhi_status_awaiting_code: { zh: "等待配對…",          en: "Awaiting pairing…" },
@@ -333,7 +392,7 @@ const I18N = {
   uuid_preview_hint_short:   { zh: "預覽新 QR（未寫入 EEPROM）",
                                 en: "Previewing new QR (not yet written to EEPROM)" },
   uuid_preview_invalid:      { zh: "❌ 格式不正確（1-31 字元，英數/-/_）", en: "❌ Invalid format (1-31 chars, alnum/-/_)" },
-  advanced_reboot_btn:       { zh: "🔁 立即重開機", en: "🔁 Reboot now" },
+  // 2026-09 移除: advanced_reboot_btn (重開機掣證實無權限，掣已拎走)。
 
   // -- chest firmware --
   chest_title:           { zh: "胸板固件",         en: "Chest Firmware" },
@@ -355,10 +414,18 @@ const I18N = {
  *  a static [data-i18n] element - e.g. status messages written via
  *  el.textContent = "..." from event handlers. See applyUiLanguage() below for
  *  the static-element equivalent. */
-function t(key) {
+function t(key, params) {
   const entry = I18N[key];
   if (!entry) return key;
-  return entry[uiLang] || entry.zh;
+  let s = entry[uiLang] || entry.zh;
+  // 2026-09-06 晚加：{name} 參數替換（舊調用 t(key) 不受影響；之前傳第二參數
+  // 係靜默丟棄，calib 區狀態字長期顯示 raw key 即此因）。
+  if (params) {
+    for (const k in params) {
+      s = s.split("{" + k + "}").join(String(params[k]));
+    }
+  }
+  return s;
 }
 
 /** Applies uiLang to every [data-i18n]-tagged element currently in the DOM.

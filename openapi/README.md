@@ -37,9 +37,25 @@ Alpha2Api.ledHeadSet({color:1, brightness:9, preset:"breathe"})
 python scripts/generate-api-client.py
 ```
 
-## 2+ MCP 對齊
+## 2+ MCP 對齊（全部自動生成）
 
-`openapi/mcp-openapi-sync.yml` 記錄 23 個 MCP tool（`self.robot.*` / `self.sensors.*` / `self.camera.*` / `self.media.*`）共 22 條 OpenAPI 參數映射（`play_random_action` 無 HTTP 對應），確保 LLM 經 MCP 與 HTTP 直調走同一套 `ApiValidator` 規則。未來可由 openapi 自動生成 `xiaozhiMcpBridge()` 的 `inputSchema`。
+`openapi/mcp-openapi-sync.yml`（v2）係 MCP 聲明源：22 個 tool（`self.robot.*` /
+`self.sensors.*` / `self.camera.*` / `self.media.*`）嘅 `description`、alias
+（`time_ms→time`、`enabled→on`、`distance_cm→distance`、`speed_ms→speed`）、
+MCP 版 `required`、MCP 獨有參數（`take_photo.question`、`image_to_text.uuid`）、
+刻意唔暴露嘅 spec 參數（`exclude`：servo `trim`、speech `engine/voice/lang`）。
+參數約束（`type/enum/minimum/maximum/default`）一律繼承
+`open-alpha2-openapi.yml` 對應 path，與 `ApiValidator` 同一套規則。
+
+```bash
+python scripts/generate-mcp-tools.py          # 寫 app/.../McpToolsGenerated.java
+python scripts/generate-mcp-tools.py --check  # CI 用：drift 即 fail
+```
+
+`XiaozhiBridge.xiaozhiMcpBridge().listTools()` 只調用
+`McpToolsGenerated.buildTools()` 再做 enable/disable 過濾，不再手寫
+`inputSchema`；`callTool()` 分發維持手寫（fuzzy match／硬件直驅無法由 spec 推導）。
+spec 加參數而 sync 未表態（加白名單或加 `exclude`）會生成失敗，逼兩邊對齊。
 
 ## 驗證
 

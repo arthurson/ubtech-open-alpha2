@@ -63,6 +63,12 @@ public final class UbxPlayer {
     /** 外部 cmd3 发送成功后同步位姿（如 servo/all 直发）。 */
     public void notePose(int[] angles20) { poseTracker.update(angles20); }
 
+    /** 外部 cmd05 单发成功后同步嗰一軸位姿（如 servo/one 直发）。 */
+    public void notePoseOne(int id, int angle) { poseTracker.updateOne(id, angle); }
+
+    /** 逐軸版位姿（未知嗰軸 null；servoAngleAllResponse 命令位姿榜用）。 */
+    public Integer[] poseBoxed() { return poseTracker.snapshotBoxed(); }
+
     /** 流播路徑用：標記當前歌名（供 status），與 startVoiceLocked 對等。 */
     private synchronized void setVoiceSong(String s) { voiceSong = s != null ? s : ""; }
     /** 變速倍率（黏性，作用於下次播放；播緊途中改只影響下一次）。 */

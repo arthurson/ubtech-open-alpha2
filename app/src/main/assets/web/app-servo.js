@@ -123,6 +123,45 @@ function buildServoGridInto(wrapId, sliderPrefix, valPrefix, sendFn, readPrefix)
 function buildServoGrid() {
   buildServoGridInto("servoGroups", "servoSlider_", "servoSliderVal_", function (id, angle) {
     return Alpha2Api.servoOne({id: id, angle: angle, time: servoTime()});
+  }, "servoAngleVal_");
+}
+
+/** 一次過讀全部 20 軸即時角度（servo/angle-all：後端逐粒讀即寫回，約 6 秒），
+ *  填入每行右邊讀數格。讀不到嗰粒顯示 -。讀取時請固定好機械人。讀數中掣
+ *  disable 防連撳。 */
+function servoReadAllAngles() {
+  const rows = document.querySelectorAll("#tab-servo [onclick^='servoRead']");
+  const status = document.getElementById("servoReadStatus");
+  rows.forEach(function (b) { b.disabled = true; });
+  for (let i = 1; i <= 20; i++) {
+    const cell = document.getElementById("servoAngleVal_" + i);
+    if (cell) cell.textContent = "…";
+  }
+  if (status) status.textContent = t("servo_reading_hint");
+  return Alpha2Api.servoAngleAll().then(function (res) {
+    rows.forEach(function (b) { b.disabled = false; });
+    if (!res || !res.ok || !res.angles) {
+      if (status) status.textContent = t("servo_read_failed_prefix") + (res && res.error ? res.error : "?");
+      return res;
+    }
+    const failed = res.failed || [];
+    for (let i = 1; i <= 20; i++) {
+      const cell = document.getElementById("servoAngleVal_" + i);
+      if (!cell) continue;
+      const v = res.angles[i - 1];
+      cell.textContent = (v === null || v === undefined) ? "-" : v;
+    }
+    if (status) {
+      status.textContent = failed.length
+        ? t("servo_read_done") + (uiLang === "en"
+            ? " (unreadable: " + failed.join(",") + ")"
+            : "（讀不到：" + failed.join(",") + "）")
+        : t("servo_read_done");
+    }
+    return res;
+  }).catch(function (e) {
+    rows.forEach(function (b) { b.disabled = false; });
+    if (status) status.textContent = t("servo_read_failed_prefix") + e;
   });
 }
 
@@ -266,12 +305,10 @@ function calibReadCurrent() {
     // 2026-09-06: 後端回 chest trim 原值，即 offset 本體，照 show。
     if (json.ok && json.live && json.trim !== undefined && json.trim !== null) {
       calibCurrentOffset = json.trim;
-      document.getElementById("calibOffsetVal").textContent = advFmtOff(calibCurrentOffset) + " (回讀)";
+      document.getElementById("calibOffsetVal").textContent = advFmtOff(calibCurrentOffset);
       statusEl.textContent = t("servo_calib_read_ok", { angle: calibCurrentAngle, offset: advFmtOff(calibCurrentOffset) });
-    } else if (json.ok && json.sent) {
-      statusEl.textContent = "已發送 0x0D 查詢 #" + calibCurrentServo + "，請查看下方「即時事件 Log」中的 chest_rcv / servo_read hex 回包（3秒內）";
     } else {
-      statusEl.textContent = t("servo_calib_read_fail", { error: json.error || "unknown" });
+      statusEl.textContent = t("servo_calib_read_fail", { error: advErrText(json.error) || "unknown" });
     }
     return json;
   }).catch(function(err) {
@@ -284,7 +321,7 @@ function updateCalibOffsetReal() {
   if (!cal) return;
   const off = calibCurrentAngle - cal.home;
   const el = document.getElementById("calibOffsetVal");
-  if (el) el.textContent = (off > 0 ? "+" + off : "" + off) + " (即時)";
+  if (el) el.textContent = (off > 0 ? "+" + off : "" + off) + t("servo_tuner_live_suffix");
 }
 function calibInc() {
   const cal = SERVO_CALIBRATION[calibCurrentServo];
@@ -316,7 +353,7 @@ function calibReadAll() {
   let idx = 1;
   function next() {
     if (idx > 20) {
-      statusEl.textContent = "已發送全部 1-20 查詢，請查看下方 chest_rcv / servo_read 回包";
+      statusEl.textContent = t("servo_calib_read_all_done");
       return Promise.resolve();
     }
     const sid = idx;
@@ -324,10 +361,10 @@ function calibReadAll() {
       if (json.ok && json.live && json.trim !== undefined && json.trim !== null) {
         if (sid === calibCurrentServo) {
           calibCurrentOffset = json.trim;
-          document.getElementById("calibOffsetVal").textContent = advFmtOff(calibCurrentOffset) + " (回讀)";
+          document.getElementById("calibOffsetVal").textContent = advFmtOff(calibCurrentOffset);
         }
       }
-      statusEl.textContent = t("servo_calib_read_all_progress", { cur: sid, total: 20 }) || ("讀取中 " + sid + "/20 已發送");
+      statusEl.textContent = t("servo_calib_read_all_progress", { cur: sid, total: 20 });
       idx++;
       return new Promise(function(resolve) { setTimeout(function() { resolve(next()); }, 500); });
     }).catch(function(err) {
@@ -378,7 +415,7 @@ function buildAdvTuner() {
       '<div style="font-weight:600;font-size:12px">#' + id + ' ' + name + '</div>' +
       '<div style="font-size:11px;color:var(--muted)">' + t('servo_tuner_range') + ' ' + cal.min + '-' + cal.max + ' home ' + cal.home + '</div>' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0;font-size:12px">' +
-        '<span>' + t('servo_tuner_angle') + ' <input type="number" id="advServoVal_' + id + '" value="' + cal.home + '" min="' + cal.min + '" max="' + cal.max + '" style="width:60px" onkeydown="if(event.key===\'Enter\'){advTunerSend(' + id + ', true);}"></span>' +
+        '<span>' + t('servo_tuner_angle') + ' <input type="number" id="advServoVal_' + id + '" value="' + cal.home + '" min="' + cal.min + '" max="' + cal.max + '" style="width:60px" onkeydown="if(event.key===\'Enter\'){advTunerSend(' + id + ');}"></span>' +
         '<span>' + t('servo_tuner_offset') + ' <span id="advServoOff_' + id + '" style="font-weight:600">-</span></span>' +
       '</div>' +
         '<div style="margin:4px 0"><button onmousedown="advHoldStart(' + id + ',1)" onmouseup="advHoldStop()" onmouseleave="advHoldStop()" ontouchstart="advHoldStart(' + id + ',1)" ontouchend="advHoldStop()" onclick="advTunerInc(' + id + ')" style="width:100%;padding:6px;background:#16a34a;color:white;border:none;border-radius:6px;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none">+1</button></div>' +
@@ -391,11 +428,54 @@ function buildAdvTuner() {
   });
   grid.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   grid.addEventListener('selectstart', function(e){ e.preventDefault(); });
-  for (let i = 1; i <= 20; i++) advRefreshOffComputed(i);
+  // 2026-09-06 晚：init 格留 "-"（未知），唔扮計出嚟嘅 0——舊版開頁即填
+  // "0 (即時)"，加埋 stale flag 導致出廠 trim 被計出嚟嘅 0 碌走，已出事。
   advTrimScanned = {};
   // 版本標記：驗瀏覽器有無食舊 JS（見唔到呢行即係 cache 緊舊版，做 Ctrl+F5）。
   const statusEl = document.getElementById("advTunerStatus");
-  if (statusEl) statusEl.textContent = "tuner 0906f 就緒（加減淨郁角度；Enter 寫入連掃描過嘅 trim；掃描讀 chest 存值）";
+  if (statusEl) statusEl.textContent = t("servo_tuner_ready", { v: "0906l" });
+}
+// 2026-09-06 深夜加：校准掣（官方「校准」同款）——將 20 格有效 trim 順序寫入
+// chest EEPROM（掉電保持）。格內無數／未掃描過嗰粒自動 skip 並報告；
+// 每粒附帶送多次本身角度（time=100，本身已喺位，唔會郁）。
+function advCalibrateAll() {
+  const statusEl = document.getElementById("advTunerStatus");
+  const jobs = [];
+  const skipped = [];
+  for (let i = 1; i <= 20; i++) {
+    const el = document.getElementById("advServoOff_" + i);
+    const t = el ? parseInt(el.textContent, 10) : NaN;
+    if (isNaN(t) || !advTrimScanned[i]) { skipped.push(i); continue; }
+    const inp = document.getElementById("advServoVal_" + i);
+    let v = inp ? parseInt(inp.value, 10) : SERVO_CALIBRATION[i].home;
+    if (isNaN(v)) v = SERVO_CALIBRATION[i].home;
+    jobs.push({ id: i, angle: clampServoAngle(i, v), trim: t });
+  }
+  if (!jobs.length) {
+    statusEl.textContent = t("servo_tuner_cal_none");
+    return Promise.resolve();
+  }
+  let idx = 0, okCount = 0;
+  const failed = [], unknown = [];
+  function next() {
+    if (idx >= jobs.length) {
+      let msg = t("servo_tuner_cal_done", { ok: okCount, n: jobs.length });
+      if (unknown.length) msg += t("servo_tuner_cal_unknown", { ids: "#" + unknown.join(",#") });
+      if (failed.length) msg += t("servo_tuner_cal_failed", { ids: "#" + failed.join(",#") });
+      if (skipped.length) msg += t("servo_tuner_cal_skipped", { ids: "#" + skipped.join(",#") });
+      statusEl.textContent = msg;
+      return Promise.resolve();
+    }
+    const j = jobs[idx++];
+    statusEl.textContent = t("servo_tuner_cal_progress", { i: idx, n: jobs.length, id: j.id, v: advFmtOff(j.trim) });
+    return Alpha2Api.servoOne({ id: j.id, angle: j.angle, time: 100, trim: j.trim }).then(function(json){
+      if (json.ok && json.trimWritten) okCount++;
+      else if (json.ok && json.trimUnknown) unknown.push(j.id);
+      else failed.push(j.id);
+      return next();
+    }).catch(function(){ failed.push(j.id); return next(); });
+  }
+  return next();
 }
 let advPrevAngle = {};
 // 本 session 掃描／還原過 trim 的 id：Enter 寫入只跟呢啲去存 EEPROM，
@@ -428,6 +508,24 @@ function advServoTime() {
 function advFmtOff(v) {
   return (v > 0 ? "+" + v : "" + v);
 }
+// 後端 servo 讀數錯誤字串中英對照（後端 Java 無 i18n，前端認住譯；
+// 認唔到就原文直出）。
+function advErrText(e) {
+  if (!e) return "";
+  if (String(e).indexOf("no feedback") >= 0) return t("servo_tuner_err_nofeedback");
+  return String(e);
+}
+function advErrSuffix(e) {
+  const m = advErrText(e);
+  return m ? ((typeof uiLang !== "undefined" && uiLang === "en" ? ": " : "：") + m) : "";
+}
+// 例外物件後綴（中英冒號；訊息本身係瀏覽器/系統英文，原樣跟）。
+function advEx(e) {
+  if (e === undefined || e === null || e === "") return "";
+  const m = (e && e.message !== undefined) ? e.message : String(e);
+  if (!m) return "";
+  return ((typeof uiLang !== "undefined" && uiLang === "en" ? ": " : "：") + m);
+}
 function advHomeOf(id) {
   const cal = (typeof SERVO_CALIBRATION !== 'undefined' && SERVO_CALIBRATION[id]) ? SERVO_CALIBRATION[id] : null;
   return cal ? cal.home : 120;
@@ -437,24 +535,19 @@ function advRefreshOffComputed(id) {
   let v = inp ? parseInt(inp.value, 10) : advHomeOf(id);
   if (isNaN(v)) v = advHomeOf(id);
   const el = document.getElementById("advServoOff_" + id);
-  if (el) el.textContent = advFmtOff(3 * (v - advHomeOf(id))) + " (即時)";
+  if (el) el.textContent = advFmtOff(3 * (v - advHomeOf(id))) + t("servo_tuner_live_suffix");
 }
 function advNudgeOff(id, deltaAngle) {
   const el = document.getElementById("advServoOff_" + id);
   if (!el) return;
   const cur = parseInt(el.textContent, 10);
   if (isNaN(cur)) { advRefreshOffComputed(id); return; }
-  el.textContent = advFmtOff(cur + deltaAngle * 3) + " (即時)";
+  el.textContent = advFmtOff(cur + deltaAngle * 3) + t("servo_tuner_live_suffix");
 }
-function advTunerSend(id, withTrim, timeMs) {
-  // 2026-09-06 晚（官方 ServoCalibration 流程定案）：
-  // - 加減（withTrim=false）：淨送角度 cmd05，time=100ms（官方 drag 同值，
-  //   貼手跟；舊 500ms 會同 120ms 連發疊 glide 變慢半拍）。offset 格照 ±3 跟
-  //   （pending，不存入 chest）。
-  // - 輸入格 Enter（withTrim=true）：tune 完明確寫入，角度 + 格內 trim 經 cmd12
-  //   存入 chest EEPROM（官方「校准」掣同款）。trim 只喺本 session 掃描／還原
-  //   過先跟去——新頁未掃描就淨寫角度，唔會用計出嚟嘅數覆蓋出廠 trim。
-  if (withTrim === undefined) withTrim = false;
+function advTunerSend(id, timeMs) {
+  // 2026-09-06 晚（跟足官方 ServoCalibration）：加減/輸入格 Enter 一律淨送
+  // 角度 cmd05（Enter 500ms glide，加減 100ms 貼手跟）。trim 只經「校准」掣
+  // 成組寫入，呢度永不掂 EEPROM。
   if (timeMs === undefined || timeMs === null) timeMs = advServoTime();
   const inp = document.getElementById("advServoVal_" + id);
   let v = parseInt(inp.value, 10);
@@ -465,85 +558,72 @@ function advTunerSend(id, withTrim, timeMs) {
   inp.value = v;
   if (delta !== 0) advNudgeOff(id, delta);
   const statusEl = document.getElementById("advTunerStatus");
-  statusEl.textContent = "寫入 #" + id + " -> " + v + "...";
-  let trim = null;
-  if (withTrim && advTrimScanned[id]) {
-    const offEl = document.getElementById("advServoOff_" + id);
-    if (offEl) {
-      const t = parseInt(offEl.textContent, 10);
-      if (!isNaN(t)) trim = t;
-    }
-  }
-  const params = { id: id, angle: v, time: timeMs };
-  if (trim !== null) params.trim = trim;
-  return Alpha2Api.servoOne(params).then(function(json){
-    if (json.ok) {
-      let msg = "寫入 #" + id + " 成功 (" + v + ")";
-      if (trim !== null) msg += json.trimWritten ? "，trim " + advFmtOff(trim) + " 已存" : "，trim 寫入失敗";
-      else if (withTrim) msg += "（trim 未掃描，只寫角度）";
-      statusEl.textContent = msg;
-    }
-    else statusEl.textContent = "寫入 #" + id + " 失敗: " + (json.error || JSON.stringify(json));
+  statusEl.textContent = t("servo_tuner_nudge_ok", { id: id, v: v });
+  return Alpha2Api.servoOne({ id: id, angle: v, time: timeMs }).then(function(json){
+    if (!json.ok) statusEl.textContent = t("servo_tuner_nudge_fail", { id: id, e: (json.error || JSON.stringify(json)) });
     return json;
-  }).catch(function(e){ statusEl.textContent = "寫入 #" + id + " 錯誤: " + e.message; });
+  }).catch(function(e){ statusEl.textContent = t("servo_tuner_nudge_err", { id: id, e: e.message }); });
 }
 function advTunerInc(id) {
   const inp = document.getElementById("advServoVal_" + id);
   let v = parseInt(inp.value, 10) || SERVO_CALIBRATION[id].home;
   v = clampServoAngle(id, v + 1);
   inp.value = v;
-  return advTunerSend(id, false, 100);
+  return advTunerSend(id, 100);
 }
 function advTunerDec(id) {
   const inp = document.getElementById("advServoVal_" + id);
   let v = parseInt(inp.value, 10) || SERVO_CALIBRATION[id].home;
   v = clampServoAngle(id, v - 1);
   inp.value = v;
-  return advTunerSend(id, false, 100);
+  return advTunerSend(id, 100);
 }
 function advTunerRead(id) {
   const statusEl = document.getElementById("advTunerStatus");
-  statusEl.textContent = "讀取 #" + id + " trim...";
+  statusEl.textContent = t("servo_tuner_read_one", { id: id });
   return Alpha2Api.servoRead( { id: id }).then(function(json) {
     // 2026-09-06: 後端回的是 chest trim 原值（官方單位），offset 格照 show，
-    // angle 輸入格唔郁（trim 唔係絕對角度）。讀唔到顯示讀失敗。
+    // angle 輸入格唔郁（trim 唔係絕對角度）。讀唔到顯示無回授。
     if (json.ok && json.live && json.trim !== undefined && json.trim !== null) {
-      document.getElementById("advServoOff_" + id).textContent = advFmtOff(json.trim) + " (實讀)";
+      document.getElementById("advServoOff_" + id).textContent = advFmtOff(json.trim);
       advTrimScanned[id] = true;
-      statusEl.textContent = "#" + id + " trim " + advFmtOff(json.trim);
+      statusEl.textContent = t("servo_tuner_read_one_ok", { id: id, v: advFmtOff(json.trim) });
     } else {
-      document.getElementById("advServoOff_" + id).textContent = "讀失敗";
-      statusEl.textContent = "#" + id + " 讀失敗" + (json.error ? "：" + json.error : "");
+      document.getElementById("advServoOff_" + id).textContent = t("servo_tuner_no_feedback");
+      statusEl.textContent = t("servo_tuner_read_fail", { id: id }) + advErrSuffix(json.error);
     }
-  }).catch(function(e){ statusEl.textContent = "讀取錯誤: " + e.message; });
+  }).catch(function(e){ statusEl.textContent = t("servo_tuner_read_err", { e: e.message }); });
 }
 function advTunerReadAll() {
   const statusEl = document.getElementById("advTunerStatus");
-  statusEl.textContent = "一鍵實讀全部 trim 1-20（約幾秒）...";
+  statusEl.textContent = t("servo_tuner_read_all");
   return Alpha2Api.servoReadAll().then(function(json){
     if (!json.ok || !json.live || !json.trims || json.trims.length !== 20) {
-      statusEl.textContent = "讀取失敗" + (json.error ? "：" + json.error : "");
+      statusEl.textContent = t("servo_tuner_read_fail", { id: "1-20" }) + advErrSuffix(json.error);
       return json;
     }
     let okCount = 0;
     for (let i = 1; i <= 20; i++) {
       const v = json.trims[i - 1];
       if (v === null || v === undefined) {
-        document.getElementById("advServoOff_" + i).textContent = "讀失敗";
+        document.getElementById("advServoOff_" + i).textContent = t("servo_tuner_no_feedback");
       } else {
         okCount++;
-        document.getElementById("advServoOff_" + i).textContent = advFmtOff(v) + " (實讀)";
+        document.getElementById("advServoOff_" + i).textContent = advFmtOff(v);
         advTrimScanned[i] = true;
       }
     }
-    const fails = (json.failed && json.failed.length) ? "，無回授: #" + json.failed.join(",#") : "";
-    statusEl.textContent = "實讀完成 " + okCount + "/20" + fails;
+    const fails = (json.failed && json.failed.length) ? t("servo_tuner_read_fails", { ids: "#" + json.failed.join(",#") }) : "";
+    statusEl.textContent = t("servo_tuner_read_done", { ok: okCount }) + fails;
     return json;
-  }).catch(function(e){ statusEl.textContent = "讀取錯誤: " + e.message; });
+  }).catch(function(e){ statusEl.textContent = t("servo_tuner_read_err", { e: e.message }); });
 }
 function advTunerReset() {
-  // 2026-09-06: 準備 = 成組返 home，鬱完自動重掃 trim（chest 存值唔受郁角度
+  // 2026-09-06: 復位 = 成組返 home，鬱完自動重掃 trim（chest 存值唔受郁角度
   // 影響，掃返嚟先對得上）。2026-09-06 晚：取消確認框（用戶要求）。
+  // 2026-09-06 深夜修：格設「…」等掃，唔再即填計出嚟嘅數；兼清 scanned 旗——
+  // 舊版即填 0 加 stale 旗，之後 Enter/存偏差會將計出嚟嘅 0 寫入 EEPROM
+  // 碌走出廠 trim（已出事，多粒中招）。
   const homes = [];
   for (let i = 1; i <= 20; i++) {
     const cal = SERVO_CALIBRATION[i];
@@ -551,60 +631,38 @@ function advTunerReset() {
     const inp = document.getElementById("advServoVal_" + i);
     if (inp) inp.value = cal.home;
     advPrevAngle[i] = cal.home;
-    advRefreshOffComputed(i);
+    const cell = document.getElementById("advServoOff_" + i);
+    if (cell) cell.textContent = "…";
+    delete advTrimScanned[i];
   }
-  document.getElementById("advTunerStatus").textContent = "送 standby 姿勢中...";
+  document.getElementById("advTunerStatus").textContent = t("servo_tuner_reset_sending");
   return Alpha2Api.servoAll( { angles: homes.join(","), time: 500 }).then(function(json){
     if (!json.ok) {
-      document.getElementById("advTunerStatus").textContent = "重置失敗: " + (json.error || "");
+      document.getElementById("advTunerStatus").textContent = t("servo_tuner_reset_fail", { e: (json.error || "") });
       return json;
     }
-    document.getElementById("advTunerStatus").textContent = "已重置為 standby 姿勢，1.5 秒後重掃 trim...";
+    document.getElementById("advTunerStatus").textContent = t("servo_tuner_reset_done");
     return new Promise(function(resolve) {
       setTimeout(function() { resolve(advTunerReadAll()); }, 1500);
     });
   });
 }
-function advTunerSetAll() {
-  // 2026-09-06 晚：取消確認框（用戶要求）。注意：呢個掣一次郁 20 粒，
-  // 輸入值同部機實際唔啱會成組扯位；驚就逐粒寫入。
-  const vals = [];
-  for (let i = 1; i <= 20; i++) {
-    const inp = document.getElementById("advServoVal_" + i);
-    let v = parseInt(inp ? inp.value : SERVO_CALIBRATION[i].home, 10);
-    v = clampServoAngle(i, isNaN(v) ? SERVO_CALIBRATION[i].home : v);
-    vals.push(v);
-  }
-  return Alpha2Api.servoAll( { angles: vals.join(","), time: 500 }).then(function(json){
-    document.getElementById("advTunerStatus").textContent = json.ok ? "全部寫入成功" : "寫入失敗: " + (json.error || "");
-    return json;
-  });
-}
 function _advPerformBackupNow() {
+  // 2026-09-06 晚改：淨備份 offsets（角度輸入格係即時目標，永遠唔會變，
+  // 寫落 file 無用）。讀失敗記 null；有效性經 advTrimScanned 判，唔再聞格仔字。
   const offsets = {};
-  const angles = {};
   for (let i = 1; i <= 20; i++) {
+    if (!advTrimScanned[i]) { offsets[i] = null; continue; }
     const offEl = document.getElementById("advServoOff_" + i);
-    const rawTxt = offEl ? offEl.textContent.trim() : "0";
-    // 2026-09-06: 讀失敗（壞舵機/無回授）記 null，唔好扮 0 誤導還原。
-    let num = null;
-    if (rawTxt !== "讀失敗" && rawTxt !== "-" && rawTxt !== "") {
-      const parsed = parseInt(rawTxt, 10);
-      num = isNaN(parsed) ? null : parsed;
-    }
-    offsets[i] = num;
-    const inp = document.getElementById("advServoVal_" + i);
-    let v = inp ? parseInt(inp.value, 10) : SERVO_CALIBRATION[i].home;
-    if (isNaN(v)) v = SERVO_CALIBRATION[i].home;
-    v = clampServoAngle(i, v);
-    angles[i] = v;
+    const rawTxt = offEl ? offEl.textContent.trim() : "";
+    const parsed = parseInt(rawTxt, 10);
+    offsets[i] = isNaN(parsed) ? null : parsed;
   }
   const payload = {
-    version: 1,
+    version: 2,
     type: "servo_tuner_backup",
     exportedAt: new Date().toISOString(),
-    offsets: offsets,
-    angles: angles
+    offsets: offsets
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type: "application/json"});
   const url = URL.createObjectURL(blob);
@@ -625,16 +683,18 @@ function advBackup() {
   for (let i = 1; i <= 20; i++) {
     const offEl = document.getElementById("advServoOff_" + i);
     const txt = offEl ? offEl.textContent.trim() : "-";
-    if (txt === "-" || txt === "" ) { needScan = true; unscanned++; }
+    // "-"（新頁）/"…"（準備後等掃）先自動掃；數字（pending 或存值）同「讀失敗」
+    // 唔掃——唔好碌走用戶 tune 緊嘅數。
+    if (txt === "-" || txt === "" || txt === "…") { needScan = true; unscanned++; }
   }
   if (needScan) {
-    if (statusEl) statusEl.textContent = t("servo_tuner_backup_need_scan") + " (" + unscanned + "/20 未讀)…";
+    if (statusEl) statusEl.textContent = t("servo_tuner_backup_need_scan") + " " + t("servo_tuner_unscanned", { n: unscanned });
     // 自動先掃一次，再備份
     return advTunerReadAll().then(function() {
-      // advTunerReadAll 已將 status 設為「全部讀取完成」，緊接覆蓋為備份完成
+      // advTunerReadAll 已將 status 設為讀取完成，緊接覆蓋為備份完成
       _advPerformBackupNow();
     }).catch(function(err){
-      if (statusEl) statusEl.textContent = t("servo_tuner_restore_fail") + ": 掃描失敗 " + (err && err.message ? err.message : err);
+      if (statusEl) statusEl.textContent = t("servo_tuner_backup_fail") + advEx(err);
     });
   } else {
     _advPerformBackupNow();
@@ -649,77 +709,47 @@ function advImport(input) {
   reader.onload = function(e) {
     try {
       const data = JSON.parse(e.target.result);
-      let offsets = null, angles = null;
-      if (data && typeof data === "object" && (data.offsets || data.angles)) {
-        offsets = data.offsets || {};
-        angles = data.angles || null;
-      } else {
+      // 2026-09-06 晚改：淨還原 offsets（v1 舊檔有 angles 都唔理，角度格唔郁）。
+      let offsets = null;
+      if (data && typeof data === "object" && data.offsets) {
+        offsets = data.offsets;
+      } else if (data && typeof data === "object" && !data.angles) {
         offsets = data;
       }
-      let countOff = 0, countAng = 0;
+      let countOff = 0;
       for (let i = 1; i <= 20; i++) {
         const k = String(i);
-        // angles: restore input + advPrevAngle
-        if (angles && angles[k] !== undefined) {
-          let v = parseInt(angles[k], 10);
-          if (!isNaN(v)) {
-            v = clampServoAngle(i, v);
-            const inp = document.getElementById("advServoVal_" + i);
-            if (inp) { inp.value = v; countAng++; }
-            advPrevAngle[i] = v;
-          }
-        } else if (angles && angles[i] !== undefined) {
-          let v = parseInt(angles[i], 10);
-          if (!isNaN(v)) {
-            v = clampServoAngle(i, v);
-            const inp = document.getElementById("advServoVal_" + i);
-            if (inp) { inp.value = v; countAng++; }
-            advPrevAngle[i] = v;
-          }
-        }
         // offsets: restore display
         let raw = null;
         if (offsets && offsets[k] !== undefined) raw = offsets[k];
         else if (offsets && offsets[i] !== undefined) raw = offsets[i];
         if (raw !== null && raw !== undefined) {
           let num = typeof raw === "number" ? raw : parseInt(String(raw).trim(), 10);
-          if (isNaN(num)) num = 0;
+          if (isNaN(num)) continue;
           const el = document.getElementById("advServoOff_" + i);
           if (el) {
-            el.textContent = (num > 0 ? "+" + num : String(num));
+            el.textContent = advFmtOff(num);
             advTrimScanned[i] = true;
             countOff++;
-          }
-          // if angles not supplied, sync prevAngle to current input so後續 delta 正確
-          if (!angles || (angles[k] === undefined && angles[i] === undefined)) {
-            const inp = document.getElementById("advServoVal_" + i);
-            if (inp) {
-              let cur = parseInt(inp.value, 10);
-              if (!isNaN(cur)) advPrevAngle[i] = cur;
-            }
           }
         }
       }
       if (statusEl) {
-        if (countOff === 0 && countAng === 0) {
-          statusEl.textContent = t("servo_tuner_restore_fail") + ": 無有效數據";
+        if (countOff === 0) {
+          statusEl.textContent = t("servo_tuner_restore_fail") + t("servo_tuner_restore_empty");
         } else {
-          let msg = t("servo_tuner_restore_done");
-          if (countAng > 0) msg += " (角度 " + countAng + " / offset " + countOff + ")";
-          else msg += " (offset " + countOff + ")";
-          msg += " — 按「全部寫入」才會送到舵機";
-          statusEl.textContent = msg;
+          statusEl.textContent = t("servo_tuner_restore_done") + t("servo_tuner_restore_detail", { off: countOff });
         }
       }
     } catch (err) {
-      if (statusEl) statusEl.textContent = t("servo_tuner_restore_fail") + ": " + err.message;
+      if (statusEl) statusEl.textContent = t("servo_tuner_restore_fail") + advEx(err);
     } finally {
       // allow re-selecting same file
       try { input.value = ""; } catch(e) {}
     }
   };
   reader.onerror = function() {
-    if (statusEl) statusEl.textContent = t("servo_tuner_restore_fail") + ": 讀檔失敗";
+    if (statusEl) statusEl.textContent = t("servo_tuner_restore_fail") + t("servo_tuner_restore_readerr");
     try { input.value = ""; } catch(e) {}
   };
   reader.readAsText(file);

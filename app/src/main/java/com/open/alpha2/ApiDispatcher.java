@@ -291,6 +291,13 @@ public final class ApiDispatcher {
                 return ubxApi.servoReadResponse(query);
             case "servo/read-all":
                 return ubxApi.servoReadAllResponse();
+            // 絕對角度實讀 (cmd 6，同 servo/one 同單位；read/read-all 嗰個係 trim/偏差)。
+            case "servo/angle":
+                return ubxApi.servoAngleResponse(query);
+            case "servo/angle-restore":
+                return ubxApi.servoAngleRestoreResponse(query);
+            case "servo/angle-all":
+                return ubxApi.servoAngleAllResponse();
 
             // -- PIR (body 喺 LedCenter；薄 delegate，唔好喺度加 logic) --
             case "pir/set":
@@ -486,10 +493,9 @@ public final class ApiDispatcher {
 
             // 2026-09 移除: service_config/get|set（讀寫 /sdcard/actions/
             // service_config.{json,txt}，alpha2services 專用 config，機身已無此
-            // 服務，對 open alpha2 無用；連同 preset 常數一齊拎走。reboot 保留
-            // （UUID 卡重開機掣仲用緊）。
-            case "service_config/reboot":
-                return deviceStatus.rebootResponse();
+            // 服務，對 open alpha2 無用；連同 preset 常數一齊拎走。reboot 亦已
+            // 移除：App 無 REBOOT 權限 (uid 無 grant，實機 verified 永遠
+            // SecurityException)，UUID 卡掣一併拎走，改做手動重開機提示。
 
             default:
                 return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",

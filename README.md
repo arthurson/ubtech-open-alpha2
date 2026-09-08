@@ -55,10 +55,12 @@ ACTIONS（動作列表＋分類＋播放/停止＋**變速 0.5/0.67/1/1.5/2**）
   `app/.../web/api-client.js`（`Alpha2Api.*`，132 個 wrapper）由
   `scripts/generate-api-client.py` 生成，改 spec 必重 gen；
   `scripts/check-openapi-drift.py` 保 code↔spec 對齊；另有 AsyncAPI
-  （`/ws` 事件）同 MCP 對齊表（`mcp-openapi-sync.yml`）。
-- 小智 MCP 工具（23 個）：`self.robot.*`（list/play/stop/random 動作、單/全舵機、
+  （`/ws` 事件）同 MCP 聲明表（`mcp-openapi-sync.yml` v2）。
+- 小智 MCP 工具（22 個，全部自動生成）：`self.robot.*`（list/play/stop/random 動作、單/全舵機、
   頭/眼/嘴燈、speak）、`self.sensors.*`（PIR/聲納）、`self.camera.*`
-  （take_photo/image_to_text）、`self.media.*`（本地音樂/電台）。
+  （take_photo/image_to_text）、`self.media.*`（本地音樂/電台）——
+  `inputSchema` 由 `scripts/generate-mcp-tools.py` 讀 spec＋聲明表生成
+  `McpToolsGenerated.java`，`XiaozhiBridge.listTools()` 只做 enable/disable 過濾。
 
 ## Build / 裝機
 
@@ -77,6 +79,22 @@ adb -s <serial> forward tcp:8888 tcp:8888
 prebuilt `.so`（`head_led/head_key_mgr/serial_port`）一律喺
 `sdk-module/hardware-direct/src/main/jniLibs`；`libeasyopus.so` 由
 `app/src/main/cpp` CMake 即編。
+
+### 本地工具鏈地雷（2026-09 實測）
+
+- 本機 JDK 21 + AGP 4.2.2：manifest merger 用咗 JDK 16+ 已封嘅反射——平時
+  incremental build 無事（manifest UP-TO-DATE 就唔跑）；**唔 clean、唔
+  `--rerun-tasks`**，任何逼 `processDebugMainManifest` 重跑嘅操作會死
+  （`File.path accessible: module java.base does not open java.io`）。
+  萬一逼死咗：直接再跑一次普通 `assembleDebug --offline`，等佢慢慢行完就返綠。
+- 唔 `adb kill-server`；壞 build 唔好短 loop 重試（前人經驗：1.5s loop 會炒）。
+- 出 APK 必 `dexdump` **方法級**驗（類表唔夠；`dexdump -d classes.dex`，APK 直 dump 會 mmap 死，先 unzip）。
+- `ApiResponse.error()` 天生回 500；`Get-Content` 量行數試過唔準（以實測為準）。
+- 寫路徑齋打缺參 400，唔打真值：`misc/set_uuid`、`pir/set`、`servo/*`、
+  `service_config/reboot`、`vosk/endpointer`。
+- 每輪必做：compile＋`test-apivalidator.py`（104）＋routes＋drift＋dexdump＋
+  裝機＋端點＋logcat `FATAL EXCEPTION`。
+- `C:/Users/user/AppData/Local/Temp/opencode` 有舊 session 幾百 MB log，唔好理。
 
 ## 檔案結構
 
@@ -108,6 +126,10 @@ open-alpha2/
 
 - HTTPS / 瀏覽器麥克風（walkie-talkie）永久停用；「聽機械人」正常。
 - 舊 AIDL passthrough（進階分頁大部份）回 `NOT_INIT`；`RobotStub` 只係誠實失敗嘅 facade。
-- 無舵機角度/電流回授；聲納圖表等部份 UI 仍只畫 triggered。
+- 無舵機電流回授；聲納圖表等部份 UI 仍只畫 triggered。角度方面：單粒 cmd6
+  實讀已證實可用（`06 [00] [id] [hi] [lo]`，同 `servo/one` 同單位，跟位誤差約
+  1°），但硬件連讀會整冧全機出力（15ms／100ms 兩種節奏都試過，Lynx 嗰邊
+  同樣結論），故 SERVO 分頁個榜顯示命令位姿（零 wire：跳舞逐幀＋servo/one
+  逐粒追踪，開機伸展後即已知），單粒即時驗證行 `servo/angle`。
 - 複合編排動作嘅多 block 窗口偏移忽略；歌尾可以長過舵機（跟官方）。
 - 跳大舞嗰陣 USB 易震甩（實測多次），長驗證建議先固定條線或用 `adb logcat` 內錄。

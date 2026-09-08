@@ -241,11 +241,6 @@ const Alpha2Api = (function() {
     return api('misc/set_uuid', params);
   }
 
-  function serviceConfigReboot(params) {
-    // 重開機 (PowerManager reboot)
-    return api('service_config/reboot', params);
-  }
-
   function status(params) {
     // 取得 App 與各 Service 綁定狀態
     return api('status', params);
@@ -438,6 +433,23 @@ const Alpha2Api = (function() {
     return api('servo/all', params);
   }
 
+  function servoAngle(params) {
+    if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
+    // 實讀單顆舵機絕對角度（胸 cmd6 live query）
+    return api('servo/angle', params);
+  }
+
+  function servoAngleAll(params) {
+    // 連讀 20 軸絕對角度，每粒即寫回上力（100ms 間隔）
+    return api('servo/angle-all', params);
+  }
+
+  function servoAngleRestore(params) {
+    if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
+    // 讀單顆舵機絕對角度並即寫回上力（原子操作）
+    return api('servo/angle-restore', params);
+  }
+
   function servoOne(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
     if (params && params.trim != null) assertRange(Number(params.trim), -1000, 1000, 'trim');
@@ -625,19 +637,20 @@ const Alpha2Api = (function() {
     return xiaozhiApi('activation_status', params);
   }
 
-  function xiaozhiAutoConnectGet(params) {
-    // 讀取「開app自動連接小智」開關
-    return xiaozhiApi('auto_connect/get', params);
-  }
-
-  function xiaozhiAutoConnectSet(params) {
-    // 設定「開app自動連接小智」開關（下次開app生效）
-    return xiaozhiApi('auto_connect/set', params);
-  }
-
   function xiaozhiAutoMode(params) {
     // 一鍵全自動 (連線+常開麥克風)
     return xiaozhiApi('auto_mode', params);
+  }
+
+  function xiaozhiBootVoiceGet(params) {
+    // 讀取開機語音模式三選一（off/xiaozhi/vosk，下次開app生效）
+    return xiaozhiApi('boot_voice/get', params);
+  }
+
+  function xiaozhiBootVoiceSet(params) {
+    if (params && params.mode != null) assertEnum(params.mode, ['off', 'xiaozhi', 'vosk'], 'mode');
+    // 設定開機語音模式三選一（下次開app生效）
+    return xiaozhiApi('boot_voice/set', params);
   }
 
   function xiaozhiConnect(params) {
@@ -759,7 +772,6 @@ const Alpha2Api = (function() {
     chestVersion,
     miscRequestUuid,
     miscSetUuid,
-    serviceConfigReboot,
     status,
     wifiStatus,
     directLedHead,
@@ -795,6 +807,9 @@ const Alpha2Api = (function() {
     pirAlertEnabled,
     pirSet,
     servoAll,
+    servoAngle,
+    servoAngleAll,
+    servoAngleRestore,
     servoOne,
     servoRead,
     servoReadAll,
@@ -830,9 +845,9 @@ const Alpha2Api = (function() {
     systemMusicStop,
     systemMusicVolume,
     xiaozhiActivationStatus,
-    xiaozhiAutoConnectGet,
-    xiaozhiAutoConnectSet,
     xiaozhiAutoMode,
+    xiaozhiBootVoiceGet,
+    xiaozhiBootVoiceSet,
     xiaozhiConnect,
     xiaozhiDisconnect,
     xiaozhiMcpConfigGet,
@@ -854,6 +869,6 @@ const Alpha2Api = (function() {
 // Usage examples:
 //   Alpha2Api.status()
 //   Alpha2Api.servoOne({id:1, angle:90, time:1000})
-//   Alpha2Api.speechTts({text:'你好', engine:'iflytek'})
+//   Alpha2Api.speechTts({text:'你好', engine:'android'})
 //   Alpha2Api.ledHeadSet({color:1, brightness:9, preset:'breathe'})
 //   Alpha2Api.xiaozhiConnect()

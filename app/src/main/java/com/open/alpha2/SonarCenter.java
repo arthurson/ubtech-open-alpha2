@@ -41,9 +41,11 @@ import java.util.Map;
  *   拎呢度（final，唔使 guard）——類層面互指（Java 合法），施工順序經 setter
  *   解開，運行時無循環初始化問題。
  *
- * 未驗／跟進（行為照搬，唔改）：
- * - PIR 真觸發要人喺機側驗（-109 broadcast／push thread E2E）；離線可驗：
- *   system/discover sensors 三值（經 HostState delegate）、servo/sonar 缺參 400。
+ * 已驗／跟進：
+ * - PIR 真觸發 2026-09-07 機側驗過：pir/set?on=true 開 sensor 後，胸前揮手
+ *   收到交替 93 01／93 00 真幀（checksum 啱），pir -1→0 行咗成條 delegate 鏈；
+ *   未開 sensor 就係靜默（reinstall 後預設閂）。小智 push 未驗（要上線）。
+ *   離線可驗：system/discover sensors 三值、servo/sonar 缺參 400。
  * - MCP 4 tool 本體已收斂入下面 mcp*()；E2E 要上線先驗到（callTool 經小智
  *   websocket 觸發，無 HTTP 直調路；寫路徑唔打真值）。
  * - direct/sonar/config（DirectApi）直發 configureSonar 唔經 applySonarThreshold，

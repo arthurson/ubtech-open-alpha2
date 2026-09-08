@@ -185,20 +185,15 @@ function xiaozhiShowActivationCode(code) {
  *  (因為當時 WebView position:fixed quirk 令個 overlay 睇唔到), 但而家配對碼
  *  已經證實會經 EventBus -> WebSocket -> 對話界面 (xiaozhiAppendChatLine) 正常
  *  顯示, 用戶反映淨係想留低對話界面呢個, 其餘 3 個 (進階小格 activationBox、
- *  modal overlay、window.alert()) 已經拿走 - 呢個 function 而家留空, 冚低唔再
- *  用, 純粹保留舊 comment 做紀錄, 避免第日又摷返出嚟。 */
-
-function xiaozhiHideActivationModal() {
-  const overlay = document.getElementById("xiaozhiActivationModalOverlay");
-  if (overlay) overlay.style.display = "none";
-}
+ *  modal overlay、window.alert()) 已經拿走。
+ *  2026-09: 連 xiaozhiHideActivationModal() 個空殼 (查唔存在嘅 overlay) 一併刪埋，
+ *  呢段 comment 留低做紀錄，唔好摷返出嚟。 */
 
 function xiaozhiHideActivationCode() {
   const els = xiaozhiElements();
   if (els.activationBox) els.activationBox.style.display = "none";
   if (els.activationCode) els.activationCode.textContent = "";
   xiaozhiLastShownActivationCode = null;
-  xiaozhiHideActivationModal();
 }
 
 function xiaozhiStopActivationPolling() {
@@ -816,19 +811,48 @@ function xiaozhiSetTtsEngine(engine) {
   });
 }
 
-/** Page load 讀返「開app自動連接」開關狀態 - 對照 xiaozhiLoadOtaConfig() 嘅做法。 */
-function xiaozhiLoadAutoConnect() {
-  Alpha2Api.xiaozhiAutoConnectGet({}).then(function (res) {
-    const toggle = document.getElementById("xiaozhiAutoConnectToggle");
-    if (toggle) toggle.checked = !!(res && res.ok && res.enabled);
+/** 開機語音卡開關（實驗 tab）——淨係揭開／收埋內容，同 UUID 卡同一個做法，
+ *  每次入頁預設收埋，唔記住。 */
+function bootVoiceCardToggle() {
+  const on = document.getElementById("bootVoiceCardEnabled");
+  const body = document.getElementById("bootVoiceCardBody");
+  const hint = document.getElementById("bootVoiceCardDisabledHint");
+  const show = !!(on && on.checked);
+  if (body) body.style.display = show ? "" : "none";
+  if (hint) hint.style.display = show ? "none" : "";
+  if (show) bootVoiceLoad();
+}
+
+/** 將三粒 radio 指去指定模式；傳 null/未知值就三粒都唔剔。 */
+function bootVoiceUi(mode) {
+  const radios = document.querySelectorAll('input[name="bootVoiceMode"]');
+  radios.forEach(function (r) { r.checked = (r.value === mode); });
+}
+
+/** Page load／開卡讀返開機語音模式。API 19 舊機冇 Vosk，就鎖起 Vosk 嗰粒。 */
+function bootVoiceLoad() {
+  Alpha2Api.xiaozhiBootVoiceGet({}).then(function (res) {
+    bootVoiceUi(res && res.ok ? res.mode : null);
+  });
+  Alpha2Api.status().then(function (st) {
+    if (st && st.ok && st.apiLevel && st.apiLevel < 21) {
+      const radio = document.querySelector('input[name="bootVoiceMode"][value="vosk"]');
+      if (radio) radio.disabled = true;
+    }
   });
 }
 
-/** 開app自動連接開關切換 - 即刻儲存，下次開app生效（唔會即刻連線）。 */
-function xiaozhiSetAutoConnect(checked) {
-  Alpha2Api.xiaozhiAutoConnectSet({ enabled: checked ? "true" : "false" }).then(function (res) {
-    const toggle = document.getElementById("xiaozhiAutoConnectToggle");
-    if (toggle) toggle.checked = !!(res && res.ok && res.enabled);
+/** 三揀一：揀即儲存，下次開 App 生效（唔會即刻連線／即刻起聽）。 */
+function bootVoiceSet(mode) {
+  const out = document.getElementById("bootVoiceStatus");
+  Alpha2Api.xiaozhiBootVoiceSet({ mode: mode }).then(function (res) {
+    if (res && res.ok) {
+      bootVoiceUi(res.mode);
+      if (out) out.textContent = t("boot_voice_saved");
+    } else {
+      if (out) out.textContent = t("boot_voice_failed_prefix") + (res && res.error ? res.error : "?");
+      bootVoiceLoad();
+    }
   });
 }
 
@@ -846,7 +870,6 @@ window.addEventListener("DOMContentLoaded", function () {
   xiaozhiCheckSupport();
   xiaozhiRefreshStatus();
   xiaozhiLoadOtaConfig();
-  xiaozhiLoadAutoConnect();
   xiaozhiLoadMcpConfig();
   xiaozhiLoadTtsConfig();
   setTimeout(xiaozhiBackgroundStatusWatch, 8000);
