@@ -64,7 +64,15 @@ public final class ActionDirect {
         List<String[]> out = new ArrayList<>();
         try {
             java.io.File f = new java.io.File(ACTION_INFO);
-            byte[] data = new byte[(int) f.length()];
+            // 2026-09-09：先驗大細（唔存在/空/超過 1MB 直接當空表；
+            // 之前按 f.length() 配 array，大檔即 OOM）。
+            long flen = f.length();
+            if (!f.isFile() || flen <= 0 || flen > 1024L * 1024L) {
+                Log.w(TAG, "loadActionInfo skip unusual file len=" + flen);
+                actionInfoCache = out;
+                return out;
+            }
+            byte[] data = new byte[(int) flen];
             java.io.FileInputStream in = new java.io.FileInputStream(f);
             try {
                 int off = 0;
@@ -73,22 +81,39 @@ public final class ActionDirect {
                     if (n < 0) break;
                     off += n;
                 }
-            } finally {
-                try { in.close(); } catch (Exception ignore) {}
-            }
-            String text = new String(data, "GBK");
-            for (String line : text.split("\n")) {
+                // 2026-09-09：用實際讀到嘅 bytes（之前成個 array 計埋尾零，
+                // 短讀會有 NUL 混入字串；另 UTF-8 strict 掂唔到先 fallback GBK，
+                // 之前寫死 GBK，UTF-8 檔中文亂碼）。
+                String text = decodeActionInfo(data, off);
+                for (String line : text.split("\n")) {
                 line = line.trim();
                 if (line.isEmpty()) continue;
                 String[] cols = line.split("##", -1);
                 if (cols.length < 4) continue;
                 out.add(new String[]{cols[0].trim(), cols[1].trim(), cols[2].trim(), cols[3].trim()});
+                }
+            } finally {
+                try { in.close(); } catch (Exception ignore) {}
             }
         } catch (Exception e) {
             Log.w(TAG, "loadActionInfo failed", e);
         }
         actionInfoCache = out;
         return out;
+    }
+
+    /** actionInfo.txt 解碼：UTF-8 strict 得就用佢，唔得（GBK 中文）先 fallback
+     *  GBK。new String(bytes,"UTF-8") 從來唔掟錯（爛 byte 變 U+FFFD），所以要用
+     *  REPORT 嘅 CharsetDecoder 先分得出。 */
+    private static String decodeActionInfo(byte[] data, int len) throws Exception {
+        try {
+            java.nio.charset.CharsetDecoder dec = java.nio.charset.Charset.forName("UTF-8").newDecoder();
+            dec.onMalformedInput(java.nio.charset.CodingErrorAction.REPORT);
+            dec.onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+            return dec.decode(java.nio.ByteBuffer.wrap(data, 0, len)).toString();
+        } catch (java.nio.charset.CharacterCodingException e) {
+            return new String(data, 0, len, "GBK");
+        }
     }
 
     /** 讀 assets/web/xiaozhi_actions.json 做 catalog (MCP fuzzy、隨機池共用)。 */
@@ -150,6 +175,7 @@ public final class ActionDirect {
      *  the "raise_left_hand" bug this whole mechanism exists to prevent). */
     public String resolveActionId(String query) {
         java.util.List<org.json.JSONObject> actions = loadXiaozhiActions();
+        if (query == null) return null;
         String q = query.trim();
         if (q.isEmpty()) return null;
 
@@ -174,14 +200,26 @@ public final class ActionDirect {
         return null;
     }
 
-    /** 动作名/ID 解析：fileId > nameEn > nameCn，另支持 xxx.ubx / 绝对路径直通。 */
+    /** 动作名/ID 解析：fileId > nameEn > nameCn，另支持同目錄 xxx.ubx。
+     *  2026-09-09：帶 / 嘅路徑只准 /sdcard/actions 內 .ubx（canonical 鎖死；
+     *  之前任意路徑 isFile 即回，可探全機檔案）。 */
     private java.io.File resolveActionFile(String name) {
         if (name == null) return null;
         String n = name.trim();
         if (n.isEmpty()) return null;
-        if (n.indexOf('/') >= 0 || n.endsWith(".ubx")) {
-            java.io.File direct = n.indexOf('/') >= 0 ? new java.io.File(n) : new java.io.File(ACTION_DIR + "/" + n);
-            if (direct.isFile()) return direct;
+        if (n.indexOf('/') >= 0 || n.indexOf('\\') >= 0 || n.endsWith(".ubx")) {
+            java.io.File direct = n.indexOf('/') >= 0 || n.indexOf('\\') >= 0
+                    ? new java.io.File(n) : new java.io.File(ACTION_DIR + "/" + n);
+            try {
+                String target = direct.getCanonicalPath();
+                String base = new java.io.File(ACTION_DIR).getCanonicalPath();
+                if (!target.equals(base) && target.startsWith(base + java.io.File.separator)
+                        && target.toLowerCase(java.util.Locale.US).endsWith(".ubx")
+                        && direct.isFile()) {
+                    return direct;
+                }
+            } catch (Exception ignore) {}
+            if (n.indexOf('/') >= 0 || n.indexOf('\\') >= 0) return null;
         }
         List<String[]> info = loadActionInfo();
         String id = null;

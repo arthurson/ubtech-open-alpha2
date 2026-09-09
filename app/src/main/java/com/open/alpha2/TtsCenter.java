@@ -179,6 +179,10 @@ public final class TtsCenter {
             Intent checkIntent = new Intent();
             checkIntent.setAction(TextToSpeech.Engine.ACTION_CHECK_TTS_DATA);
             checkIntent.setPackage(enginePkg); // 指定該 engine, 不是「隨便哪個應用程式搶到就用哪個」
+            // 註：呢度多數跑喺 HttpServer worker thread——startActivityForResult
+            // 係 binder call，唔掂 View，worker thread 調用無問題；結果經主線程
+            // onActivityResult → latch 返嚟，唔好「修正」做 mainHandler.post
+            //（post 完仲要等 latch，多此一舉；直接調用先唔會 deadlock）。
             activity.startActivityForResult(checkIntent, TTS_DATA_CHECK_REQUEST_CODE);
         } catch (Exception e) {
             Log.e(TAG, "ACTION_CHECK_TTS_DATA launch failed for engine=" + enginePkg, e);

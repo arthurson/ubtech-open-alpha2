@@ -93,6 +93,14 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     private GestureCenter gestureCenter;
     private final MusicController musicController = new MusicController();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    /** 2026-09-09：開機 15s 後試播開機語音。field 化方便 onDestroy removeCallbacks
+     * （之前匿名 post，destroy 後照跑兼 hold 住 bridge）。 */
+    private final Runnable bootVoiceRunnable = new Runnable() {
+        @Override public void run() {
+            if (sInstance == null || xiaozhiBridge == null) return;
+            xiaozhiBridge.maybeBootVoice("startup");
+        }
+    };
 
     // (Pad 燈成組搬咗去 LedCenter：executor/postPadLed/旗標/worker/burst。)
 
@@ -267,9 +275,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 }
             }
         }, "LocalServicesInit").start();
-        mainHandler.postDelayed(new Runnable() {
-            @Override public void run() { xiaozhiBridge.maybeBootVoice("startup"); }
-        }, 15000);
+        mainHandler.postDelayed(bootVoiceRunnable, 15000);
         iflytekMatcher = new IflytekSemanticMatcher(this);
         iflytekMatcherEn = new IflytekSemanticMatcherEn(this);
         // 2026-09: Vosk 熔斷 —— vosk-android minSdk 21，API 19 機（呢個 APK 要
@@ -550,7 +556,11 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 restartIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                 PendingIntent pendingIntent = PendingIntent.getActivity(
                         appContext, 0, restartIntent,
-                        PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_CANCEL_CURRENT);
+                        // 2026-09-09 加 IMMUTABLE：target 22 而家唔使，但升上 31+
+                        // 無呢個 flag 即 crash。static final int 會 inline 落 dex，
+                        // 舊機 runtime 照行無影響。
+                        PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_CANCEL_CURRENT
+                                | PendingIntent.FLAG_IMMUTABLE);
                 AlarmManager alarmManager = (AlarmManager) appContext.getSystemService(Context.ALARM_SERVICE);
                 if (alarmManager != null) {
                     alarmManager.setExact(AlarmManager.ELAPSED_REALTIME,
@@ -793,15 +803,18 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         if (sInstance == this) {
             sInstance = null;
         }
-        gestureCenter.shutdown();
-        ubxPlayer.stopVoice();
-        micCenter.shutdownMicHold();
-        deviceStatus.setAccelerometerEnabled(false);
-        ttsCenter.shutdown();
+        // 2026-09-09：逐個 null-guard（onCreate 中途炸/早退再 destroy，
+        // 之前直接調用即 NPE 冚唪唥）。
+        mainHandler.removeCallbacks(bootVoiceRunnable);
+        if (gestureCenter != null) gestureCenter.shutdown();
+        if (ubxPlayer != null) ubxPlayer.stopVoice();
+        if (micCenter != null) micCenter.shutdownMicHold();
+        if (deviceStatus != null) deviceStatus.setAccelerometerEnabled(false);
+        if (ttsCenter != null) ttsCenter.shutdown();
         if (localServices != null) {
             try { localServices.stop(); } catch (Throwable ignored) {}
         }
-        xiaozhiBridge.shutdown();
+        if (xiaozhiBridge != null) xiaozhiBridge.shutdown();
         if (httpServer != null) {
             httpServer.stop();
         }
@@ -820,8 +833,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
             } catch (IllegalArgumentException ignored) {
             }
         }
-        deviceStatus.unregisterBatteryReceiver();
-        ledCenter.unregisterWifiLedReceiver();
+        if (deviceStatus != null) deviceStatus.unregisterBatteryReceiver();
+        if (ledCenter != null) ledCenter.unregisterWifiLedReceiver();
         if (panelUrlReceiver != null) {
             try {
                 unregisterReceiver(panelUrlReceiver);
@@ -829,13 +842,13 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
             } catch (IllegalArgumentException ignored) {
             }
         }
-        grammarCenter.unregisterConnectivityReceiver();
+        if (grammarCenter != null) grammarCenter.unregisterConnectivityReceiver();
         // 2026-09: offline watchdog thread 已成組移除，無嘢要 quit。
-        cameraController.shutdown();
-        audioController.shutdown();
-        audioPlaybackController.shutdown();
-        ledCenter.shutdown();
-        ringtoneCenter.stopRingtonePlayback();
+        if (cameraController != null) cameraController.shutdown();
+        if (audioController != null) audioController.shutdown();
+        if (audioPlaybackController != null) audioPlaybackController.shutdown();
+        if (ledCenter != null) ledCenter.shutdown();
+        if (ringtoneCenter != null) ringtoneCenter.stopRingtonePlayback();
         // 2026-08 新增: 之前這裡沒有呼叫 stopLocalMusicPlayback()/stopRadioPlayback() -
         // onDestroy() 就算執行了也不會釋放正在播放的 currentMusicPlayer/currentRadioPlayer,
         // 一直以來都是個 leak (MediaPlayer native resource 沒有 release())。加入
@@ -843,8 +856,11 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 缺口更需要補上: Equalizer 綁定的 audio session 如果連 app 結束都不釋放,
         // 留下的 native effect engine 資源就更難追蹤。沿用 stopRingtonePlayback()
         // 一樣的做法, 在這裡一併全部停止。
-        audioCenter.stopLocalMusicPlayback();
-        audioCenter.stopRadioPlayback();
+        if (audioCenter != null) {
+            audioCenter.stopLocalMusicPlayback();
+            audioCenter.stopRadioPlayback();
+        }
+        if (ubxApi != null) ubxApi.unregisterWakeupDirectionListener();
     }
 
     private void updatePanelUrlDisplay() {
@@ -953,8 +969,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         } else {
             byte[] msg = ("Not found: /stream/" + path).getBytes(StandardCharsets.UTF_8);
             java.io.OutputStream out = socket.getOutputStream();
-            out.write(("HTTP/1.1 404 Not Found\r\nContent-Length: " + msg.length
-                    + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1));
+            // 2026-09-09：補 Content-Type＋CORS，同其他回應睇齊（之前淨係三行）。
+            out.write(("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: " + msg.length
+                    + "\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1));
             out.write(msg);
             out.flush();
         }
@@ -1026,8 +1043,26 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 使 "xiaozhi_activation" 這個 type 永遠比對不中, 界面對應的顯示邏輯
         // (xiaozhiShowActivationCode()) 完全不會觸發 - 這才是「websocket log
         // 看到東西, 但界面沒顯示」的真正成因。
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+        // 2026-09-09 補埋 \b \f + 其餘 C0 控制字元（U+XXXX 形），同 HttpServer
+        // ApiResponse 轉義睇齊。
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\': sb.append("\\\\"); break;
+                case '"': sb.append("\\\""); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                case '\b': sb.append("\\b"); break;
+                case '\f': sb.append("\\f"); break;
+                default:
+                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                    else sb.append(c);
+                    break;
+            }
+        }
+        return sb.toString();
     }
 
     /** RobotEventReceiver tts_hint_wakeup 交俾 GrammarCenter (wakeup probe)。 */
@@ -1048,7 +1083,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     // 2026-09: 胸升級實裝 (電量/MD5/ACK/升級線程/啟動/狀態) 搬咗去 ChestUpgrade
     // (拆 god object 第四刀)。
     /** Formats raw serial bytes as space-separated uppercase hex, matching the format
-     *  used by the upstream SDK's HelloAlpha example for the same callbacks. */
+     *  used by the upstream SDK's HelloAlpha example for the same callbacks.
+     *  2026-09-09：手寫 hex 表（之前逐 byte String.format，chest 幀路徑高頻，慳 GC）。 */
+    private static final char[] HEX_UPPER = "0123456789ABCDEF".toCharArray();
     static String toHex(byte[] bytes, int len) {
         if (bytes == null || len <= 0) {
             return "(empty)";
@@ -1056,7 +1093,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         StringBuilder sb = new StringBuilder(len * 3);
         int n = Math.min(len, bytes.length);
         for (int i = 0; i < n; i++) {
-            sb.append(String.format("%02X", bytes[i] & 0xFF));
+            int v = bytes[i] & 0xFF;
+            sb.append(HEX_UPPER[v >>> 4]).append(HEX_UPPER[v & 0x0F]);
             if (i < n - 1) {
                 sb.append(' ');
             }

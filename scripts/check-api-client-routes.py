@@ -49,7 +49,8 @@ cases = {
 }
 
 client = CLIENT.read_text(encoding="utf-8")
-calls = re.findall(r"return (api|sysApi|directApi|xiaozhiApi)\('([^']+)', params\)", client)
+# 2026-09-09：單雙引號都認（之前淨係單引號，手寫雙引號即漏檢）。
+calls = re.findall(r"return (api|sysApi|directApi|xiaozhiApi)\([\"']([^\"']+)[\"'], params\)", client)
 assert calls, "api-client.js 內一個 wrapper call 都搵唔到"
 
 bad = []

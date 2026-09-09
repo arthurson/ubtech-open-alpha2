@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Open Alpha2 API",
-    "description": "`com.open.alpha2` 裝在 UBTECH Alpha2 機械人 (Android 5.1.1, API 22) 上的本地控制面板 HTTP + WebSocket API。\n依 `ApiDispatcher handleApi()` / `HttpServer` 反向生成，\n覆蓋機械人全部本機能力（原 17 個 AIDL interface 功能，現經直驅實現），加上獨立的 system/xiaozhi/stream/upload 命名空間。\n預設由 `HttpServer.PORT = 8888` 以純 HTTP 提供 (`http://<robot-ip>:8888/`)，同 WiFi 任何瀏覽器可直接訪問。\n所有 `/api/*` 回應皆為 `application/json; charset=utf-8` 的 `{ok: boolean, ...}` 形狀，失敗時帶 `error` 欄位。\n即時事件 (觸摸/ASR/電池/跌落/PIR 等) 經 `GET /ws` (RFC6455 WebSocket) 推送，非輪詢。\n",
+    "description": "`com.open.alpha2` 裝在 UBTECH Alpha2 機械人 (Android 5.1.1, API 22) 上的本地控制面板 HTTP + WebSocket API。\n依 `MainActivity handleApi()` / `HttpServer` 反向生成，\n覆蓋機械人全部本機能力（原 17 個 AIDL interface 功能，現經直驅實現），加上獨立的 system/xiaozhi/stream/upload 命名空間。\n預設由 `HttpServer.PORT = 8888` 以純 HTTP 提供 (`http://<robot-ip>:8888/`)，同 WiFi 任何瀏覽器可直接訪問。\n所有 `/api/*` 回應皆為 `application/json; charset=utf-8` 的 `{ok: boolean, ...}` 形狀，失敗時帶 `error` 欄位。\n即時事件 (觸摸/ASR/電池/跌落/PIR 等) 經 `GET /ws` (RFC6455 WebSocket) 推送，非輪詢。\n",
     "version": "beta 4",
     "contact": {
       "name": "Open Alpha2",
@@ -90,7 +90,7 @@
         "tags": [
           "core"
         ],
-        "summary": "取得 App 健康聚合（直驅 chest/header 可用性＋TTS 狀態）",
+        "summary": "取得 App 與各 Service 綁定狀態",
         "operationId": "getStatus",
         "responses": {
           "200": {
@@ -206,9 +206,11 @@
             "in": "query",
             "schema": {
               "type": "integer",
+              "minimum": 0,
+              "maximum": 2047,
               "default": 0
             },
-            "description": "起始頁 index"
+            "description": "起始頁 index (262144B firmware / 128B page = 2048 頁, 0-2047)"
           }
         ],
         "responses": {
@@ -259,8 +261,11 @@
             "in": "query",
             "required": true,
             "schema": {
-              "type": "integer"
-            }
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2047
+            },
+            "description": "頁 index (262144B firmware / 128B page = 2048 頁, 0-2047)"
           }
         ],
         "responses": {
@@ -679,9 +684,11 @@
             "in": "query",
             "required": true,
             "schema": {
-              "type": "integer"
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
             },
-            "description": "距離 cm"
+            "description": "距離 cm (前端 slider 實測範圍 0-100)"
           }
         ],
         "responses": {
@@ -711,16 +718,21 @@
             "in": "query",
             "schema": {
               "type": "integer",
+              "minimum": 1,
+              "maximum": 7,
               "default": 3
-            }
+            },
+            "description": "1紅2綠3藍4黃5紫6青7白"
           },
           {
             "name": "mode",
             "in": "query",
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "default": 0
-            }
+            },
+            "description": "效果模式 (已知實測值 0/1/3/5, 無文件化上限)"
           }
         ],
         "responses": {
@@ -750,8 +762,11 @@
             "in": "query",
             "schema": {
               "type": "integer",
+              "minimum": 0,
+              "maximum": 5000,
               "default": 500
-            }
+            },
+            "description": "呼吸速度 ms (實測可用範圍 0-5000)"
           }
         ],
         "responses": {
@@ -795,7 +810,7 @@
         "tags": [
           "direct"
         ],
-        "summary": "單舵機直驅 (ubxApi.servoSendOne cmd05, 預設 time=500)",
+        "summary": "單舵機直驅 (localServices.chestSetSingle, 預設 time=500)",
         "parameters": [
           {
             "name": "id",
@@ -812,17 +827,22 @@
             "in": "query",
             "required": true,
             "schema": {
-              "type": "integer"
-            }
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "description": "目標角度 (servoSendOneCode 內部 clamp 到 0-255)"
           },
           {
             "name": "time",
             "in": "query",
             "schema": {
               "type": "integer",
+              "minimum": 20,
+              "maximum": 32767,
               "default": 500
             },
-            "description": "執行時間 ms"
+            "description": "執行時間 ms (下限 20ms 為 code 內強制底線; 上限為 wire short 型別範圍)"
           }
         ],
         "responses": {
@@ -876,9 +896,11 @@
             "in": "query",
             "schema": {
               "type": "integer",
+              "minimum": 20,
+              "maximum": 32767,
               "default": 500
             },
-            "description": "執行時間 ms"
+            "description": "執行時間 ms (下限 20ms 為 code 內強制底線; 上限為 wire short 型別範圍)"
           }
         ],
         "responses": {
@@ -1851,9 +1873,12 @@
             "name": "mode",
             "in": "query",
             "schema": {
-              "type": "integer"
+              "type": "integer",
+              "minimum": -1,
+              "maximum": 3,
+              "default": -1
             },
-            "description": "-1/省略=跟預設，0=標準 1=短 2=長 3=很長"
+            "description": "-1/省略=跟預設，0=標準 1=短 2=長 3=很長 (ApiValidator.optionalVoskEndpointerMode 範圍)"
           },
           {
             "name": "t_start",
@@ -1918,17 +1943,22 @@
             "in": "query",
             "required": true,
             "schema": {
-              "type": "integer"
-            }
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "description": "目標角度 (servoSendOneCode 內部 clamp 到 0-255)"
           },
           {
             "name": "time",
             "in": "query",
             "schema": {
               "type": "integer",
+              "minimum": 20,
+              "maximum": 32767,
               "default": 1000
             },
-            "description": "執行時間 ms"
+            "description": "執行時間 ms (下限 20ms 為 code 內強制底線; 上限為 wire short 型別範圍)"
           },
           {
             "name": "trim",
@@ -2003,8 +2033,11 @@
             "in": "query",
             "schema": {
               "type": "integer",
+              "minimum": 20,
+              "maximum": 32767,
               "default": 1000
-            }
+            },
+            "description": "執行時間 ms (下限 20ms 為 code 內強制底線; 上限為 wire short 型別範圍)"
           }
         ],
         "responses": {
@@ -2309,9 +2342,11 @@
             "in": "query",
             "required": true,
             "schema": {
-              "type": "integer"
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
             },
-            "description": "cm"
+            "description": "cm (前端 slider 實測範圍 0-100)"
           }
         ],
         "responses": {
@@ -2475,7 +2510,7 @@
         "tags": [
           "led"
         ],
-        "summary": "設定頭部 5-mic LED (LedCenter→DirectLedController JNI)",
+        "summary": "設定頭部 5-mic LED (ledSetHead5Mic)",
         "parameters": [
           {
             "name": "color",
@@ -2536,7 +2571,7 @@
         "tags": [
           "led"
         ],
-        "summary": "設定眼部 5-mic LED (LedCenter→DirectLedController JNI)",
+        "summary": "設定眼部 5-mic LED (ledSetEye5Mic)",
         "parameters": [
           {
             "name": "color",
@@ -2614,6 +2649,8 @@
             "in": "query",
             "schema": {
               "type": "integer",
+              "minimum": 0,
+              "maximum": 5000,
               "default": 0
             },
             "description": "呼吸速度 ms (0-5000)"
@@ -2652,6 +2689,7 @@
           "led"
         ],
         "summary": "原始 JNI LED 測試 (LedControl.open/ledSetOFF/ledSetOn/ledSetEye/ledSetHead)",
+        "description": "除錯用 raw passthrough endpoint - i/a1-a8 刻意不設 min/max，讓開發者可以直接試探 driver 各個未知參數組合；勿當作一般 API 加範圍收窄。",
         "parameters": [
           {
             "name": "func",
@@ -2889,15 +2927,21 @@
             "name": "w",
             "in": "query",
             "schema": {
-              "type": "integer"
-            }
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4208
+            },
+            "description": "未提供則用當前 preview 解像度 (sensor picture 上限 4208)"
           },
           {
             "name": "h",
             "in": "query",
             "schema": {
-              "type": "integer"
-            }
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3120
+            },
+            "description": "未提供則用當前 preview 解像度 (sensor picture 上限 3120)"
           }
         ],
         "responses": {
@@ -2948,16 +2992,22 @@
             "in": "query",
             "schema": {
               "type": "integer",
+              "minimum": 1,
+              "maximum": 4208,
               "default": 4208
-            }
+            },
+            "description": "sensor picture 最大寬度 4208 (最大 picture 尺寸)"
           },
           {
             "name": "h",
             "in": "query",
             "schema": {
               "type": "integer",
+              "minimum": 1,
+              "maximum": 3120,
               "default": 3120
-            }
+            },
+            "description": "sensor picture 最大高度 3120 (最大 picture 尺寸)"
           }
         ],
         "responses": {
@@ -3156,16 +3206,22 @@
             "in": "query",
             "required": true,
             "schema": {
-              "type": "integer"
-            }
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4208
+            },
+            "description": "setRequestedResolution 會揀最接近嘅 supported preview size (不超過 sensor picture 上限 4208)"
           },
           {
             "name": "h",
             "in": "query",
             "required": true,
             "schema": {
-              "type": "integer"
-            }
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3120
+            },
+            "description": "setRequestedResolution 會揀最接近嘅 supported preview size (不超過 sensor picture 上限 3120)"
           }
         ],
         "responses": {
@@ -3379,8 +3435,10 @@
             "in": "query",
             "required": true,
             "schema": {
-              "type": "integer"
-            }
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "RingtoneManager cursor position (裝置相關, 無固定上限; 超出範圍已由 handler try/catch 回 \"invalid index\")"
           }
         ],
         "responses": {
@@ -3630,8 +3688,10 @@
             "in": "query",
             "required": true,
             "schema": {
-              "type": "integer"
-            }
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "MediaPlayer.seekTo() position, 跟隨曲目長度 (無固定上限; 已由 handler try/catch 保護)"
           }
         ],
         "responses": {
@@ -3821,8 +3881,10 @@
             "in": "query",
             "required": true,
             "schema": {
-              "type": "integer"
-            }
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Android Equalizer preset index (裝置/廠商決定數量, 無固定上限; 已由 getNumberOfPresets() 邊界檢查保護)"
           }
         ],
         "responses": {
@@ -3964,8 +4026,10 @@
             "in": "query",
             "required": true,
             "schema": {
-              "type": "integer"
-            }
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "STREAM_MUSIC volume level (上限為裝置 getStreamMaxVolume, 已由 handler 硬 clamp 到 0..max)"
           }
         ],
         "responses": {
@@ -4295,7 +4359,7 @@
         "tags": [
           "core"
         ],
-        "summary": "直讀胸口 EEPROM SN (chest cmd55；結果兼經 WebSocket robot_uuid)",
+        "summary": "請求機械人 UUID (觸發 broadcast, 結果經 WebSocket robot_uuid)",
         "responses": {
           "200": {
             "description": "已請求",
@@ -4520,8 +4584,10 @@
             "in": "query",
             "required": true,
             "schema": {
-              "type": "integer"
-            }
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "MediaPlayer.seekTo() position, 跟隨曲目長度 (無固定上限; 已由 handler try/catch 保護)"
           }
         ],
         "responses": {
@@ -5154,7 +5220,7 @@
         "tags": [
           "xiaozhi"
         ],
-        "summary": "關閉小智麥克風並交還 mic (speech_SetMIC false)",
+        "summary": "關閉小智麥克風並交還給 wake-word 引擎",
         "responses": {
           "200": {
             "description": "已關閉",
@@ -5525,7 +5591,7 @@
           "stream"
         ],
         "summary": "麥克風 WAV 分片串流 (multipart/mixed, boundary=opensdktestpanelaudio)",
-        "description": "需先取得 mic 擁有權 (Mic tab 與小智各持一份 speech_SetMIC 開關)，每 part 為獨立 WAV",
+        "description": "需先取得 mic 擁有權 (releaseMicForAudioIo)，每 part 為獨立 WAV",
         "responses": {
           "200": {
             "description": "音頻流",

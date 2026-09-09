@@ -22,7 +22,12 @@ public final class DirectChestController {
     /** 單舵機：用本 package 的 DeveloperPacketData 打包，保持與原廠完全一致 */
     public boolean setSingleServo(byte id, int angle, short time) {
         if (id < 1 || id > 20) return false;
+        // 角度單位同 servo/one 一致（0-255；MCP schema 同 spec 上限）：唔鉗位直接
+        // 截 byte 會 wrap 猛扯。time 照舊下限 20，上限跟 spec 32767。
+        if (angle < 0) { android.util.Log.w("DirectChest", "angle clamp 0 (was " + angle + ")"); angle = 0; }
+        if (angle > 255) { android.util.Log.w("DirectChest", "angle clamp 255 (was " + angle + ")"); angle = 255; }
         if (time < 20) time = 20;
+        if (time > 32767) time = 32767;
         DeveloperPacketData p = new DeveloperPacketData(5);
         p.putByte(id);
         p.putByte((byte) ((angle >> 8) & 0xFF));
@@ -38,8 +43,14 @@ public final class DirectChestController {
     public boolean playAllServos(int[] angles20, short time) {
         if (angles20 == null || angles20.length != 20) return false;
         if (time < 20) time = 20;
+        if (time > 32767) time = 32767;
         DeveloperPacketData p = new DeveloperPacketData(22);
-        for (int a : angles20) p.putByte((byte) a);
+        for (int a : angles20) {
+            int v = a;
+            if (v < 0) v = 0;
+            if (v > 255) v = 255;
+            p.putByte((byte) v);
+        }
         p.putShort_(time);
         return port.send(RobotWire.CHEST_CMD_SENDMOTOR, p.getBuffer());
     }
@@ -54,9 +65,12 @@ public final class DirectChestController {
         return playAllServos(angles20, time);
     }
 
-    /** 聲納配置：1.1.7.3 正確值為 subCmd=10, 距離 cm */
+    /** 聲納配置：1.1.7.3 正確值為 subCmd=10, 距離 cm（byte 範圍，超限鉗 0-255 防 wrap） */
     public boolean configureSonar(int distanceCm) {
-        return port.send(RobotWire.CHEST_CMD_SETTING, new byte[]{10, (byte) distanceCm});
+        int v = distanceCm;
+        if (v < 0) v = 0;
+        if (v > 255) v = 255;
+        return port.send(RobotWire.CHEST_CMD_SETTING, new byte[]{10, (byte) v});
     }
 
     /** PIR 使能：cmd=72，實測 1.1.7.3 固件有效 */
@@ -71,7 +85,8 @@ public final class DirectChestController {
 
     /** 讀舵機角度 (cmd 13) - 回幀走 OnFrameListener 解析 */
     public boolean readServo(byte servoId) {
-        return port.send((byte) 13, new byte[]{servoId});
+        if (servoId < 1 || servoId > 20) return false;
+        return port.send(RobotWire.CHEST_CMD_READ_SERVO, new byte[]{servoId});
     }
 
     /**
@@ -86,7 +101,7 @@ public final class DirectChestController {
         if (trim < -32768) trim = -32768;
         if (trim > 32767) trim = 32767;
         byte[] p = new byte[]{(byte) servoId, (byte) ((trim >> 8) & 0xFF), (byte) (trim & 0xFF)};
-        return port.send((byte) 12, p);
+        return port.send(RobotWire.CHEST_CMD_WRITE_TRIM, p);
     }
 
     /** 讀胸板固件版本 cmd 51 */
@@ -98,13 +113,15 @@ public final class DirectChestController {
      *  pure-direct 下取代經 alpha2services broadcast 查詢 (機身已無此 APK,
      *  robot.requestRobotUUID() 發出的 broadcast 永遠無人回覆, 見 misc/request_uuid)。
      *  無參數: 編碼後 wire 幀為 F8 8F 07 00 00 37 3E ED。回覆經 OnFrameListener
-     *  以 cmd=55 (0x37) 幀送回, 由 ChestQuery.queryRobotUuid() 等待/解析。 */
+     *  以 cmd=55 (0x37) 幀送回, 由 MainActivity.queryChestRobotUuid() 等待/解析。 */
     public boolean readSidEeprom() {
         return port.send(RobotWire.CHEST_READ_SID_EEPROM, null);
     }
 
-    /** 開始升級 chest：cmd 48 + 4B fileLen 大端 */
+    /** 開始升級 chest：cmd 48 + 4B fileLen 大端（fileLen 必須 >0，負數編出嚟
+     *  MCU 會當巨文件，有變磚風險，直接拒）。 */
     public boolean startUpdate(int fileLen) {
+        if (fileLen <= 0) return false;
         byte[] p = new byte[4];
         p[0] = (byte) ((fileLen >> 24) & 0xFF);
         p[1] = (byte) ((fileLen >> 16) & 0xFF);
@@ -114,6 +131,9 @@ public final class DirectChestController {
     }
 
     public boolean updatePage(byte[] pageData, int pageLen) {
+        // pageLen 無檢查會 NegativeArraySize/OOM/arraycopy 越界，壞包直落 MCU。
+        if (pageData == null || pageLen < 0 || pageLen > pageData.length) return false;
+        if (pageLen == 0) return false;
         byte[] p = new byte[pageLen + 2];
         p[0] = (byte) ((pageLen >> 8) & 0xFF);
         p[1] = (byte) (pageLen & 0xFF);

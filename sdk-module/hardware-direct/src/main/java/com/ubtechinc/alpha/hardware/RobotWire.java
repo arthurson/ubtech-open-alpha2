@@ -28,7 +28,13 @@ public final class RobotWire {
     public static final byte CHES_CMD_UPDATE_PAGE = 49;
     public static final byte CHES_CMD_UPDATE_END = 50;
     public static final byte CHEST_READ_VERSION = 51;
+    /** 已死：播放唔行呢個（行 cmd 3），留低只防同 52 撞名，唔好用。 */
+    @Deprecated
     public static final byte CHEST_SET_ALL_ANGLE = 52;
+    /** 讀舵機 trim/cmd13（DirectChestController.readServo）。 */
+    public static final byte CHEST_CMD_READ_SERVO = 13;
+    /** 寫舵機 trim/cmd12（DirectChestController.writeServoTrim，EEPROM 掉電保持）。 */
+    public static final byte CHEST_CMD_WRITE_TRIM = 12;
     /** 群舵機播放幀：a.m 私有發送原文 cmd 3 [20軸byte + short time]（smali 實證，勿與 52 混用）。 */
     public static final byte CHEST_CMD_SENDMOTOR = 3;
     public static final byte CHEST_READ_SID_EEPROM = 55;

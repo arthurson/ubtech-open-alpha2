@@ -187,7 +187,12 @@ function xiaozhiShowActivationCode(code) {
  *  顯示, 用戶反映淨係想留低對話界面呢個, 其餘 3 個 (進階小格 activationBox、
  *  modal overlay、window.alert()) 已經拿走。
  *  2026-09: 連 xiaozhiHideActivationModal() 個空殼 (查唔存在嘅 overlay) 一併刪埋，
- *  呢段 comment 留低做紀錄，唔好摷返出嚟。 */
+  *  呢段 comment 留低做紀錄，唔好摷返出嚟。
+  *  2026-09-09: index.html 殘留 overlay 已刪；為防舊快取頁面仲 call 到，
+  *  留兩個 no-op stub 擋 ReferenceError。 */
+
+function xiaozhiShowActivationModal() { /* 已移除：配對碼只經對話界面顯示 */ }
+function xiaozhiHideActivationModal() { /* 已移除：見上 */ }
 
 function xiaozhiHideActivationCode() {
   const els = xiaozhiElements();

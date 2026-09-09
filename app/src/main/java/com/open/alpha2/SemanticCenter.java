@@ -19,9 +19,9 @@ public final class SemanticCenter {
     private static final String TAG = "SemanticCenter";
 
     /** TTS 之後要等多久才播動作, 沿用悠聊 RobotActionBusiness.startBusiness() 反編譯
-     *  出來的原本時序 (先 TTS, sleep 200ms, 才播動作 - 兩者是分開、非同步執行
-     *  (家下 TTS 經 TtsCenter、動作經 actionDirect)，只靠這個 sleep 頂住,
-     *  沒有等 TTS 真的播完才動)。用戶已確認沿用悠聊原本這樣做, 不改成等 TTS 播完才動。 */
+     *  出來的原本時序 (先 TTS, sleep 200ms, 才播動作 - 兩者是分開、非同步的 AIDL
+     *  call, 只靠這個 sleep 頂住, 沒有等 TTS 真的播完才動)。用戶已確認沿用悠聊原本
+     *  這樣做, 不改成等 TTS 播完才動。 */
     private static final int IFLYTEK_TTS_TO_ACTION_DELAY_MS = 200;
 
     private final IflytekSemanticMatcher iflytekMatcher;
@@ -77,8 +77,9 @@ public final class SemanticCenter {
      *  即時告訴前端「有沒有配對中」, publishEvent=false 那個用法不會再經由 EventBus
      *  多 publish 一次 (前端 sendSpeechChatText() 已經即時用 HTTP response 顯示)。
      *
-     *  TTS/動作執行本身依然在獨立 thread 上做 (唔塞呼叫者可能係 HTTP worker
-     *  thread 的 thread) - 和 triggerRandomFillerAction() 一致的安全做法。 */
+     *  TTS/動作執行本身依然在獨立 thread 上做 AIDL blocking call, 不在呼叫者的
+     *  thread (可能是 HTTP worker thread) 上直接做 - 和 triggerRandomFillerAction()
+     *  一致的安全做法。 */
     public IflytekSemanticMatcher.MatchResult handleIflytekSemanticText(final String text,
                                                                          final boolean publishEvent) {
         final boolean chinese = looksChinese(text);

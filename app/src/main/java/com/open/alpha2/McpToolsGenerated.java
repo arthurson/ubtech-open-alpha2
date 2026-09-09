@@ -107,12 +107,16 @@ public final class McpToolsGenerated {
                 JSONObject p = new JSONObject();
                 p.put("type", "integer");
                 p.put("description", "Target angle in degrees.");
+                p.put("minimum", 0);
+                p.put("maximum", 255);
                 props.put("angle", p);
             }
             {
                 JSONObject p = new JSONObject();
                 p.put("type", "integer");
                 p.put("description", "Movement duration in milliseconds. Default 1000.");
+                p.put("minimum", 20);
+                p.put("maximum", 32767);
                 p.put("default", 1000);
                 props.put("time_ms", p);
             }
@@ -140,6 +144,8 @@ public final class McpToolsGenerated {
                 JSONObject p = new JSONObject();
                 p.put("type", "integer");
                 p.put("description", "Movement duration in milliseconds. Default 1000.");
+                p.put("minimum", 20);
+                p.put("maximum", 32767);
                 p.put("default", 1000);
                 props.put("time_ms", p);
             }
@@ -311,6 +317,8 @@ public final class McpToolsGenerated {
                 JSONObject p = new JSONObject();
                 p.put("type", "integer");
                 p.put("description", "cm.");
+                p.put("minimum", 0);
+                p.put("maximum", 100);
                 props.put("distance_cm", p);
             }
             s.put("properties", props);
@@ -475,6 +483,9 @@ public final class McpToolsGenerated {
             t.put("inputSchema", s);
             tools.put(t);
         }
+        // 2026-09-09：再生漏改 TOOL_COUNT 即靜默錯，runtime 斷言釘死。
+        if (tools.length() != TOOL_COUNT) throw new IllegalStateException(
+                "TOOL_COUNT=" + TOOL_COUNT + " but built " + tools.length());
         return tools;
     }
 }

@@ -38,14 +38,32 @@ public final class DirectSerialPort {
     private final String altPath2;
     private final int baudrate;
 
-    private InputStream input;
-    private OutputStream output;
+    private volatile InputStream input;
+    private volatile OutputStream output;
     private FileDescriptor fd;
     private Object serialPortFileObj; // JNI 路徑時持有，供 close() 用
-    private String openedPath;
+    private volatile String openedPath;
     private Thread readerThread;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final CopyOnWriteArraySet<OnFrameListener> listeners = new CopyOnWriteArraySet<>();
+    // 跨實例獨佔：胸/頭 ALT2 同指 /dev/ttyS0，兩邊齊開會分流幀互搶。
+    // 開咗嘅 path 記低，另一邊見到就跳過試下一個。
+    private static final java.util.Set<String> sOpenedPaths =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
+
+    /** 該 path 係咪已經被另一個 port 攞咗（獨佔檢查用）。 */
+    private static boolean claimPath(String path) {
+        synchronized (sOpenedPaths) {
+            if (sOpenedPaths.contains(path)) return false;
+            sOpenedPaths.add(path);
+            return true;
+        }
+    }
+
+    private static void releasePath(String path) {
+        if (path == null) return;
+        synchronized (sOpenedPaths) { sOpenedPaths.remove(path); }
+    }
 
     public DirectSerialPort(String primaryPath, String altPath, int baudrate) {
         this(primaryPath, altPath, null, baudrate);
@@ -122,6 +140,11 @@ public final class DirectSerialPort {
                     jfd = (FileDescriptor) f.get(obj);
                 }
             } catch (Exception ignore) { /* fd 可選，有則存，無亦可 */ }
+            if (!claimPath(path)) {
+                Log.w(TAG, path + " already held by another port, skipping (獨佔，防分流幀)");
+                try { cls.getMethod("close").invoke(obj); } catch (Exception ignore) {}
+                return false;
+            }
             this.input = in;
             this.output = out;
             this.fd = jfd;
@@ -131,8 +154,10 @@ public final class DirectSerialPort {
             return true;
         } catch (ClassNotFoundException e) {
             Log.d(TAG, "SerialPortFile class not found, fallback to File: " + e.getMessage());
-        } catch (Exception e) {
-            Log.d(TAG, "JNI open failed for " + path + ": " + e);
+        } catch (Throwable t) {
+            // UnsatisfiedLinkError/NoSuchMethodError（Error 非 Exception）唔接會
+            // 穿透撞死調用線程；一律當開唔到，試下一個。
+            Log.d(TAG, "JNI open failed for " + path + " (" + t.getClass().getSimpleName() + "): " + t.getMessage());
         }
         return false;
     }
@@ -144,9 +169,22 @@ public final class DirectSerialPort {
             Log.d(TAG, "device not found: " + path);
             return false;
         }
+        if (!claimPath(path)) {
+            Log.w(TAG, path + " already held by another port, skipping (獨佔，防分流幀)");
+            return false;
+        }
+        FileInputStream fin = null;
         try {
-            FileInputStream fin = new FileInputStream(dev);
-            FileOutputStream fout = new FileOutputStream(dev);
+            fin = new FileInputStream(dev);
+            FileOutputStream fout;
+            try {
+                fout = new FileOutputStream(dev);
+            } catch (Exception e) {
+                // 第二步炸咗要閂返第一個 fd，唔係漏。
+                try { fin.close(); } catch (Exception ignore) {}
+                fin = null;
+                throw e;
+            }
             this.input = fin;
             this.output = fout;
             try { this.fd = fin.getFD(); } catch (Exception ignore) {}
@@ -158,7 +196,8 @@ public final class DirectSerialPort {
             Log.i(TAG, "opened via File: " + path);
             return true;
         } catch (Exception e) {
-            Log.d(TAG, "File open failed for " + path + ": " + e.getMessage());
+            Log.d(TAG, "File open failed for " + path + " (" + e.getClass().getSimpleName() + "): " + e.getMessage());
+            releasePath(path);
             closeQuietly();
             return false;
         }
@@ -171,18 +210,31 @@ public final class DirectSerialPort {
                 "stty -F " + path + " " + baudrate + " cs8 -cstopb -parenb raw -echo",
         };
         for (String cmd : cmds) {
+            Process p = null;
             try {
-                Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd + "; busybox stty -F " + path + " 2>&1 | head -1"});
+                p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd + "; stty -F " + path + " 2>&1 | head -1"});
                 java.io.BufferedReader r = new java.io.BufferedReader(
                         new java.io.InputStreamReader(p.getInputStream()));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = r.readLine()) != null) sb.append(line).append(' ');
-                p.waitFor();
-                Log.i(TAG, "stty " + path + " [" + cmd.split(" ")[0] + "] -> " + sb.toString().trim());
-                if (sb.toString().contains(String.valueOf(baudrate))) return; // 配好了就不用試下一條
+                try {
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = r.readLine()) != null) sb.append(line).append(' ');
+                    // stdout 讀完都要排乾 stderr，唔係子進程寫滿 pipe 會卡死 waitFor。
+                    java.io.InputStream err = p.getErrorStream();
+                    try {
+                        byte[] drain = new byte[256];
+                        while (err.available() > 0 && err.read(drain) > 0) { /* 掉棄 */ }
+                    } catch (Exception ignore) {}
+                    p.waitFor();
+                    Log.i(TAG, "stty " + path + " [" + cmd.split(" ")[0] + "] -> " + sb.toString().trim());
+                    if (sb.toString().contains(String.valueOf(baudrate))) return; // 配好了就不用試下一條
+                } finally {
+                    try { r.close(); } catch (Exception ignore) {}
+                }
             } catch (Exception e) {
                 Log.d(TAG, "stty attempt failed (" + cmd.split(" ")[0] + "): " + e.getMessage());
+            } finally {
+                if (p != null) p.destroy();
             }
         }
     }
@@ -200,6 +252,10 @@ public final class DirectSerialPort {
             return true;
         } catch (IOException e) {
             Log.w(TAG, "send failed: " + e.getMessage());
+            return false;
+        } catch (RuntimeException e) {
+            // encode() 參數超限（plen>248）等：唔好送壞幀落 MCU，直接失敗。
+            Log.w(TAG, "send rejected (" + e.getMessage() + ")");
             return false;
         }
     }
@@ -252,7 +308,10 @@ public final class DirectSerialPort {
                             pos = 0;
                         } else {
                             pos = avail;
-                            if (pos >= buf.length - 256) pos = 0; // 防溢出，丟棄
+                            if (pos >= buf.length - 256) {
+                                Log.w(TAG, "reader dropping " + pos + "B garbage (no F8 8F head)");
+                                pos = 0; // 防溢出，丟棄
+                            }
                         }
                     } catch (Exception e) {
                         if (running.get()) Log.w(TAG, "reader error: " + e.getMessage());
@@ -267,17 +326,23 @@ public final class DirectSerialPort {
 
     public synchronized void close() {
         running.set(false);
-        if (readerThread != null) { try { readerThread.interrupt(); readerThread.join(500); } catch (InterruptedException ignore) {} readerThread = null; }
+        // 先閂 stream 鬆開 blocking read（FileInputStream.read 唔食 interrupt，
+        // 唔閂就 join 實超時留孤兒線程），再 join。
         closeQuietly();
+        if (readerThread != null) { try { readerThread.interrupt(); readerThread.join(500); } catch (InterruptedException ignore) {} readerThread = null; }
     }
 
     private void closeQuietly() {
-        try { if (input != null) input.close(); } catch (IOException ignore) {}
-        // output 關閉會連帶關 fd；input/output 同 fd 時關一次即可，但分開 try 更穩
-        try { if (output != null) output.close(); } catch (IOException ignore) {}
+        // JNI 路徑：input/output 係 SerialPortFile 包住同一個 native fd 嘅 view，
+        // 逐個 close 再加 native close = double-close（fd 號復用會誤關別人文件）。
+        // 呢條路只行 native close 一次。File 路徑：fin/fout 係兩個獨立 fd，兩個都要閂。
         if (serialPortFileObj != null) {
             try { serialPortFileObj.getClass().getMethod("close").invoke(serialPortFileObj); } catch (Exception ignore) {}
+        } else {
+            try { if (input != null) input.close(); } catch (IOException ignore) {}
+            try { if (output != null) output.close(); } catch (IOException ignore) {}
         }
+        releasePath(openedPath);
         input = null; output = null; fd = null; serialPortFileObj = null; openedPath = null;
     }
 }

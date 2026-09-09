@@ -199,8 +199,8 @@ public final class DeviceStatus implements SensorEventListener {
      * Turns the accelerometer feed on/off. Safe to call repeatedly - a no-op if already
      * in the requested state. registerListener()/unregisterListener() must run on a
      * thread with a Looper (per SensorManager's contract) - both are called here on the
-     * main thread, matching how the sensorManager setup used to live in
-     * MainActivity (now MainActivity.registerDynamicReceiver() wires this class).
+     * main thread, matching how the sensorManager used to be set up in
+     * MainActivity.registerGestureController() in onCreate().
      */
     public synchronized void setAccelerometerEnabled(boolean enabled) {
         if (sensorManager == null || accelerometerSensor == null) {
@@ -211,8 +211,8 @@ public final class DeviceStatus implements SensorEventListener {
             return;
         }
         if (enabled) {
-            // SENSOR_DELAY_NORMAL, not _UI: verified on hardware (Alpha2OpenSdk
-            // HelloAlpha example) - the
+            // SENSOR_DELAY_NORMAL, not _UI: verified on hardware in the Alpha2OpenSdk
+            // HelloAlpha example (see docs/capabilities.md "IMU / accelerometer") - the
             // RK3288's gsensor driver reliably delivers events at this rate. _UI was
             // observed to register successfully but never actually deliver events.
             sensorManager.registerListener(this, accelerometerSensor, SensorManager.SENSOR_DELAY_NORMAL);
@@ -341,7 +341,11 @@ public final class DeviceStatus implements SensorEventListener {
                         java.net.InetAddress addr = addrs.nextElement();
                         if (!addr.isLoopbackAddress() && addr instanceof java.net.Inet4Address) {
                             String host = addr.getHostAddress();
-                            if (host != null && (host.startsWith("192.168.") || host.startsWith("10."))) {
+                            // 2026-09-09 補 172.16/12（之前得 192.168/10.，某啲
+                            // 熱點/公司網會誤判；另見 isSiteLocal 註：fd00::/8
+                            // IPv6 ULA 呢部機用唔着，唔判）。
+                            if (host != null && (host.startsWith("192.168.") || host.startsWith("10.")
+                                    || isPrivate172(host))) {
                                 return host;
                             }
                         }
@@ -351,6 +355,19 @@ public final class DeviceStatus implements SensorEventListener {
             return wifiIp != null ? wifiIp : "<device-ip>";
         } catch (Exception e) {
             return "<device-ip>";
+        }
+    }
+
+    /** 172.16.0.0–172.31.255.255 私網段（RFC1918 172.16/12）。 */
+    private static boolean isPrivate172(String host) {
+        if (!host.startsWith("172.")) return false;
+        int dot = host.indexOf('.', 4);
+        if (dot < 0) return false;
+        try {
+            int second = Integer.parseInt(host.substring(4, dot));
+            return second >= 16 && second <= 31;
+        } catch (NumberFormatException e) {
+            return false;
         }
     }
 }

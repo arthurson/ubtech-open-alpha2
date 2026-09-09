@@ -11,7 +11,7 @@ import java.util.Map;
  * 這些散在各 handle*Api case 的重複 boilerplate 集中到一處。
  *
  * 設計原則：
- *  - 零額外依賴 (只用 Map/String)，符合此專案 "Android framework + JDK only" 政策。
+ *  - 零額外依賴 (只用 Map/String)，符合此專案 "Android framework + JDK only" 政策 (見 HttpServer.java:34)。
  *  - API 22 相容 (不用 Map.getOrDefault)。
  *  - 拋 IllegalArgumentException，交由 handleApi 外層 catch 統一轉成 {"ok":false,"error":...} (沿用現有 require 的行為)。
  *  -  不做重量級 JSON Schema 校驗，僅做本專案實際需要的：必填、整數、整數範圍、枚舉、boolean。
@@ -49,10 +49,12 @@ public final class ApiValidator {
     }
 
     // ── 整數 ────────────────────────────────────────────────────────
+    // 2026-09-09：全部 trim（之前 requireInt/optionalInt 唔 trim，optional 系
+    // 同 float 系 trim，前後唔一致；URL 傳 " 90 " 唔應該 400）。
     public static int requireInt(Map<String, String> q, String key) {
         String v = require(q, key);
         try {
-            return Integer.parseInt(v);
+            return Integer.parseInt(v.trim());
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
         }
@@ -62,7 +64,7 @@ public final class ApiValidator {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return defaultValue;
         try {
-            return Integer.parseInt(v);
+            return Integer.parseInt(v.trim());
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
         }
@@ -74,6 +76,22 @@ public final class ApiValidator {
             throw new IllegalArgumentException("parameter '" + key + "' must be between " + min + " and " + max + ", got: " + v);
         }
         return v;
+    }
+
+    /** 可選整數三態（缺席/空字串回 null；有值超限即 400；camera w/h 配對用）。 */
+    public static Integer optionalIntegerRange(Map<String, String> q, String key, int min, int max) {
+        String v = q.get(key);
+        if (v == null || v.isEmpty()) return null;
+        int iv;
+        try {
+            iv = Integer.parseInt(v.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
+        }
+        if (iv < min || iv > max) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be between " + min + " and " + max + ", got: " + iv);
+        }
+        return Integer.valueOf(iv);
     }
 
     public static int optionalIntRange(Map<String, String> q, String key, int min, int max, int defaultValue) {
@@ -324,10 +342,15 @@ public final class ApiValidator {
         }
         int[] out = new int[20];
         for (int i = 0; i < 20; i++) {
+            // 2026-09-09：逐粒 0-255（同 spec/MCP schema；之前唔驗，999 會靜默
+            // 截 byte wrap 落舵機，同 servo/one 唔一致）。
             try {
                 out[i] = Integer.parseInt(parts[i].trim());
             } catch (NumberFormatException e) {
                 throw new IllegalArgumentException("parameter 'angles' element " + (i+1) + " must be integer, got: " + parts[i]);
+            }
+            if (out[i] < 0 || out[i] > 255) {
+                throw new IllegalArgumentException("parameter 'angles' element " + (i+1) + " must be between 0 and 255, got: " + out[i]);
             }
         }
         return out;

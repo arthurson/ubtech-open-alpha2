@@ -46,8 +46,6 @@ public final class DirectLedController {
         return callLedReflect("ledSetOFF", new Class[]{int.class}, new Object[]{0}, "ledSetOFF");
     }
 
-    public static boolean openAnd(boolean r) { return r; } // 佔位
-
     private static boolean callLedReflect(String method, Class<?>[] types, Object[] args, String desc) {
         try {
             Class<?> cls = Class.forName(LED_CTRL);
@@ -89,7 +87,7 @@ public final class DirectLedController {
                 new Object[]{p1, p2, p3, p4, p5, p6, p7, p8}, "eye raw p1=" + p1 + " p8=" + p8);
     }
 
-    // 預設：color 沿用 1=紅…7=白編碼（見 LedCenter）
+    // 預設：與 MainActivity 的 translateColor 等價
     public static boolean headBreathing(int color) {
         return setHead5Mic(color, 9, 5, 20, Integer.MAX_VALUE, 1);
     }
@@ -102,7 +100,7 @@ public final class DirectLedController {
      * pure-direct 下取代 AIDL stop5MicEarLED / stop5MicEyeLED。
      * app 侧 LibControl 沒有獨立的 stop5Mic native，對應 AIDL 在機身侧最終也是關斷
      * 同一條 5-mic 通路，這裡統一走 ledSetOFF，與 clear() 同義，保留兩個名字只是
-     * 為了讓 LedCenter 的 stop preset 語義與原來一致。
+     * 為了讓 MainActivity 的 stop preset 語義與原來一致。
      */
     public static boolean stopHead5Mic() { return setOff(); }
     public static boolean stopEye5Mic() { return setOff(); }

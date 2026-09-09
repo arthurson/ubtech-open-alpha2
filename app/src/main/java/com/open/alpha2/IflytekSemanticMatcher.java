@@ -279,7 +279,7 @@ public class IflytekSemanticMatcher {
      *  回傳。找不到對應分類、或者分類是空 pool, 回傳 null (呼叫方要自行 fallback,
      *  例如 resolveRandomActionId() 隨機動作池)。
      *
-     *  呼叫方 (SemanticCenter.handleIflytekSemanticText()) 應該在拿到 MatchResult
+     *  呼叫方 (MainActivity.handleIflytekSemanticText()) 應該在拿到 MatchResult
      *  之後、真正 call robot.action_PlayActionName() 之前, 用這個方法將
      *  actionId 解析成真實可播放的 id - 和 "__RANDOM__" 標記 (見
      *  resolveRandomActionId()) 屬於同一種「延遲到執行時才選」的設計, 但這是

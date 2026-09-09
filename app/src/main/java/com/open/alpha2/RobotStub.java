@@ -71,7 +71,8 @@ public final class RobotStub {
     }
 
     // -- Mic (假成功：同 SDK 在 util null 時一樣回 true，乜都唔做) ---------------
-
+    // 注意：回 true 唔代表搶到 mic——調用方（MicCenter 持鎖管線）唔可以靠呢個
+    // 返回值判斷擁有權，只當「已通知（無人收）」；真實 mic 状态睇自家 AudioRecord。
     public boolean speech_SetMIC(boolean isWake) {
         return true;
     }

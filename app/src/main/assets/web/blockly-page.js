@@ -88,7 +88,9 @@ function connectWs() {
   }
   ws.onopen = function () { setWsStatus(true); };
   ws.onclose = function () { setWsStatus(false); scheduleReconnect(); };
-  ws.onerror = function () { setWsStatus(false); };
+  // 2026-09-09：error 即 close，行統一 onclose→重連（之前淨係 set 燈，
+  // error 後無 close 事件就永唔重連；同 app-log.js 睇齊）。
+  ws.onerror = function () { setWsStatus(false); try { ws.close(); } catch (e) {} };
   ws.onmessage = function (evt) {
     let parsed;
     try {

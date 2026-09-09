@@ -50,9 +50,8 @@ public final class GrammarCenter {
         }
     }
 
-    /** 2026-08 新增（歷史設計，現已不觸發——機身已無 alpha2services，
-     *  見本 class javadoc；離線語音行 Vosk）。
-     *  當年：開了之後, 機身 alpha2services 會用 engine_type=local + APK 裡面的
+    /** 2026-08 新增: 離線文法辨識 (iFlytek local BNF grammar) 模式現在開不開。
+     *  開了之後, 機身 alpha2services 會用 engine_type=local + APK 裡面的
      *  assets/asr/common.jet 離線資源做本地文法辨識 (完全不用上網), 辨識結果
      *  經 grammar listener 這條路徑回來。同時 onServerCallBack() 那條正常聽寫
      *  路徑會被 gate 住 - 因為 mSpeechServiceUtil 和 mAsrServiceUtil 是兩個

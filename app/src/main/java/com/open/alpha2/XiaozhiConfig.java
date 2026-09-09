@@ -214,6 +214,10 @@ public final class XiaozhiConfig {
             if (!url.startsWith("http://") && !url.startsWith("https://")) {
                 throw new IllegalArgumentException("url must start with http:// or https://");
             }
+            // 2026-09-09：自訂 http 明文會送 token 明文，留警告（唔擋：LAN 自架 server 合理）。
+            if (url.startsWith("http://")) {
+                android.util.Log.w("XiaozhiConfig", "custom OTA url is plain http (token 明文，限可信 LAN)");
+            }
             if (wsUrlOverride != null) {
                 String trimmed = wsUrlOverride.trim();
                 if (!trimmed.startsWith("ws://") && !trimmed.startsWith("wss://")) {

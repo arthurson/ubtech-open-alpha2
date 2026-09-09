@@ -73,13 +73,20 @@ final class XiaozhiTrustAllSsl {
     };
 
     private static volatile SSLSocketFactory cachedFactory;
+    private static volatile boolean warned;
 
     /** 取回一個已經裝了 TRUST_ALL_MANAGER 的 SSLSocketFactory - 給
      *  XiaozhiClient.connect() 包裝 raw socket 用, 代替
      *  SSLSocketFactory.getDefault() (跟系統 CA store, 在這個場景會撞
      *  CertPathValidatorException)。Lazy + cache: SSLContext.init() 不算
-     *  重, 但沒必要每次連接都重新起一個。 */
+     *  重, 但沒必要每次連接都重新起一個。
+     *  警告：此 factory 不驗證憑證鏈/hostname，只可用於小智兩條連線；
+     *  同網段 MITM 可偷 token/voice，唔好喺不可信網絡用。 */
     static SSLSocketFactory getTrustAllSocketFactory() {
+        if (!warned) {
+            warned = true;
+            Log.w(TAG, "trust-all TLS 生效中（不驗證憑證/hostname，僅限小智連線；不可信網絡勿用）");
+        }
         SSLSocketFactory factory = cachedFactory;
         if (factory != null) return factory;
         synchronized (XiaozhiTrustAllSsl.class) {

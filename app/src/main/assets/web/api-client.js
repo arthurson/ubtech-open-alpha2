@@ -11,6 +11,9 @@
 const Alpha2Api = (function() {
   function qs(params) { return params ? '?' + new URLSearchParams(params).toString() : ''; }
   function assertEnum(val, allowed, key) { if (val != null && !allowed.includes(val)) throw new Error(key + ' must be one of ' + allowed.join(',')); }
+  // 2026-09-09：數字 enum（ubx/speed 0.5/0.67/…）用數值比對＋後端同款 0.001 容差——
+  // URL/query 嚟嘅係字串，嚴格 includes 會誤殺 "1" 之類合法值。
+  function assertEnumNum(val, allowed, key) { if (val != null && !allowed.some(function(a){ return Math.abs(Number(val)-a) < 0.001; })) throw new Error(key + ' must be one of ' + allowed.join(',')); }
   function assertRange(val, min, max, key) { if (val < min || val > max) throw new Error(key + ' must be between '+min+' and '+max); }
 
   // ── action ──────────────────────────────────────────────
@@ -161,6 +164,8 @@ const Alpha2Api = (function() {
   }
 
   function cameraResolution(params) {
+    if (params && params.w != null) assertRange(Number(params.w), 1, 4208, 'w');
+    if (params && params.h != null) assertRange(Number(params.h), 1, 3120, 'h');
     // 設定預覽解像度並重啟相機
     return api('camera/resolution', params);
   }
@@ -176,6 +181,8 @@ const Alpha2Api = (function() {
   }
 
   function cameraSnapshotSave(params) {
+    if (params && params.w != null) assertRange(Number(params.w), 1, 4208, 'w');
+    if (params && params.h != null) assertRange(Number(params.h), 1, 3120, 'h');
     // 擷取預覽幀並存至 /sdcard/DCIM/Alpha2
     return api('camera/snapshot_save', params);
   }
@@ -186,6 +193,8 @@ const Alpha2Api = (function() {
   }
 
   function cameraTakePhotoSave(params) {
+    if (params && params.w != null) assertRange(Number(params.w), 1, 4208, 'w');
+    if (params && params.h != null) assertRange(Number(params.h), 1, 3120, 'h');
     // 完整拍照 (Camera.takePicture, 存檔)
     return api('camera/take_photo_save', params);
   }
@@ -202,6 +211,7 @@ const Alpha2Api = (function() {
   }
 
   function chestPage(params) {
+    if (params && params.page != null) assertRange(Number(params.page), 0, 2047, 'page');
     // 讀取指定頁的 128B hex (除錯用)
     return api('chest/page', params);
   }
@@ -217,6 +227,7 @@ const Alpha2Api = (function() {
   }
 
   function chestUpgradeResume(params) {
+    if (params && params.from != null) assertRange(Number(params.from), 0, 2047, 'from');
     // 從指定頁恢復升級
     return api('chest/upgrade/resume', params);
   }
@@ -232,7 +243,7 @@ const Alpha2Api = (function() {
   }
 
   function miscRequestUuid(params) {
-    // 直讀胸口 EEPROM SN (chest cmd55；結果兼經 WebSocket robot_uuid)
+    // 請求機械人 UUID (觸發 broadcast, 結果經 WebSocket robot_uuid)
     return api('misc/request_uuid', params);
   }
 
@@ -242,7 +253,7 @@ const Alpha2Api = (function() {
   }
 
   function status(params) {
-    // 取得 App 健康聚合（直驅 chest/header 可用性＋TTS 狀態）
+    // 取得 App 與各 Service 綁定狀態
     return api('status', params);
   }
 
@@ -253,11 +264,13 @@ const Alpha2Api = (function() {
 
   // ── direct ──────────────────────────────────────────────
   function directLedHead(params) {
+    if (params && params.color != null) assertRange(Number(params.color), 1, 7, 'color');
     // 頭燈直驅（color/mode 留空即預設 3/0）
     return directApi('led/head', params);
   }
 
   function directLedMouth(params) {
+    if (params && params.breathe != null) assertRange(Number(params.breathe), 0, 5000, 'breathe');
     // 嘴燈呼吸直驅（留空預設 500ms）
     return directApi('led/mouth', params);
   }
@@ -268,17 +281,21 @@ const Alpha2Api = (function() {
   }
 
   function directServoAll(params) {
+    if (params && params.time != null) assertRange(Number(params.time), 20, 32767, 'time');
     // 全舵機直驅 (逗號分隔 20 個角度, 預設 time=500)
     return directApi('servo/all', params);
   }
 
   function directServoOne(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
-    // 單舵機直驅 (ubxApi.servoSendOne cmd05, 預設 time=500)
+    if (params && params.angle != null) assertRange(Number(params.angle), 0, 255, 'angle');
+    if (params && params.time != null) assertRange(Number(params.time), 20, 32767, 'time');
+    // 單舵機直驅 (localServices.chestSetSingle, 預設 time=500)
     return directApi('servo/one', params);
   }
 
   function directSonarConfig(params) {
+    if (params && params.distance != null) assertRange(Number(params.distance), 0, 100, 'distance');
     // 胸板聲納配置直發 (subCmd=10)
     return directApi('sonar/config', params);
   }
@@ -299,7 +316,7 @@ const Alpha2Api = (function() {
   }
 
   function directUbxSpeed(params) {
-    if (params && params.value != null) assertEnum(params.value, [0.5, 0.67, 1, 1.5, 2], 'value');
+    if (params && params.value != null) assertEnumNum(params.value, [0.5, 0.67, 1, 1.5, 2], 'value');
     // 動作播放變速（舵機+配樂同縮放；黏性，播緊時設會由頭重播即時生效）
     return directApi('ubx/speed', params);
   }
@@ -325,7 +342,7 @@ const Alpha2Api = (function() {
   }
 
   function ubxSpeed(params) {
-    if (params && params.value != null) assertEnum(params.value, [0.5, 0.67, 1, 1.5, 2], 'value');
+    if (params && params.value != null) assertEnumNum(params.value, [0.5, 0.67, 1, 1.5, 2], 'value');
     // 動作播放變速（舵機+配樂同縮放；黏性，播緊時設會由頭重播即時生效）
     return api('ubx/speed', params);
   }
@@ -362,7 +379,7 @@ const Alpha2Api = (function() {
     if (params && params.color != null) assertRange(Number(params.color), 1, 7, 'color');
     if (params && params.brightness != null) assertRange(Number(params.brightness), 1, 9, 'brightness');
     if (params && params.preset != null) assertEnum(params.preset, ['long', 'flash', 'chase', 'dual', 'stop'], 'preset');
-    // 設定眼部 5-mic LED (LedCenter→DirectLedController JNI)
+    // 設定眼部 5-mic LED (ledSetEye5Mic)
     return api('led/eye/set', params);
   }
 
@@ -370,12 +387,13 @@ const Alpha2Api = (function() {
     if (params && params.color != null) assertRange(Number(params.color), 1, 7, 'color');
     if (params && params.brightness != null) assertRange(Number(params.brightness), 1, 9, 'brightness');
     if (params && params.preset != null) assertEnum(params.preset, ['long', 'flash', 'breathe', 'chase', 'dual', 'stop'], 'preset');
-    // 設定頭部 5-mic LED (LedCenter→DirectLedController JNI)
+    // 設定頭部 5-mic LED (ledSetHead5Mic)
     return api('led/head/set', params);
   }
 
   function ledMouthSet(params) {
     if (params && params.preset != null) assertEnum(params.preset, ['breathing', 'off'], 'preset');
+    if (params && params.speed != null) assertRange(Number(params.speed), 0, 5000, 'speed');
     // 設定嘴部 LED (LedControl JNI, 非 AIDL)
     return api('led/mouth/set', params);
   }
@@ -429,6 +447,7 @@ const Alpha2Api = (function() {
 
   // ── servo ──────────────────────────────────────────────
   function servoAll(params) {
+    if (params && params.time != null) assertRange(Number(params.time), 20, 32767, 'time');
     // 同時控制 20 顆舵機
     return api('servo/all', params);
   }
@@ -452,6 +471,8 @@ const Alpha2Api = (function() {
 
   function servoOne(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
+    if (params && params.angle != null) assertRange(Number(params.angle), 0, 255, 'angle');
+    if (params && params.time != null) assertRange(Number(params.time), 20, 32767, 'time');
     if (params && params.trim != null) assertRange(Number(params.trim), -1000, 1000, 'trim');
     // 控制單顆舵機角度（cmd05 單發；可選連 trim 經 cmd12 寫入 chest EEPROM）
     return api('servo/one', params);
@@ -469,6 +490,7 @@ const Alpha2Api = (function() {
   }
 
   function servoSonar(params) {
+    if (params && params.distance != null) assertRange(Number(params.distance), 0, 100, 'distance');
     // 設定聲納觸發距離閾值 (chest_configureSonar, cmd 4 sub 10)
     return api('servo/sonar', params);
   }
@@ -542,6 +564,7 @@ const Alpha2Api = (function() {
   }
 
   function voskEndpointer(params) {
+    if (params && params.mode != null) assertRange(Number(params.mode), -1, 3, 'mode');
     // 收音延遲調校 (mode/t_start/t_end/t_max，省略=跟預設並 persist)
     return api('vosk/endpointer', params);
   }
@@ -684,7 +707,7 @@ const Alpha2Api = (function() {
   }
 
   function xiaozhiMicStop(params) {
-    // 關閉小智麥克風並交還 mic (speech_SetMIC false)
+    // 關閉小智麥克風並交還給 wake-word 引擎
     return xiaozhiApi('mic/stop', params);
   }
 

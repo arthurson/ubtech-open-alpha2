@@ -6,9 +6,15 @@ on:
     paths:
       - 'openapi/**'
       - 'app/src/main/java/com/open/alpha2/MainActivity.java'
+      - 'app/src/main/java/com/open/alpha2/ApiDispatcher.java'
+      - 'app/src/main/java/com/open/alpha2/HttpServer.java'
+      - 'app/src/main/java/com/open/alpha2/UbxApi.java'
+      - 'app/src/main/java/com/open/alpha2/ChestUpgrade.java'
+      - 'app/src/main/java/com/open/alpha2/AudioCenter.java'
       - 'app/src/main/java/com/open/alpha2/XiaozhiBridge.java'
       - 'app/src/main/java/com/open/alpha2/McpToolsGenerated.java'
       - 'app/src/main/java/com/open/alpha2/ApiValidator.java'
+      - 'app/build.gradle'
       - 'app/src/main/assets/web/api-client.js'
       - 'scripts/**'
       - 'sdk-module/**'
@@ -21,9 +27,15 @@ on:
     paths:
       - 'openapi/**'
       - 'app/src/main/java/com/open/alpha2/MainActivity.java'
+      - 'app/src/main/java/com/open/alpha2/ApiDispatcher.java'
+      - 'app/src/main/java/com/open/alpha2/HttpServer.java'
+      - 'app/src/main/java/com/open/alpha2/UbxApi.java'
+      - 'app/src/main/java/com/open/alpha2/ChestUpgrade.java'
+      - 'app/src/main/java/com/open/alpha2/AudioCenter.java'
       - 'app/src/main/java/com/open/alpha2/XiaozhiBridge.java'
       - 'app/src/main/java/com/open/alpha2/McpToolsGenerated.java'
       - 'app/src/main/java/com/open/alpha2/ApiValidator.java'
+      - 'app/build.gradle'
       - 'app/src/main/assets/web/api-client.js'
       - 'scripts/**'
       - 'sdk-module/**'
@@ -46,13 +58,11 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
       - name: Install deps
-        run: pip install pyyaml
+        run: pip install -r scripts/requirements.txt
       - name: Check openapi drift (code ↔ spec)
         run: python scripts/check-openapi-drift.py
       - name: Check api-client.js is up-to-date
-        run: |
-          python scripts/generate-api-client.py
-          git diff --exit-code -- app/src/main/assets/web/api-client.js || (echo "::error::api-client.js drift - run python scripts/generate-api-client.py and commit"; git diff -- app/src/main/assets/web/api-client.js; exit 1)
+        run: python scripts/generate-api-client.py --check
       - name: Check api-client routes (caller prefix matches backend)
         run: python scripts/check-api-client-routes.py
       - name: Check MCP tools are up-to-date (openapi+sync → McpToolsGenerated.java)

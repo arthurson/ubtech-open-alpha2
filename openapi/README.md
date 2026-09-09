@@ -27,7 +27,7 @@ api("servo/one", {id:1, angle:90, time:1000})
 
 // 新 (型別檢查 + 自動文件)
 Alpha2Api.servoOne({id:1, angle:90, time:1000})
-Alpha2Api.speechTts({text:"你好", engine:"iflytek"})
+Alpha2Api.speechTts({text:"你好", engine:"android"})
 Alpha2Api.ledHeadSet({color:1, brightness:9, preset:"breathe"})
 ```
 

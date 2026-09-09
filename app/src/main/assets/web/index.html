@@ -997,33 +997,9 @@
 })();
 </script>
 
-<!-- 2026-08 新增: 配對碼彈出視窗 (modal) - 之前配對碼淨係靠
-     #xiaozhiActivationBox (要開咗小智 tab 先見到) + chat log 一句訊息去顯示,
-     用戶反映搵極都搵唔到。呢個 modal 擺喺 <body> 最尾, 唔屬於任何 tab-page (成個
-     app 淨係得一個 tab-page 會喺任何時候顯示, 其他隱藏), 所以唔理用戶而家開緊
-     邊一個分頁, 一有配對碼、xiaozhiShowActivationModal() 一 call, 個 overlay 就
-     會全屏彈出擋住畫面, 一定見到。撳「知道喇」先關得閉, 唔會自動消失, 避免用戶
-     未抄低個碼個 modal 就閂咗。
-     2026-08 修正: 上一版用咗 CSS "inset:0" shorthand - 呢部機 (API 22/Android
-     5.1) 嘅舊 WebView 好可能唔認得呢個相對新嘅屬性, 令個 position:fixed 嘅 div
-     冇咗 top/right/bottom/left 嘅約束, 可能直接摺埋做 0 大小, 完全畫唔出嚟 -
-     呢個好可能就係之前個 modal 完全冇顯示過嘅真正原因。改用返明確嘅
-     top/right/bottom/left, 兼容性追溯到好舊嘅瀏覽器都得。另外 centering 唔淨係
-     靠 flex (Chromium 好早期已經支援 flexbox, 但為咗保險), 加埋
-     text-align:center + padding-top 做 fallback, 就算 flex 有咩三長兩短都仲有
-     機會見到個 modal 大致喺畫面上半部。 -->
-<div id="xiaozhiActivationModalOverlay" style="display:none; position:fixed; top:0; right:0; bottom:0; left:0; z-index:9999;
-     background:rgba(0,0,0,0.6); align-items:center; justify-content:center; text-align:center; padding-top:15%; overflow:auto;">
-  <div style="display:inline-block; background:var(--card-bg); border-radius:12px; padding:24px; max-width:90%;
-       text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.4);">
-    <div style="font-size:1.1em; margin-bottom:10px;" data-i18n="xiaozhi_activation_modal_prompt">
-      請在 <a href="https://xiaozhi.me/console/" target="_blank" rel="noopener">xiaozhi.me</a> 輸入以下配對碼：
-    </div>
-    <div id="xiaozhiActivationModalCode" style="font-size:2.4em; font-weight:700; letter-spacing:0.2em;
-         margin:14px 0; color:var(--accent);"></div>
-    <button onclick="xiaozhiHideActivationModal()" data-i18n="xiaozhi_activation_modal_dismiss">知道喇</button>
-  </div>
-</div>
+<!-- 2026-08 新增、2026-09-09 移除: 配對碼 modal overlay 殘留會令
+     onclick="xiaozhiHideActivationModal()" 掟 ReferenceError（function 已刪，
+     配對碼只經對話界面顯示）。成段 overlay 刪走，唔留死掣。 -->
 
 </body>
 </html>

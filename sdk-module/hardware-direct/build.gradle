@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'com.ubtechinc.alpha.hardware'
+    // AGP 4.2.2 無 namespace DSL（7.0+ 先有）；package 由 src/main/AndroidManifest.xml 提供。
     compileSdkVersion 25
 
     buildFeatures {

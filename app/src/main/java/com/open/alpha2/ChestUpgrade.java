@@ -60,17 +60,18 @@ public final class ChestUpgrade {
      * @return true = 已認領 (調用方應直接 return)。
      */
     public boolean onAckFrame(byte[] payload, int plen) {
-        if (chestUpgradeLatch != null && chestUpgradeLatch.getCount() > 0 && plen >= 1) {
-            byte cmd = payload[0];
-            if (cmd == chestUpgradeExpectedCmd) {
-                if (cmd == 49) {
-                    chestUpgradeAckStatus = (plen >= 2 ? (payload[1] & 0xFF) : 0);
-                } else {
-                    chestUpgradeAckStatus = 0;
-                }
-                chestUpgradeLatch.countDown();
-                return true;
+        // 2026-09-09：local copy + null-check（abort 會置 null，check-then用 race 會 NPE）。
+        java.util.concurrent.CountDownLatch latch = chestUpgradeLatch;
+        if (latch == null || latch.getCount() <= 0 || plen < 1) return false;
+        byte cmd = payload[0];
+        if (cmd == chestUpgradeExpectedCmd) {
+            if (cmd == 49) {
+                chestUpgradeAckStatus = (plen >= 2 ? (payload[1] & 0xFF) : 0);
+            } else {
+                chestUpgradeAckStatus = 0;
             }
+            latch.countDown();
+            return true;
         }
         return false;
     }
@@ -84,8 +85,9 @@ public final class ChestUpgrade {
             int scale = b.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
             int status = b.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
             boolean charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL;
-            if (charging) return 100;
-            if (level < 0 || scale <= 0) return -1;
+            if (level < 0 || scale <= 0) return charging ? 100 : -1;
+            // 2026-09-09：充緊電都要睇實際電量（之前充緊即回 100% 繞過 50% 門檻，
+            // 升級途中拔電掉電即變磚）；電量讀唔到先當 100% 放行。
             return (level * 100) / scale;
         } catch (Exception e) { return -1; }
     }
@@ -112,6 +114,9 @@ public final class ChestUpgrade {
         chestUpgradeLatch = latch;
         try {
             boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+            // 2026-09-09：唔係自己呢代 latch（abort/retry 清過）即係唔好再行，
+            // 回 false 等上層 throw 退出（唔係 abort 早醒會當成功繼續燒）。
+            if (chestUpgradeLatch != latch) return false;
             if (!ok) {
                 byte[] lastVer = chestQuery.getLastVersionRaw();
                 Log.w(TAG, "chest upgrade ack timeout cmd=" + expectedCmd + " raw=" + (lastVer!=null?MainActivity.toHex(lastVer,lastVer.length):"null"));
@@ -137,6 +142,13 @@ public final class ChestUpgrade {
 
     /** 中止升級 (chest/upgrade/abort)：清狀態 + 標 aborted，和以前三行 inline 一致。 */
     public synchronized void abort() {
+        // 2026-09-09：countDown 叫醒 waitForChestAck（之前唔叫，等足成個 timeout
+        // 先醒，中止唔即時）。
+        java.util.concurrent.CountDownLatch latch = chestUpgradeLatch;
+        chestUpgradeLatch = null;
+        if (latch != null) {
+            while (latch.getCount() > 0) latch.countDown();
+        }
         resetState();
         chestUpgradeInProgress = false;
         chestUpgradeStatus = "aborted";
@@ -299,11 +311,12 @@ public final class ChestUpgrade {
      *  (2026-09 小件拼盤由 MainActivity.handleChestUpload 搬入——升級鏡像入口歸升級層)。 */
     public HttpServer.ApiResponse handleChestUpload(Map<String, String> query, byte[] body) {
         if (body == null || body.length == 0) {
-            return HttpServer.ApiResponse.error("empty file body");
+            return HttpServer.ApiResponse.badRequest("empty file body");
         }
+        // 2026-09-09：大細唔啱直接 400 唔寫入（之前只 warn 照寫，壞 bin 會留喺度，
+        // 下次升級攞錯檔即變磚；magic 無文件記載唔驗，靠升級時 MCU ACK 把關）。
         if (body.length != 256 * 1024) {
-            // 仍允許寫入，但提示大小不正確
-            Log.w(TAG, "Chest upload size mismatch: " + body.length + " bytes, expected 262144");
+            return HttpServer.ApiResponse.badRequest("chest firmware must be 262144 bytes, got " + body.length);
         }
         try {
             java.io.File dest = new java.io.File("/sdcard/AlphaII_CHEST_kernel.bin");

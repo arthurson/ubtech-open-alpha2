@@ -22,15 +22,23 @@ import java.io.OutputStream;
  * <p>用法與經典 android-serialport-api 一致；DirectSerialPort 經反射調用本類，
  * 避免 hardware-direct 編譯期寫死依賴。</p>
  */
-public class SerialPortFile {
+public class SerialPortFile implements java.io.Closeable {
     private static final String TAG = "SerialPortFile";
+
+    static boolean sLibLoaded = false;
 
     static {
         try {
             System.loadLibrary("serial_port");
+            sLibLoaded = true;
         } catch (Throwable t) {
             Log.w(TAG, "loadLibrary serial_port failed: " + t.getMessage());
         }
+    }
+
+    /** .so 是否已載入；調用方開串口前可預檢（同 LedControl/HeadKeyMgr 睇齊）。 */
+    public static boolean isLibLoaded() {
+        return sLibLoaded;
     }
 
     private FileDescriptor mFd;
@@ -62,5 +70,10 @@ public class SerialPortFile {
 
     private static native FileDescriptor open(String path, int baudrate, int flags);
 
+    /**
+     * 關閉 native fd（同時滿足 {@link java.io.Closeable}——throws 窄過 interface 得）。
+     * 注意唔係冪等：同一個 fd 閂兩次有誤關復用號風險；擁有權歸 DirectSerialPort
+     *（JNI 路徑只行呢度一次，見 DirectSerialPort.closeQuietly），唔好喺外面亂調。
+     */
     public native void close();
 }

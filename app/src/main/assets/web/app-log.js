@@ -80,9 +80,12 @@ function appendLog(msg) {
   if (SILENCED_LOG_TYPES.indexOf(msg.type) === -1) {
     const log = document.getElementById("eventLog");
     const line = document.createElement("div");
-    line.className = "log-line log-type-" + msg.type;
+    // 2026-09-09：type 白名單入 className（之前直拼，server 控字串；
+    // time/data 照 escapeHtml）。
+    const safeType = /^[A-Za-z0-9_-]+$/.test(msg.type || "") ? msg.type : "raw";
+    line.className = "log-line log-type-" + safeType;
     const dataStr = typeof msg.data === "object" ? JSON.stringify(msg.data) : msg.data;
-    line.innerHTML = "<span class=\"log-time\">[" + msg.time + "]</span> <b>" + msg.type + "</b> " + escapeHtml(dataStr);
+    line.innerHTML = "<span class=\"log-time\">[" + escapeHtml(msg.time) + "]</span> <b>" + escapeHtml(msg.type) + "</b> " + escapeHtml(dataStr);
     log.appendChild(line);
     // Cap the number of DOM nodes kept around for any other, lower-frequency event
     // type too, as a safety net against unbounded growth over a long session.

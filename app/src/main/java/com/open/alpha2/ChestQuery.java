@@ -750,7 +750,7 @@ public final class ChestQuery {
                 }
                 uuid = truncateUuidTail(uuid, prefLen);
             }
-            Log.i(TAG, "chest uuid raw=" + MainActivity.toHex(chestUuidRaw, chestUuidLen) + " parsed=" + uuid);
+            Log.d(TAG, "chest uuid raw=" + MainActivity.toHex(chestUuidRaw, chestUuidLen) + " parsed=" + maskUuid(uuid));
             return uuid;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -852,7 +852,7 @@ public final class ChestQuery {
         // pure-direct: 经 /dev/ttyS1 直发（旧 robot.chest_sendRawData 走 binder，已停用）。
         boolean sent = HardwareDirectManager.get(appContext).chest().sendRaw(frame);
         UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
-        Log.i(TAG, "set_uuid -> " + v + " (" + sn.length + "B) " + code.name());
+        Log.d(TAG, "set_uuid -> " + maskUuid(v) + " (" + sn.length + "B) " + code.name());
         // 2026-09 修正: 寫完唔好即刻 request_uuid —— alpha2services/firmware
         // 會 cache 開機讀到的 SN, 即刻讀返嚟多數係舊值, 經 robot_uuid event
         // 蓋走前端頭先樂觀顯示的新值, 睇落好似寫入失敗 (見 app-accel.js
@@ -870,5 +870,12 @@ public final class ChestQuery {
         }
         return HttpServer.ApiResponse.ok(
                 "{\"ok\":" + (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) + "}");
+    }
+
+    /** log 脫敏：UUID 係綁定 ID，只留頭尾各 4 字（2026-09-09，之前全文明文入 logcat）。 */
+    static String maskUuid(String uuid) {
+        if (uuid == null) return "null";
+        if (uuid.length() <= 10) return "***(" + uuid.length() + "B)";
+        return uuid.substring(0, 4) + "…" + uuid.substring(uuid.length() - 4);
     }
 }

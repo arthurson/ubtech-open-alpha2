@@ -203,8 +203,9 @@ public final class UbxPlayer {
             playThread.start();
         }
         if (!vplan.isEmpty()) {
+            final float vsp = sp; // 配樂同舵機用同一個快照：播音起線前改速唔好聲畫分裂
             voiceThread = new Thread(new Runnable() {
-                @Override public void run() { voiceLoop(vplan); }
+                @Override public void run() { voiceLoop(vplan, vsp); }
             }, "ubx-voice");
             voiceThread.start();
         }
@@ -264,8 +265,7 @@ public final class UbxPlayer {
         }
     }
 
-    private void voiceLoop(List<VSong> plan) {
-        final float sp = speed;
+    private void voiceLoop(List<VSong> plan, float sp) {
         long monoStart = System.nanoTime() / 1000000L;
         try {
             for (int i = 0; i < plan.size(); i++) {
@@ -327,17 +327,21 @@ public final class UbxPlayer {
             Log.w(TAG, "voice missing: " + v.name);
             return;
         }
+        android.media.MediaPlayer mp = null;
         try {
-            android.media.MediaPlayer mp = new android.media.MediaPlayer();
+            mp = new android.media.MediaPlayer();
             mp.setDataSource(v.file.getAbsolutePath());
             final android.media.MediaPlayer self = mp;
             mp.setOnCompletionListener(new android.media.MediaPlayer.OnCompletionListener() {
                 @Override public void onCompletion(android.media.MediaPlayer mpc) {
                     synchronized (UbxPlayer.this) {
-                        try { self.release(); } catch (Exception ignore) {
-                            // ignore
-                        }
+                        // 只 release 當前仍在用嗰個；舊歌已被 stopVoiceLocked
+                        // release 過就唔再掂（防雙 release native crash），
+                        // 已被新歌取代就唔好誤殺新 player。
                         if (voicePlayer == self) {
+                            try { self.release(); } catch (Exception ignore) {
+                                // ignore
+                            }
                             voicePlayer = null;
                             voiceSong = "";
                         }
@@ -347,10 +351,16 @@ public final class UbxPlayer {
             mp.prepare();
             mp.start();
             voicePlayer = mp;
+            mp = null; // 已交接，catch 唔再 release
             voiceSong = v.name;
             Log.i(TAG, "voice start " + v.name);
         } catch (Exception e) {
             Log.w(TAG, "voice failed " + v.name + ": " + e.getMessage());
+            if (mp != null) {
+                try { mp.release(); } catch (Exception ignore) {
+                    // prepare/start 炸咗唔 release 會漏 native mediaplayer fd
+                }
+            }
         }
     }
 
@@ -374,47 +384,63 @@ public final class UbxPlayer {
         }
     }
 
-    /** 停止播放（中斷雙線，停歌，舵機保持末位姿）。 */
-    public synchronized void stop() {
-        stopReq = true;
-        voiceStopReq = true;
-        // 先 abort 流（AudioTrack.write 阻塞時 interrupt 叫不醒，須 track.stop 鬆綁），再 join。
-        if (playThread != null) playThread.interrupt();
-        if (voiceThread != null) voiceThread.interrupt();
-        stopVoiceLocked();
-        if (playThread != null) {
+    /** 停止播放（中斷雙線，停歌，舵機保持末位姿）。
+     * join 唔可以喺鎖內做：voiceLoop 尾 finally 同 OnCompletion 都要同一把鎖，
+     * 揸住鎖 join 會同收尾線程互等（帶聲 stop 卡足 2s）。先快照、解鎖 join、再返嚟清。 */
+    public void stop() {
+        final Thread pt;
+        final Thread vt;
+        synchronized (this) {
+            stopReq = true;
+            voiceStopReq = true;
+            // 先 abort 流（AudioTrack.write 阻塞時 interrupt 叫不醒，須 track.stop 鬆綁），再 join。
+            if (playThread != null) playThread.interrupt();
+            if (voiceThread != null) voiceThread.interrupt();
+            stopVoiceLocked();
+            pt = playThread;
+            vt = voiceThread;
+        }
+        if (pt != null) {
             try {
-                playThread.join(2000);
+                pt.join(2000);
             } catch (InterruptedException ignore) {
                 // ignore
             }
-            playThread = null;
         }
-        if (voiceThread != null) {
+        if (vt != null) {
             try {
-                voiceThread.join(2000);
+                vt.join(2000);
             } catch (InterruptedException ignore) {
                 // ignore
             }
-            voiceThread = null;
         }
-        stopVoiceLocked();
+        synchronized (this) {
+            if (playThread == pt) playThread = null;
+            if (voiceThread == vt) voiceThread = null;
+            stopVoiceLocked();
+        }
     }
 
-    /** 只停配樂（本地音樂等搶聲場景），舵機繼續。 */
-    public synchronized void stopVoice() {
-        voiceStopReq = true;
-        if (voiceThread != null) voiceThread.interrupt();
-        stopVoiceLocked();
-        if (voiceThread != null) {
+    /** 只停配樂（本地音樂等搶聲場景），舵機繼續。join 同樣唔可以喺鎖內（見 stop）。 */
+    public void stopVoice() {
+        final Thread vt;
+        synchronized (this) {
+            voiceStopReq = true;
+            if (voiceThread != null) voiceThread.interrupt();
+            stopVoiceLocked();
+            vt = voiceThread;
+        }
+        if (vt != null) {
             try {
-                voiceThread.join(2000);
+                vt.join(2000);
             } catch (InterruptedException ignore) {
                 // ignore
             }
-            voiceThread = null;
         }
-        stopVoiceLocked();
+        synchronized (this) {
+            if (voiceThread == vt) voiceThread = null;
+            stopVoiceLocked();
+        }
     }
 
     public synchronized boolean isPlaying() {
@@ -446,6 +472,23 @@ public final class UbxPlayer {
 
     private static String esc(String s) {
         if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\': sb.append("\\\\"); break;
+                case '"': sb.append("\\\""); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                case '\b': sb.append("\\b"); break;
+                case '\f': sb.append("\\f"); break;
+                default:
+                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                    else sb.append(c);
+                    break;
+            }
+        }
+        return sb.toString();
     }
 }

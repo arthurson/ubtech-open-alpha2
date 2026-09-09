@@ -16,7 +16,9 @@ import android.util.Log;
  * 包名不同；{@code ledSetOFF(I)} 多一個 int（反匯編證實該參數只進 log，不落硬件，
  * 傳 0 即可）。其餘簽名逐字相同。</p>
  *
- * <p>返回值沿用舊約定（native 成功回 0/false，失敗回 0xF2/true，見 DirectLedController）。</p>
+ * <p>返回值：淨係 ledSet* 反轉（native 成功回 0/false，失敗回 0xF2/true——
+ * 反匯編證實 ioctl 成功即回 0，見 MouthLedData:95-103）；open()/close() 唔反轉，
+ * 照字面用（DirectLedController.callLedReflect 嘅 `if(!open)fail` 就係咁解）。</p>
  */
 public class LedControl {
     private static final String TAG = "LedControl3002";

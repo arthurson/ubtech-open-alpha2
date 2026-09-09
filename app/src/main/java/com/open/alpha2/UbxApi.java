@@ -53,12 +53,34 @@ public final class UbxApi {
         return HttpServer.ApiResponse.ok(sb.toString());
     }
 
+    /** 只准 /sdcard/actions 內 .ubx（防 LAN 經 path/name 讀任意檔）。 */
+    private static boolean isAllowedUbxFile(java.io.File f) {
+        if (f == null) return false;
+        try {
+            String target = f.getCanonicalPath();
+            String base = new java.io.File("/sdcard/actions").getCanonicalPath();
+            if (target.equals(base)) return false;
+            if (!target.startsWith(base + java.io.File.separator)) return false;
+            return target.toLowerCase(java.util.Locale.US).endsWith(".ubx");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public HttpServer.ApiResponse ubxPlayResponse(String name, String p) {
         java.io.File f;
-        if (p != null) f = new java.io.File(p);
-        else if (name != null) f = new java.io.File("/sdcard/actions/" + name);
-        else return HttpServer.ApiResponse.error("name or path required");
-        if (!f.isFile()) return HttpServer.ApiResponse.error("not found: " + f.getPath());
+        if (p != null) {
+            f = new java.io.File(p);
+            if (!isAllowedUbxFile(f)) return HttpServer.ApiResponse.error("path must be a .ubx under /sdcard/actions");
+        } else if (name != null) {
+            // name 只准係檔名，唔准帶路徑（../../、/、\ 一律拒）。
+            if (name.isEmpty() || name.contains("/") || name.contains("\\") || name.contains("..")) {
+                return HttpServer.ApiResponse.error("invalid name");
+            }
+            f = new java.io.File("/sdcard/actions/" + name);
+            if (!isAllowedUbxFile(f)) return HttpServer.ApiResponse.error("invalid name");
+        } else return HttpServer.ApiResponse.error("name or path required");
+        if (!f.isFile()) return HttpServer.ApiResponse.error("not found");
         HardwareDirectManager dm = HardwareDirectManager.get(appContext);
         if (!dm.chest().isAvailable()) return HttpServer.ApiResponse.error("chest not available");
         UbxFile ubx;
@@ -142,9 +164,12 @@ public final class UbxApi {
     private static final int SERVO_HEAD_MIN = 75;
     private static final int SERVO_HEAD_MAX = 165;
     private static final short SERVO_TURN_TIME_MS = 500;
+    /** 2026-09-09：留 handle 俾 unregister（之前匿名登記，restart 會累積重複轉頭）。 */
+    private volatile EventBus.Listener wakeupDirectionListener;
 
     public void registerWakeupDirectionListener() {
-        EventBus.get().subscribe(new EventBus.Listener() {
+        if (wakeupDirectionListener != null) return; // 已經登記，唔重複加
+        wakeupDirectionListener = new EventBus.Listener() {
             @Override
             public void onEvent(String line) {
                 if (!line.contains(SPEECH_DIRECTION_MARKER)) {
@@ -166,7 +191,17 @@ public final class UbxApi {
                     }
                 }).start();
             }
-        });
+        };
+        EventBus.get().subscribe(wakeupDirectionListener);
+    }
+
+    /** 對應 unregister（onDestroy 調用；重複調用無害）。 */
+    public void unregisterWakeupDirectionListener() {
+        EventBus.Listener l = wakeupDirectionListener;
+        wakeupDirectionListener = null;
+        if (l != null) {
+            try { EventBus.get().unsubscribe(l); } catch (Exception ignore) {}
+        }
     }
 
     /** Pulls the integer after "absoluteAngle":  out of an EventBus-published JSON line,
@@ -215,8 +250,10 @@ public final class UbxApi {
         // 2026-09-06 晚加：可選 trim 參數——有帶就接著經 cmd12 寫入 chest EEPROM
         //（官方 tuner 同款持久化；掉電保持，亂寫會改出廠校準，用戶明確先好用）。
         int id = ApiValidator.requireIntRange(query, "id", 1, 20);
-        int angle = ApiValidator.requireInt(query, "angle");
-        int time = ApiValidator.optionalInt(query, "time", 1000);
+        // 2026-09-09：跟 spec/MCP（angle 0-255，time 20-32767）顯式驗，
+        // 超限即 400；之前靠 servoSendOneCode 靜默 clamp，999 變 255 無聲無息。
+        int angle = ApiValidator.requireIntRange(query, "angle", 0, 255);
+        int time = ApiValidator.optionalIntRange(query, "time", 20, 32767, 1000);
         Integer trim = null;
         if (query.containsKey("trim") && query.get("trim") != null && !query.get("trim").isEmpty()) {
             try {
@@ -247,7 +284,7 @@ public final class UbxApi {
 
     public HttpServer.ApiResponse servoAllResponse(Map<String, String> query) {
         int[] angles = ApiValidator.requireAngles20(query);
-        int time = ApiValidator.optionalInt(query, "time", 1000);
+        int time = ApiValidator.optionalIntRange(query, "time", 20, 32767, 1000);
         // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
         boolean sent = HardwareDirectManager.get(appContext).chest().setAllServos(angles, (short) time);
         if (sent) ubxPlayer.notePose(angles);
@@ -395,10 +432,9 @@ public final class UbxApi {
     }
 
     /**
-     * 帶重試的單粒實讀。本 App 而家係 ttyS1 唯一用家（RobotStub no-op，
-     * 無嘢會搶食回覆 bytes）；重試保留做偶發 MCU 失手保險，故重試 3 次
-     * （官方 ACK 約 10-15ms，250ms timeout 好闊綽；重試之間隔 100ms，
-     * 唔好密 hammer 胸板）。
+     * 帶重試的單粒實讀。機身仲有官方 alpha2services 同揸 ttyS1，回覆 bytes
+     * 會被搶食，偶發超時屬預期之內，故重試 3 次（官方 ACK 約 10-15ms，
+     * 250ms timeout 好闊綽；重試之間隔 100ms，唔好密 hammer 胸板）。
      */
     private Integer readServoLive(int id) {
         if (chestQuery == null || !directChestReady()) return null;

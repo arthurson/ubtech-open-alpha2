@@ -999,8 +999,19 @@
     if (!sel) return;
     const list = getSavedProgramList();
     const names = Object.keys(list).sort();
-    sel.innerHTML = '<option value="">' + t('run_saved_program_placeholder') + '</option>' +
-      names.map(function (n) { return '<option value="' + n.replace(/"/g, '&quot;') + '">' + n + '</option>'; }).join('');
+    // 2026-09-09：逐粒 createElement＋textContent（之前字串拼 innerHTML，
+    // 程式名嚟自 localStorage/匯入檔，stored XSS）。
+    while (sel.firstChild) sel.removeChild(sel.firstChild);
+    const ph = document.createElement('option');
+    ph.value = "";
+    ph.textContent = t('run_saved_program_placeholder');
+    sel.appendChild(ph);
+    names.forEach(function (n) {
+      const opt = document.createElement('option');
+      opt.value = n;
+      opt.textContent = n;
+      sel.appendChild(opt);
+    });
   }
 
   function exportXmlFile() {

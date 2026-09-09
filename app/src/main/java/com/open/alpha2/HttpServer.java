@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
  * Responsibilities:
  *  - Serves static files (the HTML/JS/CSS control panel) out of assets/web/.
  *  - Dispatches "/api/*" requests to a pluggable {@link ApiHandler} (implemented by
- *    ApiDispatcher).
+ *    MainActivity, which owns the Alpha2RobotApi instance).
  *  - Detects a WebSocket upgrade request on "/ws" and hands the raw socket off to
  *    {@link WebSocketServer} for the RFC 6455 handshake and framing.
  *  - Dispatches "/stream/*" requests to a pluggable {@link StreamHandler} that owns the
@@ -87,12 +87,35 @@ public class HttpServer implements Runnable {
 
         public static ApiResponse error(String message) {
             return new ApiResponse(500, "application/json; charset=utf-8",
-                    "{\"ok\":false,\"error\":\"" + message.replace("\"", "'") + "\"}");
+                    "{\"ok\":false,\"error\":\"" + esc(String.valueOf(message)) + "\"}");
         }
 
         public static ApiResponse badRequest(String message) {
             return new ApiResponse(400, "application/json; charset=utf-8",
-                    "{\"ok\":false,\"error\":\"" + message.replace("\"", "'") + "\"}");
+                    "{\"ok\":false,\"error\":\"" + esc(String.valueOf(message)) + "\"}");
+        }
+
+        /** 同 MainActivity.jsonSafe 同一套轉義（唔直接引用嗰邊，免 HttpServer↔MainActivity 循環）。 */
+        private static String esc(String s) {
+            if (s == null) return "";
+            StringBuilder sb = new StringBuilder(s.length());
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                switch (c) {
+                    case '\\': sb.append("\\\\"); break;
+                    case '"': sb.append("\\\""); break;
+                    case '\n': sb.append("\\n"); break;
+                    case '\r': sb.append("\\r"); break;
+                    case '\t': sb.append("\\t"); break;
+                    case '\b': sb.append("\\b"); break;
+                    case '\f': sb.append("\\f"); break;
+                    default:
+                        if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                        else sb.append(c);
+                        break;
+                }
+            }
+            return sb.toString();
         }
     }
 
@@ -264,7 +287,11 @@ public class HttpServer implements Runnable {
 
         Map<String, String> headers = new HashMap<>();
         String line;
-        while ((line = readHttpLine(rawIn)) != null && !line.isEmpty()) {
+        // 2026-09-09：header 上限（之前無限逐 byte 讀，Slowloris 一條連線
+        // 塞爆記憶體；瀏覽器正常 header 唔會超過 2KB/廿行）。
+        int headerLines = 0;
+        while ((line = readHttpLine(rawIn, 8192)) != null && !line.isEmpty()) {
+            if (++headerLines > 100) return false;
             int idx = line.indexOf(':');
             if (idx > 0) {
                 headers.put(line.substring(0, idx).trim().toLowerCase(),
@@ -337,7 +364,9 @@ public class HttpServer implements Runnable {
             // 的正常 body 是 /upload/audio 那種 walkie-talkie PCM chunk, 看
             // AudioController/app-mic.js 都是幾十 KB 級別), 但要小於任何合理的單一
             // request body, 32MB 留有幾百倍餘裕。
-            final int MAX_BODY_BYTES = 32 * 1024 * 1024;
+            // 2026-09-09：胸固件上載得 256KB，俾 1MB（/upload/chest 專用上限；
+            // handleChestUpload 自己都會再驗一次）。
+            final int MAX_BODY_BYTES = path.startsWith("/upload/chest") ? (1024 * 1024) : (32 * 1024 * 1024);
             if (len < 0 || len > MAX_BODY_BYTES) {
                 Log.w(TAG, "Rejecting request with Content-Length=" + len
                         + " (limit " + MAX_BODY_BYTES + ")");
@@ -373,11 +402,15 @@ public class HttpServer implements Runnable {
         String body = new String(rawBody, StandardCharsets.UTF_8);
 
         if (path.startsWith("/api/")) {
-            Log.i(TAG, "API request: " + method + " " + path + (queryString.isEmpty() ? "" : "?" + queryString));
+            // 2026-09-09：response body 只 log 頭 200 字（之前全量，ssid/uuid/
+            // vision token 會入 logcat）。
+            Log.i(TAG, "API request: " + method + " " + path + (queryString.isEmpty() ? "" : "?" + redactQuery(queryString)));
             ApiResponse resp;
             try {
                 resp = apiHandler.handle(path.substring(5), query, method, body);
-                Log.i(TAG, "API response [" + resp.status + "]: " + path + " -> " + resp.body);
+                String bodyLog = resp.body != null && resp.body.length() > 200
+                        ? resp.body.substring(0, 200) + "…(" + resp.body.length() + "B)" : resp.body;
+                Log.i(TAG, "API response [" + resp.status + "]: " + path + " -> " + bodyLog);
             } catch (IllegalArgumentException e) {
                 // 1+2 OpenAPI 校驗失敗 → 400 而非 500 (對應 ApiValidator 拋出的參數錯誤)
                 Log.w(TAG, "API bad request for " + path + ": " + e.getMessage());
@@ -396,6 +429,12 @@ public class HttpServer implements Runnable {
     private void serveStatic(OutputStream out, String path, boolean keepAlive) throws IOException {
         if (path.equals("/") || path.isEmpty()) {
             path = "/index.html";
+        }
+        // 2026-09-09：擋 ..（AssetManager 會唔會 normalize 未驗證，唔搏）。
+        if (path.contains("..")) {
+            byte[] msg = "Not found".getBytes(StandardCharsets.UTF_8);
+            writeResponse(out, 404, "text/plain; charset=utf-8", msg, keepAlive, true);
+            return;
         }
         // 1+2: handle directory index for /docs and /.well-known alias (dotfiles are stripped by aapt, so fallback to well-known without dot)
         if (path.equals("/docs") || path.equals("/docs/")) {
@@ -465,7 +504,15 @@ public class HttpServer implements Runnable {
 
     private static void writeResponse(OutputStream out, int status, String contentType, byte[] body, boolean keepAlive, boolean noCache)
             throws IOException {
-        String statusText = status == 200 ? "OK" : status == 404 ? "Not Found" : "Error";
+        String statusText;
+        switch (status) {
+            case 200: statusText = "OK"; break;
+            case 400: statusText = "Bad Request"; break;
+            case 404: statusText = "Not Found"; break;
+            case 500: statusText = "Internal Server Error"; break;
+            case 503: statusText = "Service Unavailable"; break;
+            default: statusText = "Error"; break;
+        }
         StringBuilder header = new StringBuilder();
         header.append("HTTP/1.1 ").append(status).append(' ').append(statusText).append("\r\n");
         header.append("Content-Type: ").append(contentType).append("\r\n");
@@ -490,8 +537,13 @@ public class HttpServer implements Runnable {
      * leaves the stream positioned exactly where the line ended - required so a following
      * WebSocket upgrade sees the correct first frame byte. Returns null on EOF with no data
      * read yet.
+     * 2026-09-09：加 maxChars（超長行截斷，唔係無限食記憶體）。
      */
     private static String readHttpLine(InputStream in) throws IOException {
+        return readHttpLine(in, Integer.MAX_VALUE);
+    }
+
+    private static String readHttpLine(InputStream in, int maxChars) throws IOException {
         ByteArrayOutputStream lineBuf = new ByteArrayOutputStream(128);
         int b;
         boolean sawAny = false;
@@ -501,7 +553,7 @@ public class HttpServer implements Runnable {
                 break;
             }
             if (b != '\r') {
-                lineBuf.write(b);
+                if (lineBuf.size() < maxChars) lineBuf.write(b);
             }
         }
         if (!sawAny) {
@@ -510,8 +562,27 @@ public class HttpServer implements Runnable {
         return new String(lineBuf.toByteArray(), StandardCharsets.ISO_8859_1);
     }
 
-    private static Map<String, String> parseQuery(String qs) {
-        Map<String, String> map = new HashMap<>();
+    /** log 用 query 脫敏：token/uuid/value(xiaozhi token・UUID 寫入) 等唔落 logcat。 */
+    private static String redactQuery(String qs) {
+        if (qs == null || qs.isEmpty()) return qs;
+        StringBuilder sb = new StringBuilder();
+        for (String pair : qs.split("&")) {
+            if (sb.length() > 0) sb.append('&');
+            int idx = pair.indexOf('=');
+            String k = idx >= 0 ? pair.substring(0, idx) : pair;
+            String kl = k.toLowerCase(java.util.Locale.US);
+            if (kl.contains("token") || kl.contains("uuid") || kl.equals("value")
+                    || kl.contains("secret") || kl.contains("pass") || kl.contains("psk")
+                    || kl.equals("url") || kl.equals("wsurl") || kl.equals("deviceid")) {
+                sb.append(k).append('=').append("***");
+            } else {
+                sb.append(pair);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static Map<String, String> parseQuery(String qs) {        Map<String, String> map = new HashMap<>();
         if (qs == null || qs.isEmpty()) {
             return map;
         }
@@ -525,7 +596,9 @@ public class HttpServer implements Runnable {
                 } else {
                     map.put(java.net.URLDecoder.decode(pair, "UTF-8"), "");
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                // 2026-09-09：之前靜默吞（爛參數唔知去咗邊），留一行 debug。
+                android.util.Log.d(TAG, "parseQuery dropped pair: " + pair);
             }
         }
         return map;

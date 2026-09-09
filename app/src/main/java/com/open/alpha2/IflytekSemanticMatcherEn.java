@@ -43,12 +43,12 @@ import java.util.Random;
  *
  * 這個 class 只負責「文字 -> 配對結果」, 不負責執行 TTS/動作 - 跟著這個 project
  * 一貫的分層方式 (就像 resolveActionId() 只負責解析、不負責 call
- * actionDirect.playActionDirect() 那樣), 執行那一步留給呼叫方
- * (SemanticCenter.handleIflytekSemanticText()) 做, 方便測試和重用。
+ * robot.action_PlayActionName() 那樣), 執行那一步留給呼叫方 (MainActivity 的
+ * onServerCallBack) 做, 方便測試和重用。
  *
  * 只做英文 - 和 IflytekSemanticMatcher (中文版) 各自獨立, 沒在這個 class 裡加
  * language 參數 (因為機身 ASR 引擎本身一次只能選到一種語言, 兩個 matcher 不會同時用)。
- * SemanticCenter.handleIflytekSemanticText() 根據現正生效的 ASR 語言, 選用哪一個。
+ * MainActivity.handleIflytekSemanticText() 根據現正生效的 ASR 語言, 選用哪一個。
  *
  * Zero-third-party-dependency: 只用 org.json (Android 內建), 沒額外 library。
  */
@@ -277,7 +277,7 @@ public class IflytekSemanticMatcherEn {
      *  回傳。找不到對應分類、或者分類是空 pool, 回傳 null (呼叫方要自行 fallback,
      *  例如 resolveRandomActionId() 隨機動作池)。
      *
-     *  呼叫方 (SemanticCenter.handleIflytekSemanticText()) 應該在拿到 MatchResult
+     *  呼叫方 (MainActivity.handleIflytekSemanticText()) 應該在拿到 MatchResult
      *  之後、真正 call robot.action_PlayActionName() 之前, 用這個方法將
      *  actionId 解析成真實可播放的 id - 和 "__RANDOM__" 標記 (見
      *  resolveRandomActionId()) 屬於同一種「延遲到執行時才選」的設計, 但這是

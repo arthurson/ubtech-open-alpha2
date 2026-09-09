@@ -85,6 +85,11 @@ final class VoiceStream {
                     ? srcFmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT) : 2;
             if (channels < 1) channels = 1;
             if (channels > 2) channels = 2;
+            // 畸形 mp3（sampleRate 0/離譜值）唔好落到 new AudioTrack 先炸，早拒。
+            if (sampleRate < 8000 || sampleRate > 48000) {
+                Log.w(TAG, "bad sample rate " + sampleRate + ": " + file.getName());
+                return;
+            }
             int chCfg = channels == 1 ? AudioFormat.CHANNEL_OUT_MONO : AudioFormat.CHANNEL_OUT_STEREO;
             int minBuf = AudioTrack.getMinBufferSize(sampleRate, chCfg, AudioFormat.ENCODING_PCM_16BIT);
             int bufSize = Math.max(minBuf * 4, 65536);
@@ -134,18 +139,20 @@ final class VoiceStream {
         ByteBuffer[] outBufs = codec.getOutputBuffers();
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         short[] ring = new short[RING_FRAMES * channels];
-        int ringStart = 0; // 已消費幀數（相對下標，滿半整理）
-        int ringAvail = 0; // 環內有效輸入幀數
+        int ringStart = 0; // 已消費絕對幀數（只加不減；array 內數據已前移，寫位用 ringAvail 相對下標）
+        int ringAvail = 0; // 環內有效輸入幀數（相對下標 0..ringAvail-1）
         boolean inputEos = false;
         boolean outEosSeen = false;
         double pos = 0; // 當前輸出幀對應的輸入幀位置（分數）
         short[] out = new short[OUT_CHUNK_FRAMES * channels];
+        int stallRounds = 0; // 連續無進展計數：壞歌唔好空轉到 bound（可以幾分鐘）
 
         while (true) {
             if (abort || stop.isStopped()) return "stopped";
             if (System.nanoTime() / 1000000L >= deadlineMonoMs) return "bound"; // b*timeBase 自停
-            // 喂輸入（環將滿時停喂，免慢速下溢出丟尾）
-            if (!inputEos && (RING_FRAMES - (ringStart + ringAvail)) > 4096) {
+            // 喂輸入（環將滿時停喂，免慢速下溢出丟尾；空位只看 ringAvail，
+            // ringStart 係絕對已消費數，唔可以計入下標）
+            if (!inputEos && (RING_FRAMES - ringAvail) > 4096) {
                 int ii = codec.dequeueInputBuffer(10000);
                 if (ii >= 0) {
                     ByteBuffer ib = inBufs[ii];
@@ -168,12 +175,12 @@ final class VoiceStream {
                     if (info.size > 0) {
                         ByteBuffer ob = outBufs[oi];
                         int frames = info.size / (2 * channels);
-                        int space = RING_FRAMES - (ringStart + ringAvail);
+                        int space = RING_FRAMES - ringAvail;
                         if (frames > space) frames = space; // 環滿則丟尾（極端慢速才發生）
                         ob.position(info.offset);
                         for (int f = 0; f < frames; f++) {
                             for (int c = 0; c < channels; c++) {
-                                ring[(ringStart + ringAvail) * channels + c] = ob.getShort();
+                                ring[ringAvail * channels + c] = ob.getShort();
                             }
                             ringAvail++;
                         }
@@ -223,6 +230,7 @@ final class VoiceStream {
                 }
             }
             if (produced > 0) {
+                stallRounds = 0; // 有出聲即係有進展，清計數
                 byte[] bytes = new byte[produced * channels * 2];
                 for (int i = 0; i < produced * channels; i++) {
                     bytes[i * 2] = (byte) (out[i] & 0xFF);
@@ -242,7 +250,13 @@ final class VoiceStream {
             } else if (outEosSeen && pos >= ringStart + ringAvail) {
                 return "eos"; // 自然播完
             } else if (!progressed) {
+                // 輸入未 EOS 但幾百輪都冇進展（decoder 卡死/壞檔）：早退，唔空轉。
+                // 正常播實有進展（每輪最多等 4×10ms dequeue + 5ms sleep），
+                // 400 輪 ≈ 20s，遠超正常抖動。
+                if (++stallRounds > 400) return "stalled";
                 try { Thread.sleep(5); } catch (InterruptedException e) { return "stopped"; }
+            } else {
+                stallRounds = 0;
             }
         }
     }

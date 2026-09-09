@@ -65,8 +65,8 @@ public class AudioController {
     // top of stopIfIdle()'s client-disconnect detection (see readLoop()'s old check).
     // stopIfIdle() - triggered when handleMicStream()'s out.write() hits a broken pipe
     // after the HTTP client disconnects - remains the primary mechanism that releases
-    // this app's mic hold (no engine to hand back to since alpha2services removal),
-    // and is unaffected by this removal. The tradeoff: if a client connection were to vanish in a way that never
+    // the mic back to alpha2services' wake-word engine, and is unaffected by this
+    // removal. The tradeoff: if a client connection were to vanish in a way that never
     // produces a write failure (no further chunks ever attempted, socket never
     // explicitly closed), the mic could now stay held indefinitely instead of being
     // force-released after 5 minutes. No such case has been observed in logcat so far.

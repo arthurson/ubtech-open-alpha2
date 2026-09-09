@@ -5,14 +5,18 @@ Generate typed JS ApiClient from openapi/open-alpha2-openapi.yml.
 Usage:
   python scripts/generate-api-client.py
   -> writes app/src/main/assets/web/api-client.js
+  python scripts/generate-api-client.py --check
+  -> 只比對唔寫檔，drift 即 exit 1 (啱 CI 用；本地誤跑唔會覆寫)
 
 This is the "2. 前端 Typed JS" part of the 1+2 OpenAPI simplification:
 - Single source of truth: openapi yaml
 - No hand-written fetch("...alpha2/...") strings scattered across 8 app-*.js files
 - Auto-validates enums/ranges before network round-trip (mirrors ApiValidator.java)
 """
+import difflib
 import pathlib
 import re
+import sys
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -88,6 +92,9 @@ lines.append("")
 lines.append("const Alpha2Api = (function() {")
 lines.append("  function qs(params) { return params ? '?' + new URLSearchParams(params).toString() : ''; }")
 lines.append("  function assertEnum(val, allowed, key) { if (val != null && !allowed.includes(val)) throw new Error(key + ' must be one of ' + allowed.join(',')); }")
+lines.append("  // 2026-09-09：數字 enum（ubx/speed 0.5/0.67/…）用數值比對＋後端同款 0.001 容差——")
+lines.append("  // URL/query 嚟嘅係字串，嚴格 includes 會誤殺 \"1\" 之類合法值。")
+lines.append("  function assertEnumNum(val, allowed, key) { if (val != null && !allowed.some(function(a){ return Math.abs(Number(val)-a) < 0.001; })) throw new Error(key + ' must be one of ' + allowed.join(',')); }")
 lines.append("  function assertRange(val, min, max, key) { if (val < min || val > max) throw new Error(key + ' must be between '+min+' and '+max); }")
 lines.append("")
 
@@ -169,7 +176,9 @@ for tag in sorted(grouped.keys()):
             enum_vals = schema.get("enum")
             if enum_vals:
                 js_list = "[" + ", ".join(js_value(v) for v in enum_vals) + "]"
-                lines.append(f"    if (params && params.{name} != null) assertEnum(params.{name}, {js_list}, '{name}');")
+                # 全字串行嚴格比對；有數字就用數值版（見上面 assertEnumNum）。
+                fn = "assertEnum" if all(isinstance(v, str) for v in enum_vals) else "assertEnumNum"
+                lines.append(f"    if (params && params.{name} != null) {fn}(params.{name}, {js_list}, '{name}');")
             if schema.get("type") == "integer" and ("minimum" in schema or "maximum" in schema):
                 mn = schema.get("minimum", -1e9)
                 mx = schema.get("maximum", 1e9)
@@ -217,5 +226,18 @@ lines.append("//   Alpha2Api.xiaozhiConnect()")
 OUT.parent.mkdir(parents=True, exist_ok=True)
 # 強制使用 LF 換行，否則 Windows 上 pathlib 預設會轉為 CRLF，導致 CI (Ubuntu/LF) 的 git diff 誤判 drift。
 # 參考 logs_91129359938.zip drift 失敗：整個 api-client.js 被視為 758 行全改，實為 CRLF vs LF + 缺尾換行。
-OUT.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-print(f"Wrote {OUT} with {len(exported)} functions")
+new_text = "\n".join(lines) + "\n"
+if "--check" in sys.argv[1:]:
+    old_text = OUT.read_text(encoding="utf-8") if OUT.exists() else ""
+    if old_text == new_text:
+        print(f"api-client.js 一致 ({len(exported)} functions)")
+    else:
+        print(f"api-client.js drift（spec 改咗未重 gen？跑 python scripts/generate-api-client.py）")
+        for line in difflib.unified_diff(
+                old_text.splitlines(), new_text.splitlines(),
+                fromfile="committed", tofile="generated", lineterm="", n=1):
+            print("    " + line)
+        sys.exit(1)
+else:
+    OUT.write_text(new_text, encoding="utf-8", newline="\n")
+    print(f"Wrote {OUT} with {len(exported)} functions")

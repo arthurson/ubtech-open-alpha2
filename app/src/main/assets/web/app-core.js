@@ -388,7 +388,11 @@ const I18N = {
  *  the static-element equivalent. */
 function t(key, params) {
   const entry = I18N[key];
-  if (!entry) return key;
+  // 2026-09-09：缺 key 即 warn（之前靜默回 raw key，漏譯唔知）。
+  if (!entry) {
+    if (typeof console !== "undefined" && console.warn) console.warn("i18n missing: " + key);
+    return key;
+  }
   let s = entry[uiLang] || entry.zh;
   // 2026-09-06 晚加：{name} 參數替換（舊調用 t(key) 不受影響；之前傳第二參數
   // 係靜默丟棄，calib 區狀態字長期顯示 raw key 即此因）。

@@ -53,7 +53,7 @@ public class HeadKeyPoller extends HeadKeyMgr {
 
     private static final String EVENT_NODE = "/dev/input/event0";
 
-    // 舊 gesture 碼（見 docs/legacy-beta3/AIDL_REFERENCE_ALPHA2.md 第7章 + GestureCenter.onGestureCode）
+    // 舊 gesture 碼（見 AIDL_REFERENCE 第7章 + MainActivity.onGestureCode）
     private static final int KEY_MINUS = 0x5a;
     private static final int KEY_MINUS_UP = 0x5b;
     private static final int KEY_PLUS = 0x5c;
@@ -66,6 +66,8 @@ public class HeadKeyPoller extends HeadKeyMgr {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile Listener listener;
     private Thread thread;
+    private volatile InputStream pollInput; // Java poll 用嘅 event0 流（stop 閂佢先叫得醒 blocking read）
+    private volatile long lastNativeCallbackMs = 0;
 
     private boolean minusDown = false;
     private boolean plusDown = false;
@@ -81,13 +83,20 @@ public class HeadKeyPoller extends HeadKeyMgr {
         // 不可用返回值判斷；照原裝順序調，成敗看回調/“nativeRun” log。
         if (HeadKeyMgr.isLibLoaded()) {
             try {
+                // 先自檢三個私有樁簽名：同 .so 期望差一個字即 native GetMethodID
+                // 落空（native 線程靜默死/撞），唔好起 native，直接 Java poll。
+                HeadKeyMgr.class.getDeclaredMethod("convertHeadKeyEvent", int.class);
+                HeadKeyMgr.class.getDeclaredMethod("newConvertHeadKeyEvent", int.class);
+                HeadKeyMgr.class.getDeclaredMethod("publishEvent", byte.class);
                 boolean initRet = Init();
                 Log.i(TAG, "HeadKeyMgr.Init() returned " + initRet + " (ignored, always false)");
                 nativeInit();
                 nativeThreadStart();
                 nativeActive = true;
                 running.set(true);
+                lastNativeCallbackMs = 0;
                 Log.i(TAG, "native head_key thread active (3.002 libhead_key_mgr.so)");
+                startNativeWatchdog();
                 return;
             } catch (Throwable t) {
                 Log.w(TAG, "native head_key failed, fallback to Java poll: " + t.getMessage());
@@ -98,8 +107,32 @@ public class HeadKeyPoller extends HeadKeyMgr {
         startJavaPoll();
     }
 
+    /** native 看門狗：起線程 6s 內一個回調都冇，大概率 GetMethodID 落空靜默死，
+     *  唔好成世等，回退 Java poll（一次性 daemon，唔常駐）。 */
+    private void startNativeWatchdog() {
+        Thread wd = new Thread(new Runnable() {
+            @Override public void run() {
+                try { Thread.sleep(6000); } catch (InterruptedException e) { return; }
+                if (nativeActive && running.get() && lastNativeCallbackMs == 0) {
+                    Log.w(TAG, "native head_key silent (no callback in 6s), fallback to Java poll");
+                    nativeActive = false;
+                    try { nativeThreadStop(); } catch (Throwable ignore) {}
+                    startJavaPoll();
+                }
+            }
+        }, "HeadKeyWatchdog");
+        wd.setDaemon(true);
+        wd.start();
+    }
+
     public synchronized void stop() {
         running.set(false);
+        // 閂 event0 流先叫得醒 blocking read（interrupt 叫唔醒），再 join。
+        InputStream pin = pollInput;
+        pollInput = null;
+        if (pin != null) {
+            try { pin.close(); } catch (Exception ignore) {}
+        }
         if (nativeActive) {
             nativeActive = false;
             try {
@@ -120,6 +153,8 @@ public class HeadKeyPoller extends HeadKeyMgr {
      */
     @Override
     public void onNativeCallback(int code) {
+        if (!running.get()) return; // stop 後殘留回調唔投遞
+        lastNativeCallbackMs = System.currentTimeMillis();
         Log.i(TAG, "native key 0x" + Integer.toHexString(code));
         Listener l = listener;
         if (l != null) {
@@ -139,41 +174,47 @@ public class HeadKeyPoller extends HeadKeyMgr {
      * 每個回調即一個完整 gesture 事件，高 8 bit 右移即得 0x5a..0x5f；
      * 此處只同步 minus/plus/both 狀態（與 poll 路徑共用，供後續合成參考）並直發。
      */
-    private synchronized void onNativeKey(int code) {
+    private void onNativeKey(int code) {
         int eventCode = (code >> 8) & 0xFF;
-        switch (eventCode) {
-            case KEY_MINUS:
-                minusDown = true;
-                emitGesture(KEY_MINUS);
-                break;
-            case KEY_MINUS_UP:
-                minusDown = false;
-                emitGesture(KEY_MINUS_UP);
-                break;
-            case KEY_PLUS:
-                plusDown = true;
-                emitGesture(KEY_PLUS);
-                break;
-            case KEY_PLUS_UP:
-                plusDown = false;
-                emitGesture(KEY_PLUS_UP);
-                break;
-            case KEY_BOTH:
-                minusDown = true;
-                plusDown = true;
-                bothReported = true;
-                emitGesture(KEY_BOTH);
-                break;
-            case KEY_BOTH_UP:
-                minusDown = false;
-                plusDown = false;
-                bothReported = false;
-                emitGesture(KEY_BOTH_UP);
-                break;
-            default:
-                Log.d(TAG, "native key unmapped 0x" + Integer.toHexString(code));
-                break;
+        // 狀態喺鎖內改，emit 放鎖外（listener 回調唔可以揸住把鎖，調用方
+        // 重入 stop() 會死鎖；poll 路徑 onKey 同一把鎖，兩路唔會打架）。
+        Integer gesture = null;
+        synchronized (this) {
+            switch (eventCode) {
+                case KEY_MINUS:
+                    minusDown = true;
+                    gesture = KEY_MINUS;
+                    break;
+                case KEY_MINUS_UP:
+                    minusDown = false;
+                    gesture = KEY_MINUS_UP;
+                    break;
+                case KEY_PLUS:
+                    plusDown = true;
+                    gesture = KEY_PLUS;
+                    break;
+                case KEY_PLUS_UP:
+                    plusDown = false;
+                    gesture = KEY_PLUS_UP;
+                    break;
+                case KEY_BOTH:
+                    minusDown = true;
+                    plusDown = true;
+                    bothReported = true;
+                    gesture = KEY_BOTH;
+                    break;
+                case KEY_BOTH_UP:
+                    minusDown = false;
+                    plusDown = false;
+                    bothReported = false;
+                    gesture = KEY_BOTH_UP;
+                    break;
+                default:
+                    Log.d(TAG, "native key unmapped 0x" + Integer.toHexString(code));
+                    break;
+            }
         }
+        if (gesture != null) emitGesture(gesture);
     }
 
     private void startJavaPoll() {
@@ -195,6 +236,7 @@ public class HeadKeyPoller extends HeadKeyMgr {
         byte[] ev = new byte[16];
         try {
             InputStream in = new FileInputStream(EVENT_NODE);
+            pollInput = in; // 存 field，stop() 閂佢叫醒 blocking read
             try {
                 while (running.get()) {
                     int got = 0;
@@ -222,6 +264,7 @@ public class HeadKeyPoller extends HeadKeyMgr {
                     // 非按鍵事件（SYN 等）忽略
                 }
             } finally {
+                pollInput = null;
                 try { in.close(); } catch (Exception ignore) {}
             }
         } catch (Exception e) {
@@ -244,41 +287,54 @@ public class HeadKeyPoller extends HeadKeyMgr {
         boolean released = value == 0;
         if (!pressed && !released) return; // value==2 連發忽略（音量連發由 startVolumeRepeat 處理）
 
+        // 以下狀態同 onNativeKey 共用同一把鎖（native 回調線程 vs poll 線程，
+        // 雙鍵合成唔加鎖會丟/重）；emit 放鎖外，理由同上。
+        java.util.List<Integer> gestures = new java.util.ArrayList<Integer>(2);
+        synchronized (this) {
+            gestures = onKeyLocked(code, pressed, gestures);
+        }
+        for (int i = 0; i < gestures.size(); i++) emitGesture(gestures.get(i));
+    }
+
+    /** 鎖內狀態機（唔做 listener 回調，只回要 emit 嘅碼）。 */
+    private java.util.List<Integer> onKeyLocked(int code, boolean pressed,
+                                               java.util.List<Integer> gestures) {
         // 驅動直報 0x5b/0x5d/0x5e/0x5f 這類合成碼：沿用舊語義直發
         // （value==0 的合成碼若出現則忽略，避免與下面 0x5a/0x5c 路徑雙發）。
         if (code == KEY_MINUS_UP || code == KEY_PLUS_UP || code == KEY_BOTH || code == KEY_BOTH_UP) {
-            if (pressed) emitGesture(code);
-            syncBothState(code, pressed);
-            return;
+            if (pressed) gestures.add(code);
+            syncBothStateLocked(code, pressed);
+            return gestures;
         }
         if (code == KEY_MINUS || code == KEY_PLUS) {
             if (pressed) {
                 if (code == KEY_MINUS) minusDown = true; else plusDown = true;
                 if (minusDown && plusDown && !bothReported) {
                     bothReported = true;
-                    emitGesture(KEY_BOTH);
+                    gestures.add(KEY_BOTH);
                 } else if (!bothReported) {
-                    emitGesture(code);
+                    gestures.add(code);
                 }
             } else {
                 if (code == KEY_MINUS) minusDown = false; else plusDown = false;
                 if (bothReported && !minusDown && !plusDown) {
                     bothReported = false;
-                    emitGesture(KEY_BOTH_UP);
+                    gestures.add(KEY_BOTH_UP);
                 } else if (!bothReported) {
-                    emitGesture(code == KEY_MINUS ? KEY_MINUS_UP : KEY_PLUS_UP);
+                    gestures.add(code == KEY_MINUS ? KEY_MINUS_UP : KEY_PLUS_UP);
                 } else if (!minusDown || !plusDown) {
                     // 雙按中先鬆開一顆：先報雙鍵放開，再報剩下一顆的按下態由其重發時處理
                     bothReported = false;
-                    emitGesture(KEY_BOTH_UP);
+                    gestures.add(KEY_BOTH_UP);
                 }
             }
-            return;
+            return gestures;
         }
         // 其他鍵（如 USB 音频的 0x71-0x73）只記 log，不進 gesture 管道
+        return gestures;
     }
-
-    private void syncBothState(int code, boolean pressed) {
+    /** 鎖內調用（onKeyLocked/onNativeKey 嘅 synchronized 塊入面）。 */
+    private void syncBothStateLocked(int code, boolean pressed) {
         if (code == KEY_MINUS || code == KEY_MINUS_UP) minusDown = pressed && code == KEY_MINUS;
         else if (code == KEY_PLUS || code == KEY_PLUS_UP) plusDown = pressed && code == KEY_PLUS;
         else if (code == KEY_BOTH) { bothReported = pressed; if (pressed) { minusDown = true; plusDown = true; } }

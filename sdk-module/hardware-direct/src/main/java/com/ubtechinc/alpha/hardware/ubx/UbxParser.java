@@ -45,7 +45,16 @@ public final class UbxParser {
     }
 
     public static UbxFile parseFile(File f) throws IOException, UbxParseException {
-        byte[] data = new byte[(int) f.length()];
+        long flen = f.length();
+        // 先擋：空檔/超大檔唔好 new byte[]（>2GB 轉 int 變負數即 NegativeArraySize
+        // Error，調用方 catch (Exception) 接唔住會成條 worker 線程死）。
+        // 註：下面各段 p+len 檢查係 int 加法，惡意 len 理論上 wrap 得到，
+        // 但 Java array 存取全部有 bounds check + le() overrun 一律掟
+        // UbxParseException（調用方當 parse failed 回 500，唔會 corrupt），
+        // 所以唔逐個改 long，擋 OOM 呢個真係會死 process 嘅就夠。
+        if (flen <= 0) throw new UbxParseException("empty file: " + f.getName());
+        if (flen > 64L * 1024L * 1024L) throw new UbxParseException("file too large: " + flen);
+        byte[] data = new byte[(int) flen];
         FileInputStream in = new FileInputStream(f);
         try {
             int off = 0;

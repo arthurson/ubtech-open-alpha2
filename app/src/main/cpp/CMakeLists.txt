@@ -19,6 +19,12 @@ cmake_minimum_required(VERSION 3.10.2)
 
 project("easyopus")
 
+# 2026-09-09 guard：prebuilt/libopus.so 得 armeabi-v7a 一份，鬆 abiFilters
+# 會變成難明嘅缺檔錯，早啲死得明白。
+if(NOT ANDROID_ABI STREQUAL "armeabi-v7a")
+  message(FATAL_ERROR "easyopus 只支援 armeabi-v7a（prebuilt 淨係得呢個 ABI），got: ${ANDROID_ABI}")
+endif()
+
 add_library( # 編譯出嚟嘅 .so 名 -> libeasyopus.so, Java 側
              # System.loadLibrary("easyopus") 會搵呢個名
              easyopus

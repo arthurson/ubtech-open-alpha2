@@ -71,8 +71,9 @@ public final class CameraApi {
 
     public HttpServer.ApiResponse snapshotSave(Map<String, String> query) {
         // 齊 9 檔影相並存入 Android：可選 w/h，未提供則用當前 preview 解像度；存至 /sdcard/DCIM/Alpha2
-        Integer wOpt = ApiValidator.optionalInteger(query, "w");
-        Integer hOpt = ApiValidator.optionalInteger(query, "h");
+        // 2026-09-09：有俾就要跟 spec 範圍（之前負/巨大值直入 Camera）。
+        Integer wOpt = ApiValidator.optionalIntegerRange(query, "w", 1, 4208);
+        Integer hOpt = ApiValidator.optionalIntegerRange(query, "h", 1, 3120);
         int reqW = 0, reqH = 0;
         boolean hasSize = wOpt != null && hOpt != null;
         if (hasSize) {
@@ -120,8 +121,8 @@ public final class CameraApi {
     public HttpServer.ApiResponse takePhotoSave(Map<String, String> query) {
         // 真正單張拍攝（picture 尺寸，經 Camera.takePicture 完整 ISP），存入 Android
         // 若未指定，用最大 picture 尺寸 (見 openapi default w=4208 h=3120)。
-        int reqW = ApiValidator.optionalInt(query, "w", 4208);
-        int reqH = ApiValidator.optionalInt(query, "h", 3120);
+        int reqW = ApiValidator.optionalIntRange(query, "w", 1, 4208, 4208);
+        int reqH = ApiValidator.optionalIntRange(query, "h", 1, 3120, 3120);
         CameraController.StartResult started = cameraController.start(8000);
         if (started.error != null) {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + MainActivity.jsonSafe(started.error) + "\"}");
@@ -202,8 +203,9 @@ public final class CameraApi {
     }
 
     public HttpServer.ApiResponse resolution(Map<String, String> query) {
-        int w = ApiValidator.requireInt(query, "w");
-        int h = ApiValidator.requireInt(query, "h");
+        // 2026-09-09：跟 spec（w 1-4208，h 1-3120）顯式驗；之前負/巨大值直入 Camera。
+        int w = ApiValidator.requireIntRange(query, "w", 1, 4208);
+        int h = ApiValidator.requireIntRange(query, "h", 1, 3120);
         cameraController.setRequestedResolution(w, h);
         // Block until the camera is genuinely released before answering - see
         // forceStopAndWait()'s javadoc for why stopIfIdle() alone isn't enough

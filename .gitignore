@@ -6,6 +6,19 @@ app/.cxx/
 sdk-module/*/build/
 *.iml
 local.properties
+# 2026-09-09：apk/aab 唔入庫（CI artifact 另存）；release key 相關唔好誤 commit
+#（注意：唔好寫 *.keystore——app/debug.keystore 係刻意入庫嘅公開 debug key）。
+*.apk
+*.aab
+*.ap_
+*.dex
+release.keystore
+keystore.properties
+*.jks
+.idea/
+node_modules/
+# 胸固件 bin 唔入庫
+*.bin
 # Python
 __pycache__/
 *.pyc

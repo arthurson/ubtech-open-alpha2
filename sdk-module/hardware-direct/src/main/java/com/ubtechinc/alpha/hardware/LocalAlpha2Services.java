@@ -31,25 +31,25 @@ public final class LocalAlpha2Services {
 
     public boolean isDirectActive() { return direct.isDirectAvailable(); }
 
-    // 胸口直驅快捷
+    // 胸口直驅快捷（2026-09-09：各查各板，唔好查「任一板」——頭板獨活唔代表胸掂）
     public boolean chestSetSingle(byte id, int angle, short time) {
-        if (!isDirectActive()) return false;
+        if (!direct.chest().isAvailable()) return false;
         return direct.chest().setSingleServo(id, angle, time);
     }
 
     public boolean chestSetAll(int[] angles20, short time) {
-        if (!isDirectActive()) return false;
+        if (!direct.chest().isAvailable()) return false;
         return direct.chest().setAllServos(angles20, time);
     }
 
     public boolean chestSonar(int cm) {
-        if (!isDirectActive()) return false;
+        if (!direct.chest().isAvailable()) return false;
         return direct.chest().configureSonar(cm);
     }
 
     // 頭直驅
     public boolean headNoise(boolean open) {
-        if (!isDirectActive()) return false;
+        if (!direct.head().isAvailable()) return false;
         return direct.head().setNoiseReduction(open);
     }
 

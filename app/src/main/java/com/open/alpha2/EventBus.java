@@ -49,7 +49,8 @@ public final class EventBus {
         return listeners.size();
     }
 
-    private volatile long lastListenerCountLogMs = 0;
+    private final java.util.concurrent.atomic.AtomicLong lastListenerCountLogMs =
+            new java.util.concurrent.atomic.AtomicLong(0);
 
     /**
      * Publishes {"type":"<type>","time":"<HH:mm:ss.SSS>","data":<dataJson>} to every
@@ -67,16 +68,18 @@ public final class EventBus {
         // ever actually completed its handshake, even though HTTP API calls on other
         // connections succeeded).
         long now = System.currentTimeMillis();
-        if (now - lastListenerCountLogMs > 2000) {
-            lastListenerCountLogMs = now;
+        // 2026-09-09：原子 take（之前 check-then-set race，會重複 log；benign）。
+        if (now - lastListenerCountLogMs.get() > 2000
+                && lastListenerCountLogMs.compareAndSet(lastListenerCountLogMs.get(), now)) {
             android.util.Log.i("EventBus", "publish(" + type + ") - " + listeners.size() + " listener(s) subscribed");
         }
         String line = "{\"type\":\"" + type + "\",\"time\":\"" + time + "\",\"data\":" + dataJson + "}";
         for (Listener l : listeners) {
             try {
                 l.onEvent(line);
-            } catch (Exception ignored) {
-                // A single bad subscriber must not break the others.
+            } catch (Throwable ignored) {
+                // A single bad subscriber must not break the others (Error 都接，
+                // 唔係一個壞 listener 掟 Error 會斷後面成串）。
             }
         }
     }

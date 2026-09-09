@@ -39,6 +39,9 @@ public final class SerialFrameCodec {
      */
     public static byte[] encode(byte cmd, byte[] param) {
         int plen = param == null ? 0 : param.length;
+        // LEN 係單 byte（LEN=7+plen，總幀長=LEN+1）：plen>248 會 wrap 整壞解碼，
+        // 快啲掟錯好過送隻壞幀落 MCU。
+        if (plen > 248) throw new IllegalArgumentException("param too long: " + plen + " (max 248)");
         int len = 7 + plen; // LEN = 7 + PARAM字節數（總幀長 = LEN+1）
         byte[] frame = new byte[3 + 2 + 1 + plen + 1 + 1]; // F8 8F LEN SRC DST CMD PARAM SUM ED
         int i = 0;
@@ -92,10 +95,15 @@ public final class SerialFrameCodec {
             byte[] frame = Arrays.copyOfRange(buf, start, start+total);
             return new DecodeResult(frame, (start - offset) + total);
         }
-        // 短式回退
+        // 短式回退（長式頭對唔上先到呢度；LEN 封頂 250，偽 LEN=255 唔好等到天荒地老）
         int total = 2 + 1 + len + 1 + 1; // head(2) + len + payload(len) + checksum + tail
+        if (len > 250) return new DecodeResult(null, (start - offset) + 1);
         if (start + total > offset + available) return null;
-        if (buf[start + total - 1] != FRAME_TAIL) return null;
+        // 夠 bytes 但尾錯 = 壞幀，同 checksum 錯一樣跳 1（之前回 null 會等齊更多
+        // 數據先郁，壞幀塞住 buffer 愈積愈多）。
+        if (buf[start + total - 1] != FRAME_TAIL) {
+            return new DecodeResult(null, (start - offset) + 1);
+        }
         int sum = len & 0xFF;
         for (int k = 0; k < len; k++) sum += buf[start+3+k] & 0xFF;
         if ((sum & 0xFF) != (buf[start+total-2] & 0xFF)) {
@@ -112,11 +120,18 @@ public final class SerialFrameCodec {
         DecodeResult(byte[] frame, int consumed) { this.frame = frame; this.consumed = consumed; }
     }
 
-    /** 工具：把 byte[] 列印成 logcat 風格的 hex，如 f8 8f 08 00 00 91 01 9a ed */
+    /** 工具：把 byte[] 列印成 logcat 風格的 hex，如 f8 8f 08 00 00 91 01 9a ed
+     *  2026-09-09：手寫 hex 表（之前逐 byte String.format，TX/RX 熱路徑慳 GC；
+     *  行為不變，test 照過）。 */
+    private static final char[] HEX_LOWER = "0123456789abcdef".toCharArray();
     public static String toHex(byte[] b) {
         if (b == null) return "null";
-        StringBuilder sb = new StringBuilder();
-        for (byte v : b) sb.append(String.format("%02x ", v & 0xFF));
-        return sb.toString().trim();
+        StringBuilder sb = new StringBuilder(b.length * 3);
+        for (int i = 0; i < b.length; i++) {
+            if (i > 0) sb.append(' ');
+            int v = b[i] & 0xFF;
+            sb.append(HEX_LOWER[v >>> 4]).append(HEX_LOWER[v & 0x0F]);
+        }
+        return sb.toString();
     }
 }

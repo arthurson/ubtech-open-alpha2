@@ -17,8 +17,12 @@ beta4 同 beta3 最大分別：**機身根本無 `alpha2services.apk`，成套 A
   `F8 8F LEN CMD PARAM SUM ED`。頭頂 +/- pad：`/dev/input/event0`
  （rk29-keypad）；眼/頭/嘴燈：`libhead_led.so` JNI。
 - 機械人同瀏覽器裝置要喺同一個 WiFi。Server 純 HTTP（自簽 HTTPS 方案已永久移除）。
+- ⚠️ **只用可信 LAN**：無 auth，同網段任何人可播動作、睇相機/聽 mic、上傳固件；
+  唔好橋接上網、唔好放公用/宿舍大 LAN，亦唔好經 port-forward 對外網。
 - 動作檔喺機身 `/sdcard/actions/`：`<id>.ubx`＋同名目錄 `<id>/xxx.mp3`＋
-  `actionInfo.txt`（GBK，`<fileId>##中文名##英文名##type`，202 個動作）。
+  `actionInfo.txt`（GBK，`<fileId>##中文名##英文名##type`；機身檔版本眾多，
+  「202 個」係指 `actionInfo.txt` 行數口徑，實機 `.ubx` 檔數／前端 preset
+  數（199→200）會因版本差一兩個，以機身 `actionInfo.txt` 為準）。
 
 ## 控制面板（`app/src/main/assets/web/`）
 
@@ -51,7 +55,8 @@ ACTIONS（動作列表＋分類＋播放/停止＋**變速 0.5/0.67/1/1.5/2**）
   `ubx/*`、`servo/*`、`speech/*`、`led/*`、`audio/*`（本地音樂/電台）、`chest/*`、
   `system/*`、`xiaozhi/*`；另有 `/api/direct/*`（底層直調）、`/upload/*`、
   `/stream/*`、`/ws`（RFC6455 即時事件）。
-- OpenAPI 3.0（`openapi/open-alpha2-openapi.yml`，142 paths，其中 140 條 API＋`/`、`blockly.html`）係單一真相源；
+- OpenAPI 3.0（`openapi/open-alpha2-openapi.yml`，142 paths＝134 條 API＋
+  5 upload/stream＋`/、blockly.html、/ws` 3 個）係單一真相源；
   `app/.../web/api-client.js`（`Alpha2Api.*`，134 個 wrapper）由
   `scripts/generate-api-client.py` 生成，改 spec 必重 gen；
   `scripts/check-openapi-drift.py` 保 code↔spec 對齊；另有 AsyncAPI
@@ -63,6 +68,9 @@ ACTIONS（動作列表＋分類＋播放/停止＋**變速 0.5/0.67/1/1.5/2**）
   `McpToolsGenerated.java`，`XiaozhiBridge.listTools()` 只做 enable/disable 過濾。
 
 ## Build / 裝機
+
+> ⚠️ **JAVA_HOME 必須指 Temurin JDK 11**（唔係 JDK 17/21：AGP 4.2.2 嘅 manifest
+> merger 會死，見下「地雷」）。CI 同本地同一個組合先編到一樣嘅嘢。
 
 組合：Temurin JDK 11 + Gradle 7.0 + Android SDK（`ANDROID_SDK_ROOT` 指向 SDK；
 `local.properties` 只放你自己部機，唔入 repo）：
@@ -76,6 +84,7 @@ adb -s <serial> forward tcp:8888 tcp:8888
 
 輸出 `app-debug.apk`（CI 會改名 `open-alpha2-beta4.apk` 做 artifact）。
 `app/debug.keystore` 係確定性 debug key（密碼 `android`），簽名唔同要先解除安裝。
+呢條 key 視為公開（標準 Android debug key，入咗 repo 正常）；release 另用正式 key，唔好靠簽名做權限隔離。
 prebuilt `.so`（`head_led/head_key_mgr/serial_port`）一律喺
 `sdk-module/hardware-direct/src/main/jniLibs`；`libeasyopus.so` 由
 `app/src/main/cpp` CMake 即編。
@@ -94,7 +103,7 @@ prebuilt `.so`（`head_led/head_key_mgr/serial_port`）一律喺
   `vosk/endpointer`。
 - 每輪必做：compile＋`test-apivalidator.py`（104）＋routes＋drift＋dexdump＋
   裝機＋端點＋logcat `FATAL EXCEPTION`。
-- `C:/Users/user/AppData/Local/Temp/opencode` 有舊 session 幾百 MB log，唔好理。
+- `C:/Users/user/AppData/Local/Temp/opencode`（即 `%TEMP%\opencode`）有舊 session 幾百 MB log，唔好理。
 
 ## 檔案結構
 

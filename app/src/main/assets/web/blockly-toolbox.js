@@ -1,5 +1,5 @@
 // Open Alpha2 — Toolbox 定義 (Blockly JSON 格式)。
-// 分咗 11 個分類：控制流程放最頂 (最常用), 之後跟 API 分組, 最後係 Blockly 標準
+// 分咗 12 個分類：控制流程放最頂 (最常用), 之後跟 API 分組, 最後係 Blockly 標準
 // 邏輯/迴圈/數學/文字/變數/自訂函式。
 //
 // 包做 function (而唔係一次性 object literal) 係俾語言切換用: 分類名/範例入面

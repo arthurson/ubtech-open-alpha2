@@ -91,7 +91,12 @@ public final class XiaozhiBridge {
     }
 
     /** onDestroy 共用：斷線＋停 audio（comment 連 code 由 MainActivity 搬入）。 */
+    // 2026-09-09：guard，重複調用唔好每次都 new thread。
+    private final java.util.concurrent.atomic.AtomicBoolean shutdownGuard =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     public void shutdown() {
+        if (!shutdownGuard.compareAndSet(false, true)) return;
         if (xiaozhiClient != null) {
             // 2026-08 修 crash: 之前呢度直接 (同步) call disconnect(), 但
             // disconnect() 內部現在會做 sendCloseFrame() (socket write, 完成
@@ -524,8 +529,8 @@ public final class XiaozhiBridge {
                 // re-trigger mic/start per the "auto_mode" case's connect-completion
                 // logic, surprising someone who explicitly asked to disconnect.
                 // Uses stopXiaozhiMic() (not just stopCapture()/stopPlayback() directly)
-                // so our mic hold is released (speech_SetMIC(false) is now a RobotStub
-                // no-op - no engine to hand back to) and the mic LED/hold-enforcer
+                // so mic ownership is actually handed back to alpha2services'
+                // wake-word engine (speech_SetMIC(false)) and the mic LED/hold-enforcer
                 // thread are torn down too - see stopXiaozhiMic()'s javadoc.
                 xiaozhiAutoMode.set(false);
                 xiaozhiReconnectAttempts.set(0);
@@ -545,8 +550,9 @@ public final class XiaozhiBridge {
             }
 
             case "auto_mode": {
-                String enabledStr = ApiValidator.require(query, "enabled");
-                boolean enabled = "true".equalsIgnoreCase(enabledStr) || "1".equals(enabledStr);
+                // 2026-09-09：行 requireBoolean（之前手解，"foo" 靜默變 false
+                // 同 ApiValidator 唔一致；前端/MCP 傳真 boolean 即 "true"/"false"）。
+                boolean enabled = ApiValidator.requireBoolean(query, "enabled");
                 xiaozhiAutoMode.set(enabled);
                 if (enabled) {
                     // Auto-connect + auto-mic in one action - if a session isn't
@@ -705,8 +711,7 @@ public final class XiaozhiBridge {
             return HttpServer.ApiResponse.error("not connected - call xiaozhi/connect first");
         }
         // 2026-08 修正: 之前這裡直接開 XiaozhiAudioController 的 AudioRecord, 完全沒有
-        // 取得 mic 擁有權 - 當年 alpha2services 自己的 wake-word 引擎一直持續佔用麥克風
-        // (已隨 APK 移除而消失，家下無競爭者；保留 release 流程做保險) -
+        // 取得 mic 擁有權 - alpha2services 自己的 wake-word 引擎一直持續佔用麥克風,
         // 這台機器的音訊 HAL 又不支援多個 process 同時開啟 mic input, 所以之前的
         // AudioRecord.startRecording() 實質上一直收不到聲音。這裡和 handleMicStream()
         // (Speech/Mic tab 那個獨立 mic 串流) 一樣, 用 releaseMicForAudioIo() 先取得
@@ -804,7 +809,7 @@ public final class XiaozhiBridge {
                 // Not fatal - the mic/AudioTrack are already released above
                 // regardless of whether this final courtesy message reaches the
                 // server (e.g. the connection may have just dropped).
-                Log.w("MainActivity", "Failed to signal listen-stop: " + e.getMessage());
+                Log.w(TAG, "Failed to signal listen-stop: " + e.getMessage());
             }
         }
         if (xiaozhiMicHeld) {
@@ -971,7 +976,7 @@ public final class XiaozhiBridge {
                         new XiaozhiOtaClient.PollCallback() {
                             @Override
                             public void onPoll(int attemptNumber) {
-                                Log.i("MainActivity", "XiaoZhi activation poll #" + attemptNumber);
+                                Log.i(TAG, "XiaoZhi activation poll #" + attemptNumber);
                             }
                         });
                 wsUrl = activationResult.websocketUrl;
@@ -1106,7 +1111,7 @@ public final class XiaozhiBridge {
             // 才能解決。現在用 catch (Throwable e) 兜到底 (連 Error 都涵蓋,
             // 不只是 Exception), 保證這個 try 區塊一有任何失敗, stage 一定會
             // 退回 ERROR, 不會再卡死在中途 stage。
-            Log.w("MainActivity", "XiaoZhi activation flow failed: " + e.getMessage());
+            Log.w(TAG, "XiaoZhi activation flow failed: " + e.getMessage());
             xiaozhiActivationStatus.set(XiaozhiActivationStatus.error(
                     e.getMessage() != null ? e.getMessage() : e.toString()));
             // 2026-08 v2: activation 失敗 (例如 TLS 證書/網絡問題) - mute LED 熄返,
@@ -1217,12 +1222,12 @@ public final class XiaozhiBridge {
         final int attempt = xiaozhiReconnectAttempts.incrementAndGet();
         final int maxAttempts = 5;
         if (attempt > maxAttempts) {
-            Log.w("MainActivity", "XiaoZhi reconnect: giving up after " + maxAttempts
+                Log.w(TAG, "XiaoZhi reconnect: giving up after " + maxAttempts
                     + " attempts - leave 小智 off/on to retry manually");
             return;
         }
         long delayMs = Math.min(5000L * (1L << (attempt - 1)), 60000L);
-        Log.i("MainActivity", "XiaoZhi reconnect: attempt " + attempt + "/" + maxAttempts
+            Log.i(TAG, "XiaoZhi reconnect: attempt " + attempt + "/" + maxAttempts
                 + " in " + delayMs + "ms");
         // 2026-08 修 crash: 之前呢度 mainHandler.postDelayed() 個 Runnable 入面
         // 直接 call runXiaozhiActivationFlow(), 但 mainHandler 係綁住 main
@@ -1265,7 +1270,7 @@ public final class XiaozhiBridge {
      *  to find the code. Digit-by-digit with pauses would be more reliably understood
      *  than reading "12345" as the number "twelve thousand three hundred forty-five",
      *  but Alpha2RobotApi's TTS has no SSML/digit-mode control exposed - see
-     *  docs/legacy-beta3/AIDL_REFERENCE_ALPHA2.md's ISpeechInterface notes, which document no such parameter -
+     *  AIDL_REFERENCE.md's ISpeechInterface notes, which document no such parameter -
      *  so this spells the digits out with spaces in the text itself
      *  ("一 二 三 四 五" for Chinese TTS), which both iFlytek and Nuance reliably read
      *  as individual digits rather than a single large number. Reads the message twice
@@ -1702,7 +1707,10 @@ public final class XiaozhiBridge {
                 // log 印出完整 raw response body, 只會說「是否 success」, 不知道
                 // server 實際還有哪些欄位。這次印出來, 下次一 fail/text 空就可以直接
                 // 對照真正的 server JSON 結構來修, 不用再靠猜。
-                android.util.Log.i("XiaozhiVision", "vision/explain raw response: " + responseText);
+                // 2026-09-09：轉 Log.d＋截 300 字（之前 INFO 全文，image 描述
+                // 加 token/uuid 可以好長，唔應該入 release logcat）。
+                android.util.Log.d("XiaozhiVision", "vision/explain raw response: "
+                        + (responseText.length() > 300 ? responseText.substring(0, 300) + "…(" + responseText.length() + "B)" : responseText));
                 if (json.optBoolean("success", false)) {
                     String text = json.optString("text", "");
                     if (text.isEmpty()) {
@@ -1742,7 +1750,7 @@ public final class XiaozhiBridge {
                         String uuid = json.optString("uuid", null);
                         String message = json.optString("message", null);
                         if (uuid != null && !uuid.isEmpty() && message != null && !message.isEmpty()) {
-                            Log.i("XiaozhiVision", "vision/explain is async (uuid=" + uuid
+                            Log.i("XiaozhiVision", "vision/explain is async (uuid=" + ChestQuery.maskUuid(uuid)
                                     + ") - relaying server's own instruction text to the LLM "
                                     + "instead of an empty result");
                             lastPendingPhotoUuid = uuid;
@@ -1766,7 +1774,7 @@ public final class XiaozhiBridge {
      *
      *  PHASE 1 SCOPE: exposes a deliberately small, safe starter set of tools
      *  (play a named action, stop action playback, speak via TTS) rather than the full
-     *  AIDL surface from docs/legacy-beta3/AIDL_REFERENCE_ALPHA2.md - MCP tool calls originate from a remote LLM
+     *  AIDL surface from AIDL_REFERENCE.md - MCP tool calls originate from a remote LLM
      *  the operator doesn't directly control turn-by-turn, so starting narrow and
      *  expanding later (once real usage patterns are seen) is safer than exposing
      *  everything (LED raw params, serial port raw commands, etc.) up front. */
@@ -1899,19 +1907,36 @@ public final class XiaozhiBridge {
                         // -- Hardware control: servo/LED/PIR/sonar -----------------------
                         // 薄包裝, 邏輯全部委託給 handleApi() 已有的 "servo/*"、
                         // "led/*"、"pir/*" case 使用的那些 Alpha2RobotApi 方法, 見
-                        // docs/legacy-beta3/AIDL_REFERENCE_ALPHA2.md 相關章節和 handleApi() 的 comment 取得完整
+                        // AIDL_REFERENCE.md 相關章節和 handleApi() 的 comment 取得完整
                         // 已驗證行為/參數語意, 這裡不重複解釋。
                         case "self.robot.servo_set_one": {
                             // pure-direct: 经 /dev/ttyS1 直发。
-                            byte id = (byte) arguments.optInt("id", -1);
+                            // 2026-09-09：同 servo/one HTTP 一套範圍（id 1-20、
+                            // angle 0-255、time 20-32767），唔啱即報錯，唔靜默 clamp。
+                            int mcpId = arguments.optInt("id", -1);
                             if (!arguments.has("angle")) {
                                 isError = true;
                                 resultText = "angle is required";
                                 break;
                             }
                             int angle = arguments.optInt("angle");
-                            short timeMs = (short) arguments.optInt("time_ms", 1000);
-                            boolean sent = HardwareDirectManager.get(appContext).chest().setSingleServo(id, angle, timeMs);
+                            int timeMs = arguments.optInt("time_ms", 1000);
+                            if (mcpId < 1 || mcpId > 20) {
+                                isError = true;
+                                resultText = "id must be between 1 and 20, got: " + mcpId;
+                                break;
+                            }
+                            if (angle < 0 || angle > 255) {
+                                isError = true;
+                                resultText = "angle must be between 0 and 255, got: " + angle;
+                                break;
+                            }
+                            if (timeMs < 20 || timeMs > 32767) {
+                                isError = true;
+                                resultText = "time_ms must be between 20 and 32767, got: " + timeMs;
+                                break;
+                            }
+                            boolean sent = HardwareDirectManager.get(appContext).chest().setSingleServo((byte) mcpId, angle, (short) timeMs);
                             UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
                             boolean ready = directChestReady();
                             isError = !MainActivity.isOk(code) || !ready;
@@ -1927,13 +1952,42 @@ public final class XiaozhiBridge {
                                 break;
                             }
                             String[] parts = anglesCsv.split(",");
-                            int[] angles = new int[20];
-                            for (int i = 0; i < 20 && i < parts.length; i++) {
-                                angles[i] = Integer.parseInt(parts[i].trim());
+                            // 2026-09-09：要啱啱 20 粒、逐粒 0-255。之前少過 20 粒
+                            // 會靜默補 0 落剩餘舵機（成排扯去 0），依家直接報錯。
+                            if (parts.length != 20) {
+                                isError = true;
+                                resultText = "angles must have exactly 20 comma-separated values, got " + parts.length;
+                                break;
                             }
-                            short timeMs = (short) arguments.optInt("time_ms", 1000);
+                            int[] angles = new int[20];
+                            boolean anglesBad = false;
+                            for (int i = 0; i < 20; i++) {
+                                int av;
+                                try {
+                                    av = Integer.parseInt(parts[i].trim());
+                                } catch (NumberFormatException nfe) {
+                                    isError = true;
+                                    resultText = "angles element " + (i + 1) + " must be integer, got: " + parts[i];
+                                    anglesBad = true;
+                                    break;
+                                }
+                                if (av < 0 || av > 255) {
+                                    isError = true;
+                                    resultText = "angles element " + (i + 1) + " must be between 0 and 255, got: " + av;
+                                    anglesBad = true;
+                                    break;
+                                }
+                                angles[i] = av;
+                            }
+                            if (anglesBad) break;
+                            int timeMs = arguments.optInt("time_ms", 1000);
+                            if (timeMs < 20 || timeMs > 32767) {
+                                isError = true;
+                                resultText = "time_ms must be between 20 and 32767, got: " + timeMs;
+                                break;
+                            }
                             // pure-direct: 经 /dev/ttyS1 直发。
-                            boolean sentAll = HardwareDirectManager.get(appContext).chest().setAllServos(angles, timeMs);
+                            boolean sentAll = HardwareDirectManager.get(appContext).chest().setAllServos(angles, (short) timeMs);
                             UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sentAll);
                             boolean readyAll = directChestReady();
                             isError = !MainActivity.isOk(code) || !readyAll;
@@ -2108,14 +2162,29 @@ public final class XiaozhiBridge {
                                 resultText = "missing required argument: text";
                                 break;
                             }
-                            // 和 speech/tts 共用 SpeechCenter.speakRobotTts()（同一個
-                            // gap guard＋mouth-LED bracket＋3-arg speech_startTTS；
-                            // Alpha2RobotApi 無 high-priority/interrupting TTS，用同一個
-                            // 低優先入口）。engine 固定 en_us（MCP tool 無 query
-                            // string，讀唔到 engine 參數——同 iFlytek per-call voice
-                            // picker 唔啱嘴形，個 schema 根本無呢個位）。
-                            UbxErrorCode.API_ERROR_CODE code = SpeechCenter.speakRobotTts(
-                                    robot, hostState.getLastSpeechStopAtMs(), text, "en_us", null);
+                            // Mirrors the "speech/tts" HTTP endpoint below (handleApi()) -
+                            // same SpeechCenter.STOP_TO_TTS_MIN_GAP_MS race guard against a just-issued
+                            // speech/stop, same mouth-LED bracket, same 3-arg
+                            // speech_startTTS(lang, text, voice) signature (Alpha2RobotApi
+                            // exposes no high-priority/interrupting TTS variant, so this
+                            // shares the low-priority entry point the rest of the app uses).
+                            // Fixed to Nuance/en_us rather than reading an "engine" query
+                            // param (no query string here, this is an MCP tool call) -
+                            // consistent with defaulting away from iFlytek's per-call voice
+                            // picker, which has no equivalent argument in this tool's schema.
+                            long sinceStopMs = System.currentTimeMillis() - hostState.getLastSpeechStopAtMs();
+                            if (sinceStopMs >= 0 && sinceStopMs < SpeechCenter.STOP_TO_TTS_MIN_GAP_MS) {
+                                try {
+                                    Thread.sleep(SpeechCenter.STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
+                                } catch (InterruptedException ie) {
+                                    Thread.currentThread().interrupt();
+                                }
+                            }
+                            LedCenter.startMouthLedForTts();
+                            UbxErrorCode.API_ERROR_CODE code = robot.speech_startTTS("en_us", text, null);
+                            if (!MainActivity.isOk(code)) {
+                                LedCenter.stopMouthLedForTts();
+                            }
                             isError = !MainActivity.isOk(code);
                             resultText = String.valueOf(code);
                             break;

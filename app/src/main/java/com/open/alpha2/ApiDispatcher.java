@@ -114,10 +114,10 @@ public final class ApiDispatcher {
     }
 
     /**
-     * Routes "/api/<name>" calls to the matching direct-drive handler. Runs on an
-     * HttpServer worker thread (not the main thread) - the hardware calls used here
-     * are safe off the main thread (serial-port sends are synchronized at the port,
-     * JNI/helpers are stateless or thread-confined).
+     * Routes "/api/<name>" calls to the matching Alpha2RobotApi method. Runs on an
+     * HttpServer worker thread (not the main thread) - every SDK call used here is safe
+     * to invoke off the main thread (the *ServiceUtil classes only marshal Binder calls),
+     * matching how the SDK's own AGENTS.md describes bind/call safety.
      */
 
     public HttpServer.ApiResponse handleApi(String path, Map<String, String> query, String method, String body) {
@@ -506,7 +506,7 @@ public final class ApiDispatcher {
     // -- /api/system/* + /api/direct/* (2026-09 dispatcher Phase 2 由 MainActivity 搬入) --
 
     /**
-     * Small namespace ("/api/system/...") for things not tied to the robot hardware
+     * Small namespace ("/api/system/...") for things not tied to the robot AIDL
      * surface itself.
      */
     public HttpServer.ApiResponse handleSystemApi(String path, Map<String, String> query, String method, String body) {
@@ -564,7 +564,7 @@ public final class ApiDispatcher {
             // ---------------- 本地音樂播放 ----------------
             // "/api/system/music/..." - 播放機身 SD 卡裡面 (/sdcard/Music 等) 已有的
             // 音樂檔, 經由 MusicController (standard android.media.MediaPlayer,
-            // STREAM_MUSIC 由機器人喇叭輸出) 播放, 和機器人直驅 API 完全無關,
+            // STREAM_MUSIC 由機器人喇叭輸出) 播放, 和 AIDL 機器人 API 完全無關,
             // 所以放在 system 這個 namespace 底下, 和 camera/audio-testtone 那類
             // 純硬體功能看齊。
 
@@ -653,15 +653,14 @@ public final class ApiDispatcher {
             }
             case "servo/one": {
                 int id = ApiValidator.requireIntRange(query, "id", 1, 20);
-                int angle = ApiValidator.requireInt(query, "angle");
-                int time = ApiValidator.optionalInt(query, "time", 500);
+                int angle = ApiValidator.requireIntRange(query, "angle", 0, 255);
+                int time = ApiValidator.optionalIntRange(query, "time", 20, 32767, 500);
                 // 2026-09-06: cmd05 單發（官方 tuner 實測本機可郁），見 servoSendOneCode。
                 return ubxApi.servoSendOne(id, angle, time);
             }
             case "servo/all": {
                 int[] arr = ApiValidator.requireAngles20(query);
-                for (int i = 0; i < 20; i++) arr[i] &= 0xFF;
-                int time = ApiValidator.optionalInt(query, "time", 500);
+                int time = ApiValidator.optionalIntRange(query, "time", 20, 32767, 500);
                 // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
                 boolean sent = HardwareDirectManager.get(appContext).chest().setAllServos(arr, (short) time);
                 if (!sent) return HttpServer.ApiResponse.error("direct not ready");
@@ -669,7 +668,7 @@ public final class ApiDispatcher {
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
             }
             case "sonar/config": {
-                int cm = ApiValidator.requireInt(query, "distance");
+                int cm = ApiValidator.requireIntRange(query, "distance", 0, 100);
                 boolean ok = HardwareDirectManager.get(appContext).chest().configureSonar(cm);
                 return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
             }

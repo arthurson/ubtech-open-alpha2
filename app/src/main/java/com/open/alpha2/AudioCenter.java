@@ -246,7 +246,7 @@ public final class AudioCenter {
      *  之前只有在 onPrepared (真正開始播放的那一刻) 動一次就算, 現在改成用這個固定
      *  間隔不斷重複觸發 triggerRandomFillerAction(), 直到整首歌播完/被叫停為止。
      *  用固定間隔 (而不是「等動作做完再動下一個」) 的原因是: AIDL 沒有提供任何
-     *  查詢「一個 action 什麼時候做完」的方法 (見 docs/legacy-beta3/AIDL_REFERENCE_ALPHA2.md, action_PlayActionName
+     *  查詢「一個 action 什麼時候做完」的方法 (見 AIDL_REFERENCE.md, action_PlayActionName
      *  只是 fire-and-forget), 沒辦法準確知道上一個動作多久才做完, 所以選一個
      *  保守的固定 cadence, 對絕大部分動作長度來說都足夠做完那個動作再開始
      *  下一個, 不會不斷打斷上一個尚未做完的動作。 */
@@ -794,9 +794,11 @@ public final class AudioCenter {
     /** 只保留檔名本身的最後一截 (new File(name).getName() 已經剝掉任何
      *  "../"/"/" 這類路徑成分), 再去掉頭尾的空白, 保證寫入 LOCAL_MUSIC_DIR
      *  的結果一定在這個資料夾裡面, 不會因為用戶 (或惡意請求) 在檔名中夾帶
-     *  路徑分隔符而寫到第二個資料夾度。*/
+     *  路徑分隔符而寫到第二個資料夾度。
+     *  2026-09-09：先將 Windows 式反斜線轉正斜線——Linux 上 getName() 唔識剝
+     *  "a\b"，唔轉會成個 "a\b" 當檔名（寫唔出事但怪；轉咗取最後一截先啱）。*/
     private static String sanitizeUploadFilename(String rawName) {
-        String base = new java.io.File(rawName.trim()).getName();
+        String base = new java.io.File(rawName.trim().replace('\\', '/')).getName();
         return base.trim();
     }
 
@@ -918,8 +920,8 @@ public final class AudioCenter {
     }
 
     // -- Media volume: STREAM_MUSIC, same stream the +/- gesture buttons and
-    // the walkie-talkie/TTS playback all use (see GestureCenter
-    // startVolumeRepeat()) - so this slider and
+    // the walkie-talkie/TTS playback all use (see MainActivity
+    // registerGestureController()/startVolumeRepeat()) - so this slider and
     // the physical +/- pads stay in sync with each other. (2026-09 dispatcher
     // Phase 1 第四刀由 handleApi 搬入；經 appContext 攞同一個 service。)
     public HttpServer.ApiResponse systemVolumeGet() {

@@ -47,6 +47,14 @@ components:
             type: string
             description: 事件類型
             enum:
+              # 2026-09-09 補齊：下面六個後端有 publish（見 grep）、前端 app-log.js
+              # 有 handler，之前漏咗；上面 grammar_*/mic_* 後端仲有發，保留。
+              - asr_result
+              - asr_partial
+              - vosk_state
+              - iflytek_match
+              - sonar_obstacle
+              - tts_end
               - grammar_result
               - grammar_init
               - mic_state

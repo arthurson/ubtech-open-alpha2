@@ -225,7 +225,7 @@ public final class SonarCenter {
 
     // -- /api/alpha2/servo/sonar (ApiDispatcher 轉調；threshold state 經上面讀寫) --
     public HttpServer.ApiResponse servoSonarResponse(Map<String, String> query) {
-        int distanceCm = ApiValidator.requireInt(query, "distance");
+        int distanceCm = ApiValidator.requireIntRange(query, "distance", 0, 100);
         applySonarThreshold(distanceCm);
         boolean sent = HardwareDirectManager.get(appContext).chest().configureSonar(distanceCm);
         return MainActivity.codeResponseReady(MainActivity.directCode(sent), directChestReady());
@@ -282,6 +282,10 @@ public final class SonarCenter {
             return McpResult.err("distance_cm is required");
         }
         int distanceCm = arguments.optInt("distance_cm");
+        // 2026-09-09：同 servo/sonar HTTP 一套（0-100），唔啱即報錯。
+        if (distanceCm < 0 || distanceCm > 100) {
+            return McpResult.err("distance_cm must be between 0 and 100, got: " + distanceCm);
+        }
         applySonarThreshold(distanceCm);
         // pure-direct: 经 /dev/ttyS1 直发 cmd 4。
         boolean sent = HardwareDirectManager.get(appContext).chest().configureSonar(distanceCm);

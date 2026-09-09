@@ -1,0 +1,4 @@
+# scripts/ 全部只用 stdlib + pyyaml（見各檔頭）。
+# 2026-09-09 新增：CI 同本地同一個版本，唔好浮動。
+# 本機實測 6.0.3（python -c "import yaml" 過到 drift 全套）。
+pyyaml==6.0.3
