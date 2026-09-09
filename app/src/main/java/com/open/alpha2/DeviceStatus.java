@@ -199,8 +199,8 @@ public final class DeviceStatus implements SensorEventListener {
      * Turns the accelerometer feed on/off. Safe to call repeatedly - a no-op if already
      * in the requested state. registerListener()/unregisterListener() must run on a
      * thread with a Looper (per SensorManager's contract) - both are called here on the
-     * main thread, matching how the sensorManager used to be set up in
-     * MainActivity.registerGestureController() in onCreate().
+     * main thread, matching how the sensorManager setup used to live in
+     * MainActivity (now MainActivity.registerDynamicReceiver() wires this class).
      */
     public synchronized void setAccelerometerEnabled(boolean enabled) {
         if (sensorManager == null || accelerometerSensor == null) {

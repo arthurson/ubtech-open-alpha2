@@ -287,7 +287,7 @@ public class XiaozhiOtaClient {
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Accept", "application/json");
             // Headers per ota.cc / the r1-xiaozhi reimplementation notes - Device-Id is
-            // this robot's persisted UUID (see MainActivity#getXiaozhiDeviceId(); real
+            // this robot's persisted UUID (see XiaozhiBridge#getXiaozhiDeviceId(); real
             // ESP32 firmware uses its WiFi MAC here, but as XiaozhiClient's own javadoc
             // notes, this app already made that substitution for the WebSocket
             // handshake, and the OTA endpoint needs the *same* identifier XiaozhiClient

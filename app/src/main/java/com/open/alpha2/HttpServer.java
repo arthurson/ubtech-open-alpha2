@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
  * Responsibilities:
  *  - Serves static files (the HTML/JS/CSS control panel) out of assets/web/.
  *  - Dispatches "/api/*" requests to a pluggable {@link ApiHandler} (implemented by
- *    MainActivity, which owns the Alpha2RobotApi instance).
+ *    ApiDispatcher).
  *  - Detects a WebSocket upgrade request on "/ws" and hands the raw socket off to
  *    {@link WebSocketServer} for the RFC 6455 handshake and framing.
  *  - Dispatches "/stream/*" requests to a pluggable {@link StreamHandler} that owns the

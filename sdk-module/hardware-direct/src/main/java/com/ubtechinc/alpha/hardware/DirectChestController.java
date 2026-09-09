@@ -98,7 +98,7 @@ public final class DirectChestController {
      *  pure-direct 下取代經 alpha2services broadcast 查詢 (機身已無此 APK,
      *  robot.requestRobotUUID() 發出的 broadcast 永遠無人回覆, 見 misc/request_uuid)。
      *  無參數: 編碼後 wire 幀為 F8 8F 07 00 00 37 3E ED。回覆經 OnFrameListener
-     *  以 cmd=55 (0x37) 幀送回, 由 MainActivity.queryChestRobotUuid() 等待/解析。 */
+     *  以 cmd=55 (0x37) 幀送回, 由 ChestQuery.queryRobotUuid() 等待/解析。 */
     public boolean readSidEeprom() {
         return port.send(RobotWire.CHEST_READ_SID_EEPROM, null);
     }

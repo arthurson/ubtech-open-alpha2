@@ -33,21 +33,25 @@ import java.util.Map;
  * - XiaozhiBridge 內兩個 gap 引用（speakActivationCode/self.robot.speak MCP
  *   tool）繼續留喺嗰邊，const 改經呢度
  *   （SpeechCenter.STOP_TO_TTS_MIN_GAP_MS），時戳經 HostState 讀。
- *   TODO（將來收斂）：MCP self.robot.speak 嗰段 gap＋mouth-LED＋
- *   speech_startTTS 同 handleSpeechTts 非 android 分支重複，應收斂到呢度
- *   一個 speakRobotTts(text, lang, voice) 共用——要搞掂 SpeechCenter↔
- *   XiaozhiBridge 雙向引用先做得，今刀唔郁。
+ *   2026-09 已收斂：MCP self.robot.speak 嗰段 gap＋mouth-LED＋
+ *   speech_startTTS 同下面 handleSpeechTts 非 android 分支共用
+ *   speakRobotTts(text, lang, voice)。雙向引用係咁斷的：方法係 static，
+ *   時戳經參數傳入——XiaozhiBridge 側經已有嘅 HostState
+ *   getLastSpeechStopAtMs()（MainActivity 轉交緊呢度同一個 field）讀，
+ *   所以唔使 XiaozhiBridge 拎 SpeechCenter instance。
  */
 public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Host {
 
     // speech/stop -> speech/tts race guard.
     //
-    // speech_StopTTS() (AIDL onStopPlay) is fire-and-forget: the call returns as
-    // soon as the binder transaction is queued, but the robot side's audio
-    // teardown (tearing down the current Nuance/iFlytek playback session) happens
-    // asynchronously after that. If speech/tts starts a new TTS session while that
-    // teardown is still in flight, Nuance's SpeakerPlayerSink can throw an
-    // IllegalStateException that kills the TTS session until the robot reboots.
+    // Historical rationale (AIDL era, kept as ordering hygiene): speech_StopTTS()
+    // (AIDL onStopPlay) was fire-and-forget - the call returned as soon as the
+    // binder transaction was queued, but the robot side's audio teardown (tearing
+    // down the current Nuance/iFlytek playback session) happened asynchronously
+    // after that. Starting a new TTS session mid-teardown could throw (Nuance's
+    // SpeakerPlayerSink IllegalStateException) and kill TTS until reboot.
+    // alpha2services 已移除，robot 側 path 家下即時失敗，呢個 gap 無嘢要等；
+    // 保留（唔刪）：開銷最多 400ms，萬一將來直驅 TTS 接上，排序保護已經喺度。
     //
     // Fix: record the wall-clock time of the last speech/stop, and have speech/tts
     // block (on the HTTP worker thread only - safe because HttpServer uses
@@ -111,6 +115,30 @@ public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Hos
         LedCenter.stopMouthLedForTts();
     }
 
+    /** robot-side TTS 發聲共用入口：gap＋mouth-LED bracket＋speech_startTTS＋
+     *  失敗熄燈。static 故 XiaozhiBridge.MCP self.robot.speak 可直接調用，
+     *  時戳由調用方傳入（本尊傳自己個 field；MCP 經 HostState 讀同一個值），
+     *  不產生 SpeechCenter↔XiaozhiBridge instance 雙向引用。
+     *  語義同收斂前兩邊一字不差（連失敗先熄燈、成功先由調用方標 robotTtsSpeaking
+     *  都保留喺調用方）。 */
+    static UbxErrorCode.API_ERROR_CODE speakRobotTts(RobotStub robot, long lastStopAtMs,
+                                                     String text, String lang, String voice) {
+        long sinceStopMs = System.currentTimeMillis() - lastStopAtMs;
+        if (sinceStopMs >= 0 && sinceStopMs < STOP_TO_TTS_MIN_GAP_MS) {
+            try {
+                Thread.sleep(STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        LedCenter.startMouthLedForTts();
+        UbxErrorCode.API_ERROR_CODE code = robot.speech_startTTS(lang, text, voice);
+        if (!MainActivity.isOk(code)) {
+            LedCenter.stopMouthLedForTts();
+        }
+        return code;
+    }
+
     // -- ApiDispatcher.Host (speech/tts、speech/stop) --
     @Override public HttpServer.ApiResponse handleSpeechTts(Map<String, String> query) {
         String text = ApiValidator.require(query, "text");
@@ -122,27 +150,15 @@ public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Hos
         }
         String voice = "iflytek".equals(engine) ? ApiValidator.optionalNullable(query, "voice") : null; // may be null
         String lang = "iflytek".equals(engine) ? "zh_cn" : "en_us"; // no language picker; engine implies it
-        // See STOP_TO_TTS_MIN_GAP_MS above: if speech/stop just ran, give the
-        // robot side's async audio teardown a minimum window to finish before
-        // starting a new AIDL TTS session, to avoid crashing the Nuance TTS
-        // session. Runs on this HTTP worker thread only (newCachedThreadPool),
-        // so it never blocks other in-flight requests.
-        long sinceStopMs = System.currentTimeMillis() - lastSpeechStopAtMs;
-        if (sinceStopMs >= 0 && sinceStopMs < STOP_TO_TTS_MIN_GAP_MS) {
-            try {
-                Thread.sleep(STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        LedCenter.startMouthLedForTts();
-        UbxErrorCode.API_ERROR_CODE res = robot.speech_startTTS(lang, text, voice);
-        if (!MainActivity.isOk(res)) {
-            // speech_startTTS failed synchronously - onServerPlayEnd will never
-            // fire for this attempt, so nothing will turn the mouth LED back off
-            // unless we do it here.
-            LedCenter.stopMouthLedForTts();
-        } else {
+        // See STOP_TO_TTS_MIN_GAP_MS above: if speech/stop just ran, keep a
+        // minimum window before starting a new robot-side TTS session (ordering
+        // gap＋mouth-LED bracket＋speech_startTTS＋失敗熄燈全部喺
+        // speakRobotTts() 入面（同 MCP 共用；sleep 行喺 HTTP worker thread，
+        // newCachedThreadPool，唔塞其他 request）。呢度淨係收尾：
+        // speech_startTTS failed synchronously 的話 onServerPlayEnd 永遠唔會
+        // fire，熄燈已由 speakRobotTts() 做；成功先標 robotTtsSpeaking。
+        UbxErrorCode.API_ERROR_CODE res = speakRobotTts(robot, lastSpeechStopAtMs, text, lang, voice);
+        if (MainActivity.isOk(res)) {
             // 見 robotTtsSpeaking field javadoc - 觸發成功先算「開始
             // 播緊」, onServerPlayEnd 會揭返做 false。
             robotTtsSpeaking = true;

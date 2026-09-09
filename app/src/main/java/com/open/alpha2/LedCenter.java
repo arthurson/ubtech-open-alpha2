@@ -633,12 +633,12 @@ public final class LedCenter {
         return MainActivity.codeResponseReady(MainActivity.directCode(sent), headerReady());
     }
 
-    // NOTE: unlike led/head/set and led/eye/set above, this does NOT go through
-    // Alpha2RobotApi/AIDL at all - there is no AIDL "mouth LED" method. It calls
+    // NOTE: unlike led/head/set and led/eye/set above (which go through
+    // DirectLedController 5-mic JNI), this calls
     // com.ubtechinc.alpha.jni.LedControl directly (a native JNI class backed by
     // libhead_led.so 3.002), a completely separate control path found in a different
-    // demo app, not gated by isHeaderReady()/waitHeaderReady() since it has
-    // nothing to do with the header serial AIDL bind. See MouthLedData's
+    // demo app, not gated by header availability since it has
+    // nothing to do with the header serial link. See MouthLedData's
     // javadoc for the confirmed field semantics and the same-device-contention
     // caveat before relying on this alongside led/head/set or led/eye/set.
     //

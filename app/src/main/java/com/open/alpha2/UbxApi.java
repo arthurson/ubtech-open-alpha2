@@ -395,9 +395,10 @@ public final class UbxApi {
     }
 
     /**
-     * 帶重試的單粒實讀。機身仲有官方 alpha2services 同揸 ttyS1，回覆 bytes
-     * 會被搶食，偶發超時屬預期之內，故重試 3 次（官方 ACK 約 10-15ms，
-     * 250ms timeout 好闊綽；重試之間隔 100ms，唔好密 hammer 胸板）。
+     * 帶重試的單粒實讀。本 App 而家係 ttyS1 唯一用家（RobotStub no-op，
+     * 無嘢會搶食回覆 bytes）；重試保留做偶發 MCU 失手保險，故重試 3 次
+     * （官方 ACK 約 10-15ms，250ms timeout 好闊綽；重試之間隔 100ms，
+     * 唔好密 hammer 胸板）。
      */
     private Integer readServoLive(int id) {
         if (chestQuery == null || !directChestReady()) return null;

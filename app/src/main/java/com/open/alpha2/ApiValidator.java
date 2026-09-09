@@ -11,7 +11,7 @@ import java.util.Map;
  * 這些散在各 handle*Api case 的重複 boilerplate 集中到一處。
  *
  * 設計原則：
- *  - 零額外依賴 (只用 Map/String)，符合此專案 "Android framework + JDK only" 政策 (見 HttpServer.java:34)。
+ *  - 零額外依賴 (只用 Map/String)，符合此專案 "Android framework + JDK only" 政策。
  *  - API 22 相容 (不用 Map.getOrDefault)。
  *  - 拋 IllegalArgumentException，交由 handleApi 外層 catch 統一轉成 {"ok":false,"error":...} (沿用現有 require 的行為)。
  *  -  不做重量級 JSON Schema 校驗，僅做本專案實際需要的：必填、整數、整數範圍、枚舉、boolean。

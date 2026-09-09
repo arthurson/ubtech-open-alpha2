@@ -524,8 +524,8 @@ public final class XiaozhiBridge {
                 // re-trigger mic/start per the "auto_mode" case's connect-completion
                 // logic, surprising someone who explicitly asked to disconnect.
                 // Uses stopXiaozhiMic() (not just stopCapture()/stopPlayback() directly)
-                // so mic ownership is actually handed back to alpha2services'
-                // wake-word engine (speech_SetMIC(false)) and the mic LED/hold-enforcer
+                // so our mic hold is released (speech_SetMIC(false) is now a RobotStub
+                // no-op - no engine to hand back to) and the mic LED/hold-enforcer
                 // thread are torn down too - see stopXiaozhiMic()'s javadoc.
                 xiaozhiAutoMode.set(false);
                 xiaozhiReconnectAttempts.set(0);
@@ -705,7 +705,8 @@ public final class XiaozhiBridge {
             return HttpServer.ApiResponse.error("not connected - call xiaozhi/connect first");
         }
         // 2026-08 修正: 之前這裡直接開 XiaozhiAudioController 的 AudioRecord, 完全沒有
-        // 取得 mic 擁有權 - alpha2services 自己的 wake-word 引擎一直持續佔用麥克風,
+        // 取得 mic 擁有權 - 當年 alpha2services 自己的 wake-word 引擎一直持續佔用麥克風
+        // (已隨 APK 移除而消失，家下無競爭者；保留 release 流程做保險) -
         // 這台機器的音訊 HAL 又不支援多個 process 同時開啟 mic input, 所以之前的
         // AudioRecord.startRecording() 實質上一直收不到聲音。這裡和 handleMicStream()
         // (Speech/Mic tab 那個獨立 mic 串流) 一樣, 用 releaseMicForAudioIo() 先取得
@@ -2107,29 +2108,14 @@ public final class XiaozhiBridge {
                                 resultText = "missing required argument: text";
                                 break;
                             }
-                            // Mirrors the "speech/tts" HTTP endpoint below (handleApi()) -
-                            // same SpeechCenter.STOP_TO_TTS_MIN_GAP_MS race guard against a just-issued
-                            // speech/stop, same mouth-LED bracket, same 3-arg
-                            // speech_startTTS(lang, text, voice) signature (Alpha2RobotApi
-                            // exposes no high-priority/interrupting TTS variant, so this
-                            // shares the low-priority entry point the rest of the app uses).
-                            // Fixed to Nuance/en_us rather than reading an "engine" query
-                            // param (no query string here, this is an MCP tool call) -
-                            // consistent with defaulting away from iFlytek's per-call voice
-                            // picker, which has no equivalent argument in this tool's schema.
-                            long sinceStopMs = System.currentTimeMillis() - hostState.getLastSpeechStopAtMs();
-                            if (sinceStopMs >= 0 && sinceStopMs < SpeechCenter.STOP_TO_TTS_MIN_GAP_MS) {
-                                try {
-                                    Thread.sleep(SpeechCenter.STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
-                                } catch (InterruptedException ie) {
-                                    Thread.currentThread().interrupt();
-                                }
-                            }
-                            LedCenter.startMouthLedForTts();
-                            UbxErrorCode.API_ERROR_CODE code = robot.speech_startTTS("en_us", text, null);
-                            if (!MainActivity.isOk(code)) {
-                                LedCenter.stopMouthLedForTts();
-                            }
+                            // 和 speech/tts 共用 SpeechCenter.speakRobotTts()（同一個
+                            // gap guard＋mouth-LED bracket＋3-arg speech_startTTS；
+                            // Alpha2RobotApi 無 high-priority/interrupting TTS，用同一個
+                            // 低優先入口）。engine 固定 en_us（MCP tool 無 query
+                            // string，讀唔到 engine 參數——同 iFlytek per-call voice
+                            // picker 唔啱嘴形，個 schema 根本無呢個位）。
+                            UbxErrorCode.API_ERROR_CODE code = SpeechCenter.speakRobotTts(
+                                    robot, hostState.getLastSpeechStopAtMs(), text, "en_us", null);
                             isError = !MainActivity.isOk(code);
                             resultText = String.valueOf(code);
                             break;

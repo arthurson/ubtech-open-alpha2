@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *     rather than silently allowing two AudioRecord opens to fight over the hardware.
  *
  * Runtime-gated: every entry point that touches this class must first check
- * XiaozhiClient.isAudioSupported() (API 21+) - see MainActivity#handleXiaozhiApi's
+ * XiaozhiClient.isAudioSupported() (API 21+) - see XiaozhiBridge#handleXiaozhiApi's
  * "mic/start" endpoint. This class itself does not re-check that gate internally, to
  * keep the check in exactly one place.
  *
@@ -327,8 +327,8 @@ public class XiaozhiAudioController {
 
     /** Stops capture and releases the mic + encoder. Blocks until fully released,
      *  matching AudioController.shutdown()'s synchronous-teardown rationale (a caller
-     *  that immediately does something else mic-related afterwards - e.g. hands the mic
-     *  back to alpha2services' wake-word engine - must not race an in-flight release). */
+     *  that immediately does something else mic-related afterwards - e.g. releases
+     *  our own mic hold - must not race an in-flight release). */
     public void stopCapture() {
         capturing = false;
         frameSink = null;

@@ -53,7 +53,7 @@ public class HeadKeyPoller extends HeadKeyMgr {
 
     private static final String EVENT_NODE = "/dev/input/event0";
 
-    // 舊 gesture 碼（見 AIDL_REFERENCE 第7章 + MainActivity.onGestureCode）
+    // 舊 gesture 碼（見 docs/legacy-beta3/AIDL_REFERENCE_ALPHA2.md 第7章 + GestureCenter.onGestureCode）
     private static final int KEY_MINUS = 0x5a;
     private static final int KEY_MINUS_UP = 0x5b;
     private static final int KEY_PLUS = 0x5c;

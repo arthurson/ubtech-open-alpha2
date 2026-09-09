@@ -918,8 +918,8 @@ public final class AudioCenter {
     }
 
     // -- Media volume: STREAM_MUSIC, same stream the +/- gesture buttons and
-    // the walkie-talkie/TTS playback all use (see MainActivity
-    // registerGestureController()/startVolumeRepeat()) - so this slider and
+    // the walkie-talkie/TTS playback all use (see GestureCenter
+    // startVolumeRepeat()) - so this slider and
     // the physical +/- pads stay in sync with each other. (2026-09 dispatcher
     // Phase 1 第四刀由 handleApi 搬入；經 appContext 攞同一個 service。)
     public HttpServer.ApiResponse systemVolumeGet() {

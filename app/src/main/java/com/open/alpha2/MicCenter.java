@@ -52,10 +52,9 @@ public final class MicCenter {
 
     /** true = 用戶開了「持續搶 mic」這個選項 (mic card 那顆 checkbox)。和
      *  micHeldByApp 不同 - micHeldByApp 只是記住「現在這個狀態是不是 app 持有」,
-     *  這個 flag 是說「就算 firmware 自己內部側面拿回了 (例如 setWakeState
-     *  這個 call 本身在 firmware bytecode 裡面會順便觸發 IflytekWakeUp5mic.
-     *  startRecording() 這個 side effect - 不是用戶自己按了「交回」), 都要
-     *  自動再搶一次回來」。見 micHoldEnforcer 這條背景 thread。 */
+     *  這個 flag 是說就算有嘢從旁拿回 mic 都要自動再搶一次 (當年係 firmware
+     *  側 IflytekWakeUp5mic side effect；家下無已知競爭者，保留做保險)。
+     *  見 micHoldEnforcer 這條背景 thread。 */
     private volatile boolean micHoldEnforced = false;
     private Thread micHoldEnforcerThread;
     // Each part is a complete, independently-decodable WAV file. multipart/mixed (not
@@ -66,37 +65,19 @@ public final class MicCenter {
     // relying on any browser-native multipart handling.
     private static final String MIC_BOUNDARY = "opensdktestpanelaudio";
     /**
-     * Releases alpha2services' hold on the shared audio hardware before this app opens
-     * its own AudioRecord/AudioTrack. alpha2services' own speech/wakeup engine
-     * (IflyteckASR5mic) holds the mic input open continuously for wake-word detection,
-     * and this hardware's audio HAL (AudioHardwareTiny) does not support concurrent
-     * input/output streams from multiple processes - confirmed from logcat on both
-     * sides: mic recording failed outright with "status -38" (AudioPolicyManager:
-     * "startInput failed: other input already started"), and AudioTrack construction
-     * for speaker playback failed with state=0/STATE_UNINITIALIZED while
-     * alpha2services' own audio pipeline was active. speech_SetMIC(true) is the release
-     * call - true means "release the mic/audio hardware to this app" (matching the
-     * Speech tab's manual "釋放麥克風給 App" button), not "false".
+     * Mic 持有權交接（歷史背景見下）。家下機身已無 alpha2services——無競爭者
+     * 長期揸住 mic，robot.speech_SetMIC(true) 亦只係 RobotStub 即回 true 嘅
+     * no-op；呢個 300ms sleep＋enforcer 保留做零成本保險。硬件知識保留：
+     * 這台機的 audio HAL (AudioHardwareTiny) 不支援多 process 並發 input／
+     * output（當年 logcat 實證 "status -38"），所以本 App 內部唔同 mic 用途
+     * 之間（小智／Vosk／mic-test／stream）依然要後開者得、互斥。
      *
-     * setWakeState() dispatches asynchronously (an AIDL call into alpha2services, which
-     * itself does a sendBroadcast internally per logcat) - it does not block until the
-     * hardware is actually free. The short sleep here is what actually avoids the
-     * rejection race, not just calling speech_SetMIC() alone.
-     *
-     * IMPORTANT side effect confirmed from logcat (2026-08-23 session): alpha2services'
-     * own AlphaMainSeviceImpl reacts to this same setWakeState(true) call by internally
-     * broadcasting LED_ACTION control_type:2 ("stop ear led"), turning the head/eye LED
-     * back off - entirely outside this app's control, and racing against whatever LED
-     * state the browser had just asked for (e.g. the green "listening" cue - see
-     * app-mic.js's setListenLed()). Depending on scheduling this broadcast could land
-     * either before or after this app's own LED call, which is why the green LED "有時
-     * 亮,有時不亮" (sometimes lit, sometimes not) - a pure race, not a code bug in the
-     * LED call itself. The fix is ordering: setHeadEyeLedLong() below is called from
-     * handleMicStream() only *after* this method (and its sleep) returns, guaranteeing
-     * this app's LED command is always the last one sent and therefore always wins the
-     * race, rather than leaving the browser to fire its own LED call at roughly the
-     * same time speech_SetMIC(true) is dispatched from the client side.
-     */
+     * （舊機制，僅供考古：alpha2services 自家 speech/wakeup 引擎
+     * (IflyteckASR5mic) 長期開住 mic 做 wake-word，setWakeState() 經 AIDL
+     * 叫佢放手（唔 block，要靠呢個 sleep 避 race）。2026-08-23 實證過嘅
+     * LED race（AlphaMainSeviceImpl 收到 setWakeState 就熄耳燈，同綠色
+     * listening 燈鬥快）已隨 APK 移除而消失。setHeadEyeLedLong() 照舊喺
+     * handleMicStream() 調用（開綠色 listening 燈）。 */
     private void releaseMicForAudioIo() {
         robot.speech_SetMIC(true);
         try {
