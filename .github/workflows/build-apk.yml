@@ -19,6 +19,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      # 注意次序：sdkmanager 本身要 Java 17+（class file 61），必須喺 setup-java 11
+      # 之前用 runner 預設 JDK 跑，否則 UnsupportedClassVersionError（只認到 55）。
+      - name: Install Android SDK packages (古董 target，runner 預裝唔保證有)
+        run: |
+          echo y | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-25" "build-tools;30.0.3"
       - name: Set up JDK 11
         uses: actions/setup-java@v4
         with:
@@ -35,9 +40,6 @@ jobs:
           key: gradle-${{ runner.os }}-7.0-${{ hashFiles('**/*.gradle', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
             gradle-${{ runner.os }}-7.0-
-      - name: Install Android SDK packages (古董 target，runner 預裝唔保證有)
-        run: |
-          echo y | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-25" "build-tools;30.0.3"
       - name: Strip comments from web assets
         run: |
           npm install --no-save terser@5
