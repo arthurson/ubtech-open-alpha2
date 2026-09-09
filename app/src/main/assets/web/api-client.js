@@ -232,7 +232,7 @@ const Alpha2Api = (function() {
   }
 
   function miscRequestUuid(params) {
-    // 請求機械人 UUID (觸發 broadcast, 結果經 WebSocket robot_uuid)
+    // 直讀胸口 EEPROM SN (chest cmd55；結果兼經 WebSocket robot_uuid)
     return api('misc/request_uuid', params);
   }
 
@@ -242,7 +242,7 @@ const Alpha2Api = (function() {
   }
 
   function status(params) {
-    // 取得 App 與各 Service 綁定狀態
+    // 取得 App 健康聚合（直驅 chest/header 可用性＋TTS 狀態）
     return api('status', params);
   }
 
@@ -274,7 +274,7 @@ const Alpha2Api = (function() {
 
   function directServoOne(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
-    // 單舵機直驅 (localServices.chestSetSingle, 預設 time=500)
+    // 單舵機直驅 (ubxApi.servoSendOne cmd05, 預設 time=500)
     return directApi('servo/one', params);
   }
 
@@ -362,7 +362,7 @@ const Alpha2Api = (function() {
     if (params && params.color != null) assertRange(Number(params.color), 1, 7, 'color');
     if (params && params.brightness != null) assertRange(Number(params.brightness), 1, 9, 'brightness');
     if (params && params.preset != null) assertEnum(params.preset, ['long', 'flash', 'chase', 'dual', 'stop'], 'preset');
-    // 設定眼部 5-mic LED (ledSetEye5Mic)
+    // 設定眼部 5-mic LED (LedCenter→DirectLedController JNI)
     return api('led/eye/set', params);
   }
 
@@ -370,7 +370,7 @@ const Alpha2Api = (function() {
     if (params && params.color != null) assertRange(Number(params.color), 1, 7, 'color');
     if (params && params.brightness != null) assertRange(Number(params.brightness), 1, 9, 'brightness');
     if (params && params.preset != null) assertEnum(params.preset, ['long', 'flash', 'breathe', 'chase', 'dual', 'stop'], 'preset');
-    // 設定頭部 5-mic LED (ledSetHead5Mic)
+    // 設定頭部 5-mic LED (LedCenter→DirectLedController JNI)
     return api('led/head/set', params);
   }
 
@@ -684,7 +684,7 @@ const Alpha2Api = (function() {
   }
 
   function xiaozhiMicStop(params) {
-    // 關閉小智麥克風並交還給 wake-word 引擎
+    // 關閉小智麥克風並交還 mic (speech_SetMIC false)
     return xiaozhiApi('mic/stop', params);
   }
 

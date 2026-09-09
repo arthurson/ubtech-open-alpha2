@@ -211,8 +211,8 @@ public final class DeviceStatus implements SensorEventListener {
             return;
         }
         if (enabled) {
-            // SENSOR_DELAY_NORMAL, not _UI: verified on hardware in the Alpha2OpenSdk
-            // HelloAlpha example (see docs/capabilities.md "IMU / accelerometer") - the
+            // SENSOR_DELAY_NORMAL, not _UI: verified on hardware (Alpha2OpenSdk
+            // HelloAlpha example) - the
             // RK3288's gsensor driver reliably delivers events at this rate. _UI was
             // observed to register successfully but never actually deliver events.
             sensorManager.registerListener(this, accelerometerSensor, SensorManager.SENSOR_DELAY_NORMAL);

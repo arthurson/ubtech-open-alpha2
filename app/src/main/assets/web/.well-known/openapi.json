@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Open Alpha2 API",
-    "description": "`com.open.alpha2` 裝在 UBTECH Alpha2 機械人 (Android 5.1.1, API 22) 上的本地控制面板 HTTP + WebSocket API。\n依 `MainActivity handleApi()` / `HttpServer` 反向生成，\n覆蓋機械人全部本機能力（原 17 個 AIDL interface 功能，現經直驅實現），加上獨立的 system/xiaozhi/stream/upload 命名空間。\n預設由 `HttpServer.PORT = 8888` 以純 HTTP 提供 (`http://<robot-ip>:8888/`)，同 WiFi 任何瀏覽器可直接訪問。\n所有 `/api/*` 回應皆為 `application/json; charset=utf-8` 的 `{ok: boolean, ...}` 形狀，失敗時帶 `error` 欄位。\n即時事件 (觸摸/ASR/電池/跌落/PIR 等) 經 `GET /ws` (RFC6455 WebSocket) 推送，非輪詢。\n",
+    "description": "`com.open.alpha2` 裝在 UBTECH Alpha2 機械人 (Android 5.1.1, API 22) 上的本地控制面板 HTTP + WebSocket API。\n依 `ApiDispatcher handleApi()` / `HttpServer` 反向生成，\n覆蓋機械人全部本機能力（原 17 個 AIDL interface 功能，現經直驅實現），加上獨立的 system/xiaozhi/stream/upload 命名空間。\n預設由 `HttpServer.PORT = 8888` 以純 HTTP 提供 (`http://<robot-ip>:8888/`)，同 WiFi 任何瀏覽器可直接訪問。\n所有 `/api/*` 回應皆為 `application/json; charset=utf-8` 的 `{ok: boolean, ...}` 形狀，失敗時帶 `error` 欄位。\n即時事件 (觸摸/ASR/電池/跌落/PIR 等) 經 `GET /ws` (RFC6455 WebSocket) 推送，非輪詢。\n",
     "version": "beta 4",
     "contact": {
       "name": "Open Alpha2",
@@ -90,7 +90,7 @@
         "tags": [
           "core"
         ],
-        "summary": "取得 App 與各 Service 綁定狀態",
+        "summary": "取得 App 健康聚合（直驅 chest/header 可用性＋TTS 狀態）",
         "operationId": "getStatus",
         "responses": {
           "200": {
@@ -795,7 +795,7 @@
         "tags": [
           "direct"
         ],
-        "summary": "單舵機直驅 (localServices.chestSetSingle, 預設 time=500)",
+        "summary": "單舵機直驅 (ubxApi.servoSendOne cmd05, 預設 time=500)",
         "parameters": [
           {
             "name": "id",
@@ -2475,7 +2475,7 @@
         "tags": [
           "led"
         ],
-        "summary": "設定頭部 5-mic LED (ledSetHead5Mic)",
+        "summary": "設定頭部 5-mic LED (LedCenter→DirectLedController JNI)",
         "parameters": [
           {
             "name": "color",
@@ -2536,7 +2536,7 @@
         "tags": [
           "led"
         ],
-        "summary": "設定眼部 5-mic LED (ledSetEye5Mic)",
+        "summary": "設定眼部 5-mic LED (LedCenter→DirectLedController JNI)",
         "parameters": [
           {
             "name": "color",
@@ -4295,7 +4295,7 @@
         "tags": [
           "core"
         ],
-        "summary": "請求機械人 UUID (觸發 broadcast, 結果經 WebSocket robot_uuid)",
+        "summary": "直讀胸口 EEPROM SN (chest cmd55；結果兼經 WebSocket robot_uuid)",
         "responses": {
           "200": {
             "description": "已請求",
@@ -5154,7 +5154,7 @@
         "tags": [
           "xiaozhi"
         ],
-        "summary": "關閉小智麥克風並交還給 wake-word 引擎",
+        "summary": "關閉小智麥克風並交還 mic (speech_SetMIC false)",
         "responses": {
           "200": {
             "description": "已關閉",
@@ -5525,7 +5525,7 @@
           "stream"
         ],
         "summary": "麥克風 WAV 分片串流 (multipart/mixed, boundary=opensdktestpanelaudio)",
-        "description": "需先取得 mic 擁有權 (releaseMicForAudioIo)，每 part 為獨立 WAV",
+        "description": "需先取得 mic 擁有權 (Mic tab 與小智各持一份 speech_SetMIC 開關)，每 part 為獨立 WAV",
         "responses": {
           "200": {
             "description": "音頻流",

@@ -1264,7 +1264,7 @@ public final class XiaozhiBridge {
      *  to find the code. Digit-by-digit with pauses would be more reliably understood
      *  than reading "12345" as the number "twelve thousand three hundred forty-five",
      *  but Alpha2RobotApi's TTS has no SSML/digit-mode control exposed - see
-     *  AIDL_REFERENCE.md's ISpeechInterface notes, which document no such parameter -
+     *  docs/legacy-beta3/AIDL_REFERENCE_ALPHA2.md's ISpeechInterface notes, which document no such parameter -
      *  so this spells the digits out with spaces in the text itself
      *  ("一 二 三 四 五" for Chinese TTS), which both iFlytek and Nuance reliably read
      *  as individual digits rather than a single large number. Reads the message twice
@@ -1765,7 +1765,7 @@ public final class XiaozhiBridge {
      *
      *  PHASE 1 SCOPE: exposes a deliberately small, safe starter set of tools
      *  (play a named action, stop action playback, speak via TTS) rather than the full
-     *  AIDL surface from AIDL_REFERENCE.md - MCP tool calls originate from a remote LLM
+     *  AIDL surface from docs/legacy-beta3/AIDL_REFERENCE_ALPHA2.md - MCP tool calls originate from a remote LLM
      *  the operator doesn't directly control turn-by-turn, so starting narrow and
      *  expanding later (once real usage patterns are seen) is safer than exposing
      *  everything (LED raw params, serial port raw commands, etc.) up front. */
@@ -1898,7 +1898,7 @@ public final class XiaozhiBridge {
                         // -- Hardware control: servo/LED/PIR/sonar -----------------------
                         // 薄包裝, 邏輯全部委託給 handleApi() 已有的 "servo/*"、
                         // "led/*"、"pir/*" case 使用的那些 Alpha2RobotApi 方法, 見
-                        // AIDL_REFERENCE.md 相關章節和 handleApi() 的 comment 取得完整
+                        // docs/legacy-beta3/AIDL_REFERENCE_ALPHA2.md 相關章節和 handleApi() 的 comment 取得完整
                         // 已驗證行為/參數語意, 這裡不重複解釋。
                         case "self.robot.servo_set_one": {
                             // pure-direct: 经 /dev/ttyS1 直发。

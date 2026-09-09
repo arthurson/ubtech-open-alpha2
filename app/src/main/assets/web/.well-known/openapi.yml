@@ -4,7 +4,7 @@ info:
   description: '`com.open.alpha2` 裝在 UBTECH Alpha2 機械人 (Android 5.1.1, API 22) 上的本地控制面板
     HTTP + WebSocket API。
 
-    依 `MainActivity handleApi()` / `HttpServer` 反向生成，
+    依 `ApiDispatcher handleApi()` / `HttpServer` 反向生成，
 
     覆蓋機械人全部本機能力（原 17 個 AIDL interface 功能，現經直驅實現），加上獨立的 system/xiaozhi/stream/upload
     命名空間。
@@ -66,7 +66,7 @@ paths:
     get:
       tags:
       - core
-      summary: 取得 App 與各 Service 綁定狀態
+      summary: 取得 App 健康聚合（直驅 chest/header 可用性＋TTS 狀態）
       operationId: getStatus
       responses:
         '200':
@@ -484,7 +484,7 @@ paths:
     get:
       tags:
       - direct
-      summary: 單舵機直驅 (localServices.chestSetSingle, 預設 time=500)
+      summary: 單舵機直驅 (ubxApi.servoSendOne cmd05, 預設 time=500)
       parameters:
       - name: id
         in: query
@@ -1491,7 +1491,7 @@ paths:
     get:
       tags:
       - led
-      summary: 設定頭部 5-mic LED (ledSetHead5Mic)
+      summary: 設定頭部 5-mic LED (LedCenter→DirectLedController JNI)
       parameters:
       - name: color
         in: query
@@ -1533,7 +1533,7 @@ paths:
     get:
       tags:
       - led
-      summary: 設定眼部 5-mic LED (ledSetEye5Mic)
+      summary: 設定眼部 5-mic LED (LedCenter→DirectLedController JNI)
       parameters:
       - name: color
         in: query
@@ -2572,7 +2572,7 @@ paths:
     get:
       tags:
       - core
-      summary: 請求機械人 UUID (觸發 broadcast, 結果經 WebSocket robot_uuid)
+      summary: 直讀胸口 EEPROM SN (chest cmd55；結果兼經 WebSocket robot_uuid)
       responses:
         '200':
           description: 已請求
@@ -3084,7 +3084,7 @@ paths:
     get:
       tags:
       - xiaozhi
-      summary: 關閉小智麥克風並交還給 wake-word 引擎
+      summary: 關閉小智麥克風並交還 mic (speech_SetMIC false)
       responses:
         '200':
           description: 已關閉
@@ -3295,7 +3295,7 @@ paths:
       tags:
       - stream
       summary: 麥克風 WAV 分片串流 (multipart/mixed, boundary=opensdktestpanelaudio)
-      description: 需先取得 mic 擁有權 (releaseMicForAudioIo)，每 part 為獨立 WAV
+      description: 需先取得 mic 擁有權 (Mic tab 與小智各持一份 speech_SetMIC 開關)，每 part 為獨立 WAV
       responses:
         '200':
           description: 音頻流

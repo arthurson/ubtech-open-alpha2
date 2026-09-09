@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * PHASE 1 SCOPE: this only implements the JSON text-frame side of the protocol -
  * handshake ("hello"), and dispatching STT/LLM/TTS/MCP/system/alert messages to
  * {@link EventBus}. It deliberately does NOT send/receive binary Opus audio frames yet
- * (see AIDL_REFERENCE.md-style caution: audio needs libopus, which has its own
+ * (see docs/legacy-beta3/AIDL_REFERENCE_ALPHA2.md-style caution: audio needs libopus, which has its own
  * Android-4-compatibility question to resolve separately - see
  * isAudioSupported()/XiaozhiController's "supported" endpoint). Standing this up first,
  * text-only, makes the connect/handshake/dispatch plumbing independently testable before
