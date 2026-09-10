@@ -1,5 +1,7 @@
 package com.open.alpha2;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
@@ -60,6 +62,10 @@ public class CameraController {
     private static final int DEFAULT_PREVIEW_HEIGHT = 720;
     private volatile int requestedWidth = DEFAULT_PREVIEW_WIDTH;
     private volatile int requestedHeight = DEFAULT_PREVIEW_HEIGHT;
+    // 2026-09-10 新增: 數位變焦 x1-x5（硬件支援時用 Camera.Parameters.setZoom，否則前端 CSS / 軟件裁切）
+    private volatile float zoomFactor = 1.0f;
+    private volatile long lastZoomChangeMs = 0;
+    private volatile long previewStartedAtMs = 0;
     // Two buffers cycled through addCallbackBuffer() so the camera driver can be filling
     // one while the previous one is still being JPEG-encoded on this thread.
     private static final int PREVIEW_BUFFER_COUNT = 2;
@@ -380,8 +386,43 @@ public class CameraController {
         if (bestFpsRange != null) {
             params.setPreviewFpsRange(bestFpsRange[0], bestFpsRange[1]);
         }
+        // 2026-09-10: 對焦模式 — 優先連續圖片對焦，次選自動，避免快門時未對焦
+        try {
+            List<String> focusModes = params.getSupportedFocusModes();
+            if (focusModes != null) {
+                if (focusModes.contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE)) {
+                    params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
+                } else if (focusModes.contains(Camera.Parameters.FOCUS_MODE_AUTO)) {
+                    params.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
+                }
+            }
+        } catch (Throwable ignore) {}
+        // 2026-09-10: 曝光補償歸零，避免過曝（部分 HAL 上次拍照後殘留 +2）
+        try {
+            int minEc = params.getMinExposureCompensation();
+            int maxEc = params.getMaxExposureCompensation();
+            if (minEc <= 0 && 0 <= maxEc) {
+                try { params.setExposureCompensation(0); } catch (Throwable ignore2) {}
+            }
+            try {
+                List<String> scenes = params.getSupportedSceneModes();
+                if (scenes != null && scenes.contains(Camera.Parameters.SCENE_MODE_AUTO)) {
+                    params.setSceneMode(Camera.Parameters.SCENE_MODE_AUTO);
+                }
+            } catch (Throwable ignore2) {}
+            try {
+                List<String> wbs = params.getSupportedWhiteBalance();
+                if (wbs != null && wbs.contains(Camera.Parameters.WHITE_BALANCE_AUTO)) {
+                    params.setWhiteBalance(Camera.Parameters.WHITE_BALANCE_AUTO);
+                }
+            } catch (Throwable ignore2) {}
+        } catch (Throwable ignore) {}
 
         camera.setParameters(params);
+        // 2026-09-10: 若已有 zoom 設定，立即套用硬件變焦（需在 setParameters 之後再取一次新 params）
+        if (Math.abs(zoomFactor - 1.0f) > 0.01f) {
+            try { applyHardwareZoomLocked(zoomFactor); } catch (Throwable ignore) {}
+        }
 
         Log.i(TAG, "Preview resolution: " + previewWidth + "x" + previewHeight
                 + " (requested " + requestedWidth + "x" + requestedHeight + ")"
@@ -436,6 +477,7 @@ public class CameraController {
         ensurePreviewTextureLocked();
         camera.setPreviewTexture(dummyPreviewTexture);
         camera.startPreview();
+        previewStartedAtMs = System.currentTimeMillis();
     }
 
     private static byte[] nv21ToJpeg(byte[] nv21, int width, int height) {
@@ -530,79 +572,122 @@ public class CameraController {
         if (camera == null) {
             return PhotoResult.fail("camera not started - call start() first");
         }
-        final CountDownLatch latch = new CountDownLatch(1);
-        final AtomicReference<byte[]> resultJpeg = new AtomicReference<>();
-        final AtomicReference<String> resultError = new AtomicReference<>();
+        long overallDeadline = System.currentTimeMillis() + timeoutMs;
+        // 1) 等 AE/AF 收斂（在呼叫線程 polling，不阻塞 cameraHandler 的預覽回調）
+        long readyBudget = Math.min(2200, Math.max(0, overallDeadline - System.currentTimeMillis()));
+        boolean ready = waitForPreviewReady(readyBudget);
+        if (!ready) Log.w(TAG, "takePhoto: preview not fully ready after " + readyBudget + "ms, proceeding anyway (may be dark/blurry)");
+        else Log.i(TAG, "takePhoto: preview ready, elapsed=" + (System.currentTimeMillis() - previewStartedAtMs) + "ms fps=" + String.format(java.util.Locale.US, "%.1f", getFps()));
 
+        // 2) 設定 picture size（投遞到 cameraHandler 並等待）
+        final CountDownLatch sizeLatch = new CountDownLatch(1);
+        final AtomicReference<String> sizeError = new AtomicReference<>();
         cameraHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                if (camera == null) {
-                    resultError.set("camera was released before takePicture() could run");
-                    latch.countDown();
-                    return;
-                }
+            @Override public void run() {
+                if (camera == null) { sizeError.set("camera released before setPictureSize"); sizeLatch.countDown(); return; }
                 try {
                     Camera.Parameters params = camera.getParameters();
-                    Camera.Size bestPictureSize =
-                            closestSupportedPictureSize(params, wantWidth, wantHeight);
+                    Camera.Size bestPictureSize = closestSupportedPictureSize(params, wantWidth, wantHeight);
                     if (bestPictureSize != null) {
                         params.setPictureSize(bestPictureSize.width, bestPictureSize.height);
                         camera.setParameters(params);
-                        Log.i(TAG, "takePicture() picture size: " + bestPictureSize.width
-                                + "x" + bestPictureSize.height + " (requested " + wantWidth
-                                + "x" + wantHeight + ")");
-                    } else {
-                        Log.w(TAG, "takePicture(): driver reported no supported picture "
-                                + "sizes, using driver default");
+                        Log.i(TAG, "takePicture() picture size: " + bestPictureSize.width + "x" + bestPictureSize.height + " (requested " + wantWidth + "x" + wantHeight + ")");
+                    } else Log.w(TAG, "takePicture(): driver reported no supported picture sizes, using driver default");
+                } catch (Exception e) { sizeError.set("Failed to set picture size: " + e.getMessage()); }
+                finally { sizeLatch.countDown(); }
+            }
+        });
+        try {
+            long remain = overallDeadline - System.currentTimeMillis();
+            if (remain <= 0 || !sizeLatch.await(Math.min(1000, remain), TimeUnit.MILLISECONDS)) {
+                return PhotoResult.fail("Timed out setting picture size");
+            }
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); return PhotoResult.fail("Interrupted while setting picture size"); }
+        if (sizeError.get() != null) return PhotoResult.fail(sizeError.get());
+
+        // 3) 對焦：查詢當前 focusMode，AUTO/MACRO 需觸發一次 autoFocus，連續模式則短暫等待
+        final AtomicReference<String> focusModeRef = new AtomicReference<>();
+        final CountDownLatch modeLatch = new CountDownLatch(1);
+        cameraHandler.post(new Runnable() {
+            @Override public void run() {
+                try { if (camera != null) focusModeRef.set(camera.getParameters().getFocusMode()); } catch (Throwable ignore) {}
+                finally { modeLatch.countDown(); }
+            }
+        });
+        try { modeLatch.await(800, TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        String mode = focusModeRef.get();
+        boolean needAf = mode == null || Camera.Parameters.FOCUS_MODE_AUTO.equals(mode) || Camera.Parameters.FOCUS_MODE_MACRO.equals(mode);
+        if (!needAf) {
+            try { Thread.sleep(180); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return PhotoResult.fail("Interrupted before shutter"); }
+        } else {
+            final CountDownLatch afLatch = new CountDownLatch(1);
+            cameraHandler.post(new Runnable() {
+                @Override public void run() {
+                    if (camera == null) { afLatch.countDown(); return; }
+                    try {
+                        try { camera.cancelAutoFocus(); } catch (Throwable ignore) {}
+                        camera.autoFocus(new Camera.AutoFocusCallback() {
+                            @Override public void onAutoFocus(boolean success, Camera cam) {
+                                Log.i(TAG, "autoFocus callback success=" + success);
+                                afLatch.countDown();
+                            }
+                        });
+                    } catch (Throwable t) {
+                        Log.w(TAG, "autoFocus throw", t);
+                        afLatch.countDown();
                     }
-                } catch (Exception e) {
-                    resultError.set("Failed to set picture size: " + e.getMessage());
-                    latch.countDown();
-                    return;
                 }
+            });
+            try {
+                long afRemain = overallDeadline - System.currentTimeMillis();
+                if (afRemain <= 0) return PhotoResult.fail("Timed out before autoFocus");
+                boolean afDone = afLatch.await(Math.min(2200, afRemain), TimeUnit.MILLISECONDS);
+                if (!afDone) {
+                    Log.w(TAG, "autoFocus timeout, proceeding to shutter anyway");
+                    try { cameraHandler.post(new Runnable() { @Override public void run() { try { camera.cancelAutoFocus(); } catch (Throwable ignore) {} } }); } catch (Throwable ignore) {}
+                }
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); return PhotoResult.fail("Interrupted during autoFocus"); }
+            try { Thread.sleep(220); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return PhotoResult.fail("Interrupted after autoFocus"); }
+        }
+        // 3.5) 鎖 AE/AWB 避免過曝
+        lockAeAwbSync(700);
+        try { Thread.sleep(180); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return PhotoResult.fail("Interrupted before shutter"); }
+
+        // 4) 真正 shutter
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<byte[]> resultJpeg = new AtomicReference<>();
+        final AtomicReference<String> resultError = new AtomicReference<>();
+        cameraHandler.post(new Runnable() {
+            @Override public void run() {
+                if (camera == null) { resultError.set("camera was released before takePicture() could run"); latch.countDown(); return; }
                 try {
                     camera.takePicture(null, null, new Camera.PictureCallback() {
-                        @Override
-                        public void onPictureTaken(byte[] data, Camera cam) {
+                        @Override public void onPictureTaken(byte[] data, Camera cam) {
                             resultJpeg.set(data);
-                            // takePicture() stops preview as a side effect (Camera1
-                            // contract) - restart it on this same camera thread so any
-                            // camera/snapshot streaming subscribers keep receiving
-                            // frames, and getLastFrame() keeps advancing.
                             try {
                                 if (camera != null) {
                                     camera.startPreview();
+                                    previewStartedAtMs = System.currentTimeMillis();
                                 }
-                            } catch (Exception e) {
-                                Log.w(TAG, "Failed to restart preview after takePicture()", e);
+                            } catch (Exception e) { Log.w(TAG, "Failed to restart preview after takePicture()", e); }
+                            finally {
+                                try { unlockAeAwbAsync(); } catch (Throwable ignore) {}
                             }
                             latch.countDown();
                         }
                     });
-                } catch (Exception e) {
-                    resultError.set("camera.takePicture() failed: " + e.getMessage());
-                    latch.countDown();
-                }
+                } catch (Exception e) { resultError.set("camera.takePicture() failed: " + e.getMessage()); latch.countDown(); }
             }
         });
-
         try {
-            if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) {
-                return PhotoResult.fail("Timed out waiting for takePicture() to complete");
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return PhotoResult.fail("Interrupted while waiting for takePicture()");
-        }
+            long picRemain = overallDeadline - System.currentTimeMillis();
+            if (picRemain <= 0) return PhotoResult.fail("Timed out before shutter");
+            if (!latch.await(picRemain, TimeUnit.MILLISECONDS)) return PhotoResult.fail("Timed out waiting for takePicture() to complete");
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); return PhotoResult.fail("Interrupted while waiting for takePicture()"); }
         String err = resultError.get();
-        if (err != null) {
-            return PhotoResult.fail(err);
-        }
+        if (err != null) return PhotoResult.fail(err);
         byte[] jpeg = resultJpeg.get();
-        if (jpeg == null) {
-            return PhotoResult.fail("takePicture() completed with no error but no JPEG data");
-        }
+        if (jpeg == null) return PhotoResult.fail("takePicture() completed with no error but no JPEG data");
         return PhotoResult.ok(jpeg);
     }
 
@@ -659,6 +744,226 @@ public class CameraController {
         return (fpsTimestamps.size() - 1) / seconds;
     }
 
+    /**
+     * 等待預覽 AE/AF 收斂：要求 startPreview 後至少 1400ms 且已收到 ≥5 幀且 FPS>4，
+     * 否則快門捕到的正是曝光/對焦仍在拉動的過渡幀（用戶回報「明顯未 ready 就按 shutter」且 overexposure）。
+     * 2026-09-10 加長至 1400ms 並加 AE/AWB 鎖定，避免首幀過曝。
+     * 此法在 HttpServer 工作線程 polling，不阻塞 cameraHandler，避免卡住預覽回調。
+     * @return true 已 ready，false 超時（仍可嘗試影，但畫質可能欠佳）
+     */
+    public boolean waitForPreviewReady(long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (camera == null) return false;
+            long now = System.currentTimeMillis();
+            long elapsed = now - previewStartedAtMs;
+            long zoomElapsed = now - lastZoomChangeMs;
+            boolean zoomSettled = lastZoomChangeMs == 0 || zoomElapsed >= 900;
+            int frames;
+            double fps;
+            synchronized (this) { frames = fpsTimestamps.size(); fps = getFps(); }
+            if (elapsed >= 1400 && zoomSettled && lastFrame != null && frames >= 5 && fps > 4.0) return true;
+            if (previewStartedAtMs == 0) {
+                try { Thread.sleep(150); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+                continue;
+            }
+            if (elapsed >= 1800 && zoomSettled) return lastFrame != null;
+            if (!zoomSettled) {
+                try { Thread.sleep(150); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+                continue;
+            }
+            try { Thread.sleep(120); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+        }
+        return lastFrame != null;
+    }
+
+    /** 鎖定 AE/AWB（若硬件支援），在 shutter 前穩定曝光，避免 overexposure */
+    public boolean lockAeAwbSync(long timeoutMs) {
+        if (camera == null || cameraHandler == null) return false;
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<Boolean> ok = new AtomicReference<>(false);
+        cameraHandler.post(new Runnable() { @Override public void run() {
+            try {
+                if (camera == null) return;
+                Camera.Parameters p = camera.getParameters();
+                boolean changed = false;
+                try { if (p.isAutoExposureLockSupported() && !p.getAutoExposureLock()) { p.setAutoExposureLock(true); changed = true; } } catch (Throwable ignore) {}
+                try { if (p.isAutoWhiteBalanceLockSupported() && !p.getAutoWhiteBalanceLock()) { p.setAutoWhiteBalanceLock(true); changed = true; } } catch (Throwable ignore) {}
+                if (changed) { camera.setParameters(p); Log.i(TAG, "AE/AWB locked"); }
+                ok.set(true);
+            } catch (Throwable t) { Log.w(TAG, "lockAeAwb failed", t); }
+            finally { latch.countDown(); }
+        }});
+        try { latch.await(timeoutMs, TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+        return Boolean.TRUE.equals(ok.get());
+    }
+    public void unlockAeAwbAsync() {
+        if (cameraHandler == null) return;
+        cameraHandler.post(new Runnable() { @Override public void run() {
+            try {
+                if (camera == null) return;
+                Camera.Parameters p = camera.getParameters();
+                boolean changed = false;
+                try { if (p.isAutoExposureLockSupported() && p.getAutoExposureLock()) { p.setAutoExposureLock(false); changed = true; } } catch (Throwable ignore) {}
+                try { if (p.isAutoWhiteBalanceLockSupported() && p.getAutoWhiteBalanceLock()) { p.setAutoWhiteBalanceLock(false); changed = true; } } catch (Throwable ignore) {}
+                if (changed) { camera.setParameters(p); Log.i(TAG, "AE/AWB unlocked"); }
+            } catch (Throwable ignore) {}
+        }});
+    }
+
+    /**
+     * 在預覽幀路徑（snapshot）觸發一次自動對焦並等待回調，確保對好焦才取幀。
+     * 連續對焦模式下 HAL 已在背景持續對焦，此處僅短暫等待；AUTO 模式則真正走 autoFocus。
+     * 呼叫線程為 HttpServer 工作線程，不阻塞 cameraHandler（回調在 handler 線程計時）。
+     */
+    public boolean triggerAutoFocusAndWait(long timeoutMs) {
+        if (camera == null || cameraHandler == null) return false;
+        final AtomicReference<String> modeRef = new AtomicReference<>();
+        final CountDownLatch modeLatch = new CountDownLatch(1);
+        cameraHandler.post(new Runnable() { @Override public void run() { try { if (camera != null) modeRef.set(camera.getParameters().getFocusMode()); } catch (Throwable ignore) {} finally { modeLatch.countDown(); } } });
+        try { modeLatch.await(600, TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+        String mode = modeRef.get();
+        boolean needAf = mode == null || Camera.Parameters.FOCUS_MODE_AUTO.equals(mode) || Camera.Parameters.FOCUS_MODE_MACRO.equals(mode);
+        if (!needAf) {
+            try { Thread.sleep(150); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            return true;
+        }
+        final CountDownLatch afLatch = new CountDownLatch(1);
+        cameraHandler.post(new Runnable() {
+            @Override public void run() {
+                if (camera == null) { afLatch.countDown(); return; }
+                try { try { camera.cancelAutoFocus(); } catch (Throwable ignore) {} camera.autoFocus(new Camera.AutoFocusCallback() { @Override public void onAutoFocus(boolean success, Camera cam) { Log.i(TAG, "snapshot AF callback success=" + success); afLatch.countDown(); } }); } catch (Throwable t) { Log.w(TAG, "snapshot autoFocus throw", t); afLatch.countDown(); }
+            }
+        });
+        try {
+            boolean done = afLatch.await(Math.min(timeoutMs, 2200), TimeUnit.MILLISECONDS);
+            if (!done) Log.w(TAG, "snapshot AF timeout");
+            Thread.sleep(180);
+            return done;
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+    }
+
+    // ── 2026-09-10 Zoom (x1-x5) ──────────────────────────────────────────
+    public float getZoom() { return zoomFactor; }
+
+    public static final class ZoomInfo {
+        public final float current;
+        public final boolean hardwareSupported;
+        public final int maxZoom;
+        public final java.util.List<Integer> ratios;
+        ZoomInfo(float current, boolean hw, int max, java.util.List<Integer> ratios) {
+            this.current = current; this.hardwareSupported = hw; this.maxZoom = max; this.ratios = ratios;
+        }
+    }
+
+    /** 同步查詢當前變焦能力（需在 camera 線程讀參數，超時回 null） */
+    public ZoomInfo getZoomInfoSync(long timeoutMs) {
+        if (camera == null) {
+            // 未開相機時仍回當前因子與「未知硬件能力」標記
+            return new ZoomInfo(zoomFactor, false, 0, null);
+        }
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<ZoomInfo> out = new AtomicReference<>();
+        startCameraThreadIfNeeded();
+        cameraHandler.post(new Runnable() {
+            @Override public void run() {
+                try {
+                    Camera c = camera;
+                    if (c == null) { out.set(new ZoomInfo(zoomFactor, false, 0, null)); }
+                    else {
+                        Camera.Parameters p = c.getParameters();
+                        boolean hw = false;
+                        try { hw = p.isZoomSupported(); } catch (Throwable ignore) {}
+                        int max = 0; java.util.List<Integer> ratios = null;
+                        if (hw) {
+                            try { max = p.getMaxZoom(); } catch (Throwable ignore) {}
+                            try { ratios = p.getZoomRatios(); } catch (Throwable ignore) {}
+                        }
+                        out.set(new ZoomInfo(zoomFactor, hw, max, ratios));
+                    }
+                } catch (Exception e) { out.set(new ZoomInfo(zoomFactor, false, 0, null)); }
+                finally { latch.countDown(); }
+            }
+        });
+        try { latch.await(timeoutMs, TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        ZoomInfo v = out.get();
+        return v != null ? v : new ZoomInfo(zoomFactor, false, 0, null);
+    }
+
+    /** 設定變焦 x1-5（1.0=無變焦）。硬件支援時映射到最接近的 ratio，否則僅記錄供軟件/前端使用 */
+    public void setZoom(final float zoom) {
+        final float clamped = Math.max(1.0f, Math.min(5.0f, zoom));
+        zoomFactor = clamped;
+        if (camera == null || cameraHandler == null) return;
+        cameraHandler.post(new Runnable() {
+            @Override public void run() { applyHardwareZoomLocked(clamped); }
+        });
+    }
+
+    private void applyHardwareZoomLocked(float zoom) {
+        Camera c = camera;
+        if (c == null) return;
+        try {
+            Camera.Parameters p = c.getParameters();
+            boolean hw = false;
+            try { hw = p.isZoomSupported(); } catch (Throwable ignore) {}
+            if (!hw) {
+                Log.i(TAG, "setZoom x" + zoom + " — hardware zoom not supported, keeping software/frontend path");
+                return;
+            }
+            int maxZoom = 0; java.util.List<Integer> ratios = null;
+            try { maxZoom = p.getMaxZoom(); } catch (Throwable ignore) {}
+            try { ratios = p.getZoomRatios(); } catch (Throwable ignore) {}
+            int level = 0;
+            if (ratios != null && !ratios.isEmpty()) {
+                int want = Math.round(zoom * 100);
+                int bestIdx = 0; int bestDiff = Integer.MAX_VALUE;
+                for (int i = 0; i < ratios.size(); i++) {
+                    int diff = Math.abs(ratios.get(i) - want);
+                    if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+                }
+                level = bestIdx;
+            } else if (maxZoom > 0) {
+                level = Math.round((zoom - 1.0f) / 4.0f * maxZoom);
+                if (level < 0) level = 0;
+                if (level > maxZoom) level = maxZoom;
+            }
+            p.setZoom(level);
+            c.setParameters(p);
+            Log.i(TAG, "Hardware zoom applied: x" + zoom + " -> level " + level + "/" + maxZoom + (ratios!=null?" ratios="+ratios.get(Math.min(level, ratios.size()-1)):""));
+        } catch (Exception e) {
+            Log.w(TAG, "applyHardwareZoom x" + zoom + " failed", e);
+        }
+    }
+
+    /** 軟件數位變焦：將 JPEG 中心裁切再放大回原尺寸（用於拍照存檔，串流由前端 CSS 處理以免每幀重編碼） */
+    public byte[] applySoftwareZoomToJpeg(byte[] jpeg, float zoom) {
+        if (jpeg == null || zoom <= 1.01f) return jpeg;
+        try {
+            Bitmap src = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
+            if (src == null) return jpeg;
+            int w = src.getWidth(), h = src.getHeight();
+            int cropW = Math.max(1, Math.round(w / zoom));
+            int cropH = Math.max(1, Math.round(h / zoom));
+            int left = (w - cropW) / 2;
+            int top = (h - cropH) / 2;
+            // 保證偶數對齊，避免部分機型裁切異常
+            left &= ~1; top &= ~1; cropW &= ~1; cropH &= ~1;
+            if (cropW <= 0 || cropH <= 0) { src.recycle(); return jpeg; }
+            Bitmap cropped = Bitmap.createBitmap(src, left, top, cropW, cropH);
+            Bitmap scaled = Bitmap.createScaledBitmap(cropped, w, h, true);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            scaled.compress(Bitmap.CompressFormat.JPEG, 85, out);
+            byte[] ret = out.toByteArray();
+            src.recycle(); if (cropped != src) cropped.recycle(); scaled.recycle();
+            Log.i(TAG, "Software zoom x" + zoom + " applied: " + w + "x" + h + " crop " + cropW + "x" + cropH);
+            return ret;
+        } catch (Throwable t) {
+            Log.w(TAG, "Software zoom failed x" + zoom, t);
+            return jpeg;
+        }
+    }
+
     private void safeReleaseOnCameraThread() {
         if (camera != null) {
             try {
@@ -676,6 +981,7 @@ public class CameraController {
             camera = null;
             openedIndex = -1;
             lastFrame = null;
+            previewStartedAtMs = 0;
             synchronized (this) {
                 fpsTimestamps.clear();
             }

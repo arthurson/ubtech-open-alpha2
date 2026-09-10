@@ -24,6 +24,9 @@
 
 let cameraLiveRunning = false;
 let fpsPollTimer = null;
+// 2026-09-10 新增: webcam 數位變焦 x1-x5
+let cameraZoom = 1.0;
+let cameraZoomHardwareSupported = false;
 
 function cameraElements() {
   return {
@@ -57,6 +60,72 @@ function onResolutionChanged() {
   }
 }
 
+// ── Camera Zoom x1-x5 (2026-09-10) ──
+function cameraZoomElements() {
+  return {
+    slider: document.getElementById("cameraZoom"),
+    val: document.getElementById("cameraZoomVal"),
+    hint: document.getElementById("cameraZoomHint"),
+  };
+}
+function applyCameraZoomCss(zoom) {
+  const els = cameraElements();
+  const img = els.viewport ? els.viewport.querySelector("img") : null;
+  if (img) {
+    const z = Math.max(1.0, Math.min(5.0, parseFloat(zoom) || 1.0));
+    img.style.transform = z > 1.01 ? "scale(" + z.toFixed(1) + ")" : "";
+    img.style.transformOrigin = "center center";
+    // 讓 viewport 保持 overflow:hidden 以裁切放大後的邊緣（見 style.css .camera-viewport）
+    img.style.willChange = z > 1.01 ? "transform" : "";
+  }
+  const els2 = cameraZoomElements();
+  if (els2.val) els2.val.textContent = "x" + (parseFloat(zoom)||1.0).toFixed(1);
+  if (els2.slider && Math.abs(parseFloat(els2.slider.value) - parseFloat(zoom)) > 0.05) els2.slider.value = zoom;
+}
+function onCameraZoomInput(val) {
+  const z = parseFloat(val) || 1.0;
+  cameraZoom = z;
+  applyCameraZoomCss(z);
+}
+async function setCameraZoom(val) {
+  const z = Math.max(1.0, Math.min(5.0, parseFloat(val) || 1.0));
+  cameraZoom = z;
+  applyCameraZoomCss(z);
+  try { localStorage.setItem("cameraZoom", String(z)); } catch(e){}
+  try {
+    const res = await Alpha2Api.cameraZoom({zoom: z});
+    if (res && typeof res.hardwareSupported === "boolean") {
+      cameraZoomHardwareSupported = res.hardwareSupported;
+      const hint = document.getElementById("cameraZoomHint");
+      if (hint) {
+        hint.textContent = res.hardwareSupported
+          ? "硬件變焦已生效（ratio " + (res.ratios ? res.ratios[Math.min(Math.round((z-1)/4*(res.ratios.length-1)), res.ratios.length-1)] : "?") + "/100）"
+          : "軟件變焦（前端即時縮放，拍照由後端裁切） x" + z.toFixed(1);
+      }
+    }
+  } catch(e) {
+    // 後端未就緒時僅前端生效，不報錯
+  }
+}
+function resetCameraZoom() { setCameraZoom(1.0); }
+async function initCameraZoom() {
+  let initZ = 1.0;
+  try { const s = localStorage.getItem("cameraZoom"); if (s) initZ = parseFloat(s) || 1.0; } catch(e){}
+  try {
+    const info = await Alpha2Api.cameraZoom({});
+    if (info && typeof info.zoom === "number") {
+      initZ = info.zoom;
+      cameraZoomHardwareSupported = !!info.hardwareSupported;
+    } else if (info && typeof info.zoom === "string") {
+      initZ = parseFloat(info.zoom) || initZ;
+    }
+  } catch(e){}
+  cameraZoom = Math.max(1.0, Math.min(5.0, initZ));
+  const els = cameraZoomElements();
+  if (els.slider) els.slider.value = String(cameraZoom);
+  applyCameraZoomCss(cameraZoom);
+}
+
 function toggleCameraLive() {
   if (cameraLiveRunning) {
     stopCameraLive();
@@ -73,14 +142,14 @@ async function startCameraLive() {
   const placeholder = els.placeholder, badge = els.badge, btn = els.btn, hint = els.hint;
 
   const [w, h] = (els.resolution ? els.resolution.value : "800x600").split("x").map(Number);
-  hint.textContent = "設定解像度…";
-  await Alpha2Api.cameraResolution( { w: w, h: h });
+  if (hint) hint.textContent = "設定解像度…";
+  try { await Alpha2Api.cameraResolution( { w: w, h: h }); } catch(e) { if (hint) hint.textContent = "設定解像度失敗: " + e.message; return; }
 
   cameraLiveRunning = true;
-  btn.textContent = "⏸";
-  badge.classList.add("on");
+  if (btn) btn.textContent = "⏸";
+  if (badge) badge.classList.add("on");
   if (placeholder) placeholder.style.display = "none";
-  hint.textContent = "連接緊鏡頭串流…";
+  if (hint) hint.textContent = "連接緊鏡頭串流…";
 
   connectCameraStream();
   setupCrosshairIfNeeded();
@@ -95,18 +164,18 @@ function stopCameraLive() {
   if (mediaRecorder && mediaRecorder.state === "recording") {
     stopRecording(); // avoid recording against an <img> that's about to be removed
   }
-  const img = viewport.querySelector("img");
+  const img = viewport ? viewport.querySelector("img") : null;
   if (img) {
     img.src = ""; // stop the browser holding the multipart connection open
     img.remove();
   }
-  btn.textContent = "▶";
-  badge.classList.remove("on");
+  if (btn) btn.textContent = "▶";
+  if (badge) badge.classList.remove("on");
   if (placeholder) {
     placeholder.style.display = "";
     placeholder.textContent = "";
   }
-  els.hint.textContent = "";
+  if (els.hint) els.hint.textContent = "";
   updateCrosshairVisibility();
   stopFpsPolling();
 }
@@ -129,6 +198,11 @@ function updateFpsBadge() {
   const badge = document.getElementById("cameraFpsBadge");
   if (!badge) return;
   if (!cameraLiveRunning) {
+    badge.classList.remove("on");
+    return;
+  }
+  const feat = document.getElementById("featureEnabled");
+  if (feat && !feat.checked) {
     badge.classList.remove("on");
     return;
   }
@@ -405,6 +479,8 @@ function setRecordingLed(on) {
 
 let crosshairDragging = false;
 let crosshairSetupDone = false;
+// 2026-09-10: 搖桿自動回中開關（關閉後鬆手保持角度，不回正）
+let joystickAutoReturn = true;
 
 /** axisValue in [-1, 1]: -1 = servo min, 0 = servo home, +1 = servo max. */
 function crosshairAxisToAngle(id, axisValue) {
@@ -432,6 +508,24 @@ function updateCrosshairVisibility() {
   if (els.fabRow) {
     els.fabRow.classList.toggle("active", shouldShow);
   }
+  // 2026-09-10: 統一風格 — 解像度(左上)、Zoom(相機鍵上)、回中(joystick右)、FPS(右上) 皆為功能鍵內容
+  const resWrap = document.getElementById("cameraResolutionWrap");
+  if (resWrap) resWrap.style.display = shouldShow ? "block" : "none";
+  const resSel = document.getElementById("cameraResolution");
+  if (resSel) resSel.disabled = !shouldShow;
+  const zoomV = document.getElementById("cameraZoomVertical");
+  if (zoomV) zoomV.style.display = shouldShow ? "flex" : "none";
+  const zs = document.getElementById("cameraZoom");
+  if (zs) zs.disabled = !shouldShow;
+  const joyWrap = document.getElementById("joystickAutoReturnWrap");
+  if (joyWrap) joyWrap.style.display = shouldShow ? "flex" : "none";
+  const jrCb = document.getElementById("joystickAutoReturn");
+  if (jrCb) jrCb.disabled = !shouldShow;
+  const fpsBadge = document.getElementById("cameraFpsBadge");
+  if (fpsBadge) {
+    if (!shouldShow) fpsBadge.classList.remove("on");
+    else if (cameraLiveRunning) updateFpsBadge();
+  }
   // Unticking the master checkbox (or stopping the camera) must not leave mic-listen
   // silently running with its FAB hidden - force it off so the
   // control state always matches what's actually visible on screen.
@@ -439,6 +533,28 @@ function updateCrosshairVisibility() {
   if (!shouldShow) {
     if (micListening) stopMicListen();
   }
+}
+function joystickAutoReturnToggle() {
+  const cb = document.getElementById("joystickAutoReturn");
+  joystickAutoReturn = cb ? cb.checked : true;
+  try { localStorage.setItem("joystickAutoReturn", joystickAutoReturn ? "1" : "0"); } catch(e){}
+  if (joystickAutoReturn) {
+    // 開啟自動回中時立即回正（符合「關左再開返會立即回中」預期）
+    setKnobPosition(0, 0);
+    try {
+      const t = (typeof servoTime === 'function' ? servoTime() : 500);
+      Alpha2Api.servoOne({id:19, angle: crosshairAxisToAngle(19,0), time: t});
+      Alpha2Api.servoOne({id:20, angle: crosshairAxisToAngle(20,0), time: t});
+    } catch(e){}
+  }
+}
+function initJoystickAutoReturn() {
+  try {
+    const v = localStorage.getItem("joystickAutoReturn");
+    if (v !== null) joystickAutoReturn = v === "1";
+  } catch(e){}
+  const cb = document.getElementById("joystickAutoReturn");
+  if (cb) cb.checked = joystickAutoReturn;
 }
 
 function setupCrosshairIfNeeded() {
@@ -502,8 +618,9 @@ function setupCrosshairIfNeeded() {
   function onPointerDown(evt) {
     if (!els.crosshairToggle || !els.crosshairToggle.checked) return;
     crosshairDragging = true;
-    cameraElements().crosshairMark.classList.add("dragging");
-    pad.setPointerCapture(evt.pointerId);
+    const mk = cameraElements().crosshairMark;
+    if (mk) mk.classList.add("dragging");
+    try { pad.setPointerCapture(evt.pointerId); } catch(e){}
     const { nx, ny } = axisFromEvent(evt);
     setKnobPosition(nx, ny);
     lastSendTime = Date.now();
@@ -522,13 +639,18 @@ function setupCrosshairIfNeeded() {
   function onPointerUp(evt) {
     if (!crosshairDragging) return;
     crosshairDragging = false;
-    cameraElements().crosshairMark.classList.remove("dragging");
+    const mk2 = cameraElements().crosshairMark;
+    if (mk2) mk2.classList.remove("dragging");
     if (pendingTimer) {
       clearTimeout(pendingTimer);
       pendingTimer = null;
     }
-    setKnobPosition(0, 0); // self-centering, like a physical joystick
-    sendServoForAxis(0, 0); // return the head to home immediately, not throttled
+    if (joystickAutoReturn) {
+      setKnobPosition(0, 0); // self-centering, like a physical joystick
+      sendServoForAxis(0, 0); // return the head to home immediately, not throttled
+    } else {
+      // 關閉自動回中：鬆手保持當前角度，僅結束拖拽狀態，不回正
+    }
   }
 
   pad.addEventListener("pointerdown", onPointerDown);
@@ -586,10 +708,15 @@ function setupCrosshairIfNeeded() {
   els.viewport.addEventListener("keyup", function (evt) {
     if (ARROW_KEYS.indexOf(evt.key) !== -1) {
       heldArrowKeys.delete(evt.key);
-      applyArrowKeyState(); // recompute with this key removed - may now be back to (0,0)
-      if (heldArrowKeys.size === 0) {
-        setKnobPosition(0, 0);
-        sendServoForAxis(0, 0); // snap home immediately, matching pointerup's behavior
+      if (heldArrowKeys.size === 0 && !joystickAutoReturn) {
+        // 關閉自動回中時，鬆開最後一鍵保持當前角度，不回正
+        // 僅清除 dragging 視覺，保留 knob 位置與 servo 角度
+      } else {
+        applyArrowKeyState(); // recompute with this key removed - may now be back to (0,0)
+        if (heldArrowKeys.size === 0 && joystickAutoReturn) {
+          setKnobPosition(0, 0);
+          sendServoForAxis(0, 0); // snap home immediately, matching pointerup's behavior
+        }
       }
       return;
     }
@@ -603,8 +730,10 @@ function setupCrosshairIfNeeded() {
   els.viewport.addEventListener("blur", function () {
     if (heldArrowKeys.size > 0) {
       heldArrowKeys.clear();
-      setKnobPosition(0, 0);
-      sendServoForAxis(0, 0);
+      if (joystickAutoReturn) {
+        setKnobPosition(0, 0);
+        sendServoForAxis(0, 0);
+      }
     }
     // 2026-09 刪除: blur 時 stopTalk (walkie-talkie 已移除)。
   });
@@ -657,6 +786,16 @@ function connectCameraStream() {
     };
     viewport.appendChild(img);
   }
+  // 2026-09-10: 每次重建串流都需重套當前變焦（新 <img> 無舊 transform）
+  try { applyCameraZoomCss(cameraZoom); } catch(e){}
   img.src = "/stream/camera?t=" + Date.now();
+}
+
+// 2026-09-10: DOMContentLoaded 單次初始化變焦與搖桿回中（不依賴 app-log.js 順序，自身亦可獨立起）
+function initCameraUiToggles() { try { initCameraZoom(); } catch(e){} try { initJoystickAutoReturn(); } catch(e){} try { updateCrosshairVisibility(); } catch(e){} }
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initCameraUiToggles);
+} else {
+  initCameraUiToggles();
 }
 

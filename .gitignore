@@ -33,3 +33,4 @@ Thumbs.db
 *.zip
 # Temp
 tmp/
+tmp.json

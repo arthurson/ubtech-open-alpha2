@@ -380,14 +380,6 @@
     <h2 data-i18n="camera_heading">相機</h2>
     <div class="row">
       <button id="cameraToggleBtn" onclick="toggleCameraLive()">▶</button>
-      <select id="cameraResolution" onchange="onResolutionChanged()">
-        <option value="640x480">640x480</option>
-        <option value="720x480">720x480</option>
-        <option value="800x600">800x600</option>
-        <option value="1280x720" selected>1280x720</option>
-        <option value="1920x1080">1920x1080</option>
-        <option value="2064x1548">2064x1548</option>
-      </select>
       <label class="switch-label"><span data-i18n="camera_feature_key">功能鍵</span>
         <span class="toggle-switch">
           <input type="checkbox" id="featureEnabled" checked>
@@ -397,11 +389,36 @@
     </div>
     <div id="cameraViewport" class="camera-viewport" tabindex="0"
          ondblclick="toggleCameraFullscreen()" oncontextmenu="return false">
-      <span class="camera-live-badge" id="cameraLiveBadge"><span class="dot"></span>LIVE</span>
-      <span class="camera-fps-badge" id="cameraFpsBadge">-- FPS</span>
       <span class="camera-placeholder" id="cameraPlaceholder"></span>
+      <!-- 解像度：原 LIVE 位罝（左上），同為功能鍵內容 -->
+      <div id="cameraResolutionWrap" class="camera-resolution-wrap" ondblclick="event.stopPropagation()">
+        <select id="cameraResolution" onchange="onResolutionChanged()" onclick="event.stopPropagation()">
+          <option value="640x480">640x480</option>
+          <option value="720x480">720x480</option>
+          <option value="800x600">800x600</option>
+          <option value="1280x720" selected>1280x720</option>
+          <option value="1920x1080">1920x1080</option>
+          <option value="2064x1548">2064x1548</option>
+        </select>
+      </div>
+      <span class="camera-fps-badge" id="cameraFpsBadge">-- FPS</span>
       <div id="crosshairPad" class="crosshair-pad">
         <div id="crosshairMark" class="crosshair-mark"></div>
+      </div>
+      <!-- 回中鍵：放 joystick 右邊，取消文字，僅保留開關 -->
+      <div id="joystickAutoReturnWrap" class="joystick-auto-return-wrap" ondblclick="event.stopPropagation()" title="自動回中">
+        <label class="switch-label" style="gap:0">
+          <span class="toggle-switch">
+            <input type="checkbox" id="joystickAutoReturn" checked onchange="joystickAutoReturnToggle()" onclick="event.stopPropagation()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
+      <!-- Zoom：放相機鍵（📷）上面，垂直佈局，不遮 FPS -->
+      <div id="cameraZoomVertical" class="camera-zoom-vertical" ondblclick="event.stopPropagation()">
+        <input id="cameraZoom" type="range" min="1" max="5" step="0.1" value="1"
+               oninput="onCameraZoomInput(this.value)" onchange="setCameraZoom(this.value)" onclick="event.stopPropagation()" orient="vertical">
+        <span id="cameraZoomVal" class="volume-val">x1.0</span>
       </div>
       <div id="fabRow" class="fab-row">
         <button id="photoFab" class="fab-btn" onclick="capturePhotoAtResolution(4208,3120, this, true)">📷</button>
@@ -411,6 +428,7 @@
       </div>
       <span class="camera-kbd-hint" id="cameraKbdHint"></span>
     </div>
+    <p class="hint" id="cameraZoomHint" data-i18n="camera_zoom_hint" style="text-align:center">數位變焦 x1–x5（硬件支援時為硬件變焦，否則為軟件裁切；串流由前端即時縮放，拍照存檔由後端裁切）</p>
     <p class="hint" id="cameraStatusHint"></p>
     <div id="cameraCaptureList" class="capture-list"></div>
     <div id="cameraPhoto9Grid" class="photo-9-grid" style="display:none"></div>

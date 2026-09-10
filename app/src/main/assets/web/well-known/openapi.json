@@ -3254,6 +3254,65 @@
         "operationId": "cameraResolution_get"
       }
     },
+    "/api/camera/zoom": {
+      "get": {
+        "tags": [
+          "camera"
+        ],
+        "summary": "設定或查詢相機數位變焦 x1-x5",
+        "parameters": [
+          {
+            "name": "zoom",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 1.0,
+              "maximum": 5.0
+            },
+            "description": "x1-5，1.0=無變焦；帶參數=設定，不帶=查詢。硬件支援時映射到最接近 ratio，否則由前端 CSS / 拍照軟件裁切實現"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "變焦狀態",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "zoom": {
+                          "type": "number",
+                          "example": 2.0
+                        },
+                        "hardwareSupported": {
+                          "type": "boolean"
+                        },
+                        "maxZoom": {
+                          "type": "integer"
+                        },
+                        "ratios": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer",
+                            "example": 100
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "cameraZoom_get"
+      }
+    },
     "/api/audio/testtone": {
       "get": {
         "tags": [

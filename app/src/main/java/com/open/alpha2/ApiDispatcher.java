@@ -362,6 +362,8 @@ public final class ApiDispatcher {
                 return cameraApi.supportedSizes();
             case "camera/resolution":
                 return cameraApi.resolution(query);
+            case "camera/zoom":
+                return cameraApi.zoom(query);
             // -- Walkie-talkie (body 喺 MicCenter；薄 delegate，唔好喺度加 logic) --
             case "audio/testtone":
                 return micCenter.testTone();

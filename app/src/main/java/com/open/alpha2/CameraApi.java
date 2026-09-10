@@ -60,12 +60,26 @@ public final class CameraApi {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
                     + MainActivity.jsonSafe(started.error) + "\"}");
         }
+        // 2026-09-10: 等 AE/AF 收斂 + 對焦 + 鎖 AE 才取幀，避免「未 ready 就按 shutter」糊/暗/過曝
+        cameraController.waitForPreviewReady(2500);
+        cameraController.triggerAutoFocusAndWait(2200);
+        cameraController.lockAeAwbSync(700);
+        try { Thread.sleep(150); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         CameraController.Frame frame = waitForFrame(cameraController, 3000);
+        cameraController.unlockAeAwbAsync();
         if (frame == null) {
             return HttpServer.ApiResponse.ok(
                     "{\"ok\":false,\"error\":\"timed out waiting for a preview frame\"}");
         }
-        String b64 = android.util.Base64.encodeToString(frame.jpeg, android.util.Base64.NO_WRAP);
+        byte[] jpeg = frame.jpeg;
+        float z = cameraController.getZoom();
+        if (z > 1.01f) {
+            CameraController.ZoomInfo zi = cameraController.getZoomInfoSync(800);
+            if (zi != null && !zi.hardwareSupported) {
+                jpeg = cameraController.applySoftwareZoomToJpeg(jpeg, z);
+            }
+        }
+        String b64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP);
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"jpegBase64\":\"" + b64 + "\"}");
     }
 
@@ -90,19 +104,32 @@ public final class CameraApi {
         if (started.error != null) {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + MainActivity.jsonSafe(started.error) + "\"}");
         }
+        cameraController.waitForPreviewReady(2500);
+        cameraController.triggerAutoFocusAndWait(2200);
+        cameraController.lockAeAwbSync(700);
+        try { Thread.sleep(150); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         CameraController.Frame frame = waitForFrame(cameraController, 3000);
+        cameraController.unlockAeAwbAsync();
         if (frame == null) {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"timed out waiting for frame\"}");
+        }
+        byte[] jpegToSave = frame.jpeg;
+        float zz = cameraController.getZoom();
+        if (zz > 1.01f) {
+            CameraController.ZoomInfo zi2 = cameraController.getZoomInfoSync(800);
+            if (zi2 != null && !zi2.hardwareSupported) {
+                jpegToSave = cameraController.applySoftwareZoomToJpeg(jpegToSave, zz);
+            }
         }
         try {
             java.io.File dir = new java.io.File("/sdcard/DCIM/Alpha2");
             if (!dir.exists()) dir.mkdirs();
             String ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss_SSS", java.util.Locale.US).format(new java.util.Date());
-            String name = "alpha2_" + frame.jpeg.length + "_" + cameraController.getPreviewWidth() + "x" + cameraController.getPreviewHeight() + "_" + ts + ".jpg";
+            String name = "alpha2_" + jpegToSave.length + "_" + cameraController.getPreviewWidth() + "x" + cameraController.getPreviewHeight() + "_" + ts + ".jpg";
             // 若有指定尺寸，用指定尺寸命名更直觀
             if (hasSize) name = "alpha2_" + reqW + "x" + reqH + "_" + ts + ".jpg";
             java.io.File outFile = new java.io.File(dir, name);
-            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile)) { fos.write(frame.jpeg); }
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile)) { fos.write(jpegToSave); }
             // 同時觸發媒體掃描，讓相簿即時可見
             try { appContext.sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, android.net.Uri.fromFile(outFile))); } catch (Exception ignored) {}
             // 恢復之前解像度（若有切換）
@@ -111,7 +138,7 @@ public final class CameraApi {
                 cameraController.forceStopAndWait(2000);
                 // 不自動重開，讓前端按需再開，避免長時間佔用
             }
-            String b64 = android.util.Base64.encodeToString(frame.jpeg, android.util.Base64.NO_WRAP);
+            String b64 = android.util.Base64.encodeToString(jpegToSave, android.util.Base64.NO_WRAP);
             return HttpServer.ApiResponse.ok("{\"ok\":true,\"path\":\"" + MainActivity.jsonSafe(outFile.getAbsolutePath()) + "\",\"jpegBase64\":\"" + b64 + "\",\"width\":" + cameraController.getPreviewWidth() + ",\"height\":" + cameraController.getPreviewHeight() + "}");
         } catch (Exception e) {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + MainActivity.jsonSafe(e.getMessage()) + "\"}");
@@ -131,16 +158,25 @@ public final class CameraApi {
         if (photo.error != null) {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + MainActivity.jsonSafe(photo.error) + "\"}");
         }
+        // 2026-09-10: 軟件變焦fallback（硬件不支援時，拍照亦需裁切放大）
+        byte[] outJpeg = photo.jpeg;
+        float z2 = cameraController.getZoom();
+        if (z2 > 1.01f) {
+            CameraController.ZoomInfo zi3 = cameraController.getZoomInfoSync(800);
+            if (zi3 != null && !zi3.hardwareSupported) {
+                outJpeg = cameraController.applySoftwareZoomToJpeg(outJpeg, z2);
+            }
+        }
         try {
             java.io.File dir = new java.io.File("/sdcard/DCIM/Alpha2");
             if (!dir.exists()) dir.mkdirs();
             String ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss_SSS", java.util.Locale.US).format(new java.util.Date());
             String name = "alpha2_pic_" + reqW + "x" + reqH + "_" + ts + ".jpg";
             java.io.File outFile = new java.io.File(dir, name);
-            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile)) { fos.write(photo.jpeg); }
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile)) { fos.write(outJpeg); }
             try { appContext.sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, android.net.Uri.fromFile(outFile))); } catch (Exception ignored) {}
-            String b64 = android.util.Base64.encodeToString(photo.jpeg, android.util.Base64.NO_WRAP);
-            return HttpServer.ApiResponse.ok("{\"ok\":true,\"path\":\"" + MainActivity.jsonSafe(outFile.getAbsolutePath()) + "\",\"jpegBase64\":\"" + b64 + "\",\"width\":" + reqW + ",\"height\":" + reqH + ",\"bytes\":" + photo.jpeg.length + "}");
+            String b64 = android.util.Base64.encodeToString(outJpeg, android.util.Base64.NO_WRAP);
+            return HttpServer.ApiResponse.ok("{\"ok\":true,\"path\":\"" + MainActivity.jsonSafe(outFile.getAbsolutePath()) + "\",\"jpegBase64\":\"" + b64 + "\",\"width\":" + reqW + ",\"height\":" + reqH + ",\"bytes\":" + outJpeg.length + "}");
         } catch (Exception e) {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + MainActivity.jsonSafe(e.getMessage()) + "\"}");
         }
@@ -165,6 +201,34 @@ public final class CameraApi {
         double fps = cameraController.getFps();
         String fpsStr = String.format(java.util.Locale.US, "%.1f", fps);
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"fps\":" + fpsStr + ",\"streaming\":" + cameraController.isStreaming() + "}");
+    }
+
+    // 2026-09-10 新增: 數位變焦 x1-x5（硬件支援時映射到最接近 ratio，否則由前端 CSS / 拍照軟件裁切實現）
+    public HttpServer.ApiResponse zoom(Map<String, String> query) {
+        // 支援兩種用法：無參數=查詢，帶 zoom=設定並回當前狀態
+        String zoomStr = query != null ? query.get("zoom") : null;
+        if (zoomStr != null && !zoomStr.isEmpty()) {
+            float z;
+            try { z = Float.parseFloat(zoomStr.trim()); } catch (Exception e) { throw new IllegalArgumentException("parameter 'zoom' must be a number 1.0-5.0, got: " + zoomStr); }
+            if (z < 1.0f || z > 5.0f) throw new IllegalArgumentException("parameter 'zoom' must be between 1.0 and 5.0, got: " + z);
+            cameraController.setZoom(z);
+            // 稍等硬件生效（最多 200ms）
+            try { Thread.sleep(120); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+        }
+        CameraController.ZoomInfo info = cameraController.getZoomInfoSync(1500);
+        StringBuilder sb = new StringBuilder("{\"ok\":true,");
+        sb.append("\"zoom\":").append(String.format(java.util.Locale.US, "%.1f", info.current)).append(",");
+        sb.append("\"hardwareSupported\":").append(info.hardwareSupported).append(",");
+        sb.append("\"maxZoom\":").append(info.maxZoom).append(",");
+        sb.append("\"ratios\":[");
+        if (info.ratios != null) {
+            for (int i = 0; i < info.ratios.size(); i++) {
+                if (i > 0) sb.append(",");
+                sb.append(info.ratios.get(i));
+            }
+        }
+        sb.append("]}");
+        return HttpServer.ApiResponse.ok(sb.toString());
     }
 
     public HttpServer.ApiResponse supportedSizes() {

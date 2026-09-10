@@ -296,7 +296,7 @@ public final class DirectSerialPort {
                                 for (OnFrameListener l : listeners) {
                                     try { l.onFrame(r.frame); } catch (Exception ignore) {}
                                 }
-                                Log.d(TAG, "RX(" + openedPath + ") " + SerialFrameCodec.toHex(r.frame));
+                                logRxFrame(r.frame);
                             }
                             off += r.consumed;
                         }
@@ -322,6 +322,35 @@ public final class DirectSerialPort {
         }, "DirectSerial-" + new File(openedPath != null ? openedPath : primaryPath).getName());
         readerThread.setDaemon(true);
         readerThread.start();
+    }
+
+    private int heartbeatSuppressed = 0;
+    private long heartbeatLastLogMs = 0;
+
+    /** 收幀 log：心跳（0x8B/0x8D）逐幀印會洗 logcat（實測 0x8D 洪水），呢度淨係
+     *  唔印，dispatch 照行（上唔上 WebSocket 由 MainActivity.onDirectChestFrame
+     *  決定，嗰邊一樣濾咗呢兩隻）。60 秒報一次數，等人知串口仲生勾勾。 */
+    private void logRxFrame(byte[] frame) {
+        if (isHeartbeat(frame)) {
+            heartbeatSuppressed++;
+            long now = System.currentTimeMillis();
+            if (now - heartbeatLastLogMs > 60000) {
+                heartbeatLastLogMs = now;
+                Log.d(TAG, "RX(" + openedPath + ") heartbeat 0x8B/0x8D suppressed x" + heartbeatSuppressed);
+            }
+            return;
+        }
+        Log.d(TAG, "RX(" + openedPath + ") " + SerialFrameCodec.toHex(frame));
+    }
+
+    /** 長式 F8 8F LEN SRC DST CMD…：SRC 05/00、DST 00、CMD 8B/8D 即心跳。 */
+    private static boolean isHeartbeat(byte[] frame) {
+        if (frame == null || frame.length < 8) return false;
+        if ((frame[0] & 0xFF) != 0xF8 || (frame[1] & 0xFF) != 0x8F) return false;
+        int src = frame[3] & 0xFF;
+        if (frame[4] != 0 || (src != 0x05 && src != 0x00)) return false;
+        int cmd = frame[5] & 0xFF;
+        return cmd == 0x8B || cmd == 0x8D;
     }
 
     public synchronized void close() {

@@ -621,6 +621,7 @@ input[type="range"] {
   height: 100%;
   object-fit: contain;
   display: block;
+  pointer-events: none; /* 2026-09-10: 放大時 img 經 transform:scale 放大會蓋住 joystick/fab 的 hit 區，設 none 讓 pad/fab 永遠收到 pointer */
 }
 
 .camera-viewport .camera-placeholder {
@@ -665,8 +666,150 @@ input[type="range"] {
   align-items: center;
   gap: 4px;
   pointer-events: none;
+  z-index: 10;
 }
 .camera-viewport .camera-fps-badge.on { display: flex; }
+
+/* 2026-09-10: 功能鍵頂欄（解像度 + 自動回中）與 Zoom 滑桿皆懸浮於相機界面內，受功能鍵開關控制 */
+.camera-top-bar {
+  position: absolute;
+  left: 50%;
+  top: 34px;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 8px;
+  background: rgba(20, 22, 26, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 18px;
+  padding: 4px 8px;
+  backdrop-filter: blur(4px);
+  z-index: 6;
+  pointer-events: auto;
+  max-width: 92%;
+}
+.camera-top-bar select {
+  background: rgba(255,255,255,0.95);
+  border-radius: 8px;
+  padding: 4px 6px;
+  font-size: 12px;
+  min-width: 110px;
+}
+.camera-top-bar .switch-label { color: #fff; font-size: 11px; gap: 6px; }
+/* 2026-09-10: Zoom slider 懸浮於相機界面內（置中底部，不遮 pad/fab） */
+.camera-zoom-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 6px;
+  background: rgba(20, 22, 26, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 20px;
+  padding: 5px 10px;
+  backdrop-filter: blur(4px);
+  z-index: 6;
+  /* 不讓 overlay 本身攔截 viewport 的雙擊全屏，只讓內部 input/按鈕可點 */
+  pointer-events: auto;
+}
+.camera-zoom-overlay .zoom-icon {
+  font-size: 14px;
+  flex: 0 0 auto;
+}
+.camera-zoom-overlay input[type="range"] {
+  width: 110px;
+  flex: 0 0 110px;
+  accent-color: var(--accent);
+}
+.camera-zoom-overlay .volume-val {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 32px;
+  text-align: center;
+}
+.camera-zoom-overlay .zoom-reset-btn {
+  padding: 4px 8px;
+  font-size: 11px;
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 10px;
+}
+.camera-zoom-overlay .zoom-reset-btn:hover { background: rgba(255,255,255,0.28); }
+/* 統一風格：解像度（左上原 LIVE 位）、回中（joystick右）、Zoom（相機鍵上）皆為功能鍵內容 */
+.camera-resolution-wrap {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  display: none;
+  background: rgba(20, 22, 26, 0.62);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 10px;
+  padding: 3px 6px;
+  backdrop-filter: blur(4px);
+  z-index: 6;
+  pointer-events: auto;
+}
+.camera-resolution-wrap select {
+  background: rgba(255,255,255,0.95);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  min-width: 96px;
+}
+.joystick-auto-return-wrap {
+  position: absolute;
+  left: 104px; /* joystick 84px @12px left → 右緣96px +8 gap */
+  bottom: 32px; /* 與 joystick 中心對齊（joystick 84px @12px bottom → 中心54px） */
+  display: none;
+  align-items: center;
+  background: rgba(20,22,26,0.55);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 14px;
+  padding: 3px 6px;
+  backdrop-filter: blur(4px);
+  z-index: 7;
+  pointer-events: auto;
+}
+.camera-zoom-vertical {
+  position: absolute;
+  right: 10px;
+  top: 58%;
+  bottom: auto;
+  transform: translateY(-50%);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: rgba(20,22,26,0.62);
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 14px;
+  padding: 6px 6px 4px 6px;
+  backdrop-filter: blur(4px);
+  z-index: 6;
+  pointer-events: auto;
+}
+.camera-zoom-vertical input[type="range"] {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  width: 22px;
+  height: 84px;
+  accent-color: var(--accent);
+}
+.camera-zoom-vertical .volume-val {
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+@media (max-width: 640px) {
+  .camera-zoom-overlay input[type="range"] { width: 84px; flex-basis: 84px; }
+}
 
 /* Fullscreen mode (double-click / double-tap toggles this). Reuses the
    Fullscreen API on the viewport element itself, so the browser chrome
@@ -698,6 +841,7 @@ input[type="range"] {
   cursor: grab;
   touch-action: none;
   display: none;
+  z-index: 7;
 }
 .crosshair-pad.active { display: block; }
 .crosshair-pad:active { cursor: grabbing; }
@@ -734,7 +878,7 @@ input[type="range"] {
                      classList.toggle("active", ...) was firing correctly, there was
                      just no CSS rule making that class actually hide anything. */
   gap: 10px;
-  z-index: 5;
+  z-index: 7;
 }
 .fab-row.active { display: flex; }
 

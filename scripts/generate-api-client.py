@@ -179,7 +179,7 @@ for tag in sorted(grouped.keys()):
                 # 全字串行嚴格比對；有數字就用數值版（見上面 assertEnumNum）。
                 fn = "assertEnum" if all(isinstance(v, str) for v in enum_vals) else "assertEnumNum"
                 lines.append(f"    if (params && params.{name} != null) {fn}(params.{name}, {js_list}, '{name}');")
-            if schema.get("type") == "integer" and ("minimum" in schema or "maximum" in schema):
+            if schema.get("type") in ("integer", "number") and ("minimum" in schema or "maximum" in schema):
                 mn = schema.get("minimum", -1e9)
                 mx = schema.get("maximum", 1e9)
                 # only if both present, else just range check

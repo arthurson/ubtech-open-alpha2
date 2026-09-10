@@ -65,6 +65,12 @@ public final class GestureCenter {
     private Runnable volumeRepeater;
     private AudioManager audioManager;
     private static final long VOLUME_REPEAT_INTERVAL_MS = 300;
+    // 2026-09-10：native 長命時 hold/release 語意係真（press→hold→release），
+    // 下面 press 即行一格＋repeat、release 即停，啱啱好。跌落 Java poll 後備
+    // 先至係 click 模型（㩒即成個 down+up、放手冇聲），嗰陣 tap 照行一格，
+    // hold/repeat 冇得搞（driver 冇報）。
+    // 2026-09-10 晚：雙擊窗（兩粒 click 前後腳當雙㩒）已刪除——交替試掣必定
+    // 誤觸自殺播 squat。雙鍵總停行面板掣／小智掣；synthetic 0x5e 到唔到都唔估。
     // HeadKeyPoller 直讀 /dev/input/event0（原 onCreate 起嗰段一併搬入）。
     public void start() {
         // HeadKeyPoller 已搬入 hardware-direct module：经 Listener 直连，
@@ -105,9 +111,12 @@ public final class GestureCenter {
      */
     private void onGestureCode(int code) {
         switch (code) {
-            case 0x5a: // "-" pressed: start repeating volume-down
+            case 0x5a: // "-" pressed：即行一格先，repeat 跟住排；
+                // native 長命嗰陣 release 先停（正常 hold）；poll 後備 click
+                // 嗰陣 release 8ms 後就到，repeat 即停，淨係行到呢一格。
                 ledCenter.setPadMinusHeld(true);
                 ledCenter.padLedUpdate();
+                stepVolume(false);
                 startVolumeRepeat(false);
                 break;
             case 0x5b: // "-" released
@@ -115,9 +124,10 @@ public final class GestureCenter {
                 stopVolumeRepeat();
                 ledCenter.padLedUpdate();
                 break;
-            case 0x5c: // "+" pressed: start repeating volume-up
+            case 0x5c: // "+" pressed：同上
                 ledCenter.setPadPlusHeld(true);
                 ledCenter.padLedUpdate();
+                stepVolume(true);
                 startVolumeRepeat(true);
                 break;
             case 0x5d: // "+" released
@@ -130,17 +140,9 @@ public final class GestureCenter {
                        // action_StopAction(), 現在跟小智面板那顆「⏹ 全部停止」
                        // 按鈕 (xiaozhiStopAll(), 見 app-xiaozhi.js) 看齊, 一次
                        // 停止動作/小智說話/本地音樂/電台這四樣東西。
-                ledCenter.setPadMinusHeld(true);
-                ledCenter.setPadPlusHeld(true);
-                ledCenter.padLedUpdate();
-                stopVolumeRepeat(); // in case one pad was already held down
-                ringtoneCenter.playStopCue(); // distinct "stop" cue - must track STREAM_MUSIC volume
-                // pure-direct：一键全停（动作截停+蹲下站起回位，含拍头双 pad 触发），
-                // 与 HTTP action/stop 同语义。旧 robot.action_* 已无服务承载。
-                actionDirect.stopActionWithRecovery();
-                host.stopAllSpeech();
-                audioCenter.stopLocalMusicPlayback();
-                audioCenter.stopRadioPlayback();
+                       // （click 模型下呢個 case 只靠 synthetic 0x5e＋raw 雙㩒
+                       // 狀態，實測未見過，自己唔會亂開火；雙擊窗已刪，見上。）
+                stopAllViaPads();
                 break;
             case 0x5f: // both released: nothing further to do
                 ledCenter.setPadMinusHeld(false);
@@ -153,10 +155,45 @@ public final class GestureCenter {
         }
     }
     // (本地音樂停止/電台播放器搬咗去 AudioCenter。)
+    /** 雙鍵總停（原 0x5e case 本體；家下淨係 synthetic 0x5e＋raw 雙㩒狀態先到）。 */
+    private void stopAllViaPads() {
+        ledCenter.setPadMinusHeld(true);
+        ledCenter.setPadPlusHeld(true);
+        ledCenter.padLedUpdate();
+        stopVolumeRepeat(); // in case one pad was already held down
+        ringtoneCenter.playStopCue(); // distinct "stop" cue - must track STREAM_MUSIC volume
+        // pure-direct：一键全停（动作截停+蹲下站起回位，含拍头双 pad 触发），
+        // 与 HTTP action/stop 同语义。旧 robot.action_* 已无服务承载。
+        actionDirect.stopActionWithRecovery();
+        host.stopAllSpeech();
+        audioCenter.stopLocalMusicPlayback();
+        audioCenter.stopRadioPlayback();
+        // click 模型冇放手 signal 熄燈，1.5s 後自己熄（唔係 stick 死）。
+        mainHandler.postDelayed(new Runnable() {
+            @Override public void run() {
+                ledCenter.setPadMinusHeld(false);
+                ledCenter.setPadPlusHeld(false);
+                ledCenter.padLedUpdate();
+            }
+        }, 1500);
+    }
+
+    /** 即行一格音量（click 模型：tap 靠呢一下，唔靠 repeat）。 */
+    private void stepVolume(boolean up) {
+        if (audioManager != null) {
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                    up ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER,
+                    AudioManager.FLAG_SHOW_UI | AudioManager.FLAG_PLAY_SOUND);
+        }
+    }
     // (查表快取搬咗去 RingtoneCenter，連上面成段 cursor 洩漏註解一齊。)
     /**
      * Starts (or restarts) a repeating volume step every VOLUME_REPEAT_INTERVAL_MS,
      * simulating press-and-hold behaviour on top of AudioManager's single-step API.
+     *
+     * 2026-09-10 click 模型：第一格改由 stepVolume() 即行（見 0x5a/0x5c），
+     * 呢度淨係排之後嘅 repeat（release 8ms 後就到，多數即刻停；留低係為咗
+     * 萬一有 firmware 真係報 hold）。之前即 post 第一格，同 stepVolume 會變兩格。
      *
      * FLAG_PLAY_SOUND makes Android play its own built-in volume-change sound on each
      * real step - the same sound a hardware volume key produces - so there's no need
@@ -176,7 +213,7 @@ public final class GestureCenter {
                 mainHandler.postDelayed(this, VOLUME_REPEAT_INTERVAL_MS);
             }
         };
-        mainHandler.post(volumeRepeater);
+        mainHandler.postDelayed(volumeRepeater, VOLUME_REPEAT_INTERVAL_MS);
     }
     private void stopVolumeRepeat() {
         if (volumeRepeater != null) {

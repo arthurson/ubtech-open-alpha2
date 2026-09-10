@@ -199,6 +199,12 @@ const Alpha2Api = (function() {
     return api('camera/take_photo_save', params);
   }
 
+  function cameraZoom(params) {
+    if (params && params.zoom != null) assertRange(Number(params.zoom), 1.0, 5.0, 'zoom');
+    // 設定或查詢相機數位變焦 x1-x5
+    return api('camera/zoom', params);
+  }
+
   // ── core ──────────────────────────────────────────────
   function batteryStatus(params) {
     // 查詢電池狀態 (BatteryManager broadcast 緩存)
@@ -785,6 +791,7 @@ const Alpha2Api = (function() {
     cameraSnapshotSave,
     cameraSupportedSizes,
     cameraTakePhotoSave,
+    cameraZoom,
     batteryStatus,
     btStatus,
     chestPage,
