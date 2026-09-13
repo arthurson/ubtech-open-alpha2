@@ -3,6 +3,10 @@ package com.ubtechinc.alpha.hardware.ubx;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * .ubx clean-room 解析器（absolute-offset 版）。
@@ -161,7 +165,75 @@ public final class UbxParser {
         parseFrameAList(t, p, bLen, track, out);
         p += bLen;
         if (p != trackEnd) throw new UbxParseException("track slack " + (trackEnd - p));
+        track.playOrder = computePlayOrder(track);
         out.tracks.add(track);
+    }
+
+    /**
+     * 官方鏈式 servo 播放序（smali f/b.f＋f/c.a＋e/c 實證）。
+     * 入口＝(a==-1,b==0) 葉（f/e.play 用 track.b() 同款過濾）；逐葉跟鏈：
+     * leaf.c 對 d/a.e 選段（d/b.a(I) 搜 e==I），v7＝keyframe[a==leaf.d]
+     * 的 d 值、非 0/3 即 skip，c==-2 鏈終止（f/c.a completed 分支）。
+     * 段播完按出索引搵下一批 (a==e,b==outIdx) 葉：servo(f==0)→2、
+     * f/e(f==1)→0、voice(f==4)→2（鏈續行假設，corpus 內罕見）、
+     * e/d(f==2)→True/False 具名 keyframe 的 a 值——全量 217 檔零具名，
+     * 一律 -1 斷鏈（跟官方在機上行為一致）。
+     * 回 null＝無鏈頭（調用方回退解析序，行為同舊版一字不差）；
+     * 回空表＝鏈指明唔播（跟官方播零格）。
+     */
+    static List<Integer> computePlayOrder(UbxFile.UbxTrack track) {
+        List<int[]> entry = new ArrayList<>();
+        for (int[] leaf : track.leafRows) {
+            if (leaf.length >= 4 && leaf[0] == -1 && leaf[1] == 0) entry.add(leaf);
+        }
+        if (entry.isEmpty()) return null; // 無鏈頭可跟，回退舊序
+        Map<Integer, Integer> keyD = new HashMap<>();
+        for (UbxFile.UbxServoFrame kf : track.keyframes) {
+            keyD.put(kf.leafA, kf.leafD);
+        }
+        boolean hasKeys = !keyD.isEmpty();
+        List<Integer> order = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        List<int[]> pending = new ArrayList<>(entry);
+        int guard = 0;
+        while (!pending.isEmpty() && guard++ < 1024) {
+            int[] leaf = pending.remove(0);
+            String k = leaf[0] + "," + leaf[1] + "," + leaf[2] + "," + leaf[3];
+            if (!seen.add(k)) continue; // 防環（官方會 hang 機，呢度斷鏈保命）
+            int c = leaf[2];
+            int d = leaf[3];
+            // c==-2：鏈終止（f/c.a completed 分支：全動作完，後續 track 唔播；
+            // 前進 track1、後退 track0（鏈尾）實證，真機片對過）。
+            if (c == -2) { track.chainTerminated = true; break; }
+            if (hasKeys) {
+                Integer v7 = keyD.get(d);
+                if (v7 == null || (v7 != 0 && v7 != 3)) continue; // v7 gate
+            }
+            int dai = -1;
+            for (int i = 0; i < track.daAll.size(); i++) {
+                if (track.daAll.get(i)[0] == c) { dai = i; break; }
+            }
+            if (dai < 0) continue; // 官方 return
+            int ff = track.daAll.get(dai)[1];
+            int outIdx;
+            if (ff == 0) {
+                order.add(dai); // 官方逐葉獨立 f/b run，重複引用即重播
+                outIdx = 2; // f/i.getOutPutIndex
+            } else if (ff == 1) {
+                outIdx = 0; // f/e.getOutPutIndex
+            } else if (ff == 4) {
+                outIdx = 2; // voice 鏈續行假設（見上）
+            } else if (ff == 2) {
+                outIdx = -1; // e/d：零具名 keyframe，斷鏈（見上）
+            } else {
+                continue;
+            }
+            int de = track.daAll.get(dai)[0];
+            for (int[] lf : track.leafRows) {
+                if (lf.length >= 4 && lf[0] == de && lf[1] == outIdx) pending.add(lf);
+            }
+        }
+        return order;
     }
 
     /**
@@ -232,7 +304,7 @@ public final class UbxParser {
         int fb = le(f, p); p += 4; // b（編排字段；非 servo 判據，原裝實測 72~229）
         p += 100; // c[50]
         p += 100; // d[50]
-        p += 4; // e（原裝實測 1）
+        int fe = le(f, p); p += 4; // e＝d/a.a()：官方 leaf.c 選段鍵（f/b.f 實證）
         int ff = le(f, p); p += 4; // f：==0 即 servo（f.b.f→f.i 原文）
         p += 4; // g
         int fh = le(f, p); p += 4; // h＝i blob 長
@@ -240,14 +312,19 @@ public final class UbxParser {
         if (p + fh != itemEnd) throw new UbxParseException("aframe slack " + (itemEnd - p - fh));
         track.framesA++;
         track.frameBValues.add(fb);
-        if (fh == 0) return;
-        if (ff != 0) { track.nonServoFrames++; return; } // f.e/e.d/voice-b（聯網TTS）分支，不作 a.d 解析
+        // 全段記 (e,f)（鏈式排序用；非 servo 段 span 記 null）
+        track.daAll.add(new int[]{fe, ff});
+        if (fh == 0) { track.daSpans.add(null); return; }
+        if (ff != 0) { track.nonServoFrames++; track.daSpans.add(null); return; }
+        int spanStart = track.frames.size();
         try {
             parseServoChain(f, p, fh, out, track, false);
             track.servoGroups++;
         } catch (UbxParseException e) {
             track.nonServoFrames++;
         }
+        // servo d.a 段記 span（鏈式排序＋player 取幀用；半截鏈都記，播嗰陣照出）
+        track.daSpans.add(new int[]{spanStart, track.frames.size()});
     }
 
     /**

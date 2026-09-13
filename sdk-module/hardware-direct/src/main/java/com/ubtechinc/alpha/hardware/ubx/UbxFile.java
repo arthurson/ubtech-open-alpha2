@@ -70,6 +70,31 @@ public final class UbxFile {
         /** 寬容跳過的空 marker 數（原廠 `if (L1>0)` 同語義）。 */
         public int skipped;
         public final List<UbxServoFrame> frames = new ArrayList<>();
+        /**
+         * 全 d.a 段 [e-field, f-flag]（檔案序；d/a.a() 即 e，d/a.b() 即 f，
+         * smali f/b.f 選段分支用）。f==0 servo，1→f/e，2→e/d，4→voice。
+         */
+        public final List<int[]> daAll = new ArrayList<>();
+        /**
+         * 與 daAll 平行：各段在 {@link #frames} 內的 [start,end)；
+         * 非 servo 段記 null（走 f/e、e/d 側通道，唔進舵機序）。
+         */
+        public final List<int[]> daSpans = new ArrayList<>();
+        /**
+         * 官方鏈式 servo 播放序：daAll 下標列（smali f/b.f＋f/c.a 實證：
+         * 入口＝(a==-1,b==0) 葉；逐葉跟鏈，leaf.c 對 d/a.e 選段，
+         * v7 gate（keyframe a==leaf.d 的 d 值）非 0/3 即 skip，
+         * c==-2 鏈終止；段播完按出索引（servo 2、f/e 0、e/d 按 True/False
+         * keyframe，無名即 -1 斷鏈）搵下一批 (a==e,b==outIdx) 葉。
+         * f!=0 段唔進舵機序）。null＝無鏈頭，回退解析序；
+         * 空表＝鏈指明唔播（跟官方播零格）。
+         */
+        public List<Integer> playOrder;
+        /**
+         * 鏈行到 c==-2 終止符（smali f/c.a completed 分支：全動作完，不再起後續
+         * track；前進 track1、後退 track0 實證——到此為止，後面 track 唔播）。
+         */
+        public boolean chainTerminated;
     }
 
     /**

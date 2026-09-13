@@ -38,23 +38,37 @@ CAL = {
     11: (100, 190), 12: (40, 140), 13: (20, 220), 14: (10, 205), 15: (25, 205),
     16: (50, 140), 17: (95, 125), 18: (95, 125), 19: (75, 165), 20: (105, 155),
 }
-SUB_TICKS = 5  # 子幀 tick 數（v3 回到 100ms 級：track1 每格 100ms，track0/2 每格 250ms；
-             # v2 试过 1 tick/20ms，起步第一格 50ms 扯 85 格致舵机电流 spike reboot，弃用）
-SUB_S = 5      # 子幀 move 部（s*T 郁滿成格）
-SUB_E = 0      # 子幀 hold 部（v1 用 e=1 每格硬停係殘留頓挫主因；v3 零停留）
-SMOOTH_PASSES = 2  # 鄰域平均 pass 數（磨走 CR 過關鍵幀嗰下曲率突變）
-# 開場 lead-in：由企直 home pose 慢速（2 秒）沉入起步 pose K0。
-# 教訓：v2 首格由企直 50ms 直扯 K0（膊頭 85 格），成部機發狂 reboot。
-LEAD_TICKS = 40  # 40 ticks x 50ms = 2000ms（v4 經 timeBase 縮後約 1.3 秒）
+SUB_TICKS = 5  # 子幀 tick 數（100ms 級：track1 每格 100ms，track0/2 每格 250ms）
+SUB_S = 5      # 子幀 move 部
+SUB_E = 1      # 子幀 hold 部（預設跟原版節奏；e=0 零停留只限明確版本）
+SMOOTH_PASSES = 0  # 鄰域平均 pass 數（預設唔磨；要順滑先開）
+LEAD_TICKS = 0  # 開場 lead-in（預設冇；官方原檔係即時起步）
+# 開場 lead-in：由企直 home pose 慢速沉入起步 pose K0（只限明確版本，例 LEAD_TICKS=40
+# 即 40 ticks x 50ms = 2000ms；教訓：v2 首格由企直 50ms 直扯 K0 致發狂 reboot）。
+# 預設 0 ＝跟官方即時起步。
+LEAD_TICKS = 0
 HOME_POSE = [120, 120, 120, 120, 120, 120, 120, 65, 145, 140,
              120, 120, 175, 95, 100, 120, 120, 120, 120, 120]
-# v4：步數＋變速。主步態 6 格循環由 2 次加到 N_CYCLES 次（每次 2 步）；
-# 變速經 timeBase bake 入檔（整數 ms 檔位：20→13，50→33，約 1.53x，
-# 成個動作均勻加速；App 變速掣播呢檔時要留喺 1x，唔好疊加）。
-N_CYCLES = 4
-SPEEDUP = 1.5
-# v5：步態段弦長勻速重採樣（原 25/45-tick 交替一衝一停，拉勻做等速；格數時長不變）
-UNIFORM_RESAMPLE = 1
+# 步數＋變速（只限明確版本參數化；預設 N_CYCLES=2 即原循環數，SPEEDUP=1 即原速）。
+# 例 8 步：N_CYCLES=4；變速經 timeBase bake 入檔（整數 ms 檔位：20→13，50→33，
+# 約 1.53x；App 變速掣播呢檔時要留喺 1x，唔好疊加）。
+N_CYCLES = 2
+SPEEDUP = 1
+# 步態段弦長勻速重採樣（原 25/45-tick 交替一衝一停，拉勻做等速；格數時長不變）。
+# 預設 0＝唔做。
+UNIFORM_RESAMPLE = 0
+# 收步：尾循環 blend 入企定 STAND（出廠校準 home 位，最穩陣企姿）。
+# 背景：步態尾格係風車手（膊頭 204/37），播完凍住＋慢鬆開，睇落似無端擘開；
+# 收埋入企定就企定收尾（真機片實證）。預設 0＝唔做（跟原檔尾格）。
+# BLEND_ARMS/BLEND_LEGS：手／腳各用尾幾個循環收（手可早過腳開始收）；
+# OUTRO_HOME：id==2 收步段單格手臂撳返 HOME（原 O0 擘開 200/40，
+# 播唔播都好，留喺度係計時炸彈）。
+END_BLEND = 0
+BLEND_ARMS = 1
+BLEND_LEGS = 1
+OUTRO_HOME = 0
+STAND_POSE = [120, 120, 120, 120, 120, 120, 120, 65, 145, 140,
+              120, 120, 175, 95, 100, 120, 120, 120, 120, 120]
 
 
 def le(d, p):
@@ -415,6 +429,10 @@ def humanize(in_path, out_path):
     for key in order:
         ghost_of[key] = prev_last  # 首個為 None（lead-in 由 HOME 起步）
         prev_last = lasts[key]
+    pos_in_order = {key: i for i, key in enumerate(order)}
+    # ghost 用重建後尾 pose（串行跟進）：blend 改尾嗰陣，下一段唔可以再用原尾
+    # （否則 track1 收 HOME、track2 由舊 W5 起步，中間斷一截——實證捉到）。
+    rebuilt_end = {}
     new_tracks = []
     for ti, t in enumerate(m["tracks"]):
         das = parse_blist_frames(d, t["blist_off"])
@@ -425,15 +443,42 @@ def humanize(in_path, out_path):
                 new_das.append(rebuild_da_verbatim(d, da))
                 continue
             blks = parse_chain(da["chain"], da["fh"])
+            # 原內容 tick（v4 cap 用）：type1 全幀 (s+e) 之和
+            orig_ticks = 0
+            for (ty0, data0) in blks:
+                if ty0 == 1:
+                    for blk0 in parse_trackh(data0):
+                        for f0 in blk0["frames"]:
+                            orig_ticks += f0["s"] + f0["e"]
+            new_type1 = None
+            new_ticks = orig_ticks
+            for (ty, data) in blks:
+                if ty == 1:
+                    oi = pos_in_order.get((ti, di), -1)
+                    if oi > 0 and order[oi - 1] in rebuilt_end:
+                        ghost = rebuilt_end[order[oi - 1]]
+                        lead = 0
+                    else:
+                        ghost = ghost_of[(ti, di)]
+                        lead = LEAD_TICKS if (ti, di) == first_key else 0
+                    new_type1, new_ticks, last_pose = rebuild_type1(data, ghost, lead, t["id"])
+                    if last_pose is not None:
+                        rebuilt_end[(ti, di)] = last_pose
+                    break
             new_items = []
             for (ty, data) in blks:
                 if ty == 1:
-                    lead = LEAD_TICKS if (ti, di) == first_key else 0
-                    new_items.append((ty, rebuild_type1(data, ghost_of[(ti, di)], lead)))
+                    new_items.append((ty, new_type1))
                 elif ty == 0 and len(data) == 8:
                     # v4 變速：timeBase 照 SPEEDUP 縮（20→13，50→33）
                     a0 = le(data, 0)
-                    new_items.append((ty, w32(max(1, round(a0 / SPEEDUP))) + data[4:8]))
+                    # loop-cap 跟內容加大：新 cap＝新內容＋原 margin（原 cap－原內容）。
+                    # 唔跟會官方播半腰斬（f/i$a 線程 b<cap 停，8 步檔實證）。
+                    margin = le(data, 4) - orig_ticks
+                    if margin < 0:
+                        margin = 0
+                    new_cap = new_ticks + margin
+                    new_items.append((ty, w32(max(1, round(a0 / SPEEDUP))) + w32(new_cap)))
                 else:
                     new_items.append((ty, data))  # type2/3 原樣
             new_chain = build_chain(new_items)
@@ -468,7 +513,7 @@ def rebuild_da_verbatim(d, da):
     return d[fp - 4:fp + da["L1"]]  # outer+內容
 
 
-def rebuild_type1(data, ghost_prev, lead_ticks=0):
+def rebuild_type1(data, ghost_prev, lead_ticks=0, tid=None):
     blks = parse_trackh(data)
     # 收集全 d.a 幀序（player 播放序即此序）；每幀即由上一 pose 過渡到本幀。
     seq = []
@@ -487,6 +532,7 @@ def rebuild_type1(data, ghost_prev, lead_ticks=0):
         ck, ct = cyc
         ek = ck * N_CYCLES
         et = ct * N_CYCLES
+        new_ticks = sum(et)  # cap 用：擴充後總內容 tick
         g = ghost_prev if ghost_prev is not None else ck[-1]
         keys2 = [g] + ek
         if UNIFORM_RESAMPLE:
@@ -496,14 +542,41 @@ def rebuild_type1(data, ghost_prev, lead_ticks=0):
             new_poses = smooth_seq(resample_uniform(fine, n_out), False)
         else:
             new_poses = smooth_seq(smooth_pairs(keys2, et), True)
-        # 分回原 block 數（tick 均分；窗口按新 tick 重計）
+        if END_BLEND:
+            # 收步：手腳分開收（手早腳遲都得）；起點無縫銜接，終點＝STAND。
+            cyc_per = len(new_poses) // N_CYCLES
+            assert cyc_per * N_CYCLES == len(new_poses), (len(new_poses), N_CYCLES)
+            for span_cyc, do_legs in ((BLEND_ARMS, False), (BLEND_LEGS, True)):
+                n = min(span_cyc, N_CYCLES) * cyc_per
+                base = len(new_poses) - n
+                for j in range(n):
+                    t = (j + 1) / n
+                    te = t * t * (3 - 2 * t)
+                    row = new_poses[base + j]
+                    if do_legs:
+                        new_poses[base + j] = [(1 - te) * a + te * b
+                                               for a, b in zip(row, STAND_POSE)]
+                    else:
+                        new_poses[base + j] = [(1 - te) * a + te * b if k < 6 else a
+                                               for k, (a, b) in enumerate(zip(row, STAND_POSE))]
+        # 分回原 block 數（tick 均分；窗口按官方格式重計：end=start+ticks，
+        # 下一格 start=end+1，原檔例 0-190/191-381；player 忽略窗口，
+        # 但 alpha2services 為準就要啱）
         per = len(new_poses) // len(blks)
         groups = [new_poses[i * per:(i + 1) * per] for i in range(len(blks))]
         bt_total = sum(et)
         per_ticks = bt_total // len(blks)
-        wins = [(i * per_ticks, (i + 1) * per_ticks - 1) for i in range(len(blks))]
+        wins = []
+        ws = blks[0]["start"] if blks else 0
+        for i in range(len(blks)):
+            wins.append((ws, ws + per_ticks))
+            ws += per_ticks + 1
         tmpl_frames = [b["frames"] for b in blks]
     else:
+        if OUTRO_HOME and tid == 2 and len(keys) == 1:
+            # 收步段單格：手臂撳返 HOME（原 O0 擘開，播出嚟就係尾段十字；
+            # 腳本來已企定，成格置 HOME 等於企定 1.25 秒，時長不變）
+            keys = [list(STAND_POSE)]
         if lead_ticks > 0:
             # 開場：HOME→K0 用 lead_ticks 慢速沉入，取代原首格 slot
             # （v2 血淚：唔加呢段會發狂 reboot）
@@ -515,9 +588,13 @@ def rebuild_type1(data, ghost_prev, lead_ticks=0):
             keys2 = [ghost] + keys
             ticks2 = ticks
         new_poses = smooth_seq(smooth_pairs(keys2, ticks2), False)
-        # 按每 blk tick 比例分組（lead-in 取代首 blk 首格 slot；總 tick 守恆）
+        # 按每 blk tick 比例分組（lead-in 取代首 blk 首格 slot；總 tick 守恆），
+        # 窗口按官方格式重計（end=start+ticks，下一格 start=end+1；
+        # 原檔例 blk0 0-20、blk1 21-51）
         groups = []
+        wins = []
         pos = 0
+        ws = blks[0]["start"] if blks else 0
         for bi, blk in enumerate(blks):
             bt = sum(f["s"] + f["e"] for f in blk["frames"])
             if bi == 0 and lead_ticks > 0:
@@ -525,15 +602,174 @@ def rebuild_type1(data, ghost_prev, lead_ticks=0):
             cnt = bt // SUB_TICKS
             groups.append(new_poses[pos:pos + cnt])
             pos += cnt
+            wins.append((ws, ws + bt))
+            ws += bt + 1
         assert pos == len(new_poses), (pos, len(new_poses))
         tmpl_frames = [b["frames"] for b in blks]
         wins = [None] * len(blks)
+        new_ticks = sum(ticks2)
     new_contents = []
     for blk, poses, tfrms, win in zip(blks, groups, tmpl_frames, wins):
         tmpl = tfrms[-1]["raw"]  # 該 blk 尾幀模板（eblob 雜湊字節同構）
         fbytes = [build_servo_frame(tmpl, SUB_S, SUB_E, p) for p in poses]
         new_contents.append(build_block(blk["raw"], fbytes, win))
-    return build_trackh(new_contents)
+    last_pose = new_poses[-1] if new_poses else None
+    return build_trackh(new_contents), new_ticks, last_pose
+
+
+def chain(path):
+    """官方模型模擬播序證明：逐 track 行入口→鏈（同 Java computePlayOrder 同規則），
+    印每段 tick＋時長＋全檔總時長。原檔 vs 改檔對比用（步數/時長差異一目了然）。"""
+    m = parse_ubx(path)
+    d = m["raw"]
+    print("chain:", path)
+    grand_ms = 0
+    for t in m["tracks"]:
+        # 葉 (a,b,c,d)
+        leaves = []
+        ad = t["aleaf"]
+        if len(ad) >= 8 and le(ad, 0) == len(ad):
+            cnt = le(ad, 4)
+            ap = 8
+            for _ in range(cnt):
+                l1 = le(ad, ap)
+                ap += 4
+                if l1 <= 0:
+                    continue
+                leaves.append((le(ad, ap + 4), le(ad, ap + 8),
+                               le(ad, ap + 12), le(ad, ap + 16)))
+                ap += l1
+        # key (a->d)
+        keyD = {}
+        ft = t["ftab"]
+        if len(ft) >= 8 and le(ft, 0) == len(ft):
+            cnt = le(ft, 4)
+            fp = 8
+            for _ in range(cnt):
+                l1 = le(ft, fp)
+                fp += 4
+                if l1 <= 0:
+                    continue
+                keyD[le(ft, fp + 4)] = le(ft, fp + 13)
+                fp += l1
+        # 段表（blist 序）：(e, f, ticks, nframes, timeBase)；非 servo 段 ticks/n=0
+        alld = []
+        bo = t["blist_off"]
+        bp = bo + 8
+        for _ in range(le(d, bo + 4)):
+            l1 = le(d, bp)
+            bp += 4
+            fp = bp
+            ftl = le(d, fp + 4)
+            base = fp + 8 + ftl
+            fe = le(d, base + 208)
+            ff = le(d, base + 212)
+            fh = le(d, base + 220)
+            ticks = 0
+            nframes = 0
+            tb = 0
+            if fh > 0 and ff == 0:
+                ep = base + 224
+                for (ty, data) in parse_chain(d[ep:ep + fh], fh):
+                    if ty == 0 and len(data) == 8:
+                        tb = le(data, 0)
+                    if ty == 1:
+                        for blk in parse_trackh(data):
+                            for f in blk["frames"]:
+                                ticks += f["s"] + f["e"]
+                                nframes += 1
+            alld.append({"e": fe, "f": ff, "ticks": ticks,
+                         "n": nframes, "tb": tb})
+            bp += l1
+        print("  trk%d:" % t["id"])
+        total_ms = 0
+        shown = []
+        # entry：(a==-1,b==0) 葉；無即回退解析序（servo 段列）
+        pending = [lf for lf in leaves if lf[0] == -1 and lf[1] == 0]
+        if not pending:
+            for i, s in enumerate([s for s in alld if s["f"] == 0]):
+                ms = s["ticks"] * (s["tb"] or 50)
+                total_ms += ms
+                shown.append("da%d(%dt/%dms/%df)" % (i, s["ticks"], ms, s["n"]))
+        else:
+            seen = set()
+            guard = 0
+            while pending and guard < 1024:
+                guard += 1
+                lf = pending.pop(0)
+                k = "%d,%d,%d,%d" % lf
+                if k in seen:
+                    continue
+                seen.add(k)
+                c = lf[2]
+                dd = lf[3]
+                if c == -2:
+                    break
+                if keyD:
+                    v7 = keyD.get(dd, -1)
+                    if v7 != 0 and v7 != 3:
+                        continue
+                dai = -1
+                for i, s in enumerate(alld):
+                    if s["e"] == c:
+                        dai = i
+                        break
+                if dai < 0:
+                    continue
+                ff = alld[dai]["f"]
+                if ff == 0:
+                    s = alld[dai]
+                    ms = s["ticks"] * (s["tb"] or 50)
+                    total_ms += ms
+                    shown.append("da%d(%dt/%dms/%df)" % (dai, s["ticks"], ms, s["n"]))
+                    outIdx = 2
+                elif ff == 1:
+                    outIdx = 0
+                elif ff == 4:
+                    outIdx = 2
+                elif ff == 2:
+                    outIdx = -1
+                else:
+                    continue
+                de = alld[dai]["e"]
+                for l2 in leaves:
+                    if l2[0] == de and l2[1] == outIdx:
+                        pending.append(l2)
+        print("    order: " + (" > ".join(shown) if shown else "( silent )"))
+        print("    track total: %dms" % total_ms)
+        grand_ms += total_ms
+    print("  FILE total: %dms" % grand_ms)
+
+
+def droptrack(in_path, out_path, keep_ids):
+    """抌走指定外 track（試驗用：驗證收步段係咪 spread 元兇）。
+    只重算 motion 層長度，保留段一字不改；keep_ids 以外全抌。"""
+    d = open(in_path, "rb").read()
+    ms = 21
+    e_len = le(d, 17)
+    assert le(d, ms) == e_len
+    count = le(d, ms + 4)
+    p = ms + 8
+    kept = []
+    for _ in range(count):
+        item_len = le(d, p)
+        assert le(d, p + 4) == item_len
+        tid = le(d, p + 8)
+        if tid in keep_ids:
+            kept.append(d[p:p + 4 + item_len])
+        p += 4 + item_len
+    assert p == ms + e_len, (p, ms + e_len)
+    new_elen = 8 + len(b"".join(kept))
+    motion = w32(new_elen) + w32(len(kept)) + b"".join(kept)
+    aux = d[ms + e_len:]
+    head = bytearray(d[:ms])
+    struct.pack_into("<i", head, 17, new_elen)
+    total = len(head) + len(motion) + len(aux)
+    struct.pack_into("<i", head, 0, total)
+    open(out_path, "wb").write(bytes(head) + motion + aux)
+    m2 = parse_ubx(out_path)
+    print("droptrack keep=%s tracks=%d size=%d" %
+          (sorted(keep_ids), len(m2["tracks"]), total))
 
 
 if __name__ == "__main__":
@@ -543,6 +779,11 @@ if __name__ == "__main__":
     cmd = sys.argv[1]
     if cmd == "dump":
         dump(sys.argv[2])
+    elif cmd == "chain":
+        chain(sys.argv[2])
+    elif cmd == "droptrack":
+        droptrack(sys.argv[2], sys.argv[3],
+                  set(int(x) for x in sys.argv[4:]))
     elif cmd == "humanize":
         # humanize <in> <out> [KEY=VAL ...]：覆寫模組參數
         # （例：8 步普通版 N_CYCLES=4 SPEEDUP=1 SUB_S=5 SUB_E=1 SMOOTH_PASSES=0 LEAD_TICKS=0）

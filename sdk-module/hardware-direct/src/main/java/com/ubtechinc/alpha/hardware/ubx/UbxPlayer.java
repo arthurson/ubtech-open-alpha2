@@ -27,7 +27,13 @@ import java.util.List;
  * v1 簡化：
  * <ul>
  *   <li>只播 a.d 鏈定時幀（servo 看 groupBytes&gt;0；d.f 關鍵幀表不發送）。</li>
- *   <li>幀序按解析序；多 track 首尾相接；a.h/a.j 視窗偏移忽略。</li>
+ *   <li>幀序按官方鏈式次序（smali f/b.f＋f/c.a 實證：入口 (-1,0) 葉起，
+ *       leaf.c 對 d/a.e 選段，v7 gate＋c==-2 終止，段完按出索引跟鏈；
+ *       見 UbxParser.computePlayOrder）。撳唔出序先回退解析序。
+ *       鏈終止（c==-2）即全動作完，後續 track 唔播；多 track 首尾相接；
+ *       a.h/a.j 視窗偏移忽略。</li>
+ *   <li>自然播完停喺尾格：唔加送任何修正幀，播乜就係乜（stop() 中斷同樣
+ *       保持末位姿）。</li>
  *   <li>單調 deadline 調度，累計漂移消除；stop() 中斷雙線，舵機保持末位姿。</li>
  *   <li>變速（0.5/0.67/1/1.5/2，黏性）：舵機槽位與 move 時長同除以倍率；
  *       配樂 1x 走 MediaPlayer（即時起播），非 1x 走 decode+線性重採樣“磁帶式”
@@ -90,7 +96,7 @@ public final class UbxPlayer {
 
     public float getSpeed() { return speed; }
 
-    /** 一幀的播放項：沿用解析序，槽位與發送時長按 a.m 原文分別計算。 */
+    /** 一幀的播放項：沿用官方 leaf-order 幀列，槽位與發送時長按 a.m 原文分別計算。 */
     private static final class Slot {
         final UbxFile.UbxServoFrame sf;
         final long slotMs;  // (start+end) * T：本幀槽位
@@ -116,6 +122,26 @@ public final class UbxPlayer {
         int base = t != null ? t.timeBaseMs : -1;
         if (base <= 0 && ubx != null) base = ubx.timeBaseMs;
         return base > 0 ? base : 50;
+    }
+
+    /**
+     * 官方 leaf-order 幀列（smali f/b.f 實證，見 UbxParser.computePlayOrder）。
+     * playOrder==null（無葉列）先回退解析序，行為同舊版一致；
+     * 空表＝官方指明唔播，跟播零格。
+     */
+    static List<UbxFile.UbxServoFrame> orderedFrames(UbxFile.UbxTrack t) {
+        if (t == null) return new ArrayList<UbxFile.UbxServoFrame>();
+        if (t.playOrder == null) return t.frames;
+        List<UbxFile.UbxServoFrame> out = new ArrayList<>();
+        for (int idx : t.playOrder) {
+            if (idx < 0 || idx >= t.daSpans.size()) continue;
+            int[] span = t.daSpans.get(idx);
+            if (span == null || span.length < 2) continue;
+            int s = Math.max(0, span[0]);
+            int e = Math.min(t.frames.size(), span[1]);
+            for (int i = s; i < e; i++) out.add(t.frames.get(i));
+        }
+        return out;
     }
 
     /**
@@ -157,7 +183,7 @@ public final class UbxPlayer {
             long voiceElapsed = 0;
             for (UbxFile.UbxTrack t : ubx.tracks) {
                 int tickMs = resolveTickMs(ubx, t);
-                for (UbxFile.UbxServoFrame sf : t.frames) {
+                for (UbxFile.UbxServoFrame sf : orderedFrames(t)) {
                     if (sf.voice) {
                         if (ubxFile == null) continue;
                         String music = sf.music != null ? sf.music : t.musicName;
@@ -175,6 +201,13 @@ public final class UbxPlayer {
                     int moveMs = scaleTime(sf.moveTimeHintMs, sp);
                     long slotMs = scaleTime((long) (sf.start + sf.end) * (long) tickMs, sp);
                     seq.add(new Slot(sf, slotMs, moveMs));
+                }
+                // 鏈終止（c==-2，smali f/c.a completed 分支）：全動作完，
+                // 後續 track 唔播——前進/後退收步段就係咁被 skip（真機片實證）。
+                if (t.chainTerminated) {
+                    Log.i(TAG, "play " + name + " chain terminated after track "
+                            + t.id + " (skipping later tracks)");
+                    break;
                 }
             }
         }
@@ -260,6 +293,9 @@ public final class UbxPlayer {
                     }
                 }
             }
+            // 自然播完唔加送任何額外位姿：停喺 .ubx 尾格，播乜就係乜
+            //（曾試過補送 HOME 收尾，真機實證反而整出十字手，故成段唔要；
+            // 要回企直就手動再播一次蹲下站起 / SERVO 全組回中）。
         } finally {
             Log.i(TAG, "play end " + currentName + " sent=" + framesSent + "/" + framesTotal);
         }
