@@ -109,6 +109,15 @@ public final class ApiValidator {
         return iv;
     }
 
+    public static long requireLong(Map<String, String> q, String key) {
+        String v = require(q, key);
+        try {
+            return Long.parseLong(v);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
+        }
+    }
+
     public static long optionalLong(Map<String, String> q, String key, long defaultValue) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return defaultValue;
@@ -120,11 +129,39 @@ public final class ApiValidator {
     }
 
     // ── 浮點 (vosk/endpointer t_*, ubx/speed value) ──────────────────
+    public static float requireFloat(Map<String, String> q, String key) {
+        String v = require(q, key);
+        try {
+            return Float.parseFloat(v.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
+        }
+    }
+
     public static float optionalFloat(Map<String, String> q, String key, float defaultValue) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return defaultValue;
         try {
             return Float.parseFloat(v.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
+        }
+    }
+
+    public static double requireDouble(Map<String, String> q, String key) {
+        String v = require(q, key);
+        try {
+            return Double.parseDouble(v.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
+        }
+    }
+
+    public static double optionalDouble(Map<String, String> q, String key, double defaultValue) {
+        String v = q.get(key);
+        if (v == null || v.isEmpty()) return defaultValue;
+        try {
+            return Double.parseDouble(v.trim());
         } catch (Exception e) {
             throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
         }
@@ -170,9 +207,24 @@ public final class ApiValidator {
         throw new IllegalArgumentException("parameter '" + key + "' must be one of " + Arrays.toString(allowed) + ", got: " + v);
     }
 
+    public static String optionalEnumNullable(Map<String, String> q, String key, String[] allowed) {
+        String v = q.get(key);
+        if (v == null || v.isEmpty()) return null;
+        for (String a : allowed) if (a.equals(v)) return v;
+        throw new IllegalArgumentException("parameter '" + key + "' must be one of " + Arrays.toString(allowed) + ", got: " + v);
+    }
+
     // ── Boolean ────────────────────────────────────────────────────
     public static boolean requireBoolean(Map<String, String> q, String key) {
         String v = require(q, key);
+        if ("true".equalsIgnoreCase(v) || "1".equals(v)) return true;
+        if ("false".equalsIgnoreCase(v) || "0".equals(v)) return false;
+        throw new IllegalArgumentException("parameter '" + key + "' must be true/false, got: " + v);
+    }
+
+    public static boolean optionalBoolean(Map<String, String> q, String key, boolean defaultValue) {
+        String v = q.get(key);
+        if (v == null || v.isEmpty()) return defaultValue;
         if ("true".equalsIgnoreCase(v) || "1".equals(v)) return true;
         if ("false".equalsIgnoreCase(v) || "0".equals(v)) return false;
         throw new IllegalArgumentException("parameter '" + key + "' must be true/false, got: " + v);
@@ -240,6 +292,11 @@ public final class ApiValidator {
     /** 開機語音模式三選一（見 XiaozhiConfig boot_voice/get|set，實驗 tab 卡）。 */
     public static String requireBootVoiceMode(Map<String, String> q) {
         return requireEnum(q, "mode", new String[]{"off","xiaozhi","vosk"});
+    }
+
+    /** ubx/speed value: 0.5|0.67|1|1.5|2 (見 openapi enum + UbxPlayer.setSpeed)。 */
+    public static float requireUbxSpeed(Map<String, String> q) {
+        return parseUbxSpeedValue(require(q, "value"));
     }
 
     /** 共用字串版 (供 ubxSpeedResponse 這類已抽出 query 的 helper覆用, 同一套 enum)。 */
@@ -314,8 +371,25 @@ public final class ApiValidator {
         return HttpServer.ApiResponse.ok(jsonBody);
     }
 
+    public static HttpServer.ApiResponse okTrue() {
+        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+    }
+
     public static HttpServer.ApiResponse error(String msg) {
         return HttpServer.ApiResponse.error(msg);
     }
 
+    // ── 範例重構 (註釋保留，供對照) ────────────────────────────────
+    // 以下為 MainActivity 中可直接替換的示例，保留作文件參考，不會被調用：
+    //
+    // case "servo/one": {
+    //   // 舊: byte id = Byte.parseByte(require(query,"id")); int angle = Integer.parseInt(require(query,"angle")); short time = Short.parseShort(queryOrDefault(query,"time","1000"));
+    //   // 新: int id = ApiValidator.requireIntRange(query,"id",1,20); int angle = ApiValidator.requireInt(query,"angle"); int time = ApiValidator.optionalInt(query,"time",1000);
+    //   // return codeResponseReady(robot.chest_SendOneFreeAngle((byte)id, angle, (short)time), robot.isChestReady());
+    // }
+    //
+    // case "led/head/set": {
+    //   // 舊: int color = Integer.parseInt(require(query,"color")); int brightness = Integer.parseInt(require(query,"brightness")); String preset = queryOrDefault(query,"preset","long"); switch(preset)...
+    //   // 新: int color = ApiValidator.requireColor(query); int brightness = ApiValidator.requireBrightness(query); String preset = ApiValidator.requireLedHeadPreset(query);
+    // }
 }
