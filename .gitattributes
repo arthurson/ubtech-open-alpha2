@@ -4,6 +4,7 @@
 
 app/src/main/assets/web/api-client.js text eol=lf
 openapi/*.yml text eol=lf
+*.yml text eol=lf
 *.py text eol=lf
 *.js text eol=lf
 *.html text eol=lf
