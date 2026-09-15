@@ -32,13 +32,13 @@ function nowTimeStr() {
   return new Date().toLocaleTimeString("zh-HK", { hour12: false });
 }
 
-/** 統一嘅語意配對 + TTS + 動作觸發函數 — 所有 5 種輸入方法
- *  （文字輸入、iFlytek asr_result、iFlytek grammar_result、
- *  Nuance asr_result、Nuance grammar_result）都用呢個方法處理，
- *  同 sendSpeechChatText() 嘅後半段邏輯一致。 */
-function triggerIflytekSimulate(text) {
+/** 統一嘅語意配對 + TTS + 動作觸發函數 — 各種輸入方法（文字輸入等）都用呢個
+ *  方法處理，同 sendSpeechChatText() 嘅後半段邏輯一致。2026-09: iFlytek/Nuance
+ *  asr_result/grammar_result 呢兩種輸入方法已經隨住機身已永久唔再用嘅 binder
+ *  引擎一齊移除。 */
+function triggerSemanticSimulate(text) {
   if (!text) return;
-  Alpha2Api.speechIflytekSimulate( { text: text }).then(function (res) {
+  Alpha2Api.speechSemanticSimulate( { text: text }).then(function (res) {
     if (!res || !res.ok) return;
     if (!res.matched) {
       appendSpeechChatLine("xiaozhi-msg-system", t("speech_chat_simulate_no_match"));
@@ -144,7 +144,7 @@ function appendLog(msg) {
     const cleanAsr = cleanChatText(msg.data.text);
     if (cleanAsr && typeof appendSpeechChatLine === "function") {
       appendSpeechChatLine("xiaozhi-msg-user", cleanAsr);
-      triggerIflytekSimulate(cleanAsr);
+      triggerSemanticSimulate(cleanAsr);
     }
   }
   // 2026-09: Vosk 即時 partial - 淨係顯示喺語音頁 Vosk 卡狀態行，唔入對話流

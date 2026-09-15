@@ -1,15 +1,15 @@
-# Open Alpha2 — beta4 (pure-direct)
+# Open Alpha2 — beta5 (pure-direct)
 
-`com.open.alpha2` —— 裝喺 UBTECH Alpha2 機械人本機嘅 Android App（`versionName "beta 4"`
-/ `versionCode 4`）。開機自動起一個 HTTP + WebSocket server（port `8888`），同一
+`com.open.alpha2` —— 裝喺 UBTECH Alpha2 機械人本機嘅 Android App（`versionName "beta 5"`
+/ `versionCode 5`）。開機自動起一個 HTTP + WebSocket server（port `8888`），同一
 WiFi 任何瀏覽器開 `http://<機械人IP>:8888/` 就係成部機嘅控制面板；另有 Blockly
 積木編程頁同小智 AI 語音對話橋接。
 
-beta4 同 beta3 最大分別：**機身根本無 `alpha2services.apk`，成套 AIDL 已經死咗**——
+beta5 同 beta3 最大分別：**機身根本無 `alpha2services.apk`，成套 AIDL 已經死咗**——
 全部舊 binder 調用註定失敗，一律唔再經 `RobotStub` 以外嘅路；硬件改行直驅，
 訊飛離線引擎成套移除。beta3 時代嘅文件收咗喺 `docs/legacy-beta3/`，只供考古。
 
-## 前提（beta4 實測組合）
+## 前提（beta5 實測組合）
 
 - 機械人：RK3288（`armeabi-v7a` 單一 ABI）、Android 5.1.1（API 22）；App
   `minSdkVersion 19`、`targetSdkVersion 22`（刻意唔升，唔上架 Play Store）。
@@ -82,7 +82,7 @@ adb -s <serial> shell am start -n com.open.alpha2/.MainActivity
 adb -s <serial> forward tcp:8888 tcp:8888
 ```
 
-輸出 `app-debug.apk`（CI 會改名 `open-alpha2-beta4.apk` 做 artifact）。
+輸出 `app-debug.apk`（CI 會改名 `open-alpha2-beta5.apk` 做 artifact）。
 `app/debug.keystore` 係確定性 debug key（密碼 `android`），簽名唔同要先解除安裝。
 呢條 key 視為公開（標準 Android debug key，入咗 repo 正常）；release 另用正式 key，唔好靠簽名做權限隔離。
 prebuilt `.so`（`head_led/head_key_mgr/serial_port`）一律喺
@@ -122,7 +122,7 @@ open-alpha2/
 └── app/                          ← com.open.alpha2（MainActivity 路由+MCP、HttpServer、
     │                               WebSocketServer、EventBus、TTS/音樂/電台/相機/小智…）
     ├── src/main/{cpp/ (easyopus), assets/web/ (面板+Blockly), jniLibs/ (已清空，見上)}
-    └── build.gradle (versionName "beta 4") / debug.keystore
+    └── build.gradle (versionName "beta 5") / debug.keystore
 ```
 
 ## CI（push 即跑）

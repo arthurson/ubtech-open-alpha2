@@ -1,19 +1,18 @@
 package com.open.alpha2;
 
-import android.util.Log;
 
 import java.util.Map;
 
 /**
  * 本地語意配對膠水：中英 matcher 二揀一 + TTS/動作執行。
  *
- * 2026-09 由 MainActivity 抽出 (拆 god object)：handleIflytekSemanticText、
+ * 2026-09 由 MainActivity 抽出 (拆 god object)：handleSemanticMatch、
  * looksChinese、toZhResult 原本全部係 MainActivity 私有成員，搬過嚟邏輯不改。
  * Matcher 實例由 MainActivity 起好傳入 (Vosk 都要用同一份)；播動作經
- * ActionDirect，讀答案經 TtsCenter。 speech/iflytek_simulate endpoint
+ * ActionDirect，讀答案經 TtsCenter。 speech/semantic_simulate endpoint
  * 經呢度一次驗晒成條鏈。
- * 2026-09 dispatcher Phase 1 第六刀加：speech/iflytek_simulate response
- * (iflytekSimulateResponse) 搬入。
+ * 2026-09 dispatcher Phase 1 第六刀加：speech/semantic_simulate response
+ * (semanticSimulateResponse) 搬入。
  */
 public final class SemanticCenter {
     private static final String TAG = "SemanticCenter";
@@ -22,18 +21,18 @@ public final class SemanticCenter {
      *  出來的原本時序 (先 TTS, sleep 200ms, 才播動作 - 兩者是分開、非同步的 AIDL
      *  call, 只靠這個 sleep 頂住, 沒有等 TTS 真的播完才動)。用戶已確認沿用悠聊原本
      *  這樣做, 不改成等 TTS 播完才動。 */
-    private static final int IFLYTEK_TTS_TO_ACTION_DELAY_MS = 200;
+    private static final int SEMANTIC_TTS_TO_ACTION_DELAY_MS = 200;
 
-    private final IflytekSemanticMatcher iflytekMatcher;
-    private final IflytekSemanticMatcherEn iflytekMatcherEn;
+    private final SemanticMatcherZh semanticMatcherZh;
+    private final SemanticMatcherEn semanticMatcherEn;
     private final ActionDirect actionDirect;
     private final TtsCenter ttsCenter;
 
-    public SemanticCenter(IflytekSemanticMatcher iflytekMatcher,
-            IflytekSemanticMatcherEn iflytekMatcherEn,
+    public SemanticCenter(SemanticMatcherZh semanticMatcherZh,
+            SemanticMatcherEn semanticMatcherEn,
             ActionDirect actionDirect, TtsCenter ttsCenter) {
-        this.iflytekMatcher = iflytekMatcher;
-        this.iflytekMatcherEn = iflytekMatcherEn;
+        this.semanticMatcherZh = semanticMatcherZh;
+        this.semanticMatcherEn = semanticMatcherEn;
         this.actionDirect = actionDirect;
         this.ttsCenter = ttsCenter;
     }
@@ -53,50 +52,39 @@ public final class SemanticCenter {
         return false;
     }
 
-    /** IflytekSemanticMatcherEn.MatchResult -> IflytekSemanticMatcher.MatchResult 的
-     *  薄轉接層。兩個 class 的 MatchResult 結構完全一樣 (question/type/operation/
-     *  slot/answer/actionId), 但屬於不同 class 的 nested type, Java 不會自動把它們
-     *  當成同一個型別 - 這個 method 純粹做欄位複製, 讓 handleIflytekSemanticText() 的
-     *  下半部分 (publish event、TTS/動作執行) 不用為中英文分別多寫一份。 */
-    private static IflytekSemanticMatcher.MatchResult toZhResult(IflytekSemanticMatcherEn.MatchResult en) {
-        if (en == null) return null;
-        return new IflytekSemanticMatcher.MatchResult(
-                en.question, en.type, en.operation, en.slot, en.answer, en.actionId);
-    }
-
-    /** 將一句文字 (可能是 iFlytek 引擎真正辨識到的, 也可能是 speech/iflytek_simulate
+    /** 將一句文字 (可能是 iFlytek 引擎真正辨識到的, 也可能是 speech/semantic_simulate
      *  這個 endpoint 用來測試的打字輸入) 對照 1000 條問法配對, 命中就執行悠聊原本的
      *  「先 TTS、再隔 200ms 播動作」流程。找不到就什麼都不做 (不是錯誤 - 用戶說的話不在
      *  那 1000 條裡面是很正常的事, 靜靜地不回應好過亂回一個不相關的回覆), 回傳 null。
      *
-     *  中英文用哪個 matcher 由 looksChinese() 判斷 - 有漢字用 IflytekSemanticMatcher
-     *  (中文, iflytek_semantic_zh.json), 沒有就用 IflytekSemanticMatcherEn (英文,
+     *  中英文用哪個 matcher 由 looksChinese() 判斷 - 有漢字用 SemanticMatcherZh
+     *  (中文, iflytek_semantic_zh.json), 沒有就用 SemanticMatcherEn (英文,
      *  iflytek_semantic_en.json)。兩個 class 結構一致、資料獨立, 不會互相影響。
      *
-     *  回傳 MatchResult (而不是 void) 是為了讓 speech/iflytek_simulate 這個 endpoint 用來
+     *  回傳 MatchResult (而不是 void) 是為了讓 speech/semantic_simulate 這個 endpoint 用來
      *  即時告訴前端「有沒有配對中」, publishEvent=false 那個用法不會再經由 EventBus
      *  多 publish 一次 (前端 sendSpeechChatText() 已經即時用 HTTP response 顯示)。
      *
      *  TTS/動作執行本身依然在獨立 thread 上做 AIDL blocking call, 不在呼叫者的
      *  thread (可能是 HTTP worker thread) 上直接做 - 和 triggerRandomFillerAction()
      *  一致的安全做法。 */
-    public IflytekSemanticMatcher.MatchResult handleIflytekSemanticText(final String text,
+    public SemanticMatcherZh.MatchResult handleSemanticMatch(final String text,
                                                                          final boolean publishEvent) {
         final boolean chinese = looksChinese(text);
         if (chinese) {
-            if (iflytekMatcher == null) return null; // onCreate() 尚未執行完 (理論上不會, 保險)
+            if (semanticMatcherZh == null) return null; // onCreate() 尚未執行完 (理論上不會, 保險)
         } else {
-            if (iflytekMatcherEn == null) return null;
+            if (semanticMatcherEn == null) return null;
         }
 
-        final IflytekSemanticMatcher.MatchResult result = chinese
-                ? iflytekMatcher.match(text)
-                : toZhResult(iflytekMatcherEn.match(text));
+        final SemanticMatcherZh.MatchResult result = chinese
+                ? semanticMatcherZh.match(text)
+                : semanticMatcherEn.match(text);
         if (result == null) {
             return null; // 找不到對應問法 - 靜靜地不做事, 不算錯誤
         }
         if (publishEvent) {
-            EventBus.get().publish("iflytek_match",
+            EventBus.get().publish("semantic_match",
                     "{\"question\":\"" + MainActivity.jsonSafe(result.question) + "\","
                             + "\"type\":\"" + MainActivity.jsonSafe(result.type) + "\","
                             + "\"operation\":\"" + MainActivity.jsonSafe(result.operation) + "\","
@@ -125,7 +113,7 @@ public final class SemanticCenter {
                     return; // CHAT 類或部分 FUNCTION 類沒有對應動作, TTS 完就結束
                 }
                 try {
-                    Thread.sleep(IFLYTEK_TTS_TO_ACTION_DELAY_MS);
+                    Thread.sleep(SEMANTIC_TTS_TO_ACTION_DELAY_MS);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     return;
@@ -139,8 +127,8 @@ public final class SemanticCenter {
                     // matcher 共用同一份 action_category_pools.json, 哪個 instance
                     // 呼叫結果都一樣, 只是依 chinese 這個 flag 選擇對應的 instance。
                     actionId = chinese
-                            ? iflytekMatcher.resolveCategoryRandomActionId(actionId)
-                            : iflytekMatcherEn.resolveCategoryRandomActionId(actionId);
+                            ? semanticMatcherZh.resolveCategoryRandomActionId(actionId)
+                            : semanticMatcherEn.resolveCategoryRandomActionId(actionId);
                 } else if ("__RANDOM__".equals(actionId)) {
                     // TFBOY 這類 operation 在原廠問法裡沒有固定動作 - 沿用
                     // triggerRandomFillerAction() 已有的隨機動作池 (202 個動作裡
@@ -151,12 +139,12 @@ public final class SemanticCenter {
                     actionDirect.playActionDirect(actionId); // pure-direct：旧 AIDL 已无服务承载
                 }
             }
-        }, "IflytekSemanticAction").start();
+        }, "SemanticMatchAction").start();
         return result;
     }
 
     // 2026-08 新增: "打字當作自己說了這句" - 直接把輸入文字當成 iFlytek
-    // 引擎已經辨識完的結果, 送去 handleIflytekSemanticText() 做 1000 條
+    // 引擎已經辨識完的結果, 送去 handleSemanticMatch() 做 1000 條
     // 問法配對 (中英文各 1000 條, 依輸入文字有沒有漢字自動判斷用哪份 - 見
     // looksChinese()), 命中就立即執行悠聊原本的「TTS200ms動作」流程。
     // 和 speech/inject 不同: 這裡不經任何機身 AIDL (不靠
@@ -171,10 +159,10 @@ public final class SemanticCenter {
     // 2026-08 新增: match() 現在找不到問法也會回傳一個「聽不懂」的
     // fallback 回應 (不再是 null), 所以 matched:false 分支現在只
     // 剩返「輸入係空白字串」呢種 edge case 先會行到。
-    // (2026-09 dispatcher Phase 1 第六刀由 handleApi speech/iflytek_simulate 搬入。)
-    public HttpServer.ApiResponse iflytekSimulateResponse(Map<String, String> query) {
+    // (2026-09 dispatcher Phase 1 第六刀由 handleApi speech/semantic_simulate 搬入。)
+    public HttpServer.ApiResponse semanticSimulateResponse(Map<String, String> query) {
         String simText = ApiValidator.require(query, "text");
-        IflytekSemanticMatcher.MatchResult simResult = handleIflytekSemanticText(simText, false);
+        SemanticMatcherZh.MatchResult simResult = handleSemanticMatch(simText, false);
         if (simResult == null) {
             return HttpServer.ApiResponse.ok(
                     "{\"ok\":true,\"matched\":false,\"input\":\"" + MainActivity.jsonSafe(simText) + "\"}");

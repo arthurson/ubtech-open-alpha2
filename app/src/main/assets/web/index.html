@@ -225,12 +225,16 @@
          見 style.css), 底下一行文字輸入 + 送出掣。打字模擬嘅問法配對答案同
          「講嘢 (TTS)」嘅內容分別顯示做 user/assistant 氣泡。呢個純粹係「顯示層」,
          唔改任何底層 API 行為。
-         2026-08 改: 文字輸入框送出由 speech/inject 改用 speech/iflytek_simulate -
+         2026-08 改: 文字輸入框送出由 speech/inject 改用 speech/iflytek_simulate
+         (2026-09 endpoint 改名做 speech/semantic_simulate, 見下) -
          打字直接當做「已經辨識完嘅一句話」, 送去問法配對引擎 (中英文各 1000 條,
          按輸入有冇漢字自動判斷), 命中即時做 TTS + 動作, 等打字都可以測到完整
          「聽到 -> 反應」pipeline, 唔使開聲。
          2026-09: ASR 卡、離線文法卡已移除 (機身已無 iFlytek/Nuance); 配對答案
-         改行 Android 內置 TTS (見 MainActivity.speakAndroidTts())。 -->
+         改行 Android 內置 TTS (見 MainActivity.speakAndroidTts())。呢個 tab 底層
+         叫嘅係 speech/semantic_simulate (原叫 speech/iflytek_simulate, 個名純粹
+         歷史原因, 同機身已永久唔再用嘅 Nuance/iFlytek binder 引擎冇關係, 已改名
+         消除誤導)。 -->
     <section class="card">
       <!-- 2026-09: 離線/雲端模式指示燈已移除 - 跟住離線文法卡一齊走 (嗰個先係
            唯一用家, 機身已無 iFlytek 離線/雲端兩條路)。 -->
@@ -839,7 +843,7 @@
     <section class="card">
       <h3>ℹ️ Open Alpha2 版本</h3>
       <div class="row">
-        <button onclick="window.open('https://github.com/arthurson/ubtech-open-alpha2/releases','_blank','noopener')" style="font-weight:700;">Open Alpha2 beta 4 ↗</button>
+        <button onclick="window.open('https://github.com/arthurson/ubtech-open-alpha2/releases','_blank','noopener')" style="font-weight:700;">Open Alpha2 beta 5 ↗</button>
       </div>
     </section>
   </div>

@@ -110,16 +110,16 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     /** 2026-08 新增: 完全取代悠聊 APK (com.ubtech.iflytekmix) 用的中文語意配對引擎
      *  實例。在 onCreate() 建立一次 (只持有 Context, 不碰 AIDL, 沒有初始化順序問題),
      *  真正的 1000 條資料就到 handleIflytekSemanticText() 第一次被叫才讀 assets - 見
-     *  IflytekSemanticMatcher 本身的 lazy-load 設計。 */
-    private IflytekSemanticMatcher iflytekMatcher;
+     *  SemanticMatcherZh 本身的 lazy-load 設計。 */
+    private SemanticMatcherZh semanticMatcherZh;
 
     /** 2026-08 新增: 完全取代 AlphaEnglishChat APK
-     *  (com.ubtechinc.alphaenglishchat) 用的英文語意配對引擎實例, 和 iflytekMatcher
-     *  屬於同一套機制、獨立資料 (1000 條英文問法, 見 IflytekSemanticMatcherEn)。
+     *  (com.ubtechinc.alphaenglishchat) 用的英文語意配對引擎實例, 和 semanticMatcherZh
+     *  屬於同一套機制、獨立資料 (1000 條英文問法, 見 SemanticMatcherEn)。
      *  哪句用哪個 matcher 由 handleIflytekSemanticText() 根據輸入文字有沒有 CJK 漢字
      *  判斷 - 不靠 speech/set_asr_engine 的語言設定, 因為 iFlytek 引擎本身可能自動
      *  偵測語言, 靠內容判斷更可靠。 */
-    private IflytekSemanticMatcherEn iflytekMatcherEn;
+    private SemanticMatcherEn semanticMatcherEn;
 
     /** 2026-09 新增: Vosk 離線 ASR controller (語音 tab)。單例，onCreate 起，
      *  onDestroy 停。Model 放 sdcard 自動偵測，見 VoskController。 */
@@ -276,14 +276,14 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
             }
         }, "LocalServicesInit").start();
         mainHandler.postDelayed(bootVoiceRunnable, 15000);
-        iflytekMatcher = new IflytekSemanticMatcher(this);
-        iflytekMatcherEn = new IflytekSemanticMatcherEn(this);
+        semanticMatcherZh = new SemanticMatcherZh(this);
+        semanticMatcherEn = new SemanticMatcherEn(this);
         // 2026-09: Vosk 熔斷 —— vosk-android minSdk 21，API 19 機（呢個 APK 要
         // 裝到 4.4）絕對唔可以掂 org.vosk.*（native/JNA 即炒）。19 機 vosk
         // 維持 null，所有 vosk/* endpoint 經 VoskApi.voskOrError() 回清晰錯誤。
         if (android.os.Build.VERSION.SDK_INT >= 21) {
             try {
-                vosk = new VoskController(this, iflytekMatcher, iflytekMatcherEn);
+                vosk = new VoskController(this, semanticMatcherZh, semanticMatcherEn);
             } catch (Throwable e) {
                 Log.w(TAG, "VoskController init failed", e);
             }
@@ -295,7 +295,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // vosk pause/resume 有嘢掂)。null = 用機身目前預設引擎，同以前一樣。
         ttsCenter = new TtsCenter(this, vosk);
         ttsCenter.initAndroidTts(null);
-        semanticCenter = new SemanticCenter(iflytekMatcher, iflytekMatcherEn, actionDirect, ttsCenter);
+        semanticCenter = new SemanticCenter(semanticMatcherZh, semanticMatcherEn, actionDirect, ttsCenter);
         deviceStatus = new DeviceStatus(this, mainHandler, actionDirect, ubxPlayer, ttsCenter);
         // sticky broadcast 註冊時機唔敏感；原 onCreate 開頭喰次 register 搬团度 (起好先叫得)。
         deviceStatus.registerBatteryReceiver();
@@ -326,7 +326,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         voskApi = new VoskApi(vosk, xiaozhiBridge);
         // TTS orchestration 包 (speech/tts＋stop＋總停)：要 xiaozhiBridge
         // (經 stopSpeechPlayback 停小智管道)，放 voskApi 之後、dispatcher 之前。
-        speechCenter = new SpeechCenter(robot, ttsCenter, vosk, xiaozhiBridge);
+        speechCenter = new SpeechCenter(ttsCenter, vosk, xiaozhiBridge);
         // (sonarCenter 已喺上面 xiaozhiBridge 之前起好——MCP 收斂施工順序；
         // dispatcher 照舊放最尾。)
         // dispatcher 包晒上面全部 controller (+speechCenter 做 Host；sensorState
@@ -512,20 +512,20 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 獨立 broadcast 送出, extra 已經是 parse 好的 int, 不需要自己再解 raw
         // wire frame。見 RobotWire.SONAR_DISTANCE_ACTION 的 comment。
         filter.addAction(RobotWire.SONAR_DISTANCE_ACTION);
-        // 2026-08 新增 (8個): 用來查「speech_SetMIC() 拿回 mic 會不會有 broadcast
-        // 通知」這個問題, 反編譯 Alpha2Services-v1.1.7.3.20-5mic.apk 整個 APK 找到
-        // 的 sendBroadcast() 出處 (speechmanager.d.*/AlphaMainSeviceImpl 這兩個
-        // class), 之前這個 App 完全沒有 register。特意連語意未確定的也全部先
-        // register, 經 mic_broadcast_debug event 轉送到 WebSocket log (見
-        // RobotEventReceiver 這幾個 case comment) - 目的是收集實際 payload,
-        // 看完再決定哪幾個和 mic ownership 真的有關、要不要正式做成獨立 event/
-        // 更新 UI 指示燈, 在未驗證之前不假設這個名字看起來像什麼意思就是什麼意思。
+        // 2026-08 新增 (原 8 個，2026-09 拎走 IFLY_OFFLINE_CMD/NUANCE_OFFLINE_CMD
+        // 呢兩個，nuance/iflytek 已經永久唔再用，剩返 6 個): 用來查「speech_SetMIC()
+        // 拿回 mic 會不會有 broadcast 通知」這個問題, 反編譯
+        // Alpha2Services-v1.1.7.3.20-5mic.apk 整個 APK 找到的 sendBroadcast()
+        // 出處 (speechmanager.d.*/AlphaMainSeviceImpl 這兩個 class), 之前這個
+        // App 完全沒有 register。特意連語意未確定的也全部先 register, 經
+        // mic_broadcast_debug event 轉送到 WebSocket log (見 RobotEventReceiver
+        // 這幾個 case comment) - 目的是收集實際 payload, 看完再決定哪幾個和 mic
+        // ownership 真的有關、要不要正式做成獨立 event/更新 UI 指示燈, 在未驗證之前
+        // 不假設這個名字看起來像什麼意思就是什麼意思。
         filter.addAction("com.ubtechinc.services.ABOUT_TTS");
         filter.addAction("com.ubtechinc.services.ALPHA_SOCKET_ASR_OK");
         filter.addAction("com.ubtechinc.services.SPEECH_ANGLE_5MIC");
         filter.addAction("com.ubtechinc.services.LED_ACTION");
-        filter.addAction("com.ubtechinc.services.IFLY_OFFLINE_CMD");
-        filter.addAction("com.ubtechinc.services.NUANCE_OFFLINE_CMD");
         filter.addAction("com.ubtechinc.services.POWER_SAVE");
         filter.addAction("com.ubtechinc.services.ALPHA_NOTIFY_POWER");
         registerReceiver(dynamicReceiver, filter);
@@ -753,7 +753,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     //     -> RobotActionBusiness.startBusiness(): TTS(200ms sleep)Action
     // OpenAlpha2 已經有自己的 robot.speech_startTTS()/robot.action_PlayActionName(),
     // 不需要悠聊那層 RobotHandle wrapper, 只需要搬「文字 -> operation/答案/動作」
-    // 這層語意配對 (IflytekSemanticMatcher, 由悠聊 assets/local_semantic 那 850 條
+    // 這層語意配對 (SemanticMatcherZh, 由悠聊 assets/local_semantic 那 850 條
     // 問法還原) 以及這個時序。
     //
     // 掛在哪裡: 不再掛在 onServerCallBack() (見上面 2026-08 移除那個 comment) - 前端

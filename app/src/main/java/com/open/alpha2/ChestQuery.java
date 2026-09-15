@@ -76,7 +76,10 @@ public final class ChestQuery {
         this.robot = robot;
     }
 
-    private boolean chestReady() {
+    /** package-private (原本是 private) - ChestUpgrade 持有一份 ChestQuery 引用,
+     *  2026-09 duplication cleanup 之後 delegate 呢個 method 過嚟, 唔再自己複製
+     *  多一份一樣嘅 chest availability 檢查邏輯。 */
+    boolean chestReady() {
         try {
             return HardwareDirectManager.get(appContext).chest().isAvailable();
         } catch (Exception e) {

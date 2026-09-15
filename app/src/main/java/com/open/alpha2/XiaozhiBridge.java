@@ -6,9 +6,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.util.Log;
 
-import com.ubtechinc.alpha.hardware.DirectLedController;
 import com.ubtechinc.alpha.hardware.HardwareDirectManager;
-import com.ubtechinc.alpha.hardware.MouthLedData;
 
 import java.util.Map;
 
@@ -152,6 +150,77 @@ public final class XiaozhiBridge {
     private boolean directHeaderReady() {
         try { return HardwareDirectManager.get(appContext).head().isAvailable(); }
         catch (Exception e) { return false; }
+    }
+
+    // -- MCP tools: self.robot.servo_set_one/all (2026-09 拆分自 callTool() 那個
+    // 458 行的巨型 switch - 純粹搬出嚟做獨立 method, 邏輯逐字不變。呢兩個刻意
+    // 留喺 XiaozhiBridge, 冇搬去 UbxApi/ActionDirect: UbxApi.servoSendOneCode()
+    // 底層邏輯睇落一樣, 但佢對超範圍輸入係靜默 clamp, 呢度係刻意 (2026-09-09)
+    // 要求明確報錯、唔靜默 clamp, 跟 servoSendOneCode() 共用會令呢個已驗證嘅
+    // 行為分別消失, 所以保留獨立實現。) --
+
+    /** self.robot.servo_set_one 本體。
+     *  pure-direct: 经 /dev/ttyS1 直发。
+     *  2026-09-09：同 servo/one HTTP 一套範圍（id 1-20、angle 0-255、
+     *  time 20-32767），唔啱即報錯，唔靜默 clamp。 */
+    private SonarCenter.McpResult mcpServoSetOne(org.json.JSONObject arguments) {
+        int mcpId = arguments.optInt("id", -1);
+        if (!arguments.has("angle")) {
+            return SonarCenter.McpResult.err("angle is required");
+        }
+        int angle = arguments.optInt("angle");
+        int timeMs = arguments.optInt("time_ms", 1000);
+        if (mcpId < 1 || mcpId > 20) {
+            return SonarCenter.McpResult.err("id must be between 1 and 20, got: " + mcpId);
+        }
+        if (angle < 0 || angle > 255) {
+            return SonarCenter.McpResult.err("angle must be between 0 and 255, got: " + angle);
+        }
+        if (timeMs < 20 || timeMs > 32767) {
+            return SonarCenter.McpResult.err("time_ms must be between 20 and 32767, got: " + timeMs);
+        }
+        boolean sent = HardwareDirectManager.get(appContext).chest().setSingleServo((byte) mcpId, angle, (short) timeMs);
+        UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
+        boolean ready = directChestReady();
+        return new SonarCenter.McpResult(!MainActivity.isOk(code) || !ready,
+                String.valueOf(code) + " (chestReady=" + ready + ")");
+    }
+
+    /** self.robot.servo_set_all 本體。pure-direct: 经 /dev/ttyS1 直发，无需等待。 */
+    private SonarCenter.McpResult mcpServoSetAll(org.json.JSONObject arguments) {
+        String anglesCsv = arguments.optString("angles", "");
+        if (anglesCsv.isEmpty()) {
+            return SonarCenter.McpResult.err("angles is required (20 comma-separated integers)");
+        }
+        String[] parts = anglesCsv.split(",");
+        // 2026-09-09：要啱啱 20 粒、逐粒 0-255。之前少過 20 粒
+        // 會靜默補 0 落剩餘舵機（成排扯去 0），依家直接報錯。
+        if (parts.length != 20) {
+            return SonarCenter.McpResult.err("angles must have exactly 20 comma-separated values, got " + parts.length);
+        }
+        int[] angles = new int[20];
+        for (int i = 0; i < 20; i++) {
+            int av;
+            try {
+                av = Integer.parseInt(parts[i].trim());
+            } catch (NumberFormatException nfe) {
+                return SonarCenter.McpResult.err("angles element " + (i + 1) + " must be integer, got: " + parts[i]);
+            }
+            if (av < 0 || av > 255) {
+                return SonarCenter.McpResult.err("angles element " + (i + 1) + " must be between 0 and 255, got: " + av);
+            }
+            angles[i] = av;
+        }
+        int timeMs = arguments.optInt("time_ms", 1000);
+        if (timeMs < 20 || timeMs > 32767) {
+            return SonarCenter.McpResult.err("time_ms must be between 20 and 32767, got: " + timeMs);
+        }
+        // pure-direct: 经 /dev/ttyS1 直发。
+        boolean sentAll = HardwareDirectManager.get(appContext).chest().setAllServos(angles, (short) timeMs);
+        UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sentAll);
+        boolean readyAll = directChestReady();
+        return new SonarCenter.McpResult(!MainActivity.isOk(code) || !readyAll,
+                String.valueOf(code) + " (chestReady=" + readyAll + ")");
     }
 
     private static final String PREF_XIAOZHI_DEVICE_ID = "xiaozhi_device_id";
@@ -1849,58 +1918,27 @@ public final class XiaozhiBridge {
                 try {
                     switch (name) {
                         case "self.robot.list_actions": {
-                            org.json.JSONArray arr = new org.json.JSONArray();
-                            for (org.json.JSONObject a : actionDirect.loadXiaozhiActions()) {
-                                arr.put(a);
-                            }
-                            resultText = arr.toString();
+                            SonarCenter.McpResult r = actionDirect.mcpListActions();
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.robot.play_action": {
-                            String actionName = arguments.optString("name", "");
-                            if (actionName.isEmpty()) {
-                                isError = true;
-                                resultText = "missing required argument: name";
-                                break;
-                            }
-                            // 2026-08 修正: 小智傳過來的是人類語言的動作名 (中文/英文,
-                            // 不再是要它自己記住的 id, 見 listTools() 的
-                            // self.robot.play_action description comment) - 這裡做
-                            // fuzzy match 找出真正對應機身檔案的 id, 再傳給
-                            // action_PlayActionName()。找不到就直接告訴 LLM 哪個名
-                            // 找不到, 讓它有機會呼叫 self.robot.list_actions 再試,
-                            // 而不是盲目把 LLM 編的名直接傳給 AIDL (會撞回
-                            // "raise_left_hand" 那種開不了檔案的老問題)。
-                            String resolvedId = actionDirect.resolveActionId(actionName);
-                            if (resolvedId == null) {
-                                isError = true;
-                                resultText = "no action found matching \"" + actionName
-                                        + "\" - call self.robot.list_actions to see valid names";
-                                break;
-                            }
-                            UbxErrorCode.API_ERROR_CODE code = actionDirect.playActionDirect(resolvedId);
-                            isError = !MainActivity.isOk(code);
-                            resultText = String.valueOf(code) + " (matched \"" + actionName
-                                    + "\" -> id " + resolvedId + ")";
+                            SonarCenter.McpResult r = actionDirect.mcpPlayAction(arguments);
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.robot.stop_action": {
-                            // pure-direct：一键全停+蹲下站起回位，和 HTTP action/stop 同语义。
-                            UbxErrorCode.API_ERROR_CODE code = actionDirect.stopActionWithRecovery();
-                            isError = !MainActivity.isOk(code);
-                            resultText = String.valueOf(code);
+                            SonarCenter.McpResult r = actionDirect.mcpStopAction();
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.robot.play_random_action": {
-                            String randomId = actionDirect.resolveRandomActionId();
-                            if (randomId == null) {
-                                isError = true;
-                                resultText = "no random-movement actions available";
-                                break;
-                            }
-                            UbxErrorCode.API_ERROR_CODE code = actionDirect.playActionDirect(randomId);
-                            isError = !MainActivity.isOk(code);
-                            resultText = String.valueOf(code) + " (played random action id " + randomId + ")";
+                            SonarCenter.McpResult r = actionDirect.mcpPlayRandomAction();
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
 
@@ -1910,161 +1948,33 @@ public final class XiaozhiBridge {
                         // AIDL_REFERENCE.md 相關章節和 handleApi() 的 comment 取得完整
                         // 已驗證行為/參數語意, 這裡不重複解釋。
                         case "self.robot.servo_set_one": {
-                            // pure-direct: 经 /dev/ttyS1 直发。
-                            // 2026-09-09：同 servo/one HTTP 一套範圍（id 1-20、
-                            // angle 0-255、time 20-32767），唔啱即報錯，唔靜默 clamp。
-                            int mcpId = arguments.optInt("id", -1);
-                            if (!arguments.has("angle")) {
-                                isError = true;
-                                resultText = "angle is required";
-                                break;
-                            }
-                            int angle = arguments.optInt("angle");
-                            int timeMs = arguments.optInt("time_ms", 1000);
-                            if (mcpId < 1 || mcpId > 20) {
-                                isError = true;
-                                resultText = "id must be between 1 and 20, got: " + mcpId;
-                                break;
-                            }
-                            if (angle < 0 || angle > 255) {
-                                isError = true;
-                                resultText = "angle must be between 0 and 255, got: " + angle;
-                                break;
-                            }
-                            if (timeMs < 20 || timeMs > 32767) {
-                                isError = true;
-                                resultText = "time_ms must be between 20 and 32767, got: " + timeMs;
-                                break;
-                            }
-                            boolean sent = HardwareDirectManager.get(appContext).chest().setSingleServo((byte) mcpId, angle, (short) timeMs);
-                            UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
-                            boolean ready = directChestReady();
-                            isError = !MainActivity.isOk(code) || !ready;
-                            resultText = String.valueOf(code) + " (chestReady=" + ready + ")";
+                            SonarCenter.McpResult r = mcpServoSetOne(arguments);
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.robot.servo_set_all": {
-                            // pure-direct: 经 /dev/ttyS1 直发，无需等待。
-                            String anglesCsv = arguments.optString("angles", "");
-                            if (anglesCsv.isEmpty()) {
-                                isError = true;
-                                resultText = "angles is required (20 comma-separated integers)";
-                                break;
-                            }
-                            String[] parts = anglesCsv.split(",");
-                            // 2026-09-09：要啱啱 20 粒、逐粒 0-255。之前少過 20 粒
-                            // 會靜默補 0 落剩餘舵機（成排扯去 0），依家直接報錯。
-                            if (parts.length != 20) {
-                                isError = true;
-                                resultText = "angles must have exactly 20 comma-separated values, got " + parts.length;
-                                break;
-                            }
-                            int[] angles = new int[20];
-                            boolean anglesBad = false;
-                            for (int i = 0; i < 20; i++) {
-                                int av;
-                                try {
-                                    av = Integer.parseInt(parts[i].trim());
-                                } catch (NumberFormatException nfe) {
-                                    isError = true;
-                                    resultText = "angles element " + (i + 1) + " must be integer, got: " + parts[i];
-                                    anglesBad = true;
-                                    break;
-                                }
-                                if (av < 0 || av > 255) {
-                                    isError = true;
-                                    resultText = "angles element " + (i + 1) + " must be between 0 and 255, got: " + av;
-                                    anglesBad = true;
-                                    break;
-                                }
-                                angles[i] = av;
-                            }
-                            if (anglesBad) break;
-                            int timeMs = arguments.optInt("time_ms", 1000);
-                            if (timeMs < 20 || timeMs > 32767) {
-                                isError = true;
-                                resultText = "time_ms must be between 20 and 32767, got: " + timeMs;
-                                break;
-                            }
-                            // pure-direct: 经 /dev/ttyS1 直发。
-                            boolean sentAll = HardwareDirectManager.get(appContext).chest().setAllServos(angles, (short) timeMs);
-                            UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sentAll);
-                            boolean readyAll = directChestReady();
-                            isError = !MainActivity.isOk(code) || !readyAll;
-                            resultText = String.valueOf(code) + " (chestReady=" + readyAll + ")";
+                            SonarCenter.McpResult r = mcpServoSetAll(arguments);
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.robot.led_set_head": {
-                            // pure-direct: 经 JNI 直驱，单发即稳住（抢灯的 alpha2services
-                            // 内部熄灯循环已随 APK 移除而消失，补发线程一并删除）。
-                            String preset = arguments.optString("preset", "long");
-                            UbxErrorCode.API_ERROR_CODE code;
-                            if ("stop".equals(preset)) {
-                                code = MainActivity.directCode(DirectLedController.stopHead5Mic());
-                            } else {
-                                if (!arguments.has("color") || !arguments.has("brightness")) {
-                                    isError = true;
-                                    resultText = "color and brightness are required unless preset=stop";
-                                    break;
-                                }
-                                int color = arguments.optInt("color");
-                                int brightness = arguments.optInt("brightness");
-                                int p5, p6, p8;
-                                switch (preset) {
-                                    case "flash":   p5 = 100; p6 = 100; p8 = 0; break;
-                                    case "breathe": p5 = 5;   p6 = 20;  p8 = 1; break;
-                                    case "chase":   p5 = 100; p6 = 0;   p8 = 3; break;
-                                    case "dual":    p5 = 500; p6 = 0;   p8 = 5; break;
-                                    case "long":
-                                    default:        p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
-                                }
-                                code = MainActivity.directCode(DirectLedController.setHead5MicRaw(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8));
-                            }
-                            boolean hReady = directHeaderReady();
-                            isError = !MainActivity.isOk(code) || !hReady;
-                            resultText = String.valueOf(code) + " (headerReady=" + hReady + ")";
+                            SonarCenter.McpResult r = ledCenter.mcpLedSetHead(arguments);
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.robot.led_set_eye": {
-                            // pure-direct: 经 JNI 直驱。
-                            String preset = arguments.optString("preset", "long");
-                            UbxErrorCode.API_ERROR_CODE code;
-                            if ("stop".equals(preset)) {
-                                code = MainActivity.directCode(DirectLedController.stopEye5Mic());
-                            } else {
-                                if (!arguments.has("color") || !arguments.has("brightness")) {
-                                    isError = true;
-                                    resultText = "color and brightness are required unless preset=stop";
-                                    break;
-                                }
-                                int color = arguments.optInt("color");
-                                int brightness = arguments.optInt("brightness");
-                                int p5, p6, p8;
-                                switch (preset) {
-                                    case "flash": p5 = 100; p6 = 100; p8 = 0; break;
-                                    case "chase": p5 = 100; p6 = 0;   p8 = 1; break;
-                                    case "dual":  p5 = 500; p6 = 0;   p8 = 3; break;
-                                    case "long":
-                                    default:      p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
-                                }
-                                code = MainActivity.directCode(DirectLedController.setEye5MicRaw(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8));
-                            }
-                            boolean eReady = directHeaderReady();
-                            isError = !MainActivity.isOk(code) || !eReady;
-                            resultText = String.valueOf(code) + " (headerReady=" + eReady + ")";
+                            SonarCenter.McpResult r = ledCenter.mcpLedSetEye(arguments);
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.robot.led_set_mouth": {
-                            String preset = arguments.optString("preset", "breathing");
-                            boolean ok;
-                            if ("off".equals(preset)) {
-                                ok = MouthLedData.off().apply();
-                            } else {
-                                int speedMs = arguments.optInt("speed_ms", 0);
-                                ok = MouthLedData.breathing(speedMs).apply();
-                            }
-                            isError = !ok;
-                            resultText = "ok=" + ok;
+                            SonarCenter.McpResult r = ledCenter.mcpLedSetMouth(arguments);
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         // sensors 4 tool 本體喺 SonarCenter (2026-09 MCP 收斂)；薄 delegate。
@@ -2190,94 +2100,43 @@ public final class XiaozhiBridge {
                             break;
                         }
 
-                        // -- Local music playback: 薄包裝, 邏輯全部委托返
-                        // listLocalMusicFiles()/resolveLocalMusicFile()/
-                        // playLocalMusicFile()/stopLocalMusicPlayback() (跟
-                        // audio/local_music/* 那幾個 HTTP endpoint 共用同一批 method),
-                        // 不在這裡重複實現。
+                        // -- Local music/FM radio: 薄包裝, 邏輯全部委托返 AudioCenter
+                        // mcp*() (跟 audio/local_music/*、audio/radio/* 那幾個 HTTP
+                        // endpoint 共用同一批底層 method), 不在這裡重複實現。
                         case "self.media.list_music": {
-                            org.json.JSONArray arr = new org.json.JSONArray();
-                            for (java.io.File f : audioCenter.listLocalMusicFiles()) {
-                                arr.put(f.getName());
-                            }
-                            resultText = arr.toString();
+                            SonarCenter.McpResult r = audioCenter.mcpListMusic();
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.media.play_music": {
-                            String musicName = arguments.optString("name", "");
-                            if (musicName.isEmpty()) {
-                                isError = true;
-                                resultText = "missing required argument: name";
-                                break;
-                            }
-                            java.io.File resolved = audioCenter.resolveLocalMusicFile(musicName);
-                            if (resolved == null) {
-                                isError = true;
-                                resultText = "no music file found matching \"" + musicName
-                                        + "\" - call self.media.list_music to see available files";
-                                break;
-                            }
-                            audioCenter.playLocalMusicFile(resolved);
-                            resultText = "now playing \"" + resolved.getName() + "\"";
+                            SonarCenter.McpResult r = audioCenter.mcpPlayMusic(arguments);
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.media.stop_music": {
-                            audioCenter.stopLocalMusicPlayback();
-                            resultText = "ok";
+                            SonarCenter.McpResult r = audioCenter.mcpStopMusic();
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
-
-                        // -- FM/網絡電台 (Radio Browser API): 薄包裝, 邏輯全部委托返
-                        // searchRadioStations()/resolveRadioStation()/
-                        // playRadioStream()/stopRadioPlayback() (跟 audio/radio/*
-                        // 那幾個 HTTP endpoint 共用同一批 method), 不在這裡重複實現。
-                        // searchRadioStations()/resolveRadioStation() 拋出的
-                        // IOException/JSONException (網路逾時、Radio Browser
-                        // 服務暫時不穩定等) 由外層那個 try/catch (Exception e) 接住,
-                        // 不用在這裡重複處理。
                         case "self.media.search_radio": {
-                            String searchQuery = arguments.optString("query", "");
-                            if (searchQuery.isEmpty()) {
-                                isError = true;
-                                resultText = "missing required argument: query";
-                                break;
-                            }
-                            java.util.List<org.json.JSONObject> found =
-                                    audioCenter.searchRadioStations(searchQuery, 30);
-                            if (found.isEmpty()) {
-                                resultText = "no radio stations found matching \"" + searchQuery + "\"";
-                                break;
-                            }
-                            org.json.JSONArray arr = new org.json.JSONArray();
-                            for (org.json.JSONObject s : found) {
-                                String country = s.optString("country");
-                                String label = s.optString("name")
-                                        + (country.isEmpty() ? "" : " (" + country + ")");
-                                arr.put(label);
-                            }
-                            resultText = arr.toString();
+                            SonarCenter.McpResult r = audioCenter.mcpSearchRadio(arguments);
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.media.play_radio": {
-                            String stationName = arguments.optString("name", "");
-                            if (stationName.isEmpty()) {
-                                isError = true;
-                                resultText = "missing required argument: name";
-                                break;
-                            }
-                            org.json.JSONObject resolvedStation = audioCenter.resolveRadioStation(stationName);
-                            if (resolvedStation == null) {
-                                isError = true;
-                                resultText = "no radio station found matching \"" + stationName + "\"";
-                                break;
-                            }
-                            audioCenter.playRadioStream(resolvedStation);
-                            resultText = "now playing \"" + resolvedStation.optString("name") + "\"";
+                            SonarCenter.McpResult r = audioCenter.mcpPlayRadio(arguments);
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         case "self.media.stop_radio": {
-                            audioCenter.stopRadioPlayback();
-                            resultText = "ok";
+                            SonarCenter.McpResult r = audioCenter.mcpStopRadio();
+                            isError = r.isError;
+                            resultText = r.resultText;
                             break;
                         }
                         default:

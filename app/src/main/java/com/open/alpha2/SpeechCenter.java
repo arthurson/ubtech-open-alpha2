@@ -26,17 +26,19 @@ import java.util.Map;
  *   管道），XiaozhiBridge→SpeechCenter 唔經 ctor（經 MainActivity delegate），
  *   無循環依賴。sonar 四法將來由 SonarCenter 收返，到時 HostState 再拆。
  *
- * 現狀備註（行為照搬，唔改）：
- * - robot.speech_startTTS() 現時恆回 NOT_INIT（pure-direct 無 binder，見
- *   RobotStub），robotTtsSpeaking 實際恆 false（只喺成功先設 true）；flag
- *   保留唔刪——enforcer 讀緊，binder 翻生/直驅 TTS 接上嗰陣要返。
+ * 現狀備註：
+ * - 2026-09: nuance/iflytek 已經永久唔再用 (機身無 alpha2services, binder
+ *   speech_startTTS 已死), 已經徹底移除 - requireSpeechEngine() 只准 "android",
+ *   handleSpeechTts() 恆行 android 一條路, RobotStub 依賴同 constructor 個
+ *   robot 參數一併刪走。ApiValidatorTest.java 舊有斷言
+ *   requireSpeechEngine("iflytek")=="iflytek" 嗰條連帶要更新做拋
+ *   IllegalArgumentException (見該檔案)。
+ * - robotTtsSpeaking 而家恆 false（觸發 true 嘅唯一路徑已經冇咗）；flag 機制
+ *   本身保留唔刪——兩條 mic-hold enforcer 仍然讀緊呢個 flag, 將來如果直驅 TTS
+ *   接上要用返。
  * - XiaozhiBridge 內兩個 gap 引用（speakActivationCode/self.robot.speak MCP
  *   tool）繼續留喺嗰邊，const 改經呢度
  *   （SpeechCenter.STOP_TO_TTS_MIN_GAP_MS），時戳經 HostState 讀。
- *   TODO（將來收斂）：MCP self.robot.speak 嗰段 gap＋mouth-LED＋
- *   speech_startTTS 同 handleSpeechTts 非 android 分支重複，應收斂到呢度
- *   一個 speakRobotTts(text, lang, voice) 共用——要搞掂 SpeechCenter↔
- *   XiaozhiBridge 雙向引用先做得，今刀唔郁。
  */
 public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Host {
 
@@ -67,14 +69,17 @@ public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Hos
     // 不會撞到, 所以之前只有 iflytek/nuance 斷斷續續, android 沒事。
     private volatile boolean robotTtsSpeaking = false;
 
-    private final RobotStub robot;
     private final TtsCenter ttsCenter;
     private final VoskController vosk; // 可 null：API 19 機起唔到 Vosk（見 MainActivity.onCreate 熔斷）
     private final XiaozhiBridge xiaozhiBridge; // 經 stopSpeechPlayback() 停小智嗰條播放管道
 
-    public SpeechCenter(RobotStub robot, TtsCenter ttsCenter, VoskController vosk,
+    // 2026-09: constructor 原本仲收 RobotStub robot 呢個參數, 淨係俾
+    // handleSpeechTts() 果段已刪嘅 nuance/iflytek 分支用嚟 call
+    // robot.speech_startTTS() —— 果段拎走之後, robot 喺呢個 class 冇任何
+    // method 再用到, 一併刪走 (MainActivity.java 個 new SpeechCenter(...)
+    // call site 已經跟手改咗)。
+    public SpeechCenter(TtsCenter ttsCenter, VoskController vosk,
             XiaozhiBridge xiaozhiBridge) {
-        this.robot = robot;
         this.ttsCenter = ttsCenter;
         this.vosk = vosk;
         this.xiaozhiBridge = xiaozhiBridge;
@@ -112,42 +117,16 @@ public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Hos
     }
 
     // -- ApiDispatcher.Host (speech/tts、speech/stop) --
+    // 2026-09: nuance/iflytek 已經永久唔再用 (機身無 alpha2services, binder 已死),
+    // requireSpeechEngine() 已經收窄做只准 "android" (見佢個 comment), 呢度
+    // 之前保留住嘅 android-vs-非-android 分支跟住拎走 - engine 而家恆係 "android",
+    // 個 if 判斷已經冇意義 (只會行到 true 嗰邊)。
     @Override public HttpServer.ApiResponse handleSpeechTts(Map<String, String> query) {
         String text = ApiValidator.require(query, "text");
-        String engine = ApiValidator.requireSpeechEngine(query);
-        if ("android".equals(engine)) {
-            String ttsErr = ttsCenter.speakPanelTts(text, ApiValidator.optional(query, "lang", ""));
-            if (ttsErr != null) return HttpServer.ApiResponse.error(ttsErr);
-            return HttpServer.ApiResponse.ok("{\"ok\":true}");
-        }
-        String voice = "iflytek".equals(engine) ? ApiValidator.optionalNullable(query, "voice") : null; // may be null
-        String lang = "iflytek".equals(engine) ? "zh_cn" : "en_us"; // no language picker; engine implies it
-        // See STOP_TO_TTS_MIN_GAP_MS above: if speech/stop just ran, give the
-        // robot side's async audio teardown a minimum window to finish before
-        // starting a new AIDL TTS session, to avoid crashing the Nuance TTS
-        // session. Runs on this HTTP worker thread only (newCachedThreadPool),
-        // so it never blocks other in-flight requests.
-        long sinceStopMs = System.currentTimeMillis() - lastSpeechStopAtMs;
-        if (sinceStopMs >= 0 && sinceStopMs < STOP_TO_TTS_MIN_GAP_MS) {
-            try {
-                Thread.sleep(STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        LedCenter.startMouthLedForTts();
-        UbxErrorCode.API_ERROR_CODE res = robot.speech_startTTS(lang, text, voice);
-        if (!MainActivity.isOk(res)) {
-            // speech_startTTS failed synchronously - onServerPlayEnd will never
-            // fire for this attempt, so nothing will turn the mouth LED back off
-            // unless we do it here.
-            LedCenter.stopMouthLedForTts();
-        } else {
-            // 見 robotTtsSpeaking field javadoc - 觸發成功先算「開始
-            // 播緊」, onServerPlayEnd 會揭返做 false。
-            robotTtsSpeaking = true;
-        }
-        return MainActivity.codeResponse(res);
+        ApiValidator.requireSpeechEngine(query); // 保留做 validation (未來若加返其他 engine 值時仍要驗)
+        String ttsErr = ttsCenter.speakPanelTts(text, ApiValidator.optional(query, "lang", ""));
+        if (ttsErr != null) return HttpServer.ApiResponse.error(ttsErr);
+        return HttpServer.ApiResponse.ok("{\"ok\":true}");
     }
 
     @Override public HttpServer.ApiResponse handleSpeechStop() {

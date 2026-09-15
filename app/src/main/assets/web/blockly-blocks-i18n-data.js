@@ -50,13 +50,11 @@ window.ALPHA_BLOCK_I18N = {
 
   // -- alpha_speech_tts --
   speech_tts__label:         { zh: '講嘢 (TTS)', en: 'Speak (TTS)' },
-  speech_tts__engine_nuance: { zh: 'Nuance (英文)', en: 'Nuance (English)' },
-  speech_tts__engine_iflytek:{ zh: 'iFlytek 訊飛 (中文)', en: 'iFlytek (Chinese)' },
   speech_tts__engine_android:{ zh: 'Android 預設', en: 'Android default' },
-  speech_tts__voice_label:   { zh: '聲音(淨iFlytek有效)', en: 'Voice (iFlytek only)' },
+  speech_tts__voice_label:   { zh: '聲音(暫時無效)', en: 'Voice (currently unused)' },
   speech_tts__voice_default: { zh: '預設', en: 'Default' },
-  speech_tts__tooltip:       { zh: '播放一段文字轉語音 (/api/speech/tts)。引擎其實由機身韌體決定實際用哪一個, 這裡的選擇主要影響語言／聲音提示。',
-                                en: 'Speak a piece of text via TTS (/api/speech/tts). The firmware actually decides which engine is used — this choice mainly hints the language/voice.' },
+  speech_tts__tooltip:       { zh: '播放一段文字轉語音 (/api/speech/tts)。2026-09 機身已無 alpha2services, 恆用 Android 系統 TTS, 「聲音」呢個選項暫時無效果 (留低等將來機身直驅 TTS 接上再用)。',
+                                en: 'Speak a piece of text via TTS (/api/speech/tts). As of 2026-09 the robot always uses the Android system TTS; the "Voice" option currently has no effect (kept for when direct-drive TTS is wired up later).' },
 
   // -- alpha_speech_stop --
   speech_stop__label:        { zh: '停止 TTS 播放', en: 'Stop TTS playback' },

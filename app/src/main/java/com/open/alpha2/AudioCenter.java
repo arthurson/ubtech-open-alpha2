@@ -5,7 +5,6 @@ import android.media.AudioManager;
 import android.os.Handler;
 import android.util.Log;
 
-import com.ubtechinc.alpha.hardware.HardwareDirectManager;
 import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
 
 import java.util.Map;
@@ -1152,5 +1151,83 @@ public final class AudioCenter {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"playing\":true,\"id\":\""
                 + MainActivity.jsonSafe(id) + "\",\"name\":\""
                 + MainActivity.jsonSafe(currentName == null ? "" : currentName) + "\"}");
+    }
+
+    // -- MCP tools (XiaozhiBridge callTool switch 轉調；2026-09 MCP 收斂 Phase 2,
+    // case 本體逐字搬入，isError＋resultText 經 SonarCenter.McpResult 帶返出去。
+    // self.media.search_radio/play_radio 底層的 searchRadioStations()/
+    // resolveRadioStation() 拋出的 IOException/JSONException 保持原樣拋出 -
+    // 沿用原本 callTool() 外層 try/catch (Exception e) 接住的做法, 這裡不吞。) --
+
+    /** self.media.list_music 本體 (XiaozhiBridge 轉調)。 */
+    public SonarCenter.McpResult mcpListMusic() {
+        org.json.JSONArray arr = new org.json.JSONArray();
+        for (java.io.File f : listLocalMusicFiles()) {
+            arr.put(f.getName());
+        }
+        return SonarCenter.McpResult.ok(arr.toString());
+    }
+
+    /** self.media.play_music 本體 (XiaozhiBridge 轉調)。 */
+    public SonarCenter.McpResult mcpPlayMusic(org.json.JSONObject arguments) {
+        String musicName = arguments.optString("name", "");
+        if (musicName.isEmpty()) {
+            return SonarCenter.McpResult.err("missing required argument: name");
+        }
+        java.io.File resolved = resolveLocalMusicFile(musicName);
+        if (resolved == null) {
+            return SonarCenter.McpResult.err("no music file found matching \"" + musicName
+                    + "\" - call self.media.list_music to see available files");
+        }
+        playLocalMusicFile(resolved);
+        return SonarCenter.McpResult.ok("now playing \"" + resolved.getName() + "\"");
+    }
+
+    /** self.media.stop_music 本體 (XiaozhiBridge 轉調)。 */
+    public SonarCenter.McpResult mcpStopMusic() {
+        stopLocalMusicPlayback();
+        return SonarCenter.McpResult.ok("ok");
+    }
+
+    /** self.media.search_radio 本體 (XiaozhiBridge 轉調)。 */
+    public SonarCenter.McpResult mcpSearchRadio(org.json.JSONObject arguments)
+            throws java.io.IOException, org.json.JSONException {
+        String searchQuery = arguments.optString("query", "");
+        if (searchQuery.isEmpty()) {
+            return SonarCenter.McpResult.err("missing required argument: query");
+        }
+        java.util.List<org.json.JSONObject> found = searchRadioStations(searchQuery, 30);
+        if (found.isEmpty()) {
+            return SonarCenter.McpResult.ok("no radio stations found matching \"" + searchQuery + "\"");
+        }
+        org.json.JSONArray arr = new org.json.JSONArray();
+        for (org.json.JSONObject s : found) {
+            String country = s.optString("country");
+            String label = s.optString("name")
+                    + (country.isEmpty() ? "" : " (" + country + ")");
+            arr.put(label);
+        }
+        return SonarCenter.McpResult.ok(arr.toString());
+    }
+
+    /** self.media.play_radio 本體 (XiaozhiBridge 轉調)。 */
+    public SonarCenter.McpResult mcpPlayRadio(org.json.JSONObject arguments)
+            throws java.io.IOException, org.json.JSONException {
+        String stationName = arguments.optString("name", "");
+        if (stationName.isEmpty()) {
+            return SonarCenter.McpResult.err("missing required argument: name");
+        }
+        org.json.JSONObject resolvedStation = resolveRadioStation(stationName);
+        if (resolvedStation == null) {
+            return SonarCenter.McpResult.err("no radio station found matching \"" + stationName + "\"");
+        }
+        playRadioStream(resolvedStation);
+        return SonarCenter.McpResult.ok("now playing \"" + resolvedStation.optString("name") + "\"");
+    }
+
+    /** self.media.stop_radio 本體 (XiaozhiBridge 轉調)。 */
+    public SonarCenter.McpResult mcpStopRadio() {
+        stopRadioPlayback();
+        return SonarCenter.McpResult.ok("ok");
     }
 }

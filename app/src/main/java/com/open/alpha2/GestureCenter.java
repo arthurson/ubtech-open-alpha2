@@ -7,7 +7,6 @@ import android.util.Log;
 
 import com.ubtechinc.alpha.hardware.HeadKeyPoller;
 
-import java.util.Map;
 
 /**
  * 頭頂 +/- pad 手勢包：pad 事件接線、press/hold 音量連發、雙鍵總停。

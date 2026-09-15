@@ -1138,10 +1138,14 @@
   };
 
   // ------------------------------------------------------------------
-  // EditFabControls — 一個 IPositionable component, 內部包住六粒小掣
-  // (復原/取消復原/剪下/複製/貼上/刪除), 成組一齊定位, 行為好似 Blockly 個
+  // EditFabControls — 一個 IPositionable component, 內部包住五粒小掣
+  // (復原/取消復原/剪下/複製/貼上), 成組一齊定位, 行為好似 Blockly 個
   // ZoomControls 咁 (裡面雖然有幾粒掣, 但對 ComponentManager 嚟講係一個
   // component, 一次 getBoundingRectangle() covers 晒成組)。
+  // 注意: editAction() 落面仲有一個 'delete' case (checkAndDelete()) 冇被
+  // 呢度任何掣觸發 —— 刪除功能刻意冇獨立掣, 由 Blockly 內建垃圾桶負責 (見
+  // updateButtonStates() 嘅 comment), 個 case 純粹留低方便將來想加返一個
+  // 獨立掣嗰陣可以直接用, 唔係漏刪嘅死 code。
   // ------------------------------------------------------------------
   class EditFabControls {
     constructor(ws) {

@@ -152,9 +152,12 @@ public final class ApiValidatorTest {
         eq(0, ApiValidator.requireMouthSpeed(q()), "mouthSpeed.default");
         eq(150, ApiValidator.requireMouthSpeed(q("speed", "150")), "mouthSpeed.present");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireMouthSpeed(q("speed", "5001")); } }, "mouthSpeed.high");
-        // P0 行為：speech/tts 預設引擎係 android (唯一會出聲)。
+        // P0 行為：speech/tts 只准 android (唯一會出聲)；nuance/iflytek 已經永久
+        // 唔再用 (機身無 alpha2services, binder 已死)，2026-09 由「照收但回
+        // NOT_INIT」改做徹底唔准 (invalid-parameter)。
         eq("android", ApiValidator.requireSpeechEngine(q()), "speechEngine.defaultAndroid");
-        eq("iflytek", ApiValidator.requireSpeechEngine(q("engine", "iflytek")), "speechEngine.iflytek");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireSpeechEngine(q("engine", "iflytek")); } }, "speechEngine.iflytekGone");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireSpeechEngine(q("engine", "nuance")); } }, "speechEngine.nuanceGone");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireSpeechEngine(q("engine", "bogus")); } }, "speechEngine.bad");
         eq("ringtone", ApiValidator.optionalRingtoneType(q()), "ringtone.default");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.optionalRingtoneType(q("type", "alarm")); } }, "ringtone.bad");

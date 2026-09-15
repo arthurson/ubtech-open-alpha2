@@ -435,22 +435,7 @@ public class AudioPlaybackController {
             return;
         }
         playing = false;
-        final CountDownLatch latch = new CountDownLatch(1);
-        playbackHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                // writeLoop() 本身跑在這條 playback thread, 它的 while 循環一見到
-                // playing=false 就會自然完成並做完 finishAndReleaseTrack() —— 這個
-                // Runnable post 到同一條 handler 的 queue, 保證在 writeLoop() 那個
-                // Runnable 之後才執行, 所以走到這裡的時候 audioTrack 一定已經 release 了。
-                latch.countDown();
-            }
-        });
-        try {
-            latch.await(2, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        HandlerDrain.awaitQueueDrain(playbackHandler, 2000);
         if (playbackThread != null) {
             playbackThread.quitSafely();
         }

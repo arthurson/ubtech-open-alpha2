@@ -48,12 +48,10 @@ function clearSpeechChatLog() {
   if (log) log.innerHTML = "";
 }
 
-/** 文字輸入框「送出」— 打字入嘅文字當做已經辨識完嘅結果 (2026-09: 之前寫
- *  「iFlytek 引擎已經辨識完」, 依家機身已無 iFlytek, 去掉個引擎名 — 純粹本地
- *  文字配對, 同任何機身引擎無關), 直接送去問法配對引擎 (中英文各 1000 條,
- *  IflytekSemanticMatcher/IflytekSemanticMatcherEn, 按輸入有冇漢字自動判斷用邊份),
- *  命中就即時做 TTS + (可能有嘅) 動作 - 唔使真係郁把口, 都可以測到「聽到 -> 講嘢/
- *  做動作」成條 pipeline。
+/** 文字輸入框「送出」— 打字入嘅文字當做已經辨識完嘅結果, 直接送去問法配對引擎
+ *  (中英文各 1000 條, SemanticMatcherZh/SemanticMatcherEn, 按輸入有冇漢字自動
+ *  判斷用邊份), 命中就即時做 TTS + (可能有嘅) 動作 - 唔使真係郁把口, 都可以測到
+ *  「聽到 -> 講嘢/做動作」成條 pipeline。
  *
  *  同舊版 (speech/inject) 唔同: 呢條路徑唔經任何機身 AIDL 辨識, 純粹本地文字配對,
  *  所以唔會觸發 asr_result WebSocket event - user 氣泡要喺呢度發送嗰刻自己樂觀
@@ -68,7 +66,7 @@ function sendSpeechChatText() {
   const btn = document.getElementById("speechChatSendBtn");
   if (btn) btn.disabled = true;
   appendSpeechChatLine("xiaozhi-msg-user", text);
-  return Alpha2Api.speechIflytekSimulate( { text: text }).then(function (res) {
+  return Alpha2Api.speechSemanticSimulate( { text: text }).then(function (res) {
     if (input) input.value = "";
     if (!res || !res.ok) {
       appendSpeechChatLine("xiaozhi-msg-system",

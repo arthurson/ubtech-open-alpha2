@@ -324,22 +324,7 @@ public class AudioController {
         if (audioHandler == null) {
             return;
         }
-        final CountDownLatch latch = new CountDownLatch(1);
-        audioHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                // readLoop() 本身跑在這條 audio thread, 它的 while 循環一見到
-                // recording=false 就會自然完成並做完 release() —— 這個 Runnable
-                // post 到同一條 handler 的 queue, 保證在 readLoop() 那個 Runnable
-                // 之後才執行, 所以走到這裡的時候 audioRecord 一定已經 release 了。
-                latch.countDown();
-            }
-        });
-        try {
-            latch.await(2, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        HandlerDrain.awaitQueueDrain(audioHandler, 2000);
     }
 
     /** True if no stream client is currently subscribed - i.e. stopIfIdle() will
@@ -368,22 +353,7 @@ public class AudioController {
             return;
         }
         recording = false;
-        final CountDownLatch latch = new CountDownLatch(1);
-        audioHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                // readLoop() 本身跑在這條 audio thread, 它的 while 循環一見到
-                // recording=false 就會自然完成並做完 release() —— 這個 Runnable
-                // post 到同一條 handler 的 queue, 保證在 readLoop() 那個 Runnable
-                // 之後才執行, 所以走到這裡的時候 audioRecord 一定已經 release 了。
-                latch.countDown();
-            }
-        });
-        try {
-            latch.await(2, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        HandlerDrain.awaitQueueDrain(audioHandler, 2000);
         if (audioThread != null) {
             audioThread.quitSafely();
         }

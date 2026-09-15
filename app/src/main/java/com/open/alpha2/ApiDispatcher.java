@@ -192,35 +192,25 @@ public final class ApiDispatcher {
                 return ubxApi.ubxSpeedResponse(ApiValidator.require(query, "value"));
 
             // -- Speech / TTS -----------------------------------------------------------
-            // engine: nuance | iflytek | android. voice only applies to iflytek (its
-            // named voices - catherine/john/xiaofeng/xiaoyan); nuance and android use
-            // their own respective default voice, no selection exposed.
-            //
-            // All robot-side speech goes through the single generic "SpeechServices"
-            // binding (robot.speech_startTTS). This firmware only ever routes that alias
-            // to one underlying engine, so which engine actually speaks is fixed by the
-            // robot itself, not by this dropdown - the "engine" query param only steers
-            // the language/voice hint passed to that same engine. Multi-engine direct
-            // binding (Alpha2Intent.ALPHA_NUANCE_SPEECH_MAIN_SERVER /
-            // ALPHA_IFLYTEK_SPEECH_MAIN_SERVER) was tried and reverted: it broke playback
-            // entirely, including for the engine that worked fine through the generic
-            // binding alone.
+            // engine: android only (only engine that speaks). nuance/iflytek were
+            // permanently removed in 2026-09 - they used to be accepted values that
+            // silently no-op'd (robot.speech_startTTS always returned NOT_INIT since the
+            // alpha2services binder no longer exists), but that "accept but no-op"
+            // compatibility path itself has now been removed too: ApiValidator rejects
+            // any engine value other than "android" outright.
             case "speech/tts":
                 return host.handleSpeechTts(query);
             case "speech/stop":
                 return host.handleSpeechStop();
 
-            // Android TTS 語言揀擇 - 淨係 engine=android 用得 (Nuance/iFlytek
-            // 兩個 AIDL engine 沒有語言參數選擇, lang 已經由 engine 本身固定死,
-            // 見下面 speech/tts 的 android 分支)。ui_lang ("zh"/"en") 控制的是
-            // displayName 用邊種語言顯示。
+            // Android TTS 語言揀擇 - engine 而家只有 android，lang 由 speech/tts_languages
+            // 提供嘅清單揀。ui_lang ("zh"/"en") 控制的是 displayName 用邊種語言顯示。
             case "speech/tts_languages":
                 return ttsCenter.ttsLanguages(query);
 
             // Android TTS 引擎選擇 - 機身可能裝了不只一個系統 TTS 引擎 (例如出廠
             // 內建 + Google TTS + SVOX Pico), 這三個 endpoint 供 speech tab 選擇
-            // speech/tts 的 engine=android 分支實際用哪個發音, 不涉及 Nuance/
-            // iFlytek。
+            // speech/tts 實際用哪個發音。
             case "speech/tts_engines":
                 return ttsCenter.ttsEngines();
 
@@ -251,8 +241,8 @@ public final class ApiDispatcher {
             // 而家連砌都砌唔到。舊 .xml 程式有用過呢幾粒的話，匯入嗰粒會
             // load 唔到，要手動刪咗佢。
             // -- 語義模擬 (body 喺 SemanticCenter；薄 delegate，唔好喺度加 logic) --
-            case "speech/iflytek_simulate":
-                return semanticCenter.iflytekSimulateResponse(query);
+            case "speech/semantic_simulate":
+                return semanticCenter.semanticSimulateResponse(query);
             // 2026-09 移除: speech/stop_inject (同上, 死 binder)。
             // 2026-09 移除: speech/init_grammar、speech/start_grammar、
             // speech/stop_grammar 三個 endpoint（機身已無 iFlytek 引擎，

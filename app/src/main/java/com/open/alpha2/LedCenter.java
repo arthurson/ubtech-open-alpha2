@@ -734,4 +734,77 @@ public final class LedCenter {
         }
         return out;
     }
+
+    // -- MCP tools (XiaozhiBridge callTool switch 轉調；2026-09 MCP 收斂 Phase 2,
+    // case 本體逐字搬入，isError＋resultText 經 SonarCenter.McpResult 帶返出去) --
+
+    /** self.robot.led_set_head 本體 (XiaozhiBridge 轉調)。
+     *  pure-direct: 经 JNI 直驱，单发即稳住（抢灯的 alpha2services 内部熄灯循环
+     *  已随 APK 移除而消失，补发线程一并删除）。 */
+    public SonarCenter.McpResult mcpLedSetHead(org.json.JSONObject arguments) {
+        String preset = arguments.optString("preset", "long");
+        UbxErrorCode.API_ERROR_CODE code;
+        if ("stop".equals(preset)) {
+            code = MainActivity.directCode(DirectLedController.stopHead5Mic());
+        } else {
+            if (!arguments.has("color") || !arguments.has("brightness")) {
+                return SonarCenter.McpResult.err("color and brightness are required unless preset=stop");
+            }
+            int color = arguments.optInt("color");
+            int brightness = arguments.optInt("brightness");
+            int p5, p6, p8;
+            switch (preset) {
+                case "flash":   p5 = 100; p6 = 100; p8 = 0; break;
+                case "breathe": p5 = 5;   p6 = 20;  p8 = 1; break;
+                case "chase":   p5 = 100; p6 = 0;   p8 = 3; break;
+                case "dual":    p5 = 500; p6 = 0;   p8 = 5; break;
+                case "long":
+                default:        p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
+            }
+            code = MainActivity.directCode(DirectLedController.setHead5MicRaw(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8));
+        }
+        boolean hReady = headerReady();
+        return new SonarCenter.McpResult(!MainActivity.isOk(code) || !hReady,
+                String.valueOf(code) + " (headerReady=" + hReady + ")");
+    }
+
+    /** self.robot.led_set_eye 本體 (XiaozhiBridge 轉調)。pure-direct: 经 JNI 直驱。 */
+    public SonarCenter.McpResult mcpLedSetEye(org.json.JSONObject arguments) {
+        String preset = arguments.optString("preset", "long");
+        UbxErrorCode.API_ERROR_CODE code;
+        if ("stop".equals(preset)) {
+            code = MainActivity.directCode(DirectLedController.stopEye5Mic());
+        } else {
+            if (!arguments.has("color") || !arguments.has("brightness")) {
+                return SonarCenter.McpResult.err("color and brightness are required unless preset=stop");
+            }
+            int color = arguments.optInt("color");
+            int brightness = arguments.optInt("brightness");
+            int p5, p6, p8;
+            switch (preset) {
+                case "flash": p5 = 100; p6 = 100; p8 = 0; break;
+                case "chase": p5 = 100; p6 = 0;   p8 = 1; break;
+                case "dual":  p5 = 500; p6 = 0;   p8 = 3; break;
+                case "long":
+                default:      p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
+            }
+            code = MainActivity.directCode(DirectLedController.setEye5MicRaw(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8));
+        }
+        boolean eReady = headerReady();
+        return new SonarCenter.McpResult(!MainActivity.isOk(code) || !eReady,
+                String.valueOf(code) + " (headerReady=" + eReady + ")");
+    }
+
+    /** self.robot.led_set_mouth 本體 (XiaozhiBridge 轉調)。 */
+    public SonarCenter.McpResult mcpLedSetMouth(org.json.JSONObject arguments) {
+        String preset = arguments.optString("preset", "breathing");
+        boolean ok;
+        if ("off".equals(preset)) {
+            ok = MouthLedData.off().apply();
+        } else {
+            int speedMs = arguments.optInt("speed_ms", 0);
+            ok = MouthLedData.breathing(speedMs).apply();
+        }
+        return new SonarCenter.McpResult(!ok, "ok=" + ok);
+    }
 }

@@ -3,7 +3,7 @@
   "info": {
     "title": "Open Alpha2 API",
     "description": "`com.open.alpha2` 裝在 UBTECH Alpha2 機械人 (Android 5.1.1, API 22) 上的本地控制面板 HTTP + WebSocket API。\n依 `MainActivity handleApi()` / `HttpServer` 反向生成，\n覆蓋機械人全部本機能力（原 17 個 AIDL interface 功能，現經直驅實現），加上獨立的 system/xiaozhi/stream/upload 命名空間。\n預設由 `HttpServer.PORT = 8888` 以純 HTTP 提供 (`http://<robot-ip>:8888/`)，同 WiFi 任何瀏覽器可直接訪問。\n所有 `/api/*` 回應皆為 `application/json; charset=utf-8` 的 `{ok: boolean, ...}` 形狀，失敗時帶 `error` 欄位。\n即時事件 (觸摸/ASR/電池/跌落/PIR 等) 經 `GET /ws` (RFC6455 WebSocket) 推送，非輪詢。\n",
-    "version": "beta 4",
+    "version": "beta 5",
     "contact": {
       "name": "Open Alpha2",
       "url": "https://github.com/arthurson/ubtech-open-alpha2"
@@ -102,7 +102,7 @@
                 },
                 "example": {
                   "ok": true,
-                  "appVersion": "beta 4",
+                  "appVersion": "beta 5",
                   "chestAvailable": true,
                   "headerAvailable": true,
                   "androidTtsReady": true
@@ -1151,8 +1151,8 @@
         "tags": [
           "speech"
         ],
-        "summary": "播 TTS（只有 engine=android 會真係出聲）",
-        "description": "機身已無 Nuance/iFlytek 引擎（alpha2services 已移除，binder 回 NOT_INIT）。engine=nuance/iflytek 照收但必定回 {ok:false, code:API_ERROR_NOT_INIT} 全程靜音；預設 engine=android（唯一會出聲嘅引擎）。",
+        "summary": "播 TTS（恆用 Android 系統 TTS）",
+        "description": "2026-09 機身已無 Nuance/iFlytek 引擎（alpha2services 已移除，binder 已死），nuance/iflytek 已經永久唔再用，engine 參數只准 \"android\"，其餘值一律被 validation 拒收（{ok:false}，HTTP 400）。",
         "parameters": [
           {
             "name": "text",
@@ -1168,13 +1168,11 @@
             "schema": {
               "type": "string",
               "enum": [
-                "nuance",
-                "iflytek",
                 "android"
               ],
               "default": "android"
             },
-            "description": "預設 android；只有 android 會出聲；nuance=機身（已無引擎，必靜音），iflytek=機身（已無引擎，必靜音）"
+            "description": "只准 android（唯一會出聲嘅引擎；nuance/iflytek 已經永久唔再用，2026-09 起唔再係合法值）"
           },
           {
             "name": "voice",
@@ -1182,7 +1180,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "已無實效（原僅 iflytek 有效，而該引擎已不存在）"
+            "description": "暫時無效（原僅 iflytek 有效，而該引擎已永久唔再用；留低等將來直驅 TTS 接上）"
           },
           {
             "name": "lang",
@@ -1191,12 +1189,12 @@
               "type": "string",
               "example": "en-US"
             },
-            "description": "僅 engine=android 有效，BCP-47 tag (speech/tts_languages 回傳)"
+            "description": "BCP-47 tag (speech/tts_languages 回傳)"
           }
         ],
         "responses": {
           "200": {
-            "description": "android 即時讀出回 {ok}；nuance/iflytek 回 {ok:false, code:API_ERROR_NOT_INIT}",
+            "description": "即時讀出回 {ok:true}",
             "content": {
               "application/json": {
                 "schema": {
@@ -1560,12 +1558,12 @@
         "operationId": "speechSetMicKeepHeld_get"
       }
     },
-    "/api/speech/iflytek_simulate": {
+    "/api/speech/semantic_simulate": {
       "get": {
         "tags": [
           "speech"
         ],
-        "summary": "本地語意配對模擬（純本地 1000 問法配對，不經任何引擎；名為 iflytek 乃歷史原因）",
+        "summary": "本地語意配對模擬（純本地 1000 問法配對，不經任何引擎）",
         "description": "依有無漢字自動選中/英文庫，回 matched/question/type/operation/answer/actionId，命中即執行 TTS+動作",
         "parameters": [
           {
@@ -1619,7 +1617,7 @@
             }
           }
         },
-        "operationId": "speechIflytekSimulate_get"
+        "operationId": "speechSemanticSimulate_get"
       }
     },
     "/api/speech/get_default_grammar": {

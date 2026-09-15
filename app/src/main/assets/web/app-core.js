@@ -229,7 +229,7 @@ const I18N = {
   // 保留 (app-accel.js/app-speech.js 仲用緊做通用「未知錯誤」)。
   asr_reset_failed_unknown: { zh: "未知錯誤", en: "Unknown error" },
 
-  // -- Alpha2 speech tab (對話界面 speech/iflytek_simulate 動態字串) --
+  // -- Alpha2 speech tab (對話界面 speech/semantic_simulate 動態字串) --
   speech_chat_simulate_error_prefix: { zh: "配對失敗：", en: "Match failed: " },
   speech_chat_simulate_no_match: { zh: "（1000 條問法裡面找不到對應，沒有回應）",
                                     en: "(No match found among the 1000 phrases — no response)" },

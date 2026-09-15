@@ -320,4 +320,58 @@ public final class ActionDirect {
         }
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
+
+    // -- MCP tools (XiaozhiBridge callTool switch 轉調；2026-09 MCP 收斂 Phase 2,
+    // case 本體逐字搬入，isError＋resultText 經 SonarCenter.McpResult 帶返出去 -
+    // 跟 self.sensors.* 那次抽取 (見 SonarCenter.java) 同一種做法, McpResult
+    // 本身唔屬於任何特定 controller, 純粹掛喺 SonarCenter 底下, 呢度直接沿用) --
+
+    /** self.robot.list_actions 本體 (XiaozhiBridge 轉調)。純讀, 唔掂硬件。 */
+    public SonarCenter.McpResult mcpListActions() {
+        org.json.JSONArray arr = new org.json.JSONArray();
+        for (org.json.JSONObject a : loadXiaozhiActions()) {
+            arr.put(a);
+        }
+        return SonarCenter.McpResult.ok(arr.toString());
+    }
+
+    /** self.robot.play_action 本體 (XiaozhiBridge 轉調)。
+     *  2026-08 修正: 小智傳過來的是人類語言的動作名 (中文/英文, 不再是要它自己記住
+     *  的 id, 見 buildMcpToolsList() 的 self.robot.play_action description
+     *  comment) - 這裡做 fuzzy match 找出真正對應機身檔案的 id, 再傳給
+     *  action_PlayActionName()。找不到就直接告訴 LLM 哪個名找不到, 讓它有機會
+     *  呼叫 self.robot.list_actions 再試, 而不是盲目把 LLM 編的名直接傳給 AIDL
+     *  (會撞回 "raise_left_hand" 那種開不了檔案的老問題)。 */
+    public SonarCenter.McpResult mcpPlayAction(org.json.JSONObject arguments) {
+        String actionName = arguments.optString("name", "");
+        if (actionName.isEmpty()) {
+            return SonarCenter.McpResult.err("missing required argument: name");
+        }
+        String resolvedId = resolveActionId(actionName);
+        if (resolvedId == null) {
+            return SonarCenter.McpResult.err("no action found matching \"" + actionName
+                    + "\" - call self.robot.list_actions to see valid names");
+        }
+        UbxErrorCode.API_ERROR_CODE code = playActionDirect(resolvedId);
+        return new SonarCenter.McpResult(!MainActivity.isOk(code),
+                String.valueOf(code) + " (matched \"" + actionName + "\" -> id " + resolvedId + ")");
+    }
+
+    /** self.robot.stop_action 本體 (XiaozhiBridge 轉調)。
+     *  pure-direct：一键全停+蹲下站起回位，和 HTTP action/stop 同语义。 */
+    public SonarCenter.McpResult mcpStopAction() {
+        UbxErrorCode.API_ERROR_CODE code = stopActionWithRecovery();
+        return new SonarCenter.McpResult(!MainActivity.isOk(code), String.valueOf(code));
+    }
+
+    /** self.robot.play_random_action 本體 (XiaozhiBridge 轉調)。 */
+    public SonarCenter.McpResult mcpPlayRandomAction() {
+        String randomId = resolveRandomActionId();
+        if (randomId == null) {
+            return SonarCenter.McpResult.err("no random-movement actions available");
+        }
+        UbxErrorCode.API_ERROR_CODE code = playActionDirect(randomId);
+        return new SonarCenter.McpResult(!MainActivity.isOk(code),
+                String.valueOf(code) + " (played random action id " + randomId + ")");
+    }
 }

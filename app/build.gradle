@@ -14,8 +14,8 @@ android {
         // runtime 用 SDK_INT 熔斷（見 MainActivity voskOrError／VoskController
         // 只喺 21+ 先掂 org.vosk）。Vosk 以外嘅 code 本身全部 API 19 安全。
         targetSdkVersion 22
-        versionCode 4
-        versionName "beta 4"
+        versionCode 5
+        versionName "beta 5"
 
         // 2026-08: 呢部機淨係 armeabi-v7a (RK3288, 32-bit ARM) - 其他 ABI 完全用唔
         // 到, 亦唔應該出現喺呢個專案任何一部分。opus.aar 已經喺呢個修訂移除咗,

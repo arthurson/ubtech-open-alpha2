@@ -333,18 +333,7 @@ public class XiaozhiAudioController {
         capturing = false;
         frameSink = null;
         if (captureHandler == null) return;
-        final CountDownLatch latch = new CountDownLatch(1);
-        captureHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                latch.countDown();
-            }
-        });
-        try {
-            latch.await(2, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        HandlerDrain.awaitQueueDrain(captureHandler, 2000);
     }
 
     public boolean isCapturing() {
@@ -618,18 +607,7 @@ public class XiaozhiAudioController {
     public void stopPlayback() {
         playing = false;
         if (playbackHandler == null) return;
-        final CountDownLatch latch = new CountDownLatch(1);
-        playbackHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                latch.countDown();
-            }
-        });
-        try {
-            latch.await(2, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        HandlerDrain.awaitQueueDrain(playbackHandler, 2000);
     }
 
     public boolean isPlaying() {

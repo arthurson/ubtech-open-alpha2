@@ -1,7 +1,7 @@
 asyncapi: 2.6.0
 info:
   title: Open Alpha2 WebSocket Events
-  version: beta 4
+  version: beta 5
   description: |
     WebSocket 即時事件總線 (RFC6455) `GET /ws`，由 `WebSocketServer.java:34` + `EventBus.java` + `RobotEventReceiver.java` 驅動。
     所有 HTTP `/api/*` 操作的非同步結果皆經此推送，無需輪詢。前端 `app-log.js` 全量訂閱。
@@ -47,35 +47,58 @@ components:
             type: string
             description: 事件類型
             enum:
-              # 2026-09-09 補齊：下面六個後端有 publish（見 grep）、前端 app-log.js
-              # 有 handler，之前漏咗；上面 grammar_*/mic_* 後端仲有發，保留。
-              - asr_result
-              - asr_partial
-              - vosk_state
-              - iflytek_match
-              - sonar_obstacle
-              - tts_end
-              - grammar_result
-              - grammar_init
-              - mic_state
-              - mic_broadcast_debug
+              # 2026-09-14 全面重新對照 EventBus.get().publish(...) 實際 call
+              # site (含常量形式如 XiaozhiClient.EVT_STATE) 補齊：修正咗幾個
+              # 同代碼唔對應嘅名 (bt->bt_connection, wifi->wifi_result,
+              # mcp_tool_call->xiaozhi_mcp, xiaozhi_status->xiaozhi_state)，
+              # 刪咗 sonar_distance (代碼冇呢個 event type, 只係 sonar payload
+              # 入面一個 field key, 見下面 examples 已改用 sonar_obstacle) 同
+              # xiaozhi_chat (代碼從未 publish 過，已經拆做
+              # xiaozhi_llm/tts/stt/alert/custom/system 六個獨立 event，一併補
+              # 齊)，加埋十幾個代碼一直有 publish 但呢度冇列嘅 event。
               - accel
-              - sonar_distance
-              - alpha2_pir_state
-              - robot_uuid
-              - gesture
               - action_stop
-              - robot_interrupted
-              - xiaozhi_status
-              - xiaozhi_activation
-              - xiaozhi_mic_state
-              - xiaozhi_chat
-              - mcp_tool_call
+              - alpha2_pir_state
+              - asr_partial
+              - asr_result
+              - authorize
               - battery
-              - wifi
-              - bt
+              - bt_connection
+              - chest_broadcast_debug
+              - chest_mute_key
               - chest_rcv
+              - chest_upgrade_done
+              - chest_upgrade_progress
+              - gesture
+              - grammar_error
+              - grammar_init
+              - grammar_result
+              - head_key
+              - head_key_native
               - head_rcv
+              - mic_broadcast_debug
+              - mic_state
+              - offline_mode
+              - qr_code
+              - robot_interrupted
+              - robot_uuid
+              - semantic_match
+              - sonar_obstacle
+              - speech_direction
+              - tts_end
+              - vosk_state
+              - wakeup
+              - wifi_result
+              - xiaozhi_activation
+              - xiaozhi_alert
+              - xiaozhi_custom
+              - xiaozhi_llm
+              - xiaozhi_mcp
+              - xiaozhi_mic_state
+              - xiaozhi_state
+              - xiaozhi_stt
+              - xiaozhi_system
+              - xiaozhi_tts
           data:
             type: object
             description: 事件負載，依 type 而異
@@ -91,8 +114,8 @@ components:
             ts: 1725710000000
         - name: sonar
           payload:
-            type: sonar_distance
-            data: { distanceCm: 25 }
+            type: sonar_obstacle
+            data: { triggered: true, thresholdCm: 25 }
         - name: pir
           payload:
             type: alpha2_pir_state

@@ -49,10 +49,6 @@ public final class RobotStub {
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_NOT_INIT;
     }
 
-    public UbxErrorCode.API_ERROR_CODE speech_StopTTS() {
-        return UbxErrorCode.API_ERROR_CODE.API_ERROR_NOT_INIT;
-    }
-
     public UbxErrorCode.API_ERROR_CODE speech_setRecognizedLanguage(String strLanguage) {
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_NOT_INIT;
     }

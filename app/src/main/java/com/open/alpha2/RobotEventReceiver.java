@@ -309,10 +309,12 @@ public class RobotEventReceiver extends BroadcastReceiver {
                     MainActivity.onSonarDistanceReceived(distanceCm, triggered);
                     break;
                 }
-                // 2026-08 新增 (8個, 見 MainActivity.registerDynamicReceiver() 對應
+                // 2026-08 新增 (原 8 個，2026-09 拎走 IFLY_OFFLINE_CMD/
+                // NUANCE_OFFLINE_CMD 呢兩個，nuance/iflytek 已經永久唔再用，
+                // 剩返 6 個。見 MainActivity.registerDynamicReceiver() 對應
                 // filter.addAction() comment): 用來查 speech_SetMIC()/setWakeState()
                 // 拿回 mic 這一刻機身有沒有發任何 broadcast 通知這個問題。反編譯找到
-                // 這 8 個 action 都由 SpeechServiceImpl/SpeechManager
+                // 呢 6 個 action 都由 SpeechServiceImpl/SpeechManager
                 // (com.ubtechinc.speechmanager.d/b package) 或者
                 // AlphaMainSeviceImpl 發出, 名字/extras 看起來和 TTS、ASR、mic 相關
                 // 事件有關, 但實際哪個會不會在 setWakeState() 那一刻觸發、payload
@@ -327,8 +329,6 @@ public class RobotEventReceiver extends BroadcastReceiver {
                 case "com.ubtechinc.services.ALPHA_SOCKET_ASR_OK":
                 case "com.ubtechinc.services.SPEECH_ANGLE_5MIC":
                 case "com.ubtechinc.services.LED_ACTION":
-                case "com.ubtechinc.services.IFLY_OFFLINE_CMD":
-                case "com.ubtechinc.services.NUANCE_OFFLINE_CMD":
                 case "com.ubtechinc.services.POWER_SAVE":
                 case "com.ubtechinc.services.ALPHA_NOTIFY_POWER": {
                     EventBus.get().publish("mic_broadcast_debug",

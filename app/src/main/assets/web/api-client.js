@@ -517,14 +517,14 @@ const Alpha2Api = (function() {
     return api('speech/get_default_grammar', params);
   }
 
-  function speechIflytekSimulate(params) {
-    // 本地語意配對模擬（純本地 1000 問法配對，不經任何引擎；名為 iflytek 乃歷史原因）
-    return api('speech/iflytek_simulate', params);
-  }
-
   function speechOfflineAutoSwitch(params) {
     // 查詢或設定離線自動切換 (依 hasRealInternet() 探測)
     return api('speech/offline_auto_switch', params);
+  }
+
+  function speechSemanticSimulate(params) {
+    // 本地語意配對模擬（純本地 1000 問法配對，不經任何引擎）
+    return api('speech/semantic_simulate', params);
   }
 
   function speechSetMic(params) {
@@ -553,8 +553,8 @@ const Alpha2Api = (function() {
   }
 
   function speechTts(params) {
-    if (params && params.engine != null) assertEnum(params.engine, ['nuance', 'iflytek', 'android'], 'engine');
-    // 播 TTS（只有 engine=android 會真係出聲）
+    if (params && params.engine != null) assertEnum(params.engine, ['android'], 'engine');
+    // 播 TTS（恆用 Android 系統 TTS）
     return api('speech/tts', params);
   }
 
@@ -847,8 +847,8 @@ const Alpha2Api = (function() {
     speechCurTtsEngine,
     speechCurTtsLang,
     speechGetDefaultGrammar,
-    speechIflytekSimulate,
     speechOfflineAutoSwitch,
+    speechSemanticSimulate,
     speechSetMic,
     speechSetMicKeepHeld,
     speechSetTtsEngine,

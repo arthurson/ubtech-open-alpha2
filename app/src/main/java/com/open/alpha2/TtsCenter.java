@@ -73,10 +73,6 @@ public final class TtsCenter {
         return androidTtsReady;
     }
 
-    public String getEnginePkg() {
-        return androidTtsEnginePkg;
-    }
-
     /** speech/stop 等共用：停咗佢 (唔 shutdown，留返下次用)。 */
     public void stop() {
         TextToSpeech tts = androidTts;

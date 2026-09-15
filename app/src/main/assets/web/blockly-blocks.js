@@ -466,7 +466,7 @@
   Blockly.Blocks['alpha_servo_all'] = {
     init: function () {
       this.appendDummyInput()
-        .appendField(t('servo_all__label'))
+        .appendField(t('servo_all__label'));
       this.appendValueInput('ANGLES').setCheck('String');
       this.appendDummyInput()
         .appendField(t('servo_group__time_label'))

@@ -72,8 +72,8 @@ public final class VoskController {
     public enum State { IDLE, LOADING, READY, LISTENING, ERROR }
 
     private final Context appContext;
-    private final IflytekSemanticMatcher matcherZh;
-    private final IflytekSemanticMatcherEn matcherEn;
+    private final SemanticMatcherZh matcherZh;
+    private final SemanticMatcherEn matcherEn;
 
     private volatile State state = State.IDLE;
     private volatile String modelId;
@@ -90,8 +90,8 @@ public final class VoskController {
     private float epTEnd = Float.NaN;
     private float epTMax = Float.NaN;
 
-    public VoskController(Context context, IflytekSemanticMatcher zh,
-            IflytekSemanticMatcherEn en) {
+    public VoskController(Context context, SemanticMatcherZh zh,
+            SemanticMatcherEn en) {
         this.appContext = context.getApplicationContext();
         this.matcherZh = zh;
         this.matcherEn = en;

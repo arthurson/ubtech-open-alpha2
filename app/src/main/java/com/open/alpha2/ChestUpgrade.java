@@ -46,12 +46,10 @@ public final class ChestUpgrade {
         this.chestQuery = chestQuery;
     }
 
+    /** Delegates to ChestQuery.chestReady() (2026-09 duplication cleanup - was a
+     *  byte-for-byte duplicate try/catch here before). */
     private boolean chestReady() {
-        try {
-            return HardwareDirectManager.get(appContext).chest().isAvailable();
-        } catch (Exception e) {
-            return false;
-        }
+        return chestQuery.chestReady();
     }
 
     /**
@@ -65,11 +63,7 @@ public final class ChestUpgrade {
         if (latch == null || latch.getCount() <= 0 || plen < 1) return false;
         byte cmd = payload[0];
         if (cmd == chestUpgradeExpectedCmd) {
-            if (cmd == 49) {
-                chestUpgradeAckStatus = (plen >= 2 ? (payload[1] & 0xFF) : 0);
-            } else {
-                chestUpgradeAckStatus = 0;
-            }
+            chestUpgradeAckStatus = (cmd == 49 && plen >= 2) ? (payload[1] & 0xFF) : 0;
             latch.countDown();
             return true;
         }
