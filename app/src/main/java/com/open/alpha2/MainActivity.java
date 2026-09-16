@@ -489,7 +489,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // code。依然保留 filter + RobotEventReceiver 那個 case, 純粹做向後
         // 相容 (以防其他韌體/舊機用到這個 action), 但這台機器不會再觸發。
         filter.addAction("com.ubtechinc.key");
-        filter.addAction("com.ubtechinc.services.SPEECH_DIRECTION");
         filter.addAction("com.ubtechinc.robot.tts_hint_wakeup");
         filter.addAction("come.ubt.alpha2.gesture");
         filter.addAction("com.ubtechinc.robot_uuid.info");
@@ -632,7 +631,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // （約 100 行 asr_result/tts_end/speech_ready 回調，包喺 if(false))
         // 已經成段刪除：機身無 alpha2services，永遠唔會執行。
 
-        ubxApi.registerWakeupDirectionListener();
         // 2026-09 刪除: registerChestMuteKeyTestListener()——純 no-op subscribe
         // (filter＋comment，無任何動作)，chest_mute_key 事件經 EventBus 照常上 WebSocket。
         ledCenter.registerAlpha2PirAlertListener();
@@ -771,8 +769,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     // (語意配對成組搬咗去 SemanticCenter：looksChinese/toZhResult/handle、
     // IFLYTEK delay 常數；單參數 overload 零調用，一併刪除。)
 
-    // (喚醒轉頭成組搬咗去 UbxApi.registerWakeupDirectionListener()。)
-
     // 2026-09: 心口 mute 鍵 (-111) 入口本體搬咗去 XiaozhiBridge.onMuteKeyEvent
     // (mute LED＋小智開關嗰邊擁有)；舊紫燈測試 header 註解一併拎走 (被 68[01/00]
     // 真 mute 燈取代已久)。static 縫留喺度 (frozen onDirectChestFrame／
@@ -867,7 +863,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
             audioCenter.stopLocalMusicPlayback();
             audioCenter.stopRadioPlayback();
         }
-        if (ubxApi != null) ubxApi.unregisterWakeupDirectionListener();
     }
 
     private void updatePanelUrlDisplay() {

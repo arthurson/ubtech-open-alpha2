@@ -54,12 +54,6 @@ public class RobotEventReceiver extends BroadcastReceiver {
                     EventBus.get().publish("head_key", "{\"keyId\":" + jsonValue(key) + "}");
                     break;
                 }
-                case "com.ubtechinc.services.SPEECH_DIRECTION": {
-                    Object angle = readAny(intent, "absoluteAngle");
-                    int unsigned = toUnsignedByteInt(angle);
-                    EventBus.get().publish("speech_direction", "{\"absoluteAngle\":" + unsigned + "}");
-                    break;
-                }
                 case "com.ubtechinc.robot.tts_hint_wakeup": {
                     Object hint = readAny(intent, "hint_event");
                     EventBus.get().publish("wakeup", "{\"hintEvent\":" + jsonValue(hint) + "}");

@@ -466,7 +466,7 @@ public final class LedCenter {
     }
 
     /** Pulls the boolean after "triggered":  out of an EventBus-published "pir_state"
-     *  JSON line, matching extractAbsoluteAngle()'s no-JSON-library style. */
+     *  JSON line (no-JSON-library style, matching the rest of this project). */
     private static Boolean extractPirTriggered(String line) {
         String key = "\"triggered\":";
         int i = line.indexOf(key);

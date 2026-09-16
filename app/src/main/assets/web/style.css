@@ -598,7 +598,6 @@ input[type="range"] {
 .log-type-tts_end { color: #16a34a; }
 .log-type-action_stop { color: #16a34a; }
 .log-type-wakeup { color: #dc2626; }
-.log-type-speech_direction { color: #7c3aed; }
 .log-type-gesture { color: #7c3aed; }
 .log-type-qr_code { color: #ca8a04; }
 .log-type-battery { color: #16a34a; }

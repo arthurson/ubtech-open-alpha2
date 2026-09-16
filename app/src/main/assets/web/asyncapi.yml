@@ -84,7 +84,6 @@ components:
               - robot_uuid
               - semantic_match
               - sonar_obstacle
-              - speech_direction
               - tts_end
               - vosk_download
               - vosk_state
