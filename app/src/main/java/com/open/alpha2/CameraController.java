@@ -98,6 +98,32 @@ public class CameraController {
     private volatile long frameSeq = 0;
     private volatile Frame lastFrame;
     private final Set<FrameListener> listeners = new CopyOnWriteArraySet<>();
+
+    /** Thread.sleep 共用形（UbxPlayer.joinQuietly 同系）：瞇 ms；被 interrupt 就補返
+     *  interrupt flag 並回 false。caller 按自己回傳型別收尾（PhotoResult.fail／
+     *  return false／照行）。之前各處逐字一樣嘅 try/catch 收斂到呢度。 */
+    private static boolean sleepQuietly(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+        return true;
+    }
+
+    /** CountDownLatch.await 共用形（sleepQuietly 同系）：等 timeout；被 interrupt
+     *  就補返 interrupt flag 並回 false。注意：timeout 照回 true——舊碼三處都唔睇
+     *  await() 本身回值，淨係理 interrupt，呢度保留呢個語義。 */
+    private static boolean awaitQuietly(CountDownLatch latch, long timeout, TimeUnit unit) {
+        try {
+            latch.await(timeout, unit);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+        return true;
+    }
     // FPS 計算：滑動窗口記錄最近幀的時間戳（nanoTime），用於計算實時 FPS
     private final java.util.ArrayDeque<Long> fpsTimestamps = new java.util.ArrayDeque<>();
     private static final int FPS_WINDOW_SIZE = 30;
@@ -149,7 +175,7 @@ public class CameraController {
                 }
             }
         });
-        try { latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        awaitQuietly(latch, timeoutMs, TimeUnit.MILLISECONDS);
         if (err.get() != null) return null;
         return result.get();
     }
@@ -176,7 +202,7 @@ public class CameraController {
                 }
             }
         });
-        try { latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        awaitQuietly(latch, timeoutMs, TimeUnit.MILLISECONDS);
         return result.get();
     }
     public java.util.List<int[]> getSupportedPreviewFpsRangesSync(long timeoutMs) {
@@ -202,7 +228,7 @@ public class CameraController {
                 }
             }
         });
-        try { latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        awaitQuietly(latch, timeoutMs, TimeUnit.MILLISECONDS);
         return result.get();
     }
 
@@ -601,11 +627,11 @@ public class CameraController {
                 finally { modeLatch.countDown(); }
             }
         });
-        try { modeLatch.await(800, TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        awaitQuietly(modeLatch, 800, TimeUnit.MILLISECONDS);
         String mode = focusModeRef.get();
         boolean needAf = mode == null || Camera.Parameters.FOCUS_MODE_AUTO.equals(mode) || Camera.Parameters.FOCUS_MODE_MACRO.equals(mode);
         if (!needAf) {
-            try { Thread.sleep(180); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return PhotoResult.fail("Interrupted before shutter"); }
+            if (!sleepQuietly(180)) return PhotoResult.fail("Interrupted before shutter");
         } else {
             final CountDownLatch afLatch = new CountDownLatch(1);
             cameraHandler.post(new Runnable() {
@@ -634,11 +660,11 @@ public class CameraController {
                     try { cameraHandler.post(new Runnable() { @Override public void run() { try { camera.cancelAutoFocus(); } catch (Throwable ignore) {} } }); } catch (Throwable ignore) {}
                 }
             } catch (InterruptedException e) { Thread.currentThread().interrupt(); return PhotoResult.fail("Interrupted during autoFocus"); }
-            try { Thread.sleep(220); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return PhotoResult.fail("Interrupted after autoFocus"); }
+            if (!sleepQuietly(220)) return PhotoResult.fail("Interrupted after autoFocus");
         }
         // 3.5) 鎖 AE/AWB 避免過曝
         lockAeAwbSync(700);
-        try { Thread.sleep(180); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return PhotoResult.fail("Interrupted before shutter"); }
+        if (!sleepQuietly(180)) return PhotoResult.fail("Interrupted before shutter");
 
         // 4) 真正 shutter
         final CountDownLatch latch = new CountDownLatch(1);
@@ -750,15 +776,15 @@ public class CameraController {
             synchronized (this) { frames = fpsTimestamps.size(); fps = getFps(); }
             if (elapsed >= 1400 && zoomSettled && lastFrame != null && frames >= 5 && fps > 4.0) return true;
             if (previewStartedAtMs == 0) {
-                try { Thread.sleep(150); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+                if (!sleepQuietly(150)) return false;
                 continue;
             }
             if (elapsed >= 1800 && zoomSettled) return lastFrame != null;
             if (!zoomSettled) {
-                try { Thread.sleep(150); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+                if (!sleepQuietly(150)) return false;
                 continue;
             }
-            try { Thread.sleep(120); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+            if (!sleepQuietly(120)) return false;
         }
         return lastFrame != null;
     }
@@ -780,7 +806,7 @@ public class CameraController {
             } catch (Throwable t) { Log.w(TAG, "lockAeAwb failed", t); }
             finally { latch.countDown(); }
         }});
-        try { latch.await(timeoutMs, TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+        if (!awaitQuietly(latch, timeoutMs, TimeUnit.MILLISECONDS)) return false;
         return Boolean.TRUE.equals(ok.get());
     }
     public void unlockAeAwbAsync() {
@@ -807,11 +833,11 @@ public class CameraController {
         final AtomicReference<String> modeRef = new AtomicReference<>();
         final CountDownLatch modeLatch = new CountDownLatch(1);
         cameraHandler.post(new Runnable() { @Override public void run() { try { if (camera != null) modeRef.set(camera.getParameters().getFocusMode()); } catch (Throwable ignore) {} finally { modeLatch.countDown(); } } });
-        try { modeLatch.await(600, TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+        if (!awaitQuietly(modeLatch, 600, TimeUnit.MILLISECONDS)) return false;
         String mode = modeRef.get();
         boolean needAf = mode == null || Camera.Parameters.FOCUS_MODE_AUTO.equals(mode) || Camera.Parameters.FOCUS_MODE_MACRO.equals(mode);
         if (!needAf) {
-            try { Thread.sleep(150); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            sleepQuietly(150);
             return true;
         }
         final CountDownLatch afLatch = new CountDownLatch(1);
@@ -871,7 +897,7 @@ public class CameraController {
                 finally { latch.countDown(); }
             }
         });
-        try { latch.await(timeoutMs, TimeUnit.MILLISECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        awaitQuietly(latch, timeoutMs, TimeUnit.MILLISECONDS);
         ZoomInfo v = out.get();
         return v != null ? v : new ZoomInfo(zoomFactor, false, 0, null);
     }
@@ -1027,11 +1053,7 @@ public class CameraController {
                 latch.countDown();
             }
         });
-        try {
-            latch.await(timeoutMs, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        awaitQuietly(latch, timeoutMs, TimeUnit.MILLISECONDS);
     }
 
     public void shutdown() {

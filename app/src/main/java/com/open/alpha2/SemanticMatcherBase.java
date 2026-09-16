@@ -37,6 +37,15 @@ public abstract class SemanticMatcherBase {
     private static final String ASSET_PATH_CATEGORIES = "iflytek/action_category_pools.json";
     private static final String RANDOM_CATEGORY_PREFIX = "__RANDOM_CATEGORY__";
 
+    /** 中英文共用嘅「聽不懂」fallback 動作組（5 個已驗證沒聲效動作；兩子類之前各自複製同一份）。 */
+    protected static final String[] DEFAULT_FALLBACK_ACTION_IDS = {
+            "1464835936013", // 搖頭 / Shake head
+            "1464835936026", // 思考 / Thinking
+            "1464835936043", // 眨眼 / Wink
+            "1509000313549", // 賣萌 / Cute
+            "1464835936087", // 點頭 / Nod
+    };
+
     /** 配對結果。type 和 MainActivity 已有的 asr_result event 格式對齊,
      *  answer/actionId 可能是 null (例如 CHAT 類沒 actionId, 部分 FUNCTION 沒 answer)。 */
     public static final class MatchResult {
@@ -105,12 +114,8 @@ public abstract class SemanticMatcherBase {
     private synchronized List<Entry> load() {
         if (cache != null) return cache;
         List<Entry> result = new ArrayList<>();
-        try (InputStream in = appContext.getAssets().open(assetPath)) {
-            ByteArrayOutputStream buf = new ByteArrayOutputStream();
-            byte[] tmp = new byte[4096];
-            int n;
-            while ((n = in.read(tmp)) != -1) buf.write(tmp, 0, n);
-            JSONArray arr = new JSONArray(buf.toString("UTF-8"));
+        try {
+            JSONArray arr = new JSONArray(readAssetString(assetPath));
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject o = arr.getJSONObject(i);
                 Entry e = new Entry();
@@ -227,12 +232,8 @@ public abstract class SemanticMatcherBase {
     private synchronized java.util.Map<String, List<String>> loadCategoryPools() {
         if (categoryPoolsCache != null) return categoryPoolsCache;
         java.util.Map<String, List<String>> result = new java.util.HashMap<>();
-        try (InputStream in = appContext.getAssets().open(ASSET_PATH_CATEGORIES)) {
-            ByteArrayOutputStream buf = new ByteArrayOutputStream();
-            byte[] tmp = new byte[4096];
-            int n;
-            while ((n = in.read(tmp)) != -1) buf.write(tmp, 0, n);
-            JSONObject root = new JSONObject(buf.toString("UTF-8"));
+        try {
+            JSONObject root = new JSONObject(readAssetString(ASSET_PATH_CATEGORIES));
             java.util.Iterator<String> keys = root.keys();
             while (keys.hasNext()) {
                 String key = keys.next();
@@ -248,6 +249,19 @@ public abstract class SemanticMatcherBase {
         }
         categoryPoolsCache = result;
         return result;
+    }
+
+    /** 兩份 load 共用嘅 assets 讀檔（經 IOUtil，唔再各自寫 4k loop）。 */
+    private String readAssetString(String path) throws java.io.IOException {
+        InputStream in = null;
+        try {
+            in = appContext.getAssets().open(path);
+            return IOUtil.readFully(in);
+        } finally {
+            if (in != null) {
+                try { in.close(); } catch (java.io.IOException ignored) {}
+            }
+        }
     }
 
     /** 若 actionId 是 "__RANDOM_CATEGORY__<key>" 格式, 解析出 <key> 並在對應分類

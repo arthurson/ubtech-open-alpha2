@@ -260,17 +260,8 @@ public class MusicController {
     }
 
     private void releaseLocked() {
-        if (player != null) {
-            try {
-                player.reset();
-            } catch (Exception ignored) {
-            }
-            try {
-                player.release();
-            } catch (Exception ignored) {
-            }
-            player = null;
-        }
+        MediaPlayerUtil.resetRelease(player);
+        player = null;
         prepared = false;
         playRequestedOnPrepare = false;
         currentPath = null;

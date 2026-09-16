@@ -150,7 +150,6 @@ public final class UbxParser {
         UbxFile.UbxTrack track = new UbxFile.UbxTrack();
         int p = off + 8;
         track.id = le(t, p); p += 4;
-        track.xfield = track.id; // 兼容舊字段：恆與 id 相同
         int fLen = le(t, p); p += 4;
         int trackEnd = off + 4 + declaredLen;
         if (fLen < 0 || p + fLen > trackEnd) throw new UbxParseException("bad ftable " + fLen);

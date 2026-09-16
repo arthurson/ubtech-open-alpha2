@@ -378,33 +378,12 @@ public final class AudioCenter {
             });
             player.setOnCompletionListener(mp -> {
                 synchronized (AudioCenter.this) {
-                    stopMusicFillerActionLoop();
-                    stopSharedFillerLoopIfIdle();
-                    // 若電台仍在播，保留共用 EQ/頻譜給電台
-                    if (currentRadioPlayer == null) {
-                        releaseMusicEqualizerLocked();
-                        releaseMusicVisualizerLocked();
-                    }
-                    mp.release();
-                    if (currentMusicPlayer == mp) {
-                        currentMusicPlayer = null;
-                        currentMusicTrackName = null;
-                    }
+                    releaseDoneMusicPlayerLocked(mp);
                 }
             });
             player.setOnErrorListener((mp, what, extra) -> {
                 synchronized (AudioCenter.this) {
-                    stopMusicFillerActionLoop();
-                    stopSharedFillerLoopIfIdle();
-                    if (currentRadioPlayer == null) {
-                        releaseMusicEqualizerLocked();
-                        releaseMusicVisualizerLocked();
-                    }
-                    mp.release();
-                    if (currentMusicPlayer == mp) {
-                        currentMusicPlayer = null;
-                        currentMusicTrackName = null;
-                    }
+                    releaseDoneMusicPlayerLocked(mp);
                 }
                 return true;
             });
@@ -461,17 +440,24 @@ public final class AudioCenter {
             releaseMusicVisualizerLocked();
         }
         if (currentMusicPlayer != null) {
-            try {
-                currentMusicPlayer.stop();
-            } catch (Exception e) {
-                // 見 stopRingtonePlaybackLocked() 的 comment - prepareAsync() 中途
-                // race 可能引發 IllegalStateException, release() 一樣照做, 吞掉就好。
-            }
-            try {
-                currentMusicPlayer.release();
-            } catch (Exception e) {
-                // already released/invalid - ignore
-            }
+            MediaPlayerUtil.stopRelease(currentMusicPlayer);
+            currentMusicPlayer = null;
+            currentMusicTrackName = null;
+        }
+    }
+
+    /** 本地音樂 OnCompletion/OnError 共用：停 filler loop、（電台冇播先）放共用
+     *  EQ/頻譜、release 嗰部 player、係 current 先清掉（之前兩個 listener 內逐字一樣）。 */
+    private void releaseDoneMusicPlayerLocked(android.media.MediaPlayer mp) {
+        stopMusicFillerActionLoop();
+        stopSharedFillerLoopIfIdle();
+        // 若電台仍在播，保留共用 EQ/頻譜給電台
+        if (currentRadioPlayer == null) {
+            releaseMusicEqualizerLocked();
+            releaseMusicVisualizerLocked();
+        }
+        mp.release();
+        if (currentMusicPlayer == mp) {
             currentMusicPlayer = null;
             currentMusicTrackName = null;
         }
@@ -568,17 +554,8 @@ public final class AudioCenter {
     }
 
     private void stopRadioPlaybackLocked() {
-        if (currentRadioPlayer != null) {
-            try {
-                currentRadioPlayer.stop();
-            } catch (Exception e) {
-            }
-            try {
-                currentRadioPlayer.release();
-            } catch (Exception e) {
-            }
-            currentRadioPlayer = null;
-        }
+        MediaPlayerUtil.stopRelease(currentRadioPlayer);
+        currentRadioPlayer = null;
         currentRadioStationId = null;
         currentRadioStationName = null;
         // 共用 EQ/頻譜/隨機動作：若本地仍在播，保留
@@ -841,7 +818,7 @@ public final class AudioCenter {
 
     public HttpServer.ApiResponse localMusicStop() {
         stopLocalMusicPlayback();
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     // 供瀏覽器音樂 tab 用的播放狀態/進度/音量 endpoint - 純讀/寫
@@ -887,7 +864,7 @@ public final class AudioCenter {
                         + MainActivity.jsonSafe(String.valueOf(e.getMessage())) + "\"}");
             }
         }
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     public HttpServer.ApiResponse localMusicVolume(Map<String, String> query) {
@@ -904,7 +881,7 @@ public final class AudioCenter {
                         + MainActivity.jsonSafe(String.valueOf(e.getMessage())) + "\"}");
             }
         }
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     // -- Media volume: STREAM_MUSIC, same stream the +/- gesture buttons and
@@ -965,7 +942,7 @@ public final class AudioCenter {
                         + MainActivity.jsonSafe(String.valueOf(e.getMessage())) + "\"}");
             }
         }
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     public HttpServer.ApiResponse localMusicResume() {
@@ -980,7 +957,7 @@ public final class AudioCenter {
                         + MainActivity.jsonSafe(String.valueOf(e.getMessage())) + "\"}");
             }
         }
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     // Equalizer presets - 用返 android.media.audiofx.Equalizer
@@ -1034,7 +1011,7 @@ public final class AudioCenter {
                 }
             }
         }
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     // 「播歌隨機動作」開關 - 預設 true。
@@ -1122,7 +1099,7 @@ public final class AudioCenter {
 
     public HttpServer.ApiResponse radioStop() {
         stopRadioPlayback();
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     public HttpServer.ApiResponse radioStatus() {

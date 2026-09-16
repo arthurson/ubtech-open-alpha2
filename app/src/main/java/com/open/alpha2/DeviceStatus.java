@@ -15,7 +15,6 @@ import android.os.Handler;
 import android.text.format.Formatter;
 import android.util.Log;
 
-import com.ubtechinc.alpha.hardware.HardwareDirectManager;
 import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
 
 import java.util.Map;
@@ -282,15 +281,13 @@ public final class DeviceStatus implements SensorEventListener {
     }
 
     // -- 健康狀態聚合 --
-    // chest/header readiness 內聯：經 appContext 唔使 Activity（各 center 自帶副本）。
+    // chest/header readiness 薄 delegate（實現見 DirectProbes）。
     private boolean directChestReady() {
-        try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
-        catch (Exception e) { return false; }
+        return DirectProbes.isChestReady(appContext);
     }
 
     private boolean directHeaderReady() {
-        try { return HardwareDirectManager.get(appContext).head().isAvailable(); }
-        catch (Exception e) { return false; }
+        return DirectProbes.isHeadReady(appContext);
     }
 
     public HttpServer.ApiResponse statusResponse() {

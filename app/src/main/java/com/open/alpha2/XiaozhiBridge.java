@@ -134,15 +134,56 @@ public final class XiaozhiBridge {
         }
     }
 
-    // directChestReady/directHeaderReady 內聯：經 appContext 唔使 Activity。
+    // directChestReady 薄 delegate（實現見 DirectProbes）。
     private boolean directChestReady() {
-        try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
-        catch (Exception e) { return false; }
+        return DirectProbes.isChestReady(appContext);
     }
 
-    private boolean directHeaderReady() {
-        try { return HardwareDirectManager.get(appContext).head().isAvailable(); }
-        catch (Exception e) { return false; }
+    // -- 斷線／連線共用核（三處同一個順序，抽出嚟免改漏一處）--
+
+    /** 斷線清理共用核：落 autoMode、停 mic、熄嘴燈、（可選）斷 socket。
+     *  胸燈由各 call site 自己處理（mute 鍵行 setChestMuteLed(!wasOpen)，其餘行 false），
+     *  呢度唔包，等時序同以前逐字一樣。 */
+    private void teardownSession(boolean disconnectSocket) {
+        xiaozhiAutoMode.set(false);
+        xiaozhiReconnectAttempts.set(0);
+        stopXiaozhiMic();
+        LedCenter.stopMouthLedForTts();
+        if (disconnectSocket) xiaozhiClient.disconnect();
+    }
+
+    /** activation gate 已搶到之後嘅尾段：設 checking、攞 deviceId、背景起 flow。
+     *  調用前必須已 compareAndSet(false, true) 成功（三處：mute 鍵／connect／auto_mode）。 */
+    private void launchActivationFlow() {
+        launchActivationFlow("XiaozhiActivationThread", null);
+    }
+
+    /** 同上，但 thread 名／deviceId 可指明（auto-connect／reconnect 保留各自 thread 名；
+     *  reconnect 沿用傳入 deviceId，唔重讀）。 */
+    private void launchActivationFlow(String threadName, String deviceId) {
+        xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
+        final String id = deviceId != null ? deviceId : getXiaozhiDeviceId();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                runXiaozhiActivationFlow(id);
+            }
+        }, threadName).start();
+    }
+
+    /** speech/stop -> 新 TTS race guard：等上次 stop 起碼
+     *  SpeechCenter.STOP_TO_TTS_MIN_GAP_MS 先開始播，唔係 Nuance teardown 未完
+     *  會掟 IllegalStateException（見嗰個 const 嘅 comment）。
+     *  speakActivationCode() 同 self.robot.speak MCP tool 共用（之前兩份逐字一樣）。 */
+    private void awaitTtsGap() {
+        long sinceStopMs = System.currentTimeMillis() - hostState.getLastSpeechStopAtMs();
+        if (sinceStopMs >= 0 && sinceStopMs < SpeechCenter.STOP_TO_TTS_MIN_GAP_MS) {
+            try {
+                Thread.sleep(SpeechCenter.STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     // -- MCP tools: self.robot.servo_set_one/all 留喺 XiaozhiBridge,
@@ -150,6 +191,18 @@ public final class XiaozhiBridge {
     // 底層邏輯睇落一樣, 但佢對超範圍輸入係靜默 clamp, 呢度係刻意
     // 要求明確報錯、唔靜默 clamp, 跟 servoSendOneCode() 共用會令呢個已驗證嘅
     // 行為分別消失, 所以保留獨立實現。 --
+
+    /** self.robot.servo_set_one/all 共用嘅 time_ms 範圍驗：啱回 null，唔啱回 err
+     *  McpResult（兩個 servo tool 共用）。範圍經 ApiValidator（同 servo/one HTTP、
+     *  spec/MCP 單一來源）；error 字面由常數砌出，同舊字面逐字一樣。 */
+    private static SonarCenter.McpResult checkServoTimeMs(int timeMs) {
+        if (timeMs < ApiValidator.SERVO_TIME_MIN_MS || timeMs > ApiValidator.SERVO_TIME_MAX_MS) {
+            return SonarCenter.McpResult.err("time_ms must be between "
+                    + ApiValidator.SERVO_TIME_MIN_MS + " and " + ApiValidator.SERVO_TIME_MAX_MS
+                    + ", got: " + timeMs);
+        }
+        return null;
+    }
 
     /** self.robot.servo_set_one 本體。
      *  pure-direct: 经 /dev/ttyS1 直发。
@@ -162,15 +215,16 @@ public final class XiaozhiBridge {
         }
         int angle = arguments.optInt("angle");
         int timeMs = arguments.optInt("time_ms", 1000);
-        if (mcpId < 1 || mcpId > 20) {
-            return SonarCenter.McpResult.err("id must be between 1 and 20, got: " + mcpId);
+        if (mcpId < ApiValidator.SERVO_ID_MIN || mcpId > ApiValidator.SERVO_ID_MAX) {
+            return SonarCenter.McpResult.err("id must be between "
+                    + ApiValidator.SERVO_ID_MIN + " and " + ApiValidator.SERVO_ID_MAX + ", got: " + mcpId);
         }
-        if (angle < 0 || angle > 255) {
-            return SonarCenter.McpResult.err("angle must be between 0 and 255, got: " + angle);
+        if (angle < ApiValidator.SERVO_ANGLE_MIN || angle > ApiValidator.SERVO_ANGLE_MAX) {
+            return SonarCenter.McpResult.err("angle must be between "
+                    + ApiValidator.SERVO_ANGLE_MIN + " and " + ApiValidator.SERVO_ANGLE_MAX + ", got: " + angle);
         }
-        if (timeMs < 20 || timeMs > 32767) {
-            return SonarCenter.McpResult.err("time_ms must be between 20 and 32767, got: " + timeMs);
-        }
+        SonarCenter.McpResult timeErr = checkServoTimeMs(timeMs);
+        if (timeErr != null) return timeErr;
         boolean sent = HardwareDirectManager.get(appContext).chest().setSingleServo((byte) mcpId, angle, (short) timeMs);
         UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
         boolean ready = directChestReady();
@@ -186,26 +240,26 @@ public final class XiaozhiBridge {
         }
         String[] parts = anglesCsv.split(",");
         // 要啱啱 20 粒、逐粒 0-255，唔啱直接報錯。
-        if (parts.length != 20) {
-            return SonarCenter.McpResult.err("angles must have exactly 20 comma-separated values, got " + parts.length);
+        if (parts.length != ApiValidator.SERVO_COUNT) {
+            return SonarCenter.McpResult.err("angles must have exactly " + ApiValidator.SERVO_COUNT + " comma-separated values, got " + parts.length);
         }
-        int[] angles = new int[20];
-        for (int i = 0; i < 20; i++) {
+        int[] angles = new int[ApiValidator.SERVO_COUNT];
+        for (int i = 0; i < ApiValidator.SERVO_COUNT; i++) {
             int av;
             try {
                 av = Integer.parseInt(parts[i].trim());
             } catch (NumberFormatException nfe) {
                 return SonarCenter.McpResult.err("angles element " + (i + 1) + " must be integer, got: " + parts[i]);
             }
-            if (av < 0 || av > 255) {
-                return SonarCenter.McpResult.err("angles element " + (i + 1) + " must be between 0 and 255, got: " + av);
+            if (av < ApiValidator.SERVO_ANGLE_MIN || av > ApiValidator.SERVO_ANGLE_MAX) {
+                return SonarCenter.McpResult.err("angles element " + (i + 1) + " must be between "
+                        + ApiValidator.SERVO_ANGLE_MIN + " and " + ApiValidator.SERVO_ANGLE_MAX + ", got: " + av);
             }
             angles[i] = av;
         }
         int timeMs = arguments.optInt("time_ms", 1000);
-        if (timeMs < 20 || timeMs > 32767) {
-            return SonarCenter.McpResult.err("time_ms must be between 20 and 32767, got: " + timeMs);
-        }
+        SonarCenter.McpResult timeErr = checkServoTimeMs(timeMs);
+        if (timeErr != null) return timeErr;
         // pure-direct: 经 /dev/ttyS1 直发。
         boolean sentAll = HardwareDirectManager.get(appContext).chest().setAllServos(angles, (short) timeMs);
         UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sentAll);
@@ -378,11 +432,7 @@ public final class XiaozhiBridge {
         ledCenter.postPadLed(() -> {
             if (wasOpen) {
                 // 斷線 - 和 handleXiaozhiApi 的 "disconnect" case 一致的清理順序。
-                xiaozhiAutoMode.set(false);
-                xiaozhiReconnectAttempts.set(0);
-                stopXiaozhiMic();
-                LedCenter.stopMouthLedForTts();
-                xiaozhiClient.disconnect();
+                teardownSession(true);
                 Log.i(TAG, "mute key -> xiaozhi DISCONNECT");
             } else {
                 // 連線 - 同 "connect" case 一致: 搶 activation gate, 背景行
@@ -392,14 +442,7 @@ public final class XiaozhiBridge {
                 // CONNECTED branch 和 "auto_mode" case)。
                 xiaozhiAutoMode.set(true);
                 if (xiaozhiActivationInFlight.compareAndSet(false, true)) {
-                    xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
-                    final String deviceId = getXiaozhiDeviceId();
-                    new Thread(new Runnable() {
-                        @Override
-                        public void run() {
-                            runXiaozhiActivationFlow(deviceId);
-                        }
-                    }, "XiaozhiActivationThread").start();
+                    launchActivationFlow();
                     Log.i(TAG, "mute key -> xiaozhi CONNECT (activation started, auto_mode on)");
                 } else {
                     Log.i(TAG, "mute key -> xiaozhi connect skipped (activation already in flight)");
@@ -552,13 +595,7 @@ public final class XiaozhiBridge {
                 // XiaozhiActivationStatus's class javadoc for why polling rather than
                 // an EventBus push).
                 xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
-                final String deviceId = getXiaozhiDeviceId();
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        runXiaozhiActivationFlow(deviceId);
-                    }
-                }, "XiaozhiActivationThread").start();
+                launchActivationFlow();
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"message\":\"activation started - poll xiaozhi/activation_status\"}");
             }
 
@@ -575,21 +612,17 @@ public final class XiaozhiBridge {
                 // so mic ownership is actually handed back to alpha2services'
                 // wake-word engine (speech_SetMIC(false)) and the mic LED/hold-enforcer
                 // thread are torn down too - see stopXiaozhiMic()'s javadoc.
-                xiaozhiAutoMode.set(false);
-                xiaozhiReconnectAttempts.set(0);
-                stopXiaozhiMic();
-                LedCenter.stopMouthLedForTts();
-                xiaozhiClient.disconnect();
+                teardownSession(true);
                 // mute 鍵 LED = 小智連線指示燈 - web UI 斷線都要熄燈。
                 setChestMuteLed(false);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+                return HttpServer.ApiResponse.okTrue();
 
             case "mic/start":
                 return startXiaozhiMic();
 
             case "mic/stop": {
                 stopXiaozhiMic();
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+                return HttpServer.ApiResponse.okTrue();
             }
 
             case "auto_mode": {
@@ -609,14 +642,7 @@ public final class XiaozhiBridge {
                         // 有時間差, 會漏掉另一條 thread 剛啟動但還沒來得及 set stage
                         // 的那個窗口期)。
                         if (xiaozhiActivationInFlight.compareAndSet(false, true)) {
-                            xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
-                            final String deviceId = getXiaozhiDeviceId();
-                            new Thread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    runXiaozhiActivationFlow(deviceId);
-                                }
-                            }, "XiaozhiActivationThread").start();
+                            launchActivationFlow();
                         }
                     } else if (!xiaozhiAudioController.isCapturing()) {
                         startXiaozhiMic();
@@ -645,7 +671,7 @@ public final class XiaozhiBridge {
                 if (sendError != null) {
                     return HttpServer.ApiResponse.error("failed to send text: " + sendError);
                 }
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+                return HttpServer.ApiResponse.okTrue();
             }
 
             default:
@@ -800,7 +826,7 @@ public final class XiaozhiBridge {
         xiaozhiMicHeld = true;
         startXiaozhiMicHoldEnforcer();
         EventBus.get().publish(XIAOZHI_MIC_STATE_EVENT, "{\"held\":true}");
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     /** Stops the mic capture + playback pair - shared by the "mic/stop" HTTP endpoint
@@ -861,12 +887,8 @@ public final class XiaozhiBridge {
     public void yieldMicToVosk() {
         boolean open = xiaozhiClient.isOpen();
         if (!open && !xiaozhiMicHeld && !xiaozhiAudioController.isCapturing() && !xiaozhiAutoMode.get()) return;
-        xiaozhiAutoMode.set(false);
-        xiaozhiReconnectAttempts.set(0);
-        stopXiaozhiMic();
-        LedCenter.stopMouthLedForTts();
+        teardownSession(open);
         if (open) {
-            xiaozhiClient.disconnect();
             Log.i(TAG, "vosk start -> xiaozhi DISCONNECT (mic yielded)");
         }
         setChestMuteLed(false);
@@ -1169,12 +1191,8 @@ public final class XiaozhiBridge {
         if (!xiaozhiConfig.isAutoConnectEnabled()) return;
         if (xiaozhiClient == null || xiaozhiClient.isOpen()) return;
         if (!xiaozhiActivationInFlight.compareAndSet(false, true)) return;
-        xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
-        final String deviceId = getXiaozhiDeviceId();
         Log.i(TAG, "xiaozhi auto-connect (" + why + ")");
-        new Thread(new Runnable() {
-            @Override public void run() { runXiaozhiActivationFlow(deviceId); }
-        }, "XiaozhiAutoConnect").start();
+        launchActivationFlow("XiaozhiAutoConnect", null);
     }
 
     /** 小智常開開啟時, WebSocket 意外斷線 (見 XiaozhiClient.DisconnectListener)
@@ -1214,13 +1232,7 @@ public final class XiaozhiBridge {
                 // field javadoc) - 這種情況這條自動重連就不應該再啟動多一條, 交給
                 // 用戶手動那次去做就夠。
                 if (!xiaozhiActivationInFlight.compareAndSet(false, true)) return;
-                xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        runXiaozhiActivationFlow(deviceId);
-                    }
-                }, "xiaozhi-reconnect").start();
+                launchActivationFlow("xiaozhi-reconnect", deviceId);
             }
         }, delayMs);
     }
@@ -1252,14 +1264,7 @@ public final class XiaozhiBridge {
             spoken.append(c);
         }
         String text = "配對碼是 " + spoken + "。請去 xiaozhi 點 me 輸入這個碼。再說一次，配對碼是 " + spoken + "。";
-        long sinceStopMs = System.currentTimeMillis() - hostState.getLastSpeechStopAtMs();
-        if (sinceStopMs >= 0 && sinceStopMs < SpeechCenter.STOP_TO_TTS_MIN_GAP_MS) {
-            try {
-                Thread.sleep(SpeechCenter.STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-            }
-        }
+        awaitTtsGap();
         LedCenter.startMouthLedForTts();
         if (!ttsCenter.speakAndroidTts(text, java.util.Locale.SIMPLIFIED_CHINESE)) {
             LedCenter.stopMouthLedForTts();
@@ -1352,6 +1357,32 @@ public final class XiaozhiBridge {
         static XiaozhiVisionResult fail(String error) { return new XiaozhiVisionResult(null, error); }
     }
 
+    /** resolveVisionEndpoint() 回包：vision/explain 用邊條 URL＋邊個 token。 */
+    private static final class VisionEndpoint {
+        final String url;
+        final String token;
+        VisionEndpoint(String url, String token) { this.url = url; this.token = token; }
+    }
+
+    /** vision url 優先順序：server 喺 "initialize" 附上嘅 (最新鮮、最權威，
+     *  見 XiaozhiClient.getVisionUrl() 同官方 mcp-protocol.md) -> 用戶自訂設定
+     *  (開咗自訂 server 又冇收到 server url) -> DEFAULT_VISION_URL (最後保險)。
+     *  xiaozhiTakePhotoAndExplain() 同 xiaozhiFetchImageToText() 共用（之前兩份逐字一樣）。 */
+    private VisionEndpoint resolveVisionEndpoint() {
+        android.content.SharedPreferences prefs = appContext.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE);
+        String serverProvidedUrl = xiaozhiClient.getVisionUrl();
+        if (serverProvidedUrl != null && !serverProvidedUrl.isEmpty()) {
+            return new VisionEndpoint(serverProvidedUrl, xiaozhiClient.getVisionToken());
+        }
+        String visionUrl = xiaozhiConfig.isOtaCustomEnabled()
+                ? prefs.getString(PREF_XIAOZHI_VISION_URL, DEFAULT_VISION_URL)
+                : DEFAULT_VISION_URL;
+        if (visionUrl == null || visionUrl.trim().isEmpty()) {
+            visionUrl = DEFAULT_VISION_URL;
+        }
+        return new VisionEndpoint(visionUrl, xiaozhiAccessToken);
+    }
+
     /** Backs the self.camera.take_photo MCP tool: captures one frame from the robot's
      *  camera at XIAOZHI_PHOTO_WIDTH x XIAOZHI_PHOTO_HEIGHT, then POSTs it (multipart,
      *  matching the official xiaozhi-esp32 firmware's Explain() request shape) to the
@@ -1388,25 +1419,10 @@ public final class XiaozhiBridge {
             return XiaozhiVisionResult.fail("takePicture() returned no photo data");
         }
 
-        android.content.SharedPreferences prefs = appContext.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE);
-        // vision url 優先順序：server 喺 "initialize" 附上嘅 (最新鮮、最權威，
-        // 見 XiaozhiClient.getVisionUrl() 同官方 mcp-protocol.md) -> 用戶自訂設定
-        // (開咗自訂 server 又冇收到 server url) -> DEFAULT_VISION_URL (最後保險)。
-        String serverProvidedUrl = xiaozhiClient.getVisionUrl();
-        String visionUrl;
-        String token;
-        if (serverProvidedUrl != null && !serverProvidedUrl.isEmpty()) {
-            visionUrl = serverProvidedUrl;
-            token = xiaozhiClient.getVisionToken();
-        } else {
-            visionUrl = xiaozhiConfig.isOtaCustomEnabled()
-                    ? prefs.getString(PREF_XIAOZHI_VISION_URL, DEFAULT_VISION_URL)
-                    : DEFAULT_VISION_URL;
-            if (visionUrl == null || visionUrl.trim().isEmpty()) {
-                visionUrl = DEFAULT_VISION_URL;
-            }
-            token = xiaozhiAccessToken;
-        }
+        // vision url＋token 經 resolveVisionEndpoint()（server 附上 -> 用戶自訂 -> 保底）。
+        VisionEndpoint endpoint = resolveVisionEndpoint();
+        String visionUrl = endpoint.url;
+        String token = endpoint.token;
 
         String deviceId = getXiaozhiDeviceId();
         try {
@@ -1437,80 +1453,33 @@ public final class XiaozhiBridge {
     }
 
     private XiaozhiVisionResult xiaozhiFetchImageToText(String uuid) {
-        android.content.SharedPreferences prefs = appContext.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE);
-        String serverProvidedUrl = xiaozhiClient.getVisionUrl();
-        String visionUrl;
-        String token;
-        if (serverProvidedUrl != null && !serverProvidedUrl.isEmpty()) {
-            visionUrl = serverProvidedUrl;
-            token = xiaozhiClient.getVisionToken();
-        } else {
-            visionUrl = xiaozhiConfig.isOtaCustomEnabled()
-                    ? prefs.getString(PREF_XIAOZHI_VISION_URL, DEFAULT_VISION_URL)
-                    : DEFAULT_VISION_URL;
-            if (visionUrl == null || visionUrl.trim().isEmpty()) {
-                visionUrl = DEFAULT_VISION_URL;
-            }
-            token = xiaozhiAccessToken;
-        }
+        // vision url＋token 經 resolveVisionEndpoint()（同 take_photo 共用）。
+        VisionEndpoint endpoint = resolveVisionEndpoint();
+        String visionUrl = endpoint.url;
+        String token = endpoint.token;
         String deviceId = getXiaozhiDeviceId();
 
-        java.net.HttpURLConnection conn = null;
         try {
             org.json.JSONObject payloadJson = new org.json.JSONObject();
             payloadJson.put("type", "image_to_text");
             payloadJson.put("uuid", uuid);
             byte[] payload = payloadJson.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
 
-            java.net.URL url = new java.net.URL(visionUrl);
-            NetLog.out("xiaozhi-vision", visionUrl);
-            conn = (java.net.HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(15000);
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("Device-Id", deviceId);
-            if (xiaozhiClientId != null && !xiaozhiClientId.isEmpty()) {
-                conn.setRequestProperty("Client-Id", xiaozhiClientId);
-            }
-            if (token != null && !token.isEmpty()) {
-                conn.setRequestProperty("Authorization", "Bearer " + token);
-            }
-            conn.setFixedLengthStreamingMode(payload.length);
-            java.io.OutputStream os = conn.getOutputStream();
-            try {
-                os.write(payload);
-            } finally {
-                os.close();
-            }
-
-            int status = conn.getResponseCode();
-            java.io.InputStream is = status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream();
-            String responseText = is != null ? MainActivity.readFully(is) : "";
+            VisionHttpResult res = postVisionRequest(visionUrl, deviceId, xiaozhiClientId, token,
+                    "application/json", payload);
+            int status = res.status;
+            String responseText = res.text;
             Log.i("XiaozhiVision", "image_to_text raw response (uuid=" + uuid + ", status="
                     + status + "): " + responseText);
 
             if (status < 200 || status >= 300) {
                 return XiaozhiVisionResult.fail("image_to_text returned HTTP " + status + ": "
-                        + responseText.substring(0, Math.min(200, responseText.length())));
+                        + head200(responseText));
             }
             try {
                 org.json.JSONObject json = new org.json.JSONObject(responseText);
                 if (json.optBoolean("success", false)) {
-                    String text = json.optString("text", "");
-                    if (text.isEmpty()) {
-                        org.json.JSONObject nestedResult = json.optJSONObject("result");
-                        if (nestedResult != null) {
-                            text = nestedResult.optString("text", "");
-                        }
-                        if (text.isEmpty()) {
-                            org.json.JSONObject nestedData = json.optJSONObject("data");
-                            if (nestedData != null) {
-                                text = nestedData.optString("text", "");
-                            }
-                        }
-                    }
+                    String text = extractVisionText(json);
                     if (text.isEmpty()) {
                         // 也是空的 - 這次沒有 message 可以再 relay 下去 (沒有下一層
                         // tool 可以呼叫), 直接把完整 raw response 當成
@@ -1525,7 +1494,7 @@ public final class XiaozhiBridge {
                         "image_to_text reported failure with no message"));
             } catch (org.json.JSONException e) {
                 return XiaozhiVisionResult.fail("image_to_text returned non-JSON response: "
-                        + responseText.substring(0, Math.min(200, responseText.length())));
+                        + head200(responseText));
             }
         } catch (java.io.IOException e) {
             return XiaozhiVisionResult.fail("image_to_text request failed: " + e.getMessage());
@@ -1535,9 +1504,81 @@ public final class XiaozhiBridge {
             // 宣告 throws JSONException, 純粹補上這個 catch 通過 javac 的 checked
             // exception 檢查, 不代表這裡預期會撞到。
             return XiaozhiVisionResult.fail("image_to_text failed building request JSON: " + e.getMessage());
+        }
+    }
+
+    /** postVisionRequest() 回包：HTTP status＋全文 responseText。 */
+    private static final class VisionHttpResult {
+        final int status;
+        final String text;
+        VisionHttpResult(int status, String text) { this.status = status; this.text = text; }
+    }
+
+    /** vision/explain POST 共用骨架：開連接、Device-Id/Client-Id/Authorization
+     *  headers、connect/read timeouts、fixed-length 寫 payload、讀 status＋全文。
+     *  multipart explain 同 JSON image_to_text 之前逐字一樣（除 Content-Type，
+     *  同 explain 版多咗個 os.flush()——close() 本身會 flush，行為一致）。
+     *  logging 留喺 caller（兩邊 log 字面唔同）。 */
+    private static VisionHttpResult postVisionRequest(String urlStr, String deviceId, String clientId,
+            String accessToken, String contentType, byte[] payload) throws java.io.IOException {
+        java.net.HttpURLConnection conn = null;
+        try {
+            java.net.URL url = new java.net.URL(urlStr);
+            NetLog.out("xiaozhi-vision", urlStr);
+            conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(15000);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", contentType);
+            conn.setRequestProperty("Device-Id", deviceId);
+            if (clientId != null && !clientId.isEmpty()) {
+                conn.setRequestProperty("Client-Id", clientId);
+            }
+            if (accessToken != null && !accessToken.isEmpty()) {
+                conn.setRequestProperty("Authorization", "Bearer " + accessToken);
+            }
+            conn.setFixedLengthStreamingMode(payload.length);
+            java.io.OutputStream os = conn.getOutputStream();
+            try {
+                os.write(payload);
+                os.flush();
+            } finally {
+                os.close();
+            }
+
+            int status = conn.getResponseCode();
+            java.io.InputStream is = status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream();
+            String responseText = is != null ? MainActivity.readFully(is) : "";
+            return new VisionHttpResult(status, responseText);
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    /** vision 回包 text 抽取："text" 攞唔到就試 result.text／data.text 幾種常見巢狀。
+     *  未經證實邊個啱、純粹碰運氣，主要靠 caller 印 raw response 先真正確診。
+     *  image_to_text 同 explain 共用（之前兩份逐字一樣）。 */
+    private static String extractVisionText(org.json.JSONObject json) {
+        String text = json.optString("text", "");
+        if (text.isEmpty()) {
+            org.json.JSONObject nestedResult = json.optJSONObject("result");
+            if (nestedResult != null) {
+                text = nestedResult.optString("text", "");
+            }
+            if (text.isEmpty()) {
+                org.json.JSONObject nestedData = json.optJSONObject("data");
+                if (nestedData != null) {
+                    text = nestedData.optString("text", "");
+                }
+            }
+        }
+        return text;
+    }
+
+    /** vision error 回包頭 200 字（唔成個 response 塞落 error string）。 */
+    private static String head200(String s) {
+        return s.substring(0, Math.min(200, s.length()));
     }
 
     /** Multipart POST to the vision/explain endpoint - mirrors XiaozhiOtaClient's
@@ -1578,95 +1619,52 @@ public final class XiaozhiBridge {
 
         byte[] payload = body.toByteArray();
 
-        java.net.HttpURLConnection conn = null;
+        VisionHttpResult res = postVisionRequest(urlStr, deviceId, clientId, accessToken,
+                "multipart/form-data; boundary=" + boundary, payload);
+        int status = res.status;
+        String responseText = res.text;
+        if (status == 404) {
+            // 404 唔係 URL 打錯，多數係呢個帳戶/agent 喺 xiaozhi.me
+            // console 未開通 vision/camera MCP 服務。
+            return XiaozhiVisionResult.fail("vision/explain returned HTTP 404 - this usually "
+                    + "means the vision/camera MCP service has not been enabled for this "
+                    + "device/agent in the xiaozhi.me console (look for \"MCP 接入點\" / "
+                    + "\"MCP Services\" / vision settings there), not a URL problem.");
+        }
+        if (status < 200 || status >= 300) {
+            return XiaozhiVisionResult.fail("vision/explain returned HTTP " + status + ": "
+                    + head200(responseText));
+        }
         try {
-            java.net.URL url = new java.net.URL(urlStr);
-            NetLog.out("xiaozhi-vision", urlStr);
-            conn = (java.net.HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(15000);
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-            conn.setRequestProperty("Device-Id", deviceId);
-            if (clientId != null && !clientId.isEmpty()) {
-                conn.setRequestProperty("Client-Id", clientId);
-            }
-            if (accessToken != null && !accessToken.isEmpty()) {
-                conn.setRequestProperty("Authorization", "Bearer " + accessToken);
-            }
-            conn.setFixedLengthStreamingMode(payload.length);
-            java.io.OutputStream os = conn.getOutputStream();
-            try {
-                os.write(payload);
-                os.flush();
-            } finally {
-                os.close();
-            }
-
-            int status = conn.getResponseCode();
-            java.io.InputStream is = (status >= 200 && status < 300)
-                    ? conn.getInputStream() : conn.getErrorStream();
-            String responseText = is != null ? MainActivity.readFully(is) : "";
-            if (status == 404) {
-                // 404 唔係 URL 打錯，多數係呢個帳戶/agent 喺 xiaozhi.me
-                // console 未開通 vision/camera MCP 服務。
-                return XiaozhiVisionResult.fail("vision/explain returned HTTP 404 - this usually "
-                        + "means the vision/camera MCP service has not been enabled for this "
-                        + "device/agent in the xiaozhi.me console (look for \"MCP 接入點\" / "
-                        + "\"MCP Services\" / vision settings there), not a URL problem.");
-            }
-            if (status < 200 || status >= 300) {
-                return XiaozhiVisionResult.fail("vision/explain returned HTTP " + status + ": "
-                        + responseText.substring(0, Math.min(200, responseText.length())));
-            }
-            try {
-                org.json.JSONObject json = new org.json.JSONObject(responseText);
-                // 印 raw response 方便對照 server JSON 結構。
-                // 轉 Log.d＋截 300 字（image 描述加 token/uuid 可以好長）。
-                android.util.Log.d("XiaozhiVision", "vision/explain raw response: "
-                        + (responseText.length() > 300 ? responseText.substring(0, 300) + "…(" + responseText.length() + "B)" : responseText));
-                if (json.optBoolean("success", false)) {
-                    String text = json.optString("text", "");
-                    if (text.isEmpty()) {
-                        // "text" 這層拿不到, 試幾種常見的巢狀結構 fallback -
-                        // 未經證實邊個啱, 純粹碰運氣, 主要靠上面條 log 先真正確診。
-                        org.json.JSONObject nestedResult = json.optJSONObject("result");
-                        if (nestedResult != null) {
-                            text = nestedResult.optString("text", "");
-                        }
-                        if (text.isEmpty()) {
-                            org.json.JSONObject nestedData = json.optJSONObject("data");
-                            if (nestedData != null) {
-                                text = nestedData.optString("text", "");
-                            }
-                        }
+            org.json.JSONObject json = new org.json.JSONObject(responseText);
+            // 印 raw response 方便對照 server JSON 結構。
+            // 轉 Log.d＋截 300 字（image 描述加 token/uuid 可以好長）。
+            android.util.Log.d("XiaozhiVision", "vision/explain raw response: "
+                    + (responseText.length() > 300 ? responseText.substring(0, 300) + "…(" + responseText.length() + "B)" : responseText));
+            if (json.optBoolean("success", false)) {
+                String text = extractVisionText(json);
+                if (text.isEmpty()) {
+                    // vision/explain 係異步：成功但無 text 時回 {"success":true,"uuid":"...",
+                    // "message":"Please call the tool `image_to_text`..."}，真正描述要 LLM
+                    // 再發 tools/call 問 "image_to_text" 先攞到。呢度將 server 嘅 "message"
+                    // 原文傳返俾 LLM，等佢主動再問。
+                    String uuid = json.optString("uuid", null);
+                    String message = json.optString("message", null);
+                    if (uuid != null && !uuid.isEmpty() && message != null && !message.isEmpty()) {
+                        Log.i("XiaozhiVision", "vision/explain is async (uuid=" + ChestQuery.maskUuid(uuid)
+                                + ") - relaying server's own instruction text to the LLM "
+                                + "instead of an empty result");
+                        lastPendingPhotoUuid = uuid;
+                        return XiaozhiVisionResult.ok(message);
                     }
-                    if (text.isEmpty()) {
-                        // vision/explain 係異步：成功但無 text 時回 {"success":true,"uuid":"...",
-                        // "message":"Please call the tool `image_to_text`..."}，真正描述要 LLM
-                        // 再發 tools/call 問 "image_to_text" 先攞到。呢度將 server 嘅 "message"
-                        // 原文傳返俾 LLM，等佢主動再問。
-                        String uuid = json.optString("uuid", null);
-                        String message = json.optString("message", null);
-                        if (uuid != null && !uuid.isEmpty() && message != null && !message.isEmpty()) {
-                            Log.i("XiaozhiVision", "vision/explain is async (uuid=" + ChestQuery.maskUuid(uuid)
-                                    + ") - relaying server's own instruction text to the LLM "
-                                    + "instead of an empty result");
-                            lastPendingPhotoUuid = uuid;
-                            return XiaozhiVisionResult.ok(message);
-                        }
-                    }
-                    return XiaozhiVisionResult.ok(text);
                 }
-                return XiaozhiVisionResult.fail(json.optString("message",
-                        "vision/explain reported failure with no message"));
-            } catch (org.json.JSONException e) {
-                return XiaozhiVisionResult.fail("vision/explain returned non-JSON response: "
-                        + responseText.substring(0, Math.min(200, responseText.length())));
+                return XiaozhiVisionResult.ok(text);
             }
-        } finally {
-            if (conn != null) conn.disconnect();
+            return XiaozhiVisionResult.fail(json.optString("message",
+                    "vision/explain reported failure with no message"));
+        } catch (org.json.JSONException e) {
+            return XiaozhiVisionResult.fail("vision/explain returned non-JSON response: "
+                    + head200(responseText));
         }
     }
 
@@ -1746,92 +1744,57 @@ public final class XiaozhiBridge {
                     return disabledResult;
                 }
                 try {
+                    // 純轉發 case（下面 19 個）只填 r，switch 後統一 unpack 成
+                    // isError/resultText（之前每 case 3 行逐字一樣）；take_photo／
+                    // image_to_text／speak／default 自行填，唔經 r。
+                    SonarCenter.McpResult r = null;
                     switch (name) {
-                        case "self.robot.list_actions": {
-                            SonarCenter.McpResult r = actionDirect.mcpListActions();
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.robot.list_actions":
+                            r = actionDirect.mcpListActions();
                             break;
-                        }
-                        case "self.robot.play_action": {
-                            SonarCenter.McpResult r = actionDirect.mcpPlayAction(arguments);
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.robot.play_action":
+                            r = actionDirect.mcpPlayAction(arguments);
                             break;
-                        }
-                        case "self.robot.stop_action": {
-                            SonarCenter.McpResult r = actionDirect.mcpStopAction();
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.robot.stop_action":
+                            r = actionDirect.mcpStopAction();
                             break;
-                        }
-                        case "self.robot.play_random_action": {
-                            SonarCenter.McpResult r = actionDirect.mcpPlayRandomAction();
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.robot.play_random_action":
+                            r = actionDirect.mcpPlayRandomAction();
                             break;
-                        }
 
                         // -- Hardware control: servo/LED/PIR/sonar -----------------------
                         // 薄包裝, 邏輯全部委託給 handleApi() 已有的 "servo/*"、
                         // "led/*"、"pir/*" case 使用的那些 Alpha2RobotApi 方法, 見
                         // AIDL_REFERENCE.md 相關章節和 handleApi() 的 comment 取得完整
                         // 已驗證行為/參數語意, 這裡不重複解釋。
-                        case "self.robot.servo_set_one": {
-                            SonarCenter.McpResult r = mcpServoSetOne(arguments);
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.robot.servo_set_one":
+                            r = mcpServoSetOne(arguments);
                             break;
-                        }
-                        case "self.robot.servo_set_all": {
-                            SonarCenter.McpResult r = mcpServoSetAll(arguments);
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.robot.servo_set_all":
+                            r = mcpServoSetAll(arguments);
                             break;
-                        }
-                        case "self.robot.led_set_head": {
-                            SonarCenter.McpResult r = ledCenter.mcpLedSetHead(arguments);
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.robot.led_set_head":
+                            r = ledCenter.mcpLedSetHead(arguments);
                             break;
-                        }
-                        case "self.robot.led_set_eye": {
-                            SonarCenter.McpResult r = ledCenter.mcpLedSetEye(arguments);
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.robot.led_set_eye":
+                            r = ledCenter.mcpLedSetEye(arguments);
                             break;
-                        }
-                        case "self.robot.led_set_mouth": {
-                            SonarCenter.McpResult r = ledCenter.mcpLedSetMouth(arguments);
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.robot.led_set_mouth":
+                            r = ledCenter.mcpLedSetMouth(arguments);
                             break;
-                        }
                         // sensors 4 tool 本體喺 SonarCenter；薄 delegate。
-                        case "self.sensors.get_pir": {
-                            SonarCenter.McpResult r = sonarCenter.mcpGetPir();
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.sensors.get_pir":
+                            r = sonarCenter.mcpGetPir();
                             break;
-                        }
-                        case "self.sensors.set_pir_enabled": {
-                            SonarCenter.McpResult r = sonarCenter.mcpSetPirEnabled(arguments);
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.sensors.set_pir_enabled":
+                            r = sonarCenter.mcpSetPirEnabled(arguments);
                             break;
-                        }
-                        case "self.sensors.get_sonar": {
-                            SonarCenter.McpResult r = sonarCenter.mcpGetSonar();
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.sensors.get_sonar":
+                            r = sonarCenter.mcpGetSonar();
                             break;
-                        }
-                        case "self.sensors.set_sonar_threshold": {
-                            SonarCenter.McpResult r = sonarCenter.mcpSetSonarThreshold(arguments);
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.sensors.set_sonar_threshold":
+                            r = sonarCenter.mcpSetSonarThreshold(arguments);
                             break;
-                        }
 
                         case "self.camera.take_photo": {
                             String question = arguments.optString("question", "");
@@ -1890,14 +1853,7 @@ public final class XiaozhiBridge {
                             // param (no query string here, this is an MCP tool call) -
                             // consistent with defaulting away from iFlytek's per-call voice
                             // picker, which has no equivalent argument in this tool's schema.
-                            long sinceStopMs = System.currentTimeMillis() - hostState.getLastSpeechStopAtMs();
-                            if (sinceStopMs >= 0 && sinceStopMs < SpeechCenter.STOP_TO_TTS_MIN_GAP_MS) {
-                                try {
-                                    Thread.sleep(SpeechCenter.STOP_TO_TTS_MIN_GAP_MS - sinceStopMs);
-                                } catch (InterruptedException ie) {
-                                    Thread.currentThread().interrupt();
-                                }
-                            }
+                            awaitTtsGap();
                             LedCenter.startMouthLedForTts();
                             UbxErrorCode.API_ERROR_CODE code = robot.speech_startTTS("en_us", text, null);
                             if (!MainActivity.isOk(code)) {
@@ -1911,46 +1867,32 @@ public final class XiaozhiBridge {
                         // -- Local music/FM radio: 薄包裝, 邏輯全部委托返 AudioCenter
                         // mcp*() (跟 audio/local_music/*、audio/radio/* 那幾個 HTTP
                         // endpoint 共用同一批底層 method), 不在這裡重複實現。
-                        case "self.media.list_music": {
-                            SonarCenter.McpResult r = audioCenter.mcpListMusic();
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.media.list_music":
+                            r = audioCenter.mcpListMusic();
                             break;
-                        }
-                        case "self.media.play_music": {
-                            SonarCenter.McpResult r = audioCenter.mcpPlayMusic(arguments);
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.media.play_music":
+                            r = audioCenter.mcpPlayMusic(arguments);
                             break;
-                        }
-                        case "self.media.stop_music": {
-                            SonarCenter.McpResult r = audioCenter.mcpStopMusic();
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.media.stop_music":
+                            r = audioCenter.mcpStopMusic();
                             break;
-                        }
-                        case "self.media.search_radio": {
-                            SonarCenter.McpResult r = audioCenter.mcpSearchRadio(arguments);
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.media.search_radio":
+                            r = audioCenter.mcpSearchRadio(arguments);
                             break;
-                        }
-                        case "self.media.play_radio": {
-                            SonarCenter.McpResult r = audioCenter.mcpPlayRadio(arguments);
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.media.play_radio":
+                            r = audioCenter.mcpPlayRadio(arguments);
                             break;
-                        }
-                        case "self.media.stop_radio": {
-                            SonarCenter.McpResult r = audioCenter.mcpStopRadio();
-                            isError = r.isError;
-                            resultText = r.resultText;
+                        case "self.media.stop_radio":
+                            r = audioCenter.mcpStopRadio();
                             break;
-                        }
                         default:
                             isError = true;
                             resultText = "unknown tool: " + name;
                             break;
+                    }
+                    if (r != null) {
+                        isError = r.isError;
+                        resultText = r.resultText;
                     }
                 } catch (Exception e) {
                     isError = true;

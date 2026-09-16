@@ -751,7 +751,7 @@ public final class TtsCenter {
         // TextToSpeech instance, 再等 OnInitListener 先真正 ready) -
         // 這裡的 "ok" 只是說已經觸發了切換, 不代表立即可以講話, 前端
         // 應該延遲少少先再 poll speech/cur_tts_engine。
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     public HttpServer.ApiResponse curTtsEngine() {
@@ -770,7 +770,7 @@ public final class TtsCenter {
             prefs().edit().putString(PREF_ANDROID_TTS_VOICE, "").apply();
         } catch (Throwable ignore) {
         }
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     public HttpServer.ApiResponse curTtsLang() {
@@ -807,7 +807,7 @@ public final class TtsCenter {
     public HttpServer.ApiResponse setTtsVoice(Map<String, String> query) {
         String voice = ApiValidator.optional(query, "voice", "");
         prefs().edit().putString(PREF_ANDROID_TTS_VOICE, voice == null ? "" : voice).apply();
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     public HttpServer.ApiResponse curTtsVoice() {

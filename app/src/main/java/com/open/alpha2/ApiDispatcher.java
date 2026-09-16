@@ -93,14 +93,34 @@ public final class ApiDispatcher {
 
     // directChestReady() 內聯：經 appContext 唔使 Activity（各 center 自帶副本）。
     private boolean directChestReady() {
-        try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
-        catch (Exception e) { return false; }
+        return directReady(true);
     }
 
     // directHeaderReady() 內聯：同上（handleSystemApi discover＋handleDirectApi status 用）。
     private boolean directHeaderReady() {
-        try { return HardwareDirectManager.get(appContext).head().isAvailable(); }
-        catch (Exception e) { return false; }
+        return directReady(false);
+    }
+
+    /** 胸／頭串口就緒二合一（實現見 {@link DirectProbes}，呢度淨留薄 delegate 保 call site 不變）。 */
+    private boolean directReady(boolean chest) {
+        return chest ? DirectProbes.isChestReady(appContext) : DirectProbes.isHeadReady(appContext);
+    }
+
+    /** music/* 六連發共用形（err != null 即 500，否則 {"ok":true}）。 */
+    private static HttpServer.ApiResponse musicOp(MusicOp op) {
+        String err = op.run();
+        if (err != null) return HttpServer.ApiResponse.error(err);
+        return HttpServer.ApiResponse.okTrue();
+    }
+
+    private interface MusicOp { String run(); }
+
+    /** 三個 404 共用形（訊息前綴不變，免 drift／前端字串比對斷）。 */
+    private static HttpServer.ApiResponse unknown(String kind, String path) {
+        String prefix = kind == null || kind.isEmpty() ? "unknown endpoint: "
+                : "unknown " + kind + " endpoint: ";
+        return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
+                "{\"ok\":false,\"error\":\"" + prefix + path + "\"}");
     }
 
     /**
@@ -492,8 +512,7 @@ public final class ApiDispatcher {
             // SecurityException)，改做手動重開機提示。
 
             default:
-                return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
-                        "{\"ok\":false,\"error\":\"unknown endpoint: " + path + "\"}");
+                return unknown("", path);
         }
     }
 
@@ -588,42 +607,30 @@ public final class ApiDispatcher {
             }
 
             case "music/play": {
-                String p = ApiValidator.require(query, "path");
-                String err = musicController.play(p);
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+                final String p = ApiValidator.require(query, "path");
+                return musicOp(new MusicOp() { @Override public String run() { return musicController.play(p); } });
             }
 
             case "music/pause": {
-                String err = musicController.pause();
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+                return musicOp(new MusicOp() { @Override public String run() { return musicController.pause(); } });
             }
 
             case "music/resume": {
-                String err = musicController.resume();
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+                return musicOp(new MusicOp() { @Override public String run() { return musicController.resume(); } });
             }
 
             case "music/stop": {
-                String err = musicController.stop();
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+                return musicOp(new MusicOp() { @Override public String run() { return musicController.stop(); } });
             }
 
             case "music/seek": {
-                int ms = ApiValidator.requireInt(query, "ms");
-                String err = musicController.seekTo(ms);
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+                final int ms = ApiValidator.requireInt(query, "ms");
+                return musicOp(new MusicOp() { @Override public String run() { return musicController.seekTo(ms); } });
             }
 
             case "music/volume": {
-                int pct = ApiValidator.requireVolumePercent(query, "percent");
-                String err = musicController.setVolume(pct);
-                if (err != null) return HttpServer.ApiResponse.error(err);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+                final int pct = ApiValidator.requireVolumePercent(query, "percent");
+                return musicOp(new MusicOp() { @Override public String run() { return musicController.setVolume(pct); } });
             }
 
             case "music/status": {
@@ -638,8 +645,7 @@ public final class ApiDispatcher {
             }
 
             default:
-                return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
-                        "{\"ok\":false,\"error\":\"unknown system endpoint: " + path + "\"}");
+                return unknown("system", path);
         }
     }
 
@@ -656,20 +662,20 @@ public final class ApiDispatcher {
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"direct\":" + direct + ",\"chest\":" + chest + ",\"head\":" + head + "}");
             }
             case "servo/one": {
-                int id = ApiValidator.requireIntRange(query, "id", 1, 20);
-                int angle = ApiValidator.requireIntRange(query, "angle", 0, 255);
-                int time = ApiValidator.optionalIntRange(query, "time", 20, 32767, 500);
+                int id = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
+                int angle = ApiValidator.requireIntRange(query, "angle", ApiValidator.SERVO_ANGLE_MIN, ApiValidator.SERVO_ANGLE_MAX);
+                int time = ApiValidator.optionalIntRange(query, "time", ApiValidator.SERVO_TIME_MIN_MS, ApiValidator.SERVO_TIME_MAX_MS, 500);
                 // cmd05 單發（官方 tuner 實測本機可郁），見 servoSendOneCode。
                 return ubxApi.servoSendOne(id, angle, time);
             }
             case "servo/all": {
                 int[] arr = ApiValidator.requireAngles20(query);
-                int time = ApiValidator.optionalIntRange(query, "time", 20, 32767, 500);
+                int time = ApiValidator.optionalIntRange(query, "time", ApiValidator.SERVO_TIME_MIN_MS, ApiValidator.SERVO_TIME_MAX_MS, 500);
                 // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
                 boolean sent = HardwareDirectManager.get(appContext).chest().setAllServos(arr, (short) time);
                 if (!sent) return HttpServer.ApiResponse.error("direct not ready");
                 ubxPlayer.notePose(arr);
-                return HttpServer.ApiResponse.ok("{\"ok\":true}");
+                return HttpServer.ApiResponse.okTrue();
             }
             case "sonar/config": {
                 int cm = ApiValidator.requireIntRange(query, "distance", 0, 100);
@@ -707,8 +713,7 @@ public final class ApiDispatcher {
             case "ubx/status":
                 return ubxApi.ubxStatusResponse();
             default:
-                return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
-                        "{\"ok\":false,\"error\":\"unknown direct endpoint: " + path + "\"}");
+                return unknown("direct", path);
         }
     }
 

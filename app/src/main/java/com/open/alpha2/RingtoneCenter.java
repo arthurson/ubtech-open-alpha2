@@ -119,18 +119,12 @@ public final class RingtoneCenter {
             player.setOnPreparedListener(android.media.MediaPlayer::start);
             player.setOnCompletionListener(mp -> {
                 synchronized (RingtoneCenter.this) {
-                    mp.release();
-                    if (currentRingtonePlayer == mp) {
-                        currentRingtonePlayer = null;
-                    }
+                    releaseDonePlayerLocked(mp);
                 }
             });
             player.setOnErrorListener((mp, what, extra) -> {
                 synchronized (RingtoneCenter.this) {
-                    mp.release();
-                    if (currentRingtonePlayer == mp) {
-                        currentRingtonePlayer = null;
-                    }
+                    releaseDonePlayerLocked(mp);
                 }
                 return true;
             });
@@ -151,20 +145,15 @@ public final class RingtoneCenter {
     }
 
     private void stopRingtonePlaybackLocked() {
-        if (currentRingtonePlayer != null) {
-            try {
-                currentRingtonePlayer.stop();
-            } catch (Exception e) {
-                // MediaPlayer.stop() throws IllegalStateException if called from certain
-                // states (e.g. still in the middle of prepareAsync()'s Prepared callback
-                // race) - release()  still happens below either way, so this is safe to
-                // swallow.
-            }
-            try {
-                currentRingtonePlayer.release();
-            } catch (Exception e) {
-                // already released/invalid - ignore
-            }
+        MediaPlayerUtil.stopRelease(currentRingtonePlayer);
+        currentRingtonePlayer = null;
+    }
+
+    /** OnCompletion/OnError 共用：release 播完／出錯嗰部 player，係 current 先清掉
+     *  （之前兩個 listener 內逐字一樣；裸 release——completed/errored state 唔啱 stop）。 */
+    private void releaseDonePlayerLocked(android.media.MediaPlayer mp) {
+        mp.release();
+        if (currentRingtonePlayer == mp) {
             currentRingtonePlayer = null;
         }
     }
@@ -273,7 +262,7 @@ public final class RingtoneCenter {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"sound not found\"}");
         }
         playRingtoneUri(uri);
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     // 用 title 查找鈴聲, 不再用 audio/ringtones/list 的 numbered
@@ -293,13 +282,13 @@ public final class RingtoneCenter {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"sound not found\"}");
         }
         playRingtoneUri(uri);
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     // 停止目前正在播放的系統鈴聲/通知聲 (play / play_by_title 兩個
     // endpoint 播放的那個), 對應 Blockly「範例 5」的「停止播放」按鈕。
     public HttpServer.ApiResponse ringtonesStop() {
         stopRingtonePlayback();
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 }

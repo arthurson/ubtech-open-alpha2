@@ -73,13 +73,9 @@ public final class ChestQuery {
     }
 
     /** package-private - ChestUpgrade delegate 呢個 method 過嚟, 唔再自己複製
-     *  多一份一樣嘅 chest availability 檢查邏輯。 */
+     *  多一份一樣嘅 chest availability 檢查邏輯（實現見 DirectProbes）。 */
     boolean chestReady() {
-        try {
-            return HardwareDirectManager.get(appContext).chest().isAvailable();
-        } catch (Exception e) {
-            return false;
-        }
+        return DirectProbes.isChestReady(appContext);
     }
 
     /**

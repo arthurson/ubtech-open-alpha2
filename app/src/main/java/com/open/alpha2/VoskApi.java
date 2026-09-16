@@ -97,21 +97,21 @@ public final class VoskApi {
         xiaozhiBridge.yieldMicToVosk();
         String err = vosk.startListening();
         if (err != null) return HttpServer.ApiResponse.error(err);
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     public HttpServer.ApiResponse voskStop() {
         HttpServer.ApiResponse need = voskOrError();
         if (need != null) return need;
         vosk.stopListening();
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     public HttpServer.ApiResponse voskUnload() {
         HttpServer.ApiResponse need = voskOrError();
         if (need != null) return need;
         vosk.unload();
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     // 咪測試——開 1 秒錄音計 RMS/Peak (dBFS)，幫用戶判斷
@@ -186,6 +186,6 @@ public final class VoskApi {
         float tMax = ApiValidator.optionalFloat(query, "t_max", Float.NaN);
         String err = vosk.setEndpointer(mode, tStart, tEnd, tMax);
         if (err != null) return HttpServer.ApiResponse.error(err);
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 }

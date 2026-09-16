@@ -226,7 +226,7 @@ public final class XiaozhiConfig {
         if (deviceIdOverride != null) editor.putString(PREF_XIAOZHI_DEVICE_ID_OVERRIDE, deviceIdOverride.trim());
         if (tokenOverride != null) editor.putString(PREF_XIAOZHI_TOKEN_OVERRIDE, tokenOverride.trim());
         editor.apply();
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     public HttpServer.ApiResponse mcpConfigGet() {
@@ -264,7 +264,7 @@ public final class XiaozhiConfig {
                     TextUtils.join(",", disabledNames));
         }
         mcpEditor.apply();
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     // 見 getTtsEngine() 的 javadoc。engine 值: "xiaozhi" (預設,

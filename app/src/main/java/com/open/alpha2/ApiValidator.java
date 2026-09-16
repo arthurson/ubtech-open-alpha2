@@ -34,6 +34,69 @@ import java.util.Map;
 public final class ApiValidator {
     private ApiValidator() {}
 
+    /** servo 範圍單一來源（同 openapi spec／MCP schema／McpToolsGenerated 約束一致）：
+     *  id 1-20、angle 0-255、time 20-32767ms。之前 UbxApi／ApiDispatcher／
+     *  XiaozhiBridge 各寫裸 literal，改漏一處即前後端驗證唔一致，收斂到呢度。 */
+    public static final int SERVO_ID_MIN = 1;
+    public static final int SERVO_ID_MAX = 20;
+    /** 全機舵機粒數（servo/all CSV 長度、loop 上限）。 */
+    public static final int SERVO_COUNT = 20;
+    public static final int SERVO_ANGLE_MIN = 0;
+    public static final int SERVO_ANGLE_MAX = 255;
+    public static final int SERVO_TIME_MIN_MS = 20;
+    public static final int SERVO_TIME_MAX_MS = 32767;
+
+    // ── 內部共用解析（全部 trim；訊息形狀不變）─────────────────────
+    private static int parseIntOrThrow(String key, String v) {
+        try {
+            return Integer.parseInt(v.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
+        }
+    }
+
+    private static long parseLongOrThrow(String key, String v) {
+        try {
+            return Long.parseLong(v.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
+        }
+    }
+
+    private static int rangeCheck(String key, int v, int min, int max) {
+        if (v < min || v > max) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be between " + min + " and " + max + ", got: " + v);
+        }
+        return v;
+    }
+
+    private static float parseFloatOrThrow(String key, String v) {
+        try {
+            return Float.parseFloat(v.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
+        }
+    }
+
+    private static double parseDoubleOrThrow(String key, String v) {
+        try {
+            return Double.parseDouble(v.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
+        }
+    }
+
+    private static Boolean parseBoolOrNull(String key, String v) {
+        if ("true".equalsIgnoreCase(v) || "1".equals(v)) return Boolean.TRUE;
+        if ("false".equalsIgnoreCase(v) || "0".equals(v)) return Boolean.FALSE;
+        throw new IllegalArgumentException("parameter '" + key + "' must be true/false, got: " + v);
+    }
+
+    private static String checkEnumOrThrow(String key, String v, String[] allowed) {
+        for (String a : allowed) if (a.equals(v)) return v;
+        throw new IllegalArgumentException("parameter '" + key + "' must be one of " + Arrays.toString(allowed) + ", got: " + v);
+    }
+
     // ── 基礎 ────────────────────────────────────────────────────────
     public static String require(Map<String, String> q, String key) {
         String v = q.get(key);
@@ -51,119 +114,61 @@ public final class ApiValidator {
     // ── 整數 ────────────────────────────────────────────────────────
     // 全部 trim（URL 傳 " 90 " 唔應該 400）。
     public static int requireInt(Map<String, String> q, String key) {
-        String v = require(q, key);
-        try {
-            return Integer.parseInt(v.trim());
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
-        }
+        return parseIntOrThrow(key, require(q, key));
     }
 
     public static int optionalInt(Map<String, String> q, String key, int defaultValue) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return defaultValue;
-        try {
-            return Integer.parseInt(v.trim());
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
-        }
+        return parseIntOrThrow(key, v);
     }
 
     public static int requireIntRange(Map<String, String> q, String key, int min, int max) {
-        int v = requireInt(q, key);
-        if (v < min || v > max) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be between " + min + " and " + max + ", got: " + v);
-        }
-        return v;
+        return rangeCheck(key, requireInt(q, key), min, max);
     }
 
     /** 可選整數三態（缺席/空字串回 null；有值超限即 400；camera w/h 配對用）。 */
     public static Integer optionalIntegerRange(Map<String, String> q, String key, int min, int max) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return null;
-        int iv;
-        try {
-            iv = Integer.parseInt(v.trim());
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
-        }
-        if (iv < min || iv > max) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be between " + min + " and " + max + ", got: " + iv);
-        }
-        return Integer.valueOf(iv);
+        return Integer.valueOf(rangeCheck(key, parseIntOrThrow(key, v), min, max));
     }
 
     public static int optionalIntRange(Map<String, String> q, String key, int min, int max, int defaultValue) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return defaultValue;
-        int iv;
-        try {
-            iv = Integer.parseInt(v);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
-        }
-        if (iv < min || iv > max) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be between " + min + " and " + max + ", got: " + iv);
-        }
-        return iv;
+        return rangeCheck(key, parseIntOrThrow(key, v), min, max);
     }
 
     public static long requireLong(Map<String, String> q, String key) {
-        String v = require(q, key);
-        try {
-            return Long.parseLong(v);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
-        }
+        return parseLongOrThrow(key, require(q, key));
     }
 
     public static long optionalLong(Map<String, String> q, String key, long defaultValue) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return defaultValue;
-        try {
-            return Long.parseLong(v);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
-        }
+        return parseLongOrThrow(key, v);
     }
 
     // ── 浮點 (vosk/endpointer t_*, ubx/speed value) ──────────────────
     public static float requireFloat(Map<String, String> q, String key) {
-        String v = require(q, key);
-        try {
-            return Float.parseFloat(v.trim());
-        } catch (Exception e) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
-        }
+        return parseFloatOrThrow(key, require(q, key));
     }
 
     public static float optionalFloat(Map<String, String> q, String key, float defaultValue) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return defaultValue;
-        try {
-            return Float.parseFloat(v.trim());
-        } catch (Exception e) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
-        }
+        return parseFloatOrThrow(key, v);
     }
 
     public static double requireDouble(Map<String, String> q, String key) {
-        String v = require(q, key);
-        try {
-            return Double.parseDouble(v.trim());
-        } catch (Exception e) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
-        }
+        return parseDoubleOrThrow(key, require(q, key));
     }
 
     public static double optionalDouble(Map<String, String> q, String key, double defaultValue) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return defaultValue;
-        try {
-            return Double.parseDouble(v.trim());
-        } catch (Exception e) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
-        }
+        return parseDoubleOrThrow(key, v);
     }
 
     // ── Nullable (缺席/空字串回 null, 有值則嚴格解析, 非法拋錯) ──────
@@ -172,19 +177,13 @@ public final class ApiValidator {
     public static Integer optionalInteger(Map<String, String> q, String key) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return null;
-        try {
-            return Integer.valueOf(Integer.parseInt(v.trim()));
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("parameter '" + key + "' must be an integer, got: " + v);
-        }
+        return Integer.valueOf(parseIntOrThrow(key, v));
     }
 
     public static Boolean optionalBooleanObject(Map<String, String> q, String key) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return null;
-        if ("true".equalsIgnoreCase(v) || "1".equals(v)) return Boolean.TRUE;
-        if ("false".equalsIgnoreCase(v) || "0".equals(v)) return Boolean.FALSE;
-        throw new IllegalArgumentException("parameter '" + key + "' must be true/false, got: " + v);
+        return parseBoolOrNull(key, v.trim());
     }
 
     public static String optionalNullable(Map<String, String> q, String key) {
@@ -194,39 +193,30 @@ public final class ApiValidator {
 
     // ── 枚舉 ────────────────────────────────────────────────────────
     public static String requireEnum(Map<String, String> q, String key, String[] allowed) {
-        String v = require(q, key);
-        for (String a : allowed) if (a.equals(v)) return v;
-        throw new IllegalArgumentException("parameter '" + key + "' must be one of " + Arrays.toString(allowed) + ", got: " + v);
+        return checkEnumOrThrow(key, require(q, key), allowed);
     }
 
     public static String optionalEnum(Map<String, String> q, String key, String[] allowed, String defaultValue) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return defaultValue;
-        for (String a : allowed) if (a.equals(v)) return v;
-        throw new IllegalArgumentException("parameter '" + key + "' must be one of " + Arrays.toString(allowed) + ", got: " + v);
+        return checkEnumOrThrow(key, v, allowed);
     }
 
     public static String optionalEnumNullable(Map<String, String> q, String key, String[] allowed) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return null;
-        for (String a : allowed) if (a.equals(v)) return v;
-        throw new IllegalArgumentException("parameter '" + key + "' must be one of " + Arrays.toString(allowed) + ", got: " + v);
+        return checkEnumOrThrow(key, v, allowed);
     }
 
     // ── Boolean ────────────────────────────────────────────────────
     public static boolean requireBoolean(Map<String, String> q, String key) {
-        String v = require(q, key);
-        if ("true".equalsIgnoreCase(v) || "1".equals(v)) return true;
-        if ("false".equalsIgnoreCase(v) || "0".equals(v)) return false;
-        throw new IllegalArgumentException("parameter '" + key + "' must be true/false, got: " + v);
+        return parseBoolOrNull(key, require(q, key).trim()).booleanValue();
     }
 
     public static boolean optionalBoolean(Map<String, String> q, String key, boolean defaultValue) {
         String v = q.get(key);
         if (v == null || v.isEmpty()) return defaultValue;
-        if ("true".equalsIgnoreCase(v) || "1".equals(v)) return true;
-        if ("false".equalsIgnoreCase(v) || "0".equals(v)) return false;
-        throw new IllegalArgumentException("parameter '" + key + "' must be true/false, got: " + v);
+        return parseBoolOrNull(key, v.trim()).booleanValue();
     }
 
     // ── 常用組合 (對應 openapi 的具體 constraints) ─────────────────
@@ -354,20 +344,22 @@ public final class ApiValidator {
     public static int[] requireAngles20(Map<String, String> q) {
         String csv = require(q, "angles");
         String[] parts = csv.split(",");
-        if (parts.length != 20) {
-            throw new IllegalArgumentException("parameter 'angles' must have exactly 20 comma-separated values, got " + parts.length);
+        if (parts.length != SERVO_COUNT) {
+            throw new IllegalArgumentException("parameter 'angles' must have exactly " + SERVO_COUNT + " comma-separated values, got " + parts.length);
         }
-        int[] out = new int[20];
-        for (int i = 0; i < 20; i++) {
+        int[] out = new int[SERVO_COUNT];
+        for (int i = 0; i < SERVO_COUNT; i++) {
             // 逐粒 0-255（同 spec/MCP schema；同 servo/one 一致，防靜默截 byte wrap 落舵機）。
+            int v;
             try {
-                out[i] = Integer.parseInt(parts[i].trim());
+                v = Integer.parseInt(parts[i].trim());
             } catch (NumberFormatException e) {
                 throw new IllegalArgumentException("parameter 'angles' element " + (i+1) + " must be integer, got: " + parts[i]);
             }
-            if (out[i] < 0 || out[i] > 255) {
-                throw new IllegalArgumentException("parameter 'angles' element " + (i+1) + " must be between 0 and 255, got: " + out[i]);
+            if (v < SERVO_ANGLE_MIN || v > SERVO_ANGLE_MAX) {
+                throw new IllegalArgumentException("parameter 'angles' element " + (i+1) + " must be between 0 and 255, got: " + v);
             }
+            out[i] = v;
         }
         return out;
     }
@@ -378,7 +370,7 @@ public final class ApiValidator {
     }
 
     public static HttpServer.ApiResponse okTrue() {
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     public static HttpServer.ApiResponse error(String msg) {

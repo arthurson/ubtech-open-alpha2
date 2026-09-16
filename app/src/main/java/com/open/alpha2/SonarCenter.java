@@ -29,10 +29,9 @@ public final class SonarCenter {
         this.uplink = uplink;
     }
 
-    // directChestReady() 內聯：經 appContext 唔使 Activity。
+    // directChestReady() 薄 delegate（實現見 DirectProbes）。
     private boolean directChestReady() {
-        try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
-        catch (Exception e) { return false; }
+        return DirectProbes.isChestReady(appContext);
     }
 
     // Chest sonar trigger threshold in cm, as last set via servo/sonar. Assumption

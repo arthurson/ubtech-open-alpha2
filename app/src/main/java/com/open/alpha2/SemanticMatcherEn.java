@@ -64,15 +64,8 @@ public class SemanticMatcherEn extends SemanticMatcherBase {
             "I'm not sure I understood that", "Can you try saying it differently",
             "I didn't quite get that",
     };
-    private static final String[] FALLBACK_ACTION_IDS = {
-            "1464835936013", // Shake head
-            "1464835936026", // Thinking
-            "1464835936043", // Wink/blink
-            "1509000313549", // Cute/smile
-            "1464835936087", // Nod
-    };
 
     public SemanticMatcherEn(Context context) {
-        super(context, TAG, ASSET_PATH, FALLBACK_QUESTIONS, FALLBACK_ACTION_IDS);
+        super(context, TAG, ASSET_PATH, FALLBACK_QUESTIONS, DEFAULT_FALLBACK_ACTION_IDS);
     }
 }

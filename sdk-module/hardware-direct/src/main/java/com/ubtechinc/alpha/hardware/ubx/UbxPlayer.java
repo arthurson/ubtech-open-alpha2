@@ -249,17 +249,17 @@ public final class UbxPlayer {
         return true;
     }
 
-    /** 變速縮放（僅舵機 move 用：鉗 [20,30000] 保胸協議；配樂 bound/slot 用 long 版不鉗）。 */
-    private static int scaleTime(int ms, float sp) {
-        long v = Math.round(ms / (double) sp);
-        if (v < MIN_TIME_MS) v = MIN_TIME_MS;
-        if (v > MAX_TIME_MS) v = MAX_TIME_MS;
-        return (int) v;
-    }
-
+    /** 變速縮放：long 核心（配樂 bound/slot 用，不鉗）；int 版加鉗 [20,30000] 保胸協議。 */
     private static long scaleTime(long ms, float sp) {
         long v = Math.round(ms / (double) sp);
         return v < 0 ? 0 : v;
+    }
+
+    private static int scaleTime(int ms, float sp) {
+        long v = scaleTime((long) ms, sp);
+        if (v < MIN_TIME_MS) v = MIN_TIME_MS;
+        if (v > MAX_TIME_MS) v = MAX_TIME_MS;
+        return (int) v;
     }
 
     /** 兼容舊三參（無聲版，配樂禁用）。 */
@@ -420,9 +420,18 @@ public final class UbxPlayer {
         }
     }
 
-    /** 停止播放（中斷雙線，停歌，舵機保持末位姿）。
-     * join 唔可以喺鎖內做：voiceLoop 尾 finally 同 OnCompletion 都要同一把鎖，
+    /** join 唔可以喺鎖內做：voiceLoop 尾 finally 同 OnCompletion 都要同一把鎖，
      * 揸住鎖 join 會同收尾線程互等（帶聲 stop 卡足 2s）。先快照、解鎖 join、再返嚟清。 */
+    private static void joinQuietly(Thread t) {
+        if (t == null) return;
+        try {
+            t.join(2000);
+        } catch (InterruptedException ignore) {
+            // ignore
+        }
+    }
+
+    /** 停止播放（中斷雙線，停歌，舵機保持末位姿）。 */
     public void stop() {
         final Thread pt;
         final Thread vt;
@@ -436,20 +445,8 @@ public final class UbxPlayer {
             pt = playThread;
             vt = voiceThread;
         }
-        if (pt != null) {
-            try {
-                pt.join(2000);
-            } catch (InterruptedException ignore) {
-                // ignore
-            }
-        }
-        if (vt != null) {
-            try {
-                vt.join(2000);
-            } catch (InterruptedException ignore) {
-                // ignore
-            }
-        }
+        joinQuietly(pt);
+        joinQuietly(vt);
         synchronized (this) {
             if (playThread == pt) playThread = null;
             if (voiceThread == vt) voiceThread = null;
@@ -466,13 +463,7 @@ public final class UbxPlayer {
             stopVoiceLocked();
             vt = voiceThread;
         }
-        if (vt != null) {
-            try {
-                vt.join(2000);
-            } catch (InterruptedException ignore) {
-                // ignore
-            }
-        }
+        joinQuietly(vt);
         synchronized (this) {
             if (voiceThread == vt) voiceThread = null;
             stopVoiceLocked();

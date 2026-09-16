@@ -103,7 +103,7 @@ public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Hos
         String ttsErr = ttsCenter.speakPanelTts(text, ApiValidator.optional(query, "lang", ""),
                 ApiValidator.optional(query, "voice", ""));
         if (ttsErr != null) return HttpServer.ApiResponse.error(ttsErr);
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     @Override public HttpServer.ApiResponse handleSpeechStop() {

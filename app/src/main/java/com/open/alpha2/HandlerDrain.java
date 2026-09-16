@@ -21,11 +21,18 @@ import java.util.concurrent.TimeUnit;
 final class HandlerDrain {
     private HandlerDrain() { }
 
+    /** 預設排空超時（之前 5 處各自寫裸 2000，收斂到呢度）。 */
+    static final long DEFAULT_TIMEOUT_MS = 2000;
+
     /** Blocks up to {@code timeoutMs} for any work already queued on {@code handler}
      *  to finish. Swallows InterruptedException by re-setting the interrupt flag,
-     *  matching the original call sites. No-op if handler is null. */
-    static void awaitQueueDrain(Handler handler, long timeoutMs) {
-        if (handler == null) return;
+     *  matching the original call sites. No-op (returns false + Log.w) if handler is null.
+     * @return true = 排空成功，false = 超時／被打斷／handler null */
+    static boolean awaitQueueDrain(Handler handler, long timeoutMs) {
+        if (handler == null) {
+            android.util.Log.w("HandlerDrain", "awaitQueueDrain with null handler");
+            return false;
+        }
         final CountDownLatch latch = new CountDownLatch(1);
         handler.post(new Runnable() {
             @Override
@@ -34,9 +41,10 @@ final class HandlerDrain {
             }
         });
         try {
-            latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+            return latch.await(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            return false;
         }
     }
 }

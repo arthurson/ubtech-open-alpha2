@@ -278,7 +278,7 @@ public final class MicCenter {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
                     + MainActivity.jsonSafe(result.error) + "\"}");
         }
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
     public HttpServer.ApiResponse diagnoseAudio() {
         releaseMicForAudioIo();
@@ -293,10 +293,10 @@ public final class MicCenter {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
                     + MainActivity.jsonSafe(result.error) + "\"}");
         }
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
     public HttpServer.ApiResponse playStop() {
         audioPlaybackController.stop();
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 }

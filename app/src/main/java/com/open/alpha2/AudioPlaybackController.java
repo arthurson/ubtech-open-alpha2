@@ -113,6 +113,13 @@ public class AudioPlaybackController {
         static StartResult fail(String error) { return new StartResult(error); }
     }
 
+    /** AudioTrack 建失敗共用收尾（start／playTestTone 兩份逐字一樣）：放掉、記 error、開閘。 */
+    private static void failTrackInit(AudioTrack track, AtomicReference<String> error, CountDownLatch latch) {
+        track.release();
+        error.set("AudioTrack failed to initialize (state=" + track.getState() + ")");
+        latch.countDown();
+    }
+
     private void startThreadIfNeeded() {
         if (playbackThread == null) {
             playbackThread = new HandlerThread("AudioPlaybackControllerThread");
@@ -178,10 +185,7 @@ public class AudioPlaybackController {
                             bufBytes,
                             AudioTrack.MODE_STREAM);
                     if (track.getState() != AudioTrack.STATE_INITIALIZED) {
-                        track.release();
-                        error.set("AudioTrack failed to initialize (state="
-                                + track.getState() + ")");
-                        latch.countDown();
+                        failTrackInit(track, error, latch);
                         return;
                     }
                     // NOTE: play() is deliberately NOT called here - see writeLoop()'s
@@ -428,7 +432,7 @@ public class AudioPlaybackController {
             return;
         }
         playing = false;
-        HandlerDrain.awaitQueueDrain(playbackHandler, 2000);
+        HandlerDrain.awaitQueueDrain(playbackHandler, HandlerDrain.DEFAULT_TIMEOUT_MS);
         if (playbackThread != null) {
             playbackThread.quitSafely();
         }
@@ -555,10 +559,7 @@ public class AudioPlaybackController {
                             bufBytes,
                             AudioTrack.MODE_STREAM);
                     if (track.getState() != AudioTrack.STATE_INITIALIZED) {
-                        track.release();
-                        error.set("AudioTrack failed to initialize (state="
-                                + track.getState() + ")");
-                        latch.countDown();
+                        failTrackInit(track, error, latch);
                         return;
                     }
                     track.write(pcm, 0, pcm.length);

@@ -31,12 +31,6 @@ public final class UbxFile {
     public static final class UbxTrack {
         /** track id（頭 echo 後 4B；單動作恆 0，多動作如 0/2/3/4/1）。 */
         public int id;
-        /**
-         * @deprecated  phantom 字段：原裝結構並無此 4B，
-         * 舊版誤將 echo 當 id、真 id 當 X。為兼容保留，恆與 {@link #id} 相同，請勿再用。
-         */
-        @Deprecated
-        public int xfield;
         public int servoGroups;
         /** voice d.a（f==4 → a/j/a/o 鏈）成功拆出的次數（配樂幀見 frames 內 voice 項）。 */
         public int voiceGroups;
@@ -55,12 +49,6 @@ public final class UbxFile {
         public int timeBaseMs = -1;
         public int timeBaseB;
         public final List<Integer> frameBValues = new ArrayList<>();
-        /**
-         * @deprecated phantom：b-section 實測恆為 d.a 複幀列，從無 20B 引用頭；
-         * 保留空 list 以兼容，恆為空。
-         */
-        @Deprecated
-        public final List<int[]> refs = new ArrayList<>();
         /** a.d 非 0/1 block 原樣（type2/3 燈等、type4 音樂 meta；舊版直接丟棄）。 */
         public final List<UbxBlock> blocks = new ArrayList<>();
         /** 音樂文件名（如 rap.mp3，無則 null；UTF-16 段中提取）。 */

@@ -85,43 +85,32 @@ public class HttpServer implements Runnable {
             return new ApiResponse(200, "application/json; charset=utf-8", json);
         }
 
+        /** {"ok":true} 快捷（之前 30+ 處各自寫全字面，經 JsonUtil.okTrue 單一來源）。 */
+        public static ApiResponse okTrue() {
+            return ok(JsonUtil.okTrue());
+        }
+
+        private static ApiResponse of(int status, String message) {
+            return new ApiResponse(status, "application/json; charset=utf-8",
+                    JsonUtil.okFalse(String.valueOf(message)));
+        }
+
         public static ApiResponse error(String message) {
-            return new ApiResponse(500, "application/json; charset=utf-8",
-                    "{\"ok\":false,\"error\":\"" + esc(String.valueOf(message)) + "\"}");
+            return of(500, message);
         }
 
         public static ApiResponse badRequest(String message) {
-            return new ApiResponse(400, "application/json; charset=utf-8",
-                    "{\"ok\":false,\"error\":\"" + esc(String.valueOf(message)) + "\"}");
+            return of(400, message);
         }
 
         /** 面板 token 閘口用（見 PanelAuth）：未帶／帶錯 token 即 401，唔係 400/500。 */
         public static ApiResponse unauthorized(String message) {
-            return new ApiResponse(401, "application/json; charset=utf-8",
-                    "{\"ok\":false,\"error\":\"" + esc(String.valueOf(message)) + "\"}");
+            return of(401, message);
         }
 
-        /** 同 MainActivity.jsonSafe 同一套轉義（唔直接引用嗰邊，免 HttpServer↔MainActivity 循環）。 */
+        /** 轉義單一實現見 JsonUtil（舊 comment 擔心嘅循環已唔存在：JsonUtil 零依賴）。 */
         private static String esc(String s) {
-            if (s == null) return "";
-            StringBuilder sb = new StringBuilder(s.length());
-            for (int i = 0; i < s.length(); i++) {
-                char c = s.charAt(i);
-                switch (c) {
-                    case '\\': sb.append("\\\\"); break;
-                    case '"': sb.append("\\\""); break;
-                    case '\n': sb.append("\\n"); break;
-                    case '\r': sb.append("\\r"); break;
-                    case '\t': sb.append("\\t"); break;
-                    case '\b': sb.append("\\b"); break;
-                    case '\f': sb.append("\\f"); break;
-                    default:
-                        if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
-                        else sb.append(c);
-                        break;
-                }
-            }
-            return sb.toString();
+            return JsonUtil.esc(s);
         }
     }
 
@@ -312,39 +301,8 @@ public class HttpServer implements Runnable {
             return false; // streamHandler owns the socket lifecycle from here on.
         }
 
-        byte[] rawBody = new byte[0];
-        String lenStr = headers.get("content-length");
-        if (lenStr != null) {
-            int len;
-            try {
-                len = Integer.parseInt(lenStr.trim());
-            } catch (NumberFormatException e) {
-                // Malformed Content-Length header - can't trust anything about the
-                // body that follows (or even how much of it there is), so close the
-                // connection instead of trying to guess/recover.
-                return false;
-            }
-            // body 上限：len 來自客戶端 Content-Length，不設限會 OOM。正常 body
-            // 最大係 /upload/audio walkie-talkie PCM chunk (幾十 KB)，32MB 留有餘裕。
-            // 胸固件上載得 256KB，俾 1MB（/upload/chest 專用上限；
-            // handleChestUpload 自己都會再驗一次）。
-            final int MAX_BODY_BYTES = path.startsWith("/upload/chest") ? (1024 * 1024) : (32 * 1024 * 1024);
-            if (len < 0 || len > MAX_BODY_BYTES) {
-                Log.w(TAG, "Rejecting request with Content-Length=" + len
-                        + " (limit " + MAX_BODY_BYTES + ")");
-                return false;
-            }
-            rawBody = new byte[len];
-            int readTotal = 0;
-            while (readTotal < len) {
-                int n = rawIn.read(rawBody, readTotal, len - readTotal);
-                if (n < 0) break;
-                readTotal += n;
-            }
-            if (readTotal < len) {
-                rawBody = java.util.Arrays.copyOf(rawBody, readTotal);
-            }
-        }
+        byte[] rawBody = readBody(rawIn, headers, path);
+        if (rawBody == null) return false;
 
         OutputStream out = socket.getOutputStream();
 
@@ -402,32 +360,21 @@ public class HttpServer implements Runnable {
             path = "/docs/index.html";
         }
         if (path.startsWith("/.well-known/")) {
-            // try dot path first, fallback to non-dot well-known (aapt ignores dotfiles)
-            String dotAsset = "web" + path;
-            try (InputStream probe = assets.open(dotAsset)) {
-                // exists, use dot path
-                probe.close();
-            } catch (IOException e) {
-                // fallback to well-known without dot
-                String fallback = "web/well-known" + path.substring("/.well-known".length());
-                try (InputStream is2 = assets.open(fallback)) {
-                    ByteArrayOutputStream buffer2 = new ByteArrayOutputStream();
-                    byte[] chunk2 = new byte[8192];
-                    int n2;
-                    while ((n2 = is2.read(chunk2)) != -1) buffer2.write(chunk2, 0, n2);
-                    writeResponse(out, 200, mimeType(path), buffer2.toByteArray(), keepAlive, true);
+            // dotfiles 會被 aapt strip：先試 dot path，唔得即 fallback 無點版，一次 open 搞掂。
+            String fallback = "web/well-known" + path.substring("/.well-known".length());
+            try {
+                byte[] wellKnown = readAsset(fallback);
+                if (wellKnown == null) wellKnown = readAsset("web" + path);
+                if (wellKnown != null) {
+                    writeResponse(out, 200, mimeType(path), wellKnown, keepAlive, true);
                     return;
-                } catch (IOException ignored) {}
-            }
+                }
+            } catch (IOException ignored) {}
         }
         String assetPath = "web" + path;
-        try (InputStream is = assets.open(assetPath)) {
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-            byte[] chunk = new byte[8192];
-            int n;
-            while ((n = is.read(chunk)) != -1) {
-                buffer.write(chunk, 0, n);
-            }
+        try {
+            byte[] body = readAsset(assetPath);
+            if (body == null) throw new IOException("not found: " + assetPath);
             // No Cache-Control header used to be sent at all, which left every browser/
             // WebView free to apply its own heuristic caching to these .js/.css/.html
             // files - user-confirmed symptom: after updating this web UI (new APK
@@ -440,21 +387,83 @@ public class HttpServer implements Runnable {
             // (never a CDN, never meant to be offline-cached), so there is no upside to
             // caching it and real downside (silently stale UI logic after every
             // update) - explicitly forbid caching for every static response.
-            writeResponse(out, 200, mimeType(path), buffer.toByteArray(), keepAlive, true);
+            writeResponse(out, 200, mimeType(path), body, keepAlive, true);
         } catch (IOException notFound) {
             byte[] msg = ("Not found: " + path).getBytes(StandardCharsets.UTF_8);
             writeResponse(out, 404, "text/plain; charset=utf-8", msg, keepAlive, true);
         }
     }
 
+    /** assets 讀一次搞掂（唔存在回 null，唔拋，方便 fallback 鏈）。 */
+    private byte[] readAsset(String assetPath) {
+        InputStream is = null;
+        try {
+            is = assets.open(assetPath);
+            return IOUtil.readAllBytes(is);
+        } catch (IOException e) {
+            return null;
+        } finally {
+            if (is != null) {
+                try { is.close(); } catch (IOException ignored) {}
+            }
+        }
+    }
+
+    /** body 讀取（含上限）：正常回 byte[]，header 爛／超限回 null＝閂線。 */
+    private static byte[] readBody(InputStream rawIn, Map<String, String> headers, String path)
+            throws IOException {
+        String lenStr = headers.get("content-length");
+        if (lenStr == null) return new byte[0];
+        int len;
+        try {
+            len = Integer.parseInt(lenStr.trim());
+        } catch (NumberFormatException e) {
+            // Malformed Content-Length header - can't trust anything about the
+            // body that follows (or even how much of it there is), so close the
+            // connection instead of trying to guess/recover.
+            return null;
+        }
+        // body 上限：len 來自客戶端 Content-Length，不設限會 OOM。正常 body
+        // 最大係 /upload/audio walkie-talkie PCM chunk (幾十 KB)，32MB 留有餘裕。
+        // 胸固件上載得 256KB，俾 1MB（/upload/chest 專用上限；
+        // handleChestUpload 自己都會再驗一次）。
+        final int maxBody = path.startsWith("/upload/chest") ? (1024 * 1024) : (32 * 1024 * 1024);
+        if (len < 0 || len > maxBody) {
+            Log.w(TAG, "Rejecting request with Content-Length=" + len + " (limit " + maxBody + ")");
+            return null;
+        }
+        if (len == 0) return new byte[0];
+        return IOUtil.readExactly(rawIn, len);
+    }
+
+    private static final Map<String, String> MIME = new HashMap<String, String>();
+    static {
+        MIME.put(".html", "text/html; charset=utf-8");
+        MIME.put(".js", "application/javascript; charset=utf-8");
+        MIME.put(".css", "text/css; charset=utf-8");
+        MIME.put(".json", "application/json; charset=utf-8");
+        MIME.put(".yml", "text/yaml; charset=utf-8");
+        MIME.put(".yaml", "text/yaml; charset=utf-8");
+        MIME.put(".png", "image/png");
+        MIME.put(".svg", "image/svg+xml");
+    }
+
+    private static final Map<Integer, String> STATUS_TEXT = new HashMap<Integer, String>();
+    static {
+        STATUS_TEXT.put(200, "OK");
+        STATUS_TEXT.put(400, "Bad Request");
+        STATUS_TEXT.put(401, "Unauthorized");
+        STATUS_TEXT.put(404, "Not Found");
+        STATUS_TEXT.put(500, "Internal Server Error");
+        STATUS_TEXT.put(503, "Service Unavailable");
+    }
+
     private static String mimeType(String path) {
-        if (path.endsWith(".html")) return "text/html; charset=utf-8";
-        if (path.endsWith(".js")) return "application/javascript; charset=utf-8";
-        if (path.endsWith(".css")) return "text/css; charset=utf-8";
-        if (path.endsWith(".json")) return "application/json; charset=utf-8";
-        if (path.endsWith(".yml") || path.endsWith(".yaml")) return "text/yaml; charset=utf-8";
-        if (path.endsWith(".png")) return "image/png";
-        if (path.endsWith(".svg")) return "image/svg+xml";
+        int dot = path.lastIndexOf('.');
+        if (dot >= 0) {
+            String t = MIME.get(path.substring(dot));
+            if (t != null) return t;
+        }
         return "application/octet-stream";
     }
 
@@ -465,16 +474,8 @@ public class HttpServer implements Runnable {
 
     private static void writeResponse(OutputStream out, int status, String contentType, byte[] body, boolean keepAlive, boolean noCache)
             throws IOException {
-        String statusText;
-        switch (status) {
-            case 200: statusText = "OK"; break;
-            case 400: statusText = "Bad Request"; break;
-            case 401: statusText = "Unauthorized"; break;
-            case 404: statusText = "Not Found"; break;
-            case 500: statusText = "Internal Server Error"; break;
-            case 503: statusText = "Service Unavailable"; break;
-            default: statusText = "Error"; break;
-        }
+        String statusText = STATUS_TEXT.get(status);
+        if (statusText == null) statusText = "Error";
         StringBuilder header = new StringBuilder();
         header.append("HTTP/1.1 ").append(status).append(' ').append(statusText).append("\r\n");
         header.append("Content-Type: ").append(contentType).append("\r\n");

@@ -116,7 +116,7 @@ public final class UbxApi {
 
     public HttpServer.ApiResponse ubxStopResponse() {
         ubxPlayer.stop();
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     public HttpServer.ApiResponse ubxStatusResponse() {
@@ -152,21 +152,20 @@ public final class UbxApi {
     }
 
     // -- Servo endpoint 回應層 --
-    // directChestReady() 內聯：經 appContext 唔使 Activity。
+    // directChestReady() 薄 delegate（實現見 DirectProbes）。
     private boolean directChestReady() {
-        try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
-        catch (Exception e) { return false; }
+        return DirectProbes.isChestReady(appContext);
     }
 
     public HttpServer.ApiResponse servoOneResponse(Map<String, String> query) {
         // pure-direct: 單舵機經 cmd05 直發。
         // 可選 trim 參數——有帶就接著經 cmd12 寫入 chest EEPROM
         //（官方 tuner 同款持久化；掉電保持，亂寫會改出廠校準，用戶明確先好用）。
-        int id = ApiValidator.requireIntRange(query, "id", 1, 20);
+        int id = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
         // 跟 spec/MCP（angle 0-255，time 20-32767）顯式驗，
         // 超限即 400。
-        int angle = ApiValidator.requireIntRange(query, "angle", 0, 255);
-        int time = ApiValidator.optionalIntRange(query, "time", 20, 32767, 1000);
+        int angle = ApiValidator.requireIntRange(query, "angle", ApiValidator.SERVO_ANGLE_MIN, ApiValidator.SERVO_ANGLE_MAX);
+        int time = ApiValidator.optionalIntRange(query, "time", ApiValidator.SERVO_TIME_MIN_MS, ApiValidator.SERVO_TIME_MAX_MS, 1000);
         Integer trim = null;
         if (query.containsKey("trim") && query.get("trim") != null && !query.get("trim").isEmpty()) {
             try {
@@ -197,7 +196,7 @@ public final class UbxApi {
 
     public HttpServer.ApiResponse servoAllResponse(Map<String, String> query) {
         int[] angles = ApiValidator.requireAngles20(query);
-        int time = ApiValidator.optionalIntRange(query, "time", 20, 32767, 1000);
+        int time = ApiValidator.optionalIntRange(query, "time", ApiValidator.SERVO_TIME_MIN_MS, ApiValidator.SERVO_TIME_MAX_MS, 1000);
         // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
         boolean sent = HardwareDirectManager.get(appContext).chest().setAllServos(angles, (short) time);
         if (sent) ubxPlayer.notePose(angles);
@@ -211,7 +210,7 @@ public final class UbxApi {
         // 比較）。trim 即 offset 原值，前端照 show，唔使再減 home。
         // 讀唔到（超時／舵機回 01 error，如本機 5/6 號硬件壞；17/18 號手指
         // 天生無回授）如實報 ok:false，不編 0。
-        int idInt = ApiValidator.requireIntRange(query, "id", 1, 20);
+        int idInt = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
         Integer live = readServoLive(idInt);
         Integer commanded = ubxPlayer.poseBoxed()[idInt - 1];
         if (live == null) {
@@ -263,7 +262,7 @@ public final class UbxApi {
         // 讀唔到（超時）如實報 ok:false，不編 0。
         // 注意：讀本身會令嗰粒鬆力（firmware 行為，兩部機證實），要上返力就行
         // servo/angle-restore（讀寫原子）或隨便郁佢一郁。
-        int idInt = ApiValidator.requireIntRange(query, "id", 1, 20);
+        int idInt = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
         Integer angle = readServoAbsLive(idInt);
         if (angle == null) {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + idInt
@@ -278,7 +277,7 @@ public final class UbxApi {
         // 呢度讀到即用 servo/one（cmd05）寫返同一個位上力，全程後端內完成、
         // 唔經瀏覽器來回——鬆力窗口得幾十毫秒，跌都未跌得切，肉眼唔覺郁。
         // time 用最細 20ms：純粹為快趣上力，唔係為郁。
-        int idInt = ApiValidator.requireIntRange(query, "id", 1, 20);
+        int idInt = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
         Integer angle = readServoAbsLive(idInt);
         if (angle == null) {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + idInt

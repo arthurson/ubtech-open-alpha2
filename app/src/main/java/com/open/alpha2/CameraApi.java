@@ -42,6 +42,39 @@ public final class CameraApi {
         return controller.getLastFrame();
     }
 
+    /** snapshot 系三 endpoint 共用起手式：start 相機，失敗即回現成 error response
+     *  （之前三份逐字一樣；stream 版行 socket 503、vision 版回 XiaozhiVisionResult，
+     *  各自保留）。成功回 null。 */
+    private HttpServer.ApiResponse startCameraOrError() {
+        CameraController.StartResult started = cameraController.start(8000);
+        if (started.error != null) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + MainActivity.jsonSafe(started.error) + "\"}");
+        }
+        return null;
+    }
+
+    /** snapshot／snapshotSave 共用：等 AE/AF 收斂＋對焦＋鎖 AE 才取幀（之前兩份逐字一樣；
+     *  takePhotoSave 唔用——takePicture 內部自己行 AF/AE）。 */
+    private void settleCameraForSnapshot() {
+        // 等 AE/AF 收斂 + 對焦 + 鎖 AE 才取幀，避免「未 ready 就按 shutter」糊/暗/過曝
+        cameraController.waitForPreviewReady(2500);
+        cameraController.triggerAutoFocusAndWait(2200);
+        cameraController.lockAeAwbSync(700);
+        try { Thread.sleep(150); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+
+    /** 軟件變焦 fallback（硬件唔支援時拍照裁切放大；之前三份邏輯一樣，淨變量名唔同）。 */
+    private byte[] maybeSoftwareZoom(byte[] jpeg) {
+        float z = cameraController.getZoom();
+        if (z > 1.01f) {
+            CameraController.ZoomInfo zi = cameraController.getZoomInfoSync(800);
+            if (zi != null && !zi.hardwareSupported) {
+                return cameraController.applySoftwareZoomToJpeg(jpeg, z);
+            }
+        }
+        return jpeg;
+    }
+
     // -- Camera: standard Android legacy Camera API, not SDK-gated (see
     // CameraController for the front/back index quirk on this hardware). The
     // live feed itself is served at GET /stream/camera (see handleStream()) as
@@ -51,30 +84,16 @@ public final class CameraApi {
     // and returns whatever the most recent preview frame is, for callers that
     // want one still image rather than opening the stream. -----------------------
     public HttpServer.ApiResponse snapshot() {
-        CameraController.StartResult started = cameraController.start(8000);
-        if (started.error != null) {
-            return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
-                    + MainActivity.jsonSafe(started.error) + "\"}");
-        }
-        // 等 AE/AF 收斂 + 對焦 + 鎖 AE 才取幀，避免「未 ready 就按 shutter」糊/暗/過曝
-        cameraController.waitForPreviewReady(2500);
-        cameraController.triggerAutoFocusAndWait(2200);
-        cameraController.lockAeAwbSync(700);
-        try { Thread.sleep(150); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        HttpServer.ApiResponse startErr = startCameraOrError();
+        if (startErr != null) return startErr;
+        settleCameraForSnapshot();
         CameraController.Frame frame = waitForFrame(cameraController, 3000);
         cameraController.unlockAeAwbAsync();
         if (frame == null) {
             return HttpServer.ApiResponse.ok(
                     "{\"ok\":false,\"error\":\"timed out waiting for a preview frame\"}");
         }
-        byte[] jpeg = frame.jpeg;
-        float z = cameraController.getZoom();
-        if (z > 1.01f) {
-            CameraController.ZoomInfo zi = cameraController.getZoomInfoSync(800);
-            if (zi != null && !zi.hardwareSupported) {
-                jpeg = cameraController.applySoftwareZoomToJpeg(jpeg, z);
-            }
-        }
+        byte[] jpeg = maybeSoftwareZoom(frame.jpeg);
         String b64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP);
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"jpegBase64\":\"" + b64 + "\"}");
     }
@@ -96,27 +115,15 @@ public final class CameraApi {
             cameraController.setRequestedResolution(reqW, reqH);
             cameraController.forceStopAndWait(3000);
         }
-        CameraController.StartResult started = cameraController.start(8000);
-        if (started.error != null) {
-            return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + MainActivity.jsonSafe(started.error) + "\"}");
-        }
-        cameraController.waitForPreviewReady(2500);
-        cameraController.triggerAutoFocusAndWait(2200);
-        cameraController.lockAeAwbSync(700);
-        try { Thread.sleep(150); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        HttpServer.ApiResponse startErr = startCameraOrError();
+        if (startErr != null) return startErr;
+        settleCameraForSnapshot();
         CameraController.Frame frame = waitForFrame(cameraController, 3000);
         cameraController.unlockAeAwbAsync();
         if (frame == null) {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"timed out waiting for frame\"}");
         }
-        byte[] jpegToSave = frame.jpeg;
-        float zz = cameraController.getZoom();
-        if (zz > 1.01f) {
-            CameraController.ZoomInfo zi2 = cameraController.getZoomInfoSync(800);
-            if (zi2 != null && !zi2.hardwareSupported) {
-                jpegToSave = cameraController.applySoftwareZoomToJpeg(jpegToSave, zz);
-            }
-        }
+        byte[] jpegToSave = maybeSoftwareZoom(frame.jpeg);
         try {
             java.io.File dir = new java.io.File("/sdcard/DCIM/Alpha2");
             if (!dir.exists()) dir.mkdirs();
@@ -146,23 +153,14 @@ public final class CameraApi {
         // 若未指定，用最大 picture 尺寸 (見 openapi default w=4208 h=3120)。
         int reqW = ApiValidator.optionalIntRange(query, "w", 1, 4208, 4208);
         int reqH = ApiValidator.optionalIntRange(query, "h", 1, 3120, 3120);
-        CameraController.StartResult started = cameraController.start(8000);
-        if (started.error != null) {
-            return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + MainActivity.jsonSafe(started.error) + "\"}");
-        }
+        HttpServer.ApiResponse startErr = startCameraOrError();
+        if (startErr != null) return startErr;
         CameraController.PhotoResult photo = cameraController.takePhoto(reqW, reqH, 8000);
         if (photo.error != null) {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + MainActivity.jsonSafe(photo.error) + "\"}");
         }
         // 軟件變焦 fallback（硬件唔支援時，拍照裁切放大）
-        byte[] outJpeg = photo.jpeg;
-        float z2 = cameraController.getZoom();
-        if (z2 > 1.01f) {
-            CameraController.ZoomInfo zi3 = cameraController.getZoomInfoSync(800);
-            if (zi3 != null && !zi3.hardwareSupported) {
-                outJpeg = cameraController.applySoftwareZoomToJpeg(outJpeg, z2);
-            }
-        }
+        byte[] outJpeg = maybeSoftwareZoom(photo.jpeg);
         try {
             java.io.File dir = new java.io.File("/sdcard/DCIM/Alpha2");
             if (!dir.exists()) dir.mkdirs();
@@ -184,7 +182,7 @@ public final class CameraApi {
     // the browser itself.
     public HttpServer.ApiResponse shutterSound() {
         ringtoneCenter.playShutterCue();
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     public HttpServer.ApiResponse info() {

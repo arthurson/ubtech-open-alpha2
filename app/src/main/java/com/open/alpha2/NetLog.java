@@ -14,6 +14,8 @@ public final class NetLog {
 
     private static final String TAG = "NetLog";
     private static final int MAX_URL_LEN = 512;
+    /** EventBus type（集中一處，免字面散）。 */
+    public static final String TYPE = "net_connect";
 
     /**
      * 對外連一次即記一行。擺喺 openConnection／setDataSource／new Socket
@@ -21,28 +23,10 @@ public final class NetLog {
      */
     public static void out(String purpose, String url) {
         String u = url == null ? "?" : url;
-        if (u.length() > MAX_URL_LEN) u = u.substring(0, MAX_URL_LEN) + "...";
+        u = JsonUtil.truncate(u, MAX_URL_LEN);
         android.util.Log.i(TAG, "outbound " + purpose + ": " + u);
-        EventBus.get().publish("net_connect",
-                "{\"purpose\":\"" + q(purpose) + "\",\"url\":\"" + q(u) + "\"}");
-    }
-
-    /** JSON 字串 escape（URL 可能含用戶搜尋字，直接拼會爛）。 */
-    private static String q(String s) {
-        StringBuilder sb = new StringBuilder(s.length() + 16);
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"': sb.append("\\\""); break;
-                case '\\': sb.append("\\\\"); break;
-                case '\n': sb.append("\\n"); break;
-                case '\r': sb.append("\\r"); break;
-                case '\t': sb.append("\\t"); break;
-                default:
-                    if (c < 0x20) sb.append(String.format(java.util.Locale.US, "\\u%04x", (int) c));
-                    else sb.append(c);
-            }
-        }
-        return sb.toString();
+        EventBus.get().publish(TYPE,
+                "{\"purpose\":" + JsonUtil.quote(String.valueOf(purpose))
+                        + ",\"url\":" + JsonUtil.quote(u) + "}");
     }
 }

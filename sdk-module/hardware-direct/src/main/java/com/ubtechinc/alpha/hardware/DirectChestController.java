@@ -14,6 +14,27 @@ public final class DirectChestController {
 
     public DirectChestController(DirectSerialPort port) { this.port = port; }
 
+    /** 0-255 鉗位（防靜默截 byte wrap 猛扯舵機）。 */
+    private static int clampAngle(int v) {
+        if (v < 0) { android.util.Log.w("DirectChest", "angle clamp 0 (was " + v + ")"); return 0; }
+        if (v > 255) { android.util.Log.w("DirectChest", "angle clamp 255 (was " + v + ")"); return 255; }
+        return v;
+    }
+
+    /** time 20-32767 鉗位（spec 上限，見 servo/one）。 */
+    private static short clampTime(int time) {
+        if (time < 20) return 20;
+        if (time > 32767) return 32767;
+        return (short) time;
+    }
+
+    /** 0-255 靜默鉗位（聲納／群舵機用，唔 log）。 */
+    private static int clampByte(int v) {
+        if (v < 0) return 0;
+        if (v > 255) return 255;
+        return v;
+    }
+
     public boolean open() { return port.open(); }
     public void close() { port.close(); }
     public boolean isAvailable() { return port.isAvailable(); }
@@ -24,10 +45,8 @@ public final class DirectChestController {
         if (id < 1 || id > 20) return false;
         // 角度單位同 servo/one 一致（0-255；MCP schema 同 spec 上限）：唔鉗位直接
         // 截 byte 會 wrap 猛扯。time 照舊下限 20，上限跟 spec 32767。
-        if (angle < 0) { android.util.Log.w("DirectChest", "angle clamp 0 (was " + angle + ")"); angle = 0; }
-        if (angle > 255) { android.util.Log.w("DirectChest", "angle clamp 255 (was " + angle + ")"); angle = 255; }
-        if (time < 20) time = 20;
-        if (time > 32767) time = 32767;
+        angle = clampAngle(angle);
+        time = clampTime(time);
         DeveloperPacketData p = new DeveloperPacketData(5);
         p.putByte(id);
         p.putByte((byte) ((angle >> 8) & 0xFF));
@@ -42,14 +61,10 @@ public final class DirectChestController {
      */
     public boolean playAllServos(int[] angles20, short time) {
         if (angles20 == null || angles20.length != 20) return false;
-        if (time < 20) time = 20;
-        if (time > 32767) time = 32767;
+        time = clampTime(time);
         DeveloperPacketData p = new DeveloperPacketData(22);
         for (int a : angles20) {
-            int v = a;
-            if (v < 0) v = 0;
-            if (v > 255) v = 255;
-            p.putByte((byte) v);
+            p.putByte((byte) clampByte(a));
         }
         p.putShort_(time);
         return port.send(RobotWire.CHEST_CMD_SENDMOTOR, p.getBuffer());
@@ -67,10 +82,7 @@ public final class DirectChestController {
 
     /** 聲納配置：1.1.7.3 正確值為 subCmd=10, 距離 cm（byte 範圍，超限鉗 0-255 防 wrap） */
     public boolean configureSonar(int distanceCm) {
-        int v = distanceCm;
-        if (v < 0) v = 0;
-        if (v > 255) v = 255;
-        return port.send(RobotWire.CHEST_CMD_SETTING, new byte[]{10, (byte) v});
+        return port.send(RobotWire.CHEST_CMD_SETTING, new byte[]{10, (byte) clampByte(distanceCm)});
     }
 
     /** PIR 使能：cmd=72，實測 1.1.7.3 固件有效 */

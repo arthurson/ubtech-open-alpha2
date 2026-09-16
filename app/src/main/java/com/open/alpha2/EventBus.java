@@ -69,17 +69,20 @@ public final class EventBus {
         // connections succeeded).
         long now = System.currentTimeMillis();
         // 原子 take，避免重複 log。
-        if (now - lastListenerCountLogMs.get() > 2000
-                && lastListenerCountLogMs.compareAndSet(lastListenerCountLogMs.get(), now)) {
+        long last = lastListenerCountLogMs.get();
+        if (now - last > 2000
+                && lastListenerCountLogMs.compareAndSet(last, now)) {
             android.util.Log.i("EventBus", "publish(" + type + ") - " + listeners.size() + " listener(s) subscribed");
         }
-        String line = "{\"type\":\"" + type + "\",\"time\":\"" + time + "\",\"data\":" + dataJson + "}";
+        String line = "{\"type\":" + JsonUtil.quote(type) + ",\"time\":" + JsonUtil.quote(time)
+                + ",\"data\":" + dataJson + "}";
         for (Listener l : listeners) {
             try {
                 l.onEvent(line);
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
                 // A single bad subscriber must not break the others (Error 都接，
                 // 唔係一個壞 listener 掟 Error 會斷後面成串）。
+                android.util.Log.d("EventBus", "bad listener", t);
             }
         }
     }

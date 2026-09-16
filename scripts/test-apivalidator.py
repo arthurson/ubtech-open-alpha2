@@ -83,8 +83,11 @@ def main() -> int:
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="apivalidator-test-"))
     # ApiValidator → HttpServer → WebSocketServer → EventBus 呢條 closure
     # 淨係掂到 android.util/Log + java.*，一齊編即可 (唔使成個 app)。
+    # 2026-09 橫切簡化後 HttpServer/EventBus 共用 JsonUtil/IOUtil，一齊編。
     files = [
         str(src / "ApiValidator.java"),
+        str(src / "JsonUtil.java"),
+        str(src / "IOUtil.java"),
         str(src / "HttpServer.java"),
         str(src / "WebSocketServer.java"),
         str(src / "EventBus.java"),

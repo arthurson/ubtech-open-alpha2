@@ -305,7 +305,7 @@ public class AudioController {
         if (audioHandler == null) {
             return;
         }
-        HandlerDrain.awaitQueueDrain(audioHandler, 2000);
+        HandlerDrain.awaitQueueDrain(audioHandler, HandlerDrain.DEFAULT_TIMEOUT_MS);
     }
 
     /** True if no stream client is currently subscribed - i.e. stopIfIdle() will
@@ -333,7 +333,7 @@ public class AudioController {
             return;
         }
         recording = false;
-        HandlerDrain.awaitQueueDrain(audioHandler, 2000);
+        HandlerDrain.awaitQueueDrain(audioHandler, HandlerDrain.DEFAULT_TIMEOUT_MS);
         if (audioThread != null) {
             audioThread.quitSafely();
         }

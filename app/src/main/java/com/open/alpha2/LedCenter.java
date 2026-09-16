@@ -454,14 +454,9 @@ public final class LedCenter {
         return null;
     }
 
-    // directChestReady() 內聯：經 appContext
-    // 唔使 Activity (同上面 headerReady() 一樣形狀)。
+    // directChestReady() 薄 delegate（實現見 DirectProbes，同下面 headerReady() 一對）。
     private boolean directChestReady() {
-        try {
-            return HardwareDirectManager.get(appContext).chest().isAvailable();
-        } catch (Exception e) {
-            return false;
-        }
+        return DirectProbes.isChestReady(appContext);
     }
 
     // 真機已確認 cmd=72 開關生效, PIR 觸發正常。
@@ -478,7 +473,7 @@ public final class LedCenter {
     public HttpServer.ApiResponse pirAlertEnabledResponse(Map<String, String> query) {
         boolean enabled = ApiValidator.requireBoolean(query, "on");
         setPirAlertEnabled(enabled);
-        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+        return HttpServer.ApiResponse.okTrue();
     }
 
     /** Same "long" (solid, always-on) LED effect as led/head/set & led/eye/set's
@@ -522,11 +517,7 @@ public final class LedCenter {
     }
 
     private boolean headerReady() {
-        try {
-            return HardwareDirectManager.get(appContext).head().isAvailable();
-        } catch (Exception e) {
-            return false;
-        }
+        return DirectProbes.isHeadReady(appContext);
     }
 
     // Speed used for the mouth LED breathing effect auto-triggered around TTS speech

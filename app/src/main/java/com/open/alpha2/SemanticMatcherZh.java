@@ -62,15 +62,8 @@ public class SemanticMatcherZh extends SemanticMatcherBase {
             "不好意思，我聽不懂", "可以再說一次嗎", "我還不太明白，可以說清楚一點嗎",
             "這個我還不太懂", "可以換個說法嗎",
     };
-    private static final String[] FALLBACK_ACTION_IDS = {
-            "1464835936013", // 搖頭
-            "1464835936026", // 思考
-            "1464835936043", // 眨眼
-            "1509000313549", // 賣萌
-            "1464835936087", // 點頭
-    };
 
     public SemanticMatcherZh(Context context) {
-        super(context, TAG, ASSET_PATH, FALLBACK_QUESTIONS, FALLBACK_ACTION_IDS);
+        super(context, TAG, ASSET_PATH, FALLBACK_QUESTIONS, DEFAULT_FALLBACK_ACTION_IDS);
     }
 }

@@ -361,26 +361,11 @@ public class XiaozhiClient {
      *  (manual mode 係設計給「按住鍵才錄、放手就立刻送 listen stop」用的，
      *  無自動斷句，唔啱呢度。) */
     public void sendListenStart() throws IOException {
-        try {
-            JSONObject msg = new JSONObject();
-            msg.put("type", "listen");
-            msg.put("state", "start");
-            msg.put("mode", "auto");
-            sendJson(msg);
-        } catch (JSONException e) {
-            throw new IOException("failed to build listen-start message", e);
-        }
+        sendListenControl("start", "auto");
     }
 
     public void sendListenStop() throws IOException {
-        try {
-            JSONObject msg = new JSONObject();
-            msg.put("type", "listen");
-            msg.put("state", "stop");
-            sendJson(msg);
-        } catch (JSONException e) {
-            throw new IOException("failed to build listen-stop message", e);
-        }
+        sendListenControl("stop", null);
     }
 
     /** PHASE 4 (text input): sends a piece of typed text as if it were a recognized
@@ -411,6 +396,19 @@ public class XiaozhiClient {
             sendJson(msg);
         } catch (JSONException e) {
             throw new IOException("failed to build listen-detect message", e);
+        }
+    }
+
+    /** listen 三件套共用裝配（start/stop/detect-text 除外各自加料）。 */
+    private void sendListenControl(String state, String mode) throws IOException {
+        try {
+            JSONObject msg = new JSONObject();
+            msg.put("type", "listen");
+            msg.put("state", state);
+            if (mode != null) msg.put("mode", mode);
+            sendJson(msg);
+        } catch (JSONException e) {
+            throw new IOException("failed to build listen-" + state + " message", e);
         }
     }
 
@@ -915,13 +913,15 @@ public class XiaozhiClient {
     /** Sends one client->server frame. Unlike WebSocketServer.sendFrame() (server->
      *  client, never masked), RFC 6455 requires every client->server frame be masked
      *  with a fresh random 32-bit key. */
+    private static final SecureRandom RANDOM = new SecureRandom();
+
     private synchronized void sendFrame(OutputStream o, byte opcodeByte, byte[] payload) throws IOException {
         if (o == null) throw new IOException("not connected");
         byte firstByte = (byte) (0x80 | opcodeByte); // FIN + opcode
         int len = payload.length;
         o.write(firstByte);
         byte[] mask = new byte[4];
-        new SecureRandom().nextBytes(mask);
+        RANDOM.nextBytes(mask);
         if (len < 126) {
             o.write(0x80 | len); // MASK bit set + length
         } else if (len <= 0xFFFF) {
@@ -967,7 +967,7 @@ public class XiaozhiClient {
 
     private static String generateWebSocketKey() {
         byte[] nonce = new byte[16];
-        new SecureRandom().nextBytes(nonce);
+        RANDOM.nextBytes(nonce);
         return android.util.Base64.encodeToString(nonce, android.util.Base64.NO_WRAP);
     }
 

@@ -210,8 +210,8 @@ public final class VoskController {
     }
 
     /** 由 model id parse 語言段 (vosk-model[-small]-xx-...，xx 係語言碼)，
-     *  查全表。 */
-    private static String guessLang(String id) {
+     *  查全表。parse 段兩語版共用（之前 guessLang／guessLangEn 各複製一份）。 */
+    private static String[] parseLangSub(String id) {
         String lang = null;
         String sub = null;
         String[] parts = id.toLowerCase(java.util.Locale.US).split("-");
@@ -231,6 +231,13 @@ public final class VoskController {
                 break;
             }
         }
+        return new String[]{lang, sub};
+    }
+
+    private static String guessLang(String id) {
+        String[] ls = parseLangSub(id);
+        String lang = ls[0];
+        String sub = ls[1];
         if (lang == null) return "未知";
         if (lang.equals("en") && "in".equals(sub)) return "印度英文";
         if (lang.equals("ar") && "tn".equals(sub)) return "突尼西亞阿拉伯文";
@@ -238,75 +245,50 @@ public final class VoskController {
         return name != null ? name : "未知 (" + lang + ")";
     }
 
-    private static final java.util.Map<String, String> LANG_NAMES = buildLangNames();
+    private static final java.util.Map<String, String> LANG_NAMES = buildLangNames(false);
+    private static final java.util.Map<String, String> LANG_NAMES_EN = buildLangNames(true);
 
-    private static java.util.Map<String, String> buildLangNames() {
-        // Vosk 官方 models 頁 35 個 small 全覆蓋 (code → 中文名)。
+    /** 中英兩表同一個 code 表一次建成（之前兩個 builder 各複製同一份 pairs）。 */
+    private static java.util.Map<String, String> buildLangNames(boolean english) {
+        // Vosk 官方 models 頁 35 個 small 全覆蓋 (code → 中文名／英文名)。
         String[][] pairs = {
-            {"en", "英文"}, {"cn", "中文"}, {"zh", "中文"},
-            {"ja", "日文"}, {"ru", "俄文"}, {"fr", "法文"}, {"de", "德文"},
-            {"es", "西班牙文"}, {"pt", "葡萄牙文"}, {"tr", "土耳其文"},
-            {"vn", "越南文"}, {"vi", "越南文"}, {"it", "意大利文"},
-            {"nl", "荷蘭文"}, {"ca", "加泰隆尼亞文"}, {"ar", "阿拉伯文"},
-            {"fa", "波斯文"}, {"tl", "菲律賓文"}, {"uk", "烏克蘭文"},
-            {"kz", "哈薩克文"}, {"sv", "瑞典文"}, {"eo", "世界語"},
-            {"hi", "印地文"}, {"cs", "捷克文"}, {"pl", "波蘭文"},
-            {"uz", "烏茲別克文"}, {"ko", "韓文"}, {"br", "布列塔尼文"},
-            {"gu", "古吉拉特文"}, {"tg", "塔吉克文"}, {"te", "泰盧固文"},
-            {"ky", "吉爾吉斯文"}, {"ka", "格魯吉亞文"},
+            {"en", "英文", "English"}, {"cn", "中文", "Chinese"}, {"zh", "中文", "Chinese"},
+            {"ja", "日文", "Japanese"}, {"ru", "俄文", "Russian"},
+            {"fr", "法文", "French"}, {"de", "德文", "German"},
+            {"es", "西班牙文", "Spanish"}, {"pt", "葡萄牙文", "Portuguese"},
+            {"tr", "土耳其文", "Turkish"},
+            {"vn", "越南文", "Vietnamese"}, {"vi", "越南文", "Vietnamese"},
+            {"it", "意大利文", "Italian"},
+            {"nl", "荷蘭文", "Dutch"}, {"ca", "加泰隆尼亞文", "Catalan"},
+            {"ar", "阿拉伯文", "Arabic"},
+            {"fa", "波斯文", "Persian"}, {"tl", "菲律賓文", "Filipino"},
+            {"uk", "烏克蘭文", "Ukrainian"},
+            {"kz", "哈薩克文", "Kazakh"}, {"sv", "瑞典文", "Swedish"},
+            {"eo", "世界語", "Esperanto"},
+            {"hi", "印地文", "Hindi"}, {"cs", "捷克文", "Czech"},
+            {"pl", "波蘭文", "Polish"},
+            {"uz", "烏茲別克文", "Uzbek"}, {"ko", "韓文", "Korean"},
+            {"br", "布列塔尼文", "Breton"},
+            {"gu", "古吉拉特文", "Gujarati"}, {"tg", "塔吉克文", "Tajik"},
+            {"te", "泰盧固文", "Telugu"},
+            {"ky", "吉爾吉斯文", "Kyrgyz"}, {"ka", "格魯吉亞文", "Georgian"},
         };
         java.util.Map<String, String> m = new java.util.HashMap<>();
-        for (String[] p : pairs) m.put(p[0], p[1]);
+        for (String[] p : pairs) m.put(p[0], english ? p[2] : p[1]);
         return m;
     }
 
     /** guessLang 嘅英文版（同一個 parse，前端 uiLang＝en 嗰陣顯示；catalog/models
      *  帶 langEn，舊客淨讀 lang 唔受影響）。 */
     private static String guessLangEn(String id) {
-        String lang = null;
-        String sub = null;
-        String[] parts = id.toLowerCase(java.util.Locale.US).split("-");
-        for (int i = 0; i < parts.length; i++) {
-            if (parts[i].equals("model") || parts[i].equals("small")) {
-                int j = i + 1;
-                while (j < parts.length
-                        && (parts[j].equals("model") || parts[j].equals("small"))) {
-                    j++;
-                }
-                if (j < parts.length) lang = parts[j];
-                if (j + 1 < parts.length && parts[j + 1].matches("[a-z]{2}")) {
-                    sub = parts[j + 1];
-                }
-                break;
-            }
-        }
+        String[] ls = parseLangSub(id);
+        String lang = ls[0];
+        String sub = ls[1];
         if (lang == null) return "unknown";
         if (lang.equals("en") && "in".equals(sub)) return "Indian English";
         if (lang.equals("ar") && "tn".equals(sub)) return "Tunisian Arabic";
         String name = LANG_NAMES_EN.get(lang);
         return name != null ? name : "unknown (" + lang + ")";
-    }
-
-    private static final java.util.Map<String, String> LANG_NAMES_EN = buildLangNamesEn();
-
-    private static java.util.Map<String, String> buildLangNamesEn() {
-        // 同 LANG_NAMES 一一對應（code → 英文名）。
-        String[][] pairs = {
-            {"en", "English"}, {"cn", "Chinese"}, {"zh", "Chinese"},
-            {"ja", "Japanese"}, {"ru", "Russian"}, {"fr", "French"}, {"de", "German"},
-            {"es", "Spanish"}, {"pt", "Portuguese"}, {"tr", "Turkish"},
-            {"vn", "Vietnamese"}, {"vi", "Vietnamese"}, {"it", "Italian"},
-            {"nl", "Dutch"}, {"ca", "Catalan"}, {"ar", "Arabic"},
-            {"fa", "Persian"}, {"tl", "Filipino"}, {"uk", "Ukrainian"},
-            {"kz", "Kazakh"}, {"sv", "Swedish"}, {"eo", "Esperanto"},
-            {"hi", "Hindi"}, {"cs", "Czech"}, {"pl", "Polish"},
-            {"uz", "Uzbek"}, {"ko", "Korean"}, {"br", "Breton"},
-            {"gu", "Gujarati"}, {"tg", "Tajik"}, {"te", "Telugu"},
-            {"ky", "Kyrgyz"}, {"ka", "Georgian"},
-        };
-        java.util.Map<String, String> m = new java.util.HashMap<>();
-        for (String[] p : pairs) m.put(p[0], p[1]);
-        return m;
     }
 
     private static long dirSize(File dir) {

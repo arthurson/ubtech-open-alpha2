@@ -414,53 +414,30 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     private void registerDynamicReceiver() {
         dynamicReceiver = new RobotEventReceiver();
         IntentFilter filter = new IntentFilter();
-        // 反編譯 alpha2services_base 3.0.0.2 全個 APK, 搜晒所有
-        // sendBroadcast() call site 逐個核對 —— "com.ubtechinc.key" 呢個 action
-        // string 在這個韌體版本已經找不到任何 sendBroadcast 出處, 實際上是死
-        // code。依然保留 filter + RobotEventReceiver 那個 case, 純粹做向後
-        // 相容 (以防其他韌體/舊機用到這個 action), 但這台機器不會再觸發。
-        filter.addAction("com.ubtechinc.key");
-        filter.addAction("com.ubtechinc.robot.tts_hint_wakeup");
-        filter.addAction("come.ubt.alpha2.gesture");
-        filter.addAction("com.ubtechinc.robot_uuid.info");
-        filter.addAction(RobotWire.ALPHA_QR_CODE);
-        filter.addAction(RobotWire.ALPHA_WIFI_RESULT);
-        filter.addAction(RobotWire.ALPHA_BT_CONNECTION);
-        // 反編譯 alpha2services_base 3.0.0.2 整個 APK 找到的 sendBroadcast() 出處，詳見各自的
-        // RobotEventReceiver case comment。
-        filter.addAction("com.ubtechinc.services.Action.ACTION_STOP");
-        filter.addAction("com.ubtechinc.services.Action.ROBOT_INTERRUPTED");
-        // 實機 (firmware 1.1.1.14) 證實 sonar 讀數不會經由
-        // IAlpha2SerialPortService.onListenSerialPortRcvData() 送達 - app 自己
-        // registerSerialPortRcvListener() 只收到 config command 的 2-byte ack
-        // "04 00"。CHEST_ACTION 這個 broadcast 也收得到, 但反編譯官方
-        // alpha2demo.apk 之後證實它只是印機身內部 raw command byte 做 debug log
-        // (getmCmd()), 不是真正的 sonar 讀數路徑。真正生效的是下面獨立的
-        // SONAR_DISTANCE_ACTION - 保留 CHEST_ACTION filter 純粹做輔助 debug 用
-        // (RobotEventReceiver 那個 case 依然會 dump 它的 extras, 對照兩條路徑
-        // 的時序有用), 不再指望它是主要事件來源。
-        filter.addAction(RobotWire.CHEST_ACTION);
-        // ⚠️ 未經真機驗證 (見 RobotEventReceiver 這個 case 的
-        // comment) - 反編譯官方 alpha2services 3.0.0.2 APK 反推出來的 PIR 通知
-        // broadcast, 只有在 SecurityCameraUtil 監控開關開啟的時候才會發出。
-        filter.addAction("com.ubtech.securityCamera.pirStatus");
-        // 官方 alpha2demo.apk (firmware 1.1.1.14) 反編譯確認: sonar 讀數是經由這個
-        // 獨立 broadcast 送出, extra 已經是 parse 好的 int, 不需要自己再解 raw
-        // wire frame。見 RobotWire.SONAR_DISTANCE_ACTION 的 comment。
-        filter.addAction(RobotWire.SONAR_DISTANCE_ACTION);
-        // 用來查「speech_SetMIC() 拿回 mic 會不會有 broadcast 通知」這個問題, 反編譯
-        // Alpha2Services-v1.1.7.3.20-5mic.apk 整個 APK 找到的 sendBroadcast()
-        // 出處 (speechmanager.d.*/AlphaMainSeviceImpl 這兩個 class)。特意連語意未確定的也全部先 register, 經
-        // mic_broadcast_debug event 轉送到 WebSocket log (見 RobotEventReceiver
-        // 這幾個 case comment) - 目的是收集實際 payload, 看完再決定哪幾個和 mic
-        // ownership 真的有關、要不要正式做成獨立 event/更新 UI 指示燈, 在未驗證之前
-        // 不假設這個名字看起來像什麼意思就是什麼意思。
-        filter.addAction("com.ubtechinc.services.ABOUT_TTS");
-        filter.addAction("com.ubtechinc.services.ALPHA_SOCKET_ASR_OK");
-        filter.addAction("com.ubtechinc.services.SPEECH_ANGLE_5MIC");
-        filter.addAction("com.ubtechinc.services.LED_ACTION");
-        filter.addAction("com.ubtechinc.services.POWER_SAVE");
-        filter.addAction("com.ubtechinc.services.ALPHA_NOTIFY_POWER");
+        // 下面字串全部保留原樣（考古細節見 git history＋RobotEventReceiver 各 case）：
+        // key 死 code 留嚟相容舊韌體；CHEST_ACTION 純輔助 debug，真 sonar 係 SONAR_DISTANCE_ACTION；
+        // pirStatus 未經真機驗證；尾段 mic 系 broadcast 語意未定，經 mic_broadcast_debug 收集。
+        String[] actions = {
+                "com.ubtechinc.key",
+                "com.ubtechinc.robot.tts_hint_wakeup",
+                "come.ubt.alpha2.gesture",
+                "com.ubtechinc.robot_uuid.info",
+                RobotWire.ALPHA_QR_CODE,
+                RobotWire.ALPHA_WIFI_RESULT,
+                RobotWire.ALPHA_BT_CONNECTION,
+                "com.ubtechinc.services.Action.ACTION_STOP",
+                "com.ubtechinc.services.Action.ROBOT_INTERRUPTED",
+                RobotWire.CHEST_ACTION,
+                "com.ubtech.securityCamera.pirStatus",
+                RobotWire.SONAR_DISTANCE_ACTION,
+                "com.ubtechinc.services.ABOUT_TTS",
+                "com.ubtechinc.services.ALPHA_SOCKET_ASR_OK",
+                "com.ubtechinc.services.SPEECH_ANGLE_5MIC",
+                "com.ubtechinc.services.LED_ACTION",
+                "com.ubtechinc.services.POWER_SAVE",
+                "com.ubtechinc.services.ALPHA_NOTIFY_POWER",
+        };
+        for (String a : actions) filter.addAction(a);
         registerReceiver(dynamicReceiver, filter);
     }
 
@@ -801,17 +778,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
      *  對 "all.api.radio-browser.info" 做 DNS 解析再從多個鏡像之間挑選, 但這台機器沒有
      *  DNS SRV/多鏡像 failover 的需求 (一台家用機器人, 不是高流量服務), 直接用
      *  官方文件範例裡出現的 de1 這個固定主機就已經足夠, 保持程式碼簡單。 */
-    /** Reads an InputStream fully into a UTF-8 string - mirrors XiaozhiOtaClient's own
-     *  readFully() (same need, this class just doesn't share that one since it's
-     *  private there). Used by xiaozhiVisionExplainRequest()'s response handling. */
+    /** Reads an InputStream fully into a UTF-8 string (共用實現見 {@link IOUtil})。 */
     static String readFully(java.io.InputStream in) throws java.io.IOException {
-        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
-        byte[] chunk = new byte[4096];
-        int n;
-        while ((n = in.read(chunk)) != -1) {
-            buf.write(chunk, 0, n);
-        }
-        return new String(buf.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+        return IOUtil.readFully(in);
     }
 
     // -- handleApi 缺口 (mic/grammar core 未搬)：dispatcher 經 Host 調返嚟，
@@ -897,36 +866,11 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 + "\",\"bindReady\":" + ready + "}");
     }
 
+    // 轉義單一實現見 JsonUtil。保留呢個 shim：~60 個 call site 經 MainActivity. 直用，
+    // 兼顧 XiaozhiOtaClient activationMessage 帶 literal "\n" 必須 escape 先可以
+    // JSON.parse() 嘅實機背景（詳見 git history）。
     static String jsonSafe(String s) {
-        if (s == null) return "";
-        // XiaozhiOtaClient 的 server 回應的 activationMessage 實測證實會帶著
-        // literal "\n" (實機 logcat 看到 "xiaozhi.me" 後面直接斷行), 送入
-        // EventBus.publish() 組出來的 JSON string 裡如果有未 escape 的真正換行
-        // 字元在語法上是非法的 (JSON string 不允許有 literal newline) - 前端
-        // JSON.parse() 會直接拋錯, 使整個 event 落入 catch 變成 type:"raw",
-        // 使 "xiaozhi_activation" 這個 type 永遠比對不中, 界面對應的顯示邏輯
-        // (xiaozhiShowActivationCode()) 完全不會觸發 - 這才是「websocket log
-        // 看到東西, 但界面沒顯示」的真正成因。
-        // \b \f + 其餘 C0 控制字元（U+XXXX 形），同 HttpServer
-        // ApiResponse 轉義睇齊。
-        StringBuilder sb = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '\\': sb.append("\\\\"); break;
-                case '"': sb.append("\\\""); break;
-                case '\n': sb.append("\\n"); break;
-                case '\r': sb.append("\\r"); break;
-                case '\t': sb.append("\\t"); break;
-                case '\b': sb.append("\\b"); break;
-                case '\f': sb.append("\\f"); break;
-                default:
-                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
-                    else sb.append(c);
-                    break;
-            }
-        }
-        return sb.toString();
+        return JsonUtil.esc(s);
     }
 
     /** RobotEventReceiver tts_hint_wakeup 交俾 GrammarCenter (wakeup probe)。 */

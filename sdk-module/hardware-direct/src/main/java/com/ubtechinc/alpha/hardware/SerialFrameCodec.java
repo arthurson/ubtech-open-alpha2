@@ -32,6 +32,20 @@ public final class SerialFrameCodec {
     /** MCU 主動事件頭（0x80 心跳/0x91 mute 鍵等）：00 00，接收兼容用。 */
     private static final byte EVENT_SRC = 0x00;
 
+    /** checksum = (LEN + SRC + DST + CMD + ΣPARAM) & 0xFF（encode／長式共用）。 */
+    private static int checksum(int len, int src, int dst, int cmd, byte[] param, int paramOff, int plen) {
+        int sum = (len & 0xFF) + (src & 0xFF) + (dst & 0xFF) + (cmd & 0xFF);
+        for (int k = 0; k < plen; k++) sum += param[paramOff + k] & 0xFF;
+        return sum & 0xFF;
+    }
+
+    /** 短式 checksum = (LEN + ΣPAYLOAD) & 0xFF。 */
+    private static int checksumShort(int len, byte[] buf, int payloadOff, int plen) {
+        int sum = len & 0xFF;
+        for (int k = 0; k < plen; k++) sum += buf[payloadOff + k] & 0xFF;
+        return sum & 0xFF;
+    }
+
     /**
      * 編一個完整待發送幀（長式，官方 App 同款 05 00 頭）。
      * @param cmd  來自 StaticValue 的 command byte (如 52=CHEST_SET_ALL_ANGLE, 5=CHES_CMD_MOTORANGLE)
@@ -56,9 +70,7 @@ public final class SerialFrameCodec {
             i += plen;
         }
         // checksum = (LEN + SRC + DST + CMD + ΣPARAM) & 0xFF
-        int sum = (len & 0xFF) + (FRAME_SRC & 0xFF) + (FRAME_DST & 0xFF) + (cmd & 0xFF);
-        if (param != null) for (byte b : param) sum += (b & 0xFF);
-        frame[i++] = (byte) (sum & 0xFF);
+        frame[i++] = (byte) checksum(len, FRAME_SRC, FRAME_DST, cmd, param == null ? new byte[0] : param, 0, plen);
         frame[i++] = FRAME_TAIL;
         return frame;
     }
@@ -87,9 +99,8 @@ public final class SerialFrameCodec {
                 return new DecodeResult(null, (start - offset) + 1);
             }
             int plen = len - 7;
-            int sum = len + (buf[start+3] & 0xFF) + (buf[start+4] & 0xFF) + (buf[start+5] & 0xFF);
-            for (int k = 0; k < plen; k++) sum += buf[start+6+k] & 0xFF;
-            if ((sum & 0xFF) != (buf[start+total-2] & 0xFF)) {
+            if (checksum(len, buf[start+3], buf[start+4], buf[start+5], buf, start+6, plen)
+                    != (buf[start+total-2] & 0xFF)) {
                 return new DecodeResult(null, (start - offset) + 1);
             }
             byte[] frame = Arrays.copyOfRange(buf, start, start+total);
@@ -104,9 +115,7 @@ public final class SerialFrameCodec {
         if (buf[start + total - 1] != FRAME_TAIL) {
             return new DecodeResult(null, (start - offset) + 1);
         }
-        int sum = len & 0xFF;
-        for (int k = 0; k < len; k++) sum += buf[start+3+k] & 0xFF;
-        if ((sum & 0xFF) != (buf[start+total-2] & 0xFF)) {
+        if (checksumShort(len, buf, start+3, len) != (buf[start+total-2] & 0xFF)) {
             // checksum 錯，跳過這個頭繼續找
             return new DecodeResult(null, (start - offset) + 1);
         }

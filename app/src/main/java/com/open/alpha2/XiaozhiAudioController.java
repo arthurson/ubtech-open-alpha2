@@ -333,7 +333,7 @@ public class XiaozhiAudioController {
         capturing = false;
         frameSink = null;
         if (captureHandler == null) return;
-        HandlerDrain.awaitQueueDrain(captureHandler, 2000);
+        HandlerDrain.awaitQueueDrain(captureHandler, HandlerDrain.DEFAULT_TIMEOUT_MS);
     }
 
     public boolean isCapturing() {
@@ -607,7 +607,7 @@ public class XiaozhiAudioController {
     public void stopPlayback() {
         playing = false;
         if (playbackHandler == null) return;
-        HandlerDrain.awaitQueueDrain(playbackHandler, 2000);
+        HandlerDrain.awaitQueueDrain(playbackHandler, HandlerDrain.DEFAULT_TIMEOUT_MS);
     }
 
     public boolean isPlaying() {
