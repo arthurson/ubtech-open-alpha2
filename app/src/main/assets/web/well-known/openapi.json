@@ -2691,6 +2691,64 @@
         "operationId": "voskMicTest_get"
       }
     },
+    "/api/vosk/stereo_test": {
+      "get": {
+        "tags": [
+          "speech"
+        ],
+        "summary": "立體聲探測 (stereo 錄幾秒，計 L/R RMS＋互相關，判 dual-mono 定真 stereo)",
+        "parameters": [
+          {
+            "name": "delay",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 8000,
+              "default": 1000
+            },
+            "description": "開始錄前等幾耐 (ms，俾時間行近／出聲)"
+          },
+          {
+            "name": "secs",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5,
+              "default": 2
+            },
+            "description": "錄幾秒"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "聲道比較 (rmsDbL/rmsDbR/deltaDb/corr/dualMono；聽緊嗰陣唔做)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "voskStereoTest_get"
+      }
+    },
     "/api/vosk/catalog": {
       "get": {
         "tags": [

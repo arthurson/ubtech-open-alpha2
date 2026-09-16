@@ -635,6 +635,13 @@ const Alpha2Api = (function() {
     return api('vosk/status', params);
   }
 
+  function voskStereoTest(params) {
+    if (params && params.delay != null) assertRange(Number(params.delay), 0, 8000, 'delay');
+    if (params && params.secs != null) assertRange(Number(params.secs), 1, 5, 'secs');
+    // 立體聲探測 (stereo 錄幾秒，計 L/R RMS＋互相關，判 dual-mono 定真 stereo)
+    return api('vosk/stereo_test', params);
+  }
+
   function voskStop(params) {
     // 停止 Vosk 聆聽 (model 繼續駐留)
     return api('vosk/stop', params);
@@ -925,6 +932,7 @@ const Alpha2Api = (function() {
     voskModels,
     voskStart,
     voskStatus,
+    voskStereoTest,
     voskStop,
     voskUnload,
     systemAuthClear,

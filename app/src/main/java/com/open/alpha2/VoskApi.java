@@ -138,6 +138,21 @@ public final class VoskApi {
         return HttpServer.ApiResponse.ok(vosk.micTestJson());
     }
 
+    // 2026-09 新增: 立體聲探測——開 stereo recorder 錄幾秒，分開計 L/R RMS＋
+    // 互相關，判斷 HAL 俾嘅係咪真 stereo（定 dual-mono 複製品）。真 stereo 先
+    // 值得做 ILD 左右轉向；dual-mono 就行掃頭路。聽緊／小智攞咪嗰陣唔做。
+    public HttpServer.ApiResponse voskStereoTest(Map<String, String> query) {
+        HttpServer.ApiResponse need = voskOrError();
+        if (need != null) return need;
+        if (xiaozhiBridge.isMicCapturing()) {
+            return HttpServer.ApiResponse.error("xiaozhi holds the mic - stop xiaozhi mic first (mic/stop)");
+        }
+        int delayMs = ApiValidator.optionalIntRange(query, "delay", 0, 8000, 1000);
+        int secs = ApiValidator.optionalIntRange(query, "secs", 1, 5, 2);
+        // stereoTestJson 自帶 {"ok":...}，直接透傳。
+        return HttpServer.ApiResponse.ok(vosk.stereoTestJson(delayMs, secs));
+    }
+
     // 2026-09 新增：模型下載＋自動 unzip（實驗 tab 下載卡用）。
     // model＝目錄名（見 vosk/catalog，固定官方 URL allowlist，唔收任意 URL）。
     // 背景落 zip 再自己 unzip 到 sdcard 頂層，完咗自動 load。進度經

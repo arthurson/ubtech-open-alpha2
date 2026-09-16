@@ -507,6 +507,11 @@ public final class VoskController {
      */
     public synchronized String startListening() {
         if (state == State.LISTENING) return null;
+        return startListeningLocked();
+    }
+
+    /** 開始聆聽內部實作（完整問法文法）。必須喺 synchronized 內／LISTENING 檢查之後 call。 */
+    private synchronized String startListeningLocked() {
         if (state != State.READY || model == null) {
             return state == State.LOADING ? "model loading, try later" : "load a model first";
         }
@@ -526,11 +531,12 @@ public final class VoskController {
         }
         Recognizer rec = null;
         SpeechService service = null;
+        String activeGrammar = grammarJson;
         try {
-            if (grammarJson != null) {
+            if (activeGrammar != null) {
                 Recognizer g;
                 try {
-                    g = new Recognizer(model, SAMPLE_RATE, grammarJson);
+                    g = new Recognizer(model, SAMPLE_RATE, activeGrammar);
                 } catch (Throwable e) {
                     Log.w(TAG, "grammar recognizer failed, fallback open vocab", e);
                     g = new Recognizer(model, SAMPLE_RATE);
@@ -553,22 +559,12 @@ public final class VoskController {
 
                 @Override
                 public void onResult(String hypothesis) {
-                    String text = transcript(hypothesis, "text");
-                    if (text != null && !text.isEmpty()) {
-                        // 斷症用：log 低認到咩（EventBus 只帶去前端，logcat 睇唔到內容）。
-                        Log.i(TAG, "final: " + text);
-                        EventBus.get().publish("asr_result",
-                                "{\"text\":\"" + escape(text) + "\"}");
-                    }
+                    onVoskFinal(hypothesis);
                 }
 
                 @Override
                 public void onFinalResult(String hypothesis) {
-                    String text = transcript(hypothesis, "text");
-                    if (text != null && !text.isEmpty()) {
-                        EventBus.get().publish("asr_result",
-                                "{\"text\":\"" + escape(text) + "\"}");
-                    }
+                    onVoskFinal(hypothesis);
                 }
 
                 @Override
@@ -610,6 +606,21 @@ public final class VoskController {
         EventBus.get().publish("vosk_state",
                 "{\"state\":\"listening\",\"model\":\"" + escape(modelId == null ? "" : modelId) + "\"}");
         return null;
+    }
+
+    /** 成句結果：沿用舊管線（氣泡＋語意配對＋TTS）。
+     *  跑喺 SpeechService listener thread（main）。絕不 throw。 */
+    private void onVoskFinal(String hypothesis) {
+        try {
+            String text = transcript(hypothesis, "text");
+            if (text == null || text.isEmpty()) return;
+            // 斷症用：log 低認到咩（EventBus 只帶去前端，logcat 睇唔到內容）。
+            Log.i(TAG, "final: " + text);
+            EventBus.get().publish("asr_result",
+                    "{\"text\":\"" + escape(text) + "\"}");
+        } catch (Throwable e) {
+            Log.w(TAG, "onVoskFinal failed", e);
+        }
     }
 
     /** endpointer 調校＋persist。mode -1＝跟預設；delays 要三個一齊俾先有效
@@ -737,6 +748,103 @@ public final class VoskController {
         } catch (Throwable e) {
             Log.w(TAG, "micTest failed", e);
             return "{\"ok\":false,\"error\":\"" + escape(String.valueOf(e.getMessage())) + "\"}";
+        } finally {
+            if (rec != null) {
+                try {
+                    rec.release();
+                } catch (Throwable ignore) {
+                }
+            }
+        }
+    }
+
+    /** 立體聲探測：開 stereo recorder 錄幾秒，分開計 L/R RMS (dBFS)＋零延遲
+     *  互相關。corr≈1 且左右差≈0 即係 dual-mono（HAL 將單咪複製兩份——舊機
+     *  常態），咁 ILD 轉向就唔使諗；真 stereo 的話側邊聲源會令兩邊差開。
+     *  用 MIC 源（唔用 VOICE_RECOGNITION——後者自帶單聲道降噪，會洗走聲道差）。
+     *  同 micTestJson 一樣：聽緊嗰陣唔做（單 input HAL）。
+     *  回完整 JSON（成功 {"ok":true,...}，失敗 {"ok":false,"error":...}）。 */
+    public String stereoTestJson(int delayMs, int secs) {
+        synchronized (this) {
+            if (state == State.LISTENING) {
+                return "{\"ok\":false,\"error\":\"stop listening first (mic busy)\"}";
+            }
+        }
+        if (delayMs > 0) {
+            try {
+                Thread.sleep(delayMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return "{\"ok\":false,\"error\":\"interrupted\"}";
+            }
+        }
+        AudioRecord rec = null;
+        try {
+            int minBuf = AudioRecord.getMinBufferSize(16000,
+                    AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT);
+            if (minBuf <= 0) {
+                return "{\"ok\":false,\"stereo\":false,\"error\":\"HAL refuses stereo"
+                        + " (minBuf=" + minBuf + ")\"}";
+            }
+            rec = new AudioRecord(MediaRecorder.AudioSource.MIC,
+                    16000, AudioFormat.CHANNEL_IN_STEREO,
+                    AudioFormat.ENCODING_PCM_16BIT, Math.max(minBuf * 2, 128000));
+            if (rec.getState() != AudioRecord.STATE_INITIALIZED) {
+                return "{\"ok\":false,\"stereo\":false,"
+                        + "\"error\":\"stereo AudioRecord not initialized\"}";
+            }
+            if (rec.getChannelCount() < 2) {
+                return "{\"ok\":false,\"stereo\":false,\"error\":\"got "
+                        + rec.getChannelCount() + " channel(s), need 2\"}";
+            }
+            rec.startRecording();
+            int frames = 16000 * secs;
+            short[] buf = new short[frames * 2];
+            int got = 0;
+            long deadline = SystemClock.elapsedRealtime() + secs * 1000L + 3000;
+            while (got < buf.length && SystemClock.elapsedRealtime() < deadline) {
+                int n = rec.read(buf, got, buf.length - got);
+                if (n < 0) break;
+                if (n > 0) got += n;
+            }
+            try {
+                rec.stop();
+            } catch (Throwable ignore) {
+            }
+            int pairs = got / 2;
+            if (pairs < 1600) {
+                return "{\"ok\":false,\"stereo\":false,\"error\":\"too few samples: " + got + "\"}";
+            }
+            double sumL = 0, sumR = 0, dot = 0;
+            long diffSum = 0;
+            for (int i = 0; i < pairs; i++) {
+                double l = buf[i * 2] / 32768.0;
+                double r = buf[i * 2 + 1] / 32768.0;
+                sumL += l * l;
+                sumR += r * r;
+                dot += l * r;
+                diffSum += Math.abs((long) buf[i * 2] - (long) buf[i * 2 + 1]);
+            }
+            double rmsL = Math.sqrt(sumL / pairs);
+            double rmsR = Math.sqrt(sumR / pairs);
+            double rmsDbL = 20 * Math.log10(rmsL + 1e-9);
+            double rmsDbR = 20 * Math.log10(rmsR + 1e-9);
+            double corr = dot / Math.sqrt(sumL * sumR + 1e-18);
+            double meanAbsDiff = diffSum / (double) pairs / 32768.0;
+            boolean dualMono = corr > 0.999 && Math.abs(rmsDbL - rmsDbR) < 0.5;
+            return "{\"ok\":true,\"stereo\":true"
+                    + ",\"rmsDbL\":" + String.format(java.util.Locale.US, "%.1f", rmsDbL)
+                    + ",\"rmsDbR\":" + String.format(java.util.Locale.US, "%.1f", rmsDbR)
+                    + ",\"deltaDb\":" + String.format(java.util.Locale.US, "%.2f",
+                            Math.abs(rmsDbL - rmsDbR))
+                    + ",\"corr\":" + String.format(java.util.Locale.US, "%.4f", corr)
+                    + ",\"meanAbsDiff\":" + String.format(java.util.Locale.US, "%.5f", meanAbsDiff)
+                    + ",\"dualMono\":" + dualMono
+                    + ",\"frames\":" + pairs + "}";
+        } catch (Throwable e) {
+            Log.w(TAG, "stereoTest failed", e);
+            return "{\"ok\":false,\"stereo\":false,\"error\":\""
+                    + escape(String.valueOf(e.getMessage())) + "\"}";
         } finally {
             if (rec != null) {
                 try {

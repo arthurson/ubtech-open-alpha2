@@ -280,6 +280,9 @@ public final class ApiDispatcher {
                 return voskApi.voskUnload();
             case "vosk/mic_test":
                 return voskApi.voskMicTest();
+            // 2026-09 新增：立體聲探測（真 stereo 先值得做 ILD 轉向）。
+            case "vosk/stereo_test":
+                return voskApi.voskStereoTest(query);
             case "vosk/download":
                 return voskApi.voskDownload(query);
             case "vosk/download_status":
