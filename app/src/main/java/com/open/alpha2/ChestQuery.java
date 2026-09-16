@@ -14,18 +14,14 @@ import java.util.concurrent.TimeUnit;
 /**
  * 胸口 MCU 同步查詢：韌體版本 (cmd 51) 同 SN/UUID (cmd 55)，pure-direct。
  *
- * 2026-09 由 MainActivity 抽出 (第一刀拆 god object)：latch/raw/len 狀態、
- * 幀解析、阻塞查詢原本全部係 MainActivity 私有成員，搬過嚟一字不改邏輯。
  * 擁有關係：
  * - MainActivity.onDirectChestFrame() 收到胸串口幀先處理心跳/避障/mute/PIR/
  *   升級 ACK，剩低交畀 {@link #onFrame} 認領版本/UUID 回覆。
  * - handleApi chest/version、misc/request_uuid、system/discover、
  *   胸升級 reset 經呢度做阻塞查詢 (HttpServer worker thread，可阻塞)。
  *
- * 線程：latch 欄位 volatile，和以前一樣——兩個查詢同時行會互踩
- * (後者覆蓋前者嘅 latch)，行為同未抽之前完全一致，調用方本來就唔會並行。
- * 2026-09 dispatcher Phase 1 第三刀加：misc/request_uuid、misc/set_uuid
- * 2 個 handleApi case body 搬入 (requestUuidResponse/setUuidResponse)。
+ * 線程：latch 欄位 volatile，兩個查詢同時行會互踩
+ * (後者覆蓋前者嘅 latch)，調用方本來就唔會並行。
  */
 public final class ChestQuery {
     private static final String TAG = "ChestQuery";
@@ -37,19 +33,19 @@ public final class ChestQuery {
     private final Context appContext;
     private final RobotStub robot;
 
-    // 2026-08: 真實胸口 MCU 韌體版本查詢 (CHEST_READ_VERSION 51 / 0x33) 用的
+    // 真實胸口 MCU 韌體版本查詢 (CHEST_READ_VERSION 51 / 0x33) 用的
     // 同步等待狀態，供 queryFirmwareVersion() 阻塞等待 (HttpServer worker
     // thread，非主 thread)，onFrame() 回調一到就 countDown。
     private volatile CountDownLatch chestVersionLatch;
     private volatile byte[] chestVersionRaw;
     private volatile int chestVersionLen;
-    // 2026-09: 機械人 SN/UUID 直讀 (CHEST_READ_SID_EEPROM 55 / 0x37) 用的
+    // 機械人 SN/UUID 直讀 (CHEST_READ_SID_EEPROM 55 / 0x37) 用的
     // 同步等待狀態，同一個 pattern。機身已無 alpha2services,
     // robot.requestRobotUUID() 的 broadcast 永遠無人回覆。
     private volatile CountDownLatch chestUuidLatch;
     private volatile byte[] chestUuidRaw;
     private volatile int chestUuidLen;
-    // 2026-09-06: 單舵機實讀 (cmd 13 / 0x0d) 用的同步等待狀態。官方 PC tuner
+    // 單舵機實讀 (cmd 13 / 0x0d) 用的同步等待狀態。官方 PC tuner
     // 實測 wire 格式：查詢 f8 8f 08 05 00 0d <id> <sum> ed；正常回覆
     // f8 8f 0b 05 00 0d 00 <id> <hi> <lo> <sum> ed（BE16 signed），
     // 壞舵機（如本機 5/6 號，硬件問題）回短 error 幀
@@ -58,12 +54,12 @@ public final class ChestQuery {
     private volatile int servoExpectId = -1;
     private volatile Integer servoValue = null;
     private volatile boolean servoError = false;
-    // 2026-09-06 晚：trim 寫入 (cmd 12) 回覆 latch。回覆 09 05 00 0c 00 <id>
+    // trim 寫入 (cmd 12) 回覆 latch。回覆 09 05 00 0c 00 <id>
     // = OK，01 <id> = 該軸無回授（同 0d 一樣，本機 5/6 號即此例）。
     private volatile CountDownLatch trimLatch;
     private volatile int trimExpectId = -1;
     private volatile Boolean trimOk = null;
-    // 2026-09-08 新增：單舵機絕對角度實讀 (cmd 6 / 0x06) latch。實機 verified
+    // 單舵機絕對角度實讀 (cmd 6 / 0x06) latch。實機 verified
     // 格式：查詢 f8 8f 08 00 00 06 <id> <sum> ed；回覆
     // f8 8f 0b 00 00 06 00 <id> <hi> <lo> <sum> ed（BE16，同 servo/one 同單位，
     // 跟位誤差約 1°——注意唔係 cmd 13 嗰個 trim/偏差）。只認領等待中那顆 id。
@@ -76,8 +72,7 @@ public final class ChestQuery {
         this.robot = robot;
     }
 
-    /** package-private (原本是 private) - ChestUpgrade 持有一份 ChestQuery 引用,
-     *  2026-09 duplication cleanup 之後 delegate 呢個 method 過嚟, 唔再自己複製
+    /** package-private - ChestUpgrade delegate 呢個 method 過嚟, 唔再自己複製
      *  多一份一樣嘅 chest availability 檢查邏輯。 */
     boolean chestReady() {
         try {
@@ -93,7 +88,7 @@ public final class ChestQuery {
      * @return true = 已認領 (調用方應直接 return)。
      */
     public boolean onFrame(byte[] frame, byte[] payload, int plen) {
-        // 2026-09: UUID/SN 回覆 latch (cmd 55)。放喺版本 latch 之前優先處理,
+        // UUID/SN 回覆 latch (cmd 55)。放喺版本 latch 之前優先處理,
         // 避免版本查詢的 fallback 誤食 uuid 幀 (uuid 幀 plen 好長, 唔係 sonar ack /
         // obstacle, 舊 fallback 條件會當佢係版本回覆)。
         if (chestUuidLatch != null && chestUuidLatch.getCount() > 0) {
@@ -106,7 +101,7 @@ public final class ChestQuery {
                 return true;
             }
         }
-        // 2026-09-06: 舵機實讀回覆 latch (cmd 13)。只認領等待中那顆 id，
+        // 舵機實讀回覆 latch (cmd 13)。只認領等待中那顆 id，
         // 其他 id 的回覆交還（return false），免得 20 連讀時食錯幀。
         if (servoLatch != null && servoLatch.getCount() > 0
                 && plen >= 3 && payload[0] == 13) {
@@ -129,7 +124,7 @@ public final class ChestQuery {
             }
             return false;
         }
-        // 2026-09-06 晚：trim 寫入回覆 latch (cmd 12)。同樣只認領等待中那顆 id。
+        // trim 寫入回覆 latch (cmd 12)。同樣只認領等待中那顆 id。
         if (trimLatch != null && trimLatch.getCount() > 0
                 && plen >= 3 && payload[0] == 12) {
             int rid = payload[2] & 0xFF;
@@ -147,7 +142,7 @@ public final class ChestQuery {
             }
             return false;
         }
-        // 2026-09-08 新增: 絕對角度回覆 latch (cmd 6)。只認領等待中那顆 id，
+        // 絕對角度回覆 latch (cmd 6)。只認領等待中那顆 id，
         // 其他交還（return false），免得 20 連讀時食錯幀。注意放喺版本
         // fallback 之前——06 回覆 plen=5 會被舊 fallback 誤食。
         if (absAngleLatch != null && absAngleLatch.getCount() > 0
@@ -426,7 +421,7 @@ public final class ChestQuery {
     }
 
     /**
-     * 2026-09-06 新增：單舵機實讀 (cmd 13 / 0x0d)，官方 PC tuner 同款問法。
+     * 單舵機實讀 (cmd 13 / 0x0d)，官方 PC tuner 同款問法。
      * 發送 f8 8f 08 05 00 0d &lt;id&gt; &lt;sum&gt; ed，阻塞等回覆。
      * @return signed 角度（BE16）；null = 超時或舵機回 error（無回授，
      * 如本機 5/6 號硬件壞）。此方法已保證不在主 thread。
@@ -476,7 +471,7 @@ public final class ChestQuery {
     }
 
     /**
-     * 2026-09-08 新增：單舵機絕對角度實讀 (cmd 6 / 0x06)，實機 verified。
+     * 單舵機絕對角度實讀 (cmd 6 / 0x06)，實機 verified。
      * 發送 f8 8f 08 00 00 06 &lt;id&gt; &lt;sum&gt; ed，阻塞等回覆
      * f8 8f 0b 00 00 06 00 &lt;id&gt; &lt;hi&gt; &lt;lo&gt; &lt;sum&gt; ed
      *（BE16 unsigned，同 servo/one 同單位；跟位實測誤差約 1°）。
@@ -528,7 +523,7 @@ public final class ChestQuery {
     }
 
     /**
-     * 2026-09-06 晚新增：寫舵機 trim/偏差 (cmd 12)，官方 PC tuner 同款。
+     * 寫舵機 trim/偏差 (cmd 12)，官方 PC tuner 同款。
      * 發送 f8 8f 0a 05 00 0c &lt;id&gt; &lt;hi&gt; &lt;lo&gt; &lt;sum&gt; ed，
      * 阻塞等 MCU 回覆。
      * @return TRUE = MCU 回 OK；FALSE = 該軸回 error 幀（ definitive NAK，
@@ -577,7 +572,7 @@ public final class ChestQuery {
     }
 
     /**
-     * 2026-09 新增: UUID/SN 直讀回覆是否為 cmd 55 幀 (CHEST_READ_SID_EEPROM)。
+     * UUID/SN 直讀回覆是否為 cmd 55 幀 (CHEST_READ_SID_EEPROM)。
      * 同 isVersionFrame 的掃描邏輯, 認標準 F8 8F 長式幀的 cmd byte (i+5)。
      * 已剝頭只剩 payload 的情況由外層 fallback (payload[0]==55) 覆蓋。
      */
@@ -596,13 +591,13 @@ public final class ChestQuery {
     }
 
     /**
-     * 2026-09 新增: 從 cmd 55 回覆幀抽出 SN/UUID 字串。
+     * 從 cmd 55 回覆幀抽出 SN/UUID 字串。
      * 實機證據 (見 misc/set_uuid comment 的 hex dump
      * "f8 8f 28 01 00 37 00 42 41 ... 00 00...00 3c ed"): 標準長式幀,
      * cmd=0x37 後的 payload = [flag byte 0x00] + SN ASCII + 0x00 padding。
      * 解碼和 RobotEventReceiver.decodeUuidExtra / 舊 broadcast 路徑完全一致:
      * ASCII 解碼 -> 切掉第一個 \0 之後的東西 -> 白名單只留英數/-/_ (蓋掉舊 SN
-     * 較長時殘留的非零垃圾 byte, 見 2026-08 v4 修正)。
+     * 較長時殘留的非零垃圾 byte)。
      * 找不到 cmd 55 幀 / 洗完是空字串就回 null。
      */
     private static String parseRobotUuidFrame(byte[] bytes, int len) {
@@ -641,7 +636,7 @@ public final class ChestQuery {
         } catch (Exception e) {
             return null;
         }
-        // 2026-09 實測修正 (logcat 真幀 f8 8f 28 00 00 37 00 42 41...):
+        // 實測修正 (logcat 真幀 f8 8f 28 00 00 37 00 42 41...):
         // payload 第一個 byte 是 flag 0x00, 舊寫法 indexOf('\0') 切第一個 \0
         // 會切出空字串 -> 回 null ->「無法讀取 uuid」。先跳過開頭的 flag/padding
         // (SN 合法字元只有英數/-/_), 再切第一個 \0 之後的尾部 padding, 最後白名單
@@ -669,7 +664,7 @@ public final class ChestQuery {
             java.util.regex.Pattern.compile("BAF006UBT\\d{8}");
 
     /**
-     * 2026-09 新增: 斬走 EEPROM 尾段非零殘留, 只留真 SN。
+     * 斬走 EEPROM 尾段非零殘留, 只留真 SN。
      * 背景: 用戶已對實體貼紙確認, 真 SN 係 17 字 "BAF006UBT10000001",
      * 讀返嚟 31 字尾段 "yy44567oumamae" 係舊長 SN 被短 SN 蓋過之後的殘留
      * (EEPROM 欄位定長, 寫幾多 byte 就蓋幾多, 其餘唔郁)。規則按優先序:
@@ -700,9 +695,9 @@ public final class ChestQuery {
     }
 
     /**
-     * 2026-09 新增: 同步阻塞查詢胸口 EEPROM 的 SN/UUID (pure-direct)。
-     * 取代 robot.requestRobotUUID() 的 broadcast 路徑 —— 機身已無 alpha2services,
-     * 那個 broadcast 發出去永遠無人回覆 "com.ubtechinc.robot_uuid.info",
+     * 同步阻塞查詢胸口 EEPROM 的 SN/UUID (pure-direct)。
+     * 機身已無 alpha2services, requestRobotUUID() 的 broadcast
+     * 發出去永遠無人回覆 "com.ubtechinc.robot_uuid.info",
      * 這就是「無法讀取 uuid」的根因。
      * 必須在非主 thread 調用 (HttpServer worker thread), 和
      * queryFirmwareVersion() 同一個約束。
@@ -742,7 +737,7 @@ public final class ChestQuery {
                 return null;
             }
             String uuid = parseRobotUuidFrame(chestUuidRaw, chestUuidLen);
-            // 2026-09: 斬尾 (見 truncateUuidTail) + 記 log 對照: raw 係全幀 hex,
+            // 斬尾 (見 truncateUuidTail) + 記 log 對照: raw 係全幀 hex,
             // parsed 係截完的真 SN。
             if (uuid != null) {
                 int prefLen = -1;
@@ -763,12 +758,9 @@ public final class ChestQuery {
         }
     }
 
-    // -- UUID endpoint 回應層 (2026-09 dispatcher Phase 1 第三刀由 handleApi 搬入) --
     public HttpServer.ApiResponse requestUuidResponse() {
-        // 2026-09 修正「無法讀取 uuid」: 之前只發
-        // robot.requestRobotUUID() (broadcast "com.ubtechinc.robot_uuid.request"),
-        // 但機身已無 alpha2services, 呢個 broadcast 永遠無人回覆
-        // "com.ubtechinc.robot_uuid.info", UI 永久停喺「查詢中」。
+        // 機身已無 alpha2services, requestRobotUUID broadcast 永遠無人回覆
+        // "com.ubtechinc.robot_uuid.info", UI 會永久停喺「查詢中」。
         // 改走 pure-direct: 經 /dev/ttyS1 直發 cmd 55 讀 chest EEPROM,
         // 同步等回覆 (HttpServer worker thread, 可阻塞, 同版本查詢一樣),
         // 讀到即經 EventBus 發 robot_uuid (舊 WS 路徑, 前端唔使改) +
@@ -784,7 +776,7 @@ public final class ChestQuery {
             return HttpServer.ApiResponse.ok(
                     "{\"ok\":true,\"uuid\":\"" + MainActivity.jsonSafe(uuid) + "\"}");
         }
-        // 2026-09: 分辨 timeout (完全無回幀) 同 parse 失敗 (有回幀但洗唔出
+        // 分辨 timeout (完全無回幀) 同 parse 失敗 (有回幀但洗唔出
         // 字串), 後者連 raw hex 一齊回, 等 logcat/前端可以直接對。
         String diag = "";
         try {
@@ -802,34 +794,22 @@ public final class ChestQuery {
     }
 
     public HttpServer.ApiResponse setUuidResponse(Map<String, String> query) {
-        // 2026-08 v2 新增: 更改機械人 ID (chest EEPROM SN 欄位)。格式由
+        // 更改機械人 ID (chest EEPROM SN 欄位)。格式由
         // 實機逆向 + 實測確認: cmd=54 (0x36), payload = 新 SN 的 ASCII bytes
         // (寫幾多個 byte 就幾多個, 其餘補 0), wire frame
         // F8 8F <7+n> 00 00 36 <sn...> <sum> ED, sum=(len+0x36+Σsn)&0xFF。
-        // 寫入後即刻 requestUUID 讀返驗證 (robot_uuid event 經 WS 更新 UI)。
         //
-        // 2026-08 v3: 曾經誤以為亂碼尾巴代表 EEPROM 定長 32 bytes 沒有被完
-        // 全覆寫, 一度改成把整個 payload padding 到 32 bytes 才寫 —— 這個
-        // 方向錯了, 已經用實機 logcat 推翻: hex dump (CHEST_READ_SID_EEPROM
-        // 回應幀 "f8 8f 28 01 00 37 00 42 41 ... 00 00...00 3c ed") 顯示
-        // 讀出來的 payload 本身很乾淨 —— [flag byte] + 17 bytes SN ASCII +
-        // 0x00 padding, 完全沒有非零垃圾。之所以那行 firmware 自己的 Java log
-        // "serialNumber=BAF006UBT10000377<方塊亂碼>" 只是 logcat/String 把
-        // 尾隨的 \0 null byte 渲染成不可見方塊字元的顯示效果, 不代表
-        // EEPROM 真的有垃圾殘留。RobotEventReceiver.java 讀取時已經用
-        // indexOf('\0') 切掉這些 padding, 不需要也不應該在寫入那邊自己
-        // padding 到某個定長 —— 太長的 payload (例如 32 bytes) 反而會讓
-        // firmware 把 len byte 也當大了, 讀出來的欄位長度也跟著變,
-        // 造成完全不同的殘留問題 (見專案內部事故記錄:「全域清零反而有
-        // 2026-09 實測補充: 上面「讀出來很乾淨」只適用舊 SN 未郁過的情況。
+        // 尾隨 \0 係 logcat/String 渲染效果, 唔代表 EEPROM 有垃圾殘留，
+        // 唔好喺寫入側自己 padding 到定長——太長 payload 會令 firmware
+        // 將 len byte 當大，讀返欄位長度跟住變。
+        // 實測補充: 「讀出來很乾淨」只適用舊 SN 未郁過的情況。
         // 真幀 (f8 8f 28 00 00 37 00 42 41 46...6f 75 6d 61 6d 61 65 00 0c ed)
         // 證實: 曾經寫入較短 SN (17B "BAF006UBT10000001") 蓋過較長舊值之後,
         // 尾段會有 14 bytes 非零殘留 ("yy44567oumamae"), 唔係 0x00 padding。
         // 所以讀取側唔可以靠 \0 cut; 截尾規則見 truncateUuidTail (用戶已對
         // 實體貼紙確認真 SN 係 17 字, 尾段小寫殘留要斬走先係正確綁定 ID)。
-        // 寫入格式本身不變, 這裡保持
-        // v2 原本的 [len byte]+SN, 沒有 terminator 沒有 padding 的寫法,
-        // 這才是經實機驗證過的正確格式。
+        // 寫入格式係 [len byte]+SN, 沒有 terminator 沒有 padding,
+        // 經實機驗證過的正確格式。
         String v = ApiValidator.requireUuidValue(query);
         byte[] sn = v.getBytes(StandardCharsets.US_ASCII);
         // payload 格式實測確認是 [長度byte] + SN ASCII bytes — 沒有
@@ -856,13 +836,12 @@ public final class ChestQuery {
         boolean sent = HardwareDirectManager.get(appContext).chest().sendRaw(frame);
         UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
         Log.d(TAG, "set_uuid -> " + maskUuid(v) + " (" + sn.length + "B) " + code.name());
-        // 2026-09 修正: 寫完唔好即刻 request_uuid —— alpha2services/firmware
+        // 寫完唔好即刻 request_uuid —— alpha2services/firmware
         // 會 cache 開機讀到的 SN, 即刻讀返嚟多數係舊值, 經 robot_uuid event
         // 蓋走前端頭先樂觀顯示的新值, 睇落好似寫入失敗 (見 app-accel.js
         // uuidWriteNew() 已經樂觀顯示新值 + 提示要重啟, 嗰個先係正確流程)。
-        // 舊碼 robot.requestRobotUUID() 而家仲係 no-op (無 alpha2services),
-        // 直接唔再叫, 等用戶重啟後先 request_uuid 讀新值。
-        // 2026-09: 記低今次寫入長度, 下次讀回截尾用 (見 truncateUuidTail
+        // 直接唔再叫 request, 等用戶重啟後先 request_uuid 讀新值。
+        // 記低今次寫入長度, 下次讀回截尾用 (見 truncateUuidTail
         // 規則 1) - 只在發送成功先記。
         if (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
             try {
@@ -875,7 +854,7 @@ public final class ChestQuery {
                 "{\"ok\":" + (code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) + "}");
     }
 
-    /** log 脫敏：UUID 係綁定 ID，只留頭尾各 4 字（2026-09-09，之前全文明文入 logcat）。 */
+    /** log 脫敏：UUID 係綁定 ID，只留頭尾各 4 字。 */
     static String maskUuid(String uuid) {
         if (uuid == null) return "null";
         if (uuid.length() <= 10) return "***(" + uuid.length() + "B)";

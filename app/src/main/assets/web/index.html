@@ -61,9 +61,7 @@
         <span class="volume-icon">🔊</span>
         <span id="volumeVal" class="volume-val">-</span>
         <span class="hint" data-i18n="volume_hint" style="margin-left:8px">控制機械人喇叭的媒體音量 (STREAM_MUSIC)，和實體 +/- 按鈕共用同一個音量。</span>
-      </div>
-      <!-- 2026-09 移除: 系統狀態 JSON card (statusOut)——同 discover 重複，
-           呢卡淨返語言＋音量。 -->
+       </div>
     </section>
 
     <section class="card">
@@ -83,7 +81,7 @@
         </div>
         <div class="device-tile">
           <div class="device-label" data-i18n="device_uuid">🤖 機械人 UUID</div>
-          <!-- 2026-09: UUID 直接顯示——入頁自動查 (requestUuid)，唔使再撳掣。 -->
+          <!-- UUID 直接顯示：入頁自動查 (requestUuid)。 -->
           <div id="uuidOut" class="device-value" data-i18n="uuid_querying_hint">-</div>
         </div>
         <div class="device-tile">
@@ -109,25 +107,11 @@
       <canvas id="sonarChart" class="accel-chart" width="900" height="160"></canvas>
     </section>
 
-    <!-- 2026-08 新增: PIR card - toggle 開關 + 警示反應開關 + 指示燈, 用
-         chest_setPirSensorEnabled() (chest serial cmd=72, 見 Alpha2RobotApi.java
-         個 method javadoc)。
-
-         2026-08-15 更新: 真機已確認 PIR 事件會正常觸發 (logcat_2026-08-15_12-06-19.
-         txt 見到 chest cmd=-109 "PIR HUMON DETECT" 持續觸發) - 呢部機 (1.1.7.3)
-         底層 chest MCU 硬件本身識做 PIR, 之前 1.1.7.3 呢個 Android apk 版本冇
-         代碼識別 -109/-111/-108 呢幾個 chest cmd case (逐個反編譯 1.1.7.3 同
-         1.2.10.5 兩個 apk 嘅 AlphaMainSeviceImpl onReceive() sparse-switch 對比
-         確認), 已喺 RobotEventReceiver 嘅 CHEST_ACTION case 補返 (掃描 raw byte
-         array 搵 -109, 唔靠官方 SecurityCameraUtil gate - 呢個 class 喺 1.1.7.3
-         根本唔存在), publish 做 "alpha2_pir_state" event, 同官方
-         com.ubtech.securityCamera.pirStatus 轉發出嚟嗰個用返同一個 event 名,
-         前端唔使理背後行邊條路徑。indicator id: alpha2PirIndicator, 見
-         app-status.js onAlpha2PirState()。警示反應 (紅燈+ "Heaven" 鈴聲) 經
-         MainActivity#applyAlpha2PirLedAndSound() 實現 (setHeadEyeLedLong +
-         MouthLedData 雙路, 5-mic head/eye 呢部機頭板實測全部 preset 都
-         API_ERROR_FAILED, mouth LED breathing 做主要視覺回饋)。預設關, 使用者要
-         自己揀開先會有反應。 -->
+    <!-- PIR card：toggle 開關＋警示反應開關＋指示燈，用 chest_setPirSensorEnabled()
+         (chest serial cmd=72)。後端 publish "alpha2_pir_state" event，前端唔使理背後路徑。
+         indicator id: alpha2PirIndicator（見 app-status.js onAlpha2PirState()）。
+         警示反應（紅燈＋"Heaven" 鈴聲）經 MainActivity#applyAlpha2PirLedAndSound() 實現，
+         預設關。 -->
     <section class="card">
       <h2 data-i18n="alpha2_pir_heading">PIR 感應器</h2>
       <div class="row">
@@ -171,11 +155,8 @@
       <canvas id="accelChart" class="accel-chart" width="900" height="220"></canvas>
       <p class="hint" id="accelHint"></p>
 
-      <!-- 4角度傾側控制頭/眼 LED —— 原本喺 app.js 寫死嘅 TILT_DIRECTIONS/
-           updateTiltLed/resetTiltLed, 搬咗嚟 index.html 尾段一段獨立
-           <script> 實現 (見底), 唔再放喺 app-accel.js (app.js 2026-08 拆檔後,
-           accelerometer 邏輯搬咗去嗰度)。用開關控制, 要先撳上面
-           個「加速度計」開關先會收到讀數。 -->
+      <!-- 4角度傾側控制頭/眼 LED：尾段獨立 <script> 實現（見底）。用開關控制，
+           要先開上面「加速度計」開關先會收到讀數。 -->
       <div class="row" style="margin-top:8px;">
         <label class="switch-label">
           <span class="toggle-switch">
@@ -236,25 +217,16 @@
 
   <!-- ============ TAB: SPEECH ============ -->
   <div id="tab-speech" class="tab-page">
-    <!-- 2026-08 新增: 對話界面 - 全抄小智 tab (#tab-xiaozhi) 嘅做法: 一個
-         event-log 樣式嘅 chat log (xiaozhi-msg-user/assistant/system 三種氣泡,
-         見 style.css), 底下一行文字輸入 + 送出掣。打字模擬嘅問法配對答案同
-         「講嘢 (TTS)」嘅內容分別顯示做 user/assistant 氣泡。呢個純粹係「顯示層」,
-         唔改任何底層 API 行為。
-         2026-08 改: 文字輸入框送出由 speech/inject 改用 speech/iflytek_simulate
-         (2026-09 endpoint 改名做 speech/semantic_simulate, 見下) -
-         打字直接當做「已經辨識完嘅一句話」, 送去問法配對引擎 (中英文各 1000 條,
-         按輸入有冇漢字自動判斷), 命中即時做 TTS + 動作, 等打字都可以測到完整
-         「聽到 -> 反應」pipeline, 唔使開聲。
-         2026-09: ASR 卡、離線文法卡已移除 (機身已無 iFlytek/Nuance); 配對答案
-         改行 Android 內置 TTS (見 MainActivity.speakAndroidTts())。呢個 tab 底層
-         叫嘅係 speech/semantic_simulate (原叫 speech/iflytek_simulate, 個名純粹
-         歷史原因, 同機身已永久唔再用嘅 Nuance/iFlytek binder 引擎冇關係, 已改名
-         消除誤導)。 -->
+    <!-- 對話界面：全抄小智 tab 做法，一個 event-log 樣式 chat log
+         (xiaozhi-msg-user/assistant/system 三種氣泡，見 style.css)，底下文字輸入＋送出。
+         純「顯示層」，唔改底層 API。打字當做已辨識完的一句話，送去問法配對引擎
+        （中英文各 1000 條，按有冇漢字自動判斷），命中即做 TTS＋動作。
+         底層叫 speech/semantic_simulate，配對答案行 Android 內置 TTS
+        （見 MainActivity.speakAndroidTts()）。 -->
     <section class="card">
       <h2 data-i18n="speech_chat_heading">💬 對話界面</h2>
-      <!-- 2026-09: Vosk 聆聽指示燈 (綠=聽緊，灰=其他)，擺對話界面呢行，
-           唔可以擺入上面個 h2 (applyUiLanguage 會成個 textContent 覆寫)。 -->
+      <!-- Vosk 聆聽指示燈（綠＝聽緊，灰＝其他）：擺呢行，唔可以擺入上面 h2
+          （applyUiLanguage 會成個 textContent 覆寫）。 -->
       <div class="row" style="margin-bottom:-4px">
         <span id="voskStateDot" class="vosk-state-dot vosk-state-dot-off"></span>
       </div>
@@ -267,23 +239,20 @@
       </div>
     </section>
 
-    <!-- 2026-09: Vosk 離線 ASR 卡 - 頂替已移除的 ASR/離線文法卡。Model 放
-         sdcard (頂層 vosk-* 目錄, 有 am/final.mdl 即算)，開頁自動掃描出鍵；
-         撳模型鍵即載入＋自動開聽，成句經 asr_result 入返對話管線 (氣泡＋語意
-         配對＋TTS＋動作)，partial 即時顯示喺下面。辨識限定喺問法庫範圍
-         (中文轉簡體先對 acoustic，見 VoskController)，命中先至會郁。 -->
+    <!-- Vosk 離線 ASR 卡：Model 放 sdcard 頂層 vosk-* 目錄（有 am/final.mdl 即算），
+         開頁自動掃描出鍵；撳鍵即載入＋自動開聽，成句經 asr_result 入對話管線
+        （氣泡＋語意配對＋TTS＋動作），partial 即時顯示喺下面。辨識限定喺問法庫範圍
+        （中文轉簡體先對 acoustic，見 VoskController）。 -->
     <section class="card" id="voskCard">
       <h2 data-i18n="vosk_heading">🎙️ 語音辨識 (Vosk 離線)</h2>
       <p class="hint" data-i18n="vosk_hint">模型放 sdcard 頂層（如 vosk-model-small-cn-0.22），開頁自動偵測，不跟 App。載入需幾秒＋約 200MB 記憶體，一次一粒。</p>
-      <!-- 2026-09: 有咩 model 出咩鍵（名跟面板語言：中文／English，後端 lang＋langEn，
-           見 app-vosk.js voskLangName），一次淨一粒有效——有效藍色，其餘灰色；
-           一撳即先停舊再載入＋自動開聽，唔使再揀。 -->
+      <!-- 有咩 model 出咩鍵（名跟面板語言，見 app-vosk.js voskLangName），一次淨一粒有效——
+           有效藍色，其餘灰色；一撳即先停舊再載入＋自動開聽。 -->
       <div class="row">
         <label data-i18n="vosk_model_label">模型：</label>
         <div id="voskModelBtns" style="flex:1; display:flex; gap:6px; flex-wrap:wrap"></div>
       </div>
-      <!-- 2026-09: 淨顯示已下載模型鍵，一撳即載入＋自動開聽，所以開始掣已移除，
-           剩停止＋測試咪。下載搬咗去實驗 tab（voskDlCard）。 -->
+      <!-- 淨顯示已下載模型鍵，一撳即載入＋自動開聽；呢度剩停止＋測試咪。下載喺實驗 tab（voskDlCard）。 -->
       <div class="row" style="margin-top:6px">
         <button id="voskStopBtn" onclick="voskStop()" data-i18n="vosk_stop_btn" disabled>停止</button>
         <button class="secondary" onclick="voskMicTest()" data-i18n="vosk_mic_test_btn">測試咪</button>
@@ -305,9 +274,7 @@
     </section>
     <section class="card">
       <h2 data-i18n="tts_heading">語音 / TTS</h2>
-      <!-- 2026-09: TTS 只留 Android 內置 - Nuance/iFlytek 按鈕組同 iFlytek 聲音
-           揀擇已移除 (機身已無呢兩個引擎)。得返一個引擎, 無嘢好揀, Android 引擎/
-           語言揀擇常駐顯示。 -->
+      <!-- TTS 只用 Android 內置；得返一個引擎，Android 引擎／語言揀擇常駐顯示。 -->
       <div class="row" id="ttsAndroidEngineRow">
         <label for="ttsAndroidEngineSelect" data-i18n="tts_android_engine_label">TTS 引擎：</label>
         <select id="ttsAndroidEngineSelect" onchange="setAndroidTtsEngine()" style="flex:1"></select>
@@ -318,9 +285,8 @@
         <label for="ttsAndroidLangSelect" data-i18n="tts_android_lang_label">語言：</label>
         <select id="ttsAndroidLangSelect" onchange="setAndroidTtsLang()" style="flex:1"></select>
       </div>
-      <!-- 2026-09 新增: 聲音揀擇 - 揀完具體語言先出現，每個語言把聲唔同
-           (Google TTS 經 speech/tts_voices 按 lang 攞，見 app-speech.js
-           loadAndroidTtsVoices)。 -->
+      <!-- 聲音揀擇：揀完具體語言先出現，每個語言把聲唔同
+           （經 speech/tts_voices 按 lang 攞，見 app-speech.js loadAndroidTtsVoices）。 -->
       <div class="row" id="ttsAndroidVoiceRow" style="display:none">
         <label for="ttsAndroidVoiceSelect" data-i18n="tts_android_voice_label">聲音：</label>
         <select id="ttsAndroidVoiceSelect" onchange="setAndroidTtsVoice()" style="flex:1"></select>
@@ -449,7 +415,6 @@
         <button id="photoFab" class="fab-btn" onclick="capturePhotoAtResolution(4208,3120, this, true)">📷</button>
         <button id="recordFab" class="fab-btn" onclick="toggleRecording()">⏺</button>
         <button id="micListenFab" class="fab-btn" onclick="toggleMicListen()">🎧</button>
-        <!-- 2026-09 刪除: #talkFab walkie-talkie 掣 (發射端永久停用，成串移除，唔留永遠 disabled 嘅掣)。 -->
       </div>
       <span class="camera-kbd-hint" id="cameraKbdHint"></span>
     </div>
@@ -499,11 +464,8 @@
 
     <div id="xiaozhiChatLog" class="event-log" style="min-height:200px"></div>
 
-    <!-- 2026-08 更新: 總停鍵搬咗嚟「送出」呢行尾, 一撳就停晒動作播放/TTS(機身+
-         Android+小智語音)/本地音樂/電台, 唔理依家係邊個觸發緊 (小智自己 call
-         MCP tool、定係用戶自己撳過其他掣) - 純粹係幾個現有 stop endpoint
-         (action/stop、speech/stop、audio/local_music/stop、audio/radio/stop) 嘅
-         前端 fan-out, 冇新增後端邏輯, 詳見 xiaozhiStopAll()。 -->
+    <!-- 總停鍵喺「送出」呢行尾：一撳停晒動作播放／TTS／本地音樂／電台，
+         純粹係幾個現有 stop endpoint 的前端 fan-out，冇新增後端邏輯，詳見 xiaozhiStopAll()。 -->
     <div class="row">
       <input id="xiaozhiTextInput" placeholder="打字同小智傾偈…" data-i18n="xiaozhi_text_placeholder" data-i18n-attr="placeholder" autocomplete="off" style="flex:2" onkeydown="if(event.key==='Enter'){xiaozhiSendText();}">
       <button id="xiaozhiSendTextBtn" onclick="xiaozhiSendText()" disabled data-i18n="xiaozhi_send_text">送出</button>
@@ -511,12 +473,9 @@
       <button id="xiaozhiStopAllBtn" class="danger-btn" onclick="xiaozhiStopAll()" data-i18n="xiaozhi_stop_all_btn">⏹ 全部停止</button>
     </div>
 
-    <!-- TTS 輸出引擎揀擇 - 「小智」= 原本行為 (server 送 opus 聲,
-         XiaozhiAudioController 解碼播放); 揀 Android 就完全靜音 opus, 改用本地
-         speech/tts (Android 內置) 逐句讀出小智回覆 (見 xiaozhiHandleEvent() 個
-         "xiaozhi_tts" case 同後端 MainActivity.xiaozhiTtsEngine field javadoc)。
-         2026-09: iFlytek/Nuance 掣已移除 - 機身已無呢兩個引擎, 揀咗只會全程靜音
-         (speech/tts binder 回 NOT_INIT)。 -->
+    <!-- TTS 輸出引擎揀擇：「小智」＝ server 送 opus 聲（XiaozhiAudioController 解碼播放）；
+         揀 Android 就靜音 opus，改用本地 speech/tts（Android 內置）逐句讀出
+         （見 xiaozhiHandleEvent() "xiaozhi_tts" case 同 MainActivity.xiaozhiTtsEngine）。 -->
     <div class="row">
       <label data-i18n="xiaozhi_tts_engine_label">語音輸出：</label>
       <span class="lang-toggle">
@@ -526,13 +485,9 @@
     </div>
   </section>
 
-  <!-- 2026-08 新增: 自訂小智 server 設定, 由主卡搬咗落嚟做獨立一個 card, 擺喺
-       XiaoZhi 面板最底 - 呢個係進階/一次性設定, 唔應該同日常對話操作 (開關/文字
-       輸入) 爭主卡嘅視覺份量。四個欄位入面淨係 OTA 位址係必要, 其餘三個
-       (WebSocket 位址/MAC/Token) 對主流跟足官方協議形狀嘅自架 server 嚟講係
-       唔使填嘅 (留空 = 自動由 OTA response 攞) - 但實測發現唔係全部自架方案都
-       跟得足, 所以開放做可選 override, 應付需要手動配置嘅情況 (見
-       MainActivity 嘅 "ota_config/set" endpoint comment)。 -->
+  <!-- 自訂小智 server：進階／一次性設定，擺 XiaoZhi 面板最底。四個欄位淨 OTA 位址必要，
+       其餘三個（WebSocket 位址／MAC／Token）留空即自動由 OTA response 攞，
+       可選 override 應付要手動配置的情況（見 MainActivity "ota_config/set"）。 -->
   <section class="card">
     <h3 data-i18n="xiaozhi_ota_custom_heading">⚙️ 自訂小智 server</h3>
     <div class="row">
@@ -570,18 +525,11 @@
     </div>
   </section>
 
-  <!-- 2026-08 新增: 內置MCP功能列表 card - read-only, 顯示呢部機經 xiaozhiMcpBridge()
-       暴露俾遠端 LLM 嘅完整 MCP tool 清單 (name/description), 同 xiaozhi.me
-       console 側「MCP接入點」睇到嘅係完全唔同嘅概念 (嗰個係俾第三方外部工具反過嚟
-       連入小智用嘅獨立 websocket 端口) - 呢張卡純粹用嚟俾用戶一眼睇晒依家有邊啲
-       工具已經自動同 server 交換緊, 冇任何要填嘅設定, 因為官方協議入面 device 側
-       嘅 MCP tool 本身就係經 WebSocket "initialize"/"tools/list" 自動交換, 唔存在
-       俾用戶手動配置 endpoint/token 呢回事。
-       2026-08 更新: 移除咗原本嘅「開放 MCP 工具俾小智使用」總開關 (後端
-       isMcpEnabled() 改咗做恆常 true, 逐項 tool 嘅 enable/disable 唔變) - 依家
-       頂部個開關掣純粹係「展開」, 跟返自訂 server card 嗰個 toggle-switch 樣式:
-       開＝展開成個工具清單 (連逐項 enable/disable 掣都顯示), 關＝成個 box 收埋
-       晒, 乜都睇唔到。 -->
+  <!-- 內置MCP功能列表 card（read-only）：顯示經 xiaozhiMcpBridge() 暴露俾遠端 LLM 的
+       MCP tool 清單（name/description），同 xiaozhi.me console「MCP接入點」係兩回事
+       （嗰個係第三方工具連入用的獨立 websocket 端口）。device 側 tool 經
+       WebSocket "initialize"/"tools/list" 自動交換，冇手動配置。頂部開關純粹係「展開」
+       （跟自訂 server card 樣式）：開＝展開清單＋逐項 enable/disable，關＝收埋。 -->
   <section class="card">
     <h3 data-i18n="xiaozhi_mcp_tools_heading">🔧 內置MCP功能列表</h3>
     <p class="hint" data-i18n="xiaozhi_mcp_tools_hint">
@@ -604,9 +552,7 @@
     </div>
   </section>
 
-  <!-- 2026-08 新增: 小智控制台快速連結 card - 撳掣喺新分頁開 https://xiaozhi.me/
-       (官方 console, 用嚟睇 device 配對狀態、MCP接入點、對話紀錄等), 純粹方便
-       用戶唔使自己開瀏覽器打網址。 -->
+  <!-- 小智控制台快速連結 card：新分頁開 https://xiaozhi.me/（睇配對狀態、對話紀錄等）。 -->
   <section class="card">
     <h3 data-i18n="xiaozhi_console_heading">🌐 小智控制台</h3>
     <div class="row">
@@ -615,15 +561,12 @@
   </section>
 </div>
 
-<!-- 本地音樂 tab - 前端純粹係 UI, 真正播放/equalizer/隨機動作邏輯全部喺
-     server 端 (MainActivity.java 嘅 playLocalMusicFile()/setupMusicEqualizerLocked()/
-     startMusicFillerActionLoop()), 見 app-music.js 開頭嘅 comment。歌曲存喺機身
-     /mnt/internal_sd/music/, 同小智語音「播放音樂」呼叫嘅係同一套後端, 呢個 tab
-     淨係加多一層瀏覽器控制面板。
-     2026-08 v3: 四張 card 合併為一張 — 曲庫/播放器+頻譜/均衡器/隨機動作 同一張 card
-     內用 led-block 分隔 (跟 LED 分頁同樣視覺語言), id 保持不變, app-music.js 無需改動。 -->
+<!-- 本地音樂 tab：前端純 UI，真播／EQ／隨機動作全喺 server 端
+     (MainActivity.java playLocalMusicFile()/setupMusicEqualizerLocked()/
+     startMusicFillerActionLoop())。歌喺 /mnt/internal_sd/music/，
+     同小智語音「播放音樂」同一套後端。 -->
 <div id="tab-music" class="tab-page">
-  <!-- 本地音樂 tab v4: 本地/電台共用同一套播放器 (頻譜/音量/EQ/隨機動作) -->
+  <!-- 本地／電台共用同一套播放器（頻譜／音量／EQ／隨機動作） -->
   <!-- 來源卡：本地曲庫 -->
   <section class="card">
     <h2 data-i18n="music_heading">🎵 本地音樂</h2>
@@ -717,18 +660,12 @@
 </div>
 
   <!-- ============ TAB: ADVANCED ============ -->
-  <!-- 2026-08 v4 簡化: 三張 card 合併做一張 - 查詢/複製/QR 顯示、打新 ID 即時
-       喺同一個 canvas 換上新 QR 預覽(oninput, 未寫入 EEPROM)、寫入 EEPROM、
-       手動重開機提示, 全部一張 card 走晒一條 flow, 冇再要「更改 ID/取消」呢種切換編輯
-       模式嘅步驟。QR 內容格式 "robotSeq=<ID>" (同官方 app 個 bind QR 一致),
-       離線生成 (app-qr.js)。詳見 uuidUpdateCard()/uuidOnInputChange()/
-       uuidWriteNew()。
-       重開機掣已移除：App 無 REBOOT 權限 (uid 10020, 實機 verified)，PowerManager
-       永遠 SecurityException；寫入後請用戶長按電源鍵手動重開機。
-       2026-08 v5 新增: card 內容預設收埋, 用開關 (toggle-switch, 同 sonar/PIR
-       嗰啲一致嘅樣式) 揭開先顯示 — 呢個功能屬於高風險操作 (直接寫 chest
-       EEPROM), 唔想用戶不小心撞到。每次入返呢個 tab / 重新整頁都預設關閉
-       (冇用 localStorage 記住), 詳見 uuidCardToggle()。 -->
+  <!-- 機械人 ID 變更器：一張 card 走晒查詢／複製／QR 顯示、打新 ID 即時同 canvas
+       預覽新 QR（oninput，未寫入 EEPROM）、寫入 EEPROM、手動重開機提示。
+       QR 內容 "robotSeq=<ID>"（同官方 bind QR 一致），離線生成（app-qr.js）。
+       寫入後請長按電源鍵手動重開機（App 無 REBOOT 權限）。
+       高風險操作（直寫 chest EEPROM），預設收埋，要開關揭開先顯示；
+       每次入頁預設關，唔記狀態（見 uuidCardToggle()）。 -->
   <div id="tab-advanced" class="tab-page">
     <!-- 面板 token 認證（opt-in，預設關＝全開）：啟用後成個面板上鎖
          （全部 /api/*＋/upload/* 要帶 token；淨 auth/*＋靜態頁＋ws/stream 開放），
@@ -944,20 +881,12 @@
 
 </main>
 
-<!-- 2026-08 拆檔: 原本單一嘅 app.js (3200幾行) 拆成 10 份, 跟 blockly.html 個
-     做法一致 (見嗰邊 blockly-*.js 嘅 <script> 順序)。全部檔案共用 window/global
-     scope (冇用 ES module), 所以順序有講究:
-       1. app-core.js 要第一個 load - 佢定義咗 api()/hwApi()、
-          SERVO_CALIBRATION、I18N 呢啲所有其他檔案都會用到嘅核心 helper/資料。
-       2. app-log.js 要最尾 load - 佢個 DOMContentLoaded handler 會 call 晒
-          buildServoGrid()/buildHeadColorPicker() 呢啲上面幾個檔案先定義嘅
-          build*()/refresh*() function。
-       3. 中間 8 個檔案 (status/actions/speech/servo/led/camera/mic/accel)
-          之間冇互相排序依賴 (function hoisting 令佢哋可以隨便順序 call 到大家),
-          但依家保持同原本 app.js 入面 section 順序一致, 方便對照。
-     尾段(第912行起)嗰個 inline <script> 會覆寫 window.onAccelSample, 佢假設
-     嗰陣 app-accel.js 已經定義咗原本嗰份 onAccelSample - 所以呢 10 個
-     <script src> 一定要全部行完先到嗰個 inline script。 -->
+<!-- 全部檔案共用 window/global scope（冇用 ES module），所以順序有講究：
+       1. app-core.js 第一：定義 api()/hwApi()、SERVO_CALIBRATION、I18N 等核心 helper。
+       2. app-log.js 最尾：佢個 DOMContentLoaded handler 會 call 上面定義的 build*()/refresh*()。
+       3. 中間檔案之間冇排序依賴（function hoisting），保持原 section 順序方便對照。
+     尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
+     所以全部 <script src> 一定要行完先到嗰個 inline script。 -->
 <script src="app-core.js"></script>
 <script src="api-client.js"></script>
 <script src="app-status.js"></script>
@@ -979,27 +908,18 @@
 <!-- ============================================================
      Sample: 4角度傾側控制頭/眼 LED
      ============================================================
-     原本喺 app.js 寫死嘅 TILT_DIRECTIONS/updateTiltLed/resetTiltLed, 照
-     原邏輯搬過嚟呢度 (冇改動判斷/優先權/hysteresis 嘅行為), 淨係由「一直
-     開住」改做用開關控制。故意獨立喺呢個 <script> 度、唔寫入 app-accel.js:
-     app-accel.js 嘅 onAccelSample() 淨係負責畫圖/讀數 (見該 function 頂嘅
-     註解), 唔再驅動任何「反應」行為。做法: 保留一份原本嘅
-     onAccelSample 參照, 用自己嘅 wrapper 覆寫 window.onAccelSample,
-     wrapper 入面先 call 返原本嗰份 (保住畫圖行為), 再執行呢度嘅傾側
-     判斷。因為 app-accel.js 定義 onAccelSample 時佢已經係 top-level
-     function (non-module script 入面自動掛喺 window 度), 呢種覆寫係安全
-     嘅 - app-log.js 入面 appendLog() 個 call site (onAccelSample(msg.data))
-     喺執行嗰一刻先解析 window.onAccelSample, 所以會攞到呢度覆寫完嘅版本。
+     獨立喺呢個 <script>、唔寫入 app-accel.js：app-accel.js 的 onAccelSample()
+     淨負責畫圖／讀數，唔驅動「反應」行為。做法：保留原本參照，用 wrapper
+     覆寫 window.onAccelSample，wrapper 先 call 原本（保住畫圖），再做傾側判斷。
+     appendLog() 喺執行嗰刻先解析 window.onAccelSample，所以會攞到覆寫版。
 
-     四個方向、四隻色 (同一個頭/眼 LED 硬件淨係可以顯示一種顏色，用
-     tiltActiveOrder 記住邊個方向最後觸發, 邊個就贏做目前顯示顏色):
+     四方向四色（同一組頭／眼 LED 一次只顯示一色，用 tiltActiveOrder 記最後觸發者為贏）:
        y >  9 -> 開; y <  6 -> 關   -> 黃 (yellow)
        y < -9 -> 開; y > -6 -> 關   -> 紅 (red)
        x >  9 -> 開; x <  6 -> 關   -> 青 (cyan)
        x < -9 -> 開; x > -6 -> 關   -> 紫 (purple)
 
-     用 api("led/head/set", {preset:"flash", ...}) (5-mic 序列協議, 見
-     app-led.js/MainActivity.java「led/head/set」個 case 頂嘅 comment)。
+     用 api("led/head/set", {preset:"flash", ...})（5-mic 序列協議）。
 -->
 <script>
 (function () {

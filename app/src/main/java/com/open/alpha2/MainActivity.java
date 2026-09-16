@@ -25,10 +25,6 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-// 2026-09 刪除 dead imports (拆分完成後零引用，各自正本：bluetooth＋Formatter→
-// DeviceStatus，tts trio→TtsCenter，DirectLedController／LedControl／
-// MouthLedData→LedCenter，UbxFile／UbxParser→ActionDirect，collections／
-// Locale／json→各 center；Build 留低係 Vosk 熔斷仲用緊)。
 import com.ubtechinc.alpha.hardware.RobotWire;
 import com.ubtechinc.alpha.hardware.HardwareDirectManager;
 import com.ubtechinc.alpha.hardware.LocalAlpha2Services;
@@ -40,7 +36,7 @@ import java.nio.charset.StandardCharsets;
 /**
  * Single-activity host for the Open Alpha2 robot panel.
  *
- * Owns the one {@link RobotStub} instance for the process (2026-09 起同
+ * Owns the one {@link RobotStub} instance for the process (同
  * Alpha2OpenSdk 脫鉤：機身無 alpha2services，所有舊 binder 調用誠實失敗；
  * 真正行硬件經 HardwareDirectManager／DirectLedController／Android 原生 API),
  * initialises every sub-system and answers every "/api/..." HTTP call from
@@ -55,14 +51,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     private static final String TAG = "MainActivity";
 
     static final String PREFS_NAME = "robotpanel";
-    // 2026-09: 小智 OTA/MCP/TTS/auto-connect prefs key 搬咗去 XiaozhiConfig
-    // (拆 god object 第五刀)， publicly 讀寫經嗰邊。
-    // (本地音樂 prefs key 已搬去 AudioCenter。)
-    // (MCP/TTS prefs key 已搬去 XiaozhiConfig。)
-    // (TTS 卡語言 pref 搬咗去 TtsCenter。)
-    // (MCP disabled-tools / auto-connect prefs key 已搬去 XiaozhiConfig。)
 
-    // 2026-09: 一鍵全停回位動作 id 搬咗去 ActionDirect.STOP_RECOVERY_ACTION_ID
     // (蹲下站起；停止語義不變，見 actionDirect.stopActionWithRecovery())。
 
     private RobotStub robot;
@@ -71,30 +60,24 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     // 槽位起播、b*timeBase 自停、切帧打断），獨立於 currentMusicPlayer/currentRadioPlayer，
     // 唔經 filler 循環/EQ/頻譜。
     private final UbxPlayer ubxPlayer = new UbxPlayer();
-    // 2026-09: 動作直驅層 (actionInfo 尋址/播放/停止/回位) 搬咗去 ActionDirect，
-    // ubx 直播/單舵機搬咗去 UbxApi；三個共用上面同一個 ubxPlayer 實例
-    // (servo 讀寫仲喺呢度直接用)。
+    // 三個共用上面同一個 ubxPlayer 實例 (servo 讀寫仲喺呢度直接用)。
     private ActionDirect actionDirect;
     private UbxApi ubxApi;
     private HttpServer httpServer;
     private RobotEventReceiver dynamicReceiver;
 
-    // -- WiFi 指示燈 (2026-08-25) -----------------------------------------------
-    // (wifi 燈成組搬咗去 LedCenter：12/13 映射、receiver、apply 三式、burst。)
+    // -- WiFi 指示燈 -----------------------------------------------
     private BroadcastReceiver panelUrlReceiver;
     private TextView panelLinkView;
     private String currentPanelUrl;
     private final CameraController cameraController = new CameraController();
     private final AudioController audioController = new AudioController();
     private final AudioPlaybackController audioPlaybackController = new AudioPlaybackController();
-    // 2026-09: mic 包搬咗去 MicCenter，呢度淨係留個 instance (同 ubxPlayer 一樣由呢度擁有)。
     private MicCenter micCenter;
-    // 2026-09: 手勢包搬咗去 GestureCenter，呢度淨係留個 instance。
     private GestureCenter gestureCenter;
     private final MusicController musicController = new MusicController();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    /** 2026-09-09：開機 15s 後試播開機語音。field 化方便 onDestroy removeCallbacks
-     * （之前匿名 post，destroy 後照跑兼 hold 住 bridge）。 */
+    /** 開機 15s 後試播開機語音。field 化方便 onDestroy removeCallbacks。 */
     private final Runnable bootVoiceRunnable = new Runnable() {
         @Override public void run() {
             if (sInstance == null || xiaozhiBridge == null) return;
@@ -102,18 +85,15 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         }
     };
 
-    // (Pad 燈成組搬咗去 LedCenter：executor/postPadLed/旗標/worker/burst。)
-
     static final long MIC_HOLD_ENFORCER_INTERVAL_MS = 2000;
 
-    // (xiaozhi_actions.json catalog 搬咗去 ActionDirect。)
-    /** 2026-08 新增: 完全取代悠聊 APK (com.ubtech.iflytekmix) 用的中文語意配對引擎
+    /** 完全取代悠聊 APK (com.ubtech.iflytekmix) 用的中文語意配對引擎
      *  實例。在 onCreate() 建立一次 (只持有 Context, 不碰 AIDL, 沒有初始化順序問題),
      *  真正的 1000 條資料就到 handleIflytekSemanticText() 第一次被叫才讀 assets - 見
      *  SemanticMatcherZh 本身的 lazy-load 設計。 */
     private SemanticMatcherZh semanticMatcherZh;
 
-    /** 2026-08 新增: 完全取代 AlphaEnglishChat APK
+    /** 完全取代 AlphaEnglishChat APK
      *  (com.ubtechinc.alphaenglishchat) 用的英文語意配對引擎實例, 和 semanticMatcherZh
      *  屬於同一套機制、獨立資料 (1000 條英文問法, 見 SemanticMatcherEn)。
      *  哪句用哪個 matcher 由 handleIflytekSemanticText() 根據輸入文字有沒有 CJK 漢字
@@ -121,48 +101,17 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
      *  偵測語言, 靠內容判斷更可靠。 */
     private SemanticMatcherEn semanticMatcherEn;
 
-    /** 2026-09 新增: Vosk 離線 ASR controller (語音 tab)。單例，onCreate 起，
+    /** Vosk 離線 ASR controller (語音 tab)。單例，onCreate 起，
      *  onDestroy 停。Model 放 sdcard 自動偵測，見 VoskController。 */
     private VoskController vosk;
 
-    // (電台搜尋 cache 搬咗去 AudioCenter。)
-
-    // 2026-09: 系統鈴聲層 (停止/快門/PIR 提示音 + 共用播放器 + 查表快取)
-    // 搬咗去 RingtoneCenter (拆 god object 第七刀)，呢度淨係留個 instance。
     private RingtoneCenter ringtoneCenter;
 
-    // 2026-09 刪除: speechReady field - 無 ASR，舊 binder speech service 永遠
-    // ready 不了（唯一設 true 嘅舊 initOver 已刪），恆 false 無意義。
-
-    // 2026-09: TTS core (gap 旗＋speech/tts＋stopAllSpeechPlayback) 搬咗去
-    // SpeechCenter (TTS core 第一刀)——STOP_TO_TTS_MIN_GAP_MS／lastSpeechStopAtMs／
-    // robotTtsSpeaking 連註解跟埋走，呢度唔留副本。
-
-    // 2026-09: Sonar＋PIR sensors 包 (threshold／讀數 cache／PIR state) 搬咗去
-    // SonarCenter (Sonar 第一刀)——連註解跟埋走，呢度唔留副本。
-    // 2026-09: 胸口版本/UUID 同步查詢成組搬咗去 ChestQuery (第一刀拆 god
-    // object)——latch/raw/len 狀態、幀解析、阻塞查詢全部喺嗰邊，呢度淨係留個 instance。
-    // 2026-09 刪除: headerVersionLatch/Raw/Len (唯一讀者 queryHeaderFirmwareVersion
-    // 無 caller，一併刪除)。
     private ChestQuery chestQuery;
-    // 2026-09: 胸口升級成組 (48/49/50 狀態+線程+ACK) 搬咗去 ChestUpgrade
-    // (拆 god object 第四刀)，呢度淨係留個 instance。
     private ChestUpgrade chestUpgrade;
 
-    // 2026-08 新增: 用戶要求「如果有其他動作要做, 就只做其他動作」- 之前純粹
-    // 靠 self.robot.play_random_action 的 tool description 勸 LLM 自己選優先順序,
-    // 但實測發現 LLM 有時整段對話一次都不 call play_random_action (可能覺得每輪
-    // 都有其他事情做, 或者純粹沒去用), 結果機械人站定完全不動, 用戶看起來好像
-    // 「random 動作完全沒了」。之前試過用一個 flag 追蹤著「這一輪有沒有 LLM 自己
-    // call 過動作類 tool」, 沒有就在 TTS "stop" (回應播完) 才補一個 random action -
-    // 但用戶其後糾正: random 動作應該和 TTS 一起做 (也就是開始說話那一刻就動), 不是
-    // 「說完才做」, 所以這個做法已經改在 TTS "start" 事件那裡直接觸發 (見
-    // setTtsStateListener() 那段), 不再靠這個 flag 判斷「這一輪有沒有其他動作」 -
-    // 拿掉了這個字段和相關的 set 語句 (曾經在 play_action/stop_action/
-    // play_random_action 三個 case 出現過), 因為現在這個時機邏輯已經不需要它。
-
     /** PIR 事件 static 縫 (RobotEventReceiver／onDirectChestFrame 入口，簽名不變)：
-     *  轉交 SonarCenter（javadoc 連 code 跟埋走）；sInstance／sonarCenter 任一
+     *  轉交 SonarCenter；sInstance／sonarCenter 任一
      *  null 即 no-op——onCreate 同一 thread 先後建構（sonarCenter 遲過
      *  registerDynamicReceiver），起動嗰幾 ms 內嘅 PIR edge 會跌咗，行為同其他
      *  center 嘅 null-guard 一致。非阻塞約束見 SonarCenter.onPirStateReceived。 */
@@ -174,33 +123,19 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         m.sonarCenter.onPirStateReceived(triggered);
     }
 
-    // 2026-09: Android TTS 層 (引擎綁定/讀出/語言表) 搬咗去 TtsCenter
-    // (拆 god object 第九刀)，呢度淨係留個 instance。
     private TtsCenter ttsCenter;
 
-    // (TTS 嘴燈 bracket 搬咗去 LedCenter。)
     private LedCenter ledCenter;
-    // 2026-09: 語意配對 + 裝置狀態搬咗去 SemanticCenter / DeviceStatus。
     private SemanticCenter semanticCenter;
     private DeviceStatus deviceStatus;
-    // 2026-09: 小智包搬咗去 XiaozhiBridge (整包：HTTP API/mic/activation/vision/MCP/mute 鍵)，
-    // 呢度淨係留個 instance (client/audio/config 由佢擁有)。
     private XiaozhiBridge xiaozhiBridge;
-    // 2026-09: /api/alpha2/* dispatcher 成段搬咗去 ApiDispatcher (switch＋shaping)，
-    // 呢度淨係留個 instance；跨域缺口經下面 Host override 調返嚟。
     private ApiDispatcher apiDispatcher;
-    // 2026-09: 離線文法包搬咗去 GrammarCenter，呢度淨係留個 instance。
     private GrammarCenter grammarCenter;
-    // 2026-09: TTS orchestration 包搬咗去 SpeechCenter (TTS core 第一刀)，
-    // 呢度淨係留個 instance。
     private SpeechCenter speechCenter;
-    // 2026-09: Sonar＋PIR sensors 包搬咗去 SonarCenter (Sonar 第一刀)，
-    // 呢度淨係留個 instance。
     private SonarCenter sonarCenter;
 
     // -- XiaozhiBridge.HostState (宿主縫)：TTS 兩法轉交 SpeechCenter，sonar 四法
-    // 轉交 SonarCenter（delegate＋null-guard；sonar orchestration 第一刀已搬，
-    // MCP 4 tool 經呢度照讀）。 --
+    // 轉交 SonarCenter（delegate＋null-guard；MCP 4 tool 經呢度照讀）。 --
     @Override public boolean isRobotTtsSpeaking() { return speechCenter != null && speechCenter.isRobotTtsSpeaking(); }
     @Override public long getLastSpeechStopAtMs() { return speechCenter != null ? speechCenter.getLastSpeechStopAtMs() : 0L; }
     @Override public int getSonarDistanceCm() { return sonarCenter != null ? sonarCenter.getSonarDistanceCm() : -1; }
@@ -209,19 +144,17 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     @Override public void applySonarThreshold(int distanceCm) {
         if (sonarCenter != null) sonarCenter.applySonarThreshold(distanceCm);
     }
-    // 2026-09: 相機拍照層搬咗去 CameraApi，呢度淨係留個 instance。
     private CameraApi cameraApi;
-    // 2026-09: Vosk 離線 ASR endpoint 層搬喷去 VoskApi (dispatcher Phase 1 第一刀)，嚺度淨係留個 instance.
     private VoskApi voskApi;
 
-    // 2026-08 新增: RobotEventReceiver 沒有 constructor/field 拿到 outer
+    // RobotEventReceiver 沒有 constructor/field 拿到 outer
     // MainActivity instance (它一直只經 EventBus 靜態方法送 event, 不認識
     // MainActivity 本身), 但 sonar_obstacle 的 LED 指示邏輯 (applyObstacleIndicator,
     // sonarThresholdCm) 全部是 instance-level, 靠著 robot 這個 AIDL 連線。加一個
     // static instance reference, 在 onCreate/onDestroy set/clear, 讓
     // RobotEventReceiver 可以經 MainActivity.getSonarThresholdCm() /
     // MainActivity.onSonarDistanceReceived() 這兩個 static bridge 方法接回
-    // instance 邏輯 (2026-09: 正本搬咗去 SonarCenter，static 簽名不變轉交),
+    // instance 邏輯 (static 簽名不變轉交),
     // 而不用將 RobotEventReceiver 的 constructor 簽名擴大 (這樣會
     // 影響到整個 registerDynamicReceiver() 的 new RobotEventReceiver() call 位)。
     private static volatile MainActivity sInstance;
@@ -235,7 +168,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     }
 
     /** RobotEventReceiver 收到 SONAR_DISTANCE_ACTION 之後的入口 (正本喺
-     *  SonarCenter#onSonarDistanceReceived，javadoc 連 code 跟埋走)：轉交；
+     *  SonarCenter#onSonarDistanceReceived)：轉交；
      *  沒 instance／sonarCenter 就靜靜地不做事。 */
     static void onSonarDistanceReceived(int distanceCm, boolean triggered) {
         MainActivity m = sInstance;
@@ -278,7 +211,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         mainHandler.postDelayed(bootVoiceRunnable, 15000);
         semanticMatcherZh = new SemanticMatcherZh(this);
         semanticMatcherEn = new SemanticMatcherEn(this);
-        // 2026-09: Vosk 熔斷 —— vosk-android minSdk 21，API 19 機（呢個 APK 要
+        // Vosk 熔斷 —— vosk-android minSdk 21，API 19 機（呢個 APK 要
         // 裝到 4.4）絕對唔可以掂 org.vosk.*（native/JNA 即炒）。19 機 vosk
         // 維持 null，所有 vosk/* endpoint 經 VoskApi.voskOrError() 回清晰錯誤。
         if (android.os.Build.VERSION.SDK_INT >= 21) {
@@ -292,27 +225,26 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                     + android.os.Build.VERSION.SDK_INT);
         }
         // Android TTS 層喺 TtsCenter 建構 (vosk 之後起，等 listener 嘅
-        // vosk pause/resume 有嘢掂)。null = 用機身目前預設引擎，同以前一樣。
+        // vosk pause/resume 有嘢掂)。null = 用機身目前預設引擎。
         ttsCenter = new TtsCenter(this, vosk);
         ttsCenter.initAndroidTts(null);
         semanticCenter = new SemanticCenter(semanticMatcherZh, semanticMatcherEn, actionDirect, ttsCenter);
         deviceStatus = new DeviceStatus(this, mainHandler, actionDirect, ubxPlayer, ttsCenter);
-        // sticky broadcast 註冊時機唔敏感；原 onCreate 開頭喰次 register 搬团度 (起好先叫得)。
+        // sticky broadcast 註冊時機唔敏感。
         deviceStatus.registerBatteryReceiver();
         cameraApi = new CameraApi(this, cameraController, ringtoneCenter);
         // Sonar＋PIR sensors 包：淨要 ledCenter (紫燈指示)，喺 xiaozhiBridge 之前起——
-        // MCP sensors 4 tool 經 ctor 拎佢 (2026-09 MCP 收斂；斷 cycle：PIR 推送
+        // MCP sensors 4 tool 經 ctor 拎佢 (斷 cycle：PIR 推送
         // uplink 經下面 setUplink 後補，見 SonarCenter javadoc 縫設計)。
         sonarCenter = new SonarCenter(this, ledCenter);
         // 小智包 (HTTP API/mic/activation/vision/MCP/mute 鍵開關)：collaborator 齊喺呢度起。
-        // xiaozhiClient/xiaozhiAudioController/xiaozhiConfig 由佢擁有 (原 onCreate 頭段嗰兩次建構搬入 ctor)。
+        // xiaozhiClient/xiaozhiAudioController/xiaozhiConfig 由佢擁有。
         // 起喺 voskApi 之前——voskStart() 後開搶 mic 要經佢。
-        // (sonarCenter 放最尾傳入；MCP 收斂，呢度起好先叫得。)
+        // (sonarCenter 放最尾傳入；呢度起好先叫得。)
         xiaozhiBridge = new XiaozhiBridge(this, mainHandler, actionDirect, audioCenter,
                 robot, ttsCenter, vosk, cameraController, ledCenter, this, sonarCenter);
         // PIR 推送 uplink 後補 (同一個 onCreate thread，httpServer 起之前一定到；
-        // 未補前嘅 PIR edge 照存 state、push 跳過——窗口得幾行，比以前
-        // registerDynamicReceiver→sonarCenter 更窄)。
+        // 未補前嘅 PIR edge 照存 state、push 跳過)。
         sonarCenter.setUplink(xiaozhiBridge);
         micCenter = new MicCenter(robot, ledCenter, audioController, audioPlaybackController, this);
         // (apiDispatcher 嗰次一齊傳入；呢度起好先叫得。)
@@ -321,14 +253,14 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 actionDirect, audioCenter, this);
         gestureCenter.start();
         grammarCenter = new GrammarCenter(this, robot, xiaozhiBridge);
-        // sticky broadcast，註冊即刻有現狀；原 onCreate 開頭嗰次 register 搬嚟呢度 (起好先叫得)。
+        // sticky broadcast，註冊即刻有現狀 (起好先叫得)。
         grammarCenter.registerConnectivityReceiver();
         voskApi = new VoskApi(vosk, xiaozhiBridge);
         // TTS orchestration 包 (speech/tts＋stop＋總停)：要 xiaozhiBridge
         // (經 stopSpeechPlayback 停小智管道)，放 voskApi 之後、dispatcher 之前。
         speechCenter = new SpeechCenter(ttsCenter, vosk, xiaozhiBridge);
-        // (sonarCenter 已喺上面 xiaozhiBridge 之前起好——MCP 收斂施工順序；
-        // dispatcher 照舊放最尾。)
+        // (sonarCenter 已喺上面 xiaozhiBridge 之前起好；
+        // dispatcher 放最尾。)
         // dispatcher 包晒上面全部 controller (+speechCenter 做 Host；sensorState
         // 繼續經 this——TTS／sonar 全部轉交緊對應 center；servo/sonar 直調
         // sonarCenter)。
@@ -347,8 +279,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // carry over, so the WebSocket feed (accel, uuid, wakeup, etc.) dropped
         // intermittently even though the HTTP API calls themselves succeeded. Rather
         // than fight browser cert-trust behavior, TLS support was removed outright
-        // (2026-08: TlsSupport.java/SelfSignedCert.java deleted, HttpServer's TLS
-        // constructor overload removed) - walkie-talkie (which needs a secure context)
+        // - walkie-talkie (which needs a secure context)
         // stays permanently disabled in the UI (see app-mic.js) and everything else works
         // reliably over plain HTTP/WS.
         String ip = deviceStatus.getWifiIp();
@@ -401,7 +332,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // broken layout, buttons stuck disabled). Per this class's original design intent,
         // the HTML panel at http://<robot-ip>:8888/ is the actual UI; the on-device
         // screen is just a native status readout telling the user where to point a browser.
-        // 修正：之前 panelUrl/linkView 係 final 局部變量，轉 hotspot/WiFi 後永遠顯示舊 IP；現改為成員變量並隨網絡變化自動更新
+        // panelUrl/linkView 為成員變量並隨網絡變化自動更新
         currentPanelUrl = scheme + "://" + ip + ":" + HttpServer.PORT + "/";
         int pad = (int) (16 * getResources().getDisplayMetrics().density);
 
@@ -483,7 +414,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     private void registerDynamicReceiver() {
         dynamicReceiver = new RobotEventReceiver();
         IntentFilter filter = new IntentFilter();
-        // 2026-08 更新: 反編譯 alpha2services_base 3.0.0.2 全個 APK, 搜晒所有
+        // 反編譯 alpha2services_base 3.0.0.2 全個 APK, 搜晒所有
         // sendBroadcast() call site 逐個核對 —— "com.ubtechinc.key" 呢個 action
         // string 在這個韌體版本已經找不到任何 sendBroadcast 出處, 實際上是死
         // code。依然保留 filter + RobotEventReceiver 那個 case, 純粹做向後
@@ -495,12 +426,11 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         filter.addAction(RobotWire.ALPHA_QR_CODE);
         filter.addAction(RobotWire.ALPHA_WIFI_RESULT);
         filter.addAction(RobotWire.ALPHA_BT_CONNECTION);
-        // 2026-08 新增 (2個): 反編譯 alpha2services_base 3.0.0.2 整個 APK 找到的
-        // sendBroadcast() 出處, 之前這個 App 完全沒有 register, 詳見各自的
+        // 反編譯 alpha2services_base 3.0.0.2 整個 APK 找到的 sendBroadcast() 出處，詳見各自的
         // RobotEventReceiver case comment。
         filter.addAction("com.ubtechinc.services.Action.ACTION_STOP");
         filter.addAction("com.ubtechinc.services.Action.ROBOT_INTERRUPTED");
-        // 2026-08 新增: 實機 (firmware 1.1.1.14) 證實 sonar 讀數不會經由
+        // 實機 (firmware 1.1.1.14) 證實 sonar 讀數不會經由
         // IAlpha2SerialPortService.onListenSerialPortRcvData() 送達 - app 自己
         // registerSerialPortRcvListener() 只收到 config command 的 2-byte ack
         // "04 00"。CHEST_ACTION 這個 broadcast 也收得到, 但反編譯官方
@@ -510,7 +440,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // (RobotEventReceiver 那個 case 依然會 dump 它的 extras, 對照兩條路徑
         // 的時序有用), 不再指望它是主要事件來源。
         filter.addAction(RobotWire.CHEST_ACTION);
-        // 2026-08 新增: ⚠️ 未經真機驗證 (見 RobotEventReceiver 這個 case 的
+        // ⚠️ 未經真機驗證 (見 RobotEventReceiver 這個 case 的
         // comment) - 反編譯官方 alpha2services 3.0.0.2 APK 反推出來的 PIR 通知
         // broadcast, 只有在 SecurityCameraUtil 監控開關開啟的時候才會發出。
         filter.addAction("com.ubtech.securityCamera.pirStatus");
@@ -518,12 +448,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 獨立 broadcast 送出, extra 已經是 parse 好的 int, 不需要自己再解 raw
         // wire frame。見 RobotWire.SONAR_DISTANCE_ACTION 的 comment。
         filter.addAction(RobotWire.SONAR_DISTANCE_ACTION);
-        // 2026-08 新增 (原 8 個，2026-09 拎走 IFLY_OFFLINE_CMD/NUANCE_OFFLINE_CMD
-        // 呢兩個，nuance/iflytek 已經永久唔再用，剩返 6 個): 用來查「speech_SetMIC()
-        // 拿回 mic 會不會有 broadcast 通知」這個問題, 反編譯
+        // 用來查「speech_SetMIC() 拿回 mic 會不會有 broadcast 通知」這個問題, 反編譯
         // Alpha2Services-v1.1.7.3.20-5mic.apk 整個 APK 找到的 sendBroadcast()
-        // 出處 (speechmanager.d.*/AlphaMainSeviceImpl 這兩個 class), 之前這個
-        // App 完全沒有 register。特意連語意未確定的也全部先 register, 經
+        // 出處 (speechmanager.d.*/AlphaMainSeviceImpl 這兩個 class)。特意連語意未確定的也全部先 register, 經
         // mic_broadcast_debug event 轉送到 WebSocket log (見 RobotEventReceiver
         // 這幾個 case comment) - 目的是收集實際 payload, 看完再決定哪幾個和 mic
         // ownership 真的有關、要不要正式做成獨立 event/更新 UI 指示燈, 在未驗證之前
@@ -562,7 +489,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 restartIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                 PendingIntent pendingIntent = PendingIntent.getActivity(
                         appContext, 0, restartIntent,
-                        // 2026-09-09 加 IMMUTABLE：target 22 而家唔使，但升上 31+
+                        // IMMUTABLE：target 22 而家唔使，但升上 31+
                         // 無呢個 flag 即 crash。static final int 會 inline 落 dex，
                         // 舊機 runtime 照行無影響。
                         PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_CANCEL_CURRENT
@@ -586,31 +513,18 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         });
     }
 
-    // (Pad 燈成組搬咗去 LedCenter。)
-    // (停止/快門提示音 + 共用播放器搬咗去 RingtoneCenter。)
-
-    // (提示音/共用播放器搬咗去 RingtoneCenter。)
-    // 2026-09: 本地音樂 + 電台播放中心搬咗去 AudioCenter (拆 god object 第六刀)——
-    // 播放器/EQ/頻譜/filler 循環/搜尋/上載全部喺嗰邊，呢度淨係留個 instance。
     private AudioCenter audioCenter;
 
-    // (播歌 filler 循環搬咗去 AudioCenter。)
-    // (本地播歌/EQ 搬咗去 AudioCenter。)
-    // 2026-09: stopAllSpeechPlayback() 搬咗去 SpeechCenter (TTS core 第一刀)——
-    // javadoc 連 code 跟埋走，呢度唔留副本。
-
     /**
-     * 2026-08-25: WiFi 狀態 → wifi 指示燈 (2026-09 三態: wifi 熄=熄燈,
+     * WiFi 狀態 → wifi 指示燈 (三態: wifi 熄=熄燈,
      * wifi 開但未連=紅 13, 連上 AP=藍 12)。註冊當下立即檢查一次現狀,
      * 處理「app 開啟之前已經連上/斷線」的情況。
      */
-    // (wifi 燈成組搬咗去 LedCenter：register/apply 三式/burst。)
 
     private void initRobot() {
-        // 2026-09: 脫離 Alpha2OpenSdk —— robot 係 RobotStub 純本地 no-op facade
+        // 脫離 Alpha2OpenSdk —— robot 係 RobotStub 純本地 no-op facade
         // (機身無 alpha2services, 舊 binder 調用全部誠實失敗, 見 RobotStub)。
-        // 舊匿名子類的三個 onListenSerialPort* AIDL 回調在 pure-direct 下永不
-        // 觸發, 已經成段刪除; chest/head 回幀只走下面的 wireDirectFrameListeners()。
+        // chest/head 回幀只走下面的 wireDirectFrameListeners()。
         robot = new RobotStub(this);
         chestQuery = new ChestQuery(this, robot);
         actionDirect = new ActionDirect(this, ubxPlayer);
@@ -626,8 +540,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 见 wireDirectFrameListeners()。
         wireDirectFrameListeners();
 
-        // 2026-09 刪除: registerChestMuteKeyTestListener()——純 no-op subscribe
-        // (filter＋comment，無任何動作)，chest_mute_key 事件經 EventBus 照常上 WebSocket。
+        // chest_mute_key 事件經 EventBus 照常上 WebSocket。
         ledCenter.registerAlpha2PirAlertListener();
     }
 
@@ -693,7 +606,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     private void onDirectHeadFrame(byte[] frame) {
         if (frame == null || frame.length == 0) return;
         EventBus.get().publish("head_rcv", "{\"hex\":\"" + toHex(frame, frame.length) + "\"}");
-        // 2026-09: 頭版本 latch 已刪 (queryHeaderFirmwareVersion 無 caller) -
         // 頭幀淨係 publish，不再做任何 latch。
     }
 
@@ -701,7 +613,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         if (frame == null || frame.length == 0) return;
         byte[] payload = stripSerialFrame(frame);
         if (payload == null) payload = frame;
-        // 2026-09: 心跳靜音 - cmd 0x8B(-117, ~1Hz telemetry) 同 0x8D(-115, 5s
+        // 心跳靜音 - cmd 0x8B(-117, ~1Hz telemetry) 同 0x8D(-115, 5s
         // heartbeat) 唔再 publish chest_rcv 上 WebSocket (Event Log 洗版, 見
         // logcat 定量: 5 分鐘 361 幀幾乎全部係呢兩種)。其他 cmd (UUID 回覆 0x37、
         // PIR 0x93 等) 照舊發布; -109 PIR 采集/轉發邏輯喺下面完全唔郁。
@@ -735,16 +647,10 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
 
     // -- pure-direct 共用回包 helper (directCode／codeResponse／codeResponseReady／
     // jsonSafe／toHex／readFully 留喺度，各 center 經 MainActivity. 直用) --
-    // 2026-09 刪除: private directChestReady()/directHeaderReady()——零調用
-    // (各 center 全部內聯咗自己經 appContext 嘅副本：UbxApi／LedCenter／
-    // ChestQuery／XiaozhiBridge／ApiDispatcher／DeviceStatus／SonarCenter)。
     static UbxErrorCode.API_ERROR_CODE directCode(boolean ok) {
         return ok ? UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED
                 : UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
     }
-
-    // 2026-09 刪除: Local_Result 解析 (LOCAL_RESULT_PREFIX/fieldBetween) -
-    // 唯一 caller (舊 binder onServerCallBack) 已隨脫鉤刪除。
 
     // -- iFlytek 語意配對: 完全取代悠聊 APK (com.ubtech.iflytekmix) -------------------
     //
@@ -756,21 +662,13 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     // 這層語意配對 (SemanticMatcherZh, 由悠聊 assets/local_semantic 那 850 條
     // 問法還原) 以及這個時序。
     //
-    // 掛在哪裡: 不再掛在 onServerCallBack() (見上面 2026-08 移除那個 comment) - 前端
-    // 統一經由 speech/iflytek_simulate 觸發, 讓所有輸入方法 (真人說話/打字模擬) 都走
+    // 掛在哪裡: 前端統一經由 speech/iflytek_simulate 觸發, 讓所有輸入方法 (真人說話/打字模擬) 都走
     // 同一條路, 避免重複 TTS。中英文由 looksChinese() 判斷, 只看輸入文字內容,
     // 不理會 ASR engine 目前設定的是哪種語言。
 
-    // (語意配對成組搬咗去 SemanticCenter：looksChinese/toZhResult/handle、
-    // IFLYTEK delay 常數；單參數 overload 零調用，一併刪除。)
-
-    // 2026-09: 心口 mute 鍵 (-111) 入口本體搬咗去 XiaozhiBridge.onMuteKeyEvent
-    // (mute LED＋小智開關嗰邊擁有)；舊紫燈測試 header 註解一併拎走 (被 68[01/00]
-    // 真 mute 燈取代已久)。static 縫留喺度 (frozen onDirectChestFrame／
-    // RobotEventReceiver 經呢度入，簽名不變)。
+    // static 縫留喺度 (frozen onDirectChestFrame／RobotEventReceiver 經呢度入，簽名不變)。
     /** RobotEventReceiver／onDirectChestFrame 收到胸口 mute 鍵 (-111) 時直接呼叫
-     *  (簽名不變)：轉交 XiaozhiBridge；sInstance／xiaozhiBridge 任一 null 即
-     *  no-op (舊 code 呢個窗口會 NPE 跌入 caller 嘅 try/catch，而家靜默處理)。 */
+     *  (簽名不變)：轉交 XiaozhiBridge；sInstance／xiaozhiBridge 任一 null 即 no-op。 */
     public static void onMuteKeyEvent(final boolean pressed) {
         final MainActivity m = sInstance;
         if (m == null || m.xiaozhiBridge == null) {
@@ -779,10 +677,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         m.xiaozhiBridge.onMuteKeyEvent(pressed);
     }
 
-    // (PIR 事件接線搬咗去 LedCenter.registerAlpha2PirAlertListener()。)
-
-    // (PIR 提示音搬咗去 RingtoneCenter.playPirAlertCue()。)
-    // (TTS 語言表/legacy fallback/iso3/引擎表/init/讀出成組搬咗去 TtsCenter。)
     /** 接住 TtsCenter.checkTtsDataSyncLegacy() 發出的 ACTION_CHECK_TTS_DATA 結果。只
      *  處理這個 app 自己認得的 requestCode, 其他一律交回給 super (雖然目前這個
      *  app 沒有其他地方用 startActivityForResult(), 但這是基本禮貌, 不應該
@@ -801,8 +695,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         if (sInstance == this) {
             sInstance = null;
         }
-        // 2026-09-09：逐個 null-guard（onCreate 中途炸/早退再 destroy，
-        // 之前直接調用即 NPE 冚唪唥）。
+        // 逐個 null-guard（onCreate 中途炸/早退再 destroy）。
         mainHandler.removeCallbacks(bootVoiceRunnable);
         if (gestureCenter != null) gestureCenter.shutdown();
         if (ubxPlayer != null) ubxPlayer.stopVoice();
@@ -841,13 +734,12 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
             }
         }
         if (grammarCenter != null) grammarCenter.unregisterConnectivityReceiver();
-        // 2026-09: offline watchdog thread 已成組移除，無嘢要 quit。
         if (cameraController != null) cameraController.shutdown();
         if (audioController != null) audioController.shutdown();
         if (audioPlaybackController != null) audioPlaybackController.shutdown();
         if (ledCenter != null) ledCenter.shutdown();
         if (ringtoneCenter != null) ringtoneCenter.stopRingtonePlayback();
-        // 2026-08 新增: 之前這裡沒有呼叫 stopLocalMusicPlayback()/stopRadioPlayback() -
+        // 之前這裡沒有呼叫 stopLocalMusicPlayback()/stopRadioPlayback() -
         // onDestroy() 就算執行了也不會釋放正在播放的 currentMusicPlayer/currentRadioPlayer,
         // 一直以來都是個 leak (MediaPlayer native resource 沒有 release())。加入
         // Equalizer (musicEqualizer, 跟隨 currentMusicPlayer 的生命週期) 之後這個
@@ -905,16 +797,10 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     // surface. See XiaozhiClient's class javadoc for the overall protocol/phase-1-scope
     // explanation.
 
-    // (xiaozhi_actions catalog + resolveActionId 搬咗去 ActionDirect，MCP 經嗰邊用。)
-
     /** Radio Browser (radio-browser.info) 的其中一個 API 主機 - 官方文件建議客戶端
      *  對 "all.api.radio-browser.info" 做 DNS 解析再從多個鏡像之間挑選, 但這台機器沒有
      *  DNS SRV/多鏡像 failover 的需求 (一台家用機器人, 不是高流量服務), 直接用
      *  官方文件範例裡出現的 de1 這個固定主機就已經足夠, 保持程式碼簡單。 */
-    // (電台搜尋/比對搬咗去 AudioCenter。)
-    // (隨機動作池搬咗去 ActionDirect；triggerRandomFillerAction() 搬咗去 AudioCenter。)
-    // 2026-09: MCP 開關 helper (isMcpEnabled/getMcpDisabledToolNames/
-    // isMcpToolEnabled) 搬咗去 XiaozhiConfig，bridge 經 xiaozhiConfig.* 用。
     /** Reads an InputStream fully into a UTF-8 string - mirrors XiaozhiOtaClient's own
      *  readFully() (same need, this class just doesn't share that one since it's
      *  private there). Used by xiaozhiVisionExplainRequest()'s response handling. */
@@ -930,15 +816,13 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
 
     // -- handleApi 缺口 (mic/grammar core 未搬)：dispatcher 經 Host 調返嚟，
     // core 搬埋嗰陣跟埋走。 --
-    // (speech/tts、speech/stop 搬咗去 SpeechCenter，直實現 ApiDispatcher.Host。)
 
     // -- GestureCenter.Host (0x5e 總停鍵)：轉交 SpeechCenter (TTS orchestration)。 --
     @Override public void stopAllSpeech() { if (speechCenter != null) speechCenter.stopAllSpeech(); }
 
     /** Handles POST /upload/audio: raw PCM bytes (16kHz mono 16-bit, matching
      *  AudioPlaybackController's format - see AudioPlaybackController.SAMPLE_RATE_HZ
-     *  and app-mic.js's TALK_TARGET_SAMPLE_RATE; 2026-08 改返 16kHz - 當初落 8kHz
-     *  只是為了同步已經永久停用的 walkie-talkie, 這個理由現在不存在) from the
+     *  and app-mic.js's TALK_TARGET_SAMPLE_RATE) from the
      *  browser's mic, queued for playback.
      *  Playback must already be running (audio/play/start) - this does not implicitly
      *  start it, so a stray upload after the user has stopped talking doesn't
@@ -973,7 +857,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         } else {
             byte[] msg = ("Not found: /stream/" + path).getBytes(StandardCharsets.UTF_8);
             java.io.OutputStream out = socket.getOutputStream();
-            // 2026-09-09：補 Content-Type＋CORS，同其他回應睇齊（之前淨係三行）。
+            // 補 Content-Type＋CORS，同其他回應睇齊。
             out.write(("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: " + msg.length
                     + "\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1));
             out.write(msg);
@@ -981,41 +865,19 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         }
     }
 
-    // (setHeadEyeLedLong/applyObstacleIndicator 搬咗去 LedCenter。)
-    // 2026-09: handleChestObstacleFrame() (0x81 legacy path) 搬咗去 SonarCenter
-    // (Sonar 第一刀)——javadoc 連 code 跟埋走。呢度留薄 shim 唔直改 call site，
-    // 因為 onDirectChestFrame 區間凍結（有人同時改緊 serial frame 解析，嗰區一隻字唔郁）。
+    // 呢度留薄 shim 唔直改 call site，因為 onDirectChestFrame 區間凍結（有人同時改緊 serial frame 解析，嗰區一隻字唔郁）。
     private void handleChestObstacleFrame(byte[] bytes, int len) {
         if (sonarCenter != null) sonarCenter.handleChestObstacleFrame(bytes, len);
     }
 
-    // (waitForFrame 搬咗去 CameraApi。)
-    // 2026-08 (已淘汰): 之前用 waitForStableFrame() 跳過幾幀來迴避 preview frame
-    // 過渡期問題 (AE/AF 未收斂) - 反編譯用戶提供、實測成功的第三方 apk 之後發現真正
-    // 根源是 capture 方式本身 (preview frame vs 真正單張拍攝), 已改用
-    // CameraController.takePhoto() (真正 camera.takePicture()), 見
-    // xiaozhiTakePhotoAndExplain() 那段 comment。這個「跳幀」workaround 已不再使用,
-    // 已移除, 避免留低死 code 同令人誤會依然係現行做法。
-
-    // (wifi/bt 狀態搬咗去 DeviceStatus。)
-    // 2026-09 移除: 舊 binder actionList() (經 robot.action_getActionList 等
-    // 5s latch)——機身已無 alpha2services，只會回 NOT_INIT。action/list 一律行
-    // ActionDirect.actionListDirect() (讀 actionInfo.txt + UbxPlayer)。
-    // 2026-09: 動作檔尋址層 (ACTION_DIR/INFO + loadActionInfo + resolveActionFile)
-    // 搬咗去 ActionDirect (拆 god object 第二刀)，以下淨返 ubx/servo 共用實現。
+    // action/list 一律行 ActionDirect.actionListDirect() (讀 actionInfo.txt + UbxPlayer)。
+    // 以下淨返 ubx/servo 共用實現。
     // -- Ubx 直播共用实现（/api/direct/ubx/* 与 /api/alpha2/ubx/* 同调；
     // 抢占式：播新动作自动停旧动作，与原厂 playActionName 打断语义一致）--
-    // 2026-09: ubx 直播共用實現 (list/play/speed/stop/status) 同單舵機 cmd03 化
-    // (servoSendOne/Code) 搬咗去 UbxApi (拆 god object 第三刀)。
-    // 2026-09 移除: servoSendAll()——零調用 (direct servo/all 已內聯同一邏輯)。
-    // 2026-09: actionListDirect / actionPlayDirect / playActionDirect /
-    // stopActionWithRecovery 搬咗去 ActionDirect (拆 god object 第二刀)。
     // 动作配乐已并入 UbxPlayer 内 voice 线（a/j/a/o 官方语义），此处不再另起 MediaPlayer。
     // 配乐寻址规则见 UbxPlayer.resolveVoiceFile：ubx去扩展名/music名，缺省退回目录首首 mp3。
-    // 2026-09: 舊 require()/queryOrDefault() 已全量遷移至 ApiValidator, 此處不再保留
     // (Map.getOrDefault 在 API 22 會 NoSuchMethodError, 一律經 ApiValidator.optional()
     // 取代; 空字串同缺席一樣回 default, 非法值拋 IllegalArgumentException → 400)。
-    // (TTS 嘴燈 bracket 搬咗去 LedCenter.start/stopMouthLedForTts()。)
     static boolean isOk(UbxErrorCode.API_ERROR_CODE code) {
         return code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
@@ -1038,7 +900,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
 
     static String jsonSafe(String s) {
         if (s == null) return "";
-        // 2026-08 修正: 之前只 escape 反斜線和雙引號, 沒處理換行/回車/tab -
         // XiaozhiOtaClient 的 server 回應的 activationMessage 實測證實會帶著
         // literal "\n" (實機 logcat 看到 "xiaozhi.me" 後面直接斷行), 送入
         // EventBus.publish() 組出來的 JSON string 裡如果有未 escape 的真正換行
@@ -1047,7 +908,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 使 "xiaozhi_activation" 這個 type 永遠比對不中, 界面對應的顯示邏輯
         // (xiaozhiShowActivationCode()) 完全不會觸發 - 這才是「websocket log
         // 看到東西, 但界面沒顯示」的真正成因。
-        // 2026-09-09 補埋 \b \f + 其餘 C0 控制字元（U+XXXX 形），同 HttpServer
+        // \b \f + 其餘 C0 控制字元（U+XXXX 形），同 HttpServer
         // ApiResponse 轉義睇齊。
         StringBuilder sb = new StringBuilder(s.length());
         for (int i = 0; i < s.length(); i++) {
@@ -1078,17 +939,12 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         m.grammarCenter.triggerWakeupProbe();
     }
 
-    // 2026-09: 真實 MCU 韌體版本/UUID 查詢成組搬咗去 ChestQuery (拆 god object
-    // 第一刀)——以下淨返個位，邏輯一字不改喺嗰邊。
-    // 2026-09 刪除: queryHeaderFirmwareVersion() - 無 caller (頭版本無 endpoint、
-    // 前端無入口)。胸板 queryChestFirmwareVersion() 保留。
+    // 胸板 queryChestFirmwareVersion() 保留。
 
     // -- 胸口升級實作 (48/49/50，鏡像 alpha2services h.a.a$b) ---------------------------
-    // 2026-09: 胸升級實裝 (電量/MD5/ACK/升級線程/啟動/狀態) 搬咗去 ChestUpgrade
-    // (拆 god object 第四刀)。
     /** Formats raw serial bytes as space-separated uppercase hex, matching the format
      *  used by the upstream SDK's HelloAlpha example for the same callbacks.
-     *  2026-09-09：手寫 hex 表（之前逐 byte String.format，chest 幀路徑高頻，慳 GC）。 */
+     *  手寫 hex 表（chest 幀路徑高頻，慳 GC）。 */
     private static final char[] HEX_UPPER = "0123456789ABCDEF".toCharArray();
     static String toHex(byte[] bytes, int len) {
         if (bytes == null || len <= 0) {

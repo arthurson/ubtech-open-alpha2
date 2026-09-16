@@ -15,21 +15,17 @@ import java.util.Map;
  * OTA/activation＋重連、vision/explain、MCP bridge (listTools/callTool)、
  * mute 鍵開關＋連線指示燈。
  *
- * 2026-09 由 MainActivity 整包搬出：上面成串全部原本係 MainActivity 私有成員，
- * 邏輯一字不改搬過嚟（機械改寫只限：包可見 helper 加 MainActivity. 前綴、
- * instance readiness 內聯經 appContext、跨域讀寫經下面 HostState）。
  * 擁有關係：
  * - MainActivity 只留：implements HostState（TTS 兩法＋sonar 四法，轉交緊
  *   SpeechCenter／SonarCenter）、接線
  *   （onCreate 建構、onDestroy shutdown()、router 轉發、PIR/mute key 兩個硬件入口）。
- *   呢度 sonar state 唔再經 HostState——MCP sensors 4 tool（2026-09 收斂）
+ *   呢度 sonar state 唔經 HostState——MCP sensors 4 tool
  *   經下面 sonarCenter 直調 SonarCenter。
- * - xiaozhiClient/xiaozhiAudioController/xiaozhiConfig 全部由呢度擁有
- *   （前兩者之前係 MainActivity field，後者之前喺 onCreate 起）。
- * - stopAllSpeechPlayback() 搬咗去 SpeechCenter（TTS core 第一刀，跨域
+ * - xiaozhiClient/xiaozhiAudioController/xiaozhiConfig 全部由呢度擁有。
+ * - stopAllSpeechPlayback() 喺 SpeechCenter（TTS core，跨域
  *   orchestration），經 stopSpeechPlayback() 掂 xiaozhi 嗰條播放管道。
  *
- * 線程：沿用舊安排——HTTP handler thread 可阻塞；activation/reconnect 自開
+ * 線程：HTTP handler thread 可阻塞；activation/reconnect 自開
  * 背景 thread；mic hold enforcer 獨立 thread；mainHandler 只做延遲計時。
  *
  * 實機驗證限制（無穩定上網）：connect 後嘅成功路徑（語音對話、vision、
@@ -40,8 +36,8 @@ public final class XiaozhiBridge {
     private static final String TAG = "XiaozhiBridge";
 
     /**
-     * 宿主縫：TTS state（enforcer＋gap 計時經呢度讀）。sonar state 唔再經呢度——
-     * MCP sensors 4 tool（2026-09 收斂）經上面 sonarCenter 直調 SonarCenter。
+     * 宿主縫：TTS state（enforcer＋gap 計時經呢度讀）。sonar state 唔經呢度——
+     * MCP sensors 4 tool 經上面 sonarCenter 直調 SonarCenter。
      * 由 MainActivity 實現。
      */
     public interface HostState {
@@ -63,7 +59,7 @@ public final class XiaozhiBridge {
     private final CameraController cameraController;
     private final LedCenter ledCenter;
     private final HostState hostState;
-    // 2026-09 MCP 收斂加：sensors 4 tool 經呢度直調 (放最尾，慣例)。
+    // sensors 4 tool 經呢度直調 (放最尾，慣例)。
     private final SonarCenter sonarCenter;
     private XiaozhiConfig xiaozhiConfig;
 
@@ -82,22 +78,21 @@ public final class XiaozhiBridge {
         this.ledCenter = ledCenter;
         this.hostState = hostState;
         this.sonarCenter = sonarCenter;
-        // 小智設定層 (含 TTS 引擎讀取+舊值遷移) 喺呢度建構 (原 MainActivity.onCreate 起嗰次)。
+        // 小智設定層 (含 TTS 引擎讀取+舊值遷移) 喺呢度建構。
         this.xiaozhiConfig = new XiaozhiConfig(context);
-        // device id 讀 prefs (原 onCreate 嗰次 new XiaozhiClient(getXiaozhiDeviceId()))。
+        // device id 讀 prefs。
         this.xiaozhiClient = new XiaozhiClient(getXiaozhiDeviceId());
     }
 
-    /** onDestroy 共用：斷線＋停 audio（comment 連 code 由 MainActivity 搬入）。 */
-    // 2026-09-09：guard，重複調用唔好每次都 new thread。
+    /** onDestroy 共用：斷線＋停 audio。 */
+    // guard，重複調用唔好每次都 new thread。
     private final java.util.concurrent.atomic.AtomicBoolean shutdownGuard =
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public void shutdown() {
         if (!shutdownGuard.compareAndSet(false, true)) return;
         if (xiaozhiClient != null) {
-            // 2026-08 修 crash: 之前呢度直接 (同步) call disconnect(), 但
-            // disconnect() 內部現在會做 sendCloseFrame() (socket write, 完成
+            // disconnect() 內部會做 sendCloseFrame() (socket write, 完成
             // WebSocket close handshake, 見 XiaozhiClient 的 case 0x8 的
             // comment)。onDestroy() 保證在 main thread 執行, Android 對 main
             // thread 做網路 I/O 的限制不會因為「這個 write 很快」就豁免 - 實機
@@ -140,8 +135,7 @@ public final class XiaozhiBridge {
         }
     }
 
-    // directChestReady/directHeaderReady 內聯：經 appContext 唔使 Activity
-    // (各 center 自帶副本；原 MainActivity 私有版 2026-09 刪，零調用)。
+    // directChestReady/directHeaderReady 內聯：經 appContext 唔使 Activity。
     private boolean directChestReady() {
         try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
         catch (Exception e) { return false; }
@@ -152,16 +146,15 @@ public final class XiaozhiBridge {
         catch (Exception e) { return false; }
     }
 
-    // -- MCP tools: self.robot.servo_set_one/all (2026-09 拆分自 callTool() 那個
-    // 458 行的巨型 switch - 純粹搬出嚟做獨立 method, 邏輯逐字不變。呢兩個刻意
-    // 留喺 XiaozhiBridge, 冇搬去 UbxApi/ActionDirect: UbxApi.servoSendOneCode()
-    // 底層邏輯睇落一樣, 但佢對超範圍輸入係靜默 clamp, 呢度係刻意 (2026-09-09)
+    // -- MCP tools: self.robot.servo_set_one/all 留喺 XiaozhiBridge,
+    // 冇搬去 UbxApi/ActionDirect: UbxApi.servoSendOneCode()
+    // 底層邏輯睇落一樣, 但佢對超範圍輸入係靜默 clamp, 呢度係刻意
     // 要求明確報錯、唔靜默 clamp, 跟 servoSendOneCode() 共用會令呢個已驗證嘅
-    // 行為分別消失, 所以保留獨立實現。) --
+    // 行為分別消失, 所以保留獨立實現。 --
 
     /** self.robot.servo_set_one 本體。
      *  pure-direct: 经 /dev/ttyS1 直发。
-     *  2026-09-09：同 servo/one HTTP 一套範圍（id 1-20、angle 0-255、
+     *  同 servo/one HTTP 一套範圍（id 1-20、angle 0-255、
      *  time 20-32767），唔啱即報錯，唔靜默 clamp。 */
     private SonarCenter.McpResult mcpServoSetOne(org.json.JSONObject arguments) {
         int mcpId = arguments.optInt("id", -1);
@@ -193,8 +186,7 @@ public final class XiaozhiBridge {
             return SonarCenter.McpResult.err("angles is required (20 comma-separated integers)");
         }
         String[] parts = anglesCsv.split(",");
-        // 2026-09-09：要啱啱 20 粒、逐粒 0-255。之前少過 20 粒
-        // 會靜默補 0 落剩餘舵機（成排扯去 0），依家直接報錯。
+        // 要啱啱 20 粒、逐粒 0-255，唔啱直接報錯。
         if (parts.length != 20) {
             return SonarCenter.McpResult.err("angles must have exactly 20 comma-separated values, got " + parts.length);
         }
@@ -233,13 +225,10 @@ public final class XiaozhiBridge {
      *  call 出去會收到 404/連不到, self.camera.take_photo 的 case 會將這個原因
      *  告訴 LLM 知道, 而不是靜靜地假裝成功。
      *
-     *  2026-08 修正: 之前這裡寫死用 https://, 但實測用 https:// 撞到 HTTP 404
-     *  (即使 xiaozhi.me console 側已經開通了 vision/camera 服務也一樣) - 對照
-     *  官方 esp32_camera.cc 的 source (SetExplainUrl/Explain() 實作) 和 GitHub
-     *  issue #708 的實機 log, 官方 firmware 打的其實是 http:// (不加密), 不是
-     *  https://: "Opening HTTP connection to http://api.xiaozhi.me/mcp/vision/explain"
-     *  低於這個 scheme 的路由在 server 側可能和 https:// 不是同一個 virtual
-     *  host/根本沒 mapping, 所以之前一直 404。這裡跟回官方實際用的 scheme。 */
+     * 官方 esp32_camera.cc (SetExplainUrl/Explain()) 同 GitHub issue #708
+     *  實機 log 顯示官方 firmware 打的是 http:// (不加密):
+     *  "Opening HTTP connection to http://api.xiaozhi.me/mcp/vision/explain"，
+     *  不同 scheme 在 server 側可能是不同 virtual host/冇 mapping，會 404。 */
     /** Fallback vision/explain URL, only used when the server hasn't (yet) told us
      *  its real one via the "initialize" MCP request's params.capabilities.vision
      *  (see XiaozhiClient.getVisionUrl()'s comment for the full story - that's the
@@ -247,13 +236,10 @@ public final class XiaozhiBridge {
      *  where take_photo is somehow called before any "initialize" has been
      *  received). 不保證對 - 純粹一個合理猜測的底線值, 不應該是主要路徑。
      *
-     *  2026-08 修正: 之前這裡用 http://api.xiaozhi.me/... - 反編譯一個用戶提供、
-     *  實測拍照成功的第三方 apk (package com.huihongcloud.xiaozhi) 的
-     *  classes.dex, 證實它 OTA 用的其實是 https://api.tenclass.net/xiaozhi/ota/
-     *  (和 DEFAULT_OTA_URL 一致) - api.xiaozhi.me 這個 domain 根本沒有
-     *  /mcp/vision/explain 這條路由, 一直 404 和 console 側有沒有開通 vision 服務
-     *  完全無關。改跟回 api.tenclass.net, scheme 跟回 DEFAULT_OTA_URL 一致的
-     *  https。 */
+     * 反編譯實測拍照成功的第三方 apk (package com.huihongcloud.xiaozhi)
+     *  證實 OTA 用的是 https://api.tenclass.net/xiaozhi/ota/
+     *  (和 DEFAULT_OTA_URL 一致)；api.xiaozhi.me 冇 /mcp/vision/explain 路由，
+     *  所以跟 api.tenclass.net，scheme 跟 DEFAULT_OTA_URL 一致用 https。 */
     private static final String DEFAULT_VISION_URL = "https://api.tenclass.net/xiaozhi/mcp/vision/explain";
     private static final String PREF_XIAOZHI_VISION_URL = "xiaozhi_vision_url";
     /** 相機解析度 (用戶指定) - take_photo 特意用小於一般 camera/snapshot 預覽的
@@ -262,8 +248,8 @@ public final class XiaozhiBridge {
     private static final int XIAOZHI_PHOTO_WIDTH = 480;
     private static final int XIAOZHI_PHOTO_HEIGHT = 360;
 
-    // 2026-08 新增: 記住最近一次 self.camera.take_photo 拿到的 "async, 未完成"
-    // uuid (見 xiaozhiVisionExplainRequest() 的 comment) - 給之後 LLM (GPT-5)
+    // 記住最近一次 self.camera.take_photo 拿到的 "async, 未完成"
+    // uuid (見 xiaozhiVisionExplainRequest() 的 comment) - 給之後 LLM
     // 主動再發的 "self.camera.image_to_text" tools/call 用來核對/取回真正描述。
     // 只記最新一個 (單一 device, 沒有並行 take_photo 的需要) - 用完/逾時後應
     // 清成 null, 避免舊 uuid 混進新一次 call。
@@ -308,8 +294,7 @@ public final class XiaozhiBridge {
      *  doesn't inherit a long delay from an earlier flaky period. */
     private final java.util.concurrent.atomic.AtomicInteger xiaozhiReconnectAttempts =
             new java.util.concurrent.atomic.AtomicInteger(0);
-    /** 2026-08 新增: 修「連不到、很快自己斷線、用戶心急狂按連線鍵」這個 bug -
-     *  根源是 xiaozhiScheduleReconnect() 意外斷線之後有 5 秒 backoff delay,
+    /** xiaozhiScheduleReconnect() 意外斷線之後有 5 秒 backoff delay,
      *  這 5 秒裡面 xiaozhiActivationStatus 還停留在斷線前那個值 (通常是
      *  CONNECTED), 不在 "connect" case 的 guard 擋著的 stage 名單裡面, 用戶如果
      *  在這 5 秒內按「連線」就會通過 guard、額外起多一條 runXiaozhiActivationFlow
@@ -343,18 +328,12 @@ public final class XiaozhiBridge {
      *  Authorization headers as the WebSocket connection itself, not a separate
      *  credential. null until the first successful connect. */
     private volatile String xiaozhiAccessToken;
-    // 2026-08 新增: 之前這裡的 comment 已經說「和 WebSocket 連接一樣的
-    // Device-Id/Client-Id/Authorization headers」, 但 xiaozhiVisionExplainRequest()
-    // 實際沒送 Client-Id header - 反編譯一個用戶提供、實測拍照成功的第三方 apk
-    // (package com.huihongcloud.xiaozhi) 的 vision explain 實現, 證實它真的有送
-    // 這個 header (invoke-virtual v3, v2, LA/i;->f("Client-Id", XiaoZhi.a0)), 對應
-    // 就是連接 WebSocket 那時用的同一個 client_id。runXiaozhiActivationFlow() 之前
-    // 每次都用 java.util.UUID.randomUUID() 生成一個新 clientId 傳給
-    // XiazhiOtaClient 建構, 但沒存下來給之後的 vision request 讀 - 這個 field 就是
-    // 用來補這個缺口。
+    // vision/explain 要送同 WebSocket 連接一樣的 Device-Id/Client-Id/Authorization
+    // headers；反編譯實測成功的第三方 apk 證實有送 Client-Id (連接 WebSocket
+    // 嗰個 client_id)。呢個 field 存低 session 用的 clientId，畀 vision request 讀。
     private volatile String xiaozhiClientId;
 
-    // 2026-08 新增: listTools() (見 xiaozhiMcpBridge()) 每次被 call 都會存下一份
+    // listTools() (見 xiaozhiMcpBridge()) 每次被 call 都會存下一份
     // 完整、未過濾的 tool 清單到這裡 - 給 "mcp_tools/list" HTTP endpoint (MCP 設定
     // card 用) 讀, 讓這個 card 可以顯示全部 tool 連同已 disable 的那些。初始為 null
     // (未連過 XiaoZhi/未收過 tools/list 之前), HTTP handler 要處理這個情況 (fallback
@@ -363,17 +342,17 @@ public final class XiaozhiBridge {
     private volatile org.json.JSONArray lastFullMcpToolList = null;
 
     // -- 心口 mute 鍵 LED (chest cmd=68) ------------------------------------------
-    // 2026-08-25 新增: headboard v1.1 + 舊版 alpha2services 之下按 mute 鍵 MCU 不會
+    // headboard v1.1 + 舊版 alpha2services 之下按 mute 鍵 MCU 不會
     // 自己點燈, 我們在這裡補上: 按下一下 → toggle 燈 (亮=muted 視覺狀態), 放開不理。
     private static final byte CHEST_MUTE_LED_CMD = 68; // 0x44, 實機掃描確認
     private volatile boolean chestMuteLedOn = false;
-    // 2026-08-25 實機 log 發現每次按鍵送出去的全部是 68[00] - 也就是 press 事件重複
+    // 實機 log：每次按鍵送出去的全部是 68[00] - press 事件重複
     // 觸發導致 toggle 兩次又變回原狀。加 400ms 防抖: 太接近的第二次 press 當作同一次。
     private static final long MUTE_PRESS_DEBOUNCE_MS = 400;
     private final java.util.concurrent.atomic.AtomicLong lastMutePressMs =
             new java.util.concurrent.atomic.AtomicLong(0);
 
-    /** 胸口 mute 鍵 (-111) 硬件入口本體 (2026-09 由 MainActivity static 搬入)。
+    /** 胸口 mute 鍵 (-111) 硬件入口本體。
      *  pressed=true (按下) 就 toggle mute LED (小智開關); pressed=false (放開)
      *  不理。static 縫留喺 MainActivity.onMuteKeyEvent (RobotEventReceiver／
      *  frozen onDirectChestFrame 經嗰度入，簽名不變)。 */
@@ -392,7 +371,7 @@ public final class XiaozhiBridge {
             return;
         }
         lastMutePressMs.set(now);
-        // 2026-08 v2: mute 鍵改做「小智開關」- 撳一下連線 (燈着 = 已連接),
+        // mute 鍵係「小智開關」- 撳一下連線 (燈着 = 已連接),
         // 再撳一下斷線 (燈熄)。LED 由實際連線事件驅動 (見 runXiaozhiActivationFlow()
         // 個 connected hook / DisconnectListener / activation error hook), 呢度
         // 按下當下的 send 只是即時的視覺反應, 之後會被真實狀態 hook 校正。
@@ -409,11 +388,9 @@ public final class XiaozhiBridge {
             } else {
                 // 連線 - 同 "connect" case 一致: 搶 activation gate, 背景行
                 // OTA/activation flow; 完成後 CONNECTED hook 會再確認 LED。
-                // 2026-08 v2 修正: 和小智 UI 那個開關看齊 - 開關的語意是「連線並
-                // 隨時語音對話」, 連線完成後 auto_mode 會立即 startXiaozhiMic()
-                // 取得 mic (見 runXiaozhiActivationFlow() 的 CONNECTED branch 和
-                // "auto_mode" case)。之前漏了 set auto_mode, 導致只連了線
-                // 卻沒拿到 mic, 這顆鍵等於沒用。
+                // 開關語意係「連線並隨時語音對話」，連線完成後 auto_mode 會立即
+                // startXiaozhiMic() 取得 mic (見 runXiaozhiActivationFlow() 的
+                // CONNECTED branch 和 "auto_mode" case)。
                 xiaozhiAutoMode.set(true);
                 if (xiaozhiActivationInFlight.compareAndSet(false, true)) {
                     xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
@@ -504,7 +481,7 @@ public final class XiaozhiBridge {
             case "ota_config/set":
                 return xiaozhiConfig.otaConfigSet(query, xiaozhiClient.isOpen());
 
-            // 2026-08 新增: MCP 設定 card 用的三個 endpoint。
+            // MCP 設定 card 用的三個 endpoint。
             //
             // mcp_tools/list 回傳全部 tool (含已 disable 的, 讓用戶可以按按鈕重新
             // enable), 一併附上每個 tool 目前的 enabled 狀態。和官方 xiaozhi.me console
@@ -606,7 +583,7 @@ public final class XiaozhiBridge {
                 stopXiaozhiMic();
                 LedCenter.stopMouthLedForTts();
                 xiaozhiClient.disconnect();
-                // 2026-08 v2: mute 鍵 LED = 小智連線指示燈 - web UI 斷線都要熄燈。
+                // mute 鍵 LED = 小智連線指示燈 - web UI 斷線都要熄燈。
                 setChestMuteLed(false);
                 return HttpServer.ApiResponse.ok("{\"ok\":true}");
 
@@ -619,8 +596,7 @@ public final class XiaozhiBridge {
             }
 
             case "auto_mode": {
-                // 2026-09-09：行 requireBoolean（之前手解，"foo" 靜默變 false
-                // 同 ApiValidator 唔一致；前端/MCP 傳真 boolean 即 "true"/"false"）。
+                // 行 requireBoolean（前端/MCP 傳真 boolean 即 "true"/"false"）。
                 boolean enabled = ApiValidator.requireBoolean(query, "enabled");
                 xiaozhiAutoMode.set(enabled);
                 if (enabled) {
@@ -687,27 +663,18 @@ public final class XiaozhiBridge {
      *  thread** (例如 HTTP handler thread, 或刻意開的背景 thread) - 絕對不可以
      *  在 BroadcastReceiver.onReceive()、UI thread, 或任何有時限的 callback
      *  裡直接呼叫, 否則會撞上 Android 的 broadcast timeout / ANR 機制。
-     *  (2026-08 曾經在一個粗心的版本裡, 在 onPirStateReceived() 這個
-     *  BroadcastReceiver callback 裡直接呼叫了這個方法沒有包多層 thread, 導致
-     *  PIR 密集 broadcast 時連環阻塞, 實機實測直接 hold 死整個 system 連 adb
-     *  都沒有反應 - 現在 onPirStateReceived() 已經改用獨立 thread 包住才呼叫
-     *  這個方法, 這段 comment 記下那次教訓, 提醒之後不要再犯。)
+     *  (PIR 密集 broadcast 時連環阻塞會 hold 死成個 system 連 adb 都冇反應，
+     *  所以 onPirStateReceived() 要用獨立 thread 包住先呼叫呢個方法。)
      *
      *  送成功就回傳 null, 失敗就回傳錯誤訊息 (不拋 exception, 讓 caller 自己決定
      *  要不要讓用戶看到 / 要不要 log)。
      *
-     *  2026-08: 之前這裡一度以為長文字要自己切段才能送出, 因為官方 xiaozhi.me 對
-     *  沒標記的 "detect" 訊息會拒絕長文字 (錯誤訊息 "detect is only for wake
-     *  words, do not send long texts")。反編譯一個第三方 apk 之後找到根本修法:
-     *  送出的訊息要多附上一個 "source":"text" 和 "session_id" 欄位 (見
-     *  XiaozhiClient.sendListenDetectText() javadoc 完整說明) - 加上這兩個欄位
-     *  之後 server 不會再誤把這當成 wake-word 事件來驗證長度, 所以這裡不用切段,
-     *  一次送完就好。
+     * 官方 xiaozhi.me 對冇標記的 "detect" 訊息會拒絕長文字 (錯誤 "detect is only
+     *  for wake words, do not send long texts")；送出訊息要多附 "source":"text"
+     *  同 "session_id" (見 XiaozhiClient.sendListenDetectText())，server 就唔會
+     *  誤當 wake-word 驗長度，所以唔使切段，一次送完。
      *
-     *  2026-08 再修正 (實機證實的第二層問題): 加了 source/session_id 之後長度
-     *  限制不再撞到了, 但打字輸入依然完全沒反應 (沒有 STT/LLM/TTS 回應) - 對照
-     *  logcat 才發現原因: 小智常開開啟時 mic 一直開著、持續 send Opus
-     *  binary frame 上去 server (XiaoZhi capture level check 一直有數值,
+     *  小智常開時 mic 一直開著持續送 Opus binary frame，detect JSON 喺 audio
      *  micActive/micHeld 都是 true), 打字那句 detect JSON message 就在這股持續
      *  的 audio stream 中途插入送出 - server 側極可能把 mic 錄到的背景聲音當成
      *  「主要輸入」, 打字那句被 audio stream 蓋過/觸發衝突判斷, 兩者都沒有被正常
@@ -716,10 +683,7 @@ public final class XiaozhiBridge {
      *  之後如果小智常開仍然開著就重新開啟 mic (沿用
      *  startXiaozhiMic()/stopXiaozhiMic() 已有的 mic 生命週期管理)。
      *
-     *  2026-08 第三次: 前兩層修法都沒解決「長打字對白仍然不行」- 這仍然是
-     *  尚未確診的開放問題, 沒有 logcat 可以看實際 server 回了什麼, 不應該再猜第四種
-     *  寫法。這個方法保持之前確認過方向正確的寫法, 沒有再改動送出邏輯本身, 等有
-     *  真機 log 先再處理。 */
+     *  長打字對白仍係開放問題，未確診，等真機 log 先處理。 */
     public String sendDetectText(String text) {
         if (!xiaozhiClient.isOpen()) {
             return "not connected";
@@ -746,14 +710,9 @@ public final class XiaozhiBridge {
             return e.getMessage();
         }
         if (micWasActive && xiaozhiAutoMode.get()) {
-            // 2026-08 新增: 實測發現「打字完全送出去了 (server 沒報錯, {"ok":true}),
-            // 但 LLM 完全沒反應」- 對照 logcat 才找到: 之前這裡送完 detect 立即就
-            // startXiaozhiMic(), 中間只相隔幾百毫秒就又送了一個
-            // {"type":"listen","state":"start","mode":"auto"} - 兩個連續的 listen
-            // state 轉換之間沒有給足時間讓 server 先處理完前一個, 很可能導致 server 側
-            // 把 session 重置了/取消了剛送出的那個 detect 的處理, 才再開始一個
-            // 新（空）的聆聽 session, 讓文字訊息無聲無息地被蓋過。這裡多給 300ms
-            // 緩衝再重開 mic, 讓 server 有機會先處理完個 detect message。 */
+            // 送完 detect 即重開 mic 會喺幾百毫秒內再送 {"type":"listen","state":"start",
+            // "mode":"auto"}，兩個連續 listen 轉換之間冇足夠時間畀 server 處理前一個，
+            // 可能重置 session 蓋過文字訊息；所以多給 300ms 緩衝，等 server 處理完 detect。
             try {
                 Thread.sleep(300);
             } catch (InterruptedException e) {
@@ -779,13 +738,10 @@ public final class XiaozhiBridge {
         if (!xiaozhiClient.isOpen()) {
             return HttpServer.ApiResponse.error("not connected - call xiaozhi/connect first");
         }
-        // 2026-08 修正: 之前這裡直接開 XiaozhiAudioController 的 AudioRecord, 完全沒有
-        // 取得 mic 擁有權 - alpha2services 自己的 wake-word 引擎一直持續佔用麥克風,
-        // 這台機器的音訊 HAL 又不支援多個 process 同時開啟 mic input, 所以之前的
-        // AudioRecord.startRecording() 實質上一直收不到聲音。這裡和 handleMicStream()
-        // (Speech/Mic tab 那個獨立 mic 串流) 一樣, 用 releaseMicForAudioIo() 先取得
-        // mic 擁有權 (speech_SetMIC(true) + 300ms sleep 避開 race - 見
-        // releaseMicForAudioIo() javadoc), 先至真正開 AudioRecord。
+        // alpha2services wake-word 引擎持續佔用 mic，呢部機 HAL 唔支援多 process
+        // 同時開 mic input，直接開 AudioRecord 會收唔到聲。同 handleMicStream()
+        // (Speech/Mic tab 獨立 mic 串流) 一樣，先用 releaseMicForAudioIo() 攞
+        // mic 擁有權 (speech_SetMIC(true) + 300ms 避 race)，先開 AudioRecord。
         releaseMicForAudioIo();
         try {
             xiaozhiClient.sendListenStart();
@@ -798,8 +754,6 @@ public final class XiaozhiBridge {
         // FATAL，見實測）。先停 vosk 再開自己，同 VoskApi.voskStart 經
         // yieldMicToVosk 停小智對稱。唔自動重開——vosk_state event 會話返前端
         // 轉灰燈，用戶手動返去撳開始。
-        // (之前擺喺 capture 成功之後先停——錯序：vosk 拎緊嗰陣 capture 根本開唔到，
-        // 永遠行唔到停嗰步，小智永遠搶唔到。)
         if (vosk != null && vosk.isListening()) {
             vosk.stopListening();
             Log.i(TAG, "vosk stopped to yield mic to xiaozhi");
@@ -816,15 +770,11 @@ public final class XiaozhiBridge {
             robot.speech_SetMIC(false);
             return HttpServer.ApiResponse.error("failed to start playback: " + playbackResult.error);
         }
-        // 2026-08 修正: 呢度之前即刻跟住開 startCapture(), 但 logcat 顯示
-        // AudioHardwareTiny 岩岩開完 AudioTrack (output) 個 pthread 仲未 settle
-        // 就即刻去開 AudioRecord (input), 會撞到
-        // "adev_open_input_stream:channel is not support" - AudioRecord 的 Java
-        // 層 state 照樣顯示 STATE_INITIALIZED (騙過 startCapture() 裡的
-        // check), 但底層 HAL 實際上開啟 input stream 失敗, 導致 .read() 收不到真正
-        // 的聲音, 送去 XiaoZhi server 的是靜音/垃圾 frame, 使語音對話完全沒反應。
-        // 這裡加一個短 sleep, 等 output stream 的 HAL 初始化完全 settle 才開始
-        // input, 避免 output/input 開得太貼撞到呢個 race。
+        // AudioHardwareTiny 啱開完 AudioTrack (output) 個 pthread 未 settle 即開
+        // AudioRecord (input)，會撞 "adev_open_input_stream:channel is not support"；
+        // Java 層 STATE_INITIALIZED 照過 check，但底層 HAL 開 input 失敗，.read()
+        // 收唔到真聲，送去 server 係靜音/垃圾。所以加短 sleep，等 output HAL settle
+        // 先開 input，避開 race。
         try {
             Thread.sleep(250);
         } catch (InterruptedException e) {
@@ -863,8 +813,8 @@ public final class XiaozhiBridge {
         stopXiaozhiMicHoldEnforcer();
         xiaozhiAudioController.stopCapture();
         xiaozhiAudioController.stopPlayback();
-        // 2026-09: 小智 session 完咗，Vosk 嗰邊如果 pause 緊就 resume
-        // (之前播 opus／TTS 嗰陣 pause 咗)。唔自動重開聆聽——要開用戶自己撳。
+        // 小智 session 完咗，Vosk 嗰邊如果 pause 緊就 resume
+        // (播 opus／TTS 嗰陣 pause 咗)。唔自動重開聆聽——要開用戶自己撳。
         if (vosk != null) {
             try {
                 vosk.setPaused(false);
@@ -973,17 +923,14 @@ public final class XiaozhiBridge {
      *  exactly as Phase 1/2 did - this method's only job is to arrive at a real
      *  websocket url/token, not to duplicate XiaozhiClient's own connection logic. */
     private void runXiaozhiActivationFlow(String deviceId) {
-        // 2026-08 新增: 這個 try/finally 包住整個 method body, 保證不論裡面
-        // 用哪種方式 exit (正常 return、下面那個 try/catch 接住的 exception、
-        // 或是某些完全接不住的 Throwable), xiaozhiActivationInFlight 這個 gate
-        // 一定會被釋放 - 釋放不了的話整個 app 會永久鎖死在「activation already
-        // in progress」, 比之前的 bug 更糟。見 xiaozhiActivationInFlight field
-        // 的 javadoc 解釋整套機制為何要這樣做。
+        // 呢個 try/finally 包住成個 method body，保證無論點 exit，
+        // xiaozhiActivationInFlight 呢個 gate 一定會釋放——釋放唔到會永久鎖死
+        // 喺「activation already in progress」。見 field javadoc。
         try {
             // 自訂 server 開關 (見 PREF_XIAOZHI_OTA_CUSTOM_ENABLED/PREF_XIAOZHI_OTA_URL) -
             // 開啟就用自己填的 OTA URL, 關閉則沿用官方 xiaozhi.me 預設。OTA endpoint 一般
             // 已經足夠切換成自架 server (check_version 回應通常會一併附上真正的 websocket
-            // url/token 送回), 但不是所有自架方案都能依照這個協議形狀 - 2026-08 新增了
+            // url/token 送回), 但不是所有自架方案都能依照這個協議形狀 - 有
             // wsUrl/deviceId/token 三個可選 override (PREF_XIAOZHI_WS_URL_OVERRIDE
             // 等), 留空就繼續用 OTA response/自動產生的那個值, 有填就用來覆蓋, 應付需要
             // 手動配置的自架 server。
@@ -1000,8 +947,8 @@ public final class XiaozhiBridge {
             // capture deviceId, capture 到的 local variable 一定要是 effectively
             // final, 重新賦值會導致這個 method 編譯不過。
             final String effectiveDeviceId = deviceIdOverride.isEmpty() ? deviceId : deviceIdOverride;
-            // 2026-08 新增: 存下這個 session 用的 clientId, 讓 xiaozhiVisionExplain()
-            // 可以送回同一個 Client-Id header (見 xiaozhiClientId field 的 comment)。
+            // 存低呢個 session 用的 clientId，畀 xiaozhiVisionExplain()
+            // 送返同一個 Client-Id header (見 xiaozhiClientId field)。
             final String effectiveClientId = java.util.UUID.randomUUID().toString();
             xiaozhiClientId = effectiveClientId;
             XiaozhiOtaClient ota = new XiaozhiOtaClient(otaUrl,
@@ -1017,26 +964,12 @@ public final class XiaozhiBridge {
                 String code = checkResult.activationCode;
                 String message = checkResult.activationMessage;
                 xiaozhiActivationStatus.set(XiaozhiActivationStatus.awaitingCode(code, message));
-                // 2026-08 修正: 之前呢個配對碼淨係經 xiaozhi/activation_status HTTP
-                // polling 傳去前端, 完全沒有經過 EventBus - 導致在 WebSocket event log
-                // (WebSocketServer 訂閱 EventBus 再 fan-out 到所有已連線的瀏覽器
-                // tab) 上完全看不到, 用戶反映「只有聲音, 連 websocket 都沒顯示」。
-                // 這句讓配對碼也經由正常的 EventBus -> WebSocketServer -> 前端
-                // event log 路徑推送一次, 和 HTTP polling 途徑並存 (兩者不衝突,
-                // 前端 xiaozhiShowActivationCode() 那個 xiaozhiLastShownActivationCode
-                // 防重複邏輯是獨立處理 HTTP polling 那邊, 不會受這個新 event 影響)。
+                // 配對碼經 EventBus -> WebSocketServer -> 前端 event log 推送一次，
+                // 同 HTTP polling 並存 (唔衝突，前端防重複邏輯獨立處理 polling 嗰邊)。
                 EventBus.get().publish("xiaozhi_activation",
                         "{\"code\":\"" + MainActivity.jsonSafe(code) + "\",\"message\":\""
                                 + MainActivity.jsonSafe(message != null ? message : "") + "\"}");
-                // 2026-08: 之前用戶要求取消機身 TTS 讀配對碼, 改為單純靠界面顯示 -
-                // 但實測發現沒有 TTS 讀出來之後配對經常失敗 (實機 logcat 顯示配對碼
-                // 出來之後短時間內就 "Read timed out"), 用戶反映需要機身讀出來才
-                // 有足夠反應時間去手機/電腦打開 xiaozhi.me 輸入。現在加回這個
-                // call。真正導致配對容易 timeout 的根源其實在
-                // XiazhiOtaClient.pollActivation() 的單次 HTTP request timeout
-                // (10 秒) 太短、一撞到就導致整個輪詢直接失敗那個 bug, 已經在那邊
-                // 修正 (暫時性網路錯誤現在會重試, 不會立即放棄) - 但機身讀出配對碼
-                // 本身也是一個用戶想要的獨立功能, 兩者都保留。
+                // 機身讀出配對碼，畀用戶有足夠反應時間去開 xiaozhi.me 輸入。
                 speakActivationCode(code);
 
                 xiaozhiActivationStatus.set(XiaozhiActivationStatus.polling(code, message));
@@ -1080,8 +1013,7 @@ public final class XiaozhiBridge {
             // PHASE 4 (小智常開/auto mode): re-wired on every (re)connect for the same
             // reason as setAudioSink() above - see XiaozhiClient.TtsStateListener's
             // javadoc for what this drives.
-            //
-            // 2026-08 新增: 嘴部 LED 同步 - 沿用本地 TTS 已有的
+            // 嘴部 LED 同步 - 沿用本地 TTS 已有的
             // startMouthLedForTts()/stopMouthLedForTts() (MouthLedData breathing 效果),
             // 但這裡要對應 XiaoZhi 自己那套 tts state (start/sentence_start/stop, 見
             // websocket.md 和實測 logcat), 不是本地 TTS 那個單次 speech_startTTS。
@@ -1094,14 +1026,9 @@ public final class XiaozhiBridge {
                 public void onTtsState(String stateValue) {
                     if ("start".equals(stateValue)) {
                         LedCenter.startMouthLedForTts();
-                        // 2026-08 修正: 用戶要求「random 動作要和 tts 一起發生, 而不是
-                        // 講完才做」- 之前錯放在 "stop" (整段回應播完) 才觸發, 用戶
-                        // 看到的是機器人站定不動聽完整句才動, 不是想要的「講話時
-                        // 同時動作」效果。現在改在這裡 ("start", 這一輪開始講話的那一刻)
-                        // 就立即觸發, 讓動作和說話大致同步發生。實際執行邏輯
-                        // 搬到了 AudioCenter.triggerRandomFillerAction() (見 javadoc) -
-                        // 播放本地音樂 (self.media.play_music) 現在也用同一個 helper 做出
-                        // 一樣的「動一下讓它看起來生動一點」效果。
+                        // random 動作要同 tts 一齊發生，唔係講完先做：喺 "start"
+                        // (開講嗰刻) 即觸發，等動作同說話同步。實際邏輯喺
+                        // AudioCenter.triggerRandomFillerAction()，播本地音樂都用同一個 helper。
                         audioCenter.triggerRandomFillerAction();
                     } else if ("stop".equals(stateValue)) {
                         LedCenter.stopMouthLedForTts();
@@ -1114,33 +1041,20 @@ public final class XiaozhiBridge {
                     }
                 }
             });
-            // 2026-08 新增: 實測發現 server 會在對話中途主動 send WebSocket close
-            // frame 斷開連線 (原因未明, 見 XiaozhiClient 的 case 0x8 新加的
-            // describeCloseFrame() log, 等下次實機測試可以查到實際 close code) -
-            // 之前這個情況沒有處理, 用戶會看到「開關仍然開著」但實際已經斷線、mic
-            // capture 都停了, 完全沒有任何提示, 看起來像是「講了話但小智完全沒反應」。
-            // 現在小智常開開啟時, 意外斷線會自動嘗試重連, 不用讓用戶自己發現並手動
-            // 關開開關。見 xiaozhiScheduleReconnect() 的 comment 解釋如何防止狂重試。
+            // server 可能喺對話中途主動 send WebSocket close frame 斷線
+            // (見 XiaozhiClient case 0x8 describeCloseFrame() log 查 close code)。
+            // 小智常開時意外斷線會自動重連，見 xiaozhiScheduleReconnect() backoff。
             xiaozhiClient.setDisconnectListener(new XiaozhiClient.DisconnectListener() {
                 @Override
                 public void onUnexpectedDisconnect() {
-                    // 2026-08 v2: mute 鍵 LED = 小智連線指示燈, 斷線就熄。
+                    // mute 鍵 LED = 小智連線指示燈，斷線就熄。
                     setChestMuteLed(false);
-                    // 2026-08 新增: 意外斷線可能發生在 TTS 播放中途 (也就是
-                    // 收到 "start" 但還沒收到對應的 "stop"), 嘴部 LED 會停留在點亮的
-                    // breathing 狀態, 沒有任何東西會再觸發熄滅它 - 這裡保證斷線一定會
-                    // 熄掉燈, 不論之前有沒有成功收到 "stop"。
+                    // 意外斷線可能發生喺 TTS 播放中途 (收到 "start" 未收到 "stop")，
+                    // 嘴部 LED 會停留喺點亮 breathing 狀態，所以斷線一定熄燈。
                     LedCenter.stopMouthLedForTts();
-                    // 2026-08 修正: 之前這裡沒有立即將 xiaozhiActivationStatus
-                    // reset - 斷線之後它會停留在斷線前的值 (通常是 CONNECTED),
-                    // 一直留到 xiaozhiScheduleReconnect() 的 5 秒 backoff delay
-                    // 過了、真正重連 thread 啟動時才被更新。這 5 秒窗口期裡
-                    // UI 顯示「連接失敗」但 xiaozhiActivationInFlight gate 還沒鎖住
-                    // (自動重連 thread 尚未啟動), 用戶心急按下「連線」會通過 guard、
-                    // 和 5 秒後的自動重連 thread 撞在一起 (見 xiaozhiActivationInFlight
-                    // field javadoc) - 這就是「連不上、很快斷線、越按越糟」這個
-                    // bug 的根源。現在一斷線就立即 set 為 idle(), 讓 UI/guard
-                    // 即時反映真實狀態, 不留下這個誤導性的窗口期。
+                    // 一斷線即 set 為 idle()，等 UI/guard 即時反映真實狀態——唔係會停留
+                    // 喺斷線前嘅 CONNECTED，直到 5 秒 backoff 後重連 thread 先更新，
+                    // 中間手動撳「連線」會同自動重連撞埋一齊 (見 field javadoc)。
                     xiaozhiActivationStatus.set(XiaozhiActivationStatus.idle());
                     if (xiaozhiAutoMode.get()) {
                         xiaozhiScheduleReconnect(effectiveDeviceId);
@@ -1153,7 +1067,7 @@ public final class XiaozhiBridge {
             // comment for why (same auth domain as the WebSocket connection).
             xiaozhiAccessToken = wsToken;
             xiaozhiActivationStatus.set(XiaozhiActivationStatus.connected(xiaozhiClient.getSessionId()));
-            // 2026-08 v2: mute 鍵 LED = 小智連線指示燈, 真正連上才亮 (按鍵當下
+            // mute 鍵 LED = 小智連線指示燈，真正連上先亮 (按鍵當下只係即時反應，
             // 只是即時反應, 這裡才是權威狀態)。
             setChestMuteLed(true);
             // 連接成功, 重置重試計數 - 下次意外斷線才從 0 開始計算 backoff, 不會
@@ -1169,22 +1083,12 @@ public final class XiaozhiBridge {
                 startXiaozhiMic();
             }
         } catch (Throwable e) {
-            // 2026-08 修正: 之前呢度淨係 catch IOException, 但呢個 try 區塊入面
-            // (尤其是 xiaozhiClient.connect() 那句) 一旦拋出非 IOException 的
-            // exception (例如 RuntimeException/NullPointerException, WebSocket
-            // handshake 或 URL parse 階段常見), 就不會被這個 catch 接住 -
-            // 背景 activation thread 會直接掛掉, 但 xiaozhiActivationStatus
-            // 永遠停留在 CHECKING/AWAITING_CODE/POLLING/CONNECTING 其中一個中途
-            // stage, 之後任何一次按「小智」開關都會立即被 "connect" case 的
-            // guard 擋住說「activation already in progress」, 要重啟整個 app
-            // 才能解決。現在用 catch (Throwable e) 兜到底 (連 Error 都涵蓋,
-            // 不只是 Exception), 保證這個 try 區塊一有任何失敗, stage 一定會
-            // 退回 ERROR, 不會再卡死在中途 stage。
+            // catch (Throwable) 兜底 (唔止 IOException——handshake/URL parse 等
+            // RuntimeException 都包)，保證任何失敗 stage 都退返 ERROR，唔卡死中途。
             Log.w(TAG, "XiaoZhi activation flow failed: " + e.getMessage());
             xiaozhiActivationStatus.set(XiaozhiActivationStatus.error(
                     e.getMessage() != null ? e.getMessage() : e.toString()));
-            // 2026-08 v2: activation 失敗 (例如 TLS 證書/網絡問題) - mute LED 熄返,
-            // 不要留下「假連線」燈號。
+            // activation 失敗 (例如 TLS 證書/網絡問題)，mute LED 熄返，唔留「假連線」燈號。
             setChestMuteLed(false);
         } finally {
             // 見這個 method 開頭那個 try 和 xiaozhiActivationInFlight field 的
@@ -1298,19 +1202,10 @@ public final class XiaozhiBridge {
         long delayMs = Math.min(5000L * (1L << (attempt - 1)), 60000L);
             Log.i(TAG, "XiaoZhi reconnect: attempt " + attempt + "/" + maxAttempts
                 + " in " + delayMs + "ms");
-        // 2026-08 修 crash: 之前呢度 mainHandler.postDelayed() 個 Runnable 入面
-        // 直接 call runXiaozhiActivationFlow(), 但 mainHandler 係綁住 main
-        // thread 的 Handler - postDelayed() 只做到「延遲幾秒才執行」, 這個
-        // Runnable 本身依然是在 main thread (Looper.loop()) 上跑, 不會自動跳去
-        // 背景 thread。runXiaozhiActivationFlow() 裡面 checkVersion() 會做 HTTPS
-        // POST (XiaozhiOtaClient.postJsonWithStatus()), 在 main thread 做網路
-        // I/O 會立即拋出 NetworkOnMainThreadException, 導致整個 app crash - 實機
-        // 證實: v34 修好重連判斷邏輯之後, 重連終於開始真正觸發, 就立即
-        // 暴露了這個一直潛伏著、之前因為重連從未真正執行過而沒撞到的 bug (stacktrace
-        // 見 MainActivity$34.run() -> runXiaozhiActivationFlow() ->
-        // XiaozhiOtaClient.checkVersion())。這裡將實際工作 (runXiaozhiActivationFlow)
-        // 移到一個獨立背景 thread, mainHandler.postDelayed() 只用來做延遲計時,
-        // 不再在 Runnable 裡直接做網路 call。
+        // mainHandler 綁住 main thread——postDelayed() 只係延遲，Runnable 本身
+        // 仲係喺 main thread 跑；runXiaozhiActivationFlow() 會做 HTTPS POST，
+        // 主 thread 做網絡 I/O 會拋 NetworkOnMainThreadException。所以實際工作
+        // 放獨立背景 thread，mainHandler 只做延遲計時。
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -1347,9 +1242,9 @@ public final class XiaozhiBridge {
      *  written down. Mirrors the existing "speech/tts" endpoint's
      *  SpeechCenter.STOP_TO_TTS_MIN_GAP_MS race guard and mouth-LED bracket (see handleApi() below)
      *  since this runs from a background thread, not through that HTTP endpoint. */
-    /** 讀出小智配對碼。2026-09: 由機身 TTS (robot.speech_startTTS, 無
-     *  alpha2services 下永遠靜音) 轉行 Android 內置 TTS (同小智頁揀 "Android"
-     *  同一條路) - 配對嗰刻仲未連上 server，用唔到小智雲端聲，只可以用本地讀。
+    /** 讀出小智配對碼：行 Android 內置 TTS (同小智頁揀 "Android"
+     *  同一條路)——配對嗰刻未連 server，用唔到雲端聲，只可以用本地讀。
+     *  機身 TTS 無 alpha2services 會靜音，所以唔用。
      *  讀唔到 (engine 未 ready) 就淨係靠前端顯示個碼 (xiaozhi_activation event)。 */
     private void speakActivationCode(String code) {
         if (code == null || code.isEmpty()) return;
@@ -1432,7 +1327,6 @@ public final class XiaozhiBridge {
         }
     }
 
-    // isMacShaped() 搬咗去 XiaozhiConfig (OTA 驗證同 deviceId 共用)。
     private static String syntheticMacFromUuid(java.util.UUID uuid) {
         byte[] bytes = new byte[6];
         long msb = uuid.getMostSignificantBits();
@@ -1482,17 +1376,8 @@ public final class XiaozhiBridge {
         }
         byte[] jpeg;
         try {
-            // 2026-08 修正 (真正根源): 之前這裡用 waitForStableFrame() 取得 preview
-            // stream 的 frame (見 CameraController 開頭段 comment - 這個 class 本身是
-            // "continuous webcam-style streaming, NOT single-shot photos" 設計)。反編譯
-            // 一個用戶提供、實測上傳成功的第三方 apk 之後發現: 它送去 server 的是用真正的
-            // 單張拍攝 (CameraX ImageCapture, busy-wait 等待完成 callback), 不是 preview
-            // frame - preview frame 沒有經過相機 HAL 完整的單張 AE/AF/降噪 pipeline。
-            // 用戶已核實過 server 端存下的相片解析度都對 (480x360), 所以差異在於 capture
-            // 方式本身, 不是 output size, 改用 CameraController.takePhoto() (Camera1
-            // legacy API 的 camera.takePicture(), 見該 method javadoc) 做真正的單張
-            // 拍攝, 取代 waitForStableFrame() 這個「等夠幀數迴避過渡期」的
-            // workaround - takePicture() 本身已經是硬體執行的單張拍攝流程。
+            // 用 CameraController.takePhoto() (Camera1 takePicture()) 做真正單張拍攝——
+            // preview frame 冇經過 HAL 完整單張 AE/AF/降噪 pipeline。
             CameraController.PhotoResult photoResult =
                     cameraController.takePhoto(XIAOZHI_PHOTO_WIDTH, XIAOZHI_PHOTO_HEIGHT, 8000);
             if (photoResult.error != null) {
@@ -1507,14 +1392,9 @@ public final class XiaozhiBridge {
         }
 
         android.content.SharedPreferences prefs = appContext.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE);
-        // 2026-08 修正 (真正根源): 之前這裡的優先順序是「自訂設定 -> 寫死常數」,
-        // 完全沒考慮 server 在 "initialize" MCP request 裡會附上真正的 vision
-        // url/token (見 XiaozhiClient.getVisionUrl() 的 comment, 和官方
-        // mcp-protocol.md 原文 "initialize" 章節) - 這個才是 404 的真正根源, 之前
-        // 幾輪改的 scheme/domain 都是捕風捉影。現在優先順序改為: server 在
-        // initialize 時告訴我們的 (最新鮮、最權威) -> 用戶手動填的自訂設定
-        // (如果啟用了自訂 server 又沒收到 server 提供的 url) -> 寫死的
-        // DEFAULT_VISION_URL (最後保險, 例如連都未連過就試 take_photo)。
+        // vision url 優先順序：server 喺 "initialize" 附上嘅 (最新鮮、最權威，
+        // 見 XiaozhiClient.getVisionUrl() 同官方 mcp-protocol.md) -> 用戶自訂設定
+        // (開咗自訂 server 又冇收到 server url) -> DEFAULT_VISION_URL (最後保險)。
         String serverProvidedUrl = xiaozhiClient.getVisionUrl();
         String visionUrl;
         String token;
@@ -1549,13 +1429,9 @@ public final class XiaozhiBridge {
      *  anywhere (see the async comment) - it's this codebase's best guess given the
      *  server's own wording ("call the tool `image_to_text`... using the uuid"), so the
      *  raw response is logged in full for correcting the shape if this guess is wrong. */
-    // 2026-08 新增: 判斷一個字串「看起來像不像」真正的 UUID (標準格式:
-    // 8-4-4-4-12 個 hex 字符, 用 "-" 分隔, 例如 vision/explain response 的
-    // "776e1db5-092a-4045-9334-17ca15cfc781") - 用在 self.camera.image_to_text
-    // 那個 case, 篩掉 LLM 沒讀取真 uuid、自己填了個佔位符字面值 (實測見過
-    // "placeholder") 的情況, 見該 case 的 comment。刻意用寬鬆的 regex match
-    // (不只是死板檢查是否等於 "placeholder"), 因為 LLM 用哪個字眼做佔位符本身
-    // 不受控, 「格式對就信」好過「和已知字面值逐個比對」。
+    // 判斷字串「似唔似」真 UUID (8-4-4-4-12 hex 用 "-" 分隔)——用喺
+    // self.camera.image_to_text，篩走 LLM 填佔位符字面值 (如 "placeholder")
+    // 嘅情況。刻意寬鬆 regex：「格式對就信」，好過逐個字面值比對。
     private static final java.util.regex.Pattern UUID_LIKE_PATTERN = java.util.regex.Pattern.compile(
             "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 

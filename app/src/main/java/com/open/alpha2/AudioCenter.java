@@ -12,17 +12,12 @@ import java.util.Map;
 /**
  * 本地音樂 + 網絡電台播放中心。
  *
- * 2026-09 由 MainActivity 抽出 (拆 god object 第六刀)：本地音樂檔尋址/
- * 播放/暫停/進度/音量/頻譜/EQ/隨機動作循環、電台搜尋/播放/狀態、上載，
- * 邏輯一字不改搬過嚟。注意兩個刻意保留的耦合：
+ * 注意兩個刻意保留的耦合：
  * - 和 UbxPlayer 共用同一個實例 (動作配樂 stopVoice)，由 MainActivity 傳入；
  * - 隨機動作 id 經 Supplier 攞 (x random 短/長池喺 MainActivity 嗰邊，
  *   MCP fuzzy + 語意路徑仲用緊同一份，唔拆散)。
  * 所有 synchronized 鎖由 MainActivity.this 轉做自己 (調用方全部經同一個
  * instance，互斥等價)；排程用傳入嘅 mainHandler (main looper)。
- * 2026-09 dispatcher Phase 1 第四刀加：audio/volume/get、audio/volume/set
- * (systemVolumeGet/Set — STREAM_MUSIC 系統音量，唔係 localMusicVolume
- * 嗰個 per-player 音量)。
  */
 public final class AudioCenter {
     private static final String TAG = "AudioCenter";
@@ -47,7 +42,7 @@ public final class AudioCenter {
         return appContext.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    // 2026-08 新增: 本地音樂播放 (自訂放在 /mnt/internal_sd/music/ 的音樂檔, 不是
+    // 本地音樂播放 (自訂放在 /mnt/internal_sd/music/ 的音樂檔, 不是
     // RingtoneManager 那些系統鈴聲) - 沿用 currentRingtonePlayer 完全相同的 pattern
     // (獨立一個 field, 不共用 currentRingtonePlayer, 因為兩者應該可以互不影響地
     // 各自停止/播放, 例如播放音樂期間都可以獨立播放一個系統提示音), 同樣用
@@ -77,7 +72,7 @@ public final class AudioCenter {
      *  時都沿用這個) - -1 = 沒選過/用「無」(flat, 不做任何調整)。*/
     private int musicEqPresetIndex = -1;
 
-    // -- Audio Spectrum (2026-08 v2 新增) --------------------------------------
+    // -- Audio Spectrum --------------------------------------
     // 用 android.media.audiofx.Visualizer 綁定 currentMusicPlayer 的 audio session
     // (和 musicEqualizer 同一條 session), 開啟 FFT 擷取, 將取得的頻譜壓縮成
     // MUSIC_SPECTRUM_BANDS 條 band, 提供給 audio/local_music/spectrum endpoint 輪詢,
@@ -241,9 +236,8 @@ public final class AudioCenter {
         return dot < 0 ? filename : filename.substring(0, dot);
     }
 
-    /** 2026-08 更新 (用戶要求「本地播歌時, random 動作應該要不停動, 直到整首歌播完」):
-     *  之前只有在 onPrepared (真正開始播放的那一刻) 動一次就算, 現在改成用這個固定
-     *  間隔不斷重複觸發 triggerRandomFillerAction(), 直到整首歌播完/被叫停為止。
+    /** 本地播歌時 random 動作不停動直到播完：固定間隔重複觸發
+     *  triggerRandomFillerAction()。
      *  用固定間隔 (而不是「等動作做完再動下一個」) 的原因是: AIDL 沒有提供任何
      *  查詢「一個 action 什麼時候做完」的方法 (見 AIDL_REFERENCE.md, action_PlayActionName
      *  只是 fire-and-forget), 沒辦法準確知道上一個動作多久才做完, 所以選一個
@@ -282,7 +276,7 @@ public final class AudioCenter {
                         return;
                     }
                 }
-                // 2026-08 新增: 開關 - 用戶隨時可以在音樂 tab 切換「random 動作」
+                // 開關 - 用戶隨時可以在音樂 tab 切換「random 動作」
                 // 這個開關, 每次 tick 都即時讀取最新值, 不用等下一次播歌才生效。
                 // 關閉時只是跳過「動一下」這個動作, loop 本身仍然繼續 schedule
                 // 下去 (讓用戶隨時開啟都能立即恢復, 不用 stop/replay 那首歌)。

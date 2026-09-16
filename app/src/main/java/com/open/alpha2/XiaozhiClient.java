@@ -117,12 +117,11 @@ public class XiaozhiClient {
     private volatile DisconnectListener disconnectListener;
     private volatile Socket socket;
     private volatile OutputStream out;
-    // 2026-08 新增: vision explain 的真正 URL/token 不是一個寫死的常數 - 對照官方
+    // vision explain 的真正 URL/token 不是寫死常數 - 對照官方
     // mcp-protocol.md 原文 ("initialize" 章節), server 送過來的 "initialize" request
-    // 的 params.capabilities.vision 裡面才夾著 device 應該用來 POST 照片的
-    // url/token, 每次 session 都可能不同 (見 xinnan-tech/xiaozhi-esp32-server 一個
-    // 自架 server 的實測 log, 它回報的 vision url 就是那個 server 自己的本地地址,
-    // 每個部署都不同, 沒有一個放諸四海皆準的寫死值)。這兩個 field 由 handleMcpMessage()
+    // 的 params.capabilities.vision 裡面夾著 device 應該用來 POST 照片的
+    // url/token, 每次 session 都可能不同 (自架 server 實測回報的 vision url
+    // 就是那個 server 自己的本地地址, 每個部署都不同)。這兩個 field 由 handleMcpMessage()
     // 的 case "initialize" 填, 給 MainActivity 的 xiaozhiTakePhotoAndExplain() 讀
     // (getVisionUrl()/getVisionToken()) - 沒收過 initialize request (例如用戶還沒
     // 連接過就試 take_photo) 就是 null, caller 要 fallback 用回自己那個
@@ -332,8 +331,6 @@ public class XiaozhiClient {
         if (o == null || !open) {
             throw new IOException("not connected");
         }
-        // 2026-08 診斷: 之前這裡沒有 log, 讓人查不出 "listen start" 這類控制訊息
-        // 究竟有沒有真的送出去 (和送了些什麼 - 例如 mode/state 這個值有沒有打錯)。
         // "listen"/"abort" 這類控制訊息量很少 (每次對話一兩個), 不會 flood log。
         Log.i(TAG, "Sending: " + msg.toString());
         byte[] payload = msg.toString().getBytes(StandardCharsets.UTF_8);
@@ -358,23 +355,15 @@ public class XiaozhiClient {
      *  before the server will treat incoming binary frames as a new utterance rather
      *  than stray data (see websocket.md's "listen" message).
      *
-     *  2026-08 修正: 之前這裡用 mode="manual", 但對照官方 xiaozhi-esp32 repo 的
-     *  websocket.md 才發現 "manual" 這個 mode 在 device state diagram (6.4 節)
-     *  裡面是設計給「按住鍵才錄、放手就立刻送 listen stop」這種交互用的 - Idle ->
-     *  Listening 靠用戶主動觸發 start, Listening -> Idle 也是靠用戶主動觸發 stop,
-     *  中間不存在 server 自動斷句這回事。之前那個實現沒有對應的「說完自動送 stop」
-     *  邏輯 (mic 開了就一直錄、一直當自己在聽, 直到用戶自己按熄才送 stop), 和 manual
-     *  mode 的協議設計不合, 導致 server 一直等著一個永遠不會來的 stop 訊號, 完全不會
-     *  觸發 STT - 這才是之前「說話完全沒反應」的真正原因 (mic 錄音本身、Opus
-     *  encode、WebSocket send 這幾層之前已經逐一驗證過沒問題)。
-     *
-     *  改用 mode="auto" 之後, 根據同一份文件 6.3 節的 auto-mode state diagram 和
-     *  第 9 節的 example message flow: 送了 listen start 之後 device 只管
+     *  用 mode="auto": 根據 websocket.md 6.3 節 auto-mode state diagram 和
+     *  第 9 節 example message flow: 送了 listen start 之後 device 只管
      *  streaming binary Opus frames, 完全不用自己送 listen stop - server 側自己做
      *  VAD (語音活動偵測), 偵測到一句話完了就自動觸發 STT 並送回 stt/llm/tts 訊息,
      *  完事之後還會自動由 kDeviceStateSpeaking 轉回 kDeviceStateListening (若
      *  auto-continue), 這才是最貼近這台機「不用按鍵、開了那個 toggle 就可以持續
-     *  對話」這個用戶體驗的正確 mode。 */
+     *  對話」這個用戶體驗的正確 mode。
+     *  (manual mode 係設計給「按住鍵才錄、放手就立刻送 listen stop」用的，
+     *  無自動斷句，唔啱呢度。) */
     public void sendListenStart() throws IOException {
         try {
             JSONObject msg = new JSONObject();
@@ -409,27 +398,12 @@ public class XiaozhiClient {
      *  section 4.1 #4 documents it as "Sent by the device when the local wake word
      *  detector fires" with an example carrying free-form text ("Hi XiaoZhi").
      *
-     *  2026-08 修正: 實測用官方 xiaozhi.me 撞到 server 主動拒絕長文字輸入 - 錯誤
-     *  訊息 "detect is only for wake words, do not send long texts", 連 20 字都
-     *  觸發。反編譯一個第三方「小智AI 安卓5.1 MCP修復版」apk (用戶提供, 它打字輸入
-     *  完全沒有這個長度限制) 的 classes.dex, 找到它送的其實是
-     *  {"type":"listen","state":"detect","text":"...","source":"text"} - 多了
-     *  一個之前這裡沒加的 "source":"text" 欄位。這個不是官方 websocket.md 文檔化
-     *  的欄位 (文檔只提到 type/state/text 三個), 但 server 側顯然會看這個欄位
-     *  來分辨「這個 detect 事件是來自本地 wake-word 引擎聽到的短句」還是「用戶
-     *  打字輸入的完整句子」- 沒有這個標記, server 就將它當成 wake-word 事件, 套用
-     *  「應該很短」那條驗證規則。
+     *  長文字要帶 "source":"text" (非官方文檔欄位, 第三方實作有):
+     *  server 用佢分辨 wake-word 短句定打字完整句, 無就會套「應該好短」驗證
+     *  ("detect is only for wake words")。
      *
-     *  2026-08 再修正 (加了 source 之後實測仍然撞到長度限制): 用 androguard 直接
-     *  反編譯那個 apk 的 XiaoZhi.f(String) method 的 bytecode (不只是看字串,
-     *  看實際怎麼組出這個 message), 才發現完整格式其實是
-     *  {"session_id":"<值>","type":"listen","state":"detect","text":"...",
-     *  "source":"text"} - 開頭還有一個之前完全沒留意到的 "session_id" 欄位!
-     *  之前這裡加了 source 但沒加 session_id, 送出去的訊息沒帶著 session_id,
-     *  server 側很可能因為拿不到對應的 session context, 將這個 message 當成一個
-     *  匿名/不完整的事件處理, 退回去用預設的「wake word 應該很短」驗證規則。
-     *  現在補回這個欄位 - 跟著 sendMcpEnvelope() 已有的 pattern (sessionId 由
-     *  handleMcpMessage() 那邊 hello 訊息解析時拿到, 存在這個 class 的 field)。 */
+     *  完整格式仲要帶 "session_id" (同 sendMcpEnvelope() pattern,
+     *  sessionId 由 hello 拿到): 無會被當匿名事件跌返預設驗證規則。 */
     public void sendListenDetectText(String text) throws IOException {
         try {
             JSONObject msg = new JSONObject();
@@ -458,16 +432,9 @@ public class XiaozhiClient {
             JSONObject hello = new JSONObject();
             hello.put("type", "hello");
             hello.put("version", PROTOCOL_VERSION);
-            // 2026-08 新增: 反編譯一個用戶提供、實測打字輸入正常的第三方 apk
-            // (package com.huihongcloud.xiaozhi) 的 hello message 組裝邏輯
-            // (MainActivity.D() bytecode), 發現它送的 hello 多了一個之前這裡沒加
-            // 的欄位: "response_mode":"auto" (在 version 之後、features 之前)。
-            // 官方 websocket.md 文檔沒提這個欄位, 但可能就是 server 側判斷
-            // 「這個 device 支援文字輸入」還是「只支援語音」的其中一個依據 -
-            // 沒有這個欄位, server 可能走著一個預設/舊版行為, 讓 detect 類型的文字
-            // message 完全沒被處理 (真機 logcat 顯示打字訊息送到, HTTP 200, 但
-            // server 完全沒回應任何 STT/LLM/TTS)。加回這個欄位, 跟著實測行得通
-            // 的 apk 一致。
+            // "response_mode":"auto" (官方 websocket.md 無文檔, 但實測行得通的
+            // 第三方實作有帶；server 可能用佢判斷 device 是否支援文字輸入，
+            // 無就 detect 文字訊息完全無回應)。
             hello.put("response_mode", "auto");
             JSONObject features = new JSONObject();
             features.put("mcp", true);
@@ -533,9 +500,8 @@ public class XiaozhiClient {
     // ---------------- Read loop (background thread) ----------------
 
     private void readLoop(InputStream in, Object helloLock, boolean[] helloReceived, String[] helloError) {
-        // 2026-08 新增: 獨立記下「這次跳出 loop 是不是因為收到 server 的 close frame
-        // (0x8)」, 不再靠 finally block 那句 "boolean wasOpen = open" 去判斷 - 見
-        // 下面 case 0x8 的 comment 解釋為什麼 wasOpen 這個做法有 bug。
+        // 獨立記下「這次跳出 loop 是不是因為收到 server 的 close frame
+        // (0x8)」, 用獨立旗標分辨 server 主動 close 同用戶 disconnect。
         final boolean[] serverClosed = {false};
         try {
             readLoopBody: while (open) {
@@ -559,41 +525,15 @@ public class XiaozhiClient {
                         break;
                     }
                     case 0x8: // close
-                        // 2026-08 修正: 之前這裡完全沒有 log, 讓 server 主動 close 連接
-                        // (例如因為 timeout、驗證失效、或者伺服器端錯誤) 完全沒痕跡
-                        // 可查 - 用戶反映「說話沒反應」, 追查下去才發現 mic capture
-                        // loop 其實有觸發, 但 sendAudioFrame() 中途開始報 "not
-                        // connected", 也就是說 WebSocket 在對話中途被 server 主動 close
-                        // 了, 但之前完全沒留下 log 解釋原因。close frame 的 payload 通常
-                        // 帶著 2-byte close code (可選再加 UTF-8 reason string), 見
-                        // RFC 6455 §5.5.1 - 這裡盡量解讀出來幫忙診斷, 解讀不到都好過
-                        // 完全沒有 log。
+                        // close frame payload 通常帶 2-byte close code (可選再加
+                        // UTF-8 reason, 見 RFC 6455 §5.5.1) - 盡量解讀出嚟幫診斷。
                         Log.w(TAG, "Server sent WebSocket close frame" + describeCloseFrame(frame.payload));
-                        // 2026-08 再修正 (實測發現的第二層 bug): 之前這裡只設
-                        // open=false, 讓 while(open) 下次才會檢查, 但不會讓 loop
-                        // 立刻跳出 - 這個 loop 會繼續走去下一次 readFrame(in), 而
-                        // readFrame() 本身可能一直 block 著等著下一個永遠不會來的
-                        // frame (RFC 6455 要求收到 close frame 後回應一個 close
-                        // frame 才完成雙向 close handshake, 之前這裡沒回應, 讓 socket
-                        // 沒被正確關閉)。結果: sendAudioFrame() 已經開始報 "not
-                        // connected" (證明 open 已經是 false), 但 readLoop() 的
-                        // finally block (負責觸發 onUnexpectedDisconnect() ->
-                        // 自動重連) 永遠走不到, 讓自動重連完全沒啟動過 - 這就是
-                        // 「小智說了拜拜之後就再沒辦法語音通話, 要關重開才行」的
-                        // 根本原因。現在這裡回應一個 close frame 完成 handshake,
-                        // 再用 labeled break 立刻跳出整個 read loop (不只是跳出
-                        // switch), 讓 finally block 可以立刻執行。
+                        // 收到 close 要回一個 close 完成雙向 handshake (RFC 6455),
+                        // 再用 labeled break 立刻跳出 read loop (唔係只跳 switch),
+                        // 等 finally 可以立刻執行 (觸發重連)。
                         //
-                        // 2026-08 再再修正 (實測發現的第三層 bug): 上面這個 labeled
-                        // break 修法本身讓 loop 成功跳出了, 但跳出前這裡自己搶先將
-                        // open 設成 false, 讓 finally block 那句
-                        // "boolean wasOpen = open" 拿到的是 false (因為 open 已經被
-                        // 這裡改了), 於是 "if (wasOpen) { ...觸發重連... }" 那個
-                        // condition 都判斷成 false, 完全跳過了重連 - 和用戶自己 call
-                        // disconnect() (先設 open=false 才關 socket) 的情況變成沒得
-                        // 分辨。現在改用獨立的 serverClosed 旗標來標記「這次是
-                        // server 主動 close」, 不再靠 open 這個被多個地方共用的
-                        // 旗標做判斷。
+                        // 用獨立 serverClosed 旗標記「server 主動 close」，
+                        // 唔靠 open 共用旗標 (同用戶 disconnect 分辨)。
                         serverClosed[0] = true;
                         try {
                             sendFrame(out, (byte) 0x8, new byte[0]);
@@ -619,13 +559,8 @@ public class XiaozhiClient {
                 Log.i(TAG, "Read loop ended: " + e.getMessage());
             }
         } finally {
-            // 2026-08 修正: 之前這裡是 "boolean wasOpen = open" (在 case 0x8 已經
-            // 自己搶先將 open 設成 false 之後才讀), 現在改成
-            // "open 還沒被搶先改過 (真正意外, 例如 IOException) 又或者是
-            // serverClosed 這個獨立旗標" - 兩種情況都算「意外斷線」, 應該觸發
-            // onUnexpectedDisconnect() -> 自動重連。用戶自己 call disconnect()
-            // 那種情況不會經過這個 read loop 的 case 0x8/serverClosed 這條路,
-            // 見 disconnect() 的實現。
+            // "open 仲未被改過 (真正意外, 例如 IOException) 或者 serverClosed"
+            // 兩種都算意外斷線，觸發重連。用戶自己 disconnect() 唔經呢條路。
             boolean wasUnexpected = open || serverClosed[0];
             open = false;
             closeQuietly();
@@ -652,8 +587,7 @@ public class XiaozhiClient {
      *  §5.5.1: optional 2-byte big-endian close code, optionally followed by a UTF-8
      *  reason string). Returns an empty string if the payload is absent/malformed -
      *  this exists purely to make "why did the server close on us" diagnosable from
-     *  logcat (see the "2026-08 修正" comment at the case 0x8 call site), not to drive
-     *  any behavioural decision, so it deliberately never throws. */
+     *  logcat, not to drive any behavioural decision, so it deliberately never throws. */
     private static String describeCloseFrame(byte[] payload) {
         if (payload == null || payload.length < 2) return "";
         int code = ((payload[0] & 0xFF) << 8) | (payload[1] & 0xFF);
@@ -694,10 +628,7 @@ public class XiaozhiClient {
 
         switch (type) {
             case "stt":
-                // 2026-08 診斷: 之前這裡沒有 log, 讓人查不出 server 側的語音辨識(STT)
-                // 究竟有沒有收到/辨識到任何東西 - 「說話完全沒反應」這個症狀, 沒有這句
-                // log 就分不清是 server 完全沒收到 audio, 還是收到但辨識不到內容, 還是
-                // 辨識到但之後 llm/tts 沒跟著來。
+                // 區分 server 完全沒收到 audio / 收到但辨識唔到 / 辨識到但 llm/tts 無跟上。
                 Log.i(TAG, "STT result: " + msg.optString("text"));
                 EventBus.get().publish(EVT_STT, "{\"text\":\"" + jsonEscape(msg.optString("text")) + "\"}");
                 break;
@@ -767,14 +698,9 @@ public class XiaozhiClient {
             JSONObject result;
             switch (method) {
                 case "initialize": {
-                    // 2026-08 新增: 官方 mcp-protocol.md 明確了 (Direction:
-                    // backend -> device) 這個 request 的 params.capabilities.vision
-                    // 裡面帶著 device 應該用來 POST 照片做 explain 的 url/token -
-                    // 之前這裡完全沒讀這部分, MainActivity 那邊一直靠自己寫死的
-                    // DEFAULT_VISION_URL 常數, 撞了 404 也摸不到方向, 因為根本
-                    // 選錯了那個 domain (見 DEFAULT_VISION_URL 的 comment 完整
-                    // 排查過程)。真正做法是由這裡拿回 server 告訴我們的真實
-                    // url/token, 存下來給 xiaozhiTakePhotoAndExplain() 用。
+                    // 官方 mcp-protocol.md: backend->device initialize 的
+                    // params.capabilities.vision 帶 device POST 照片做 explain 的
+                    // url/token, 存落嚟俾 takePhotoAndExplain 用。
                     JSONObject initParams = payload.optJSONObject("params");
                     JSONObject initCapabilities = initParams != null
                             ? initParams.optJSONObject("capabilities") : null;
@@ -828,25 +754,13 @@ public class XiaozhiClient {
                     String toolName = params != null ? params.optString("name", "") : "";
                     JSONObject arguments = params != null ? params.optJSONObject("arguments") : null;
                     if (arguments == null) arguments = new JSONObject();
-                    // 2026-08 修正 (真正根源: connection lost): 之前這裡 bridge.callTool(...)
-                    // 是直接、同步在 readLoop 這條 thread 上執行 - 大部分 tool (speak,
-                    // motion 等) 很快, 沒問題, 但 self.camera.take_photo (還有跟著新加的
-                    // self.camera.image_to_text follow-up) 要做 camera.takePicture() +
-                    // 一次或者兩次 HTTP vision/explain round trip, 阻塞達 1-2 秒甚至更久。
-                    // 這段時間 readLoop 的 while(open) loop 完全停在 bridge.callTool()
-                    // 裡面, 沒有再去 readFrame(in) - 也就是沒回應 server 的 ping/心跳,
-                    // 也讀不到 server 送過來的任何其他 message。實測 log (見 XiaozhiClient
-                    // E/ log 的 stack trace) 顯示 takePicture() 完成之後、sendMcpResult()
-                    // 嘗試 send 回 result 那一刻, 撞到
-                    // "SSLProtocolException: bad write retry" - 也就是說底層 socket 在
-                    // 這段阻塞期間已經被 server 或者連線層面判定死了 / 中斷了, device 完全
-                    // 不知道, 完成阻塞操作才寫進一個已經壞掉的 socket 才爆出來。修正:
-                    // 將 bridge.callTool(...) 連同送 result/error 這部分, 搬到獨立
-                    // background thread 執行, readLoop thread 立刻 continue 下去讀下一個
-                    // frame (可以正常回應 ping/收其他 message), 不會再因為單一個耗時
-                    // tool call 拖死整條連線。sendMcpResult()/sendMcpError() 最終都是
-                    // call 到 synchronized 的 sendFrame(), 由不同 thread call 本身就是
-                    // thread-safe, 不需要額外加鎖。
+                    // 耗時 tool (如 take_photo + vision round trip 可阻塞 1-2s)
+                    // 唔可以直接喺 readLoop thread 同步做，否則阻塞期間回唔到
+                    // ping/收唔到其他 message，底層 socket 會被判死
+                    // ("SSLProtocolException: bad write retry")。搬去獨立
+                    // background thread，readLoop 繼續讀下一個 frame。
+                    // sendMcpResult()/sendMcpError() 經 synchronized sendFrame()，
+                    // 跨 thread 本身 thread-safe。
                     final Object toolCallId = idRaw;
                     final String finalToolName = toolName;
                     final JSONObject finalArguments = arguments;

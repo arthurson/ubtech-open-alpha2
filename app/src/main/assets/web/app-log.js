@@ -32,10 +32,8 @@ function nowTimeStr() {
   return new Date().toLocaleTimeString("zh-HK", { hour12: false });
 }
 
-/** 統一嘅語意配對 + TTS + 動作觸發函數 — 各種輸入方法（文字輸入等）都用呢個
- *  方法處理，同 sendSpeechChatText() 嘅後半段邏輯一致。2026-09: iFlytek/Nuance
- *  asr_result/grammar_result 呢兩種輸入方法已經隨住機身已永久唔再用嘅 binder
- *  引擎一齊移除。 */
+/** 統一嘅語意配對＋TTS＋動作觸發函數 — 各種輸入方法（文字輸入等）都用呢個
+ *  方法處理，同 sendSpeechChatText() 後半段邏輯一致。 */
 function triggerSemanticSimulate(text) {
   if (!text) return;
   Alpha2Api.speechSemanticSimulate( { text: text }).then(function (res) {
@@ -52,9 +50,9 @@ function triggerSemanticSimulate(text) {
   });
 }
 
-/** 2026-08 新增: 對話界面用嘅文字過濾 - 如果辨識結果其實仲係 JSON 字串
- *  (例如 {"text":"你好","rc":4}), 抽返個 text 出嚟; 抽唔到就返回空字串,
- *  咁樣 user 氣泡永遠唔會出現大括號/引號呢啲「代碼」。 */
+/** 對話界面文字過濾：如果辨識結果仲係 JSON 字串
+ * （例如 {"text":"你好","rc":4}），抽返個 text 出嚟；抽唔到返空字串，
+ *  user 氣泡唔會出現大括號／引號等「代碼」。 */
 function cleanChatText(s) {
   if (!s) return "";
   const t = String(s).trim();
@@ -217,9 +215,6 @@ function clearLog() {
   document.getElementById("eventLog").innerHTML = "";
 }
 
-// 2026-09 移除: updateAsrModeIndicator/refreshAsrModeIndicator - 離線/雲端
-// 模式指示燈 (asrModeDot) 已隨離線文法卡一齊拎走 (見 index.html)。
-
 function escapeHtml(s) {
   const div = document.createElement("div");
   div.textContent = s;
@@ -247,15 +242,9 @@ window.addEventListener("DOMContentLoaded", function () {
   if (typeof panelAuthRefreshStatus === "function") panelAuthRefreshStatus();
   applyUiLanguage();
   refreshVolume();
-  // 2026-09 刪除: disableTalkFabIfInsecureContext() (walkie-talkie #talkFab
-  // 掣一併拎走，唔使再 disable)。
-  // 2026-09 移除: 離線文法/模式指示燈初始化 (卡已拎走, 見 index.html)。
   connectWs();
   musicInit();
   if (typeof radioInit === "function") radioInit();
   if (typeof refreshSupportedSizes === "function") refreshSupportedSizes();
   if (typeof buildCameraPhoto9Grid === "function") buildCameraPhoto9Grid();
 });
-
-  // 2026-09 刪除: disableTalkFabIfInsecureContext() 全個 (walkie-talkie
-  // #talkFab 掣一併拎走，唔使再 disable)。
