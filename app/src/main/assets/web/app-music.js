@@ -1,7 +1,7 @@
 // Open Alpha2 — client logic (app-music.js)
 // 本地音樂 tab: 對接 MainActivity.java 已有嘅 "audio/local_music/*" 呢一套
 // endpoint (本身俾小智語音/AI tool call 用, 而家加返一層瀏覽器 UI)。真正播放
-// (STREAM_MUSIC MediaPlayer)、equalizer、隨機動作全部喺 server 端做, 呢個檔案
+// (STREAM_MUSIC MediaPlayer)、隨機動作全部喺 server 端做, 呢個檔案
 // 純粹係 UI + 定時 poll 狀態嚟更新進度條, 冇任何音訊 byte 經過瀏覽器 (同
 // app-mic.js 嗰種即時串流完全唔同)。
 // 全部函數共用 window/global scope (冇用 ES module), load 順序見 index.html
@@ -13,7 +13,6 @@ let musicTracks = [];            // 上次 musicRefreshList() 攞返嚟嘅清單
 let musicCurrentName = null;     // 目前揀選/播放緊嗰首歌嘅檔名
 let musicStatusPollTimer = null;
 let musicSeekDragging = false;   // 用戶拖緊進度條嗰陣, 唔好俾 poll 蓋走個位置
-let musicEqPresets = [];         // 上次 musicRefreshEqPresets() 攞返嚟嘅 preset 清單
 let musicPlayAllMode = false;    // 「▶ 全部」模式 - 一首播完自動接落一首 (見
                                  // musicPollStatusLoop() 嘅 hasTrack=false 分支)
 let musicLastPlayedName = null;  // 上次播過嘅歌名 - stop 嗰陣 musicCurrentName 會
@@ -126,7 +125,6 @@ function musicFormatSize(bytes) {
 function musicInit() {
   musicRefreshList();
   musicRefreshStatus();
-  musicRefreshEqPresets();
   musicRefreshFillerToggle();
   refreshSharedVolume();
   // 頻譜共用：無論本地或電台，同一 canvas 同一輪詢
@@ -475,53 +473,6 @@ function musicApplyStatus(res) {
     posLabel.textContent = musicFormatTime(res.positionMs);
   }
   musicRenderList();
-}
-
-// ---------------- equalizer ----------------
-
-function musicRefreshEqPresets() {
-  const container = document.getElementById("musicEqPresetContainer");
-  if (!container) return;
-  Alpha2Api.audioLocalMusicEqPresets().then(function (res) {
-    if (!res.ok) return;
-    musicEqPresets = res.presets || [];
-    musicRenderEqPresets(res.current);
-    if (res.unavailable) {
-      const p = document.createElement("p");
-      p.className = "hint";
-      p.textContent = t("music_eq_unavailable");
-      container.parentElement.appendChild(p);
-    }
-  });
-}
-
-function musicRenderEqPresets(currentIndex) {
-  const container = document.getElementById("musicEqPresetContainer");
-  if (!container) return;
-  container.innerHTML = "";
-
-  // "無 (Flat)" - 對應 index -1, 唔套用任何 preset (見 MainActivity.java
-  // musicEqPresetIndex 嘅預設值/javadoc)。
-  const noneBtn = document.createElement("button");
-  noneBtn.className = "secondary" + (currentIndex === -1 || currentIndex == null ? " active" : "");
-  noneBtn.textContent = t("music_eq_none");
-  noneBtn.onclick = function () { musicSetEqPreset(-1); };
-  container.appendChild(noneBtn);
-
-  musicEqPresets.forEach(function (preset) {
-    const btn = document.createElement("button");
-    btn.className = "secondary" + (preset.index === currentIndex ? " active" : "");
-    btn.textContent = preset.name;
-    btn.onclick = function () { musicSetEqPreset(preset.index); };
-    container.appendChild(btn);
-  });
-}
-
-function musicSetEqPreset(index) {
-  Alpha2Api.audioLocalMusicEqSet( { index: String(index) }).then(function (res) {
-    if (!res.ok) return;
-    musicRenderEqPresets(index);
-  });
 }
 
 // ---------------- random filler action toggle ----------------

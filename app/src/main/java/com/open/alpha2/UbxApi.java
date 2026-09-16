@@ -131,10 +131,10 @@ public final class UbxApi {
     // 一粒，其他軸完全唔掂，天然安全；亦唔再需要 pose 已知先郁得。
     /** 單舵機經 cmd05 直發；只在串口不可用時 FAILED。 */
     public UbxErrorCode.API_ERROR_CODE servoSendOneCode(int id, int angle, int timeMs) {
-        if (id < 1 || id > 20) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
-        if (angle < 0) angle = 0;
-        if (angle > 255) angle = 255;
-        if (timeMs < 20) timeMs = 20;
+        if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
+        if (angle < ApiValidator.SERVO_ANGLE_MIN) angle = ApiValidator.SERVO_ANGLE_MIN;
+        if (angle > ApiValidator.SERVO_ANGLE_MAX) angle = ApiValidator.SERVO_ANGLE_MAX;
+        if (timeMs < ApiValidator.SERVO_TIME_MIN_MS) timeMs = ApiValidator.SERVO_TIME_MIN_MS;
         boolean sent = HardwareDirectManager.get(appContext).chest()
                 .setSingleServo((byte) id, angle, (short) timeMs);
         if (!sent) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
@@ -179,7 +179,7 @@ public final class UbxApi {
         }
         boolean ok = servoSendOneCode(id, angle, time) == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
         if (!ok || trim == null) {
-            return MainActivity.codeResponseReady(MainActivity.directCode(ok), directChestReady());
+            return MainActivity.sentReadyResponse(ok, directChestReady());
         }
         Boolean written = writeServoTrimLive(id, trim);
         StringBuilder sb = new StringBuilder("{\"ok\":true,\"code\":\"API_ERROR_SUCCEED\"");
@@ -200,7 +200,7 @@ public final class UbxApi {
         // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
         boolean sent = HardwareDirectManager.get(appContext).chest().setAllServos(angles, (short) time);
         if (sent) ubxPlayer.notePose(angles);
-        return MainActivity.codeResponseReady(MainActivity.directCode(sent), directChestReady());
+        return MainActivity.sentReadyResponse(sent, directChestReady());
     }
 
     public HttpServer.ApiResponse servoReadResponse(Map<String, String> query) {
@@ -226,6 +226,19 @@ public final class UbxApi {
                 + ",\"known\":" + (commanded != null) + "}");
     }
 
+    /** 20 連讀粒間隔 100ms（servoReadAll／servoAngleAll 逐字一樣；被打斷回 false 畀 caller break）。 */
+    private static boolean sleepBetweenServos() {
+        try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+        return true;
+    }
+
+    /** 20 連讀 failed 串接（兩處逐字一樣）：逗號分隔＋記位。恆回 false，caller 掟返入 firstFail。 */
+    private static boolean appendFailed(StringBuilder failed, boolean firstFail, int i) {
+        if (!firstFail) failed.append(',');
+        failed.append(i);
+        return false;
+    }
+
     public HttpServer.ApiResponse servoReadAllResponse() {
         // 20 連讀 trim（官方 tuner 節奏：逐粒約十幾 ms 間隔）。
         // trims[i] = 該軸 chest 存住的偏差原值，讀唔到嗰粒記 null 並列入 failed。
@@ -238,12 +251,10 @@ public final class UbxApi {
             Integer v = readServoLive(i);
             trims[i - 1] = v;
             if (v == null) {
-                if (!firstFail) failed.append(',');
-                failed.append(i);
-                firstFail = false;
+                firstFail = appendFailed(failed, firstFail, i);
             }
             if (i < 20) {
-                try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+                if (!sleepBetweenServos()) break;
             }
         }
         failed.append(']');
@@ -302,15 +313,13 @@ public final class UbxApi {
             Integer v = readServoAbsLive(i);
             angles[i - 1] = v;
             if (v == null) {
-                if (!firstFail) failed.append(',');
-                failed.append(i);
-                firstFail = false;
+                firstFail = appendFailed(failed, firstFail, i);
             } else {
                 restored[i - 1] = servoSendOneCode(i, v, 20)
                         == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
             }
             if (i < 20) {
-                try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+                if (!sleepBetweenServos()) break;
             }
         }
         failed.append(']');
@@ -332,13 +341,23 @@ public final class UbxApi {
      * 帶重試的單粒絕對角度實讀（3 次 × 250ms；重試之間隔 100ms，同連讀同級，
      * 唔好密 hammer 胸板——見 servoAngleAllResponse 事故 comment）。
      */
-    private Integer readServoAbsLive(int id) {
+    private Integer readServoAbsLive(final int id) {
+        return retryServoLive(100, new ServoRetry<Integer>() {
+            @Override public Integer attempt() { return chestQuery.queryServoAbsAngle(id, 250); }
+        });
+    }
+
+    /** 重試骨架共用形（上面三個 live* 方法之前逐字一樣，淨 query call／重試間隔唔同；
+     *  3 次、attempt==2 即停、打斷回 null，全部保留）。成功回值，全部超時／發送失敗回 null。 */
+    private interface ServoRetry<T> { T attempt(); }
+
+    private <T> T retryServoLive(int sleepMs, ServoRetry<T> op) {
         if (chestQuery == null || !directChestReady()) return null;
         for (int attempt = 0; attempt < 3; attempt++) {
-            Integer v = chestQuery.queryServoAbsAngle(id, 250);
+            T v = op.attempt();
             if (v != null) return v;
             if (attempt == 2) break;
-            try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
+            try { Thread.sleep(sleepMs); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
         }
         return null;
     }
@@ -348,29 +367,19 @@ public final class UbxApi {
      * 會被搶食，偶發超時屬預期之內，故重試 3 次（官方 ACK 約 10-15ms，
      * 250ms timeout 好闊綽；重試之間隔 100ms，唔好密 hammer 胸板）。
      */
-    private Integer readServoLive(int id) {
-        if (chestQuery == null || !directChestReady()) return null;
-        for (int attempt = 0; attempt < 3; attempt++) {
-            Integer v = chestQuery.queryServoAngle(id, 250);
-            if (v != null) return v;
-            if (attempt == 2) break;
-            try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
-        }
-        return null;
+    private Integer readServoLive(final int id) {
+        return retryServoLive(100, new ServoRetry<Integer>() {
+            @Override public Integer attempt() { return chestQuery.queryServoAngle(id, 250); }
+        });
     }
 
     /**
      * 帶重試的 trim 寫入（3 次 × 250ms，與實讀同級——官方 service 爭食回覆
      * bytes 時超時常見）。回 TRUE/FALSE（ACK 語意）；全部超時／發送失敗回 null。
      */
-    private Boolean writeServoTrimLive(int id, int trim) {
-        if (chestQuery == null || !directChestReady()) return null;
-        for (int attempt = 0; attempt < 3; attempt++) {
-            Boolean r = chestQuery.writeServoTrim(id, trim, 250);
-            if (r != null) return r;
-            if (attempt == 2) break;
-            try { Thread.sleep(30); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
-        }
-        return null;
+    private Boolean writeServoTrimLive(final int id, final int trim) {
+        return retryServoLive(30, new ServoRetry<Boolean>() {
+            @Override public Boolean attempt() { return chestQuery.writeServoTrim(id, trim, 250); }
+        });
     }
 }

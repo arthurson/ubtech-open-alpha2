@@ -240,6 +240,13 @@ public final class MicCenter {
             }
         }
     }
+    /** setMic／setMicKeepHeld 共用尾巴：廣播＋回 mic 狀態（之前兩份逐字一樣）。 */
+    private HttpServer.ApiResponse micStateResponse() {
+        EventBus.get().publish("mic_state",
+                "{\"held\":" + micHeldByApp + ",\"keepHeld\":" + micHoldEnforced + "}");
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"held\":" + micHeldByApp
+                + ",\"keepHeld\":" + micHoldEnforced + "}");
+    }
     public HttpServer.ApiResponse setMic(Map<String, String> query) {
         boolean wake = ApiValidator.requireBoolean(query, "wake");
         robot.speech_SetMIC(wake);
@@ -252,10 +259,7 @@ public final class MicCenter {
         if (!wake && micHoldEnforced) {
             stopMicHoldEnforcer();
         }
-        EventBus.get().publish("mic_state",
-                "{\"held\":" + micHeldByApp + ",\"keepHeld\":" + micHoldEnforced + "}");
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"held\":" + micHeldByApp
-                + ",\"keepHeld\":" + micHoldEnforced + "}");
+        return micStateResponse();
     }
     public HttpServer.ApiResponse setMicKeepHeld(Map<String, String> query) {
         boolean keep = ApiValidator.requireBoolean(query, "keep");
@@ -264,10 +268,7 @@ public final class MicCenter {
         } else {
             stopMicHoldEnforcer();
         }
-        EventBus.get().publish("mic_state",
-                "{\"held\":" + micHeldByApp + ",\"keepHeld\":" + micHoldEnforced + "}");
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"held\":" + micHeldByApp
-                + ",\"keepHeld\":" + micHoldEnforced + "}");
+        return micStateResponse();
     }
     // -- Walkie-talkie: browser mic -> robot speaker test endpoints.
     public HttpServer.ApiResponse testTone() {

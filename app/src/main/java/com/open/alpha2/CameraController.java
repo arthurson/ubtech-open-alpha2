@@ -112,6 +112,20 @@ public class CameraController {
         return true;
     }
 
+    /** getSupported*Sync 三份共用：逐個 index 試開相機（之前三份逐字一樣）。開唔到回 null。 */
+    private static android.hardware.Camera openFallbackCamera() {
+        for (int idx : CAMERA_INDEX_CANDIDATES) {
+            try { return android.hardware.Camera.open(idx); } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    /** getSupported*Sync 三份共用 finally：放掉臨時開嘅相機＋開閘（之前三份逐字一樣）。 */
+    private static void releaseTmpAndCountDown(android.hardware.Camera tmp, CountDownLatch latch) {
+        if (tmp != null) { try { tmp.release(); } catch (Exception ignored) {} }
+        latch.countDown();
+    }
+
     /** CountDownLatch.await 共用形（sleepQuietly 同系）：等 timeout；被 interrupt
      *  就補返 interrupt flag 並回 false。注意：timeout 照回 true——舊碼三處都唔睇
      *  await() 本身回值，淨係理 interrupt，呢度保留呢個語義。 */
@@ -162,16 +176,13 @@ public class CameraController {
                     if (camera != null) {
                         result.set(camera.getParameters().getSupportedPreviewSizes());
                     } else {
-                        for (int idx : CAMERA_INDEX_CANDIDATES) {
-                            try { tmp = android.hardware.Camera.open(idx); break; } catch (Exception ignored) {}
-                        }
+                        tmp = openFallbackCamera();
                         if (tmp == null) { err.set("Camera.open failed for all indices"); }
                         else { result.set(tmp.getParameters().getSupportedPreviewSizes()); }
                     }
                 } catch (Exception e) { err.set(e.getMessage()); }
                 finally {
-                    if (tmp != null) { try { tmp.release(); } catch (Exception ignored) {} }
-                    latch.countDown();
+                    releaseTmpAndCountDown(tmp, latch);
                 }
             }
         });
@@ -190,15 +201,12 @@ public class CameraController {
                     if (camera != null) {
                         result.set(camera.getParameters().getSupportedPictureSizes());
                     } else {
-                        for (int idx : CAMERA_INDEX_CANDIDATES) {
-                            try { tmp = android.hardware.Camera.open(idx); break; } catch (Exception ignored) {}
-                        }
+                        tmp = openFallbackCamera();
                         if (tmp != null) result.set(tmp.getParameters().getSupportedPictureSizes());
                     }
                 } catch (Exception ignored) { result.set(null); }
                 finally {
-                    if (tmp != null) { try { tmp.release(); } catch (Exception ignored) {} }
-                    latch.countDown();
+                    releaseTmpAndCountDown(tmp, latch);
                 }
             }
         });
@@ -216,15 +224,12 @@ public class CameraController {
                     if (camera != null) {
                         result.set(camera.getParameters().getSupportedPreviewFpsRange());
                     } else {
-                        for (int idx : CAMERA_INDEX_CANDIDATES) {
-                            try { tmp = android.hardware.Camera.open(idx); break; } catch (Exception ignored) {}
-                        }
+                        tmp = openFallbackCamera();
                         if (tmp != null) result.set(tmp.getParameters().getSupportedPreviewFpsRange());
                     }
                 } catch (Exception ignored) {}
                 finally {
-                    if (tmp != null) { try { tmp.release(); } catch (Exception ignored) {} }
-                    latch.countDown();
+                    releaseTmpAndCountDown(tmp, latch);
                 }
             }
         });
@@ -513,12 +518,9 @@ public class CameraController {
         return out.toByteArray();
     }
 
-    /** Picks the supported preview size with the smallest area difference from the
-     *  requested width/height, since most legacy Camera HALs reject arbitrary sizes
-     *  outright. Returns null if the driver reports no supported-size list at all. */
-    private static Camera.Size closestSupportedPreviewSize(Camera.Parameters params,
+    /** preview／picture 共用嘅最近面積匹配（之前兩份除咗讀邊個 list 外逐字一樣）。 */
+    private static Camera.Size closestSizeByArea(java.util.List<Camera.Size> sizes,
             int wantWidth, int wantHeight) {
-        List<Camera.Size> sizes = params.getSupportedPreviewSizes();
         if (sizes == null || sizes.isEmpty()) {
             return null;
         }
@@ -533,6 +535,14 @@ public class CameraController {
             }
         }
         return best;
+    }
+
+    /** Picks the supported preview size with the smallest area difference from the
+     *  requested width/height, since most legacy Camera HALs reject arbitrary sizes
+     *  outright. Returns null if the driver reports no supported-size list at all. */
+    private static Camera.Size closestSupportedPreviewSize(Camera.Parameters params,
+            int wantWidth, int wantHeight) {
+        return closestSizeByArea(params.getSupportedPreviewSizes(), wantWidth, wantHeight);
     }
 
     /** Picks the supported FPS range with the highest max fps (values are in
@@ -710,21 +720,7 @@ public class CameraController {
      *  javadoc for why these need to be picked from different lists. */
     private static Camera.Size closestSupportedPictureSize(Camera.Parameters params,
             int wantWidth, int wantHeight) {
-        List<Camera.Size> sizes = params.getSupportedPictureSizes();
-        if (sizes == null || sizes.isEmpty()) {
-            return null;
-        }
-        Camera.Size best = null;
-        long bestDiff = Long.MAX_VALUE;
-        long wantArea = (long) wantWidth * wantHeight;
-        for (Camera.Size s : sizes) {
-            long diff = Math.abs((long) s.width * s.height - wantArea);
-            if (diff < bestDiff) {
-                bestDiff = diff;
-                best = s;
-            }
-        }
-        return best;
+        return closestSizeByArea(params.getSupportedPictureSizes(), wantWidth, wantHeight);
     }
 
     /** Registers a listener for every future frame. Does NOT replay {@link #lastFrame} -

@@ -165,7 +165,7 @@ public final class SonarCenter {
         int distanceCm = ApiValidator.requireIntRange(query, "distance", 0, 100);
         applySonarThreshold(distanceCm);
         boolean sent = HardwareDirectManager.get(appContext).chest().configureSonar(distanceCm);
-        return MainActivity.codeResponseReady(MainActivity.directCode(sent), directChestReady());
+        return MainActivity.sentReadyResponse(sent, directChestReady());
     }
 
     // -- MCP tools (XiaozhiBridge callTool switch 轉調) --
@@ -181,6 +181,7 @@ public final class SonarCenter {
         }
         static McpResult ok(String resultText) { return new McpResult(false, resultText); }
         static McpResult err(String resultText) { return new McpResult(true, resultText); }
+        static McpResult missingArg(String name) { return err("missing required argument: " + name); }
     }
 
     /** self.sensors.get_pir 本體 (XiaozhiBridge 轉調)。純讀，唔掂硬件。 */

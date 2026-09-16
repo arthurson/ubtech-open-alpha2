@@ -23,7 +23,6 @@ public final class AudioCenter {
     private static final String TAG = "AudioCenter";
 
     private static final String PREF_MUSIC_FILLER_ACTION_ENABLED = "music_filler_action_enabled";
-    private static final String PREF_MUSIC_EQ_PRESET = "music_eq_preset";
 
     private final Context appContext;
     private final UbxPlayer ubxPlayer;
@@ -60,21 +59,9 @@ public final class AudioCenter {
      *  哪個檔名。*/
     private volatile String currentMusicTrackName;
 
-    /** 播放中的本地音樂用的 equalizer, 綁定 currentMusicPlayer 的 audio session -
-     *  跟隨 currentMusicPlayer 的生命週期, 換歌/停歌時都要即時 release() 這個
-     *  (見 stopLocalMusicPlaybackLocked()), 不可以留著跨 session 使用, 因為
-     *  Equalizer 綁定的 audio session id 一旦 MediaPlayer release() 之後就不再
-     *  對應任何東西, 之後的 setEnabled()/usePreset() call 會拋出
-     *  IllegalStateException。 */
-    private android.media.audiofx.Equalizer musicEqualizer;
-
-    /** 用戶上次選擇的 equalizer preset index (由 SharedPreferences 讀出來, 開機/換歌
-     *  時都沿用這個) - -1 = 沒選過/用「無」(flat, 不做任何調整)。*/
-    private int musicEqPresetIndex = -1;
-
     // -- Audio Spectrum --------------------------------------
     // 用 android.media.audiofx.Visualizer 綁定 currentMusicPlayer 的 audio session
-    // (和 musicEqualizer 同一條 session), 開啟 FFT 擷取, 將取得的頻譜壓縮成
+    // 開啟 FFT 擷取, 將取得的頻譜壓縮成
     // MUSIC_SPECTRUM_BANDS 條 band, 提供給 audio/local_music/spectrum endpoint 輪詢,
     // 前端 canvas 畫 bar。生命週期完全跟隨 MediaPlayer: playLocalMusicFile() prepare
     // 時建立, stop/completion/error 時 release。
@@ -371,7 +358,6 @@ public final class AudioCenter {
             player.setDataSource(file.getAbsolutePath());
             player.setOnPreparedListener(mp -> {
                 mp.start();
-                setupMusicEqualizerLocked(mp);
                 setupMusicVisualizerLocked(mp);
                 startMusicFillerActionLoop(mp);
                 startSharedFillerLoop();
@@ -395,38 +381,6 @@ public final class AudioCenter {
         }
     }
 
-    private void setupMusicEqualizerLocked(android.media.MediaPlayer mp) {
-        try {
-            android.media.audiofx.Equalizer eq = new android.media.audiofx.Equalizer(0, mp.getAudioSessionId());
-            eq.setEnabled(true);
-            musicEqualizer = eq;
-            int savedPreset = prefs().getInt(PREF_MUSIC_EQ_PRESET, -1);
-            if (savedPreset >= 0 && savedPreset < eq.getNumberOfPresets()) {
-                try {
-                    eq.usePreset((short) savedPreset);
-                    musicEqPresetIndex = savedPreset;
-                } catch (Exception e) {
-                    Log.w(TAG, "Failed to apply saved EQ preset " + savedPreset, e);
-                }
-            }
-        } catch (Exception e) {
-            // Equalizer 這個 audio effect 不保證每台機器都有 (視乎廠商有沒有實作對應
-            // 的 effect engine) - 建不起來就當作沒有這個功能, 不應該因此拖累整首歌播不了。
-            Log.w(TAG, "Equalizer unavailable on this device", e);
-            musicEqualizer = null;
-        }
-    }
-
-    private void releaseMusicEqualizerLocked() {
-        if (musicEqualizer != null) {
-            try {
-                musicEqualizer.release();
-            } catch (Exception ignored) {
-            }
-            musicEqualizer = null;
-        }
-    }
-
     public synchronized void stopLocalMusicPlayback() {
         stopLocalMusicPlaybackLocked();
     }
@@ -434,9 +388,8 @@ public final class AudioCenter {
     private void stopLocalMusicPlaybackLocked() {
         stopMusicFillerActionLoop();
         stopSharedFillerLoopIfIdle();
-        // 共用 EQ/頻譜：若電台仍在播，保留給電台
+        // 共用頻譜：若電台仍在播，保留給電台
         if (currentRadioPlayer == null) {
-            releaseMusicEqualizerLocked();
             releaseMusicVisualizerLocked();
         }
         if (currentMusicPlayer != null) {
@@ -447,13 +400,12 @@ public final class AudioCenter {
     }
 
     /** 本地音樂 OnCompletion/OnError 共用：停 filler loop、（電台冇播先）放共用
-     *  EQ/頻譜、release 嗰部 player、係 current 先清掉（之前兩個 listener 內逐字一樣）。 */
+     *  頻譜、release 嗰部 player、係 current 先清掉（之前兩個 listener 內逐字一樣）。 */
     private void releaseDoneMusicPlayerLocked(android.media.MediaPlayer mp) {
         stopMusicFillerActionLoop();
         stopSharedFillerLoopIfIdle();
-        // 若電台仍在播，保留共用 EQ/頻譜給電台
+        // 若電台仍在播，保留共用頻譜給電台
         if (currentRadioPlayer == null) {
-            releaseMusicEqualizerLocked();
             releaseMusicVisualizerLocked();
         }
         mp.release();
@@ -516,8 +468,7 @@ public final class AudioCenter {
             player.setDataSource(url);
             player.setOnPreparedListener(mp -> {
                 mp.start();
-                // 共用 EQ/頻譜/隨機動作 — 與本地音樂同一套
-                setupMusicEqualizerLocked(mp);
+                // 共用頻譜/隨機動作 — 與本地音樂同一套
                 setupMusicVisualizerLocked(mp);
                 startSharedFillerLoop();
             });
@@ -531,7 +482,6 @@ public final class AudioCenter {
                     }
                     // 電台出錯時若本地也沒在播，才釋放共用資源
                     if (currentMusicPlayer == null) {
-                        releaseMusicEqualizerLocked();
                         releaseMusicVisualizerLocked();
                     }
                     stopSharedFillerLoopIfIdle();
@@ -558,9 +508,8 @@ public final class AudioCenter {
         currentRadioPlayer = null;
         currentRadioStationId = null;
         currentRadioStationName = null;
-        // 共用 EQ/頻譜/隨機動作：若本地仍在播，保留
+        // 共用頻譜/隨機動作：若本地仍在播，保留
         if (currentMusicPlayer == null) {
-            releaseMusicEqualizerLocked();
             releaseMusicVisualizerLocked();
         }
         stopSharedFillerLoopIfIdle();
@@ -960,60 +909,6 @@ public final class AudioCenter {
         return HttpServer.ApiResponse.okTrue();
     }
 
-    // Equalizer presets - 用返 android.media.audiofx.Equalizer
-    // 自己的 preset 清單 (由裝置/廠商決定有多少個、叫什麼名, 例如 "Normal"、
-    // "Classical"、"Rock" 等, 不是這個 app 自己定義的一套), 保證和這台機器
-    // 實際安裝的 audio effect engine 一致, 不會出現選了個 UI 名但
-    // usePreset() 對不上的情況。沒播歌 (musicEqualizer 尚未建立) 也要給出
-    // 清單 (建一個臨時 Equalizer 取得清單再立即放掉), 讓用戶還沒播歌也能看到
-    // 有咩 preset 可以揀。
-    public HttpServer.ApiResponse localMusicEqPresets() {
-        android.media.audiofx.Equalizer temp = null;
-        try {
-            temp = new android.media.audiofx.Equalizer(0, 0);
-            short numPresets = temp.getNumberOfPresets();
-            StringBuilder sbEq = new StringBuilder("{\"ok\":true,\"presets\":[");
-            for (short i = 0; i < numPresets; i++) {
-                if (i > 0) sbEq.append(",");
-                sbEq.append("{\"index\":").append(i).append(",\"name\":\"")
-                        .append(MainActivity.jsonSafe(temp.getPresetName(i))).append("\"}");
-            }
-            sbEq.append("],\"current\":").append(musicEqPresetIndex).append("}");
-            return HttpServer.ApiResponse.ok(sbEq.toString());
-        } catch (Exception e) {
-            return HttpServer.ApiResponse.ok("{\"ok\":true,\"presets\":[],\"current\":-1,"
-                    + "\"unavailable\":true}");
-        } finally {
-            if (temp != null) {
-                try {
-                    temp.release();
-                } catch (Exception ignored) {
-                }
-            }
-        }
-    }
-
-    public HttpServer.ApiResponse localMusicEqSet(Map<String, String> query) {
-        int idx = ApiValidator.requireInt(query, "index");
-        // 存下選擇 (不理會現在是否正在播放), 等下一首歌開始播時
-        // setupMusicEqualizerLocked() 都會跟返呢個 preset。
-        prefs().edit().putInt(PREF_MUSIC_EQ_PRESET, idx).apply();
-        synchronized (this) {
-            musicEqPresetIndex = idx;
-            if (musicEqualizer != null) {
-                try {
-                    if (idx >= 0 && idx < musicEqualizer.getNumberOfPresets()) {
-                        musicEqualizer.usePreset((short) idx);
-                    }
-                } catch (Exception e) {
-                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
-                            + MainActivity.jsonSafe(String.valueOf(e.getMessage())) + "\"}");
-                }
-            }
-        }
-        return HttpServer.ApiResponse.okTrue();
-    }
-
     // 「播歌隨機動作」開關 - 預設 true。
     public HttpServer.ApiResponse fillerActionGet() {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":"
@@ -1132,7 +1027,7 @@ public final class AudioCenter {
     public SonarCenter.McpResult mcpPlayMusic(org.json.JSONObject arguments) {
         String musicName = arguments.optString("name", "");
         if (musicName.isEmpty()) {
-            return SonarCenter.McpResult.err("missing required argument: name");
+            return SonarCenter.McpResult.missingArg("name");
         }
         java.io.File resolved = resolveLocalMusicFile(musicName);
         if (resolved == null) {
@@ -1154,7 +1049,7 @@ public final class AudioCenter {
             throws java.io.IOException, org.json.JSONException {
         String searchQuery = arguments.optString("query", "");
         if (searchQuery.isEmpty()) {
-            return SonarCenter.McpResult.err("missing required argument: query");
+            return SonarCenter.McpResult.missingArg("query");
         }
         java.util.List<org.json.JSONObject> found = searchRadioStations(searchQuery, 30);
         if (found.isEmpty()) {
@@ -1175,7 +1070,7 @@ public final class AudioCenter {
             throws java.io.IOException, org.json.JSONException {
         String stationName = arguments.optString("name", "");
         if (stationName.isEmpty()) {
-            return SonarCenter.McpResult.err("missing required argument: name");
+            return SonarCenter.McpResult.missingArg("name");
         }
         org.json.JSONObject resolvedStation = resolveRadioStation(stationName);
         if (resolvedStation == null) {

@@ -324,8 +324,6 @@ const I18N = {
   music_playall_btn:            { zh: "▶ 全部",                en: "▶ All" },
   music_play_btn_title:         { zh: "播放",                  en: "Play" },
   music_pause_btn_title:        { zh: "暫停",                  en: "Pause" },
-  music_eq_none:                { zh: "無 (Flat)",             en: "None (Flat)" },
-  music_eq_unavailable:         { zh: "這台機器不支援 equalizer", en: "Equalizer not supported on this device" },
   music_filler_heading:         { zh: "💃 隨機動作",            en: "💃 Random Movement" },
   music_filler_on:              { zh: "開",                    en: "On" },
   music_filler_off:              { zh: "關",                    en: "Off" },

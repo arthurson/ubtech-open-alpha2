@@ -90,6 +90,11 @@ public class HttpServer implements Runnable {
             return ok(JsonUtil.okTrue());
         }
 
+        /** {"ok":<bool>} 快捷（okTrue 嘅動態版；之前 6 處各自砌字串）。 */
+        public static ApiResponse okBool(boolean ok) {
+            return ok("{\"ok\":" + ok + "}");
+        }
+
         private static ApiResponse of(int status, String message) {
             return new ApiResponse(status, "application/json; charset=utf-8",
                     JsonUtil.okFalse(String.valueOf(message)));

@@ -204,6 +204,13 @@ public final class XiaozhiBridge {
         return null;
     }
 
+    /** self.robot.servo_set_one/all 共用尾巴：直發結果＋chest 就緒打包（之前兩份淨變量名唔同）。 */
+    private SonarCenter.McpResult directServoResult(boolean sent, boolean ready) {
+        UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
+        return new SonarCenter.McpResult(!MainActivity.isOk(code) || !ready,
+                String.valueOf(code) + " (chestReady=" + ready + ")");
+    }
+
     /** self.robot.servo_set_one 本體。
      *  pure-direct: 经 /dev/ttyS1 直发。
      *  同 servo/one HTTP 一套範圍（id 1-20、angle 0-255、
@@ -226,10 +233,7 @@ public final class XiaozhiBridge {
         SonarCenter.McpResult timeErr = checkServoTimeMs(timeMs);
         if (timeErr != null) return timeErr;
         boolean sent = HardwareDirectManager.get(appContext).chest().setSingleServo((byte) mcpId, angle, (short) timeMs);
-        UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
-        boolean ready = directChestReady();
-        return new SonarCenter.McpResult(!MainActivity.isOk(code) || !ready,
-                String.valueOf(code) + " (chestReady=" + ready + ")");
+        return directServoResult(sent, directChestReady());
     }
 
     /** self.robot.servo_set_all 本體。pure-direct: 经 /dev/ttyS1 直发，无需等待。 */
@@ -262,10 +266,7 @@ public final class XiaozhiBridge {
         if (timeErr != null) return timeErr;
         // pure-direct: 经 /dev/ttyS1 直发。
         boolean sentAll = HardwareDirectManager.get(appContext).chest().setAllServos(angles, (short) timeMs);
-        UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sentAll);
-        boolean readyAll = directChestReady();
-        return new SonarCenter.McpResult(!MainActivity.isOk(code) || !readyAll,
-                String.valueOf(code) + " (chestReady=" + readyAll + ")");
+        return directServoResult(sentAll, directChestReady());
     }
 
     private static final String PREF_XIAOZHI_DEVICE_ID = "xiaozhi_device_id";
@@ -534,20 +535,16 @@ public final class XiaozhiBridge {
             // (見 xiaozhiMcpBridge()) 會即時反映這裡的改動, 不用重新連線 XiaoZhi。
             case "mcp_tools/list": {
                 org.json.JSONArray fullList = lastFullMcpToolList;
-                if (fullList == null) {
-                    // 未連過 XiaoZhi/未收過任何 tools/list request - 個 card 應該
-                    // 讓用戶在還沒連線之前也能看到有哪些 tool 可以 enable/disable, 所以
-                    // 這裡強制執行一次 listTools() 建立清單 (side effect 會存到
-                    // lastFullMcpToolList, 下次不用再強制)。
-                    try {
-                        xiaozhiMcpBridge().listTools();
-                    } catch (org.json.JSONException e) {
-                        return HttpServer.ApiResponse.error("failed to build tool list: " + e.getMessage());
-                    }
-                    fullList = lastFullMcpToolList;
-                }
-                java.util.Set<String> disabledNames = xiaozhiConfig.getMcpDisabledToolNames();
                 try {
+                    if (fullList == null) {
+                        // 未連過 XiaoZhi/未收過任何 tools/list request - 個 card 應該
+                        // 讓用戶在還沒連線之前也能看到有哪些 tool 可以 enable/disable, 所以
+                        // 這裡強制執行一次 listTools() 建立清單 (side effect 會存到
+                        // lastFullMcpToolList, 下次不用再強制)。
+                        xiaozhiMcpBridge().listTools();
+                        fullList = lastFullMcpToolList;
+                    }
+                    java.util.Set<String> disabledNames = xiaozhiConfig.getMcpDisabledToolNames();
                     org.json.JSONArray toolsWithState = new org.json.JSONArray();
                     for (int i = 0; i < fullList.length(); i++) {
                         org.json.JSONObject tool = fullList.getJSONObject(i);

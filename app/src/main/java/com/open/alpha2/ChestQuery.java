@@ -423,7 +423,7 @@ public final class ChestQuery {
      * 如本機 5/6 號硬件壞）。此方法已保證不在主 thread。
      */
     public Integer queryServoAngle(int id, long timeoutMs) {
-        if (id < 1 || id > 20) return null;
+        if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return null;
         if (!chestReady()) {
             Log.w(TAG, "queryServoAngle: chest not ready (pure-direct)");
             return null;
@@ -477,7 +477,7 @@ public final class ChestQuery {
      * 此方法已保證不在主 thread。
      */
     public Integer queryServoAbsAngle(int id, long timeoutMs) {
-        if (id < 1 || id > 20) return null;
+        if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return null;
         if (!chestReady()) {
             Log.w(TAG, "queryServoAbsAngle: chest not ready (pure-direct)");
             return null;
@@ -528,7 +528,7 @@ public final class ChestQuery {
      * 必須經用戶明確寫入動作。此方法已保證不在主 thread。
      */
     public Boolean writeServoTrim(int id, int trim, long timeoutMs) {
-        if (id < 1 || id > 20) return null;
+        if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return null;
         if (!chestReady()) {
             Log.w(TAG, "writeServoTrim: chest not ready (pure-direct)");
             return null;

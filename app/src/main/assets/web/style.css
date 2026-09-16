@@ -1138,7 +1138,7 @@ input[type="range"] {
   background: #9ca3af;
 }
 
-/* ---------------- Music tab: track list, drag-drop import, equalizer ---------------- */
+/* ---------------- Music tab: track list, drag-drop import ---------------- */
 
 .music-drop-zone {
   display: flex;
@@ -1237,17 +1237,6 @@ input[type="range"] {
   color: var(--muted);
   min-width: 36px;
   text-align: center;
-}
-
-.music-eq-presets {
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-}
-.music-eq-presets button.active {
-  background: var(--accent);
-  color: white !important;
-  border-color: var(--accent);
 }
 
 /* ---------------- Radio (radio-browser.info) ---------------- */

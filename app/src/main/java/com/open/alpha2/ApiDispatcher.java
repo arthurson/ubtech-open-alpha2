@@ -441,17 +441,6 @@ public final class ApiDispatcher {
             case "audio/local_music/resume":
                 return audioCenter.localMusicResume();
 
-            // Equalizer presets - 用返 android.media.audiofx.Equalizer
-            // 自己的 preset 清單 (由裝置/廠商決定有多少個、叫什麼名, 例如 "Normal"、
-            // "Classical"、"Rock" 等, 不是這個 app 自己定義的一套), 保證和這台機器
-            // 實際安裝的 audio effect engine 一致, 不會出現選了個 UI 名但
-            // usePreset() 對不上的情況。沒播歌 (musicEqualizer 尚未建立) 也要給出
-            // 清單 (建一個臨時 Equalizer 取得清單再立即放掉), 讓用戶還沒播歌也能看到
-            // 有咩 preset 可以揀。
-            case "audio/local_music/eq/presets":
-                return audioCenter.localMusicEqPresets();
-            case "audio/local_music/eq/set":
-                return audioCenter.localMusicEqSet(query);
             case "audio/local_music/filler_action/get":
                 return audioCenter.fillerActionGet();
             case "audio/local_music/filler_action/set":
@@ -680,7 +669,7 @@ public final class ApiDispatcher {
             case "sonar/config": {
                 int cm = ApiValidator.requireIntRange(query, "distance", 0, 100);
                 boolean ok = HardwareDirectManager.get(appContext).chest().configureSonar(cm);
-                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+                return HttpServer.ApiResponse.okBool(ok);
             }
             case "led/head": {
                 int color = ApiValidator.optionalInt(query, "color", 3);
@@ -689,16 +678,16 @@ public final class ApiDispatcher {
                 boolean ok = localServices.ledHead(color);
                 // also try direct with mode
                 if (modeOpt != null) ok = DirectLedController.setHead5Mic(color, 9, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, mode);
-                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+                return HttpServer.ApiResponse.okBool(ok);
             }
             case "led/off": {
                 boolean ok = localServices.ledOff();
-                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+                return HttpServer.ApiResponse.okBool(ok);
             }
             case "led/mouth": {
                 int sp = ApiValidator.optionalInt(query, "breathe", 500);
                 boolean ok = localServices.ledMouthBreathe(sp);
-                return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+                return HttpServer.ApiResponse.okBool(ok);
             }
             // Ubx 直播（与 /api/alpha2/ubx/* 同 helper；抢占式：播新自动停旧）。
             case "ubx/list":

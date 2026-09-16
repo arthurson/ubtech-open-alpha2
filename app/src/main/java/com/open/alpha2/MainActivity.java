@@ -718,11 +718,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         if (ringtoneCenter != null) ringtoneCenter.stopRingtonePlayback();
         // 之前這裡沒有呼叫 stopLocalMusicPlayback()/stopRadioPlayback() -
         // onDestroy() 就算執行了也不會釋放正在播放的 currentMusicPlayer/currentRadioPlayer,
-        // 一直以來都是個 leak (MediaPlayer native resource 沒有 release())。加入
-        // Equalizer (musicEqualizer, 跟隨 currentMusicPlayer 的生命週期) 之後這個
-        // 缺口更需要補上: Equalizer 綁定的 audio session 如果連 app 結束都不釋放,
-        // 留下的 native effect engine 資源就更難追蹤。沿用 stopRingtonePlayback()
-        // 一樣的做法, 在這裡一併全部停止。
+        // 一直以來都是個 leak (MediaPlayer native resource 沒有 release())。沿用
+        // stopRingtonePlayback() 一樣的做法, 在這裡一併全部停止。
         if (audioCenter != null) {
             audioCenter.stopLocalMusicPlayback();
             audioCenter.stopRadioPlayback();
@@ -864,6 +861,12 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     static HttpServer.ApiResponse codeResponseReady(UbxErrorCode.API_ERROR_CODE code, boolean ready) {
         return HttpServer.ApiResponse.ok("{\"ok\":" + isOk(code) + ",\"code\":\"" + code
                 + "\",\"bindReady\":" + ready + "}");
+    }
+
+    /** 直發＋就緒二合一（之前 8 處 codeResponseReady(directCode(sent), ready) 三層嵌套，
+     *  淨 sent 變量／ready 來源唔同）。 */
+    static HttpServer.ApiResponse sentReadyResponse(boolean sent, boolean ready) {
+        return codeResponseReady(directCode(sent), ready);
     }
 
     // 轉義單一實現見 JsonUtil。保留呢個 shim：~60 個 call site 經 MainActivity. 直用，

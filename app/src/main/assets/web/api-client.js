@@ -38,16 +38,6 @@ const Alpha2Api = (function() {
     return api('audio/diagnose', params);
   }
 
-  function audioLocalMusicEqPresets(params) {
-    // 列出 Equalizer 預設等化器
-    return api('audio/local_music/eq/presets', params);
-  }
-
-  function audioLocalMusicEqSet(params) {
-    // 設定 Equalizer preset
-    return api('audio/local_music/eq/set', params);
-  }
-
   function audioLocalMusicFillerActionGet(params) {
     // 查詢播歌隨機動作開關
     return api('audio/local_music/filler_action/get', params);
@@ -816,8 +806,6 @@ const Alpha2Api = (function() {
     actionPlay,
     actionStop,
     audioDiagnose,
-    audioLocalMusicEqPresets,
-    audioLocalMusicEqSet,
     audioLocalMusicFillerActionGet,
     audioLocalMusicFillerActionSet,
     audioLocalMusicList,

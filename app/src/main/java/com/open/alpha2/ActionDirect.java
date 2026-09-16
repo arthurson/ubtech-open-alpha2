@@ -326,7 +326,7 @@ public final class ActionDirect {
     public SonarCenter.McpResult mcpPlayAction(org.json.JSONObject arguments) {
         String actionName = arguments.optString("name", "");
         if (actionName.isEmpty()) {
-            return SonarCenter.McpResult.err("missing required argument: name");
+            return SonarCenter.McpResult.missingArg("name");
         }
         String resolvedId = resolveActionId(actionName);
         if (resolvedId == null) {

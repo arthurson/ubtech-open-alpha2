@@ -111,6 +111,17 @@ public final class LedCenter {
     /** Gap between open() attempts inside one burst (ms). */
     private static final long PAD_LED_RETRY_GAP_MS = 40;
 
+    /** pad LED open 重試間隔（combo／off／wifi 三個 burst loop 逐字一樣）。 */
+    private static boolean sleepPadRetryGap() {
+        try {
+            Thread.sleep(PAD_LED_RETRY_GAP_MS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+        return true;
+    }
+
     /**
      * 按住期間點亮組合 burst：open 到就按 padMinusHeld/padPlusHeld 點 14/16
      *（累加式，兩顆齊撳兩顆都著），打唔開就重試。
@@ -142,12 +153,7 @@ public final class LedCenter {
                 }
                 return true;
             }
-            try {
-                Thread.sleep(PAD_LED_RETRY_GAP_MS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
+            if (!sleepPadRetryGap()) return false;
         }
         Log.w(TAG, "pad LED open() failed " + PAD_LED_OPEN_ATTEMPTS
                 + "x in a row (device busy?)");
@@ -182,12 +188,7 @@ public final class LedCenter {
                 }
                 return true;
             }
-            try {
-                Thread.sleep(PAD_LED_RETRY_GAP_MS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
+            if (!sleepPadRetryGap()) return false;
         }
         Log.w(TAG, "pad LED off: open() failed " + PAD_LED_OPEN_ATTEMPTS + "x in a row");
         return false;
@@ -341,12 +342,7 @@ public final class LedCenter {
                 }
                 return true;
             }
-            try {
-                Thread.sleep(PAD_LED_RETRY_GAP_MS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
+            if (!sleepPadRetryGap()) return false;
         }
         Log.w(TAG, "wifi LED open() failed " + PAD_LED_OPEN_ATTEMPTS + "x in a row");
         return false;
@@ -463,7 +459,7 @@ public final class LedCenter {
     public HttpServer.ApiResponse pirSetResponse(Map<String, String> query) {
         boolean enabled = ApiValidator.requireBoolean(query, "on");
         boolean sent = HardwareDirectManager.get(appContext).chest().setPirEnabled(enabled);
-        return MainActivity.codeResponseReady(MainActivity.directCode(sent), directChestReady());
+        return MainActivity.sentReadyResponse(sent, directChestReady());
     }
 
     /** 獨立於 pir/set 呢個感應器硬件開關本身, 純粹控制
@@ -560,7 +556,7 @@ public final class LedCenter {
         String preset = ApiValidator.requireLedHeadPreset(query);
         if ("stop".equals(preset)) {
             boolean stopped = DirectLedController.stopHead5Mic();
-            return MainActivity.codeResponseReady(MainActivity.directCode(stopped), headerReady());
+            return MainActivity.sentReadyResponse(stopped, headerReady());
         }
         int color = ApiValidator.requireColor(query);
         int brightness = ApiValidator.requireBrightness(query);
@@ -574,14 +570,14 @@ public final class LedCenter {
             default:        p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
         }
         boolean sent = DirectLedController.setHead5MicRaw(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8);
-        return MainActivity.codeResponseReady(MainActivity.directCode(sent), headerReady());
+        return MainActivity.sentReadyResponse(sent, headerReady());
     }
 
     public HttpServer.ApiResponse ledEyeSet(Map<String, String> query) {
         String preset = ApiValidator.requireLedEyePreset(query);
         if ("stop".equals(preset)) {
             boolean stopped = DirectLedController.stopEye5Mic();
-            return MainActivity.codeResponseReady(MainActivity.directCode(stopped), headerReady());
+            return MainActivity.sentReadyResponse(stopped, headerReady());
         }
         int color = ApiValidator.requireColor(query);
         int brightness = ApiValidator.requireBrightness(query);
@@ -594,7 +590,7 @@ public final class LedCenter {
             default:      p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
         }
         boolean sent = DirectLedController.setEye5MicRaw(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8);
-        return MainActivity.codeResponseReady(MainActivity.directCode(sent), headerReady());
+        return MainActivity.sentReadyResponse(sent, headerReady());
     }
 
     // NOTE: unlike led/head/set and led/eye/set above, this does NOT go through
@@ -617,11 +613,11 @@ public final class LedCenter {
         String mouthPreset = ApiValidator.requireMouthPreset(query);
         if ("off".equals(mouthPreset)) {
             boolean ok = MouthLedData.off().apply();
-            return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+            return HttpServer.ApiResponse.okBool(ok);
         }
         int speed = ApiValidator.requireMouthSpeed(query);
         boolean ok = MouthLedData.breathing(speed).apply();
-        return HttpServer.ApiResponse.ok("{\"ok\":" + ok + "}");
+        return HttpServer.ApiResponse.okBool(ok);
     }
 
     public HttpServer.ApiResponse debugJniLed(Map<String, String> query) {

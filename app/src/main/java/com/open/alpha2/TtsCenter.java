@@ -112,6 +112,28 @@ public final class TtsCenter {
         return checkTtsDataSyncLegacy(displayLocale);
     }
 
+    /** voice 清單組裝共用：displayName 兜底＋put（getVoices／legacy 兩份逐字一樣）。 */
+    private static void putLanguageOption(Map<String, TtsLanguageOption> options,
+            Locale locale, String tag, Locale displayLocale) {
+        String displayName = locale.getDisplayName(displayLocale);
+        if (displayName == null || displayName.isEmpty() || displayName.equals(tag)) {
+            displayName = tag;
+        }
+        options.put(tag, new TtsLanguageOption(tag, displayName));
+    }
+
+    /** voice 清單收尾共用：按 displayName 排序回傳（getVoices／legacy 兩份逐字一樣）。 */
+    private static List<TtsLanguageOption> sortedOptions(Map<String, TtsLanguageOption> options) {
+        List<TtsLanguageOption> result = new ArrayList<>(options.values());
+        Collections.sort(result, new Comparator<TtsLanguageOption>() {
+            @Override
+            public int compare(TtsLanguageOption a, TtsLanguageOption b) {
+                return a.displayName.compareTo(b.displayName);
+            }
+        });
+        return result;
+    }
+
     /** 用 TextToSpeech.getVoices() 窮舉目前 androidTts 綁定的那個 engine 支援的所有
      *  voice/語言變體 - 見 listAndroidTtsLanguages() javadoc 解釋為何選這個
      *  API 做主要來源。 */
@@ -138,20 +160,9 @@ public final class TtsCenter {
             String tag = locale.toLanguageTag();
             if (tag == null || tag.isEmpty() || "und".equals(tag)) continue;
             if (options.containsKey(tag)) continue;
-            String displayName = locale.getDisplayName(displayLocale);
-            if (displayName == null || displayName.isEmpty() || displayName.equals(tag)) {
-                displayName = tag;
-            }
-            options.put(tag, new TtsLanguageOption(tag, displayName));
+            putLanguageOption(options, locale, tag, displayLocale);
         }
-        List<TtsLanguageOption> result = new ArrayList<>(options.values());
-        Collections.sort(result, new Comparator<TtsLanguageOption>() {
-            @Override
-            public int compare(TtsLanguageOption a, TtsLanguageOption b) {
-                return a.displayName.compareTo(b.displayName);
-            }
-        });
-        return result;
+        return sortedOptions(options);
     }
 
     /** Fires TextToSpeech.Engine.ACTION_CHECK_TTS_DATA at whichever engine androidTts
@@ -240,20 +251,9 @@ public final class TtsCenter {
             Locale locale = (country2 != null) ? new Locale(lang2, country2) : new Locale(lang2);
             String tag = locale.toLanguageTag();
             if (options.containsKey(tag)) continue;
-            String displayName = locale.getDisplayName(displayLocale);
-            if (displayName == null || displayName.isEmpty() || displayName.equals(tag)) {
-                displayName = tag;
-            }
-            options.put(tag, new TtsLanguageOption(tag, displayName));
+            putLanguageOption(options, locale, tag, displayLocale);
         }
-        List<TtsLanguageOption> result = new ArrayList<>(options.values());
-        Collections.sort(result, new Comparator<TtsLanguageOption>() {
-            @Override
-            public int compare(TtsLanguageOption a, TtsLanguageOption b) {
-                return a.displayName.compareTo(b.displayName);
-            }
-        });
-        return result;
+        return sortedOptions(options);
     }
 
     private static volatile Map<String, String> iso3LanguageMap;
