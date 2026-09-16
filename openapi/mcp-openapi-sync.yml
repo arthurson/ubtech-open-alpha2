@@ -42,6 +42,7 @@ mappings:
       called directly with a Chinese or English action name (fuzzy-matched server-side)
       - you do not need to call this first just to play a known action.
     params: []
+    exclude: [panel_token]
 
   - mcp: self.robot.play_action
     openapi: /api/action/play
@@ -57,6 +58,7 @@ mappings:
         openapi: name
         required: true
         desc: 'Chinese or English action name, e.g. "舉左手" or "take left hand".'
+    exclude: [panel_token]
     note: MCP 用人類可讀名 fuzzy match（resolveActionId），HTTP 用精確名
 
   - mcp: self.robot.stop_action
@@ -64,6 +66,7 @@ mappings:
     method: POST
     description: Stop whatever action is currently playing.
     params: []
+    exclude: [panel_token]
 
   - mcp: self.robot.play_random_action
     openapi: null
@@ -97,7 +100,7 @@ mappings:
         openapi: time
         required: false
         desc: Movement duration in milliseconds. Default 1000.
-    exclude: [trim]
+    exclude: [trim, panel_token]
     note: trim 刻意不暴露（經 cmd12 寫 EEPROM，MCP 不提供）；time_ms alias time
 
   - mcp: self.robot.servo_set_all
@@ -115,6 +118,7 @@ mappings:
         openapi: time
         required: false
         desc: Movement duration in milliseconds. Default 1000.
+    exclude: [panel_token]
 
   - mcp: self.robot.led_set_head
     openapi: /api/led/head/set
@@ -137,6 +141,7 @@ mappings:
         required: false
         desc: 1-9, required unless preset=stop.
     note: spec 上 color/brightness 必填，MCP 放寬為 optional（preset=stop 免填，由 callTool 執行 required_if）
+    exclude: [panel_token]
 
   - mcp: self.robot.led_set_eye
     openapi: /api/led/eye/set
@@ -158,6 +163,7 @@ mappings:
         openapi: brightness
         required: false
         desc: 1-9, required unless preset=stop.
+    exclude: [panel_token]
 
   - mcp: self.robot.led_set_mouth
     openapi: /api/led/mouth/set
@@ -177,6 +183,7 @@ mappings:
         desc: Breathing speed 0-5000ms, only used when preset=breathing. Default 0.
         minimum: 0
         maximum: 5000
+    exclude: [panel_token]
     note: v1 誤寫 mcp 名 speed，實際 code/callTool 讀 speed_ms（MouthLedData.breathing），v2 以 code 為準修正
 
   - mcp: self.sensors.get_pir
@@ -197,6 +204,7 @@ mappings:
         openapi: "on"
         required: true
         desc: true=on, false=off.
+    exclude: [panel_token]
 
   - mcp: self.sensors.get_sonar
     openapi: null
@@ -216,6 +224,7 @@ mappings:
         openapi: distance
         required: true
         desc: cm.
+    exclude: [panel_token]
 
   - mcp: self.camera.take_photo
     openapi: /api/camera/snapshot
@@ -225,6 +234,7 @@ mappings:
       Optionally pass a specific question to focus the description on (e.g. "how many people
       are there"), otherwise a general description is returned.
     params: []
+    exclude: [panel_token]
     mcp_only:
       - mcp: question
         type: string
@@ -254,7 +264,7 @@ mappings:
         openapi: text
         required: true
         desc: Text to speak.
-    exclude: [engine, voice, lang]
+    exclude: [engine, voice, lang, panel_token]
     note: engine/voice/lang 刻意不暴露（callTool 固定 speech_startTTS en_us，與舊手寫行為一致；v1 誤寫 engine 預設 nuance 已移除）
 
   - mcp: self.media.list_music
@@ -262,6 +272,7 @@ mappings:
     method: GET
     description: List all local music files available to play on the robot.
     params: []
+    exclude: [panel_token]
 
   - mcp: self.media.play_music
     openapi: /api/audio/local_music/play
@@ -275,12 +286,14 @@ mappings:
         openapi: name
         required: true
         desc: Song name or filename to play (fuzzy-matched).
+    exclude: [panel_token]
 
   - mcp: self.media.stop_music
     openapi: /api/audio/local_music/stop
     method: GET
     description: Stop whatever local music track is currently playing.
     params: []
+    exclude: [panel_token]
 
   - mcp: self.media.search_radio
     openapi: /api/audio/radio/search
@@ -294,6 +307,7 @@ mappings:
         openapi: query
         required: true
         desc: Search text, e.g. "BBC", "jazz", "Tokyo", "香港電台".
+    exclude: [panel_token]
 
   - mcp: self.media.play_radio
     openapi: /api/audio/radio/play
@@ -309,9 +323,11 @@ mappings:
         openapi: name
         required: true
         desc: Station name, e.g. "BBC World Service" or "香港電台第一台".
+    exclude: [panel_token]
 
   - mcp: self.media.stop_radio
     openapi: /api/audio/radio/stop
     method: GET
     description: Stop whatever radio station is currently playing.
     params: []
+    exclude: [panel_token]
