@@ -328,13 +328,6 @@ public final class ApiValidator {
         }
     }
 
-    /** 同上，兼回傳 trim 後值（供 PanelAuth.set 直接存）。 */
-    public static String requirePanelToken(Map<String, String> q, String key) {
-        String v = require(q, key);
-        checkPanelTokenFormat(v);
-        return v.trim();
-    }
-
     /** misc/set_uuid value: 1-31 ASCII 字元 (見 openapi minLength/maxLength)。 */
     public static String requireUuidValue(Map<String, String> q) {
         String v = require(q, "value");
@@ -396,18 +389,4 @@ public final class ApiValidator {
     public static HttpServer.ApiResponse error(String msg) {
         return HttpServer.ApiResponse.error(msg);
     }
-
-    // ── 範例重構 (註釋保留，供對照) ────────────────────────────────
-    // 以下為 MainActivity 中可直接替換的示例，保留作文件參考，不會被調用：
-    //
-    // case "servo/one": {
-    //   // 舊: byte id = Byte.parseByte(require(query,"id")); int angle = Integer.parseInt(require(query,"angle")); short time = Short.parseShort(queryOrDefault(query,"time","1000"));
-    //   // 新: int id = ApiValidator.requireIntRange(query,"id",1,20); int angle = ApiValidator.requireInt(query,"angle"); int time = ApiValidator.optionalInt(query,"time",1000);
-    //   // return codeResponseReady(robot.chest_SendOneFreeAngle((byte)id, angle, (short)time), robot.isChestReady());
-    // }
-    //
-    // case "led/head/set": {
-    //   // 舊: int color = Integer.parseInt(require(query,"color")); int brightness = Integer.parseInt(require(query,"brightness")); String preset = queryOrDefault(query,"preset","long"); switch(preset)...
-    //   // 新: int color = ApiValidator.requireColor(query); int brightness = ApiValidator.requireBrightness(query); String preset = ApiValidator.requireLedHeadPreset(query);
-    // }
 }

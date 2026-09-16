@@ -326,7 +326,6 @@ function voskWaitReady(id, tries) {
   });
 }
 
-// 2026-09 簡化: 卸載掣已移除 (要換 model 直接撳另一粒鍵，load 會自動頂走舊嘅)。
 function voskStart() {
   const out = document.getElementById("voskStatusOut");
   return Alpha2Api.voskStart().then(function (res) {

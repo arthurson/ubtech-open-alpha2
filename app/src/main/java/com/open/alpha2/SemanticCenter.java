@@ -15,7 +15,6 @@ import java.util.Map;
  * (semanticSimulateResponse) 搬入。
  */
 public final class SemanticCenter {
-    private static final String TAG = "SemanticCenter";
 
     /** TTS 之後要等多久才播動作, 沿用悠聊 RobotActionBusiness.startBusiness() 反編譯
      *  出來的原本時序 (先 TTS, sleep 200ms, 才播動作 - 兩者是分開、非同步的 AIDL

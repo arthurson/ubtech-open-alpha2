@@ -1538,9 +1538,6 @@
     },
     clearWorkspace: function () {
       if (workspace) workspace.clear();
-    },
-    getVariablesSnapshot: function () {
-      return Object.fromEntries(variables);
-    },
+    }
   };
 })();

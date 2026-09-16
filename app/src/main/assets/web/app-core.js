@@ -93,7 +93,6 @@ const I18N = {
   servo_reading_hint:    { zh: "讀取中…",             en: "Reading…" },
   servo_read_done:       { zh: "✅ 已更新",            en: "✅ Updated" },
   servo_read_failed_prefix: { zh: "❌ 讀取失敗：",     en: "❌ Read failed: " },
-  // 2026-09: servo_power_save 已移除 (開關 + endpoint 一齊拎走)。
   servo_tuner_heading:   { zh: "🔧 舵機角度調整", en: "🔧 Servo Angle Tuner" },
   servo_tuner_hint:      { zh: "獨立於舵機分頁的進階微調器 — 直接修改 20 顆 servo 角度，±1° 精調，一鍵讀取全部目前角度。與原廠 1.0.0.4 校準工具相同佈局（1-20 對應肩/肘/髖/膝/踝/手/頭）。長按 ±1 連發時已禁用系統複製選單。", en: "Standalone tuner — tune 20 servos directly, ±1° fine-tune, one-click read. Matches factory 1.0.0.4 layout (1-20: shoulder/elbow/hip/knee/ankle/hand/head). Long-press ±1 repeats, copy menu disabled." },
   servo_tuner_standby:   { zh: "復位+掃描",         en: "reset+scan" },
@@ -151,8 +150,6 @@ const I18N = {
   vosk_hint:               { zh: "模型放 sdcard 頂層（如 vosk-model-small-cn-0.22），開頁自動偵測，不跟 App。載入需幾秒＋約 200MB 記憶體，一次一粒。",
                              en: "Put models at sdcard top level (e.g. vosk-model-small-cn-0.22), auto-detected on page load, not bundled. Loading takes seconds + ~200MB RAM, one at a time." },
   vosk_model_label:        { zh: "模型：", en: "Model:" },
-  // 2026-09: vosk_model_placeholder/vosk_start_btn 已移除 - 語音頁淨出已下載
-  // 模型鍵（一撳即載入＋自動開聽），開始掣已拎走（見 index.html）。
   vosk_stop_btn:           { zh: "停止", en: "Stop" },
   vosk_no_model_hint:      { zh: "❌ sdcard 搵唔到 Vosk 模型（頂層目錄要有 am/final.mdl）", en: "❌ No Vosk model found on sdcard (top-level dir must contain am/final.mdl)" },
   vosk_mic_test_btn:       { zh: "測試咪", en: "Test Mic" },
@@ -188,15 +185,10 @@ const I18N = {
   vosk_download_done:      { zh: "✅ 下載＋解壓完成，已自動載入", en: "✅ Downloaded + extracted, auto-loaded" },
   vosk_download_fail_prefix: { zh: "❌ 下載失敗：", en: "❌ Download failed: " },
   vosk_download_cancelled: { zh: "已取消下載", en: "Download cancelled" },
-  // 2026-09: asr_heading/asr_start_btn/asr_stop_btn/engine_label 已移除 -
-  // ASR 卡拎走 (見 index.html), 無其他引用。
   tts_heading:           { zh: "語音 / TTS",       en: "Speech / TTS" },
   tts_text_placeholder:  { zh: "要說的文字",       en: "Text to speak" },
   tts_speak_btn:         { zh: "講嘢 (TTS)",       en: "Speak (TTS)" },
   tts_stop_btn:          { zh: "停止 TTS",         en: "Stop TTS" },
-  // 2026-09 移除: MIC 卡成組 i18n (卡已拎走, 見 index.html)。
-  // (原 mic_card_heading/mic_release_btn/mic_return_btn/
-  // mic_state_on/mic_state_off/mic_keep_held_label)
   volume_hint:           { zh: "控制機械人喇叭的媒體音量 (STREAM_MUSIC)，和實體 +/- 按鈕共用同一個音量。",
                             en: "Controls the robot speaker's media volume (STREAM_MUSIC) — shares the same level as the physical +/- buttons." },
 
@@ -225,16 +217,10 @@ const I18N = {
   alpha2_pir_switch_label:  { zh: "感應器開關", en: "Sensor Switch" },
   alpha2_pir_alert_label:   { zh: "警示反應 (LED+鈴聲)", en: "Alert Reaction (LED + Chime)" },
 
-  // 2026-09 移除: Alpha2 speech tab (ASR card) 成組 - 卡已拎走, 無其他引用。
-  // (原 asr_reset_btn/asr_procedure_warning/asr_result_label/
-  // asr_known_commands_*/asr_cmd_*/asr_current_engine_unswitched)
-
   // -- Alpha2 speech tab (TTS engine/voice buttons) --
-  // 2026-09: tts_engine_iflytek_btn 已移除 (小智頁 iFlytek 掣一齊拎走);
   // tts_engine_android_btn 保留 (小智頁 Android 掣仲用緊)。
   tts_engine_android_btn: { zh: "Android 預設", en: "Android Default" },
-  // 2026-09: tts_voice_label/tts_voice_default_btn 已移除 (iFlytek 聲音揀擇
-  // 唔存在); tts_engine_*_btn 保留 (小智 tab 仲用緊)。
+  // tts_engine_*_btn 保留 (小智 tab 仲用緊)。
   tts_android_engine_label: { zh: "TTS 引擎：", en: "TTS Engine:" },
   tts_android_lang_label: { zh: "語言：", en: "Language:" },
   tts_android_lang_keep_option: { zh: "（沿用引擎目前語言）", en: "(Keep engine's current language)" },
@@ -245,12 +231,12 @@ const I18N = {
   tts_android_voice_keep_option: { zh: "（預設聲）", en: "(Default voice)" },
   tts_android_voice_loading: { zh: "載入聲音中…", en: "Loading voices…" },
 
-  // 2026-09 移除: 離線對話設定卡 i18n (卡已拎走)。reboot_confirm/rebooting/
+  // reboot_confirm/rebooting/
   // reboot_ok/reboot_failed_prefix/suffix 保留 (app-accel.js UUID 卡個獨立
-  // 重開機掣仲用緊); service_config_reboot_btn (卡上面粒掣個 label) 已移除。
+  // 重開機掣仲用緊)。
 
-  // 2026-09 移除: ASR 引擎切換掣 + 狀態字串 (卡已拎走)。asr_reset_failed_unknown
-  // 保留 (app-accel.js/app-speech.js 仲用緊做通用「未知錯誤」)。
+  // asr_reset_failed_unknown 保留
+  // (app-accel.js/app-speech.js 仲用緊做通用「未知錯誤」)。
   asr_reset_failed_unknown: { zh: "未知錯誤", en: "Unknown error" },
 
   // -- Alpha2 speech tab (對話界面 speech/semantic_simulate 動態字串) --
@@ -260,17 +246,7 @@ const I18N = {
   speech_chat_simulate_action_prefix: { zh: "已觸發動作 ", en: "Triggered action " },
 
   // -- Alpha2 speech tab (service config + 3-in-1 test dynamic strings) --
-  // 2026-09 移除: service_config_writing/write_ok/write_failed_prefix
-  // (preset 掣已拎走); reboot_* 成組亦已移除 (UUID 卡重開機掣證實 App 無 REBOOT
-  // 權限、永遠失敗，掣同 service_config/reboot endpoint 一齊清走)。
   speech_test_enter_text_alert: { zh: "請輸入文字", en: "Please enter some text" },
-  // 2026-09 移除: asr_engine_ready_hint/asr_current_engine_prefix/
-  // asr_current_engine_is (ASR 卡同 speech_ready handler 一齊拎走)。
-
-  // 2026-09 移除: offline grammar 成組 (卡已拎走, 見 index.html)。
-  // (原 offline_grammar_heading/hint/load_default/init_btn/start_btn/stop_btn/
-  // loading/init_ok/init_fail/start_ok/stop_ok/auto_label + offline_mode_on/off
-  // + asr_mode_label_offline/online)
 
   // -- xiaozhi (小智 AI 對話) --
   nav_xiaozhi:                { zh: "🤖 小智",              en: "🤖 XiaoZhi" },

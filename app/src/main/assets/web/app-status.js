@@ -1,7 +1,6 @@
 // Open Alpha2 — client logic (app-status.js)
 // 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: Tab 切換、裝置資訊
 // (電量/WiFi/藍牙/UUID直顯/胸板固件)。
-// (2026-09: 系統狀態 JSON card 已移除 refreshStatus() 一併刪；省電開關已移除。)
 // 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
 // <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
 
@@ -15,8 +14,7 @@ function switchTab(tabId) {
 }
 
 // ---------------- Device info: battery / WiFi / Bluetooth ----------------
-// (2026-09 刪除 refreshStatus(): 系統狀態 JSON card 已移除。
-// UUID 直顯見 app-accel.js requestUuid()，胸板固件見下面 refreshChestFw()。)
+// UUID 直顯見 app-accel.js requestUuid()，胸板固件見下面 refreshChestFw()。
 
 function refreshDeviceInfo() {
   return Alpha2Api.batteryStatus().then(function (battery) {

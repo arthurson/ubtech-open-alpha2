@@ -295,24 +295,6 @@ function toRoman(n) {
   return out;
 }
 
-/** Voice.getName() 好長（"yue-hk-x-yuehk-local" 呢類），剝走開頭個 locale
- *  前綴，淨返分辨唔同聲嗰截；剝唔到就原樣。（暫時只留俾 tooltip／診斷用，
- *  下拉本身跟 Google 顯示編號。） */
-function shortVoiceLabel(name, localeTag) {
-  if (!name) return localeTag || "";
-  let s = String(name);
-  if (localeTag) {
-    const norm = function (x) { return String(x).toLowerCase().replace(/_/g, "-"); };
-    const nName = norm(s);
-    const nLoc = norm(localeTag);
-    if (nName.indexOf(nLoc) === 0) {
-      s = s.slice(nLoc.length).replace(/^[-_#]+/, "");
-    }
-  }
-  if (!s) return String(name);
-  return s;
-}
-
 function setAndroidTtsVoice() {
   const select = document.getElementById("ttsAndroidVoiceSelect");
   currentAndroidTtsVoice = select ? select.value : "";
@@ -349,27 +331,3 @@ function speakTts() {
 function stopTts() {
   return Alpha2Api.speechStop();
 }
-
-// 2026-09 移除: MIC 控制成組 (updateMicStateUi/setMic/setMicKeepHeld) - 卡已
-// 拎走 (見 index.html)。Backend speech/set_mic* endpoint 保留唔郁。
-// 2026-09 移除: ASR 引擎切換 (switchAsrEngine + speechReadyForAsr) - 機身已無
-// iFlytek/Nuance, speech/set_language 只會回 NOT_INIT, 成張 ASR 卡已拎走
-// (見 index.html)。對應 backend endpoint 本身保留 (其他 caller 照舊收到誠實
-// 錯誤, 唔靜默改語義)。
-
-// 2026-08 清理: 原本呢度有 startAsr()/stopAsr()/resetSpeech() 三個 function,
-// 交叉核對成個 index.html 搵唔到任何按鈕/入口綁住呢三個 function, 亦冇任何
-// 其他 JS 檔案 call 過佢哋 - 純粹係之前語音 tab 改版 (UI 整合做四張卡) 拎走
-// 咗對應按鈕之後, function 本身冇跟手一齊刪嘅殘留死 code, 已刪走。對應嘅
-// backend endpoint (speech/start_asr, speech/reset) 已經喺 2026-09 一齊移除
-// (死 binder), 前端早已無入口再 call 佢哋。
-
-// 2026-09 移除: 離線對話設定成組 (setServiceConfigPreset/rebootRobot) - 卡已
-// 拎走 (見 index.html)。service_config/get|set 已刪除；UUID 卡嗰個獨立重開機掣
-// (advancedRebootRobot) 亦已證實 App 無 REBOOT 權限、永遠失敗，一併移除，
-// service_config/reboot endpoint 同 spec 一齊清走。
-
-// 2026-09 移除: 離線文法辨識成組 function (grammarLoadDefault/grammarInit/
-// grammarStart/grammarStop/setOfflineAutoSwitch/refreshOfflineAutoSwitch) -
-// 卡已拎走 (見 index.html), 背後 iFlytek 本地引擎唔存在；backend
-// init/start/stop_grammar endpoint 一併刪除，get_default_grammar 照讀本地 asset。

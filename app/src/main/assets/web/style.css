@@ -1151,8 +1151,6 @@ input[type="range"] {
   box-shadow: 0 0 12px 2px rgba(220, 38, 38, 0.55);
 }
 
-/* 2026-09: mic-state-dot / mic-state-label 已移除 (MIC 卡一齊拎走)。 */
-
 /* 2026-09 新增: Vosk 聆聽指示燈 - 綠=聽緊，灰=其他狀態。圓點擺開始掣前面。 */
 .vosk-state-dot {
   display: inline-block;

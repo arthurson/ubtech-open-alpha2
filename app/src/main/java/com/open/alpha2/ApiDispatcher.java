@@ -34,7 +34,6 @@ import java.util.Map;
  * UbxPlayer notePose），邏輯逐字搬。
  */
 public final class ApiDispatcher {
-    private static final String TAG = "ApiDispatcher";
 
     /**
      * 宿主縫：speech/tts、speech/stop 由 SpeechCenter 直實現（TTS core 第一刀）。

@@ -136,8 +136,6 @@ function appendLog(msg) {
     const el = document.getElementById("batteryOut");
     if (el) el.textContent = msg.data.level + "/" + msg.data.scale + " " + (msg.data.charging ? "⚡充電中" : "") + " (" + msg.data.status + ")";
   }
-  // 2026-09 移除: mic_state handler - MIC 卡已拎走, 指示燈元素唔存在;
-  // event 本身仲會喺 Event Log 照常顯示, 唔影響。
   if (msg.type === "asr_result" && msg.data) {
     // 對話界面: 辨識到嘅嘢顯示做 user 氣泡 (2026-08: 經 cleanChatText 過濾,
     // JSON 碎片唔會出現喺對話流度)
@@ -182,10 +180,6 @@ function appendLog(msg) {
       appendSpeechChatLine("xiaozhi-msg-assistant", msg.data.answer);
     }
   }
-  // 2026-09 移除: grammar_init/grammar_result/offline_mode 三組 handler -
-  // 離線文法卡已拎走 (見 index.html), 呢啲 event 唔會再有後端發出; 指示燈
-  // (asrModeDot) 同狀態行 (grammarStatusOut) 元素都已刪除。asr_result 同
-  // iflytek_match 上面兩個 handler 保留 (dead-safe: 有 event 先顯示, 無就無)。
   if (msg.type === "sonar_obstacle" && msg.data) {
     sonarThresholdCm = msg.data.thresholdCm;
     sonarHistory.push({ triggered: !!msg.data.triggered });
@@ -245,9 +239,7 @@ window.addEventListener("DOMContentLoaded", function () {
   if (document.getElementById("voskModelBtns") && typeof voskRefreshModels === "function") {
     voskRefreshModels();
   }
-  // 2026-09 移除: MIC 指示燈初始化 (卡已拎走, 見 index.html)。
-  // 2026-09: 系統狀態 JSON card 已移除 (refreshStatus 一併刪)；裝置資訊 UUID＋
-  // 胸板固件改入頁自動直顯 (唔使再撳掣)。
+  // 裝置資訊 UUID＋胸板固件改入頁自動直顯 (唔使再撳掣)。
   refreshDeviceInfo();
   requestUuid();
   refreshChestFw();

@@ -260,11 +260,6 @@ function renderActionList() {
   }, "(沒有動作 / 服務未初始化)");
 }
 
-function typeLabel(t) {
-  const cat = ACTION_CATEGORIES.filter(function (c) { return c.key === categoryOf(t); })[0];
-  return cat ? cat.label : t;
-}
-
 function playAction() {
   const name = document.getElementById("actionName").value.trim();
   if (!name) { showError("播放動作", "請輸入動作名稱"); return; }

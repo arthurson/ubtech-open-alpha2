@@ -52,7 +52,6 @@ import java.util.Map;
  *   threshold cache 會滯後——舊行為照搬，唔喺呢刀改（改即係行為變更）。
  */
 public final class SonarCenter {
-    private static final String TAG = "SonarCenter";
 
     private final Context appContext;
     private final LedCenter ledCenter;

@@ -107,7 +107,6 @@ async function setCameraZoom(val) {
     // 後端未就緒時僅前端生效，不報錯
   }
 }
-function resetCameraZoom() { setCameraZoom(1.0); }
 async function initCameraZoom() {
   let initZ = 1.0;
   try { const s = localStorage.getItem("cameraZoom"); if (s) initZ = parseFloat(s) || 1.0; } catch(e){}
@@ -720,7 +719,6 @@ function setupCrosshairIfNeeded() {
       }
       return;
     }
-    // 2026-09 刪除: Space keyup stopTalk (同上，walkie-talkie 已移除)。
   });
 
   // If the viewport loses keyboard focus entirely (Tab away, click elsewhere) while a
@@ -735,11 +733,8 @@ function setupCrosshairIfNeeded() {
         sendServoForAxis(0, 0);
       }
     }
-    // 2026-09 刪除: blur 時 stopTalk (walkie-talkie 已移除)。
   });
 
-  // 2026-09 刪除: Talk FAB press-and-hold 成串 (walkie-talkie 發射端已移除，
-  // #talkFab 掣一併拎走)。
 }
 
 /** (Re)points the viewport's <img> at a fresh /stream/camera connection. A query-string

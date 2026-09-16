@@ -27,8 +27,6 @@ package com.theeasiestway.opus;
  */
 public class Opus {
 
-    private static final String TAG = "Opus";
-
     static {
         System.loadLibrary("easyopus");
     }

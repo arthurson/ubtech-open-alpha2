@@ -224,8 +224,6 @@
         <label data-i18n="servo_time_label">時間(ms)：</label>
         <input id="servoAllTime" type="number" min="20" value="1000" style="width:90px">
         <button class="secondary" onclick="resetServoGrid()" data-i18n="servo_reset_btn">全部回到原位</button>
-        <!-- 2026-09: 省電開關已移除 - misc/power_save 純粹發 broadcast 俾已不
-             存在的 alpha2services, 回 ok 但實際無效。 -->
       </div>
       <div class="row">
         <button onclick="servoReadAllAngles()" data-i18n="servo_read_all_btn">📖 讀取全部</button>
@@ -254,8 +252,6 @@
          歷史原因, 同機身已永久唔再用嘅 Nuance/iFlytek binder 引擎冇關係, 已改名
          消除誤導)。 -->
     <section class="card">
-      <!-- 2026-09: 離線/雲端模式指示燈已移除 - 跟住離線文法卡一齊走 (嗰個先係
-           唯一用家, 機身已無 iFlytek 離線/雲端兩條路)。 -->
       <h2 data-i18n="speech_chat_heading">💬 對話界面</h2>
       <!-- 2026-09: Vosk 聆聽指示燈 (綠=聽緊，灰=其他)，擺對話界面呢行，
            唔可以擺入上面個 h2 (applyUiLanguage 會成個 textContent 覆寫)。 -->
@@ -292,7 +288,6 @@
         <button id="voskStopBtn" onclick="voskStop()" data-i18n="vosk_stop_btn" disabled>停止</button>
         <button class="secondary" onclick="voskMicTest()" data-i18n="vosk_mic_test_btn">測試咪</button>
       </div>
-      <!-- 2026-09: 喚醒詞待命開關已移除（硬件無方向＋wake chain 刪除）。 -->
       <div class="row" style="margin-top:6px">
         <label for="voskEpMode" data-i18n="vosk_ep_label">收音延遲：</label>
         <select id="voskEpMode">
@@ -336,10 +331,6 @@
         <button onclick="stopTts()" data-i18n="tts_stop_btn">停止 TTS</button>
       </div>
     </section>
-
-    <!-- 2026-09: 🎙️ MIC 控制卡已移除 (搶/還 MIC + 持續搶佔開關)。
-         2026-09: ⚙️ 離線對話設定卡已移除 (wake word preset + 重開機 - 全部
-         針對已不存在的機身 speech service)。 -->
 
   </div>
 
@@ -1106,10 +1097,6 @@
   });
 })();
 </script>
-
-<!-- 2026-08 新增、2026-09-09 移除: 配對碼 modal overlay 殘留會令
-     onclick="xiaozhiHideActivationModal()" 掟 ReferenceError（function 已刪，
-     配對碼只經對話界面顯示）。成段 overlay 刪走，唔留死掣。 -->
 
 </body>
 </html>

@@ -611,7 +611,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // (機身無 alpha2services, 舊 binder 調用全部誠實失敗, 見 RobotStub)。
         // 舊匿名子類的三個 onListenSerialPort* AIDL 回調在 pure-direct 下永不
         // 觸發, 已經成段刪除; chest/head 回幀只走下面的 wireDirectFrameListeners()。
-        // 舊 if(false) initSpeechApi 整塊 (約 100 行回調) 一併刪除。
         robot = new RobotStub(this);
         chestQuery = new ChestQuery(this, robot);
         actionDirect = new ActionDirect(this, ubxPlayer);
@@ -626,10 +625,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 胸/头串口帧由 HardwareDirectManager 经 DirectSerialPort 直接推送，
         // 见 wireDirectFrameListeners()。
         wireDirectFrameListeners();
-
-        // 2026-09: 脫離 Alpha2OpenSdk —— 舊 binder initSpeechApi 整塊
-        // （約 100 行 asr_result/tts_end/speech_ready 回調，包喺 if(false))
-        // 已經成段刪除：機身無 alpha2services，永遠唔會執行。
 
         // 2026-09 刪除: registerChestMuteKeyTestListener()——純 no-op subscribe
         // (filter＋comment，無任何動作)，chest_mute_key 事件經 EventBus 照常上 WebSocket。
