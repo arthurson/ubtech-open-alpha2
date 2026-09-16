@@ -95,6 +95,12 @@ public class HttpServer implements Runnable {
                     "{\"ok\":false,\"error\":\"" + esc(String.valueOf(message)) + "\"}");
         }
 
+        /** 面板 token 閘口用（見 PanelAuth）：未帶／帶錯 token 即 401，唔係 400/500。 */
+        public static ApiResponse unauthorized(String message) {
+            return new ApiResponse(401, "application/json; charset=utf-8",
+                    "{\"ok\":false,\"error\":\"" + esc(String.valueOf(message)) + "\"}");
+        }
+
         /** 同 MainActivity.jsonSafe 同一套轉義（唔直接引用嗰邊，免 HttpServer↔MainActivity 循環）。 */
         private static String esc(String s) {
             if (s == null) return "";
@@ -508,6 +514,7 @@ public class HttpServer implements Runnable {
         switch (status) {
             case 200: statusText = "OK"; break;
             case 400: statusText = "Bad Request"; break;
+            case 401: statusText = "Unauthorized"; break;
             case 404: statusText = "Not Found"; break;
             case 500: statusText = "Internal Server Error"; break;
             case 503: statusText = "Service Unavailable"; break;
@@ -573,6 +580,8 @@ public class HttpServer implements Runnable {
             String kl = k.toLowerCase(java.util.Locale.US);
             if (kl.contains("token") || kl.contains("uuid") || kl.equals("value")
                     || kl.contains("secret") || kl.contains("pass") || kl.contains("psk")
+                    // 實驗 tab 面板 token：panel_token 含 "token" 已中，current（舊值）要另加。
+                    || kl.equals("current") || kl.equals("panel_token")
                     || kl.equals("url") || kl.equals("wsurl") || kl.equals("deviceid")) {
                 sb.append(k).append('=').append("***");
             } else {

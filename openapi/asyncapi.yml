@@ -86,6 +86,7 @@ components:
               - sonar_obstacle
               - speech_direction
               - tts_end
+              - vosk_download
               - vosk_state
               - wakeup
               - wifi_result

@@ -229,6 +229,19 @@ public final class ApiDispatcher {
             case "speech/cur_tts_lang":
                 return ttsCenter.curTtsLang();
 
+            // 2026-09 新增: TTS 卡聲音選擇 (Google TTS 每個語言多把聲)。
+            // tts_voices?lang=<BCP-47> 列該語言把聲 (name/locale/network/quality)；
+            // set/cur_tts_voice 讀寫選擇 (空=該語言預設聲)。轉引擎/轉語言會清
+            // 舊聲。speech/tts 帶 voice 參數即用該聲讀；對話管線自動跟 pref。
+            case "speech/tts_voices":
+                return ttsCenter.ttsVoices(query);
+
+            case "speech/set_tts_voice":
+                return ttsCenter.setTtsVoice(query);
+
+            case "speech/cur_tts_voice":
+                return ttsCenter.curTtsVoice();
+
             case "speech/set_mic":
                 return micCenter.setMic(query);
             case "speech/set_mic_keep_held":
@@ -267,6 +280,14 @@ public final class ApiDispatcher {
                 return voskApi.voskUnload();
             case "vosk/mic_test":
                 return voskApi.voskMicTest();
+            case "vosk/download":
+                return voskApi.voskDownload(query);
+            case "vosk/download_status":
+                return voskApi.voskDownloadStatus();
+            case "vosk/download_cancel":
+                return voskApi.voskDownloadCancel();
+            case "vosk/catalog":
+                return voskApi.voskCatalog();
             case "vosk/endpointer":
                 return voskApi.voskEndpointer(query);
             // -- Servos -----------------------------------------------------------------
@@ -553,6 +574,16 @@ public final class ApiDispatcher {
                 sb.append("}}");
                 return HttpServer.ApiResponse.ok(sb.toString());
             }
+            // -- 實驗 tab 面板 token 認證（見 PanelAuth：opt-in，預設關＝全開；
+            // status/verify 永遠開放，set/clear 啟用中要 current 舊值） --
+            case "auth/status":
+                return PanelAuth.status(appContext);
+            case "auth/set":
+                return PanelAuth.set(appContext, query);
+            case "auth/clear":
+                return PanelAuth.clear(appContext, query);
+            case "auth/verify":
+                return PanelAuth.verify(appContext, query);
             // ---------------- 本地音樂播放 ----------------
             // "/api/system/music/..." - 播放機身 SD 卡裡面 (/sdcard/Music 等) 已有的
             // 音樂檔, 經由 MusicController (standard android.media.MediaPlayer,

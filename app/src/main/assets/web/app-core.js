@@ -151,8 +151,8 @@ const I18N = {
   vosk_hint:               { zh: "模型放 sdcard 頂層（如 vosk-model-small-cn-0.22），開頁自動偵測，不跟 App。載入需幾秒＋約 200MB 記憶體，一次一粒。",
                              en: "Put models at sdcard top level (e.g. vosk-model-small-cn-0.22), auto-detected on page load, not bundled. Loading takes seconds + ~200MB RAM, one at a time." },
   vosk_model_label:        { zh: "模型：", en: "Model:" },
-  vosk_model_placeholder:  { zh: "— 揀模型即自動載入 —", en: "— Pick a model to load —" },
-  vosk_start_btn:          { zh: "開始聆聽", en: "Start Listening" },
+  // 2026-09: vosk_model_placeholder/vosk_start_btn 已移除 - 語音頁淨出已下載
+  // 模型鍵（一撳即載入＋自動開聽），開始掣已拎走（見 index.html）。
   vosk_stop_btn:           { zh: "停止", en: "Stop" },
   vosk_no_model_hint:      { zh: "❌ sdcard 搵唔到 Vosk 模型（頂層目錄要有 am/final.mdl）", en: "❌ No Vosk model found on sdcard (top-level dir must contain am/final.mdl)" },
   vosk_mic_test_btn:       { zh: "測試咪", en: "Test Mic" },
@@ -168,8 +168,26 @@ const I18N = {
   vosk_ep_apply_btn:       { zh: "套用", en: "Apply" },
   vosk_ep_fail_prefix:     { zh: "❌ 套用失敗：", en: "❌ Apply failed: " },
   vosk_loading_hint:       { zh: "載入緊…", en: "Loading…" },
+  vosk_switching_hint:     { zh: "切換緊（停舊開新）…", en: "Switching (stopping old, starting new)…" },
   vosk_load_fail_prefix:   { zh: "❌ 載入失敗：", en: "❌ Load failed: " },
   vosk_start_fail_prefix:  { zh: "❌ 開始失敗：", en: "❌ Start failed: " },
+  // 語音頁狀態行跟面板語言（voskRenderStatus 用，唔識嘅 state 跌返原文）。
+  vosk_state_idle:         { zh: "閒置", en: "Idle" },
+  vosk_state_loading:      { zh: "載入緊", en: "Loading" },
+  vosk_state_ready:        { zh: "就緒", en: "Ready" },
+  vosk_state_listening:    { zh: "聆聽緊", en: "Listening" },
+  vosk_state_error:        { zh: "錯誤", en: "Error" },
+  vosk_dl_heading:         { zh: "⬇ Vosk 模型下載", en: "⬇ Vosk Model Download" },
+  vosk_dl_disabled_hint:   { zh: "開啟後才會顯示可下載模型", en: "Turn on to show downloadable models" },
+  vosk_dl_hint:            { zh: "撳即下載官方模型並自動解壓到 sdcard（完咗自動載入，語音頁即多一粒鍵）。已下載唔會顯示。",
+                             en: "Tap to download an official model and auto-extract it to sdcard (auto-loads when done, a new button appears in the Speech tab). Downloaded ones are hidden." },
+  vosk_dl_all_done:        { zh: "全部已下載，去語音頁撳嚟用", en: "All downloaded — pick one in the Speech tab" },
+  vosk_download_cancel_btn: { zh: "取消下載", en: "Cancel download" },
+  vosk_downloading_prefix: { zh: "下載緊", en: "Downloading" },
+  vosk_unzipping_hint:     { zh: "解壓緊…", en: "Extracting…" },
+  vosk_download_done:      { zh: "✅ 下載＋解壓完成，已自動載入", en: "✅ Downloaded + extracted, auto-loaded" },
+  vosk_download_fail_prefix: { zh: "❌ 下載失敗：", en: "❌ Download failed: " },
+  vosk_download_cancelled: { zh: "已取消下載", en: "Download cancelled" },
   // 2026-09: asr_heading/asr_start_btn/asr_stop_btn/engine_label 已移除 -
   // ASR 卡拎走 (見 index.html), 無其他引用。
   tts_heading:           { zh: "語音 / TTS",       en: "Speech / TTS" },
@@ -220,6 +238,12 @@ const I18N = {
   tts_android_engine_label: { zh: "TTS 引擎：", en: "TTS Engine:" },
   tts_android_lang_label: { zh: "語言：", en: "Language:" },
   tts_android_lang_keep_option: { zh: "（沿用引擎目前語言）", en: "(Keep engine's current language)" },
+  // 2026-09 新增: Google TTS 每個語言多把聲，揀完語言再揀聲（無具體語言就成行收埋）。
+  // 顯示跟足 Google 系統設定：「語音 I、II、III…」編號（英文面板就 "Voice I…"）。
+  tts_android_voice_label: { zh: "聲音：", en: "Voice:" },
+  tts_android_voice_name: { zh: "語音", en: "Voice" },
+  tts_android_voice_keep_option: { zh: "（預設聲）", en: "(Default voice)" },
+  tts_android_voice_loading: { zh: "載入聲音中…", en: "Loading voices…" },
 
   // 2026-09 移除: 離線對話設定卡 i18n (卡已拎走)。reboot_confirm/rebooting/
   // reboot_ok/reboot_failed_prefix/suffix 保留 (app-accel.js UUID 卡個獨立
@@ -375,6 +399,25 @@ const I18N = {
   chest_btn_upload:      { zh: "上传",             en: "Upload" },
   chest_btn_upgrade:     { zh: "开始升级",         en: "Start Upgrade" },
 
+  // -- 實驗 tab 面板 token 認證（見 PanelAuth.java，後端 system/auth/*） --
+  panel_auth_heading:    { zh: "🔐 面板認證",      en: "🔐 Panel Token" },
+  panel_auth_card_disabled_hint: { zh: "開啟先會顯示面板認證設定", en: "Turn on to show panel token settings" },
+  panel_auth_hint:       { zh: "啟用後，成個面板（全部 API＋上載，含其他分頁）要帶 token。預設關閉（全開）。未啟用時打新值撳儲存即啟用；已啟用時打現有值撳儲存即解鎖（要換新值就先清除再儲存）。Token 記喺瀏覽器，同一個面板地址跨 tab 共用。",
+                           en: "When enabled, the whole panel (all APIs + uploads, incl. other tabs) needs the token. Off by default (fully open). Type a new value + Save to enable; type the current value + Save to unlock (to change it, Clear first then Save). Stored in this browser, shared across tabs of the same panel URL." },
+  panel_auth_token_placeholder: { zh: "Token（8–64 字元英數/-/_）", en: "Token (8–64 chars A-Za-z0-9/-/_)" },
+  panel_auth_set_btn:    { zh: "儲存",             en: "Save" },
+  panel_auth_clear_btn:  { zh: "清除",             en: "Clear" },
+  panel_auth_disabled:   { zh: "未啟用（同網段任何人可直接操作）", en: "Disabled (anyone on the LAN can operate directly)" },
+  panel_auth_enabled_locked: { zh: "已啟用，未解鎖（面板操作會回 401）", en: "Enabled, locked (panel ops return 401)" },
+  panel_auth_enabled_unlocked: { zh: "已啟用，已解鎖（成個面板會自動帶 token）", en: "Enabled, unlocked (whole panel auto-attaches the token)" },
+  panel_auth_need_token: { zh: "請先輸入 Token",   en: "Enter a token first" },
+  panel_auth_set_ok:     { zh: "✅ 已儲存（已記住，成個面板可直接用）", en: "✅ Saved (remembered, whole panel now works)" },
+  panel_auth_clear_ok:   { zh: "✅ 已清除（認證已關閉）", en: "✅ Cleared (auth disabled)" },
+  panel_auth_failed_prefix: { zh: "❌ 失敗：",     en: "❌ Failed: " },
+  panel_lock_fail:       { zh: "❌ Token 不正確，請再試", en: "❌ Wrong token, try again" },
+  panel_pw_show:         { zh: "顯示輸入",         en: "Show input" },
+  panel_pw_hide:         { zh: "隱藏輸入",         en: "Hide input" },
+
   // -- event log --
   event_log_heading:     { zh: "即時事件 Log (WebSocket)", en: "Live Event Log (WebSocket)" },
   clear_log_btn:         { zh: "清空 Log",         en: "Clear Log" },
@@ -456,6 +499,10 @@ function setUiLanguage(lang) {
       // 保留捲動位置
       document.getElementById("advServoTunerGrid").scrollTop = scrollPos;
     }
+  } catch(e) {}
+  // Vosk 模型鍵＋下載鍵＋兩條狀態行都係動態起（名跟 uiLang），重畫一次就轉埋語言。
+  try {
+    if (typeof voskApplyUiLanguage === "function") voskApplyUiLanguage();
   } catch(e) {}
 }
 
@@ -591,6 +638,8 @@ const SERVO_GROUPS = [
 // api() call now route failures through here so the UI always shows *something*.
 
 function showError(context, err) {
+  // 鎖屏中：後面 init 嘅 API 401 係預期之內，唔洗版（浮層已經講明要解鎖）。
+  if (typeof window !== "undefined" && window.__panelLocked) return;
   const banner = document.getElementById("errorBanner");
   const msg = (err && err.message) ? err.message : String(err);
   banner.textContent = "⚠ " + context + ": " + msg;
@@ -613,7 +662,8 @@ window.addEventListener("unhandledrejection", function (e) {
 
 function api(path, params) {
   clearError();
-  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  const merged = withPanelToken(params);
+  const qs = merged ? "?" + new URLSearchParams(merged).toString() : "";
   return fetch(API + "alpha2/" + path + qs).then(function (res) {
     return res.json().catch(function (e) {
       return { ok: false, error: "invalid response (status " + res.status + ")" };
@@ -647,7 +697,8 @@ function hwApi(path, params) {
 // api('system/...') 會打去 /api/alpha2/system/... 而 404, 唔好咁做。
 function sysApi(path, params) {
   clearError();
-  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  const merged = withPanelToken(params);
+  const qs = merged ? "?" + new URLSearchParams(merged).toString() : "";
   return fetch(API + "system/" + path + qs).then(function (res) {
     return res.json().catch(function (e) {
       return { ok: false, error: "invalid response (status " + res.status + ")" };
@@ -665,7 +716,8 @@ function sysApi(path, params) {
 
 function directApi(path, params) {
   clearError();
-  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  const merged = withPanelToken(params);
+  const qs = merged ? "?" + new URLSearchParams(merged).toString() : "";
   return fetch(API + "direct/" + path + qs).then(function (res) {
     return res.json().catch(function (e) {
       return { ok: false, error: "invalid response (status " + res.status + ")" };
@@ -678,6 +730,178 @@ function directApi(path, params) {
   }).catch(function (networkErr) {
     showError("Network error calling /direct/" + path, networkErr);
     return { ok: false, error: String(networkErr) };
+  });
+}
+
+// ---------------- Panel token（實驗 tab 認證，見 PanelAuth.java） ----------------
+//
+// 範圍：opt-in，預設關＝全開。啟用後成個面板上鎖（全部 /api/*＋/upload/* 要帶
+// token；淨 auth/*＋靜態頁＋ws/stream 開放），其他 tab／Blockly 照跟同一粒
+// token（下面自動帶）。token 放 localStorage（同一個 browser＋同一個面板地址
+// 跨 tab 共用，閂 browser 都仲記得；要忘記就撳「清除」）。
+// 傳遞 key 用 panel_token（唔用 token：xiaozhi ota_config/set 個 token 係另一樣嘢，
+// 同名會撞；受保護 endpoint 另收 token 別名方便 curl，見 PanelAuth）。
+function panelTokenGet() {
+  try { return localStorage.getItem("panel_token") || ""; } catch (e) { return ""; }
+}
+
+function panelTokenSet(t) {
+  try {
+    if (t) localStorage.setItem("panel_token", t);
+    else localStorage.removeItem("panel_token");
+  } catch (e) { /* private mode 等寫唔入就當無記住，唔阻操作 */ }
+}
+
+/** 將記住嘅 token 混入 params（無 token 即原樣；已有 panel_token 唔覆寫）。 */
+function withPanelToken(params) {
+  const tok = panelTokenGet();
+  if (!tok) return params;
+  const out = {};
+  if (params) { for (const k in params) { out[k] = params[k]; } }
+  if (out.panel_token == null) out.panel_token = tok;
+  return out;
+}
+
+// ---------------- 認證卡開關（同 UUID 卡 uuidCardToggle 一致寫法） ----------------
+// 預設收埋詳情，用戶揭開先睇到／用到；唔記狀態，每次入頁預設關。
+function panelAuthCardToggle() {
+  const enabled = document.getElementById("panelAuthCardEnabled");
+  const body = document.getElementById("panelAuthCardBody");
+  const hint = document.getElementById("panelAuthDisabledHint");
+  const on = !!(enabled && enabled.checked);
+  if (body) body.style.display = on ? "block" : "none";
+  if (hint) hint.style.display = on ? "none" : "block";
+}
+
+function panelAuthElements() {
+  return {
+    status: document.getElementById("panelAuthStatus"),
+    input: document.getElementById("panelAuthInput"),
+    msg: document.getElementById("panelAuthMsg"),
+  };
+}
+
+function panelAuthSay(key, extra) {
+  const els = panelAuthElements();
+  if (els.msg) els.msg.textContent = t(key) + (extra ? " " + extra : "");
+}
+
+/** Page load／操作後刷新狀態行（未啟用／已啟用未解鎖／已啟用已解鎖）。 */
+function panelAuthRefreshStatus() {
+  const els = panelAuthElements();
+  if (!els.status) return;
+  Alpha2Api.systemAuthStatus({}).then(function (res) {
+    if (!res || !res.ok) return;
+    if (!res.enabled) {
+      els.status.textContent = t("panel_auth_disabled");
+      return;
+    }
+    const has = panelTokenGet();
+    if (!has) {
+      els.status.textContent = t("panel_auth_enabled_locked");
+      return;
+    }
+    // 有記住 token 都要 verify（可能喺另一 tab 清咗／改咗）。
+    Alpha2Api.systemAuthVerify({}).then(function (v) {
+      els.status.textContent = t(v && v.ok && v.valid
+        ? "panel_auth_enabled_unlocked" : "panel_auth_enabled_locked");
+    });
+  });
+}
+
+/** 儲存（單一輸入框，一兼三職）。
+ * 送 token（新值）＋current（舊值證明，同一個值）：未啟用→後端忽略 current，
+ * 直接啟用；已啟用＋打啱現有值→後端當無改（set 同值）回 ok，前端記住＝解鎖；
+ * 已啟用＋打錯→401。要換新值就先清除再儲存。成功即記住（localStorage）。 */
+function panelAuthSet() {
+  const els = panelAuthElements();
+  const token = els.input ? (els.input.value || "").trim() : "";
+  if (!token) { panelAuthSay("panel_auth_need_token"); return; }
+  Alpha2Api.systemAuthSet({ token: token, current: token }).then(function (res) {
+    if (res && res.ok) {
+      panelTokenSet(token);
+      panelAuthSay("panel_auth_set_ok");
+    } else {
+      panelAuthSay("panel_auth_failed_prefix", res && res.error ? res.error : "?");
+    }
+    panelAuthRefreshStatus();
+  });
+}
+
+/** 清除（停用）。單一輸入框：打現有值證明擁有權（防同網段人亂清）。 */
+function panelAuthClear() {
+  const els = panelAuthElements();
+  const current = els.input ? (els.input.value || "").trim() : "";
+  Alpha2Api.systemAuthClear(current ? { current: current } : {}).then(function (res) {
+    if (res && res.ok) {
+      panelTokenSet(null);
+      if (els.input) els.input.value = "";
+      panelAuthSay("panel_auth_clear_ok");
+    } else {
+      panelAuthSay("panel_auth_failed_prefix", res && res.error ? res.error : "?");
+    }
+    panelAuthRefreshStatus();
+  });
+}
+
+/** 中英雙語（鎖屏浮層＋眼仔 title 用：語言掣收埋喺面版後面，唔知睇緊邊種文，兩種一次過 show）。 */
+function tBoth(key) {
+  const entry = (typeof I18N !== "undefined" && I18N[key]) || null;
+  if (!entry) return key;
+  if (!entry.en || entry.en === entry.zh) return entry.zh;
+  return entry.zh + " / " + entry.en;
+}
+
+/** 密碼框「眼仔」開關：撳一下睇到打緊咩，再撳收返（token 輸入框用，見 index.html）。 */
+function togglePwVisibility(inputId, btn) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  const show = el.type !== "text";
+  el.type = show ? "text" : "password";
+  if (btn) {
+    btn.textContent = show ? "🙈" : "👁️";
+    btn.title = tBoth(show ? "panel_pw_hide" : "panel_pw_show");
+  }
+}
+
+// ---------------- 面板鎖屏浮層（見 index.html #panelLockOverlay） ----------------
+// auth 啟用＋記住嘅 token 驗唔過→開浮層蓋住成個面版唔 show 內容。浮層解鎖同儲存
+// 同一個語義（token＋current 同值），得即記住＋reload，成頁用正常流程重行。
+// 注意：HTML／JS 靜態檔本身擋唔住下載（瀏覽器要載入先行到），真正敏感數據靠後端
+// 全面板閘口（未解鎖 API 一律 401）；浮層只係唔 show 操作面。
+function panelLockCheck() {
+  if (typeof Alpha2Api === "undefined" || !Alpha2Api.systemAuthStatus) return;
+  Alpha2Api.systemAuthStatus({}).then(function (res) {
+    if (!res || !res.ok || !res.enabled) return;  // 停用＝全開，乜都唔做
+    const open = function () {
+      window.__panelLocked = true;  // 壓住 showError：後面 init 嘅 401 唔洗版
+      const ov = document.getElementById("panelLockOverlay");
+      if (ov && ov.classList) ov.classList.add("open");
+    };
+    if (!panelTokenGet()) { open(); return; }  // 記住都無，直接鎖
+    // 有記住都要 verify（可能喺另一 tab 清咗／改咗）。
+    Alpha2Api.systemAuthVerify({}).then(function (v) {
+      if (!(v && v.ok && v.valid)) open();
+    });
+  });
+}
+
+/** 浮層解鎖掣（＋Enter）：得即記住＋reload；唔得留喺鎖屏 show 錯。 */
+function panelLockUnlock() {
+  const input = document.getElementById("panelLockInput");
+  const msg = document.getElementById("panelLockMsg");
+  const say = function (key, extra) {
+    if (msg) msg.textContent = tBoth(key) + (extra ? " " + extra : "");
+  };
+  const token = input ? (input.value || "").trim() : "";
+  if (!token) { say("panel_auth_need_token"); return; }
+  Alpha2Api.systemAuthSet({ token: token, current: token }).then(function (res) {
+    if (res && res.ok) {
+      panelTokenSet(token);
+      location.reload();
+    } else {
+      say("panel_lock_fail");
+    }
   });
 }
 

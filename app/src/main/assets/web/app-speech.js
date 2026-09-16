@@ -107,8 +107,10 @@ function setAndroidTtsEngine() {
   const enginePkg = select ? select.value : "";
   if (!enginePkg) return;
   // 2026-09: 轉咗引擎, 舊語言選擇未必啱用, 前後端一齊重置 (後端 pref 都清，
-  // 等對話管線 TTS 跌返自動判斷)。
+  // 等對話管線 TTS 跌返自動判斷)。聲綁死引擎＋語言，一齊清＋收埋聲行。
   currentAndroidTtsLang = "";
+  currentAndroidTtsVoice = "";
+  hideAndroidTtsVoiceRow();
   Alpha2Api.speechSetTtsLang( { lang: "" });
   Alpha2Api.speechSetTtsEngine( { engine: enginePkg }).then(function () {
     setTimeout(function () {
@@ -148,6 +150,10 @@ function loadCurAndroidTtsEngine() {
 // speakTts() 會帶埋呢個值；對話管線 (後端 speakAndroidTts) 讀同一個後端 pref，
 // 所以呢度一揀，對話 TTS 即時跟 (見 setAndroidTtsLang)。
 let currentAndroidTtsLang = "";
+// 而家揀緊嘅具體聲音 (Voice.getName()，空=該語言預設聲)。綁死引擎＋語言，
+// 轉引擎／轉語言嗰陣一齊清（後端 pref 亦清，見 setAndroidTtsEngine／
+// setAndroidTtsLang）。speakTts() 會帶埋；對話管線自動跟後端 pref。
+let currentAndroidTtsVoice = "";
 
 /** 載入而家揀緊嗰個 Android TTS 引擎識嘅全部語言 (server 端經
  *  TextToSpeech.getVoices() 攞, 見 MainActivity#listAndroidTtsLanguages()
@@ -177,6 +183,8 @@ function loadAndroidTtsLanguages() {
         currentAndroidTtsLang = cur.lang || "";
         select.value = currentAndroidTtsLang;
       }
+      // 語言 sync 完先載入聲音（聲單掛喺具體語言下面）。
+      loadAndroidTtsVoices();
     });
   });
 }
@@ -184,8 +192,132 @@ function loadAndroidTtsLanguages() {
 function setAndroidTtsLang() {
   const select = document.getElementById("ttsAndroidLangSelect");
   currentAndroidTtsLang = select ? select.value : "";
+  // 轉語言＝舊聲作廢（唔同語言唔同聲），前後端一齊清，聲行重載。
+  currentAndroidTtsVoice = "";
   // 同步寫返後端 pref —— 對話管線 TTS 即時跟呢個選擇 (見 MainActivity.speakAndroidTts)。
-  Alpha2Api.speechSetTtsLang( { lang: currentAndroidTtsLang });
+  Alpha2Api.speechSetTtsLang( { lang: currentAndroidTtsLang }).then(function () {
+    loadAndroidTtsVoices();
+  });
+}
+
+/** 聲行收埋＋清空（未揀具體語言／轉引擎嗰陣用）。 */
+function hideAndroidTtsVoiceRow() {
+  const row = document.getElementById("ttsAndroidVoiceRow");
+  if (row) row.style.display = "none";
+  const select = document.getElementById("ttsAndroidVoiceSelect");
+  if (select) select.innerHTML = "";
+}
+
+/** 載入揀緊嗰隻語言嘅全部聲音，填入下拉。未揀具體語言（沿用引擎目前語言）
+ *  就成行收埋——唔知咩語言就唔知有咩聲好揀。名跟 uiLang 加本地／網絡後綴。 */
+function loadAndroidTtsVoices() {
+  const row = document.getElementById("ttsAndroidVoiceRow");
+  const select = document.getElementById("ttsAndroidVoiceSelect");
+  if (!row || !select) return;
+  if (!currentAndroidTtsLang) {
+    hideAndroidTtsVoiceRow();
+    return;
+  }
+  row.style.display = "";
+  select.innerHTML = "";
+  const loading = document.createElement("option");
+  loading.value = "";
+  loading.textContent = t("tts_android_voice_loading");
+  select.appendChild(loading);
+  Alpha2Api.speechTtsVoices( { lang: currentAndroidTtsLang }).then(function (res) {
+    // 舊 WebView 無 Node.isConnected，re-get 確認個 select 仲喺度先填
+    //（轉頁／重建嗰陣回嚟太遲就唔好郁）。
+    const live = document.getElementById("ttsAndroidVoiceSelect");
+    if (!live || live !== select) return;
+    select.innerHTML = "";
+    const keepOpt = document.createElement("option");
+    keepOpt.value = "";
+    keepOpt.textContent = t("tts_android_voice_keep_option");
+    select.appendChild(keepOpt);
+    if (res && res.ok && res.voices) {
+      // 同 Google TTS 系統設定一樣：「語音 I、II、III…」順序編號，只列同一個
+      // locale 嘅機內聲（網絡聲要上網，Google 嗰版都唔列；尾缀 "-language"
+      // 嗰粒係偽預設聲，Google 嗰版都無，唔計）。唔夠料先跌返同 language。
+      const list = googleStyleVoices(res.voices, currentAndroidTtsLang);
+      list.forEach(function (v, idx) {
+        const opt = document.createElement("option");
+        opt.value = v.name;
+        opt.textContent = t("tts_android_voice_name") + " " + toRoman(idx + 1);
+        opt.title = v.name;
+        select.appendChild(opt);
+      });
+    }
+    select.value = currentAndroidTtsVoice;
+    // 後端 pref 可能有上次記低嘅選擇 (轉語言會清，sync 返先準)。
+    Alpha2Api.speechCurTtsVoice().then(function (cur) {
+      const live = document.getElementById("ttsAndroidVoiceSelect");
+      if (!live || live !== select) return;
+      if (cur && cur.ok && cur.voice !== undefined && cur.voice !== currentAndroidTtsVoice) {
+        currentAndroidTtsVoice = cur.voice || "";
+        select.value = currentAndroidTtsVoice;
+      }
+    });
+  });
+}
+
+/** Google TTS 系統設定同款過濾＋排序：同 locale 嘅機內聲（network＝false），
+ *  剔走尾缀 "-language" 偽預設聲，照後端俾嘅名順序出（ jar→yuc→…，同 Google
+ *  嗰版 I、II、III… 對得上）。同 locale 一粒都無，先跌返同 language 嘅機內聲。 */
+function googleStyleVoices(voices, langTag) {
+  const norm = function (x) { return String(x || "").toLowerCase(); };
+  const isRealLocal = function (v) {
+    return v && !v.network && !/-language$/i.test(v.name || "");
+  };
+  const sameLocale = function (v) { return norm(v.locale) === norm(langTag); };
+  const sameLang = function (v) {
+    return norm(v.locale).split("-")[0] === norm(langTag).split("-")[0];
+  };
+  const exact = (voices || []).filter(function (v) { return isRealLocal(v) && sameLocale(v); });
+  if (exact.length) return exact;
+  return (voices || []).filter(function (v) { return isRealLocal(v) && sameLang(v); });
+}
+
+/** 1→I，2→II，3→III…（Google 嗰版用羅馬數字編聲音）。 */
+function toRoman(n) {
+  n = parseInt(n, 10);
+  if (!(n > 0)) return String(n);
+  const table = [[10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
+  let out = "";
+  // Google 嗰版一隻語言唔會超過十把聲，X 夠用；超咗就 X-translate 咁疊上去。
+  while (n > 0) {
+    for (let i = 0; i < table.length; i++) {
+      while (n >= table[i][0]) {
+        out += table[i][1];
+        n -= table[i][0];
+      }
+    }
+  }
+  return out;
+}
+
+/** Voice.getName() 好長（"yue-hk-x-yuehk-local" 呢類），剝走開頭個 locale
+ *  前綴，淨返分辨唔同聲嗰截；剝唔到就原樣。（暫時只留俾 tooltip／診斷用，
+ *  下拉本身跟 Google 顯示編號。） */
+function shortVoiceLabel(name, localeTag) {
+  if (!name) return localeTag || "";
+  let s = String(name);
+  if (localeTag) {
+    const norm = function (x) { return String(x).toLowerCase().replace(/_/g, "-"); };
+    const nName = norm(s);
+    const nLoc = norm(localeTag);
+    if (nName.indexOf(nLoc) === 0) {
+      s = s.slice(nLoc.length).replace(/^[-_#]+/, "");
+    }
+  }
+  if (!s) return String(name);
+  return s;
+}
+
+function setAndroidTtsVoice() {
+  const select = document.getElementById("ttsAndroidVoiceSelect");
+  currentAndroidTtsVoice = select ? select.value : "";
+  // 同步寫返後端 pref —— 對話管線 TTS 即時跟呢把聲 (見 TtsCenter.speakAndroidTts)。
+  Alpha2Api.speechSetTtsVoice( { voice: currentAndroidTtsVoice });
 }
 
 function speakTts() {
@@ -196,6 +328,10 @@ function speakTts() {
   // 空字串=沿用引擎目前語言 (見後端 speech/tts 個 android 分支 comment)。
   if (currentAndroidTtsLang) {
     params.lang = currentAndroidTtsLang;
+  }
+  // 有揀具體聲先帶 (空=該語言預設聲；後端搵唔到會跌返 lang 路)。
+  if (currentAndroidTtsVoice) {
+    params.voice = currentAndroidTtsVoice;
   }
   // 對話界面: 機械人「講嘢」即刻顯示做 assistant 氣泡 — 呢度同小智唔同嘅係
   // TTS request 本身冇對應嘅非同步 event 會將講咗嘅文字送返嚟 (唔似 asr_result

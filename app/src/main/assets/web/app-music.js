@@ -604,7 +604,10 @@ function musicUploadFiles(fileList) {
       statusEl.textContent = t("music_upload_uploading") + " (" + index + "/" + files.length + ") " + file.name;
     }
     clearError();
-    fetch("/upload/music?" + new URLSearchParams({ name: file.name }).toString(), {
+    // 面板 token：啟用中 /upload/music 要驗 panel_token（見 PanelAuth，成個面板上鎖），
+    // 同 api() 系列一樣由 localStorage 拎（withPanelToken，全局，見 app-core.js）。
+    const q = (typeof withPanelToken === "function") ? withPanelToken({ name: file.name }) : { name: file.name };
+    fetch("/upload/music?" + new URLSearchParams(q).toString(), {
       method: "POST",
       body: file,
     }).then(function (res) {

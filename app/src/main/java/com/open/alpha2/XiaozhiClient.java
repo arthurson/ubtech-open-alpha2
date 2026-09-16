@@ -216,6 +216,7 @@ public class XiaozhiClient {
             EventBus.get().publish(EVT_STATE, "{\"state\":\"connecting\"}");
             ParsedUrl url = ParsedUrl.parse(wsUrl);
 
+            NetLog.out("xiaozhi-ws", wsUrl);
             Socket rawSocket = new Socket(url.host, url.port);
             rawSocket.setTcpNoDelay(true);
             if (url.secure) {

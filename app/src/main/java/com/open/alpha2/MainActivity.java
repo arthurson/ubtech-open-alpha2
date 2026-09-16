@@ -356,6 +356,13 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         httpServer = new HttpServer(getAssets(), new HttpServer.ApiHandler() {
             @Override
             public HttpServer.ApiResponse handle(String path, Map<String, String> query, String method, String body) {
+                // 實驗 tab 面板 token 中央閘口（見 PanelAuth：opt-in，預設關＝全開；
+                // 啟用後成個面板上鎖：全部 /api/* 都要 token，淨 system/auth/*
+                //（解鎖入口）開放；靜態頁／ws／stream 唔經呢度，維持開放）。
+                if (!PanelAuth.isOpenApi(path)) {
+                    HttpServer.ApiResponse gate = PanelAuth.requireAuth(MainActivity.this, query);
+                    if (gate != null) return gate;
+                }
                 // "/api/alpha2/..." goes to the original Alpha2RobotApi dispatch
                 // (handleApi, unchanged below). "/api/system/..." is a small namespace
                 // for things not tied to the robot SDK itself.
@@ -947,6 +954,10 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
      *  start it, so a stray upload after the user has stopped talking doesn't
      *  re-open the speaker session on its own. */
     private HttpServer.ApiResponse handleUpload(String path, Map<String, String> query, byte[] body) {
+        // 成個面板上鎖：啟用中全部上載（chest／music／audio）都要 token
+        //（見 PanelAuth.requireAuth；未啟用即放行）。
+        HttpServer.ApiResponse gate = PanelAuth.requireAuth(this, query);
+        if (gate != null) return gate;
         if ("audio".equals(path)) {
             audioPlaybackController.enqueuePcm(body);
             return HttpServer.ApiResponse.ok("{\"ok\":true,\"bytes\":" + body.length + "}");
@@ -954,6 +965,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         if ("music".equals(path)) {
             return audioCenter.handleMusicUpload(query, body);
         }
+        // 胸固件上載閘口喺上面 handleUpload 入口統一做（成個面板上鎖）；
+        // 保留 "chest".equals(path) 字面比對，唔經 helper——check-openapi-drift.py
+        // 靠呢個字面抽 upload 路由，轉彎即誤報 missing）。
         if ("chest".equals(path)) {
             return chestUpgrade.handleChestUpload(query, body);
         }

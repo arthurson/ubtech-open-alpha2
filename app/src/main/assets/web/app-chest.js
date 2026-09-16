@@ -26,7 +26,14 @@ function chestUpload() {
   const reader = new FileReader();
   reader.onload = function(e) {
     const bytes = e.target.result;
-    fetch("/upload/chest?name=" + encodeURIComponent(file.name), {
+    // 實驗 tab 面板 token：啟用中 /upload/chest 要驗 panel_token（見 PanelAuth），
+    // 同 api() 系列一樣由 localStorage 拎，唔使經 Alpha2Api（upload 行 raw fetch）。
+    let url = "/upload/chest?name=" + encodeURIComponent(file.name);
+    try {
+      const pt = (typeof panelTokenGet === "function") ? panelTokenGet() : "";
+      if (pt) url += "&panel_token=" + encodeURIComponent(pt);
+    } catch (ign) {}
+    fetch(url, {
       method: "POST",
       body: bytes,
       headers: { "Content-Type": "application/octet-stream" }

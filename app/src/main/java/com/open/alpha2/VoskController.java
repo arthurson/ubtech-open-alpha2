@@ -55,16 +55,18 @@ public final class VoskController {
     private static final String PREF_EP_T_END = "vosk_ep_t_end";
     private static final String PREF_EP_T_MAX = "vosk_ep_t_max";
 
-    /** 掃描到嘅一個可用 model。 */
+    /** 掃描到嘅一個可用 model（langHint＝中文名，langEn＝英文名，前端跟 UI 語言揀顯示）。 */
     public static final class VoskModelInfo {
         public final String id;
         public final String path;
         public final String langHint;
+        public final String langEn;
         public final long sizeBytes;
-        VoskModelInfo(String id, String path, String langHint, long sizeBytes) {
+        VoskModelInfo(String id, String path, String langHint, String langEn, long sizeBytes) {
             this.id = id;
             this.path = path;
             this.langHint = langHint;
+            this.langEn = langEn;
             this.sizeBytes = sizeBytes;
         }
     }
@@ -78,6 +80,55 @@ public final class VoskController {
     private volatile State state = State.IDLE;
     private volatile String modelId;
     private volatile String lastError;
+
+    // -- 模型下載 (2026-09 新增：實驗 tab 下載卡，後端直落 zip＋unzip) --
+    // 官方 small 模型 catalog（2026-09 對照 alphacephei.com/vosk/models 實頁執：
+    // 英文 small 係 0.15 版，之前寫死嘅 en-us-0.22 根本唔存在，已改啱）。
+    // {modelId, url, sizeMb}：sizeMb 係官頁標示（約數，等用戶判斷流量）。
+    // 大粒（1G 級）唔收：部機 RAM 頂唔順。固定 allowlist，唔收任意 URL（防 SSRF）。
+    private static final String DL_BASE = "https://alphacephei.com/vosk/models/";
+    private static final String[][] DL_CATALOG = {
+        {"vosk-model-small-cn-0.22", "42"},
+        {"vosk-model-small-en-us-0.15", "40"},
+        {"vosk-model-small-en-in-0.4", "36"},
+        {"vosk-model-small-ru-0.22", "45"},
+        {"vosk-model-small-fr-0.22", "41"},
+        {"vosk-model-small-de-0.15", "45"},
+        {"vosk-model-small-es-0.42", "39"},
+        {"vosk-model-small-pt-0.3", "31"},
+        {"vosk-model-small-tr-0.3", "35"},
+        {"vosk-model-small-vn-0.4", "32"},
+        {"vosk-model-small-it-0.22", "48"},
+        {"vosk-model-small-nl-0.22", "39"},
+        {"vosk-model-small-ca-0.4", "42"},
+        {"vosk-model-small-fa-0.42", "53"},
+        {"vosk-model-small-ja-0.22", "48"},
+        {"vosk-model-small-eo-0.42", "42"},
+        {"vosk-model-small-hi-0.22", "42"},
+        {"vosk-model-small-cs-0.4-rhasspy", "44"},
+        {"vosk-model-small-pl-0.22", "50"},
+        {"vosk-model-small-uz-0.22", "49"},
+        {"vosk-model-small-ko-0.22", "82"},
+        {"vosk-model-br-0.8", "70"},
+        {"vosk-model-small-gu-0.42", "100"},
+        {"vosk-model-small-tg-0.22", "50"},
+        {"vosk-model-small-te-0.42", "58"},
+        {"vosk-model-small-ky-0.42", "49"},
+        {"vosk-model-small-ka-0.42", "45"},
+        {"vosk-model-small-kz-0.42", "58"},
+        {"vosk-model-small-uk-v3-nano", "73"},
+    };
+    // 下載狀態機（同上面 load/listen State 獨立：下載中主 State 照舊 IDLE，唔干擾）。
+    // idle＝未開始／完成後重置前；downloading／unzipping 進行中；done／error／cancelled 終態。
+    private volatile String dlState = "idle";
+    private volatile String dlLang; // "cn"/"en"
+    private volatile String dlModel; // 完整目錄名
+    private volatile int dlProgress = -1; // 0-100，-1＝未知（unzip 中／長度不明）
+    private volatile long dlBytes = 0;
+    private volatile long dlTotal = -1;
+    private volatile String dlError;
+    private volatile boolean dlCancel = false;
+    private Thread dlThread;
     private Model model;
     private Recognizer recognizer;
     private SpeechService speechService;
@@ -153,7 +204,7 @@ public final class VoskController {
                 }
                 if (!seen.add(canon)) continue;
                 out.add(new VoskModelInfo(d.getName(), canon, guessLang(d.getName()),
-                        dirSize(d)));
+                        guessLangEn(d.getName()), dirSize(d)));
             }
         }
         return out;
@@ -205,6 +256,55 @@ public final class VoskController {
             {"uz", "烏茲別克文"}, {"ko", "韓文"}, {"br", "布列塔尼文"},
             {"gu", "古吉拉特文"}, {"tg", "塔吉克文"}, {"te", "泰盧固文"},
             {"ky", "吉爾吉斯文"}, {"ka", "格魯吉亞文"},
+        };
+        java.util.Map<String, String> m = new java.util.HashMap<>();
+        for (String[] p : pairs) m.put(p[0], p[1]);
+        return m;
+    }
+
+    /** guessLang 嘅英文版（同一個 parse，前端 uiLang＝en 嗰陣顯示；catalog/models
+     *  帶 langEn，舊客淨讀 lang 唔受影響）。 */
+    private static String guessLangEn(String id) {
+        String lang = null;
+        String sub = null;
+        String[] parts = id.toLowerCase(java.util.Locale.US).split("-");
+        for (int i = 0; i < parts.length; i++) {
+            if (parts[i].equals("model") || parts[i].equals("small")) {
+                int j = i + 1;
+                while (j < parts.length
+                        && (parts[j].equals("model") || parts[j].equals("small"))) {
+                    j++;
+                }
+                if (j < parts.length) lang = parts[j];
+                if (j + 1 < parts.length && parts[j + 1].matches("[a-z]{2}")) {
+                    sub = parts[j + 1];
+                }
+                break;
+            }
+        }
+        if (lang == null) return "unknown";
+        if (lang.equals("en") && "in".equals(sub)) return "Indian English";
+        if (lang.equals("ar") && "tn".equals(sub)) return "Tunisian Arabic";
+        String name = LANG_NAMES_EN.get(lang);
+        return name != null ? name : "unknown (" + lang + ")";
+    }
+
+    private static final java.util.Map<String, String> LANG_NAMES_EN = buildLangNamesEn();
+
+    private static java.util.Map<String, String> buildLangNamesEn() {
+        // 同 LANG_NAMES 一一對應（code → 英文名）。
+        String[][] pairs = {
+            {"en", "English"}, {"cn", "Chinese"}, {"zh", "Chinese"},
+            {"ja", "Japanese"}, {"ru", "Russian"}, {"fr", "French"}, {"de", "German"},
+            {"es", "Spanish"}, {"pt", "Portuguese"}, {"tr", "Turkish"},
+            {"vn", "Vietnamese"}, {"vi", "Vietnamese"}, {"it", "Italian"},
+            {"nl", "Dutch"}, {"ca", "Catalan"}, {"ar", "Arabic"},
+            {"fa", "Persian"}, {"tl", "Filipino"}, {"uk", "Ukrainian"},
+            {"kz", "Kazakh"}, {"sv", "Swedish"}, {"eo", "Esperanto"},
+            {"hi", "Hindi"}, {"cs", "Czech"}, {"pl", "Polish"},
+            {"uz", "Uzbek"}, {"ko", "Korean"}, {"br", "Breton"},
+            {"gu", "Gujarati"}, {"tg", "Tajik"}, {"te", "Telugu"},
+            {"ky", "Kyrgyz"}, {"ka", "Georgian"},
         };
         java.util.Map<String, String> m = new java.util.HashMap<>();
         for (String[] p : pairs) m.put(p[0], p[1]);
@@ -682,6 +782,7 @@ public final class VoskController {
     }
 
     public synchronized void shutdown() {
+        if ("downloading".equals(dlState) || "unzipping".equals(dlState)) dlCancel = true;
         stopLocked();
         closeModelLocked();
         state = State.IDLE;
@@ -713,5 +814,359 @@ public final class VoskController {
         if (s == null) return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"")
                 .replace("\n", "\\n").replace("\r", "\\r");
+    }
+
+    // -- 模型下載＋自動 unzip -------------------------------------------------
+    // 前端流程：實驗 tab 下載卡 → vosk/catalog 列出全部可下載（已下載唔 show）→
+    // vosk/download?model=<id> 起背景 thread → 前端 poll vosk/download_status
+    // （或聽 vosk_download event）顯示進度 → done 後自動 refresh＋load
+    // （呢度做埋 auto-load，省一 round trip）。
+
+    /** modelId→{modelId,url}。唔喺 catalog 就回 null（由上層轉做 400）。 */
+    public static String[] downloadTarget(String modelId) {
+        if (modelId == null) return null;
+        for (String[] e : DL_CATALOG) {
+            if (e[0].equals(modelId)) return new String[]{e[0], DL_BASE + e[0] + ".zip"};
+        }
+        return null;
+    }
+
+    public static boolean isDownloadable(String modelId) {
+        return downloadTarget(modelId) != null;
+    }
+
+    /** 實驗 tab 下載卡用：全部可下載＋已下載旗（前端已下載唔顯示）。
+     *  純檔案 IO（downloaded 判定），邊條 thread call 都得。 */
+    public static String catalogJson() {
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"catalog\":[");
+        boolean first = true;
+        for (String[] e : DL_CATALOG) {
+            if (!first) sb.append(',');
+            first = false;
+            String id = e[0];
+            sb.append("{\"id\":\"").append(escape(id)).append('"');
+            sb.append(",\"lang\":\"").append(escape(guessLang(id))).append('"');
+            sb.append(",\"langEn\":\"").append(escape(guessLangEn(id))).append('"');
+            sb.append(",\"sizeMb\":").append(e[1]);
+            sb.append(",\"downloaded\":").append(findModelDir(id) != null);
+            sb.append('}');
+        }
+        return sb.append("]}").toString();
+    }
+
+    /** 下載根＝scanModels 第一個可寫根（同掃描一致，unzip 完頂層即見到 model 目錄）。 */
+    private static File downloadRoot() {
+        File ext = null;
+        try {
+            ext = Environment.getExternalStorageDirectory();
+        } catch (Throwable ignore) {
+        }
+        if (ext != null) {
+            try {
+                if (ext.exists() ? ext.canWrite() : ext.mkdirs()) return ext;
+                // exists 但唔肯定寫得入都照試（舊機 canWrite 誤報），寫唔入後面會再錯。
+                return ext;
+            } catch (Throwable ignore) {
+            }
+        }
+        return new File("/mnt/internal_sd");
+    }
+
+    /** 開始下載＋unzip。modelId 必須喺 catalog（見 downloadTarget）。
+     *  return null＝已開始，否則即時錯誤字串。 */
+    public synchronized String startDownload(String modelId) {
+        String[] target = downloadTarget(modelId);
+        if (target == null) return "unknown downloadable model: " + modelId;
+        if ("downloading".equals(dlState) || "unzipping".equals(dlState)) {
+            return "already downloading (" + dlModel + " " + dlProgress + "%)";
+        }
+        final String url = target[1];
+        // 已有就唔好重落（scan 同 loadModel 共用判定：有 am/final.mdl 即算）。
+        if (findModelDir(modelId) != null) return "already exists: " + modelId;
+        dlState = "downloading";
+        dlLang = guessLang(modelId);
+        dlModel = modelId;
+        dlProgress = 0;
+        dlBytes = 0;
+        dlTotal = -1;
+        dlError = null;
+        dlCancel = false;
+        publishDl();
+        dlThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                runDownload(url, modelId);
+            }
+        }, "VoskDownload");
+        dlThread.start();
+        return null;
+    }
+
+    public synchronized String cancelDownload() {
+        if (!"downloading".equals(dlState) && !"unzipping".equals(dlState)) {
+            return "not downloading";
+        }
+        dlCancel = true;
+        return null;
+    }
+
+    /** download_status endpoint 用（透傳 JSON，唔經 ApiResponse 包多層）。 */
+    public String downloadStatusJson() {
+        String st;
+        String lang;
+        String mid;
+        int prog;
+        long bytes;
+        long total;
+        String err;
+        synchronized (this) {
+            st = dlState;
+            lang = dlLang;
+            mid = dlModel;
+            prog = dlProgress;
+            bytes = dlBytes;
+            total = dlTotal;
+            err = dlError;
+        }
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"state\":\"");
+        sb.append(escape(st)).append('"');
+        sb.append(",\"lang\":").append(lang == null ? "null" : "\"" + escape(lang) + "\"");
+        sb.append(",\"model\":").append(mid == null ? "null" : "\"" + escape(mid) + "\"");
+        sb.append(",\"progress\":").append(prog);
+        sb.append(",\"bytes\":").append(bytes);
+        sb.append(",\"total\":").append(total);
+        if (err != null) sb.append(",\"message\":\"").append(escape(err)).append('"');
+        sb.append('}');
+        return sb.toString();
+    }
+
+    private void publishDl() {
+        String st;
+        String lang;
+        String mid;
+        int prog;
+        String err;
+        synchronized (this) {
+            st = dlState;
+            lang = dlLang;
+            mid = dlModel;
+            prog = dlProgress;
+            err = dlError;
+        }
+        StringBuilder sb = new StringBuilder("{\"state\":\"");
+        sb.append(escape(st)).append('"');
+        sb.append(",\"lang\":").append(lang == null ? "null" : "\"" + escape(lang) + "\"");
+        sb.append(",\"model\":").append(mid == null ? "null" : "\"" + escape(mid) + "\"");
+        sb.append(",\"progress\":").append(prog);
+        if (err != null) sb.append(",\"message\":\"").append(escape(err)).append('"');
+        sb.append('}');
+        try {
+            EventBus.get().publish("vosk_download", sb.toString());
+        } catch (Throwable ignore) {
+        }
+    }
+
+    private void setDl(String st, int prog, String err) {
+        synchronized (this) {
+            dlState = st;
+            dlProgress = prog;
+            dlError = err;
+        }
+        publishDl();
+    }
+
+    private void runDownload(String urlStr, String modelId) {
+        File root = downloadRoot();
+        File zipTmp = new File(root, modelId + ".zip.tmp");
+        File zipDone = new File(root, modelId + ".zip");
+        try {
+            try {
+                root.mkdirs();
+            } catch (Throwable ignore) {
+            }
+            // --- 下載 ---
+            java.net.HttpURLConnection conn = null;
+            java.io.InputStream in = null;
+            java.io.OutputStream out = null;
+            try {
+                java.net.URL url = new java.net.URL(urlStr);
+                conn = (java.net.HttpURLConnection) url.openConnection();
+                try {
+                    XiaozhiTrustAllSsl.applyTrustAll(conn);
+                } catch (Throwable ignore) {
+                }
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(30000);
+                conn.setInstanceFollowRedirects(true);
+                conn.setRequestProperty("User-Agent", "OpenAlpha2");
+                conn.connect();
+                int code = conn.getResponseCode();
+                if (code < 200 || code >= 300) {
+                    throw new java.io.IOException("HTTP " + code);
+                }
+                // 用 int 版 getContentLength（API 1 已有）：model zip ~50MB 遠細過 2GB；
+                // getContentLengthLong 要 API 24+，呢個 APK 要行 API 21/22（見 manifest），
+                // 直接 call 會 NoSuchMethodError 炒（同 vosk 熔斷保 API 19 同一類）。
+                long total = -1;
+                try {
+                    total = conn.getContentLength();
+                } catch (Throwable ignore) {
+                }
+                synchronized (this) {
+                    dlTotal = total;
+                }
+                in = conn.getInputStream();
+                out = new java.io.FileOutputStream(zipTmp);
+                byte[] buf = new byte[32768];
+                long got = 0;
+                int n;
+                long lastPub = 0;
+                while ((n = in.read(buf)) != -1) {
+                    synchronized (this) {
+                        if (dlCancel) throw new java.io.IOException("cancelled");
+                    }
+                    out.write(buf, 0, n);
+                    got += n;
+                    synchronized (this) {
+                        dlBytes = got;
+                        if (total > 0) dlProgress = (int) Math.min(100, got * 100 / total);
+                    }
+                    long now = android.os.SystemClock.elapsedRealtime();
+                    if (now - lastPub > 500) {
+                        lastPub = now;
+                        publishDl();
+                    }
+                }
+                try {
+                    out.flush();
+                } catch (Throwable ignore) {
+                }
+            } finally {
+                try {
+                    if (in != null) in.close();
+                } catch (Throwable ignore) {
+                }
+                try {
+                    if (out != null) out.close();
+                } catch (Throwable ignore) {
+                }
+                if (conn != null) {
+                    try {
+                        conn.disconnect();
+                    } catch (Throwable ignore) {
+                    }
+                }
+            }
+            synchronized (this) {
+                if (dlCancel) throw new java.io.IOException("cancelled");
+            }
+            // --- unzip（自己解，唔依賴系統 unzip binary）---
+            setDl("unzipping", 100, null);
+            try {
+                zipTmp.renameTo(zipDone);
+            } catch (Throwable ignore) {
+            }
+            File src = zipDone.exists() ? zipDone : zipTmp;
+            unzipToRoot(src, root);
+            try {
+                src.delete();
+            } catch (Throwable ignore) {
+            }
+            try {
+                if (zipTmp.exists()) zipTmp.delete();
+            } catch (Throwable ignore) {
+            }
+            // 驗收：要有 am/final.mdl 先算數（zip 損壞／路徑唔啱即錯）。
+            if (findModelDir(modelId) == null) {
+                throw new java.io.IOException("unzip ok but model not found: " + modelId
+                        + "/am/final.mdl missing");
+            }
+            setDl("done", 100, null);
+            Log.i(TAG, "model downloaded+unzipped: " + modelId);
+            // 顺手自動載入（省前端一 round trip；失敗唔當下載失敗，狀態照 done）。
+            try {
+                String err = loadModel(modelId);
+                if (err != null) Log.w(TAG, "auto-load after download failed: " + err);
+            } catch (Throwable e) {
+                Log.w(TAG, "auto-load after download threw", e);
+            }
+        } catch (Throwable e) {
+            boolean cancelled;
+            synchronized (this) {
+                cancelled = dlCancel;
+            }
+            String msg = String.valueOf(e.getMessage());
+            Log.w(TAG, "download failed: " + modelId + ": " + msg, e);
+            try {
+                zipTmp.delete();
+            } catch (Throwable ignore) {
+            }
+            // zip 損壞先清，唔郁已存在嘅舊 model 目錄。
+            if (cancelled || "cancelled".equalsIgnoreCase(msg)) {
+                setDl("cancelled", dlProgress, "cancelled");
+            } else {
+                setDl("error", dlProgress, msg);
+            }
+        }
+    }
+
+    /** zip-slip safe：entry 必須解到 root 之內，否則跳過。 */
+    private void unzipToRoot(File zip, File root) throws java.io.IOException {
+        String rootCanon = root.getCanonicalPath();
+        java.util.zip.ZipInputStream zis = null;
+        try {
+            zis = new java.util.zip.ZipInputStream(
+                    new java.io.BufferedInputStream(new java.io.FileInputStream(zip)));
+            java.util.zip.ZipEntry e;
+            byte[] buf = new byte[32768];
+            while ((e = zis.getNextEntry()) != null) {
+                synchronized (this) {
+                    if (dlCancel) throw new java.io.IOException("cancelled");
+                }
+                String name = e.getName();
+                // 擋絕對路徑／.. 跳出（官方包唔會有，但唔信外來 zip）。
+                File f = new File(root, name);
+                String canon = f.getCanonicalPath();
+                if (!canon.equals(rootCanon) && !canon.startsWith(rootCanon + File.separator)) {
+                    try {
+                        zis.closeEntry();
+                    } catch (Throwable ignore) {
+                    }
+                    continue;
+                }
+                if (e.isDirectory()) {
+                    f.mkdirs();
+                } else {
+                    File parent = f.getParentFile();
+                    if (parent != null) parent.mkdirs();
+                    java.io.OutputStream o = null;
+                    try {
+                        o = new java.io.BufferedOutputStream(new java.io.FileOutputStream(f));
+                        int n;
+                        while ((n = zis.read(buf)) != -1) {
+                            synchronized (this) {
+                                if (dlCancel) throw new java.io.IOException("cancelled");
+                            }
+                            o.write(buf, 0, n);
+                        }
+                        o.flush();
+                    } finally {
+                        try {
+                            if (o != null) o.close();
+                        } catch (Throwable ignore) {
+                        }
+                    }
+                }
+                try {
+                    zis.closeEntry();
+                } catch (Throwable ignore) {
+                }
+            }
+        } finally {
+            try {
+                if (zis != null) zis.close();
+            } catch (Throwable ignore) {
+            }
+        }
     }
 }

@@ -20,10 +20,26 @@ function clearError() {
 window.addEventListener('error', function (e) { showError('JavaScript error', e.error || e.message); });
 window.addEventListener('unhandledrejection', function (e) { showError('Unhandled promise rejection', e.reason); });
 
+// 面板 token（見 PanelAuth.java＋app-core.js）：啟用後成個面板上鎖，Blockly
+// 頁都要帶 token。key 同 index.html 共用（localStorage "panel_token"，同一個
+// browser＋同一個面板地址跨 tab 共用），喺實驗 tab 解鎖一次，呢頁即用到。
+function panelTokenGet() {
+  try { return localStorage.getItem('panel_token') || ''; } catch (e) { return ''; }
+}
+function withPanelToken(params) {
+  const tok = panelTokenGet();
+  if (!tok) return params;
+  const out = {};
+  if (params) { for (const k in params) { out[k] = params[k]; } }
+  if (out.panel_token == null) out.panel_token = tok;
+  return out;
+}
+
 // 統一嘅 api() helper — 同 app-core.js 個版本行為一致 (GET + query string, 回傳 parsed JSON)。
 window.api = function (path, params) {
   clearError();
-  const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+  const merged = withPanelToken(params);
+  const qs = merged ? '?' + new URLSearchParams(merged).toString() : '';
   return fetch(API + 'alpha2/' + path + qs).then(function (res) {
     return res.json().catch(function () {
       return { ok: false, error: 'invalid response (status ' + res.status + ')' };
@@ -47,7 +63,8 @@ window.api = function (path, params) {
 function namespacedApi(prefix, label) {
   return function (path, params) {
     clearError();
-    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    const merged = withPanelToken(params);
+    const qs = merged ? '?' + new URLSearchParams(merged).toString() : '';
     return fetch(API + prefix + path + qs).then(function (res) {
       return res.json().catch(function () {
         return { ok: false, error: 'invalid response (status ' + res.status + ')' };

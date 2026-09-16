@@ -1590,6 +1590,7 @@ public final class XiaozhiBridge {
             byte[] payload = payloadJson.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
 
             java.net.URL url = new java.net.URL(visionUrl);
+            NetLog.out("xiaozhi-vision", visionUrl);
             conn = (java.net.HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(10000);
@@ -1725,6 +1726,7 @@ public final class XiaozhiBridge {
         java.net.HttpURLConnection conn = null;
         try {
             java.net.URL url = new java.net.URL(urlStr);
+            NetLog.out("xiaozhi-vision", urlStr);
             conn = (java.net.HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(10000);

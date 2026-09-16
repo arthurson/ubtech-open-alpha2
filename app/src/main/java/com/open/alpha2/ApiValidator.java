@@ -317,6 +317,24 @@ public final class ApiValidator {
         throw new IllegalArgumentException("parameter 'value' must be one of [0.5, 0.67, 1, 1.5, 2], got: " + v);
     }
 
+    /** 實驗 tab 面板 token：8–64 字元 URL-safe（英數/-/_，見 PanelAuth）。 */
+    public static void checkPanelTokenFormat(String token) {
+        if (token == null) {
+            throw new IllegalArgumentException("missing required parameter: token");
+        }
+        String v = token.trim();
+        if (v.length() < 8 || v.length() > 64 || !v.matches("[A-Za-z0-9\\-_]+")) {
+            throw new IllegalArgumentException("token must be 8-64 chars of A-Za-z0-9/-/_");
+        }
+    }
+
+    /** 同上，兼回傳 trim 後值（供 PanelAuth.set 直接存）。 */
+    public static String requirePanelToken(Map<String, String> q, String key) {
+        String v = require(q, key);
+        checkPanelTokenFormat(v);
+        return v.trim();
+    }
+
     /** misc/set_uuid value: 1-31 ASCII 字元 (見 openapi minLength/maxLength)。 */
     public static String requireUuidValue(Map<String, String> q) {
         String v = require(q, "value");

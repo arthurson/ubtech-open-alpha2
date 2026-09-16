@@ -48,9 +48,25 @@ public final class VoskApi {
             first = false;
             sb.append("{\"id\":\"").append(MainActivity.jsonSafe(m.id))
               .append("\",\"lang\":\"").append(MainActivity.jsonSafe(m.langHint))
+              .append("\",\"langEn\":\"").append(MainActivity.jsonSafe(m.langEn))
               .append("\",\"sizeMb\":").append(m.sizeBytes / 1048576).append('}');
         }
-        return HttpServer.ApiResponse.ok(sb.append("]}").toString());
+        sb.append("],\"download\":").append(downloadJsonInner());
+        sb.append('}');
+        return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    private String downloadJsonInner() {
+        if (vosk == null) return "null";
+        try {
+            // downloadStatusJson 係 {"ok":true,...}，剝走 ok 層剩內文方便嵌。
+            String full = vosk.downloadStatusJson();
+            int i = full.indexOf("\"state\"");
+            if (i < 0) return "null";
+            return "{" + full.substring(i);
+        } catch (Throwable e) {
+            return "null";
+        }
     }
 
     public HttpServer.ApiResponse voskLoad(Map<String, String> query) {
@@ -120,6 +136,49 @@ public final class VoskApi {
         }
         // micTestJson 自帶 {"ok":...}，直接透傳。
         return HttpServer.ApiResponse.ok(vosk.micTestJson());
+    }
+
+    // 2026-09 新增：模型下載＋自動 unzip（實驗 tab 下載卡用）。
+    // model＝目錄名（見 vosk/catalog，固定官方 URL allowlist，唔收任意 URL）。
+    // 背景落 zip 再自己 unzip 到 sdcard 頂層，完咗自動 load。進度經
+    // vosk_download event＋download_status 查，唔使輪詢 models。
+    public HttpServer.ApiResponse voskDownload(Map<String, String> query) {
+        HttpServer.ApiResponse need = voskOrError();
+        if (need != null) return need;
+        String id = ApiValidator.require(query, "model");
+        if (!VoskController.isDownloadable(id)) {
+            return HttpServer.ApiResponse.error("unknown downloadable model: " + id);
+        }
+        String err = vosk.startDownload(id);
+        if (err != null) {
+            // 已經有 model 就唔當錯（前端問完先嚟，可能另一邊已落好）：回 ok+exists
+            // 等前端直接 refresh。already downloading 都一樣回狀態等前端跟進度。
+            if (err.startsWith("already exists") || err.startsWith("already downloading")) {
+                return HttpServer.ApiResponse.ok(vosk.downloadStatusJson());
+            }
+            return HttpServer.ApiResponse.error(err);
+        }
+        return HttpServer.ApiResponse.ok(vosk.downloadStatusJson());
+    }
+
+    public HttpServer.ApiResponse voskDownloadStatus() {
+        HttpServer.ApiResponse need = voskOrError();
+        if (need != null) return need;
+        return HttpServer.ApiResponse.ok(vosk.downloadStatusJson());
+    }
+
+    public HttpServer.ApiResponse voskDownloadCancel() {
+        HttpServer.ApiResponse need = voskOrError();
+        if (need != null) return need;
+        String err = vosk.cancelDownload();
+        if (err != null) return HttpServer.ApiResponse.error(err);
+        return HttpServer.ApiResponse.ok(vosk.downloadStatusJson());
+    }
+
+    // 2026-09 新增：全部可下載模型 catalog（id/lang/sizeMb/downloaded，
+    // 純檔案掃描 static，API 19 都用得，同 models 一樣唔經 voskOrError 熔斷）。
+    public HttpServer.ApiResponse voskCatalog() {
+        return HttpServer.ApiResponse.ok(VoskController.catalogJson());
     }
 
     // 2026-09 新增: 收音延遲調校。mode -1/省略=跟預設，0=標準 1=短

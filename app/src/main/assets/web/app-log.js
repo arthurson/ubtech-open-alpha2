@@ -156,6 +156,18 @@ function appendLog(msg) {
   if (msg.type === "vosk_state" && msg.data) {
     if (typeof voskRenderStatus === "function") voskRenderStatus(msg.data);
   }
+  // 2026-09: Vosk 模型下載進度（後端 VoskController.publishDl 主動推，
+  // downloading/unzipping 每 ~0.5s 一個，done/error/cancelled 收尾一個）。
+  if (msg.type === "vosk_download" && msg.data) {
+    if (typeof voskRenderDownload === "function") voskRenderDownload(msg.data);
+    // event 推 done 都要行返 poll 收尾嗰截（停 timer＋refresh＋自動 load 狀態），
+    // 唔係淨渲染 % 會停喺 100% 唔識跳去 ready。
+    if (msg.data.state === "done" || msg.data.state === "error" || msg.data.state === "cancelled") {
+      if (typeof voskPollDownloadOnce === "function") voskPollDownloadOnce();
+    } else if (typeof voskPollDownload === "function") {
+      voskPollDownload();
+    }
+  }
   // 真正 online iFlytek ASR 認到之後嘅語意配對結果 (由 MainActivity
   // handleIflytekSemanticText() publish) — 之前淨係 speech/iflytek_simulate
   // (打字模擬) 嗰條路徑先會喺 sendSpeechChatText() 度即時攞 HTTP response
@@ -223,12 +235,14 @@ function escapeHtml(s) {
 // ---------------- init ----------------
 
 window.addEventListener("DOMContentLoaded", function () {
+  // 鎖屏檢查行先：啟用＋未解鎖即開浮層蓋住面版＋壓住後面 init 嘅 401 誤報（見 app-core.js）。
+  if (typeof panelLockCheck === "function") panelLockCheck();
   buildServoGrid();
   buildHeadColorPicker();
   buildEyeColorPicker();
   setTtsEngine("android"); // 2026-09: 得返 Android 內置 TTS, 載入引擎/語言清單
   // 2026-09: Vosk 卡初始化 (model 掃描＋狀態同步，有卡先做)。
-  if (document.getElementById("voskModelSelect") && typeof voskRefreshModels === "function") {
+  if (document.getElementById("voskModelBtns") && typeof voskRefreshModels === "function") {
     voskRefreshModels();
   }
   // 2026-09 移除: MIC 指示燈初始化 (卡已拎走, 見 index.html)。
@@ -237,6 +251,8 @@ window.addEventListener("DOMContentLoaded", function () {
   refreshDeviceInfo();
   requestUuid();
   refreshChestFw();
+  // 實驗 tab 面板 token 狀態行（有卡先做；auth/status 永遠開放，唔使驚 401）。
+  if (typeof panelAuthRefreshStatus === "function") panelAuthRefreshStatus();
   applyUiLanguage();
   refreshVolume();
   // 2026-09 刪除: disableTalkFabIfInsecureContext() (walkie-talkie #talkFab

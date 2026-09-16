@@ -345,6 +345,34 @@ pre {
   border-color: var(--accent);
 }
 
+/* Vosk 模型按鍵：一次淨一粒有效——有效嗰粒藍色 (active)，其餘灰色；
+   切換緊嗰粒閃爍，鎖住嗰陣撳唔到（disabled）。 */
+.vosk-model-btn {
+  background: var(--track);
+  color: var(--text);
+}
+.vosk-model-btn:hover { background: #dbe1ea; }
+.vosk-model-btn.active {
+  background: var(--accent);
+  color: white !important;
+  border-color: var(--accent);
+}
+.vosk-model-btn.active:hover { background: var(--accent-hover); }
+.vosk-model-btn.switching {
+  animation: vosk-switch-pulse 1s ease-in-out infinite;
+}
+@keyframes vosk-switch-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.vosk-model-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+.vosk-model-btn.active:disabled {
+  opacity: 1; /* 有效嗰粒鎖住嗰陣都保持藍色，唔好灰埋 */
+}
+
 /* Action sub-tabs (basic/dance/story/yoga/others): each button carries its own
    --sub-tab-color custom property set inline in JS, so every category gets a
    distinct theme colour instead of the shared --accent blue. */
@@ -1363,4 +1391,36 @@ input[type="range"] {
     flex-basis: 100%;
     order: 3;
   }
+}
+
+/* 面板鎖屏浮層（PanelAuth 全面板上鎖＋未解鎖時蓋住成個面版，見 index.html
+   #panelLockOverlay＋app-core.js panelLockCheck/panelLockUnlock；裡面沿用
+   全局 .row／button／input／.hint 樣式，呢度淨係定位＋卡盒）。 */
+#panelLockOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--bg);
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+#panelLockOverlay.open {
+  display: flex;
+}
+.panel-lock-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px 26px;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+}
+.panel-lock-card h2 {
+  margin: 0 0 8px 0;
+}
+.panel-lock-card .row {
+  margin-top: 12px;
 }

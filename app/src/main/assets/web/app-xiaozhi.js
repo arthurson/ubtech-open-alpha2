@@ -31,7 +31,11 @@
 // backend 前綴邏輯。
 function xiaozhiApi(path, params) {
   clearError();
-  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  // 實驗 tab 面板 token：同 api()/sysApi() 一樣自動帶（withPanelToken 住 app-core.js；
+  // boot_voice/set 啟用中要驗，唔帶即 401）。ota_config/set 個 token 係小智嗰邊嘅，
+  // 用緊同一個 withPanelToken 但 key 係 panel_token，唔會撞（見 PanelAuth）。
+  const merged = (typeof withPanelToken === "function") ? withPanelToken(params) : params;
+  const qs = merged ? "?" + new URLSearchParams(merged).toString() : "";
   return fetch(API + "xiaozhi/" + path + qs).then(function (res) {
     return res.json().catch(function (e) {
       return { ok: false, error: "invalid response (status " + res.status + ")" };

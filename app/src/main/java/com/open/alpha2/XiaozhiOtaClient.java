@@ -271,6 +271,7 @@ public class XiaozhiOtaClient {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(urlStr);
+            NetLog.out("xiaozhi-ota", urlStr);
             conn = (HttpURLConnection) url.openConnection();
             // 部份 Android 5.1 機出廠 CA store 沒收錄 api.tenclass.net 現用那條
             // 憑證鏈的根, 會在這句 openConnection() 之後、實際發送 request 的時候

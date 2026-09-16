@@ -532,6 +532,7 @@ public final class AudioCenter {
         try {
             android.media.MediaPlayer player = new android.media.MediaPlayer();
             player.setAudioStreamType(AudioManager.STREAM_MUSIC);
+            NetLog.out("radio-play", resolvedUrl);
             player.setDataSource(url);
             player.setOnPreparedListener(mp -> {
                 mp.start();
@@ -655,6 +656,7 @@ public final class AudioCenter {
         java.net.HttpURLConnection conn = null;
         try {
             java.net.URL url = new java.net.URL(urlStr);
+            NetLog.out("radio-search", urlStr);
             conn = (java.net.HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(8000);

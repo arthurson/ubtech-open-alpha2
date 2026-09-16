@@ -16,6 +16,11 @@ info:
 
     即時事件 (觸摸/ASR/電池/跌落/PIR 等) 經 `GET /ws` (RFC6455 WebSocket) 推送，非輪詢。
 
+    實驗 tab 另有 opt-in 面板 token (`/api/system/auth/*`，見 PanelAuth.java)：預設關閉（全開）；
+啟用後成個面板上鎖——全部 `/api/*`（含讀操作、其他分頁、Blockly）同 `/upload/*`
+    要帶 `panel_token`，缺／錯回 401；淨 `system/auth/*`（解鎖入口）、靜態頁、
+    `/ws`、`/stream/*` 開放。Token 記喺瀏覽器 localStorage（同一個面板地址跨 tab 共用）。
+
     '
   version: beta 5
   contact:
@@ -68,7 +73,15 @@ paths:
       - core
       summary: 取得 App 與各 Service 綁定狀態
       operationId: getStatus
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 狀態 JSON
           content:
@@ -88,7 +101,14 @@ paths:
       summary: 讀胸口 MCU 韌體版本 (sendCommand 51)
       parameters:
       - $ref: '#/components/parameters/TimeoutMs'
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 版本字串
           content:
@@ -107,9 +127,18 @@ paths:
       tags:
       - core
       summary: 觸發胸口升級 (讀 /sdcard/AlphaII_CHEST_kernel.bin, 48/49/50 協議)
+      description: 面板 token 啟用後要帶 panel_token（401 即未解鎖），見 PanelAuth。
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
         '200':
           description: 是否已開始
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
           content:
             application/json:
               schema:
@@ -120,7 +149,15 @@ paths:
       tags:
       - core
       summary: 查詢胸口升級進度
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 進度 JSON (由 getChestUpgradeStatusJson 提供)
           content:
@@ -133,7 +170,9 @@ paths:
       tags:
       - core
       summary: 從指定頁恢復升級
+      description: 面板 token 啟用後要帶 panel_token（401 即未解鎖），見 PanelAuth。
       parameters:
+      - $ref: '#/components/parameters/PanelToken'
       - name: from
         in: query
         schema:
@@ -149,15 +188,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
       operationId: chestUpgradeResume_post
   /api/chest/upgrade/abort:
     post:
       tags:
       - core
       summary: 中止胸口升級
+      description: 面板 token 啟用後要帶 panel_token（401 即未解鎖），見 PanelAuth。
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
         '200':
           description: 已中止
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
           content:
             application/json:
               schema:
@@ -177,7 +231,14 @@ paths:
           minimum: 0
           maximum: 2047
         description: 頁 index (262144B firmware / 128B page = 2048 頁, 0-2047)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 頁內容
           content:
@@ -190,7 +251,15 @@ paths:
       tags:
       - action
       summary: 取回機身內建動作清單 (讀 /sdcard/actions/actionInfo.txt，pure-direct)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 動作陣列（檔格式 fileId##nameCn##nameEn##type，已拆為物件）
           content:
@@ -226,7 +295,14 @@ paths:
         schema:
           type: string
         description: fileId、nameEn、nameCn 或 xxx.ubx 檔名/絕對路徑
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{ok, code, name, total}（total=servo 幀數）'
           content:
@@ -249,7 +325,15 @@ paths:
       tags:
       - action
       summary: 停止當前動作並自動播放回位動作 (STOP_RECOVERY_ACTION_ID)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 停止結果
           content:
@@ -262,7 +346,15 @@ paths:
       tags:
       - direct
       summary: 列出 /sdcard/actions 內 .ubx 檔 (name/size)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{ok, files:[{name, size}]}（只列檔案，目錄略過）'
           content:
@@ -298,7 +390,14 @@ paths:
         schema:
           type: string
         description: 絕對路徑 (如 /sdcard/tiny.ubx)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{ok, name, total}（total=servo 幀數）'
           content:
@@ -318,7 +417,15 @@ paths:
       tags:
       - direct
       summary: 截停 UbxPlayer (舵機保持末位姿)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 停止結果
           content:
@@ -339,7 +446,14 @@ paths:
           type: number
           enum: [0.5, 0.67, 1, 1.5, 2]
         description: 變速倍率（配樂同 pitch 一齊變）
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{ok, code, speed, restarted}（restarted=播緊時是否已重播）'
           content:
@@ -362,7 +476,15 @@ paths:
       tags:
       - direct
       summary: UbxPlayer 狀態 (playing/name/sent/total/voice/speed/lastError)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 播放狀態
           content:
@@ -392,7 +514,15 @@ paths:
       tags:
       - direct
       summary: 直驅層狀態 (localServices/chest/head 是否暢通)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{ok, direct, chest, head}'
           content:
@@ -423,7 +553,14 @@ paths:
           minimum: 0
           maximum: 100
         description: 距離 cm (前端 slider 實測範圍 0-100)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{ok}（布林值即是否寫入成功）'
           content:
@@ -452,7 +589,14 @@ paths:
           minimum: 0
           default: 0
         description: 效果模式 (已知實測值 0/1/3/5, 無文件化上限)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{ok}（布林值即是否寫入成功）'
           content:
@@ -474,7 +618,14 @@ paths:
           maximum: 5000
           default: 500
         description: 呼吸速度 ms (實測可用範圍 0-5000)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{ok}（布林值即是否寫入成功）'
           content:
@@ -487,7 +638,15 @@ paths:
       tags:
       - direct
       summary: 全燈熄直驅
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{ok}（布林值即是否寫入成功）'
           content:
@@ -524,7 +683,14 @@ paths:
           maximum: 32767
           default: 500
         description: 執行時間 ms (下限 20ms 為 code 內強制底線; 上限為 wire short 型別範圍)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{ok, id, angle}'
           content:
@@ -559,7 +725,14 @@ paths:
           maximum: 32767
           default: 500
         description: 執行時間 ms (下限 20ms 為 code 內強制底線; 上限為 wire short 型別範圍)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -572,7 +745,15 @@ paths:
       tags:
       - direct
       summary: 列出 /sdcard/actions 內 .ubx 檔（前端动作 tab 经 /api/alpha2 前缀调用）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{ok, files:[{name, size}]}（只列檔案，目錄略過）'
           content:
@@ -608,7 +789,14 @@ paths:
         schema:
           type: string
         description: 絕對路徑
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{ok, name, total}（total=servo 幀數）'
           content:
@@ -628,7 +816,15 @@ paths:
       tags:
       - direct
       summary: 截停 UbxPlayer（舵机保持末位姿）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 停止結果
           content:
@@ -641,7 +837,15 @@ paths:
       tags:
       - direct
       summary: UbxPlayer 狀態 (playing/name/sent/total/voice/speed/lastError)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 播放狀態
           content:
@@ -679,7 +883,14 @@ paths:
           type: number
           enum: [0.5, 0.67, 1, 1.5, 2]
         description: 變速倍率（配樂同 pitch 一齊變）
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{ok, code, speed, restarted}（restarted=播緊時是否已重播）'
           content:
@@ -724,14 +935,21 @@ paths:
         in: query
         schema:
           type: string
-        description: 暫時無效（原僅 iflytek 有效，而該引擎已永久唔再用；留低等將來直驅 TTS 接上）
+        description: 聲音名 (speech/tts_voices 回傳，空=該語言預設聲；搵唔到跌返 lang 路)
       - name: lang
         in: query
         schema:
           type: string
           example: en-US
         description: BCP-47 tag (speech/tts_languages 回傳)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 即時讀出回 {ok:true}
           content:
@@ -750,7 +968,15 @@ paths:
       tags:
       - speech
       summary: 停止所有語音播放（機身 TTS、Android TTS、小智語音）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已停止
           content:
@@ -772,7 +998,14 @@ paths:
           - zh
           - en
           default: zh
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 語言清單
           content:
@@ -799,7 +1032,15 @@ paths:
       tags:
       - speech
       summary: 列出系統安裝的 Android TTS 引擎包名
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 引擎清單
           content:
@@ -826,7 +1067,14 @@ paths:
         schema:
           type: string
         description: 引擎包名 (如 com.google.android.tts)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已觸發切換（回 {ok}；用 cur_tts_engine 輪詢生效）
           content:
@@ -839,7 +1087,15 @@ paths:
       tags:
       - speech
       summary: 查詢當前 Android TTS 引擎
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 當前引擎包名
           content:
@@ -862,7 +1118,14 @@ paths:
         in: query
         schema:
           type: string
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已寫入
           content:
@@ -875,7 +1138,15 @@ paths:
       tags:
       - speech
       summary: 查詢 TTS 卡語言選擇
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: BCP-47 tag (空=沿用引擎目前語言)
           content:
@@ -888,6 +1159,102 @@ paths:
                     lang:
                       type: string
       operationId: speechCurTtsLang_get
+  /api/speech/tts_voices:
+    get:
+      tags:
+      - speech
+      summary: 列出某語言嘅可用聲音 (Google TTS 每個語言多把聲)
+      parameters:
+      - name: lang
+        in: query
+        schema:
+          type: string
+          example: yue-HK
+        description: BCP-47 tag (speech/tts_languages 回傳；空=成個引擎唔過濾)
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 聲音清單
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    voices:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            example: yue-hk-x-yuehk-local
+                          locale:
+                            type: string
+                            example: yue-HK
+                          network:
+                            type: boolean
+                          quality:
+                            type: integer
+      operationId: speechTtsVoices_get
+  /api/speech/set_tts_voice:
+    get:
+      tags:
+      - speech
+      summary: 設定 TTS 卡聲音選擇 (空=該語言預設聲，對話 TTS 即時跟；轉引擎/轉語言會清)
+      parameters:
+      - name: voice
+        in: query
+        schema:
+          type: string
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 已寫入
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: speechSetTtsVoice_get
+  /api/speech/cur_tts_voice:
+    get:
+      tags:
+      - speech
+      summary: 查詢 TTS 卡聲音選擇
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 聲音名 (空=該語言預設聲)
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    voice:
+                      type: string
+      operationId: speechCurTtsVoice_get
   /api/speech/set_mic:
     get:
       tags:
@@ -901,7 +1268,14 @@ paths:
         required: true
         schema:
           type: boolean
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: mic 狀態
           content:
@@ -927,7 +1301,14 @@ paths:
         required: true
         schema:
           type: boolean
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: keepHeld 狀態
           content:
@@ -955,7 +1336,14 @@ paths:
         required: true
         schema:
           type: string
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 配對結果
           content:
@@ -985,7 +1373,15 @@ paths:
       tags:
       - speech
       summary: 取得預設 BNF 文法檔內容 (assets/iflytek/default_grammar.bnf；文法本身已無處上載，僅供參考)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: BNF 文本
           content:
@@ -1009,7 +1405,14 @@ paths:
         schema:
           type: boolean
         description: 不帶=查詢，帶 true/false=設定並立即探測套用 (寫 SharedPreferences)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 自動切換狀態
           content:
@@ -1031,9 +1434,17 @@ paths:
       tags:
       - speech
       summary: 列出 sdcard 掃描到的 Vosk model (有 am/final.mdl 即算)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
-          description: model 清單 (id/lang/sizeMb)
+          description: model 清單 (id/lang/langEn/sizeMb，lang＝中文名、langEn＝英文名)
           content:
             application/json:
               schema:
@@ -1051,7 +1462,14 @@ paths:
         schema:
           type: string
         description: model id (目錄名，見 vosk/models)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已開始載入 (進度經 vosk_state event / vosk/status 查)
           content:
@@ -1064,7 +1482,15 @@ paths:
       tags:
       - speech
       summary: Vosk 狀態 (state/model/listening)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 狀態
           content:
@@ -1077,7 +1503,15 @@ paths:
       tags:
       - speech
       summary: 開始 Vosk 聆聽 (16kHz mic，成句經 asr_result event)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已開始
           content:
@@ -1090,7 +1524,15 @@ paths:
       tags:
       - speech
       summary: 停止 Vosk 聆聽 (model 繼續駐留)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已停止
           content:
@@ -1103,7 +1545,15 @@ paths:
       tags:
       - speech
       summary: 卸載 Vosk model (釋放記憶體)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已卸載
           content:
@@ -1116,7 +1566,15 @@ paths:
       tags:
       - speech
       summary: 咪測試 (開 1 秒錄音計 RMS/Peak dBFS，聽緊嗰陣唔做)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 音量 (rmsDb/peakDb/samples)
           content:
@@ -1124,6 +1582,96 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
       operationId: voskMicTest_get
+  /api/vosk/catalog:
+    get:
+      tags:
+      - speech
+      summary: 全部可下載 Vosk 模型（含已下載旗，實驗 tab 下載卡用）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: catalog（id/lang/langEn/sizeMb/downloaded，lang＝中文名、langEn＝英文名）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: voskCatalog_get
+  /api/vosk/download:
+    get:
+      tags:
+      - speech
+      summary: 下載 Vosk 模型並自動 unzip 到 sdcard（完咗自動 load）
+      parameters:
+      - name: model
+        in: query
+        required: true
+        schema:
+          type: string
+        description: model id（目錄名，見 vosk/catalog，固定官方 URL allowlist）
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 已開始下載（進度經 vosk_download event / vosk/download_status 查）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: voskDownload_get
+  /api/vosk/download_status:
+    get:
+      tags:
+      - speech
+      summary: Vosk 模型下載進度（state/lang/model/progress/bytes/total）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 下載狀態
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: voskDownloadStatus_get
+  /api/vosk/download_cancel:
+    get:
+      tags:
+      - speech
+      summary: 取消進行中的 Vosk 模型下載
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 已取消
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: voskDownloadCancel_get
   /api/vosk/endpointer:
     get:
       tags:
@@ -1153,7 +1701,14 @@ paths:
         schema:
           type: number
         description: 逼斷句上限 (秒，20-30 左右；三個要一齊俾先有效)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已套用
           content:
@@ -1198,7 +1753,14 @@ paths:
           minimum: -1000
           maximum: 1000
         description: 偏差值（signed），經 cmd12 寫入 chest EEPROM 並掉電保持；唔帶就淨郁角度
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果（含 trim 寫入狀態）
           content:
@@ -1241,7 +1803,14 @@ paths:
           maximum: 32767
           default: 1000
         description: 執行時間 ms (下限 20ms 為 code 內強制底線; 上限為 wire short 型別範圍)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -1263,7 +1832,14 @@ paths:
           type: integer
           minimum: 1
           maximum: 20
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: trim 實讀值（或讀失敗）
           content:
@@ -1294,7 +1870,15 @@ paths:
       tags:
       - servo
       summary: 逐顆實讀全部 20 軸 trim（tuner 掃描 offset 用，官方節奏約十幾 ms 一粒）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 20 軸 trim 原值；讀唔到嗰粒記 null 並列入 failed
           content:
@@ -1330,7 +1914,14 @@ paths:
           type: integer
           minimum: 1
           maximum: 20
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 絕對角度實讀值（或讀失敗）
           content:
@@ -1362,7 +1953,14 @@ paths:
           type: integer
           minimum: 1
           maximum: 20
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 絕對角度＋有無寫回上力（或讀失敗）
           content:
@@ -1389,7 +1987,15 @@ paths:
       - servo
       summary: 連讀 20 軸絕對角度，每粒即寫回上力（100ms 間隔）
       description: 逐粒 cmd6 實讀＋即 servo/one 寫返同位（讀會鬆開嗰粒，寫回即上力；單粒已證實無鬆無郁，20 連讀實測中）。讀唔到嗰粒記 null 並列入 failed，且唔寫回
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 20 軸即時角度＋逐粒有無寫回；讀唔到嗰粒記 null
           content:
@@ -1431,7 +2037,14 @@ paths:
           minimum: 0
           maximum: 100
         description: cm (前端 slider 實測範圍 0-100)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -1450,7 +2063,14 @@ paths:
         required: true
         schema:
           type: boolean
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -1469,7 +2089,14 @@ paths:
         required: true
         schema:
           type: boolean
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已設定
           content:
@@ -1488,7 +2115,14 @@ paths:
         required: true
         schema:
           type: boolean
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 狀態
           content:
@@ -1506,7 +2140,15 @@ paths:
       tags:
       - sensor
       summary: 查詢加速度計開關與可用性
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 狀態
           content:
@@ -1555,7 +2197,14 @@ paths:
           - stop
           default: long
         description: long=常亮 flash=閃 breathe=呼吸 chase=跑馬 dual=雙色 stop=熄
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -1595,7 +2244,14 @@ paths:
           - stop
           default: long
         description: 眼部無呼吸模式
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -1625,7 +2281,14 @@ paths:
           maximum: 5000
           default: 0
         description: 呼吸速度 ms (0-5000)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 是否成功
           content:
@@ -1692,7 +2355,14 @@ paths:
         in: query
         schema:
           type: integer
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: '{open, raw[, args]}（raw 為 native 回傳，成功為 false，見 DirectLedController）'
           content:
@@ -1732,7 +2402,14 @@ paths:
           type: string
           example: f88f08000091019aed
         description: 完整 wire frame hex
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -1751,7 +2428,14 @@ paths:
         required: true
         schema:
           type: boolean
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -1764,7 +2448,15 @@ paths:
       tags:
       - camera
       summary: 擷取單幀預覽圖 (base64 JPEG)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 單幀
           content:
@@ -1798,7 +2490,14 @@ paths:
           minimum: 1
           maximum: 3120
         description: 未提供則用當前 preview 解像度 (sensor picture 上限 3120)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 路徑與 base64
           content:
@@ -1839,7 +2538,14 @@ paths:
           maximum: 3120
           default: 3120
         description: sensor picture 最大高度 3120 (最大 picture 尺寸)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 路徑與 base64
           content:
@@ -1865,7 +2571,15 @@ paths:
       tags:
       - camera
       summary: 播放快門提示音 (機器人喇叭)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已播放
           content:
@@ -1878,7 +2592,15 @@ paths:
       tags:
       - camera
       summary: 查詢當前預覽解像度
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 寬高
           content:
@@ -1898,7 +2620,15 @@ paths:
       tags:
       - camera
       summary: 查詢相機 FPS 與是否串流中
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: FPS
           content:
@@ -1918,7 +2648,15 @@ paths:
       tags:
       - camera
       summary: 列出支援的預覽/拍照尺寸與 FPS 範圍
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 尺寸清單
           content:
@@ -1966,7 +2704,14 @@ paths:
           minimum: 1
           maximum: 3120
         description: setRequestedResolution 會揀最接近嘅 supported preview size (不超過 sensor picture 上限 3120)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已設定
           content:
@@ -1994,7 +2739,14 @@ paths:
           minimum: 1.0
           maximum: 5.0
         description: x1-5，1.0=無變焦；帶參數=設定，不帶=查詢。硬件支援時映射到最接近 ratio，否則由前端 CSS / 拍照軟件裁切實現
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 變焦狀態
           content:
@@ -2022,7 +2774,15 @@ paths:
       tags:
       - audio
       summary: 播放測試音 (AudioPlaybackController.playTestTone)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -2035,7 +2795,15 @@ paths:
       tags:
       - audio
       summary: AudioTrack 診斷掃描
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 掃描結果字串
           content:
@@ -2053,7 +2821,15 @@ paths:
       tags:
       - audio
       summary: 開啟 AudioTrack 播放器
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -2066,7 +2842,15 @@ paths:
       tags:
       - audio
       summary: 關閉 AudioTrack 播放器
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已關閉
           content:
@@ -2088,7 +2872,14 @@ paths:
           - ringtone
           - notification
           default: ringtone
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 清單
           content:
@@ -2131,7 +2922,14 @@ paths:
           type: integer
           minimum: 0
         description: RingtoneManager cursor position (裝置相關, 無固定上限; 超出範圍已由 handler try/catch 回 "invalid index")
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已播放
           content:
@@ -2158,7 +2956,14 @@ paths:
         required: true
         schema:
           type: string
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已播放
           content:
@@ -2171,7 +2976,15 @@ paths:
       tags:
       - audio
       summary: 停止系統鈴聲播放
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已停止
           content:
@@ -2184,7 +2997,15 @@ paths:
       tags:
       - audio
       summary: 列出本地音樂檔 (LOCAL_MUSIC_DIR)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 檔案清單
           content:
@@ -2217,7 +3038,14 @@ paths:
         schema:
           type: string
         description: 檔名含副檔名
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已開始
           content:
@@ -2235,7 +3063,15 @@ paths:
       tags:
       - audio
       summary: 停止本地音樂
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已停止
           content:
@@ -2248,7 +3084,15 @@ paths:
       tags:
       - audio
       summary: 查詢本地音樂播放狀態與進度
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 狀態
           content:
@@ -2283,7 +3127,14 @@ paths:
           type: integer
           minimum: 0
         description: MediaPlayer.seekTo() position, 跟隨曲目長度 (無固定上限; 已由 handler try/catch 保護)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已跳轉
           content:
@@ -2304,7 +3155,14 @@ paths:
           type: integer
           minimum: 0
           maximum: 100
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已設定
           content:
@@ -2317,7 +3175,15 @@ paths:
       tags:
       - audio
       summary: 取得音樂頻譜 (FFT, MUSIC_SPECTRUM_BANDS 條 0-255)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 頻譜
           content:
@@ -2339,7 +3205,15 @@ paths:
       tags:
       - audio
       summary: 暫停本地音樂 (可 resume)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已暫停
           content:
@@ -2352,7 +3226,15 @@ paths:
       tags:
       - audio
       summary: 恢復本地音樂播放
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已恢復
           content:
@@ -2365,7 +3247,15 @@ paths:
       tags:
       - audio
       summary: 列出 Equalizer 預設等化器
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 清單
           content:
@@ -2400,7 +3290,14 @@ paths:
           type: integer
           minimum: 0
         description: Android Equalizer preset index (裝置/廠商決定數量, 無固定上限; 已由 getNumberOfPresets() 邊界檢查保護)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已設定
           content:
@@ -2413,7 +3310,15 @@ paths:
       tags:
       - audio
       summary: 查詢播歌隨機動作開關
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 狀態
           content:
@@ -2437,7 +3342,14 @@ paths:
         required: true
         schema:
           type: boolean
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已設定
           content:
@@ -2455,7 +3367,15 @@ paths:
       tags:
       - audio
       summary: 取得媒體音量 (STREAM_MUSIC)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 音量
           content:
@@ -2483,7 +3403,14 @@ paths:
           type: integer
           minimum: 0
         description: STREAM_MUSIC volume level (上限為裝置 getStreamMaxVolume, 已由 handler 硬 clamp 到 0..max)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已設定
           content:
@@ -2509,7 +3436,14 @@ paths:
         required: true
         schema:
           type: string
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 電台清單
           content:
@@ -2540,7 +3474,14 @@ paths:
         required: true
         schema:
           type: string
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已播放
           content:
@@ -2569,7 +3510,14 @@ paths:
         in: query
         schema:
           type: string
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已播放
           content:
@@ -2587,7 +3535,15 @@ paths:
       tags:
       - radio
       summary: 停止電台
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已停止
           content:
@@ -2600,7 +3556,15 @@ paths:
       tags:
       - radio
       summary: 查詢電台播放狀態（id/name 只在播放時出現）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 狀態
           content:
@@ -2622,7 +3586,15 @@ paths:
       tags:
       - core
       summary: 查詢電池狀態 (BatteryManager broadcast 緩存)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 電量
           content:
@@ -2646,7 +3618,15 @@ paths:
       tags:
       - core
       summary: 查詢 WiFi 狀態
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: WiFi JSON (wifiStatus)
           content:
@@ -2659,7 +3639,15 @@ paths:
       tags:
       - core
       summary: 查詢藍牙狀態
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: BT JSON
           content:
@@ -2672,7 +3660,15 @@ paths:
       tags:
       - core
       summary: 請求機械人 UUID (觸發 broadcast, 結果經 WebSocket robot_uuid)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已請求
           content:
@@ -2685,6 +3681,7 @@ paths:
       tags:
       - core
       summary: 修改機械人 UUID (寫 chest EEPROM, cmd 54)
+      description: 面板 token 啟用後要帶 panel_token（401 即未解鎖），見 PanelAuth。
       parameters:
       - name: value
         in: query
@@ -2694,9 +3691,16 @@ paths:
           minLength: 1
           maxLength: 31
         description: 1-31 ASCII 字元
+      - $ref: '#/components/parameters/PanelToken'
       responses:
         '200':
           description: 是否成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
           content:
             application/json:
               schema:
@@ -2707,7 +3711,15 @@ paths:
       tags:
       - system
       summary: (system) 列出 /sdcard/Music 音樂清單 (MusicController)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 清單
           content:
@@ -2735,7 +3747,15 @@ paths:
       - system
       summary: 一野搜齊機器資料（app/胸固件/UUID/電量/聲納/PIR/位姿；慢 query 各 1.5s 上限）
       description: lynx 年代 sys/* 七連發的 pure-direct 版；電池版本字串本機胸固件無此命令，如實缺席
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 機器資料總覽
           content:
@@ -2743,6 +3763,100 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
       operationId: systemDiscover_get
+  /api/system/auth/status:
+    get:
+      tags:
+      - system
+      summary: 面板 token 是否已啟用（實驗 tab 認證；永遠開放）
+      description: 只回 enabled，不洩露 token 本身。見 PanelAuth.java。
+      responses:
+        '200':
+          description: 啟用狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    enabled:
+                      type: boolean
+      operationId: systemAuthStatus_get
+  /api/system/auth/set:
+    get:
+      tags:
+      - system
+      summary: 設定／更改面板 token（未啟用直接設；已啟用要 current 舊值）
+      description: 成功即啟用。token 格式 8–64 字元 A-Za-z0-9/-/_。見 PanelAuth.java。
+      parameters:
+      - name: token
+        in: query
+        required: true
+        description: 新 token（8–64 字元 A-Za-z0-9/-/_）
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 64
+      - $ref: '#/components/parameters/PanelCurrent'
+      responses:
+        '200':
+          description: 已儲存並啟用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '401':
+          description: 已啟用但 current 舊值不對
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: systemAuthSet_get
+  /api/system/auth/clear:
+    get:
+      tags:
+      - system
+      summary: 清除面板 token（停用認證；已啟用要 current 舊值）
+      description: 未啟用即冪等回 ok。見 PanelAuth.java。
+      parameters:
+      - $ref: '#/components/parameters/PanelCurrent'
+      responses:
+        '200':
+          description: 已停用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '401':
+          description: 已啟用但 current 舊值不對
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: systemAuthClear_get
+  /api/system/auth/verify:
+    get:
+      tags:
+      - system
+      summary: 校驗候選 token（前端解鎖掣用；永遠回 200，結果在 valid）
+      description: 永遠開放，不觸發閘口。見 PanelAuth.java。
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '200':
+          description: 啟用＋有效狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    valid:
+                      type: boolean
+      operationId: systemAuthVerify_get
   /api/system/music/play:
     get:
       tags:
@@ -2754,7 +3868,14 @@ paths:
         required: true
         schema:
           type: string
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -2767,7 +3888,15 @@ paths:
       tags:
       - system
       summary: (system) 暫停音樂
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -2780,7 +3909,15 @@ paths:
       tags:
       - system
       summary: (system) 恢復音樂
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -2793,7 +3930,15 @@ paths:
       tags:
       - system
       summary: (system) 停止音樂
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -2814,7 +3959,14 @@ paths:
           type: integer
           minimum: 0
         description: MediaPlayer.seekTo() position, 跟隨曲目長度 (無固定上限; 已由 handler try/catch 保護)
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -2835,7 +3987,14 @@ paths:
           type: integer
           minimum: 0
           maximum: 100
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 結果
           content:
@@ -2848,7 +4007,15 @@ paths:
       tags:
       - system
       summary: (system) 查詢播放狀態
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 狀態
           content:
@@ -2877,7 +4044,15 @@ paths:
       tags:
       - xiaozhi
       summary: 查詢小智語音支援 (sdkInt / audioSupported)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 支援度
           content:
@@ -2897,7 +4072,15 @@ paths:
       tags:
       - xiaozhi
       summary: 查詢小智連線狀態
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 狀態
           content:
@@ -2924,7 +4107,15 @@ paths:
       tags:
       - xiaozhi
       summary: 查詢配對/啟用流程狀態 (輪詢)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 階段 (idle / checking / code / polling / connected / error)
           content:
@@ -2950,7 +4141,15 @@ paths:
       tags:
       - xiaozhi
       summary: 取得 OTA / 自架 Server 配置
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 配置
           content:
@@ -3003,7 +4202,14 @@ paths:
         in: query
         schema:
           type: string
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已寫入
           content:
@@ -3016,7 +4222,15 @@ paths:
       tags:
       - xiaozhi
       summary: 列出全部 MCP 工具含 enabled 狀態
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 工具清單
           content:
@@ -3048,7 +4262,15 @@ paths:
       tags:
       - xiaozhi
       summary: 取得 MCP disabled 清單（總開關已移除，mcpEnabled 恆為 true）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 配置
           content:
@@ -3081,7 +4303,14 @@ paths:
         required: true
         schema:
           type: boolean
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已寫入
           content:
@@ -3094,7 +4323,15 @@ paths:
       tags:
       - xiaozhi
       summary: 取得小智 TTS 引擎選擇（只剩 xiaozhi/android；iflytek/nuance 已移除）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 引擎
           content:
@@ -3124,7 +4361,14 @@ paths:
           enum:
           - xiaozhi
           - android
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已設定
           content:
@@ -3142,7 +4386,15 @@ paths:
       tags:
       - xiaozhi
       summary: 啟動 OTA 啟用與 WebSocket 連線 (背景線程，需輪詢 activation_status)
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已開始
           content:
@@ -3160,7 +4412,15 @@ paths:
       tags:
       - xiaozhi
       summary: 斷開小智連線並釋放 mic
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已斷開
           content:
@@ -3173,7 +4433,15 @@ paths:
       tags:
       - xiaozhi
       summary: 開啟小智麥克風採集與 Opus 上行 + 播放下行
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已開啟
           content:
@@ -3186,7 +4454,15 @@ paths:
       tags:
       - xiaozhi
       summary: 關閉小智麥克風並交還給 wake-word 引擎
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已關閉
           content:
@@ -3205,7 +4481,14 @@ paths:
         required: true
         schema:
           type: boolean
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已切換
           content:
@@ -3223,7 +4506,15 @@ paths:
       tags:
       - xiaozhi
       summary: 讀取開機語音模式三選一（off/xiaozhi/vosk，下次開app生效）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 目前模式
           content:
@@ -3242,6 +4533,7 @@ paths:
       tags:
       - xiaozhi
       summary: 設定開機語音模式三選一（下次開app生效）
+      description: 面板 token 啟用後要帶 panel_token（401 即未解鎖），見 PanelAuth。
       parameters:
       - name: mode
         in: query
@@ -3250,6 +4542,7 @@ paths:
           type: string
           enum: ['off', xiaozhi, vosk]
         description: off=乜都唔自動起，xiaozhi=開app自動連接小智，vosk=開app自動起Vosk聆聽
+      - $ref: '#/components/parameters/PanelToken'
       responses:
         '200':
           description: 已儲存
@@ -3263,6 +4556,12 @@ paths:
                     mode:
                       type: string
                       enum: ['off', xiaozhi, vosk]
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
       operationId: xiaozhiBootVoice_set
   /api/xiaozhi/send_text:
     get:
@@ -3275,7 +4574,14 @@ paths:
         required: true
         schema:
           type: string
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已發送
           content:
@@ -3296,7 +4602,15 @@ paths:
             schema:
               type: string
               format: binary
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已入列
           content:
@@ -3321,6 +4635,7 @@ paths:
         schema:
           type: string
         description: 原始檔名 (經 sanitize，自動加 (2) 防覆蓋)
+      - $ref: '#/components/parameters/PanelToken'
       requestBody:
         required: true
         content:
@@ -3329,6 +4644,12 @@ paths:
               type: string
               format: binary
       responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '200':
           description: 已儲存
           content:
@@ -3348,6 +4669,9 @@ paths:
       tags:
       - upload
       summary: 上載胸口固件 256KB bin 至 /sdcard/AlphaII_CHEST_kernel.bin
+      description: 面板 token 啟用後要帶 panel_token query（401 即未解鎖），見 PanelAuth。
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       requestBody:
         required: true
         content:
@@ -3369,6 +4693,12 @@ paths:
                       type: string
                     sizeBytes:
                       type: integer
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
       operationId: uploadChest_post
   /stream/camera:
     get:
@@ -3415,6 +4745,8 @@ paths:
 
         `grammar_result`/`grammar_init`/`mic_state`/`accel`/`sonar_distance`/`pir_state`/`robot_uuid`/`xiaozhi_status`/`mcp_tool_call`
         等（`asr_result`/`speech_ready` 已隨機身 ASR 引擎移除，不再推送）。
+        另有對外留痕：`net_connect`（app 主動連出面網站，`{purpose, url}`，
+        見 NetLog.java——收音機搜尋／串流、小智雲 WS／vision／OTA）。
 
         前端 `app-log.js` 與 `EventBus.java` 全量訂閱，無需輪詢。
 
@@ -3462,6 +4794,24 @@ components:
         type: integer
         default: 1500
       description: 逾時 ms
+    PanelToken:
+      name: panel_token
+      in: query
+      required: false
+      description: 面板 token（實驗 tab 認證啟用後，受保護寫操作必填；未啟用可省略。受保護 endpoint 另收 token 別名，見 PanelAuth。）
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+    PanelCurrent:
+      name: current
+      in: query
+      required: false
+      description: 現有面板 token（auth/set 更改時、auth/clear 必填；首次設定免填）
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
   schemas:
     OkWrapper:
       type: object

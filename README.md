@@ -17,8 +17,14 @@ beta5 同 beta3 最大分別：**機身根本無 `alpha2services.apk`，成套 A
   `F8 8F LEN CMD PARAM SUM ED`。頭頂 +/- pad：`/dev/input/event0`
  （rk29-keypad）；眼/頭/嘴燈：`libhead_led.so` JNI。
 - 機械人同瀏覽器裝置要喺同一個 WiFi。Server 純 HTTP（自簽 HTTPS 方案已永久移除）。
-- ⚠️ **只用可信 LAN**：無 auth，同網段任何人可播動作、睇相機/聽 mic、上傳固件；
+- ⚠️ **只用可信 LAN**：預設無 auth，同網段任何人可播動作、睇相機/聽 mic、上傳固件；
   唔好橋接上網、唔好放公用/宿舍大 LAN，亦唔好經 port-forward 對外網。
+  實驗 tab 另有 opt-in 面板 token（`system/auth/*`，見 `PanelAuth.java`）：預設關閉
+  （全開）；啟用後成個面板上鎖——全部 `/api/*`（含讀操作、其他分頁、Blockly）
+  同 `/upload/*` 要帶 `panel_token`（缺／錯回 401）；淨 `system/auth/*`
+  （解鎖入口）、靜態頁、`/ws`、`/stream/*` 開放。Token 記喺瀏覽器
+  localStorage（同一個面板地址跨 tab 共用）。認證卡預設收埋，開開關先見詳情；
+  啟用後未解鎖開面板會成版鎖屏浮層蓋住（數據靠後端閘，靜態 HTML/JS 殼擋唔住下載）。
 - 動作檔喺機身 `/sdcard/actions/`：`<id>.ubx`＋同名目錄 `<id>/xxx.mp3`＋
   `actionInfo.txt`（GBK，`<fileId>##中文名##英文名##type`；機身檔版本眾多，
   「202 個」係指 `actionInfo.txt` 行數口徑，實機 `.ubx` 檔數／前端 preset

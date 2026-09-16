@@ -512,6 +512,11 @@ const Alpha2Api = (function() {
     return api('speech/cur_tts_lang', params);
   }
 
+  function speechCurTtsVoice(params) {
+    // 查詢 TTS 卡聲音選擇
+    return api('speech/cur_tts_voice', params);
+  }
+
   function speechGetDefaultGrammar(params) {
     // 取得預設 BNF 文法檔內容 (assets/iflytek/default_grammar.bnf；文法本身已無處上載，僅供參考)
     return api('speech/get_default_grammar', params);
@@ -547,6 +552,11 @@ const Alpha2Api = (function() {
     return api('speech/set_tts_lang', params);
   }
 
+  function speechSetTtsVoice(params) {
+    // 設定 TTS 卡聲音選擇 (空=該語言預設聲，對話 TTS 即時跟；轉引擎/轉語言會清)
+    return api('speech/set_tts_voice', params);
+  }
+
   function speechStop(params) {
     // 停止所有語音播放（機身 TTS、Android TTS、小智語音）
     return api('speech/stop', params);
@@ -567,6 +577,31 @@ const Alpha2Api = (function() {
     if (params && params.ui_lang != null) assertEnum(params.ui_lang, ['zh', 'en'], 'ui_lang');
     // 列出 Android TTS 可用語言
     return api('speech/tts_languages', params);
+  }
+
+  function speechTtsVoices(params) {
+    // 列出某語言嘅可用聲音 (Google TTS 每個語言多把聲)
+    return api('speech/tts_voices', params);
+  }
+
+  function voskCatalog(params) {
+    // 全部可下載 Vosk 模型（含已下載旗，實驗 tab 下載卡用）
+    return api('vosk/catalog', params);
+  }
+
+  function voskDownload(params) {
+    // 下載 Vosk 模型並自動 unzip 到 sdcard（完咗自動 load）
+    return api('vosk/download', params);
+  }
+
+  function voskDownloadCancel(params) {
+    // 取消進行中的 Vosk 模型下載
+    return api('vosk/download_cancel', params);
+  }
+
+  function voskDownloadStatus(params) {
+    // Vosk 模型下載進度（state/lang/model/progress/bytes/total）
+    return api('vosk/download_status', params);
   }
 
   function voskEndpointer(params) {
@@ -612,6 +647,26 @@ const Alpha2Api = (function() {
 
   // ── stream ──────────────────────────────────────────────
   // ── system ──────────────────────────────────────────────
+  function systemAuthClear(params) {
+    // 清除面板 token（停用認證；已啟用要 current 舊值）
+    return sysApi('auth/clear', params);
+  }
+
+  function systemAuthSet(params) {
+    // 設定／更改面板 token（未啟用直接設；已啟用要 current 舊值）
+    return sysApi('auth/set', params);
+  }
+
+  function systemAuthStatus(params) {
+    // 面板 token 是否已啟用（實驗 tab 認證；永遠開放）
+    return sysApi('auth/status', params);
+  }
+
+  function systemAuthVerify(params) {
+    // 校驗候選 token（前端解鎖掣用；永遠回 200，結果在 valid）
+    return sysApi('auth/verify', params);
+  }
+
   function systemDiscover(params) {
     // 一野搜齊機器資料（app/胸固件/UUID/電量/聲納/PIR/位姿；慢 query 各 1.5s 上限）
     return sysApi('discover', params);
@@ -846,6 +901,7 @@ const Alpha2Api = (function() {
     servoSonar,
     speechCurTtsEngine,
     speechCurTtsLang,
+    speechCurTtsVoice,
     speechGetDefaultGrammar,
     speechOfflineAutoSwitch,
     speechSemanticSimulate,
@@ -853,10 +909,16 @@ const Alpha2Api = (function() {
     speechSetMicKeepHeld,
     speechSetTtsEngine,
     speechSetTtsLang,
+    speechSetTtsVoice,
     speechStop,
     speechTts,
     speechTtsEngines,
     speechTtsLanguages,
+    speechTtsVoices,
+    voskCatalog,
+    voskDownload,
+    voskDownloadCancel,
+    voskDownloadStatus,
     voskEndpointer,
     voskLoad,
     voskMicTest,
@@ -865,6 +927,10 @@ const Alpha2Api = (function() {
     voskStatus,
     voskStop,
     voskUnload,
+    systemAuthClear,
+    systemAuthSet,
+    systemAuthStatus,
+    systemAuthVerify,
     systemDiscover,
     systemMusicList,
     systemMusicPause,

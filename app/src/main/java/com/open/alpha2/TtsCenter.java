@@ -37,6 +37,12 @@ public final class TtsCenter {
      *  優先用佢——一揀即時跟，唔使等。 */
     private static final String PREF_ANDROID_TTS_LANG = "android_tts_lang";
 
+    /** 2026-09 新增: TTS 卡揀緊嘅具體聲音 (TextToSpeech.Voice.getName()，空=
+     *  用引擎該語言預設聲)。Google TTS 每個語言有多把聲（男女／網絡／裝置），
+     *  前端揀完語言再揀聲；呢個名綁死引擎＋語言，轉引擎／轉語言嗰陣一齊清
+     *  （見 setTtsEngine/setTtsLang），唔好將舊聲套落新語言度。 */
+    private static final String PREF_ANDROID_TTS_VOICE = "android_tts_voice";
+
     public static final int TTS_DATA_CHECK_REQUEST_CODE = 0x7454; // "T T" leetspeak-ish, 只是要一個穩定、未用過的 code
 
     private final Activity activity;
@@ -328,6 +334,137 @@ public final class TtsCenter {
         }
     }
 
+    /** speech/tts_voices 一粒聲：name 係 set 時傳返嚟嘅 id (Voice.getName())，
+     *  localeTag 係呢把聲屬邊個語言，network＝要上網先讀到，quality＝
+     *  Voice.getQuality() (API 21+ 先有 Voice，見 listAndroidTtsVoices 守門)。
+     *  顯示名唔喺呢度砌——中／英文後綴（本地／網絡）由前端按 uiLang 加。 */
+    private static final class TtsVoiceOption {
+        final String name;
+        final String localeTag;
+        final boolean network;
+        final int quality;
+        TtsVoiceOption(String name, String localeTag, boolean network, int quality) {
+            this.name = name;
+            this.localeTag = localeTag;
+            this.network = network;
+            this.quality = quality;
+        }
+    }
+
+    /** 列出指定語言（BCP-47 tag，空＝唔過濾，成個引擎）嘅全部具體聲音。
+     *  用 getVoices()（API 21+，呢個 APK 要行 API 19，守門＋Throwable 全接，
+     *  舊機回空清單唔炒；同 checkTtsDataViaGetVoices 同一假設）。
+     *  配對規則：locale 完全等於要求先排頭，其次同 language（zh-HK 要 zh 把聲
+     *  頂上，唔好回家；Google TTS 每個語言多把聲就係靠呢層撈出嚟）。 */
+    private List<TtsVoiceOption> listAndroidTtsVoices(String langTag) {
+        List<TtsVoiceOption> out = new ArrayList<>();
+        if (android.os.Build.VERSION.SDK_INT < 21) return out;
+        TextToSpeech tts = androidTts;
+        if (tts == null) return out;
+        Set<Voice> voices;
+        try {
+            voices = tts.getVoices();
+        } catch (Throwable e) {
+            Log.e(TAG, "androidTts.getVoices() failed", e);
+            return out;
+        }
+        if (voices == null || voices.isEmpty()) return out;
+        Locale req = null;
+        if (langTag != null && !langTag.isEmpty()) {
+            try {
+                req = Locale.forLanguageTag(langTag);
+            } catch (Throwable ignore) {
+                req = null;
+            }
+            if (req != null && (req.getLanguage() == null || req.getLanguage().isEmpty()
+                    || "und".equals(req.getLanguage()))) {
+                req = null; // 傳咗個怪 tag，當無過濾好過回空
+            }
+        }
+        List<TtsVoiceOption> exact = new ArrayList<>();
+        List<TtsVoiceOption> langOnly = new ArrayList<>();
+        List<TtsVoiceOption> rest = new ArrayList<>();
+        for (Voice v : voices) {
+            Locale locale;
+            String name;
+            boolean network;
+            int quality;
+            try {
+                locale = v.getLocale();
+                name = v.getName();
+                network = v.isNetworkConnectionRequired();
+                quality = v.getQuality();
+            } catch (Throwable ignore) {
+                continue;
+            }
+            if (locale == null || name == null || name.isEmpty()) continue;
+            String tag = locale.toLanguageTag();
+            if (tag == null || tag.isEmpty() || "und".equals(tag)) continue;
+            TtsVoiceOption opt = new TtsVoiceOption(name, tag, network, quality);
+            if (req == null) {
+                rest.add(opt);
+            } else if (locale.equals(req)) {
+                exact.add(opt);
+            } else if (locale.getLanguage().equals(req.getLanguage())) {
+                langOnly.add(opt);
+            }
+        }
+        Comparator<TtsVoiceOption> byName = new Comparator<TtsVoiceOption>() {
+            @Override
+            public int compare(TtsVoiceOption a, TtsVoiceOption b) {
+                return a.name.compareTo(b.name);
+            }
+        };
+        Collections.sort(exact, byName);
+        Collections.sort(langOnly, byName);
+        Collections.sort(rest, byName);
+        // 同語言先（完全配對行先），唔啱語言嘅唔回（前端揀咗中文唔應該見到英文聲）。
+        out.addAll(exact);
+        out.addAll(langOnly);
+        if (req == null) out.addAll(rest);
+        return out;
+    }
+
+    /** 名揾聲＋setVoice。return true＝已切聲（連 locale 一齊換埋，唔使再
+     *  setLanguage）；false＝搵唔到／唔支援（caller 跌返 setLanguage 路）。 */
+    private boolean applyVoiceByName(TextToSpeech tts, String voiceName) {
+        if (tts == null || voiceName == null || voiceName.isEmpty()) return false;
+        if (android.os.Build.VERSION.SDK_INT < 21) return false;
+        try {
+            Set<Voice> voices = tts.getVoices();
+            if (voices == null) return false;
+            for (Voice v : voices) {
+                String name;
+                try {
+                    name = v.getName();
+                } catch (Throwable ignore) {
+                    continue;
+                }
+                if (voiceName.equals(name)) {
+                    try {
+                        int r = tts.setVoice(v);
+                        return r == TextToSpeech.SUCCESS;
+                    } catch (Throwable e) {
+                        Log.w(TAG, "setVoice failed: " + voiceName, e);
+                        return false;
+                    }
+                }
+            }
+        } catch (Throwable e) {
+            Log.w(TAG, "applyVoiceByName getVoices failed", e);
+        }
+        return false;
+    }
+
+    private String ttsVoicePref() {
+        try {
+            String v = prefs().getString(PREF_ANDROID_TTS_VOICE, "");
+            return v == null ? "" : v;
+        } catch (Throwable e) {
+            return "";
+        }
+    }
+
     /** 列出機身已安裝的全部 Android TTS 引擎 package name (已排序) - 供
      *  speech/tts_engines endpoint 使用, 讓 speech tab 的 Android 選項可以選擇哪個
      *  引擎發音。用一個 throwaway TextToSpeech instance 取得這個裝置層面的清單,
@@ -503,7 +640,14 @@ public final class TtsCenter {
         } catch (Throwable ignore) {
         }
         locale = effective;
-        if (locale != null) {
+        // 卡有揀具體聲就用聲（setVoice 連 locale 一齊換）；搵唔到先跌返下面 setLanguage。
+        boolean voiced = false;
+        try {
+            voiced = applyVoiceByName(tts, ttsVoicePref());
+        } catch (Throwable ignore) {
+            voiced = false;
+        }
+        if (locale != null && !voiced) {
             try {
                 int r = tts.setLanguage(locale);
                 if (r < TextToSpeech.LANG_AVAILABLE) {
@@ -541,12 +685,21 @@ public final class TtsCenter {
 
     // -- HTTP endpoints (handleApi 轉調，參數校驗照舊經 ApiValidator) ----------
 
-    /** speech/tts engine=android 分支本體。回 null = 已送去讀；回字串 = 錯誤訊息。 */
-    public String speakPanelTts(String text, String lang) {
+    /** speech/tts engine=android 分支本體。回 null = 已送去讀；回字串 = 錯誤訊息。
+     *  voice（可空）＝ Voice.getName()：有就優先 setVoice（連 locale 一齊換，
+     *  唔使 lang 都啱）；搵唔到先跌返 lang 路。空就照舊只用 lang。 */
+    public String speakPanelTts(String text, String lang, String voice) {
         if (androidTts == null || !androidTtsReady) {
             return "Android TTS not ready";
         }
-        if (!lang.isEmpty()) {
+        boolean voiced = false;
+        if (voice != null && !voice.isEmpty()) {
+            voiced = applyVoiceByName(androidTts, voice);
+            if (!voiced) {
+                Log.w(TAG, "speakPanelTts: voice not found, fallback to lang: " + voice);
+            }
+        }
+        if (!voiced && !lang.isEmpty()) {
             Locale locale = Locale.forLanguageTag(lang);
             int result = androidTts.setLanguage(locale);
             if (result < TextToSpeech.LANG_AVAILABLE) {
@@ -595,6 +748,11 @@ public final class TtsCenter {
     public HttpServer.ApiResponse setTtsEngine(Map<String, String> query) {
         String enginePkg = ApiValidator.require(query, "engine");
         initAndroidTts(enginePkg);
+        // 轉引擎＝舊聲作廢（個名綁死舊引擎），一齊清，唔好套落新引擎度。
+        try {
+            prefs().edit().putString(PREF_ANDROID_TTS_VOICE, "").apply();
+        } catch (Throwable ignore) {
+        }
         // 呢個切換本身係 async (initAndroidTts() 拆舊起新一個
         // TextToSpeech instance, 再等 OnInitListener 先真正 ready) -
         // 這裡的 "ok" 只是說已經觸發了切換, 不代表立即可以講話, 前端
@@ -613,6 +771,11 @@ public final class TtsCenter {
     public HttpServer.ApiResponse setTtsLang(Map<String, String> query) {
         String lang = ApiValidator.optional(query, "lang", "");
         prefs().edit().putString(PREF_ANDROID_TTS_LANG, lang == null ? "" : lang).apply();
+        // 轉語言＝舊聲作廢（唔同語言唔同聲），一齊清。
+        try {
+            prefs().edit().putString(PREF_ANDROID_TTS_VOICE, "").apply();
+        } catch (Throwable ignore) {
+        }
         return HttpServer.ApiResponse.ok("{\"ok\":true}");
     }
 
@@ -625,5 +788,36 @@ public final class TtsCenter {
         }
         return HttpServer.ApiResponse.ok(
                 "{\"ok\":true,\"lang\":\"" + MainActivity.jsonSafe(lang == null ? "" : lang) + "\"}");
+    }
+
+    // 2026-09 新增: TTS 卡聲音選擇嘅後端 pref (Voice.getName()，空=用該語言
+    // 預設聲)。前端揀完語言再載入該語言把聲嚟揀；對話管線 speakAndroidTts()
+    // 同 speech/tts 都會用（經 applyVoiceByName，搵唔到跌返語言路）。
+    // lang 參數（可空）：有就只回該語言把聲；空就回成個引擎（前端唔用，留俾診斷）。
+    public HttpServer.ApiResponse ttsVoices(Map<String, String> query) {
+        String lang = ApiValidator.optional(query, "lang", "");
+        List<TtsVoiceOption> voices = listAndroidTtsVoices(lang == null ? "" : lang);
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"voices\":[");
+        for (int i = 0; i < voices.size(); i++) {
+            if (i > 0) sb.append(',');
+            TtsVoiceOption v = voices.get(i);
+            sb.append("{\"name\":\"").append(MainActivity.jsonSafe(v.name))
+              .append("\",\"locale\":\"").append(MainActivity.jsonSafe(v.localeTag))
+              .append("\",\"network\":").append(v.network)
+              .append(",\"quality\":").append(v.quality).append('}');
+        }
+        sb.append("]}");
+        return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    public HttpServer.ApiResponse setTtsVoice(Map<String, String> query) {
+        String voice = ApiValidator.optional(query, "voice", "");
+        prefs().edit().putString(PREF_ANDROID_TTS_VOICE, voice == null ? "" : voice).apply();
+        return HttpServer.ApiResponse.ok("{\"ok\":true}");
+    }
+
+    public HttpServer.ApiResponse curTtsVoice() {
+        return HttpServer.ApiResponse.ok(
+                "{\"ok\":true,\"voice\":\"" + MainActivity.jsonSafe(ttsVoicePref()) + "\"}");
     }
 }

@@ -77,6 +77,10 @@ function radioSearchFrontendFallback(q) {
     }
     const base = mirrors[mirrorIdx++];
     const url = base + "/json/stations/search?name=" + encodeURIComponent(q) + "&order=random&reverse=true&hidebroken=true&limit=30";
+    // 對外留痕（同後端 NetLog 同形）：瀏覽器直連邊個 mirror，event log 睇到。
+    if (typeof appendLog === "function" && typeof nowTimeStr === "function") {
+      appendLog({ type: "net_connect", time: nowTimeStr(), data: { purpose: "radio-search", url: base } });
+    }
     fetch(url).then(function (res) {
       if (!res.ok) throw new Error("HTTP " + res.status);
       return res.json();
