@@ -12,14 +12,6 @@ import java.util.Map;
 
 /**
  * Ubx 直播 + 單舵機直驅共用實現。
- *
- * 2026-09 由 MainActivity 抽出 (拆 god object 第三刀)：/api/direct/ubx/* 與
- * /api/alpha2/ubx/* 兩套路由調同一批 helper，加上 servo 單顆 cmd05 直發，
- * 邏輯一字不改搬過嚟。和 ActionDirect 一樣，共用 MainActivity 傳入的同一個
- * UbxPlayer 實例；最近播放檔經 ActionDirect 存取。
- * 2026-09 dispatcher Phase 1 第二刀加：servo/one、servo/all、servo/read、
- * servo/read-all 4 個 handleApi case body 搬入 (servo/sonar 留低——threshold
- * state 同 sonar event/bridge 共用)。
  */
 public final class UbxApi {
     private static final String TAG = "UbxApi";
@@ -132,7 +124,7 @@ public final class UbxApi {
     }
 
     // -- Servo 單舵機直發（cmd05）--------------------------------------------------
-    // 2026-09-06 由 cmd03 全幀改回 cmd05 單發：官方 PC tuner 實測證實 cmd05
+    // 官方 PC tuner 實測證實 cmd05
     //（05 00 頭）正常驅動本機舵機，用戶目視確認。舊 cmd03 全幀寫法有安全問題：
     // 它用位姿追踪（dead reckoning）補齊其餘 19 軸，追踪值一過時（重啟/跳舞後）
     // 就會一次過將 19 粒舵機扯去錯位姿——即「一寫入就發狂」。cmd05 只郁目標
@@ -159,21 +151,20 @@ public final class UbxApi {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + id + ",\"angle\":" + (angle & 0xFF) + "}");
     }
 
-    // -- Servo endpoint 回應層 (2026-09 dispatcher Phase 1 第二刀由 handleApi 搬入) --
-    // directChestReady() 內聯：經 appContext 唔使 Activity（各 center 自帶副本；
-    // 原 MainActivity 私有版 2026-09 刪，零調用）。
+    // -- Servo endpoint 回應層 --
+    // directChestReady() 內聯：經 appContext 唔使 Activity。
     private boolean directChestReady() {
         try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
         catch (Exception e) { return false; }
     }
 
     public HttpServer.ApiResponse servoOneResponse(Map<String, String> query) {
-        // pure-direct: 單舵機經 cmd05 直發（2026-09-06 官方 tuner 實測可郁，用戶目視確認）。
-        // 2026-09-06 晚加：可選 trim 參數——有帶就接著經 cmd12 寫入 chest EEPROM
+        // pure-direct: 單舵機經 cmd05 直發。
+        // 可選 trim 參數——有帶就接著經 cmd12 寫入 chest EEPROM
         //（官方 tuner 同款持久化；掉電保持，亂寫會改出廠校準，用戶明確先好用）。
         int id = ApiValidator.requireIntRange(query, "id", 1, 20);
-        // 2026-09-09：跟 spec/MCP（angle 0-255，time 20-32767）顯式驗，
-        // 超限即 400；之前靠 servoSendOneCode 靜默 clamp，999 變 255 無聲無息。
+        // 跟 spec/MCP（angle 0-255，time 20-32767）顯式驗，
+        // 超限即 400。
         int angle = ApiValidator.requireIntRange(query, "angle", 0, 255);
         int time = ApiValidator.optionalIntRange(query, "time", 20, 32767, 1000);
         Integer trim = null;
@@ -196,7 +187,7 @@ public final class UbxApi {
         sb.append(",\"bindReady\":").append(directChestReady());
         sb.append(",\"id\":").append(id).append(",\"angle\":").append(angle & 0xFF);
         sb.append(",\"trim\":").append(trim);
-        // 2026-09-06 深夜修：written==null（回覆被官方 service 搶食晒）唔等於
+        // written==null（回覆被官方 service 搶食晒）唔等於
         // 寫失敗——id2 實測零 ACK 照存入。報 unknown 唔報失敗，叫前端重掃驗證。
         sb.append(",\"trimWritten\":").append(written != null && written);
         sb.append(",\"trimUnknown\":").append(written == null);
@@ -214,7 +205,7 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoReadResponse(Map<String, String> query) {
-        // 2026-09-06 改行 live 實讀 (cmd 13)：官方 PC tuner 同款問法。注意回的是
+        // 單粒 live 實讀 (cmd 13)：官方 PC tuner 同款問法。注意回的是
         // chest 存住的 trim（偏差，官方角:偏 = 1:3），<b>不是</b>絕對角度——8 號
         // 例子：位姿 65 不變，橫跨幾次動作都係讀返 -33（見官方 session logcat
         // 比較）。trim 即 offset 原值，前端照 show，唔使再減 home。
@@ -237,10 +228,10 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoReadAllResponse() {
-        // 2026-09-06 改行 20 連讀 trim（官方 tuner 節奏：逐粒約十幾 ms 間隔）。
+        // 20 連讀 trim（官方 tuner 節奏：逐粒約十幾 ms 間隔）。
         // trims[i] = 該軸 chest 存住的偏差原值，讀唔到嗰粒記 null 並列入 failed。
         // 注意：呢度唔係絕對角度，唔好攞去填 angle 輸入格。
-        // 2026-09-08 連發打窒胸板事故後改：逐粒之間一律等 100ms（成功失敗都等）。
+        // 逐粒之間一律等 100ms（成功失敗都等）。
         Integer[] trims = new Integer[20];
         StringBuilder failed = new StringBuilder("[");
         boolean firstFail = true;
@@ -267,7 +258,7 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoAngleResponse(Map<String, String> query) {
-        // 2026-09-08 新增：單舵機絕對角度實讀 (cmd 6)。同 servo/one 同單位，
+        // 單舵機絕對角度實讀 (cmd 6)。同 servo/one 同單位，
         // 跟位實測誤差約 1°——注意唔係 servo/read 嗰個 trim/偏差。
         // 讀唔到（超時）如實報 ok:false，不編 0。
         // 注意：讀本身會令嗰粒鬆力（firmware 行為，兩部機證實），要上返力就行
@@ -283,7 +274,7 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoAngleRestoreResponse(Map<String, String> query) {
-        // 2026-09-08 新增：讀＋即寫回原子操作。cmd6 讀會鬆開嗰粒（見上），
+        // 讀＋即寫回原子操作。cmd6 讀會鬆開嗰粒（見上），
         // 呢度讀到即用 servo/one（cmd05）寫返同一個位上力，全程後端內完成、
         // 唔經瀏覽器來回——鬆力窗口得幾十毫秒，跌都未跌得切，肉眼唔覺郁。
         // time 用最細 20ms：純粹為快趣上力，唔係為郁。
@@ -300,7 +291,7 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoAngleAllResponse() {
-        // 2026-09-08：20 連讀＋逐粒即寫回（每粒讀寫原子，粒與粒之間隔 100ms）。
+        // 20 連讀＋逐粒即寫回（每粒讀寫原子，粒與粒之間隔 100ms）。
         // 背景：純連讀（唔寫回）已被兩部機證實會逐粒整冧出力；但單粒讀＋即寫回
         // 已證實無鬆無郁，故連讀版都係同一個原子操作逐粒做。讀唔到嗰粒唔寫回、
         // 記 null 入 failed。未知能否全程企穩——實測中。

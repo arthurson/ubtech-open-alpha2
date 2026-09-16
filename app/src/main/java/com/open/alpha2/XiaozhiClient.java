@@ -33,11 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * PHASE 1 SCOPE: this only implements the JSON text-frame side of the protocol -
  * handshake ("hello"), and dispatching STT/LLM/TTS/MCP/system/alert messages to
  * {@link EventBus}. It deliberately does NOT send/receive binary Opus audio frames yet
- * (see AIDL_REFERENCE.md-style caution: audio needs libopus, which has its own
- * Android-4-compatibility question to resolve separately - see
- * isAudioSupported()/XiaozhiController's "supported" endpoint). Standing this up first,
- * text-only, makes the connect/handshake/dispatch plumbing independently testable before
- * adding the audio codec layer on top.
+ * (see isAudioSupported()/XiaozhiController's "supported" endpoint).
  *
  * Matches this codebase's zero-third-party-dependency policy: only java.net.Socket +
  * javax.net.ssl (both part of the Android framework) and org.json (bundled with
@@ -425,8 +421,7 @@ public class XiaozhiClient {
      *  theory raise from JSONObject.put() never actually happens in practice - every
      *  key/value here is a hardcoded literal, not parsed from untrusted input - so
      *  there's nothing meaningful a caller could do differently for a JSONException
-     *  vs any other connect-time IOException. Wrapping it here keeps JSONException
-     *  out of connect()'s method signature/catch clause entirely. */
+     *  vs any other connect-time IOException. */
     private JSONObject buildHelloMessage() throws IOException {
         try {
             JSONObject hello = new JSONObject();

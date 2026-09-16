@@ -62,7 +62,7 @@ public class CameraController {
     private static final int DEFAULT_PREVIEW_HEIGHT = 720;
     private volatile int requestedWidth = DEFAULT_PREVIEW_WIDTH;
     private volatile int requestedHeight = DEFAULT_PREVIEW_HEIGHT;
-    // 2026-09-10 新增: 數位變焦 x1-x5（硬件支援時用 Camera.Parameters.setZoom，否則前端 CSS / 軟件裁切）
+    // 數位變焦 x1-x5（硬件支援時用 Camera.Parameters.setZoom，否則前端 CSS / 軟件裁切）
     private volatile float zoomFactor = 1.0f;
     private volatile long lastZoomChangeMs = 0;
     private volatile long previewStartedAtMs = 0;
@@ -386,7 +386,7 @@ public class CameraController {
         if (bestFpsRange != null) {
             params.setPreviewFpsRange(bestFpsRange[0], bestFpsRange[1]);
         }
-        // 2026-09-10: 對焦模式 — 優先連續圖片對焦，次選自動，避免快門時未對焦
+        // 對焦模式 — 優先連續圖片對焦，次選自動，避免快門時未對焦
         try {
             List<String> focusModes = params.getSupportedFocusModes();
             if (focusModes != null) {
@@ -397,7 +397,7 @@ public class CameraController {
                 }
             }
         } catch (Throwable ignore) {}
-        // 2026-09-10: 曝光補償歸零，避免過曝（部分 HAL 上次拍照後殘留 +2）
+        // 曝光補償歸零，避免過曝（部分 HAL 上次拍照後殘留 +2）
         try {
             int minEc = params.getMinExposureCompensation();
             int maxEc = params.getMaxExposureCompensation();
@@ -419,7 +419,7 @@ public class CameraController {
         } catch (Throwable ignore) {}
 
         camera.setParameters(params);
-        // 2026-09-10: 若已有 zoom 設定，立即套用硬件變焦（需在 setParameters 之後再取一次新 params）
+        // 若已有 zoom 設定，立即套用硬件變焦（需在 setParameters 之後再取一次新 params）
         if (Math.abs(zoomFactor - 1.0f) > 0.01f) {
             try { applyHardwareZoomLocked(zoomFactor); } catch (Throwable ignore) {}
         }
@@ -540,23 +540,10 @@ public class CameraController {
         static PhotoResult fail(String error) { return new PhotoResult(null, error); }
     }
 
-    // 2026-08 新增 (真正根源修正): 之前 self.camera.take_photo 一直複用
-    // getLastFrame() 取的 preview stream frame (也就是這個 class 頭段 comment 說的
-    // "continuous webcam-style streaming, NOT single-shot photos" 那套 pipeline) -
-    // 反編譯一個用戶提供、實測上傳成功的第三方 apk (package com.huihongcloud.xiaozhi,
-    // 用 androidx.camera CameraX 的 ImageCapture) 之後發現: 它送去 server 的照片是
-    // 用真正的單張拍攝 (busy-wait poll 著 ImageCapture 完成 callback 的
-    // photoBytes/doneFlag, 每 10ms check 一次), 不是 preview frame。preview frame
-    // 沒經過相機 HAL 完整的單張 AE/AF/降噪 pipeline, 用戶已經核實過 server 端存下的照片
-    // 解析度都對 (480x360, 不是解析度太小的問題), 所以真正差異在於 capture 方式
-    // 本身, 不是 output size。
-    //
-    // 這個 method 用回這個 class 現有的 camera 實例 (要求 start() 已經成功才可以
-    // call), 用 Camera1 legacy API 的 camera.takePicture(shutter, raw, jpeg)
-    // 做一次真正的單張拍攝, jpeg callback 拿到的才是 driver 真正做完 AE/AF 收斂、完整
-    // ISP pipeline 之後的照片, 不再靠 waitForStableFrame() 那樣單純等夠幀數來迴避
-    // preview frame 過渡期問題 - takePicture() 本身就已經是硬體執行中的單張拍攝
-    // 流程, 這個 workaround 就不再需要。
+    // 真正單張拍攝：唔用 preview frame（冇經過 HAL 完整單張 AE/AF/降噪 pipeline），
+    // 用 Camera1 legacy API camera.takePicture(shutter, raw, jpeg) 拍一次；
+    // jpeg callback 嘅先係 driver 做完 AE/AF 收斂＋完整 ISP pipeline 嘅相。
+    // （要求 start() 已成功；用現有 camera 實例。）
     //
     // Camera1 API 的 takePicture() 會讓 driver 自動 stopPreview() (拍完照不會自動
     // 繼續 preview) - 這個 method 完成之後會重新 startPreview(), 保持
@@ -746,8 +733,7 @@ public class CameraController {
 
     /**
      * 等待預覽 AE/AF 收斂：要求 startPreview 後至少 1400ms 且已收到 ≥5 幀且 FPS>4，
-     * 否則快門捕到的正是曝光/對焦仍在拉動的過渡幀（用戶回報「明顯未 ready 就按 shutter」且 overexposure）。
-     * 2026-09-10 加長至 1400ms 並加 AE/AWB 鎖定，避免首幀過曝。
+     * 否則快門捕到的正是曝光/對焦仍在拉動的過渡幀（實測「未 ready 就按 shutter」會過曝）。
      * 此法在 HttpServer 工作線程 polling，不阻塞 cameraHandler，避免卡住預覽回調。
      * @return true 已 ready，false 超時（仍可嘗試影，但畫質可能欠佳）
      */
@@ -843,7 +829,7 @@ public class CameraController {
         } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
     }
 
-    // ── 2026-09-10 Zoom (x1-x5) ──────────────────────────────────────────
+    // ── Zoom (x1-x5) ──────────────────────────────────────────
     public float getZoom() { return zoomFactor; }
 
     public static final class ZoomInfo {

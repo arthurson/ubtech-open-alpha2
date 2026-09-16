@@ -8,18 +8,6 @@ import java.util.Map;
 /**
  * Mic 包：持有旗＋搶佔 enforcer、releaseMic、/stream/mic、set_mic 端點、
  * walkie testtone/diagnose/play。
- *
- * 2026-09 由 MainActivity＋ApiDispatcher 整包搬出：
- * - MainActivity 嗰邊：mic fields＋enforcer＋releaseMic＋handleMicStream＋
- *   set_mic 兩個 override，邏輯一字不改搬過嚟
- * - ApiDispatcher 嗰邊：walkie 4 case（audioPlaybackController 經傳入同一個；
- *   原來嗰個 releaseMic 私有副本刪咗，用呢度正本）
- * TTS 播放旗經 hostState (XiaozhiBridge.HostState.isRobotTtsSpeaking) 讀——
- * 正本喺 SpeechCenter (TTS core 第一刀)，MainActivity 轉交；
- * MIC_HOLD_ENFORCER_INTERVAL_MS 沿用 MainActivity 同一個
- * const（小智嗰條 enforcer 共用緊）。
- * audioController/audioPlaybackController 實例由 MainActivity 擁有
- * （lifecycle：onDestroy shutdown），呢度借用（同 UbxPlayer 一樣安排）。
  */
 public final class MicCenter {
     private final RobotStub robot;
@@ -37,7 +25,7 @@ public final class MicCenter {
         this.hostState = hostState;
     }
 
-    /** onDestroy 共用：停搶 mic thread＋清持有旗 (原 onDestroy 兩行)。 */
+    /** onDestroy 共用：停搶 mic thread＋清持有旗。 */
     public void shutdownMicHold() {
         stopMicHoldEnforcer();
         micHeldByApp = false;
@@ -197,12 +185,7 @@ public final class MicCenter {
             while (true) {
                 AudioController.Chunk chunk;
                 try {
-                    // 2026-08 修正 (用家要求): 之前呢度用 poll(10, SECONDS), 10 秒
-                    // 拿不到 chunk 就當「mic 死了」自動 break, 接著下面的 finally
-                    // 就會 speech_SetMIC(false) 主動把 mic 還給機器人 —— 但用家
-                    // 想要的是「只有用家自己按停才還機, 不理會有沒有聲音都不應該自動
-                    // 還」。改用沒有 timeout 的 take(), 只是阻塞式等待下一個 chunk,
-                    // 不會因為靜音就自行斷開。stream connection 本身斷了
+                    // 靜音唔自動斷開。stream connection 本身斷了
                     // (用家關掉瀏覽器分頁/收起 tab) 會由下面 out.write() 拋出
                     // IOException 讓 loop 自然跳出, 不用靠這裡的逾時判斷。
                     //
@@ -287,7 +270,6 @@ public final class MicCenter {
                 + ",\"keepHeld\":" + micHoldEnforced + "}");
     }
     // -- Walkie-talkie: browser mic -> robot speaker test endpoints.
-    // (2026-09 MicIo 由 ApiDispatcher 搬入；同下面 releaseMicForAudioIo 共用 hold 逻辑。)
     public HttpServer.ApiResponse testTone() {
         releaseMicForAudioIo();
         AudioPlaybackController.StartResult result =

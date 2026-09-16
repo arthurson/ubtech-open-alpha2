@@ -163,19 +163,7 @@ function xiaozhiSetConnectedUi(connected) {
 
 let xiaozhiLastShownActivationCode = null;
 
-/** 2026-08 新增: 除咗獨立嘅 xiaozhiActivationBox (喺對話 log 之上, 大字顯示), 而家
- *  都會將配對碼 append 一句落 xiaozhiChatLog 本身, 等佢真正出現喺「對話界面」入面
- *  (用戶話之前「淨係 websocket log 出現」, 想要嘅係界面上睇得到) - 用
- *  xiaozhiLastShownActivationCode 呢個 module-level flag 防止同一個 code 被重複
- *  poll 到就重複插入多次 (activation_status 輪詢期間會不斷攞到同一個 code)。
- *
- *  2026-08 再新增: 曾經加多一重全屏彈出視窗 (xiaozhiActivationModalOverlay) 同
- *  window.alert() 做保底, 不理而家開緊邊個 tab 都強制顯示。
- *
- *  2026-08 精簡: 用戶確認配對碼終於 4 個地方都顯示到 (activationBox 小格、
- *  modal 全屏彈窗、window.alert()、對話界面), 但要求淨係留低「對話界面」呢個,
- *  其餘 3 個 (小格 display:block、modal、alert) 已經拎走 - 呢度已經唔再更新
- *  els.activationBox 嘅 display, 個小格會一直保持 CSS 預設嘅 display:none。 */
+/** 配對碼 append 落 xiaozhiChatLog；用 xiaozhiLastShownActivationCode 防同一 code 重複插入 (activation_status 輪詢會不斷攞到同一 code)。els.activationBox 保持 display:none。 */
 function xiaozhiShowActivationCode(code) {
   const els = xiaozhiElements();
   if (els.activationCode) els.activationCode.textContent = code || "";
@@ -185,18 +173,10 @@ function xiaozhiShowActivationCode(code) {
   }
 }
 
-/** 2026-08 更新: 之前呢度有全屏 modal overlay + window.alert() 兩重保底方案
- *  (因為當時 WebView position:fixed quirk 令個 overlay 睇唔到), 但而家配對碼
- *  已經證實會經 EventBus -> WebSocket -> 對話界面 (xiaozhiAppendChatLine) 正常
- *  顯示, 用戶反映淨係想留低對話界面呢個, 其餘 3 個 (進階小格 activationBox、
- *  modal overlay、window.alert()) 已經拿走。
- *  2026-09: 連 xiaozhiHideActivationModal() 個空殼 (查唔存在嘅 overlay) 一併刪埋，
-  *  呢段 comment 留低做紀錄，唔好摷返出嚟。
-  *  2026-09-09: index.html 殘留 overlay 已刪；為防舊快取頁面仲 call 到，
-  *  留兩個 no-op stub 擋 ReferenceError。 */
+/** 配對碼只經對話界面顯示；留兩個 no-op stub 防舊快取頁面 ReferenceError。 */
 
-function xiaozhiShowActivationModal() { /* 已移除：配對碼只經對話界面顯示 */ }
-function xiaozhiHideActivationModal() { /* 已移除：見上 */ }
+function xiaozhiShowActivationModal() { /* 配對碼只經對話界面顯示 */ }
+function xiaozhiHideActivationModal() { /* 見上 */ }
 
 function xiaozhiHideActivationCode() {
   const els = xiaozhiElements();
@@ -296,8 +276,7 @@ function xiaozhiDisconnect() {
 }
 
 /** 單一開關: 開 = 連接 (內部觸發 OTA/activation flow, 完成後自動開 auto_mode 搶
- *  mic, 隨時語音對話), 關 = 斷開 (auto_mode 同 mic 一齊停)。取代之前分開嘅
- *  連接/斷開/小智常開/開始語音對話四個掣 - 用戶淨係要理解「開就用得, 閂就唔用」。
+ *  mic, 隨時語音對話), 關 = 斷開 (auto_mode 同 mic 一齊停)。用戶淨係要理解「開就用得, 閂就唔用」。
  *  開關本身即時反映用戶操作嘅意圖; 真正嘅連接狀態由 xiaozhiPollActivationStatus()/
  *  xiaozhiHandleEvent() 嘅 xiaozhi_state 事件驅動, 如果連接失敗會經
  *  xiaozhiSetConnectedUi(false) 將開關撥返轉。 */
@@ -316,26 +295,12 @@ function xiaozhiToggleSession() {
  *  relies on) rather than through the mic/Opus path - works regardless of
  *  xiaozhiAudioSupported since no audio codec is involved.
  *
- *  Bug fix (2026-08): this used to optimistically append the typed text to the chat
- *  log immediately on a successful send_text response - but the xiaozhi.me server
- *  also echoes the same text back as a "stt" message (see XiaozhiClient's EVT_STT
- *  publish in handleTextMessage()), which xiaozhiHandleEvent's "xiaozhi_stt" case
- *  renders too, so every typed message showed up twice. The server echo is now the
- *  single source of truth for what appears in the chat log - this function only
- *  clears the input box and re-enables the button, it does not append anything
- *  itself. */
+ *  Server echo (stt message) 係 chat log 唯一來源 — 呢個 function 只清 input，唔自己 append。
 function xiaozhiSendText() {
   const els = xiaozhiElements();
   const text = els.textInput ? (els.textInput.value || "").trim() : "";
   if (!text) return;
-  // 2026-08 新增防禦性檢查: 真機 logcat 證實撞過一次「送出去嘅 text 竟然係個
-  // placeholder hint 文案本身」(xiaozhi_phase4_hint 嗰句長 UI 說明文字), 而唔係
-  // 用戶真正打嘅嘢 - 個 input 本身冇任何 JS 會將呢句寫入 .value (全局搜過, 淨係
-  // applyUiLanguage() 會寫 placeholder 屬性, 唔會寫 .value), 懷疑係 Android
-  // WebView 嘅表單 autofill/記憶機制將 placeholder 誤當建議值填咗入去。已經加
-  // autocomplete="off" 落個 input 減少呢個機會, 但呢度加多一重保險: 如果攞到嘅
-  // 文字同 placeholder 本身嘅翻譯完全一致, 當呢個唔係用戶主動打嘅內容, 唔送出去,
-  // 提示用戶重新打字, 避免將一大段 UI 說明文字誤送去做 XiaoZhi 對話輸入。
+  // 防禦性檢查：真機 WebView autofill 可能將 placeholder 誤填入 .value；若文字同 placeholder 翻譯一致，當非用戶輸入，唔送出並提示重打。
   if (text === t("xiaozhi_text_placeholder")) {
     xiaozhiAppendChatLine("xiaozhi-msg-system", t("xiaozhi_send_text_error"));
     if (els.textInput) els.textInput.value = "";
@@ -352,13 +317,10 @@ function xiaozhiSendText() {
   });
 }
 
-/** 2026-08 新增: 總停鍵 - 一次過中斷機械人依家可能正在做緊嘅三件事: 動作播放
- *  (action/stop)、TTS (speech/stop, 機身 Nuance/iflytek 同 Android TTS 都包埋喺
- *  呢一個 endpoint 入面, 見 handleApi() 嘅 "speech/stop" case)、本地音樂
- *  (audio/local_music/stop)。用 api() 唔係 xiaozhiApi() - 呢三個 endpoint 屬於
- *  alpha2/lynx 呢個 backend-specific namespace (見 handleApi()), 唔係
- *  handleXiaozhiApi() 嗰個 backend-agnostic "xiaozhi/" namespace, 跟返 app.js 其他
- *  地方叫呢類 endpoint 嘅一致做法。
+/** 總停鍵 — 一次過中斷動作播放 (action/stop)、TTS (speech/stop，見 handleApi() "speech/stop" case)、本地音樂
+ *  (audio/local_music/stop)。用 api() 唔係 xiaozhiApi() — 呢啲 endpoint 屬於
+ *  alpha2/lynx backend-specific namespace (見 handleApi())，唔係
+ *  handleXiaozhiApi() backend-agnostic "xiaozhi/" namespace。
  *
  *  三個 request 用 Promise.all 同時發出 (唔係逐個 await), 理由: (1) 呢三件事本身
  *  互不相干, 冧一個唔應該延遲另外兩個開始執行嘅時間; (2) 用戶撳呢個掣通常係想
@@ -374,8 +336,7 @@ function xiaozhiStopAll() {
     Alpha2Api.actionStop(),
     Alpha2Api.speechStop(),
     Alpha2Api.audioLocalMusicStop(),
-    Alpha2Api.audioRadioStop(), // 2026-08 新增: FM/網絡電台都係「播放中」嘅一種,
-                              // 跟返本地音樂一齊納入呢個總停鍵。
+    Alpha2Api.audioRadioStop(), // FM/網絡電台都係「播放中」一種，跟本地音樂一齊納入總停鍵。
   ]);
 }
 
@@ -390,9 +351,7 @@ function xiaozhiClientIsConnected() {
 
 /** Appends one chat-log line. roleClass drives the bubble's CSS styling
  *  (xiaozhi-msg-user/xiaozhi-msg-assistant/xiaozhi-msg-system - see style.css).
- *
- *  2026-08: 時間戳保留 (每句底下細字顯示發送時間), 但「以上內容由 AI 生成」呢句
- *  標註已經拎走 - 用戶話唔要。 */
+ *  時間戳保留 (每句底下細字顯示發送時間)。 */
 function clearXiaozhiChatLog() {
   const log = xiaozhiElements().chatLog;
   if (log) log.innerHTML = "";
@@ -417,12 +376,8 @@ function xiaozhiAppendChatLine(roleClass, text) {
   log.scrollTop = log.scrollHeight;
 }
 
-/** 2026-08 新增: MCP 工具調用卡片 - 跟返用戶提供嘅 xiaozhi.me console「歷史對話」
- *  截圖樣式, 一個可展開嘅「🔧 工具呼叫」卡片, 顯示緊 call 緊邊個 tool、乜嘢參數。
- *  截圖仲有個耗時 (61ms) - 呢度冇跟, 因為 tools/call request 同對應嘅 response
- *  係兩個獨立、冇共同 id 追蹤機制嘅 event (見 XiaozhiClient 個 EVT_MCP publish),
- *  要準確計耗時需要額外一層 id->timestamp 對應邏輯, 複雜度同呢個功能嘅價值唔成
- *  正比, 淨係顯示「呼叫緊邊個工具、乜嘢參數」已經足夠俾用戶睇到發生緊咩事。 */
+/** MCP 工具調用卡片 — 跟 xiaozhi.me console「歷史對話」樣式，可展開「🔧 工具呼叫」卡，顯示 tool＋參數。
+ *  耗時唔跟：request/response 係獨立 event 無共同 id (見 EVT_MCP)，計耗時要額外對應，價值唔成正比。 */
 function xiaozhiAppendMcpToolCallCard(toolName, argsObj) {
   const log = xiaozhiElements().chatLog;
   if (!log) return;
@@ -513,11 +468,7 @@ function xiaozhiHandleEvent(type, data) {
     case "xiaozhi_alert":
       xiaozhiAppendChatLine("xiaozhi-msg-system", "⚠ " + data.status + ": " + data.message);
       break;
-    // 2026-08 新增: 之前呢個 case 完全冇處理, tools/call request 純粹入主
-    // event log, 對話畫面睇唔到觸發緊咩工具 - 加返呢個 case, 淨係揀
-    // direction:"in" 且 method:"tools/call" 嘅 payload (即係 server 真正要求
-    // 執行一個工具嗰刻, 而唔係 initialize/tools/list 呢啲協議雜訊, 亦唔係
-    // response), 插入一張「工具呼叫」卡片。
+    // 淨揀 direction:"in" 且 method:"tools/call" payload (server 要求執行工具嗰刻，唔係 initialize/tools/list 雜訊，亦唔係 response)，插「工具呼叫」卡。
     case "xiaozhi_mcp": {
       const payload = data.payload;
       if (data.direction === "in" && payload && payload.method === "tools/call"
@@ -588,19 +539,8 @@ function xiaozhiRefreshStatus() {
   });
 }
 
-/** 2026-08 新增: 背景常駐輪詢, 每 8 秒 check 一次 - 之前 xiaozhiRefreshStatus()
- *  淨係喺 page load 嗰一刻 call 一次, 冇任何持續機制。問題喺於: MainActivity 個
- *  自動重連 (xiaozhiScheduleReconnect() -> runXiaozhiActivationFlow()) 係完全喺
- *  背景 thread 默默進行, 唔會主動通知前端 - 如果重連個陣 device 已經唔再係已激活
- *  狀態 (例如 token 失效、server 側取消咗綁定), runXiaozhiActivationFlow() 會
- *  重新入返 awaiting_code 攞新配對碼, 但個瀏覽器分頁已經開住、冇再 call
- *  xiaozhiPollActivationStatus(), 完全唔會知道有新配對碼要顯示 - 用戶會見到個
- *  開關顯示緊「開」但實際上已經斷咗線、亦冇任何配對碼提示, 唯一方法係手動刷新
- *  成個頁面。呢個背景輪詢等如喺分頁一直開住嘅情況下都持續留意緊呢個狀態轉變,
- *  唔使用戶自己諗到要刷新。同 xiaozhiPollActivationStatus() 嗰個(連接中/配對中
- *  先會出現嘅) 短間隔輪詢唔衝突: 兩者都用 xiaozhiStopActivationPolling() 嚟
- *  清走舊 timer, xiaozhiPollActivationStatus() 見到自己啱啱先啟動咗一個
- *  polling loop 就會蓋過呢度嘅慢速輪詢, 唔會出現重複輪詢。 */
+/** 背景常駐輪詢，每 8 秒 check 一次 — 背景自動重連 (xiaozhiScheduleReconnect() -> runXiaozhiActivationFlow()) 唔會主動通知前端，
+ *  若重連要重新攞配對碼 (token 失效／server 取消綁定)，呢度持續留意狀態轉變，唔使手動刷新。同短間隔輪詢唔衝突：共用 xiaozhiStopActivationPolling() 清 timer，唔會重複輪詢。 */
 function xiaozhiBackgroundStatusWatch() {
   // 已經有一個 activation polling loop 喺度行緊 (xiaozhiActivationPollTimer 唔係
   // null), 即係話用戶啱啱手動撳咗連接或者已經响 awaiting_code/polling/connecting
@@ -796,8 +736,7 @@ function xiaozhiLoadMcpConfig() {
 let xiaozhiTtsEngine = "xiaozhi";
 
 function xiaozhiSetTtsEngineUi(engine) {
-  // 2026-09: 得返 "xiaozhi"/"android" - 舊設定 (iflytek/nuance) 若果仲喺後端
-  // 度 (開機遷移之前嘅版本寫入), 一律當 "xiaozhi" 顯示, 等後端開機遷移做實。
+  // 得返 "xiaozhi"/"android" — 舊設定 (iflytek/nuance) 一律當 "xiaozhi" 顯示。
   if (engine !== "xiaozhi" && engine !== "android") engine = "xiaozhi";
   xiaozhiTtsEngine = engine;
   document.getElementById("xiaozhiTtsEngineXiaozhiBtn").classList.toggle("active", engine === "xiaozhi");

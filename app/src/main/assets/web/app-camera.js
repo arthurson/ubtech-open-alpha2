@@ -1,5 +1,5 @@
 // Open Alpha2 — client logic (app-camera.js)
-// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: 相機直播、影相、錄影、拖拽準星頭部瞄準。
+// 內容: 相機直播、影相、錄影、拖拽準星頭部瞄準。
 // 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
 // <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
 
@@ -24,7 +24,7 @@
 
 let cameraLiveRunning = false;
 let fpsPollTimer = null;
-// 2026-09-10 新增: webcam 數位變焦 x1-x5
+// webcam 數位變焦 x1-x5
 let cameraZoom = 1.0;
 let cameraZoomHardwareSupported = false;
 
@@ -42,7 +42,6 @@ function cameraElements() {
     // overlay features together (head-aim joystick pad, mic-listen headphone FAB)
     // - kept under the name crosshairToggle here since all the existing
     // crosshair drag-to-aim code below already reads els.crosshairToggle.
-    // (2026-09: walkie-talkie talk FAB 已成串移除，唔再受呢個掣管。)
     crosshairToggle: document.getElementById("featureEnabled"),
     fabRow: document.getElementById("fabRow"),
     micListenFab: document.getElementById("micListenFab"),
@@ -60,7 +59,7 @@ function onResolutionChanged() {
   }
 }
 
-// ── Camera Zoom x1-x5 (2026-09-10) ──
+// ── Camera Zoom x1-x5 ──
 function cameraZoomElements() {
   return {
     slider: document.getElementById("cameraZoom"),
@@ -478,7 +477,7 @@ function setRecordingLed(on) {
 
 let crosshairDragging = false;
 let crosshairSetupDone = false;
-// 2026-09-10: 搖桿自動回中開關（關閉後鬆手保持角度，不回正）
+// 搖桿自動回中開關（關閉後鬆手保持角度，不回正）
 let joystickAutoReturn = true;
 
 /** axisValue in [-1, 1]: -1 = servo min, 0 = servo home, +1 = servo max. */
@@ -507,7 +506,7 @@ function updateCrosshairVisibility() {
   if (els.fabRow) {
     els.fabRow.classList.toggle("active", shouldShow);
   }
-  // 2026-09-10: 統一風格 — 解像度(左上)、Zoom(相機鍵上)、回中(joystick右)、FPS(右上) 皆為功能鍵內容
+  // 統一風格 — 解像度(左上)、Zoom(相機鍵上)、回中(joystick右)、FPS(右上) 皆為功能鍵內容
   const resWrap = document.getElementById("cameraResolutionWrap");
   if (resWrap) resWrap.style.display = shouldShow ? "block" : "none";
   const resSel = document.getElementById("cameraResolution");
@@ -528,7 +527,6 @@ function updateCrosshairVisibility() {
   // Unticking the master checkbox (or stopping the camera) must not leave mic-listen
   // silently running with its FAB hidden - force it off so the
   // control state always matches what's actually visible on screen.
-  // (2026-09: walkie-talkie talk 端已成串移除，呢度唔使再理 talkActive。)
   if (!shouldShow) {
     if (micListening) stopMicListen();
   }
@@ -577,9 +575,7 @@ function setupCrosshairIfNeeded() {
   function sendServoForAxis(nx, ny) {
     const panAngle = crosshairAxisToAngle(19, nx);
     const tiltAngle = crosshairAxisToAngle(20, ny);
-    // Uses the same move-time setting as the Servo tab (servoTime()), matching how
-    // this worked before - back to the person's original setting rather than a
-    // hardcoded joystick-only value.
+    // Uses the same move-time setting as the Servo tab (servoTime()).
     const time = servoTime();
     if (panAngle !== null) Alpha2Api.servoOne( { id: 19, angle: panAngle, time: time });
     if (tiltAngle !== null) Alpha2Api.servoOne( { id: 20, angle: tiltAngle, time: time });
@@ -659,7 +655,7 @@ function setupCrosshairIfNeeded() {
 
   els.crosshairToggle.addEventListener("change", updateCrosshairVisibility);
 
-  // ---- Keyboard control: arrow keys -> servo 19/20 (pan/tilt), held Space -> talk ----
+  // ---- Keyboard control: arrow keys -> servo 19/20 (pan/tilt) ----
   //
   // Reuses the same axisToAngle/throttle/knob-position plumbing as pointer-drag above,
   // so keyboard and mouse/touch control feel identical and never fight each other -
@@ -701,7 +697,6 @@ function setupCrosshairIfNeeded() {
       }
       return;
     }
-    // 2026-09 刪除: Space push-to-talk shortcut (walkie-talkie 發射端已成串移除)。
   });
 
   els.viewport.addEventListener("keyup", function (evt) {
@@ -748,9 +743,7 @@ function connectCameraStream() {
     img = document.createElement("img");
     // Prevent the browser's native "Save image" / "Copy image" context menu, which a
     // long-press (touch) or right-click (desktop) would otherwise show on top of this
-    // <img> - that gesture directly conflicts with the talk FAB's press-and-hold
-    // (long-pressing near the image could trigger the save menu instead of/alongside
-    // starting to talk) and with drag-to-aim on the crosshair pad. draggable=false
+    // <img> - that gesture directly conflicts with drag-to-aim on the crosshair pad. draggable=false
     // additionally stops a click-and-drag on the image itself from starting an
     // OS-level "drag this image out" operation, which has the same effect of hijacking
     // what should have been a joystick-pad drag if the pointer happens to be over the
@@ -781,12 +774,12 @@ function connectCameraStream() {
     };
     viewport.appendChild(img);
   }
-  // 2026-09-10: 每次重建串流都需重套當前變焦（新 <img> 無舊 transform）
+  // 每次重建串流都需重套當前變焦（新 <img> 無舊 transform）
   try { applyCameraZoomCss(cameraZoom); } catch(e){}
   img.src = "/stream/camera?t=" + Date.now();
 }
 
-// 2026-09-10: DOMContentLoaded 單次初始化變焦與搖桿回中（不依賴 app-log.js 順序，自身亦可獨立起）
+// DOMContentLoaded 單次初始化變焦與搖桿回中（不依賴 app-log.js 順序，自身亦可獨立起）
 function initCameraUiToggles() { try { initCameraZoom(); } catch(e){} try { initJoystickAutoReturn(); } catch(e){} try { updateCrosshairVisibility(); } catch(e){} }
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initCameraUiToggles);

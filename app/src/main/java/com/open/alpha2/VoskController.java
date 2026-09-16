@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 2026-09 新增：Vosk 離線 ASR（語音 tab）。機身已無 iFlytek/Nuance，用 Vosk
+ * Vosk 離線 ASR（語音 tab）。機身已無 iFlytek/Nuance，用 Vosk
  * （alphacephei/vosk-android AAR，armeabi-v7a native，API 21+）頂上。
  *
  * <p>Model 唔跟 app（~65MB 粒）：放 sdcard，呢度掃描自動偵測（user 要求）。
@@ -81,9 +81,8 @@ public final class VoskController {
     private volatile String modelId;
     private volatile String lastError;
 
-    // -- 模型下載 (2026-09 新增：實驗 tab 下載卡，後端直落 zip＋unzip) --
-    // 官方 small 模型 catalog（2026-09 對照 alphacephei.com/vosk/models 實頁執：
-    // 英文 small 係 0.15 版，之前寫死嘅 en-us-0.22 根本唔存在，已改啱）。
+    // -- 模型下載 (實驗 tab 下載卡，後端直落 zip＋unzip) --
+    // 官方 small 模型 catalog（對照 alphacephei.com/vosk/models）：
     // {modelId, url, sizeMb}：sizeMb 係官頁標示（約數，等用戶判斷流量）。
     // 大粒（1G 級）唔收：部機 RAM 頂唔順。固定 allowlist，唔收任意 URL（防 SSRF）。
     private static final String DL_BASE = "https://alphacephei.com/vosk/models/";
@@ -211,8 +210,7 @@ public final class VoskController {
     }
 
     /** 由 model id parse 語言段 (vosk-model[-small]-xx-...，xx 係語言碼)，
-     *  查全表。之前用 contains("cn"/"en") 撞，日文 (ja) 顯示未知就係咁嚟，
-     *  其他 small model (ru/fr/de/...) 全部一樣。 */
+     *  查全表。 */
     private static String guessLang(String id) {
         String lang = null;
         String sub = null;

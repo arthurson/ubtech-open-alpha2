@@ -1,5 +1,5 @@
 // Open Alpha2 — client logic (app-core.js)
-// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: 全局狀態、UI 語言字典、servo 校準表、api()/hwApi() 呢啲所有其他 app-*.js 都要用嘅核心 helper。呢個檔案要第一個 load。
+// 內容: 全局狀態、UI 語言字典、servo 校準表、api()/hwApi() 呢啲所有其他 app-*.js 都要用嘅核心 helper。呢個檔案要第一個 load。
 // 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
 // <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
 
@@ -20,8 +20,7 @@ const XIAOZHI_CONSOLE_URL = "https://xiaozhi.me/";
 // Single source of truth for language across the whole panel - this drives both the
 // surrounding UI chrome (headings, button labels, static hints) via [data-i18n]-tagged
 // elements, AND which language action names display as (chips in the Actions tab -
-// see displayNameOf() below). There used to be a separate per-tab action-name-language
-// toggle (activeActionLang); it was removed so there's only ever one language switch
+// see displayNameOf() below). There's only ever one language switch
 // in the whole app - see README.
 let uiLang = localStorage.getItem("ui_lang") || "zh";
 
@@ -112,14 +111,12 @@ const I18N = {
   servo_tuner_restore_detail: { zh: "（offset {off}；逐粒撳輸入格 Enter 先會送到舵機）", en: "({off} offsets; press Enter per row to send to servos)" },
   servo_tuner_backup_fail:   { zh: "備份失敗",           en: "Backup failed" },
   servo_tuner_unscanned:     { zh: "（{n}/20 未讀）…",   en: "({n}/20 unread)…" },
-  // 2026-09: calib* 整簇已刪 (舊校準卡無 UI，function 無人 call)，key 一齊清。
 
-  // 2026-09-06 晚加：adv tuner 動態狀態字（之前硬編碼中文）。
+  // adv tuner 動態狀態字。
   servo_tuner_ready:         { zh: "tuner {v} 就緒（加減/輸入=淨郁角度；校准先成組寫 EEPROM）", en: "tuner {v} ready (+/- and input move only; Calibrate writes EEPROM)" },
   servo_tuner_read_all:      { zh: "一鍵實讀全部 trim 1-20（約幾秒）…", en: "Reading all 20 trims (a few seconds)…" },
   servo_tuner_read_done:     { zh: "實讀完成 {ok}/20",   en: "Read done {ok}/20" },
   servo_tuner_read_fails:    { zh: "，無回授：{ids}",   en: ", no feedback: {ids}" },
-  // 2026-09: servo_tuner_read_one(_ok) 已刪 (advTunerRead 無人 call)。
   servo_tuner_read_fail:     { zh: "#{id} 讀失敗",       en: "#{id} read failed" },
   servo_tuner_read_err:      { zh: "讀取錯誤：{e}",      en: "Read error: {e}" },
   servo_tuner_nudge_ok:      { zh: "微調 #{id} → {v}（trim 未存，要存撳「校准」）", en: "Tuned #{id} → {v} (trim not saved — press Calibrate)" },
@@ -139,13 +136,13 @@ const I18N = {
   servo_tuner_err_nofeedback: { zh: "無回授（超時或壞舵機）", en: "no feedback (timeout or faulty servo)" },
 
   // -- speech tab --
-  // 2026-08 新增: 對話界面 (全抄小智 tab 做法, 見 app-speech.js 個
+  // 對話界面 (全抄小智 tab 做法, 見 app-speech.js 個
   // appendSpeechChatLine()/sendSpeechChatText() 頂部 comment)。
   speech_chat_heading:        { zh: "💬 對話界面",   en: "💬 Conversation" },
   speech_chat_text_placeholder: { zh: "打字模擬 ASR 辨識結果…", en: "Type to simulate an ASR result…" },
   speech_chat_send_btn:       { zh: "送出",           en: "Send" },
   speech_chat_clear_btn:      { zh: "清空",           en: "Clear" },
-  // -- speech tab: Vosk ASR (2026-09 新增) --
+  // -- speech tab: Vosk ASR --
   vosk_heading:             { zh: "🎙️ 語音辨識 (Vosk 離線)", en: "🎙️ Speech Recognition (Vosk offline)" },
   vosk_hint:               { zh: "模型放 sdcard 頂層（如 vosk-model-small-cn-0.22），開頁自動偵測，不跟 App。載入需幾秒＋約 200MB 記憶體，一次一粒。",
                              en: "Put models at sdcard top level (e.g. vosk-model-small-cn-0.22), auto-detected on page load, not bundled. Loading takes seconds + ~200MB RAM, one at a time." },
@@ -212,7 +209,7 @@ const I18N = {
   camera_feature_key:    { zh: "功能鍵",           en: "Feature Key" },
 
   // -- Alpha2 版 PIR card (見 index.html/app-servo.js/app-accel.js 嘅 comment) --
-  // 2026-08-15 更新: 真機已確認 PIR 觸發正常, 移除 "未經真機驗證" 個 hint。
+  // 真機已確認 PIR 觸發正常。
   alpha2_pir_heading:       { zh: "PIR 感應器", en: "PIR Sensor" },
   alpha2_pir_switch_label:  { zh: "感應器開關", en: "Sensor Switch" },
   alpha2_pir_alert_label:   { zh: "警示反應 (LED+鈴聲)", en: "Alert Reaction (LED + Chime)" },
@@ -224,7 +221,7 @@ const I18N = {
   tts_android_engine_label: { zh: "TTS 引擎：", en: "TTS Engine:" },
   tts_android_lang_label: { zh: "語言：", en: "Language:" },
   tts_android_lang_keep_option: { zh: "（沿用引擎目前語言）", en: "(Keep engine's current language)" },
-  // 2026-09 新增: Google TTS 每個語言多把聲，揀完語言再揀聲（無具體語言就成行收埋）。
+  // Google TTS 每個語言多把聲，揀完語言再揀聲（無具體語言就成行收埋）。
   // 顯示跟足 Google 系統設定：「語音 I、II、III…」編號（英文面板就 "Voice I…"）。
   tts_android_voice_label: { zh: "聲音：", en: "Voice:" },
   tts_android_voice_name: { zh: "語音", en: "Voice" },
@@ -364,7 +361,6 @@ const I18N = {
   uuid_preview_hint_short:   { zh: "預覽新 QR（未寫入 EEPROM）",
                                 en: "Previewing new QR (not yet written to EEPROM)" },
   uuid_preview_invalid:      { zh: "❌ 格式不正確（1-31 字元，英數/-/_）", en: "❌ Invalid format (1-31 chars, alnum/-/_)" },
-  // 2026-09 移除: advanced_reboot_btn (重開機掣證實無權限，掣已拎走)。
 
   // -- chest firmware --
   chest_title:           { zh: "胸板固件",         en: "Chest Firmware" },
@@ -407,14 +403,13 @@ const I18N = {
  *  the static-element equivalent. */
 function t(key, params) {
   const entry = I18N[key];
-  // 2026-09-09：缺 key 即 warn（之前靜默回 raw key，漏譯唔知）。
+  // 缺 key 即 warn。
   if (!entry) {
     if (typeof console !== "undefined" && console.warn) console.warn("i18n missing: " + key);
     return key;
   }
   let s = entry[uiLang] || entry.zh;
-  // 2026-09-06 晚加：{name} 參數替換（舊調用 t(key) 不受影響；之前傳第二參數
-  // 係靜默丟棄，calib 區狀態字長期顯示 raw key 即此因）。
+  // {name} 參數替換（舊調用 t(key) 不受影響）。
   if (params) {
     for (const k in params) {
       s = s.split("{" + k + "}").join(String(params[k]));
@@ -512,10 +507,7 @@ function relabelServoGrid() {
 }
 
 // ---------------- Backend ----------------
-// currentBackend 保留呢個變數 (而唔係將所有 currentBackend === "alpha2" 嘅
-// guard 全部拆晒) 純粹係為咗減少呢次改動嘅範圍 - app-camera.js/app-mic.js
-// 呢類檔案有唔少 "if (currentBackend !== 'alpha2') return;" 呢類 guard, 留低
-// 呢個常數等佢哋原封不動照樣 work。
+// currentBackend 保留：app-camera.js/app-mic.js 有 "if (currentBackend !== 'alpha2') return;" guard，留常數等佢哋照樣 work。
 const currentBackend = "alpha2";
 
 // Surface any uncaught JS exception to console.error, which MainActivity's
@@ -533,8 +525,7 @@ window.onerror = function (message, source, lineno, colno, error) {
 // from the SDK - they're per-unit hardware calibration and could differ on another
 // robot. Used to clamp input so a typo or an out-of-range value can't be sent to a
 // servo and force it against its mechanical limit.
-// Home-point values confirmed directly against the robot by the user (2026-07) after an
-// initial column-misalignment was caught by a min<=home<=max consistency check.
+// Home-point values confirmed directly against the robot by the user.
 const SERVO_CALIBRATION = {
   1:  { min: 5,   max: 235, home: 120 },
   2:  { min: 50,  max: 210, home: 120 },

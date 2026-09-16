@@ -68,7 +68,7 @@ public final class EventBus {
         // ever actually completed its handshake, even though HTTP API calls on other
         // connections succeeded).
         long now = System.currentTimeMillis();
-        // 2026-09-09：原子 take（之前 check-then-set race，會重複 log；benign）。
+        // 原子 take，避免重複 log。
         if (now - lastListenerCountLogMs.get() > 2000
                 && lastListenerCountLogMs.compareAndSet(lastListenerCountLogMs.get(), now)) {
             android.util.Log.i("EventBus", "publish(" + type + ") - " + listeners.size() + " listener(s) subscribed");

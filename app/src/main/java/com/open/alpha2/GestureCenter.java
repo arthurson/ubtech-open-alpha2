@@ -11,11 +11,8 @@ import com.ubtechinc.alpha.hardware.HeadKeyPoller;
 /**
  * 頭頂 +/- pad 手勢包：pad 事件接線、press/hold 音量連發、雙鍵總停。
  *
- * 2026-09 由 MainActivity 整包搬出（物理手勢本體；之前凍結因為要人手驗，
  * sendevent 直打 /dev/input/event0 已驗明：0x5a/0x5b 音量落/停、
- * 0x5e 總停（停歌）/0x5f 無嘢，見下面 onGestureCode）。
- * 邏輯一字不改搬過嚟（機械改寫只限：audioManager 經 appContext、
- * stopAllSpeechPlayback 經下面 Host）。
+ * 0x5e 總停（停歌）/0x5f 無嘢，見下面 onGestureCode。
  * 擁有關係：
  * - MainActivity 只留：接線（onCreate 建構＋start、onDestroy shutdown()）
  *   同 Host 實現（0x5e 總停鍵轉交 SpeechCenter，TTS orchestration 已搬）。
@@ -53,7 +50,7 @@ public final class GestureCenter {
         audioManager = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
     }
 
-    /** onDestroy 共用：停連發＋落嚟個 poller（原 onDestroy 三行，顺序提前咗幾行，無行為差別）。 */
+    /** onDestroy 共用：停連發＋落嚟個 poller。 */
     public void shutdown() {
         stopVolumeRepeat();
         headKeyPoller.setListener(null);
@@ -64,16 +61,14 @@ public final class GestureCenter {
     private Runnable volumeRepeater;
     private AudioManager audioManager;
     private static final long VOLUME_REPEAT_INTERVAL_MS = 300;
-    // 2026-09-10：native 長命時 hold/release 語意係真（press→hold→release），
+    // native 長命時 hold/release 語意係真（press→hold→release），
     // 下面 press 即行一格＋repeat、release 即停，啱啱好。跌落 Java poll 後備
     // 先至係 click 模型（㩒即成個 down+up、放手冇聲），嗰陣 tap 照行一格，
     // hold/repeat 冇得搞（driver 冇報）。
-    // 2026-09-10 晚：雙擊窗（兩粒 click 前後腳當雙㩒）已刪除——交替試掣必定
-    // 誤觸自殺播 squat。雙鍵總停行面板掣／小智掣；synthetic 0x5e 到唔到都唔估。
-    // HeadKeyPoller 直讀 /dev/input/event0（原 onCreate 起嗰段一併搬入）。
+    // 唔用雙擊窗：交替試掣會誤觸播 squat。雙鍵總停行面板掣／小智掣；synthetic 0x5e 到唔到都唔估。
+    // HeadKeyPoller 直讀 /dev/input/event0。
     public void start() {
-        // HeadKeyPoller 已搬入 hardware-direct module：经 Listener 直连，
-        // 不再绕 EventBus "gesture" 事件（旧 direction 解析一并删除）。
+        // HeadKeyPoller 經 Listener 直連，唔經 EventBus "gesture" 事件。
         // head_key/head_key_native 照旧转送 EventBus，供 WebSocket log 备查。
         headKeyPoller.setListener(new HeadKeyPoller.Listener() {
             @Override public void onGesture(int eventCode) {
@@ -135,8 +130,7 @@ public final class GestureCenter {
                 ledCenter.padLedUpdate();
                 break;
             case 0x5e: // both pressed (raw gesture code 94, decimal) - 全部停止:
-                       // 用戶要求將總停鍵的效果搬到這顆實體鍵上, 之前這裡只有
-                       // action_StopAction(), 現在跟小智面板那顆「⏹ 全部停止」
+                       // 跟小智面板那顆「⏹ 全部停止」
                        // 按鈕 (xiaozhiStopAll(), 見 app-xiaozhi.js) 看齊, 一次
                        // 停止動作/小智說話/本地音樂/電台這四樣東西。
                        // （click 模型下呢個 case 只靠 synthetic 0x5e＋raw 雙㩒
@@ -153,8 +147,7 @@ public final class GestureCenter {
                 break;
         }
     }
-    // (本地音樂停止/電台播放器搬咗去 AudioCenter。)
-    /** 雙鍵總停（原 0x5e case 本體；家下淨係 synthetic 0x5e＋raw 雙㩒狀態先到）。 */
+    /** 雙鍵總停（淨係 synthetic 0x5e＋raw 雙㩒狀態先到）。 */
     private void stopAllViaPads() {
         ledCenter.setPadMinusHeld(true);
         ledCenter.setPadPlusHeld(true);
@@ -162,7 +155,7 @@ public final class GestureCenter {
         stopVolumeRepeat(); // in case one pad was already held down
         ringtoneCenter.playStopCue(); // distinct "stop" cue - must track STREAM_MUSIC volume
         // pure-direct：一键全停（动作截停+蹲下站起回位，含拍头双 pad 触发），
-        // 与 HTTP action/stop 同语义。旧 robot.action_* 已无服务承载。
+        // 与 HTTP action/stop 同语义。
         actionDirect.stopActionWithRecovery();
         host.stopAllSpeech();
         audioCenter.stopLocalMusicPlayback();
@@ -185,14 +178,13 @@ public final class GestureCenter {
                     AudioManager.FLAG_SHOW_UI | AudioManager.FLAG_PLAY_SOUND);
         }
     }
-    // (查表快取搬咗去 RingtoneCenter，連上面成段 cursor 洩漏註解一齊。)
     /**
      * Starts (or restarts) a repeating volume step every VOLUME_REPEAT_INTERVAL_MS,
      * simulating press-and-hold behaviour on top of AudioManager's single-step API.
      *
-     * 2026-09-10 click 模型：第一格改由 stepVolume() 即行（見 0x5a/0x5c），
+     * click 模型：第一格由 stepVolume() 即行（見 0x5a/0x5c），
      * 呢度淨係排之後嘅 repeat（release 8ms 後就到，多數即刻停；留低係為咗
-     * 萬一有 firmware 真係報 hold）。之前即 post 第一格，同 stepVolume 會變兩格。
+     * 萬一有 firmware 真係報 hold）。
      *
      * FLAG_PLAY_SOUND makes Android play its own built-in volume-change sound on each
      * real step - the same sound a hardware volume key produces - so there's no need

@@ -49,8 +49,7 @@ public final class ApiValidator {
     }
 
     // ── 整數 ────────────────────────────────────────────────────────
-    // 2026-09-09：全部 trim（之前 requireInt/optionalInt 唔 trim，optional 系
-    // 同 float 系 trim，前後唔一致；URL 傳 " 90 " 唔應該 400）。
+    // 全部 trim（URL 傳 " 90 " 唔應該 400）。
     public static int requireInt(Map<String, String> q, String key) {
         String v = require(q, key);
         try {
@@ -255,16 +254,13 @@ public final class ApiValidator {
         return optionalIntRange(q, "speed", 0, 5000, 0);
     }
 
-    /** 2026-09: nuance/iflytek 已死 (機身無 alpha2services,
-     *  RobotStub.speech_startTTS 恆回 NOT_INIT), handleSpeechTts() 已經收窄做
-     *  恆行 android 路徑。呢兩個值仍然留喺允許 list - openapi spec (speech/tts)
+    /** nuance/iflytek 已死 (機身無 alpha2services,
+     *  RobotStub.speech_startTTS 恆回 NOT_INIT)。呢兩個值仍然留喺允許 list - openapi spec (speech/tts)
      *  明確承諾 engine=nuance/iflytek「照收但必定回 NOT_INIT」，唔係
-     *  invalid-parameter 錯誤；收窄呢個 list 會令傳呢兩個值嘅 caller (可能仲有
-     *  舊存檔/第三方 tool description 靠住舊 spec) 由「誠實話你個引擎已死」變成
+     *  invalid-parameter 錯誤；收窄呢個 list 會令傳呢兩個值嘅 caller 由「誠實話你個引擎已死」變成
      *  「話你個參數本身唔合法」，係 API contract 嘅行為改變，唔係單純刪死
-     *  code，所以刻意唔跟住 handleSpeechTts() 一齊收窄。 */
-    /** 2026-09: nuance/iflytek 已經永久唔再用 (機身無 alpha2services, binder
-     *  已死), 只准 android。 */
+     *  code，所以刻意唔收窄。 */
+    /** TTS 引擎：只准 android（機身無 alpha2services，binder 已死）。 */
     public static String requireSpeechEngine(Map<String, String> q) {
         return optionalEnum(q, "engine", new String[]{"android"}, "android");
     }
@@ -363,8 +359,7 @@ public final class ApiValidator {
         }
         int[] out = new int[20];
         for (int i = 0; i < 20; i++) {
-            // 2026-09-09：逐粒 0-255（同 spec/MCP schema；之前唔驗，999 會靜默
-            // 截 byte wrap 落舵機，同 servo/one 唔一致）。
+            // 逐粒 0-255（同 spec/MCP schema；同 servo/one 一致，防靜默截 byte wrap 落舵機）。
             try {
                 out[i] = Integer.parseInt(parts[i].trim());
             } catch (NumberFormatException e) {

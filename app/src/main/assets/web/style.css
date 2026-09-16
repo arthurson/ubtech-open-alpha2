@@ -194,9 +194,7 @@ button.secondary {
 }
 button.secondary:hover { background: #dbe1ea; }
 
-/* 2026-08 新增: 危險/停止類操作專用 - 目前俾小智面板嘅「全部停止」掣用,
-   跟返 .fab-btn.talking 已經用緊嘅同一個紅色調, 保持成個 app 危險操作嘅視覺
-   語言一致。 */
+/* 危險/停止類操作專用 — 小智面板「全部停止」用，跟 .fab-btn.talking 同一紅色調，保持危險操作視覺一致。 */
 button.danger-btn {
   background: rgba(220, 38, 38, 0.85);
   color: white;
@@ -265,36 +263,15 @@ pre {
 /* 小智 (XiaoZhi) AI 對話氣泡 - user/assistant 左右對齊分開, system 行 (連接狀態/
    MCP 工具調用/錯誤) 用淡色置中, 好似其他聊天介面咁易分辨邊句係邊個講。 */
 .xiaozhi-msg { padding: 6px 10px; border-radius: 12px; margin: 3px 0; max-width: 78%; }
-/* 小智 (assistant) 靠左, 用主題色底; 用戶 (user) 靠右, 用中性底 - 顏色同排位雙重區分,
-   一眼睇得出邊句係邊個講。
-   2026-08 修正 (第一次): 之前 display:block 淨係將個「盒」用 margin-left:auto
-   推去右邊, 但個盒本身冇限制 width, 短訊息都會撐到成個 max-width 咁闊, 令右邊留
-   一大截實際冇字嘅底色空位, 視覺上好似「大空位」。
-   2026-08 再修正: 上面嗰輪改咗用 width:fit-content, 但真機 (Android 5.1, API
-   22, 舊 WebView) 實測反而令個「一左一右」排位完全錯哂 - fit-content 呢個 CSS3
-   值喺舊版 WebKit/Chromium WebView 好可能完全唔支援, 值被忽略、fallback 返做
-   預設 auto, 配合冇咗 width 限制嘅 block 元素就會撐返成行闊, 令 user/assistant
-   兩邊嘅 margin-left:auto/margin-right:auto 完全冇分別、視覺上分唔到邊句係邊個
-   講。改用 display:table (拎走 display:block 同 width:fit-content) - table
-   天生就會根據內容縮窄闊度 (同 inline-block 一樣), 但仲會保持自己獨立一個
-   block-level box (自動換行, 唔使額外 CSS 處理排位), 兩個好處都要, 兼容性追溯
-   到好舊嘅瀏覽器都得, 對呢部機嘅舊 WebView 最穩陣。 */
+/* 小智 (assistant) 靠左主題色底；用戶 (user) 靠右中性底 — 顏色同排位雙重區分。
+   用 display:table 縮窄闊度兼保持獨立 block，不用 width:fit-content（舊 WebView，如 Android 5.1，不支援，會撐滿成行分唔到左右）。 */
 .xiaozhi-msg-user { background: var(--accent); color: #fff; margin-left: auto; margin-right: 0;
   text-align: right; display: table; }
 .xiaozhi-msg-assistant { background: var(--card-bg); border: 1px solid var(--border); margin-right: auto;
   margin-left: 0; text-align: left; display: table; }
 .xiaozhi-msg-system { color: var(--muted); font-size: 0.85em; text-align: center; max-width: 100%; margin-left: auto; margin-right: auto; display: block; }
 
-/* 2026-08 修正: 每句訊息個 <div> 同時掛住 ".log-line" class (見
-   xiaozhiAppendChatLine() 個 line.className 寫法, 通用 event-log 元件共用嗰個
-   class), 而 .log-line 本身有一條定義喺呢個檔案下面嘅 "margin: 0 0 2px 0"
-   rule。單一 class selector 之間 specificity 打平手, CSS source order 後面嗰條
-   贏 - .log-line 排喺呢度之後, 佢個 margin 就冚咗返上面 .xiaozhi-msg-user 個
-   margin-left:auto / .xiaozhi-msg-assistant 個 margin-right:auto, 兩邊嘅氣泡
-   實際上都攞返 .log-line 嗰個 "margin:0" 效果, 睇落好似冇分左右, 全部貼晒去
-   一邊。用 .xiaozhi-msg.xiaozhi-msg-user 呢種兩個 class 夾住嘅複合 selector
-   (specificity 比單一 class 高) 重新宣告一次 margin, 唔使 !important 都贏得過
-   .log-line。 */
+/* 每句同時掛 ".log-line"（見 xiaozhiAppendChatLine），.log-line 排後面會冚 margin:auto；用 .xiaozhi-msg.xiaozhi-msg-user 複合 selector (specificity 高) 重宣告 margin，唔使 !important。 */
 .xiaozhi-msg.xiaozhi-msg-user { margin-left: auto; margin-right: 0; }
 .xiaozhi-msg.xiaozhi-msg-assistant { margin-right: auto; margin-left: 0; }
 
@@ -586,8 +563,7 @@ input[type="range"] {
 .log-type-grammar_error { color: #dc2626; }
 .log-type-offline_mode { color: #9333ea; }
 
-/* 2026-09: .asr-mode-dot 指示燈已移除 (離線文法卡一齊拎走, 見 index.html)。
-   .log-type-* 顏色保留 (Event Log 照樣顯示呢啲 type, 唔影響)。 */
+/* .log-type-* 顏色保留 (Event Log 照樣顯示呢啲 type)。 */
 .asr-mode-label {
   font-size: 12px;
   font-weight: normal;
@@ -648,7 +624,7 @@ input[type="range"] {
   height: 100%;
   object-fit: contain;
   display: block;
-  pointer-events: none; /* 2026-09-10: 放大時 img 經 transform:scale 放大會蓋住 joystick/fab 的 hit 區，設 none 讓 pad/fab 永遠收到 pointer */
+  pointer-events: none; /* 放大時 img 經 transform:scale 會蓋住 joystick/fab hit 區，設 none 讓 pad/fab 收到 pointer */
 }
 
 .camera-viewport .camera-placeholder {
@@ -697,7 +673,7 @@ input[type="range"] {
 }
 .camera-viewport .camera-fps-badge.on { display: flex; }
 
-/* 2026-09-10: 功能鍵頂欄（解像度 + 自動回中）與 Zoom 滑桿皆懸浮於相機界面內，受功能鍵開關控制 */
+/* 功能鍵頂欄（解像度 + 自動回中）與 Zoom 滑桿皆懸浮於相機界面內，受功能鍵開關控制 */
 .camera-top-bar {
   position: absolute;
   left: 50%;
@@ -723,7 +699,7 @@ input[type="range"] {
   min-width: 110px;
 }
 .camera-top-bar .switch-label { color: #fff; font-size: 11px; gap: 6px; }
-/* 2026-09-10: Zoom slider 懸浮於相機界面內（置中底部，不遮 pad/fab） */
+/* Zoom slider 懸浮於相機界面內（置中底部，不遮 pad/fab） */
 .camera-zoom-overlay {
   position: absolute;
   left: 50%;
@@ -898,12 +874,7 @@ input[type="range"] {
   position: absolute;
   right: 12px;
   bottom: 12px;
-  display: none; /* hidden by default - matches .crosshair-pad's default-hidden
-                     pattern above. Was missing this (and the .active rule below) in
-                     the previous revision, which meant untick-ing "功能鍵" hid the
-                     joystick pad correctly but left the headphone/mic FABs visible -
-                     classList.toggle("active", ...) was firing correctly, there was
-                     just no CSS rule making that class actually hide anything. */
+  display: none; /* hidden by default — matches .crosshair-pad pattern；.active 顯示。 */
   gap: 10px;
   z-index: 7;
 }
@@ -935,9 +906,7 @@ input[type="range"] {
   border-color: rgba(255, 255, 255, 0.4);
 }
 
-/* #talkFab.talking styling comes from the shared .fab-btn.talking rule above (red +
-   pulse), reused as-is since press-and-hold-to-transmit is visually "the same alert
-   state" as the old dedicated talk button used to show. */
+/* #talkFab.talking 沿用 .fab-btn.talking（紅＋pulse）。 */
 
 .camera-kbd-hint {
   position: absolute;
@@ -1151,7 +1120,7 @@ input[type="range"] {
   box-shadow: 0 0 12px 2px rgba(220, 38, 38, 0.55);
 }
 
-/* 2026-09 新增: Vosk 聆聽指示燈 - 綠=聽緊，灰=其他狀態。圓點擺開始掣前面。 */
+/* Vosk 聆聽指示燈 — 綠=聽緊，灰=其他。 */
 .vosk-state-dot {
   display: inline-block;
   width: 12px;
@@ -1195,7 +1164,7 @@ input[type="range"] {
 }
 
 .music-list {
-  /* 2026-08 v2: 一行三排 (3-column grid) - 歌多的時候掃得快一點 */
+  /* 一行三排 (3-column grid) — 歌多掃得快 */
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 6px;
@@ -1237,7 +1206,7 @@ input[type="range"] {
   gap: 10px;
 }
 
-/* 2026-08 v2: UUID card QR code */
+/* UUID card QR code */
 .uuid-qr {
   display: block;
   margin: 10px auto;
@@ -1248,7 +1217,7 @@ input[type="range"] {
   background: #fff;
 }
 
-/* 2026-08 v2: audio spectrum 顯示區 - 深色底令 bar 更搶眼 */
+/* audio spectrum 顯示區 — 深色底令 bar 搶眼 */
 .music-spectrum {
   width: 100%;
   height: 72px;

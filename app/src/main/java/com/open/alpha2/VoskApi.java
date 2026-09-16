@@ -4,14 +4,6 @@ import java.util.Map;
 
 /**
  * Vosk 離線 ASR endpoint 層：models/load/status/start/stop/unload/mic_test/endpointer。
- *
- * 2026-09 由 MainActivity 抽出 (dispatcher Phase 1 第一刀)：voskOrError 熔斷 +
- * 8 個 case body，邏輯一字不改搬過嚟。硬件經傳入嘅同一個 VoskController
- * (可 null：API 19 機唔起 controller，經 voskOrError() 回清晰錯誤——同 TtsCenter
- * 一樣，null 唔係 bug，唔好喺度加 null 以外嘅狀態)。
- * 2026-09: 後開者得 mic —— voskStart() 先經 XiaozhiBridge.yieldMicToVosk()
- * 停小智讓出單 input HAL (同 startXiaozhiMic 停 vosk 對稱；唔係 SpeechService
- * 開 recorder 撞 HAL 會成條 recognizer thread 炒 FATAL)。
  */
 public final class VoskApi {
     private final VoskController vosk;
@@ -34,7 +26,7 @@ public final class VoskApi {
         return HttpServer.ApiResponse.error("vosk not initialised");
     }
 
-    // -- Vosk 離線 ASR (2026-09 新增) --------------------------------------
+    // -- Vosk 離線 ASR --------------------------------------
     // Model 放 sdcard 自動偵測 (見 VoskController.scanModels)，一次一粒。
     // 成句結果沿用 asr_result event（前端同打字模擬同一條管線：氣泡＋
     // 語意配對＋Android TTS＋direct 動作）。
@@ -122,7 +114,7 @@ public final class VoskApi {
         return HttpServer.ApiResponse.ok("{\"ok\":true}");
     }
 
-    // 2026-09 新增: 咪測試——開 1 秒錄音計 RMS/Peak (dBFS)，幫用戶判斷
+    // 咪測試——開 1 秒錄音計 RMS/Peak (dBFS)，幫用戶判斷
     // 係唔係收得細。聽緊嗰陣唔做 (單 input HAL)，先㩒停止。
     public HttpServer.ApiResponse voskMicTest() {
         HttpServer.ApiResponse need = voskOrError();
@@ -138,7 +130,7 @@ public final class VoskApi {
         return HttpServer.ApiResponse.ok(vosk.micTestJson());
     }
 
-    // 2026-09 新增：模型下載＋自動 unzip（實驗 tab 下載卡用）。
+    // 模型下載＋自動 unzip（實驗 tab 下載卡用）。
     // model＝目錄名（見 vosk/catalog，固定官方 URL allowlist，唔收任意 URL）。
     // 背景落 zip 再自己 unzip 到 sdcard 頂層，完咗自動 load。進度經
     // vosk_download event＋download_status 查，唔使輪詢 models。
@@ -175,13 +167,13 @@ public final class VoskApi {
         return HttpServer.ApiResponse.ok(vosk.downloadStatusJson());
     }
 
-    // 2026-09 新增：全部可下載模型 catalog（id/lang/sizeMb/downloaded，
+    // 全部可下載模型 catalog（id/lang/sizeMb/downloaded，
     // 純檔案掃描 static，API 19 都用得，同 models 一樣唔經 voskOrError 熔斷）。
     public HttpServer.ApiResponse voskCatalog() {
         return HttpServer.ApiResponse.ok(VoskController.catalogJson());
     }
 
-    // 2026-09 新增: 收音延遲調校。mode -1/省略=跟預設，0=標準 1=短
+    // 收音延遲調校。mode -1/省略=跟預設，0=標準 1=短
     // 2=長 3=很長；t_start/t_end/t_max 三個一齊俾先有效 (秒，見 vosk_api.h，
     // t_end 係講完幾耐靜音先 finalize，0.5-1.0 左右）。在聽緊即時生效，
     // 並 persist 跨重開；status 會帶返現值。

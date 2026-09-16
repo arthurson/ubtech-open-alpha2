@@ -34,22 +34,9 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class AudioController {
     private static final String TAG = "AudioController";
-    // 2026-08 改回 16000 (由 8000 升回上): 當初改成 8000 只是為了和已經永久停用
-    // 的 walkie-talkie (startTalk() 現在已經無條件直接 return, 見 app-mic.js)
-    // 上傳那條路對齊 sample rate - 現在那個理由已經不存在, 用戶指定連
-    // walkie-talkie 那兩個檔案 (AudioPlaybackController.java, app-mic.js 的
-    // TALK_TARGET_SAMPLE_RATE) 都一起拉回 16000, 保持三方一致, 即使
-    // walkie-talkie 現在實際用不到。
-    //
-    // 注意: 8000 那時還有第二個理由 - decodeAudioData() 在這台機 (RK3288) CPU
-    // 的逐 chunk decode 負擔, 和「越聽越慢」的歷史 bug 有關 (見
-    // MIC_MAX_PENDING_CHUNKS/micDrainLoop 那輪修法)。16000 的 bytes/sec 是
-    // 8000 的兩倍, decodeAudioData() 要處理的 payload 都大了兩倍 - 如果日後
-    // 在這台機實測又見到聽聲越聽越慢/斷斷續續, 這是第一個要懷疑的方向,
-    // 到時可以考慮縮短 CHUNK_MS 來抵消 (較小的 chunk, 但更頻繁的 decode 調用),
-    // 或者退回做 8000。(2026-08 後續: 現在已經拿掉整套 decodeAudioData()
-    // 播放機制, 改用 ScriptProcessorNode, 這個顧慮已經不再適用 - 見
-    // app-mic.js 開頭那段 comment。)
+    // 16000：瀏覽器送 PCM 嗰個 sample rate 對齊用。注意：16000 嘅 bytes/sec 係
+    // 8000 嘅兩倍，若日後實測見聽聲越聽越慢／斷續，可懷疑 chunk decode 負擔，
+    // 考慮縮短 CHUNK_MS 或者退回 8000。
     private static final int SAMPLE_RATE_HZ = 16000;
     private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO;
     private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
@@ -118,13 +105,9 @@ public class AudioController {
      * the main thread) until recording has either started or failed.
      */
     public StartResult start(long timeoutMs) {
-        // 2026-08 修正: 之前這裡只 check audioRecord != null 就當「已經開著」return
-        // ok - 但 stopIfIdle()/shutdown() 一開始就立刻 recording=false, audioRecord
-        // 要等 readLoop() 那個 blocking read() (最久等整個 CHUNK_MS) 完成才會真正
-        // release 成 null。在這段「recording 已經 false, 但 audioRecord 還未
-        // null」的窗口, 如果新一輪 handleMicStream() 剛好進來 call start(), 這裡會
-        // 見到 audioRecord != null 就立刻假裝成功 - 但實際上沒有再開新一輪
-        // readLoop(), 舊那個 readLoop() 很快就會發現 recording==false 自行結束、
+        // recording 已經 false、但 audioRecord 仲未 null 嘅窗口（release 要等
+        // readLoop() blocking read 完成）：若只見 audioRecord != null 就當成功，
+        // 但實際上冇開新一輪 readLoop()；舊 readLoop() 好快發現 recording==false 自行結束、
         // release 掉 audioRecord。結果新的 HTTP client 雖然 subscribe() 了
         // listener, 但永遠沒有 onChunk() 被 call, handleMicStream() 那個
         // queue.take() 就會永久阻塞 - 前端表現為按了聽但完全靜音、都不會有任何
@@ -299,11 +282,9 @@ public class AudioController {
      * schedule, so one browser tab closing doesn't cut the stream out from under
      * another that's still listening.
      *
-     * 2026-08 修正: 之前這裡沒有同步等待 readLoop() 真正 release 掉 audioRecord 就立刻
-     * return - 和 shutdown() 之前那個 bug 一模一樣, 但 shutdown() 早前已經修正了,
-     * 這個 method 漏改了。readLoop() 本身在 audioHandler 那條 background thread 上
-     * 阻塞式跑著 audioRecord.read(...), 這是一個 blocking call, 會等到有下一個
-     * audio buffer 才返回 (看 CHUNK_MS, 要一陣). recording=false 之後, readLoop() 要
+     *  stopIfIdle() 唔等 readLoop() 真正 release 會重蹈 shutdown() 舊 bug：
+     *  readLoop() 喺 audioHandler background thread 跑 blocking read()（等下一個
+     *  audio buffer 才返回，看 CHUNK_MS）。recording=false 之後，readLoop() 要
      * 等那次 read() 完成才會發現、接著才 audioRecord.release()/audioRecord=null。
      *
      * 這段「等 read() 完成」的時間窗口, 加上前端 app-mic.js 的 auto-reconnect
@@ -334,8 +315,7 @@ public class AudioController {
     }
 
     public void shutdown() {
-        // 2026-08 修正: 之前這裡沒有同步等待 readLoop() 收尾就立刻 quitSafely()。
-        // recording=false 之後, readLoop() 要多跑一個 loop iteration 才會發現、
+        // 唔等 readLoop() 收尾就 quitSafely() 會撞舊 race：recording=false 之後, readLoop() 要多跑一個 loop iteration 才會發現、
         // 接著才做 audioRecord.release() —— 這個 release 本身是在 audioHandler
         // 那條 audio thread 上做的 posted Runnable 裡跑著, quitSafely() 不會
         // 中斷它, 但如果 shutdown() 之後很快又有人 start(), 新一輪

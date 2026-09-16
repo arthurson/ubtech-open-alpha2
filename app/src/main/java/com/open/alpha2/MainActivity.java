@@ -848,7 +848,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         return HttpServer.ApiResponse.error("Unknown upload path: " + path);
     }
 
-    // (音樂上載搬咗去 AudioCenter.handleMusicUpload。)
     private void handleStream(String path, Map<String, String> query, java.net.Socket socket) throws java.io.IOException {
         if ("camera".equals(path)) {
             cameraApi.handleCameraStream(socket);
@@ -961,6 +960,4 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         }
         return sb.toString();
     }
-
-    // (parseHexBytes 搬咗去 LedCenter，debug/serial/send 專用。)
 }

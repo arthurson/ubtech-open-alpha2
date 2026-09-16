@@ -6,7 +6,7 @@ package com.theeasiestway.opus;
  * app/src/main/cpp/easyopus.cpp 嘅 JNI 函數名/簽名 (Java_com_theeasiestway_
  * opus_Opus_xxx), 一個字都冇改, 保證 JNI binding 對得上。
  *
- * 2026-08: 呢個 project 徹底移除咗 opus.aar, 改用 easyopus-jni-src 源碼自己
+ * 呢個 project 用 easyopus-jni-src 源碼自己
  * CMake 編譯出 libeasyopus.so (見 app/src/main/cpp/CMakeLists.txt), 呢個
  * class 就係嗰個 native library 對應嘅 Java 入口。
  *
@@ -19,11 +19,9 @@ package com.theeasiestway.opus;
  * encode() 嘅 native 簽名本身冇 fec 參數, 所以 public encode(...,
  * FrameSize) 就係最終形態。decode() 嘅 native 簽名就有 fec, 但
  * XiaozhiAudioController.java 實際淨係用緊冇傳 fec 嘅兩參數
- * decode(shorts, FRAME_SIZE) 呼叫方式 (見該檔案第 455 行) - 所以下面
+ * decode(shorts, FRAME_SIZE) 呼叫方式 - 所以下面
  * decode() 補多咗一個 fec 預設 0 嘅兩參數 public overload, 對應返原本
- * aar 一定有嘅呢個簽名 (第一版漏咗呢個 overload, CI build 曾經因為
- * "no suitable method found for decode(short[],FrameSize)" 而失敗,
- * 已喺呢個修訂修正)。
+ * aar 一定有嘅呢個簽名。
  */
 public class Opus {
 
@@ -73,9 +71,7 @@ public class Opus {
         return decode(bytes, frameSize.v, fec);
     }
     /** fec 預設 0 (唔用 forward error correction) 嘅 public overload -
-     *  XiaozhiAudioController.java 一路都係用呢個兩參數版, 之前漏咗導致
-     *  javac 揾唔到 method (build 錯誤: "no suitable method found for
-     *  decode(short[],FrameSize)")。 */
+     *  XiaozhiAudioController.java 一路都係用呢個兩參數版。 */
     public byte[] decode(byte[] bytes, Constants.FrameSize frameSize) {
         return decode(bytes, frameSize.v, 0);
     }

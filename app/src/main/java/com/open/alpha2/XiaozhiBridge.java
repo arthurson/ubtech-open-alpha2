@@ -124,8 +124,7 @@ public final class XiaozhiBridge {
     }
 
     /** 同 MainActivity.releaseMicForAudioIo() 一字不差嘅副本 (speech_SetMIC(true) +
-     *  300ms) - startXiaozhiMic 專用；MicIo 核心 (handleMicStream/upload/walkie)
-     *  搬埋嗰陣合流返一處。 */
+     *  300ms) - startXiaozhiMic 專用。 */
     private void releaseMicForAudioIo() {
         robot.speech_SetMIC(true);
         try {
@@ -447,9 +446,7 @@ public final class XiaozhiBridge {
             case "supported":
                 // Reported separately from "connected" state so the browser UI can grey
                 // out/hide the audio (Opus) controls specifically without also hiding
-                // text-only chat, once Phase 2 adds the audio path. Phase 1 has no audio
-                // path yet, so audioSupported here is purely advisory for the UI to
-                // pre-render around, not yet backed by an actual codec.
+                // text-only chat.
                 return HttpServer.ApiResponse.ok("{\"ok\":true,"
                         + "\"sdkInt\":" + Build.VERSION.SDK_INT + ","
                         + "\"audioSupported\":" + XiaozhiClient.isAudioSupported() + "}");
@@ -1545,36 +1542,18 @@ public final class XiaozhiBridge {
 
     /** Multipart POST to the vision/explain endpoint - mirrors XiaozhiOtaClient's
      *  postJsonWithStatus() (same Device-Id/Client-Id header convention, same
-     *  zero-third-party HttpURLConnection style, see that method's comment for why
-     *  Device-Id is this robot's persisted UUID rather than a real WiFi MAC), but a
+     *  zero-third-party HttpURLConnection style), but a
      *  multipart body instead of JSON since this carries binary JPEG data - see
      *  esp32_camera.cc's Explain() for the request shape being matched: a "question"
      *  text field alongside a "file" field holding the JPEG.
      *
-     *  2026-08 修正: 反編譯一個用戶提供、實測拍照成功的第三方 apk (package
-     *  com.huihongcloud.xiaozhi) 的實際 multipart 組裝邏輯 (Lcom/huihongcloud/
-     *  xiaozhi/D;->a bytecode), 發現兩個之前這裡沒跟上的細節:
-     *  (1) 它送出的 Client-Id header 之前完全沒有加 (這裡之前的 comment 早就說了
-     *      「和 WebSocket 一樣的 Device-Id/Client-Id/Authorization」但實際沒有做);
-     *  (2) 它的 multipart body 開頭多了一個 "type" part, 值是 "multipart" (在
-     *      "question" part 之前) - 這個沒有出現在官方 esp32_camera.cc 文件化的欄位裡
-     *      提到, 但實測的 apk 確實有加, 保守起見跟隨, 避免現在依賴中的 server
-     *      side 有隱藏檢查依賴呢個欄位。 */
+     *  multipart body 開頭多一個 "type" part (值 "multipart"，喺 "question" part 之前)，
+     *  同送 Client-Id header（同 WebSocket 一樣）。 */
     private XiaozhiVisionResult xiaozhiVisionExplainRequest(String urlStr, String deviceId,
             String clientId,
             String accessToken, byte[] jpeg, String question) throws java.io.IOException {
-        // 2026-08 修正: 之前用動態 "----OpenAlpha2Boundary<timestamp>" boundary -
-        // 反編譯用戶提供、實測上傳成功的第三方 apk (package com.huihongcloud.xiaozhi)
-        // 之後發現, 它的 multipart body 結構 (type/question/file 三個 part, field
-        // name、"camera.jpg" filename) 和這裡已經一致, 但它用的是一個固定字串
-        // boundary "----ESP32_CAMERA_BOUNDARY" - 這正是官方 esp32-camera.cc
-        // firmware 用的 boundary, 這個第三方 apk 特意完全遵照官方寫死這個字串, 不是隨機
-        // 生成。用戶已核實同一個帳戶/官方 server 用第三方 apk 一直成功, 我們一直撞到
-        // server 說「請呼叫 image_to_text」這個 fallback - 兩者 request body 結構
-        // 一致的情況下, 這個 boundary 是目前找到的唯一實質差異, 懷疑 server 側的
-        // multipart parser 或前置關卡對這個固定字串有特殊 / 白名單處理, 用來識別
-        // 「這是合法的相機上傳」, 動態 boundary 反而被判去了一條 fallback 路徑。
-        // 沿用這個固定字串, 不再自己動態生成。
+        // boundary 用固定字串 "----ESP32_CAMERA_BOUNDARY" (官方 esp32-camera.cc 同款)，
+        // 唔自己動態生成。
         String boundary = "----ESP32_CAMERA_BOUNDARY";
         java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
         java.io.Writer w = new java.io.OutputStreamWriter(body, java.nio.charset.StandardCharsets.UTF_8);
@@ -1630,13 +1609,8 @@ public final class XiaozhiBridge {
                     ? conn.getInputStream() : conn.getErrorStream();
             String responseText = is != null ? MainActivity.readFully(is) : "";
             if (status == 404) {
-                // 2026-08 新增: 實測用官方 xiaozhi.me 撞過呢個情況 - 官方 esp32
-                // firmware 本身打同一條 URL 是可行的 (見 GitHub issue #708 的實測
-                // log), 所以 404 不是 URL 打錯, 而是這個帳戶/agent 在 xiaozhi.me
-                // console 裡尚未開通 vision/camera 這個 MCP 服務 - 沒開通的帳戶,
-                // api.xiaozhi.me 這邊的 routing 層面根本沒有這條路由, 對所有 request
-                // 都是 404, 不會有更詳細的「未授權」訊息。這裡把這個已知原因直接
-                // 告訴 LLM/用戶, 不用下次再從零開始查一次。
+                // 404 唔係 URL 打錯，多數係呢個帳戶/agent 喺 xiaozhi.me
+                // console 未開通 vision/camera MCP 服務。
                 return XiaozhiVisionResult.fail("vision/explain returned HTTP 404 - this usually "
                         + "means the vision/camera MCP service has not been enabled for this "
                         + "device/agent in the xiaozhi.me console (look for \"MCP 接入點\" / "
@@ -1648,14 +1622,8 @@ public final class XiaozhiBridge {
             }
             try {
                 org.json.JSONObject json = new org.json.JSONObject(responseText);
-                // 2026-08 新增 (診斷用): 實測 status 200 + isError:false, 但最終
-                // MCP tool 回應的 text 一直是空字串 - 也就是 json.optBoolean("success")
-                // 走到 true 那邊, 但 json.optString("text","") 拿不到東西。之前一直沒有
-                // log 印出完整 raw response body, 只會說「是否 success」, 不知道
-                // server 實際還有哪些欄位。這次印出來, 下次一 fail/text 空就可以直接
-                // 對照真正的 server JSON 結構來修, 不用再靠猜。
-                // 2026-09-09：轉 Log.d＋截 300 字（之前 INFO 全文，image 描述
-                // 加 token/uuid 可以好長，唔應該入 release logcat）。
+                // 印 raw response 方便對照 server JSON 結構。
+                // 轉 Log.d＋截 300 字（image 描述加 token/uuid 可以好長）。
                 android.util.Log.d("XiaozhiVision", "vision/explain raw response: "
                         + (responseText.length() > 300 ? responseText.substring(0, 300) + "…(" + responseText.length() + "B)" : responseText));
                 if (json.optBoolean("success", false)) {
@@ -1675,25 +1643,10 @@ public final class XiaozhiBridge {
                         }
                     }
                     if (text.isEmpty()) {
-                        // 2026-08 新增 (真正根源): 實測 (4 次) 得出的真正 server 行為 -
-                        // 帳戶用 GPT-5 做 LLM provider 時, vision/explain 不會立即回覆
-                        // description, 而是回應
-                        // {"success":true,"uuid":"...","message":"Please call the
-                        // tool `image_to_text` to explain the image, then reply to
-                        // the user"} - 也就是說這個 explain 是異步的, 真正描述要由 LLM
-                        // agent 自己在對話裡主動再發一次 MCP tools/call 去呼叫
-                        // "image_to_text" 這個 tool (未在官方 mcp-protocol.md 記載,
-                        // 屬於 xiaozhi.me console 這個特定 agent/GPT-5 組合才有的行為)
-                        // 才能取得。之前這裡把 text 空字串直接當成功 (見上面
-                        // XiaozhiVisionResult.ok(text)), 使 LLM 收到的 MCP result 是
-                        // 完全空白的 text, 完全沒提示它要再呼叫哪個 tool, 對話就此
-                        // 卡死, 4 次都是這個 pattern。修正: 這種情況不算失敗, 把
-                        // server 的 "message" (LLM 看得懂的指示) 原文當成這次
-                        // self.camera.take_photo 的 result 文字傳回給 LLM - 讓 LLM
-                        // 自己讀到這句話, 主動再發 tools/call 去呼叫
-                        // "image_to_text" (device 這邊已加入這個 tool 的
-                        // 註冊/處理, 見 buildMcpToolsList() 和 callTool() 的
-                        // "self.camera.image_to_text" case)。
+                        // vision/explain 係異步：成功但無 text 時回 {"success":true,"uuid":"...",
+                        // "message":"Please call the tool `image_to_text`..."}，真正描述要 LLM
+                        // 再發 tools/call 問 "image_to_text" 先攞到。呢度將 server 嘅 "message"
+                        // 原文傳返俾 LLM，等佢主動再問。
                         String uuid = json.optString("uuid", null);
                         String message = json.optString("message", null);
                         if (uuid != null && !uuid.isEmpty() && message != null && !message.isEmpty()) {
@@ -1736,16 +1689,15 @@ public final class XiaozhiBridge {
                 // callTool() 分發維持手寫（fuzzy match / 硬件直驅無法由 spec 推導）。
                 org.json.JSONArray tools = McpToolsGenerated.buildTools();
 
-                // Bug fix (2026-08): "nextCursor":"" was always present, and the
+                // Bug fix: "nextCursor":"" was always present, and the
                 // xiaozhi.me server treats *presence* of nextCursor as "there is a next
                 // page" regardless of its value being empty - it immediately re-issues
                 // tools/list with that cursor, which this bridge answered identically
-                // every time -> infinite tools/list loop (observed 1300+ times per
-                // session in logcat), and the session never reaches tools/call, so no
+                // every time -> infinite tools/list loop, and the session never reaches tools/call, so no
                 // action ever plays. The full tool set fits in a single page, so
                 // nextCursor must be omitted entirely here to signal "no more pages".
                 //
-                // 2026-08 新增: MCP 設定 card 的 enable/disable 在這裡一次性生效 -
+                // MCP 設定 card 的 enable/disable 在這裡一次性生效 -
                 // tools 已由 McpToolsGenerated.buildTools() 起好，
                 // 這裡過濾一次就夠, 不用逐個 tool 加 if, 減少改動、不用擔心漏了
                 // 哪一個。總開關關閉就回傳完全空的 tools array (等於告訴 LLM「這台
@@ -1761,7 +1713,7 @@ public final class XiaozhiBridge {
                         }
                     }
                 }
-                // 2026-08 新增: MCP 設定 card 要顯示全部 tool (含已經 disable 的
+                // MCP 設定 card 要顯示全部 tool (含已經 disable 的
                 // ), 讓用戶可以按按鈕重新 enable - 但上面 filteredTools 已經是
                 // 過濾完的, 傳給 XiaoZhi server 的那份不會再帶著 disabled 的 tool。
                 // 這裡把未過濾的完整版本 (tools, 建好全部 tool 的原始 array) 存下
@@ -1778,7 +1730,7 @@ public final class XiaozhiBridge {
             public org.json.JSONObject callTool(String name, org.json.JSONObject arguments) throws org.json.JSONException {
                 boolean isError = false;
                 String resultText = "";
-                // 2026-08 新增: 單靠 listTools() 側過濾不夠 - LLM 可能還拿著上一次
+                // 單靠 listTools() 側過濾不夠 - LLM 可能還拿著上一次
                 // (disable 之前) 取得的 tool 清單, 照樣試著呼叫一個現在已經 disabled
                 // 的 tool name, 這裡多做一重防護。和 listTools() 用同一套
                 // XiaozhiConfig isMcpEnabled()/getMcpDisabledToolNames() 邏輯, 保證兩邊判斷一致。
@@ -1855,7 +1807,7 @@ public final class XiaozhiBridge {
                             resultText = r.resultText;
                             break;
                         }
-                        // sensors 4 tool 本體喺 SonarCenter (2026-09 MCP 收斂)；薄 delegate。
+                        // sensors 4 tool 本體喺 SonarCenter；薄 delegate。
                         case "self.sensors.get_pir": {
                             SonarCenter.McpResult r = sonarCenter.mcpGetPir();
                             isError = r.isError;
@@ -1895,23 +1847,10 @@ public final class XiaozhiBridge {
                         case "self.camera.image_to_text": {
                             // 見 buildMcpToolsList() 這個 tool 定義那段 comment 和
                             // xiaozhiVisionExplainRequest() 裡 "vision/explain is async"
-                            // 那段 comment。實測 (2026-08) 不只是 GPT-5, Qwen 3.6 一樣會
-                            // 撞到這個 async flow, 更正一下 comment - 不是哪個 LLM provider
-                            // 才有的行為, 看起來是 xiaozhi.me console 目前整個 vision/explain
-                            // 後端行為, 和用哪個 model 無關。
+                            // 那段 comment。vision/explain 後端行為和用哪個 model 無關。
                             String uuid = arguments.optString("uuid", "");
-                            // 2026-08 新增 (真正根源): 用戶提供的 console 截圖 + logcat 顯示
-                            // LLM 一直都有帶 uuid 過來, 但帶的是字面值 "placeholder"
-                            // (也就是 LLM 沒有真正讀取之前 take_photo response 裡的
-                            // uuid, 純粹把 inputSchema 的 "uuid" 這個字, 當成一個
-                            // 佔位符字面值填了進去) - 之前只有 check uuid.isEmpty() 這個
-                            // fallback 條件, "placeholder" 不是空字串, 完全沒觸發到, 就
-                            // 拿著這個假 uuid 去打 image_to_text, 難怪 server 500。改用
-                            // 一個寬鬆的「看起來像不像真 UUID」檢查 (標準 UUID: 8-4-4-4-12
-                            // 個 hex 字符, 用 "-" 分隔) - 不像就當 LLM 沒帶真的 uuid,
-                            // 一樣 fallback 用 device 自己記下的 lastPendingPhotoUuid,
-                            // 不理會 LLM 說的字面值是什麼 (無論是 "placeholder"、空字串,
-                            // 或是之後可能出現的其他佔位符寫法都一樣處理)。
+                            // LLM 有時帶佔位符字面值 (如 "placeholder") 而唔係真 uuid，
+                            // 用寬鬆 UUID 格式檢查篩走，fallback 用 device 記低的 lastPendingPhotoUuid。
                             if (!isLikelyUuid(uuid)) {
                                 uuid = lastPendingPhotoUuid;
                             }
@@ -1923,17 +1862,8 @@ public final class XiaozhiBridge {
                             }
                             XiaozhiVisionResult imgResult = xiaozhiFetchImageToText(uuid);
                             if (imgResult.error != null) {
-                                // 2026-08 新增 (暫時 fallback): 這個 image_to_text 的
-                                // 真正 request payload 格式尚未經 xiaozhi.me 官方證實
-                                // (見 xiaozhiFetchImageToText() javadoc), 實測撞到
-                                // HTTP 500。在官方 protocol 尚未確認之前, 不要把
-                                // "image_to_text returned HTTP 500: ..." 這類技術性
-                                // error 原文當成 isError:true 帶給 LLM - 這樣會讓 LLM
-                                // 讀出很突兀的技術錯誤給用戶聽。改為 isError:false
-                                // + 一句自然說法, 讓對話至少有合理回應, 不會斷崖式
-                                // 失敗。原始 error 已經有 log (見 xiaozhiFetchImageToText()
-                                // 裡的 "image_to_text raw response" log), 留給
-                                // 之後對照 payload 格式用, 不用靠這句 resultText。
+                                // image_to_text 格式未定，失敗時回自然說法唔回技術 error，
+                                // 原始 error 已有 log。
                                 Log.w("XiaozhiVision", "image_to_text follow-up failed, "
                                         + "using fallback reply: " + imgResult.error);
                                 resultText = "拍到照片了，不過現在還看不到照片裡面的內容，晚點可能才答得出來。";

@@ -18,11 +18,11 @@ let musicPlayAllMode = false;    // 「▶ 全部」模式 - 一首播完自動�
                                  // musicPollStatusLoop() 嘅 hasTrack=false 分支)
 let musicLastPlayedName = null;  // 上次播過嘅歌名 - stop 嗰陣 musicCurrentName 會
                                  // 清走, 但之後撳「▶」應該重播返啱先嗰首, 唔係
-                                 // 冇反應 (2026-08 v2 修正)
+                                 // 冇反應
 let musicHasLoadedTrack = false; // server 端 currentMusicPlayer 仲 load 緊嘢嗎 -
                                  // 暫停緊都係 true; 全部停止/播完先變 false。
                                  // 俾 musicTogglePlayPause() 分「resume」定
-                                 // 「由頭 play」用 (2026-08 v2)
+                                 // 「由頭 play」用
 let musicSpectrumTimer = null;   // spectrum 輪詢 timer (setTimeout 鏈)
 let musicSpectrumAnimTimer = null; // 平滑動畫 timer (~33ms 重畫)
 let musicSpectrumTargets = [];   // 最近一次 server 攞返嚟嘅目標值
@@ -30,7 +30,7 @@ let musicSpectrumSmooth = [];    // 平滑化後用嚟畫嘅值
 let sharedActiveSource = null;   // "local" 或 "radio"，記錄最後一次播放來源，用於共用上一首/下一首/隨機分流
 
 // ---------------- audio spectrum ----------------
-// 2026-08 v2 新增: server 端 Visualizer FFT -> audio/local_music/spectrum 每條
+// server 端 Visualizer FFT -> audio/local_music/spectrum 每條
 // band 一個 0-255 值。輪詢 100ms 更新目標值, 另外有條 ~33ms 嘅動畫 timer 用
 // 「快上慢落」(attack 即刻, release 指數衰減) 插值, bar 先會順滑唔會一跳一跳。
 
@@ -141,10 +141,7 @@ function musicRefreshList() {
   container.textContent = t("music_list_loading");
   return Alpha2Api.audioLocalMusicList().then(function (res) {
     if (!res.ok) return;
-    // 2026-08 註: 之前一個版本嘅音樂 tab (掃兩個大小寫唔同但實際係同一個
-    // 資料夾嘅路徑) 令每首歌顯示兩次 - 而家呢個清單直接嚟自 server 端
-    // listLocalMusicFiles() 單一個 LOCAL_MUSIC_DIR, 冇呢個問題; 呢度仍然
-    // 做多一層以防萬一嘅去重 (跟檔名), 純粹係保險, 唔應該實際命中。
+    // 清單直接嚟自 server 端 listLocalMusicFiles() 單一 LOCAL_MUSIC_DIR；呢度多一層去重 (跟檔名) 保險，唔應該實際命中。
     const seen = new Set();
     musicTracks = (res.files || []).filter(function (f) {
       if (seen.has(f.name)) return false;
@@ -178,8 +175,7 @@ function musicRenderList() {
     sizeSpan.className = "music-track-size";
     sizeSpan.textContent = musicFormatSize(track.sizeBytes || 0);
 
-    // 2026-08 v2: 取消咗原本每行一粒「▶」掣 - 成行 click 就播 (user-select:none
-    // + cursor:pointer 喺 style.css 度), 歌多嗰陣少一半掣, 清爽啲。
+    // 成行 click 就播 (user-select:none + cursor:pointer 喺 style.css 度)。
     row.onclick = function () { musicPlay(track.name); };
 
     row.appendChild(nameSpan);
@@ -207,9 +203,7 @@ function musicPlay(name) {
 }
 
 // ---------------- prev / next / random / play-all ----------------
-// 2026-08 v2 新增: 全部 client 端排歌 - server 嘅 audio/local_music/* 冇 playlist
-// 概念, 淨係「播呢個檔」。呢幾個 function 只係喺 musicTracks 陣列入面計下一條
-// 應該播邊個, 再 call 返 musicPlay()。
+// 全部 client 端排歌 — server audio/local_music/* 冇 playlist 概念，淨「播呢個檔」。呢幾個 function 喺 musicTracks 計下一首，再 call musicPlay()。
 
 /** 目前播緊嗰首喺 musicTracks 入面嘅 index, 搵唔到 (清單變咗/冇播) 回 -1。 */
 function musicCurrentIndex() {
@@ -306,9 +300,8 @@ function musicTogglePlayPause() {
   }
 }
 
-// 2026-09: musicStop 已刪 (live 路徑係 musicStopAll；單軌版無人 call)。
 /**
- * 2026-08 v2 新增: 音樂 tab 嘅「⏹ 全部停止」- 同語音 tab 嗰粒總停鍵
+ * 音樂 tab「⏹ 全部停止」— 同語音 tab 總停鍵
  * (xiaozhiStopAll(), 見 app-xiaozhi.js) 睇齊: action/stop + speech/stop +
  * audio/local_music/stop + audio/radio/stop 四樣一齊停, 另加埋自己個
  * 「▶ 全部」自動接歌模式。直接重用 xiaozhiStopAll() 唔另寫一套, 保證兩邊
@@ -350,9 +343,6 @@ function musicSeekTo(value) {
     musicRefreshStatus();
   });
 }
-
-// 2026-09: musicOnVolumeInput (空殼) + musicSetVolume 已刪 (live 路徑係
-// 共用 STREAM_MUSIC 滑桿 setSharedVolume；單軌音量無 UI 入口)。
 
 // 共用音量（系統 STREAM_MUSIC，同時影響本地與電台）— 前端共用滑桿
 function onSharedVolumeInput(value) {

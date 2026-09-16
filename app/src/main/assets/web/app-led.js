@@ -1,5 +1,5 @@
 // Open Alpha2 — client logic (app-led.js)
-// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: 頭/眼/咀 LED 顏色揀選、preset (共用 ledPresetApply())。
+// 內容: 頭/眼/咀 LED 顏色揀選、preset (共用 ledPresetApply())。
 // 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
 // <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
 
@@ -32,15 +32,7 @@ let lastHeadPreset = "long";
 let lastEyePreset = "long";
 
 function buildColorPicker(wrapId, getSelected, setSelected, onPick) {
-  // 2026-08 修正: 之前呢度冇 null check, 一旦 wrapId 打錯或者 index.html 個
-  // 對應 element 被誤刪, document.getElementById() 會返 null,
-  // wrap.innerHTML 即刻 TypeError —— 而呢個 function 兩個 call site
-  // (buildHeadColorPicker/buildEyeColorPicker) 都喺頁面初始化 (DOMContentLoaded
-  // 果條 call chain) 連續執行, 其中一個掉低就會拋出未捕獲例外, 中斷埋後面幾行
-  // 初始化 (見 initializePanel() 附近), 令成個 panel 睇落完全打唔開, 卻冇任何
-  // 錯誤提示喺 UI 度 (window.onerror 會 log 落 console/logcat, 但畫面本身一片
-  // 空白)。加返 guard: 揾唔到就靜靜哋跳過呢一個 color picker, 唔阻住其他初始化
-  // 步驟。
+  // 揾唔到 element 就跳過呢個 picker，唔阻其他初始化。
   const wrap = document.getElementById(wrapId);
   if (!wrap) {
     console.error("buildColorPicker: element #" + wrapId + " not found, skipping");
@@ -86,7 +78,7 @@ function buildEyeColorPicker() {
  */
 function ledPresetApply(apiPath, preset, color, brightnessElId) {
   const brightness = document.getElementById(brightnessElId).value;
-  // 已切 Alpha2Api (對應 openapi /api/led/head/set /api/led/eye/set) - apiPath 動態故用條件分流
+  // 對應 openapi /api/led/head/set /api/led/eye/set — apiPath 動態故用條件分流
   if (preset === "stop") {
     return apiPath === "led/head/set" ? Alpha2Api.ledHeadSet({preset: "stop"}) : Alpha2Api.ledEyeSet({preset: "stop"});
   }

@@ -14,19 +14,16 @@ import java.util.Map;
 /**
  * 胸口固件升級 (48/49/50 協議，鏡像 alpha2services h.a.a$b)。
  *
- * 2026-09 由 MainActivity 抽出 (拆 god object 第四刀)：升級狀態、
- * ACK 等待、升級線程、電量/MD5 幫手原本全部係 MainActivity 私有成員，
- * 搬過嚟邏輯不變。胸串口經 appContext 攞 HardwareDirectManager；
+ * 胸串口經 appContext 攞 HardwareDirectManager；
  * 查詢側 latch 共用 ChestQuery (升級開始前要一齊清)。
  * 進度經 EventBus chest_upgrade_progress / chest_upgrade_done 發布，
- * 前端輪詢 chest/upgrade/status。
- * 2026-09 dispatcher Phase 1 第六刀加：chest/page 调試讀頁
- * (chestPageResponse) 搬入——讀同一個升級鏡像檔。
+ * 前端輪詢 chest/upgrade/status。另帶 chest/page 調試讀頁
+ * (chestPageResponse)——讀同一個升級鏡像檔。
  */
 public final class ChestUpgrade {
     private static final String TAG = "ChestUpgrade";
 
-    // 2026-08 新增: 胸口升級狀態 (48/49/50 協議，見 ag_chess/com/ubtechinc/h/a/a$b.java)
+    // 胸口升級狀態 (48/49/50 協議，見 ag_chess/com/ubtechinc/h/a/a$b.java)
     // 單例升級線程，升級中 chestUpgradeInProgress=true，進度 0-100，前端經 EventBus chest_upgrade_progress / chest_upgrade_done 輪詢
     private volatile boolean chestUpgradeInProgress = false;
     private volatile int chestUpgradeProgress = 0;
@@ -46,8 +43,7 @@ public final class ChestUpgrade {
         this.chestQuery = chestQuery;
     }
 
-    /** Delegates to ChestQuery.chestReady() (2026-09 duplication cleanup - was a
-     *  byte-for-byte duplicate try/catch here before). */
+    /** Delegates to ChestQuery.chestReady(). */
     private boolean chestReady() {
         return chestQuery.chestReady();
     }
@@ -58,7 +54,7 @@ public final class ChestUpgrade {
      * @return true = 已認領 (調用方應直接 return)。
      */
     public boolean onAckFrame(byte[] payload, int plen) {
-        // 2026-09-09：local copy + null-check（abort 會置 null，check-then用 race 會 NPE）。
+        // local copy + null-check（abort 會置 null，check-then 用 race 會 NPE）。
         java.util.concurrent.CountDownLatch latch = chestUpgradeLatch;
         if (latch == null || latch.getCount() <= 0 || plen < 1) return false;
         byte cmd = payload[0];
@@ -80,8 +76,7 @@ public final class ChestUpgrade {
             int status = b.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
             boolean charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL;
             if (level < 0 || scale <= 0) return charging ? 100 : -1;
-            // 2026-09-09：充緊電都要睇實際電量（之前充緊即回 100% 繞過 50% 門檻，
-            // 升級途中拔電掉電即變磚）；電量讀唔到先當 100% 放行。
+            // 充緊電都要睇實際電量（升級途中拔電掉電即變磚）；電量讀唔到先當 100% 放行。
             return (level * 100) / scale;
         } catch (Exception e) { return -1; }
     }
@@ -108,7 +103,7 @@ public final class ChestUpgrade {
         chestUpgradeLatch = latch;
         try {
             boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
-            // 2026-09-09：唔係自己呢代 latch（abort/retry 清過）即係唔好再行，
+            // 唔係自己呢代 latch（abort/retry 清過）即唔好再行，
             // 回 false 等上層 throw 退出（唔係 abort 早醒會當成功繼續燒）。
             if (chestUpgradeLatch != latch) return false;
             if (!ok) {
@@ -136,8 +131,7 @@ public final class ChestUpgrade {
 
     /** 中止升級 (chest/upgrade/abort)：清狀態 + 標 aborted，和以前三行 inline 一致。 */
     public synchronized void abort() {
-        // 2026-09-09：countDown 叫醒 waitForChestAck（之前唔叫，等足成個 timeout
-        // 先醒，中止唔即時）。
+        // countDown 叫醒 waitForChestAck（否則等足成個 timeout 先醒，中止唔即時）。
         java.util.concurrent.CountDownLatch latch = chestUpgradeLatch;
         chestUpgradeLatch = null;
         if (latch != null) {
@@ -274,9 +268,6 @@ public final class ChestUpgrade {
         chestUpgradeThread.start();
         return null;
     }
-// (2026-09: 兼容舊 doChestUpgrade(File) 轉調已刪 - 全部 caller 直接用
-// doChestUpgradeFrom(file, startPage)。)
-
     public String getChestUpgradeStatusJson() {
         return "{\"inProgress\":" + chestUpgradeInProgress + ",\"progress\":" + chestUpgradeProgress
             + ",\"currentPage\":" + chestUpgradeCurrentPage + ",\"totalPages\":" + chestUpgradeTotalPages
@@ -284,7 +275,6 @@ public final class ChestUpgrade {
     }
 
     // 調試：讀指定頁 offset 的 32B hex，用於定位 170 頁這類點
-    // (2026-09 dispatcher Phase 1 第六刀由 handleApi chest/page 搬入)。
     public HttpServer.ApiResponse chestPageResponse(Map<String, String> query) {
         int page = ApiValidator.requireInt(query, "page");
         java.io.File f = new java.io.File("/sdcard/AlphaII_CHEST_kernel.bin");
@@ -301,13 +291,12 @@ public final class ChestUpgrade {
         } catch (Exception e) { return HttpServer.ApiResponse.error(String.valueOf(e.getMessage())); }
     }
 
-    /** 胸板固件上載 - 接收 256KB 的 ALPHA2Q-CHEST-*.bin，寫入 /sdcard/AlphaII_CHEST_kernel.bin
-     *  (2026-09 小件拼盤由 MainActivity.handleChestUpload 搬入——升級鏡像入口歸升級層)。 */
+    /** 胸板固件上載 - 接收 256KB 的 ALPHA2Q-CHEST-*.bin，寫入 /sdcard/AlphaII_CHEST_kernel.bin。 */
     public HttpServer.ApiResponse handleChestUpload(Map<String, String> query, byte[] body) {
         if (body == null || body.length == 0) {
             return HttpServer.ApiResponse.badRequest("empty file body");
         }
-        // 2026-09-09：大細唔啱直接 400 唔寫入（之前只 warn 照寫，壞 bin 會留喺度，
+        // 大細唔啱直接 400 唔寫入（壞 bin 留喺度、下次升級攞錯檔即變磚；
         // 下次升級攞錯檔即變磚；magic 無文件記載唔驗，靠升級時 MCU ACK 把關）。
         if (body.length != 256 * 1024) {
             return HttpServer.ApiResponse.badRequest("chest firmware must be 262144 bytes, got " + body.length);

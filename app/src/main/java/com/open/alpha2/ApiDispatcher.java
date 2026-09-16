@@ -10,33 +10,25 @@ import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
 import java.util.Map;
 
 /**
- * /api/alpha2/* dispatcher：成個 handleApi switch 由 MainActivity 搬過嚟
- * （薄 delegate 照搬；之前幾刀抽剩嘅 shaping body —— chest/version、
- * action/stop、ubx/speed、servo/sonar、walkie、head/noise ——逐字搬，
- * 註解跟埋走）。
+ * /api/alpha2/* dispatcher：薄 delegate switch，body 喺各 center。
  *
- * 跨域 core 未搬，switch 經下面 Host 縫調返（每個 core 搬埋嗰陣，
- * 對應 handle* 跟埋走）：
- * - speech/tts、speech/stop 直實現喺 SpeechCenter（TTS core 第一刀已搬；
- *   MainActivity 唔再 implements Host）
- * （speech/set_mic、set_mic_keep_held 搬咗去 MicCenter，經下面 micCenter 直調。）
- * （speech/offline_auto_switch、get_default_grammar 搬咗去 GrammarCenter，
- * 經下面 grammarCenter 直調，Host 唔經手。）
- * （servo/sonar 搬咗去 SonarCenter，經下面 sonarCenter 直調——discover 嘅
+ * 跨域 core 經下面 Host 縫調返：
+ * - speech/tts、speech/stop 由 SpeechCenter 直實現（MainActivity 唔再 implements Host）
+ * （speech/set_mic、set_mic_keep_held 經下面 micCenter 直調。）
+ * （speech/offline_auto_switch、get_default_grammar 經下面 grammarCenter 直調，Host 唔經手。）
+ * （servo/sonar 經下面 sonarCenter 直調——discover 嘅
  * sensors 三值繼續經 sensorState 照讀，轉交緊同一個 SonarCenter。）
  * directChestReady/directHeaderReady 係內聯副本
  * （同 UbxApi/LedCenter/ChestQuery/XiaozhiBridge 一樣做法）。
- * 2026-09 MicIo 加：walkie testtone/diagnose/play 搬咗去 MicCenter
- * （releaseMic 正本跟埋走，呢度個副本刪咗），經下面 micCenter 直調。
- * 2026-09 dispatcher Phase 2 加：handleSystemApi（discover＋music/*，
- * 要 UbxPlayer pose＋MusicController＋deviceStatus.getWifiIp()）同
+ * walkie testtone/diagnose/play 經下面 micCenter 直調。
+ * handleSystemApi（discover＋music/*，要 UbxPlayer pose＋MusicController＋deviceStatus.getWifiIp()）同
  * handleDirectApi（servo/led/sonar/ubx 直驅，要 LocalAlpha2Services＋
- * UbxPlayer notePose），邏輯逐字搬。
+ * UbxPlayer notePose）。
  */
 public final class ApiDispatcher {
 
     /**
-     * 宿主縫：speech/tts、speech/stop 由 SpeechCenter 直實現（TTS core 第一刀）。
+     * 宿主縫：speech/tts、speech/stop 由 SpeechCenter 直實現。
      */
     public interface Host {
         HttpServer.ApiResponse handleSpeechTts(Map<String, String> query);
@@ -64,7 +56,7 @@ public final class ApiDispatcher {
     private final UbxPlayer ubxPlayer;
     private final MusicController musicController;
     private final LocalAlpha2Services localServices;
-    // 2026-09: Sonar 第一刀加——servo/sonar 直調呢度 (放最尾，慣例)。
+    // servo/sonar 直調呢度 (放最尾，慣例)。
     private final SonarCenter sonarCenter;
 
     public ApiDispatcher(Context context, Host host, XiaozhiBridge.HostState sensorState,
@@ -99,8 +91,7 @@ public final class ApiDispatcher {
         this.sonarCenter = sonarCenter;
     }
 
-    // directChestReady() 內聯：經 appContext 唔使 Activity（各 center 自帶副本；
-    // 原 MainActivity 私有版 2026-09 刪，零調用）。
+    // directChestReady() 內聯：經 appContext 唔使 Activity（各 center 自帶副本）。
     private boolean directChestReady() {
         try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
         catch (Exception e) { return false; }
@@ -191,12 +182,9 @@ public final class ApiDispatcher {
                 return ubxApi.ubxSpeedResponse(ApiValidator.require(query, "value"));
 
             // -- Speech / TTS -----------------------------------------------------------
-            // engine: android only (only engine that speaks). nuance/iflytek were
-            // permanently removed in 2026-09 - they used to be accepted values that
-            // silently no-op'd (robot.speech_startTTS always returned NOT_INIT since the
-            // alpha2services binder no longer exists), but that "accept but no-op"
-            // compatibility path itself has now been removed too: ApiValidator rejects
-            // any engine value other than "android" outright.
+            // engine: android only (only engine that speaks). nuance/iflytek
+            // 已死 (alpha2services binder 不存在，robot.speech_startTTS 恆回 NOT_INIT)：
+            // ApiValidator 直接拒收非 "android" 值。
             case "speech/tts":
                 return host.handleSpeechTts(query);
             case "speech/stop":
@@ -219,7 +207,7 @@ public final class ApiDispatcher {
             case "speech/cur_tts_engine":
                 return ttsCenter.curTtsEngine();
 
-            // 2026-09 新增: TTS 卡語言選擇嘅後端 pref (BCP-47 tag，空=沿用引擎
+            // TTS 卡語言選擇嘅後端 pref (BCP-47 tag，空=沿用引擎
             // 目前語言)。前端 setAndroidTtsLang() 同步寫入；對話管線
             // speakAndroidTts() 優先讀佢——一揀即時跟。
             case "speech/set_tts_lang":
@@ -228,7 +216,7 @@ public final class ApiDispatcher {
             case "speech/cur_tts_lang":
                 return ttsCenter.curTtsLang();
 
-            // 2026-09 新增: TTS 卡聲音選擇 (Google TTS 每個語言多把聲)。
+            // TTS 卡聲音選擇 (Google TTS 每個語言多把聲)。
             // tts_voices?lang=<BCP-47> 列該語言把聲 (name/locale/network/quality)；
             // set/cur_tts_voice 讀寫選擇 (空=該語言預設聲)。轉引擎/轉語言會清
             // 舊聲。speech/tts 帶 voice 參數即用該聲讀；對話管線自動跟 pref。
@@ -245,18 +233,14 @@ public final class ApiDispatcher {
                 return micCenter.setMic(query);
             case "speech/set_mic_keep_held":
                 return micCenter.setMicKeepHeld(query);
-            // 2026-09 移除: speech/reset、speech/start_asr、speech/set_voice、
-            // speech/set_language、speech/self_interrupt、speech/inject (以上全部
-            // 經已不存在的 alpha2services binder)。對應 Blockly 積木
-            // (alpha_speech_start_asr/set_voice/set_language/self_interrupt)
-            // 已經一齊拎走 (定義/toolbox/i18n/run case)——之前係送出先 404，
-            // 而家連砌都砌唔到。舊 .xml 程式有用過呢幾粒的話，匯入嗰粒會
-            // load 唔到，要手動刪咗佢。
+            // 已移除（死 binder）：speech/reset、speech/start_asr、speech/set_voice、
+            // speech/set_language、speech/self_interrupt、speech/inject。舊 .xml
+            // 程式有用過呢幾粒的話，匯入嗰粒會 load 唔到，要手動刪咗佢。
             // -- 語義模擬 (body 喺 SemanticCenter；薄 delegate，唔好喺度加 logic) --
             case "speech/semantic_simulate":
                 return semanticCenter.semanticSimulateResponse(query);
-            // 2026-09 移除: speech/stop_inject (同上, 死 binder)。
-            // 2026-09 移除: speech/init_grammar、speech/start_grammar、
+            // 已移除（死 binder）：speech/stop_inject。
+            // 已移除（死 binder）：speech/init_grammar、speech/start_grammar、
             // speech/stop_grammar 三個 endpoint（機身已無 iFlytek 引擎，
             // 恒回 NOT_INIT）。內部 doInitGrammar/doStartGrammar/doStopGrammar
             // 保留（離線自動切換內部流程仲用緊），get_default_grammar 照讀本地 asset。
@@ -294,7 +278,7 @@ public final class ApiDispatcher {
                 return ubxApi.servoOneResponse(query);
             case "servo/all":
                 return ubxApi.servoAllResponse(query);
-            // threshold state 經 sonarCenter 直調 (Sonar 第一刀)。
+            // threshold state 經 sonarCenter 直調。
             case "servo/sonar":
                 return sonarCenter.servoSonarResponse(query);
             case "servo/read":
@@ -397,7 +381,7 @@ public final class ApiDispatcher {
             case "audio/ringtones/play":
                 return ringtoneCenter.ringtonesPlay(query);
 
-            // 2026-08 新增: 用 title 查找鈴聲, 不再用 audio/ringtones/list 的 numbered
+            // 用 title 查找鈴聲, 不再用 audio/ringtones/list 的 numbered
             // index (見上面 findRingtoneByTitle() 的 javadoc: cursor position 不保證
             // 跨機一致, 因為 RingtoneManager 內部排序邏輯不一定和 adb content query
             // 手動加 --sort 那個排序一樣)。Blockly 頁面現在內嵌一份靜態 title 清單
@@ -408,7 +392,7 @@ public final class ApiDispatcher {
             case "audio/ringtones/play_by_title":
                 return ringtoneCenter.ringtonesPlayByTitle(query);
 
-            // 2026-08 新增: 停止目前正在播放的系統鈴聲/通知聲 (play / play_by_title 兩個
+            // 停止目前正在播放的系統鈴聲/通知聲 (play / play_by_title 兩個
             // endpoint 播放的那個), 對應 Blockly「範例 5」的「停止播放」按鈕。
             case "audio/ringtones/stop":
                 return ringtoneCenter.ringtonesStop();
@@ -418,7 +402,6 @@ public final class ApiDispatcher {
             // MediaPlayer, 詳見 listLocalMusicFiles()/playLocalMusicFile() 的
             // javadoc。"list" 沒有 index (檔案清單會隨用戶自己增減歌曲而變, 不像
             // ringtone 那些系統清單那麼穩定), "play" 直接用檔名 (含副檔名) 選取。
-            // (本地音樂 endpoint 搬咗去 AudioCenter。)
             case "audio/local_music/list":
                 return audioCenter.localMusicList();
             case "audio/local_music/play":
@@ -438,7 +421,7 @@ public final class ApiDispatcher {
             case "audio/local_music/resume":
                 return audioCenter.localMusicResume();
 
-            // 2026-08 新增: Equalizer presets - 用返 android.media.audiofx.Equalizer
+            // Equalizer presets - 用返 android.media.audiofx.Equalizer
             // 自己的 preset 清單 (由裝置/廠商決定有多少個、叫什麼名, 例如 "Normal"、
             // "Classical"、"Rock" 等, 不是這個 app 自己定義的一套), 保證和這台機器
             // 實際安裝的 audio effect engine 一致, 不會出現選了個 UI 名但
@@ -493,9 +476,9 @@ public final class ApiDispatcher {
                 return deviceStatus.btStatus();
 
             // -- Robot-service broadcasts with simple boolean extras. --------------------
-            // 2026-09 移除: misc/power_save（見下）與 misc/charge_play ——
+            // 已移除（假活）：misc/power_save（見下）與 misc/charge_play ——
             // 純粹發 broadcast 俾已不存在的 alpha2services, 回 ok:true 但實際
-            // 無效 (假活)。連同舵機頁開關一齊拎走。
+            // 無效。
 
             // -- Accelerometer (body 喺 DeviceStatus；薄 delegate，唔好喺度加 logic) --
             case "accelerometer/set":
@@ -503,11 +486,10 @@ public final class ApiDispatcher {
             case "accelerometer/get":
                 return deviceStatus.accelerometerGet();
 
-            // 2026-09 移除: service_config/get|set（讀寫 /sdcard/actions/
-            // service_config.{json,txt}，alpha2services 專用 config，機身已無此
-            // 服務，對 open alpha2 無用；連同 preset 常數一齊拎走。reboot 亦已
+            // 已移除：service_config/get|set（alpha2services 專用 config，機身已無此
+            // 服務，對 open alpha2 無用）。reboot 亦已
             // 移除：App 無 REBOOT 權限 (uid 無 grant，實機 verified 永遠
-            // SecurityException)，UUID 卡掣一併拎走，改做手動重開機提示。
+            // SecurityException)，改做手動重開機提示。
 
             default:
                 return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
@@ -515,7 +497,7 @@ public final class ApiDispatcher {
         }
     }
 
-    // -- /api/system/* + /api/direct/* (2026-09 dispatcher Phase 2 由 MainActivity 搬入) --
+    // -- /api/system/* + /api/direct/* --
 
     /**
      * Small namespace ("/api/system/...") for things not tied to the robot AIDL
@@ -677,7 +659,7 @@ public final class ApiDispatcher {
                 int id = ApiValidator.requireIntRange(query, "id", 1, 20);
                 int angle = ApiValidator.requireIntRange(query, "angle", 0, 255);
                 int time = ApiValidator.optionalIntRange(query, "time", 20, 32767, 500);
-                // 2026-09-06: cmd05 單發（官方 tuner 實測本機可郁），見 servoSendOneCode。
+                // cmd05 單發（官方 tuner 實測本機可郁），見 servoSendOneCode。
                 return ubxApi.servoSendOne(id, angle, time);
             }
             case "servo/all": {

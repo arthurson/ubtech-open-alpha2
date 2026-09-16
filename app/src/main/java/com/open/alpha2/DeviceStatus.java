@@ -23,18 +23,13 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 裝置狀態直讀：WiFi／藍牙（標準 Android framework，唔經機身服務）。
- *
- * 2026-09 由 MainActivity 抽出 (拆 god object)：wifiStatus/btStatus 原本
- * 係 MainActivity 私有成員，搬過嚟邏輯不改。只需要 Context。
- * 2026-09 dispatcher Phase 1 第五刀加：電池 receiver（含低電量自動蹲下）+
- * battery/status、accelerometer set/get + SensorEventListener，連註解搬入。
- * 低電量蹲下經傳入嘅同一個 ActionDirect；synchronized 鎖由 MainActivity.this
- * 轉做自己 (調用方全部經同一個 instance，互斥等價；見 AudioCenter 同例)。
- * 2026-09 dispatcher Phase 1 第七刀加：handleApi status 健康聚合
- * (statusResponse)；rebootResponse 已移除 (App 無 REBOOT 權限，實機 verified
- * 永遠 SecurityException，UUID 卡掣一併拎走)；TtsCenter
- * readiness 經傳入嘅同一個 instance 讀。
+ * 裝置狀態直讀：WiFi／藍牙（標準 Android framework，唔經機身服務）、
+ * 電池 receiver（含低電量自動蹲下）+ battery/status、accelerometer set/get +
+ * SensorEventListener、handleApi status 健康聚合 (statusResponse)。
+ * 低電量蹲下經傳入嘅同一個 ActionDirect；synchronized 鎖用自己
+ * (調用方全部經同一個 instance，互斥等價；見 AudioCenter 同例)。
+ * reboot 無（App 無 REBOOT 權限，實機 verified 永遠 SecurityException)；
+ * TtsCenter readiness 經傳入嘅同一個 instance 讀。
  */
 public final class DeviceStatus implements SensorEventListener {
     private static final String TAG = "DeviceStatus";
@@ -286,9 +281,8 @@ public final class DeviceStatus implements SensorEventListener {
                 + ",\"available\":" + (accelerometerSensor != null) + "}");
     }
 
-    // -- 健康狀態聚合 (2026-09 dispatcher Phase 1 第七刀由 handleApi status 搬入) --
-    // chest/header readiness 內聯：經 appContext 唔使 Activity（各 center 自帶副本；
-    // 原 MainActivity 私有版 2026-09 刪，零調用）。
+    // -- 健康狀態聚合 --
+    // chest/header readiness 內聯：經 appContext 唔使 Activity（各 center 自帶副本）。
     private boolean directChestReady() {
         try { return HardwareDirectManager.get(appContext).chest().isAvailable(); }
         catch (Exception e) { return false; }
@@ -305,7 +299,6 @@ public final class DeviceStatus implements SensorEventListener {
             appVer = appContext.getPackageManager().getPackageInfo(appContext.getPackageName(), 0).versionName;
         } catch (Exception ignored) {}
         // pure-direct: chest/header 可用性改由直驱串口报告，不再经 binder。
-        // 2026-09: speechReady key 已移除 (無 ASR，舊 binder service 永遠唔會 ready)。
         return HttpServer.ApiResponse.ok("{\"ok\":true,"
                 + "\"appVersion\":\"" + appVer + "\","
                 + "\"apiLevel\":" + android.os.Build.VERSION.SDK_INT + ","
@@ -314,15 +307,11 @@ public final class DeviceStatus implements SensorEventListener {
                 + "\"androidTtsReady\":" + ttsCenter.isReady() + "}");
     }
 
-    // 2026-09 移除 rebootResponse (PowerManager.reboot)：App 係第三方 sideload，
-    // 無 REBOOT 權限 (signature|system)，實機回 "Neither user 10020 nor current
-    // process has android.permission.REBOOT"，su 亦喺 app context 攞唔到
-    // (Permission denied)——UUID 卡改做手動重開機提示，endpoint＋spec 一齊清走。
+    // 無 reboot：App 係第三方 sideload，無 REBOOT 權限 (signature|system)，實機回
+    // "Neither user 10020 nor current process has android.permission.REBOOT"，su
+    // 亦喺 app context 攞唔到 (Permission denied)——UUID 卡改做手動重開機提示。
 
-    // 面板 URL/顯示用本機 IP (2026-09 dispatcher Phase 2 由 MainActivity.getWifiIp
-
-    // 面板 URL/顯示用本機 IP (2026-09 dispatcher Phase 2 由 MainActivity.getWifiIp
-    // 搬入；updatePanelUrlDisplay/複製連結經呢度讀)。
+    // 面板 URL/顯示用本機 IP（updatePanelUrlDisplay/複製連結經呢度讀）。
     public String getWifiIp() {
         try {
             WifiManager wm = (WifiManager) appContext.getSystemService(Context.WIFI_SERVICE);
@@ -341,8 +330,7 @@ public final class DeviceStatus implements SensorEventListener {
                         java.net.InetAddress addr = addrs.nextElement();
                         if (!addr.isLoopbackAddress() && addr instanceof java.net.Inet4Address) {
                             String host = addr.getHostAddress();
-                            // 2026-09-09 補 172.16/12（之前得 192.168/10.，某啲
-                            // 熱點/公司網會誤判；另見 isSiteLocal 註：fd00::/8
+                            // 192.168/10./172.16/12 私網先算數；另見 isSiteLocal 註：fd00::/8
                             // IPv6 ULA 呢部機用唔着，唔判）。
                             if (host != null && (host.startsWith("192.168.") || host.startsWith("10.")
                                     || isPrivate172(host))) {

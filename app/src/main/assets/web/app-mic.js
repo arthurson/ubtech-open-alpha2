@@ -1,5 +1,5 @@
 // Open Alpha2 — client logic (app-mic.js)
-// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: 聽機械人麥克風 (WAV chunk 串流播放)、相機全螢幕。(walkie-talkie 發射端 2026-09 已成串移除。)
+// 內容: 聽機械人麥克風 (WAV chunk 串流播放)、相機全螢幕。
 // 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
 // <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
 
@@ -14,16 +14,9 @@
 // rate this AudioContext actually runs at (see MIC_SOURCE_SAMPLE_RATE below), and
 // feeds them into a ScriptProcessorNode's ring buffer for continuous playback.
 //
-// 2026-08 歷史: 曾經試過用 decodeAudioData()+AudioBufferSourceNode 逐個 chunk
-// 排程播放, decode 時間唔平均導致播放時間軸間中「跳前」, 表現為冇 error log 但
-// 聽感上斷斷續續。之後改用 AudioWorklet, 但用家部機 (RK3288/Android 5.1) 嘅
-// system WebView 版本停留喺 Chromium 39, 遠早過 AudioWorklet 面世嘅 Chrome 66,
-// ctx.audioWorklet 喺呢部機根本係 undefined, 令 mic 完全打唔開 (連
-// /stream/mic 嘅 request 都未發出過)。同時發現 AudioContext 構造函數嘅
-// `{sampleRate: ...}` option 都係後期先加入 (Chromium 73062, 大約 2018 年先
-// 真正生效), Chromium 39 會直接無視呢個 option, 用返 device native rate 建立
-// context - 所以呢度唔假設 AudioContext 會跑喺 16kHz, 而係喺 runtime 讀
-// ctx.sampleRate, 將 16kHz 嘅來源 PCM resample 做嗰個 rate 先入 buffer。
+// 目標 WebView (RK3288/Android 5.1, Chromium 39) 無 AudioWorklet (Chrome 66 先有)，
+// AudioContext {sampleRate} option 亦無效 (Chromium 39 無視，用 native rate)，故 runtime 讀
+// ctx.sampleRate，將 16kHz 來源 PCM resample 做嗰個 rate 先入 buffer。
 //
 // 最終方案: ScriptProcessorNode。雖然官方已經 deprecate (建議用
 // AudioWorklet), 但呢個 API 喺 Web Audio API 推出初期 (2011年) 已經存在,
@@ -36,19 +29,7 @@ let micListening = false;
 let micAbortController = null;
 let micAudioContext = null;
 let micScriptNode = null;
-// 2026-09: walkie-talkie 發射端已成串移除，micMuted 恆 false（mic-listen
-// 永遠唔 mute）。下面段 echo-loop 分析留低做紀錄——講緊點解當初 mute 而唔 stop。
-// Muted (not stopped) while push-to-talk is active - see startTalk()/stopTalk(). The
-// /stream/mic connection and AudioController on the Android side keep running exactly
-// as before; only the browser-side *playback* of incoming mic chunks is suppressed.
-// This is what actually breaks the echo loop reported in logcat_2026-07-01_03-26-09:
-// talking sends audio to the robot's AudioTrack/speaker, which then gets picked straight
-// back up by the robot's own AudioRecord/mic (no acoustic isolation between the
-// speaker and mic on this hardware) and streamed back to the browser as "the robot
-// talking" - which is really just an instant echo of what you just said. Muting
-// playback while transmitting, mirroring a real half-duplex walkie-talkie (only one
-// direction of audio "counts" at a time), removes that loop entirely rather than
-// trying to cancel it after the fact.
+// micMuted 恆 false（mic-listen 永遠唔 mute）。
 let micMuted = false;
 
 // Ring buffer 本身 (Float32, 已經 resample 做 AudioContext 實際 sample rate),
@@ -127,8 +108,7 @@ function startMicListen() {
   micResampleFracPos = 0;
 
   // bufferSize 4096: 大到唔會令主 thread 太頻密咁被 onaudioprocess 中斷, 細到
-  // 唔會令延遲太明顯 (walkie-talkie 上傳舊 code 都係用 4096，2026-09 已成串
-  // 移除)。0 個 input channel (純播放, 唔錄音), 1 個 output
+  // 唔會令延遲太明顯。0 個 input channel (純播放, 唔錄音), 1 個 output
   // channel (mono, 同 AudioController.java 送出嚟嘅格式一致)。
   micScriptNode = ctx.createScriptProcessor(4096, 0, 1);
   micScriptNode.onaudioprocess = micAudioProcessCallback;
@@ -167,7 +147,7 @@ function stopMicListen() {
 }
 
 /** 聽機械人(🎧)完結時頭/眼 LED 熄返 - alpha2-only, 同 setRecordingLed()/tilt LED/
- *  flashCaptureLed() 一致嘅做法。開燈嗰部分已經搬咗去 server 端 (見上面 comment)。 */
+ *  flashCaptureLed() 一致嘅做法。開燈喺 server 端做 (見上面 comment)。 */
 function setListenLed(on) {
   if (currentBackend !== "alpha2") return;
   if (on) {
@@ -334,13 +314,8 @@ function micAudioProcessCallback(event) {
   }
 }
 
-// 2026-09: playTestTone/runAudioDiagnose 已刪 (server 端點 audio/testtone、
-// audio/diagnose 仲有效—要加返 UI 入口先至寫過，唔留無人 call 嘅 function)。
-// 原本係 2026-08 修過 null-guard 嘅版本：對應按鈕 (testToneBtn/audioDiagBtn)
-// 早喺「相機/音效」分類移除嗰次一齊清走咗，function 本體一直冇入口。
-
 /** Double-click/double-tap on the viewport toggles native fullscreen on that
- *  element, so the video (well - photo sequence) fills the whole screen. */
+ *  element, so the video fills the whole screen. */
 function toggleCameraFullscreen() {
   const viewport = cameraElements().viewport;
   const fsElement = document.fullscreenElement || document.webkitFullscreenElement;

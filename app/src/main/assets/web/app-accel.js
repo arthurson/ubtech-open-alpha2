@@ -1,5 +1,5 @@
 // Open Alpha2 — client logic (app-accel.js)
-// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: 加速度計/聲納圖表、頭部降噪、UUID 查詢。
+// 內容: 加速度計/聲納圖表、頭部降噪、UUID 查詢。
 // 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
 // <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
 
@@ -68,8 +68,7 @@ function toggleAccelerometer() {
 // readout + chart duties only - anything that *reacts* to accelerometer data (LED
 // colours, triggering actions, etc) is left to Blockly programs / index.html samples
 // built on top of this data rather than hardcoded here. See blockly-toolbox.js's
-// "傾側控制頭/眼LED" example and index.html's fall-detection sample script for the
-// two behaviours that used to live in this function.
+// "傾側控制頭/眼LED" example and index.html's fall-detection sample script.
 function onAccelSample(data) {
   document.getElementById("accelXVal").textContent = data.x.toFixed(2);
   document.getElementById("accelYVal").textContent = data.y.toFixed(2);
@@ -200,9 +199,8 @@ function drawAccelChart() {
 
 function requestUuid() {
   document.getElementById("uuidOut").innerHTML = t("uuid_querying_hint");
-  // 2026-09 修正: 後端 misc/request_uuid 而家經 chest cmd55 直讀, HTTP response
-  // 會順手帶埋 {"ok":true,"uuid":"..."} (見 MainActivity), 不再純靠 WebSocket
-  // robot_uuid event。呢度兩個都接: HTTP 有 uuid 就即刻顯示 (唔使等 WS);
+  // 後端 misc/request_uuid 經 chest cmd55 直讀, HTTP response
+  // 會順手帶埋 {"ok":true,"uuid":"..."} (見 MainActivity)。呢度兩個都接: HTTP 有 uuid 就即刻顯示 (唔使等 WS);
   // WS event 照舊經 appendLog() -> uuidUpdateCard() 更新一次 (同一個值, 冪等)。
   // HTTP ok:false 就顯示錯誤, 唔再永久停喺「查詢中」。
   return Alpha2Api.miscRequestUuid().then(function (res) {
@@ -223,7 +221,7 @@ function requestUuid() {
   });
 }
 
-// ---------------- UUID card 開關 (2026-08 v5 新增) ---------------------------
+// ---------------- UUID card 開關 ---------------------------
 // 高風險操作 (直接寫 chest EEPROM), 預設收埋內容, 用戶要自己揭開先睇到/用到。
 // 冇用 localStorage 記住狀態 — 每次入返呢個 tab / 重新整頁都預設關閉, 避免
 // 手快快留咗開住冇為意。
@@ -237,13 +235,12 @@ function uuidCardToggle() {
   if (hint) hint.style.display = on ? "none" : "block";
 }
 
-// ---------------- UUID card (2026-08 v2 新增, v4 簡化做單一 card flow) -------
+// ---------------- UUID card -----------------------
 // 顯示 UUID + QR code (離線生成, app-qr.js) + 更改 ID (cmd54 寫入 chest EEPROM,
 // server 端 misc/set_uuid)。QR 內容就係 robotSeq=<ID>, 同官方 app 個 bind QR
 // 一致。
 //
-// v4: 三張 card (顯示/複製/更改, 新 QR 預覽, reboot) 合併做一張, 輸入框常駐
-// 唔使再撳「更改 ID」先出現, 打字時 (oninput) 就即時喺同一個 uuidQrCanvas 換上
+// 輸入框常駐, 打字時 (oninput) 即時喺同一個 uuidQrCanvas 換上
 // 新 QR 做預覽 (未寫入 EEPROM); 撳「寫入 EEPROM」先真係落 cmd54。輸入框留空
 // 時, canvas 顯示返現有已知嘅 UUID (uuidCardLast)。
 
@@ -269,7 +266,7 @@ function uuidDrawQr(uuid) {
   const canvas = document.getElementById("uuidQrCanvas");
   if (canvas && uuid) {
     try {
-      // 2026-08 v2 修正: QR 內容係 robotSeq=<ID> 唔係淨 ID (用戶實測官方格式)。
+      // QR 內容係 robotSeq=<ID> 唔係淨 ID (用戶實測官方格式)。
       qrDrawToCanvas(canvas, "robotSeq=" + uuid);
     } catch (e) {
       showError("QR", e);
@@ -277,8 +274,7 @@ function uuidDrawQr(uuid) {
   }
 }
 
-// 打新 ID 時即時預覽新 QR (2026-08 v3 新增, v4 併入主 card 同一個
-// uuidQrCanvas)。純前端運算, 未寫入 EEPROM — 落 EEPROM 要另外撳
+// 打新 ID 時即時喺同一個 uuidQrCanvas 預覽新 QR。純前端運算, 未寫入 EEPROM — 落 EEPROM 要另外撳
 // 「寫入 EEPROM」(uuidWriteNew())。輸入清空返顯示現有 UUID。
 function uuidOnInputChange() {
   const input = document.getElementById("uuidNewInput");
@@ -297,7 +293,7 @@ function uuidOnInputChange() {
   if (hint) hint.removeAttribute("data-i18n"), hint.textContent = t("uuid_preview_hint_short");
 }
 
-// 隨機碼產生器 (2026-08 v13 新增)。在已知合法的編號範圍
+// 隨機碼產生器。在已知合法的編號範圍
 // BAF006UBT10000001 ~ BAF006UBT10000504 之間隨機選一個, 填入輸入框並觸發
 // QR 預覽 — 只填好輸入框, 不會自動寫入, 用戶要自己按「寫入 EEPROM」
 // 確認才會真正寫入 EEPROM。

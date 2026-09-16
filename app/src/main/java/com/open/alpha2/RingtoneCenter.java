@@ -8,11 +8,6 @@ import java.util.Map;
 
 /**
  * 系統鈴聲層：RingtoneManager 查表 + STREAM_MUSIC MediaPlayer 播放。
- *
- * 2026-09 由 MainActivity 抽出 (拆 god object 第七刀)：停止/快門/PIR 三粒
- * 提示音、共用播放器、RingtoneManager 快取、title 查表，原本全部係
- * MainActivity 私有成員，搬過嚟邏輯不變。只需要 Context
- * (RingtoneManager + MediaPlayer setDataSource)，唔掂其他硬件。
  */
 public final class RingtoneCenter {
     private static final String TAG = "RingtoneCenter";
@@ -103,14 +98,7 @@ public final class RingtoneCenter {
         playRingtoneUri(pirAlertUri);
     }
 
-    // 2026-08 新增 (修 bug): 之前 playRingtoneUri() 每次都開一個全新、完全沒有留下
-    // reference 的 MediaPlayer, fire-and-forget, 播完/出錯後自己 release —— 這個
-    // 做法有兩個問題: (1) 使用者在鈴聲還沒播完之前多次按下「播放」(或者 Blockly
-    // 的「範例 5」多次執行), 就會有多個 MediaPlayer 同時各自播放, 聲音疊在
-    // 一起, 聽起來像是「停不下來一直響」; (2) 完全沒有任何方法可以從外部 (前端「停止播放」
-    // 按鈕) 中斷它, 一定要等整首歌/鈴聲自然播完。修法: 用這個 field 記住「目前正在播放
-    // 的那個」MediaPlayer, 每次開新的之前先停掉舊的, 並且加入
-    // audio/ringtones/stop 這個 endpoint 讓前端隨時可以中斷。
+    // 共用播放器：記住「目前正在播放的那個」MediaPlayer, 每次開新的之前先停掉舊的。
     private android.media.MediaPlayer currentRingtonePlayer;
 
     /** Shared playback: STREAM_MUSIC (see playStopCue()'s javadoc for why not a plain
@@ -181,8 +169,6 @@ public final class RingtoneCenter {
         }
     }
 
-    // 2026-08 更新 (修 bug): findRingtoneByTitle() 之前每次呼叫都 `new
-    // RingtoneManager(this)`, 用完立刻拋棄那個 object, 但 Android 官方文件明確說明
     // RingtoneManager.getCursor() 每次取得的是*同一個*底層 cursor, 不應該由
     // 使用者自己 close() —— 它的生命週期本身是跟著 RingtoneManager instance
     // 走的, 如果沒有用 RingtoneManager(Activity) 這個會自動與 activity 生命週期綁定
@@ -251,9 +237,7 @@ public final class RingtoneCenter {
         int rmType = "notification".equals(type)
                 ? android.media.RingtoneManager.TYPE_NOTIFICATION
                 : android.media.RingtoneManager.TYPE_RINGTONE;
-        // 2026-08 更新 (修 bug): 改用 getCachedRingtoneManager() 不再每次
-        // new RingtoneManager 用完即丟 —— 見 findRingtoneByTitle() 上面
-        // 那個 cache function 的 javadoc, 這裡是同一種 cursor 洩漏, 一起修。
+        // 改用 getCachedRingtoneManager()（防 cursor 洩漏）。
         android.media.RingtoneManager manager = getCachedRingtoneManager(rmType);
         android.database.Cursor cursor = manager.getCursor();
         StringBuilder sb = new StringBuilder("{\"ok\":true,\"type\":\"" + MainActivity.jsonSafe(type) + "\",\"sounds\":[");
@@ -277,7 +261,7 @@ public final class RingtoneCenter {
         int rmType = "notification".equals(type)
                 ? android.media.RingtoneManager.TYPE_NOTIFICATION
                 : android.media.RingtoneManager.TYPE_RINGTONE;
-        // 2026-08 更新 (修 bug): 同上, 改用 cached manager。
+        // 同上, 改用 cached manager。
         android.media.RingtoneManager manager = getCachedRingtoneManager(rmType);
         android.net.Uri uri;
         try {
@@ -292,10 +276,8 @@ public final class RingtoneCenter {
         return HttpServer.ApiResponse.ok("{\"ok\":true}");
     }
 
-    // 2026-08 新增: 用 title 查找鈴聲, 不再用 audio/ringtones/list 的 numbered
-    // index (見上面 findRingtoneByTitle() 的 javadoc: cursor position 不保證
-    // 跨機一致, 因為 RingtoneManager 內部排序邏輯不一定和 adb content query
-    // 手動加 --sort 那個排序一樣)。Blockly 頁面現在內嵌一份靜態 title 清單
+    // 用 title 查找鈴聲, 不再用 audio/ringtones/list 的 numbered
+    // index (cursor position 不保證跨機一致)。Blockly 頁面內嵌靜態 title 清單,
     // (由實機 adb content query 執行一次抓回來, 見 blockly-actions-data.js
     // 旁邊的 blockly-ringtone-data.js), 選了 title 直接送這個 API, 沿用
     // findRingtoneByTitle() 這個已經被 playStopCue()/playShutterCue() 使用、
@@ -314,7 +296,7 @@ public final class RingtoneCenter {
         return HttpServer.ApiResponse.ok("{\"ok\":true}");
     }
 
-    // 2026-08 新增: 停止目前正在播放的系統鈴聲/通知聲 (play / play_by_title 兩個
+    // 停止目前正在播放的系統鈴聲/通知聲 (play / play_by_title 兩個
     // endpoint 播放的那個), 對應 Blockly「範例 5」的「停止播放」按鈕。
     public HttpServer.ApiResponse ringtonesStop() {
         stopRingtonePlayback();

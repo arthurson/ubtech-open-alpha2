@@ -1,5 +1,5 @@
 // Open Alpha2 — client logic (app-actions.js)
-// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: Alpha2 動作清單/分類/播放, 以及 Advanced tab 嘅 raw AIDL passthrough (未完全驗證嘅底層 method)。
+// 內容: Alpha2 動作清單/分類/播放, 以及 Advanced tab 嘅 raw AIDL passthrough (未完全驗證嘅底層 method)。
 // 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
 // <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
 
@@ -153,7 +153,7 @@ function subCategoryDisplayName(sub) {
  *  code。淨係「邊個 bar element」、「邊個 action 陣列」、「邊個 main category」、
  *  「目前揀咗邊個子分類 (+點樣寫返去)」由 caller 決定。只有
  *  action_classification.json 對呢個大分類有出現嘅子分類先會出 tab - 冇資料就唔
- *  顯示呢層 tab bar, 同冇呢個 feature 之前一樣, 直接顯示嗰個大分類入面成個 flat
+ *  顯示呢層 tab bar, 直接顯示嗰個大分類入面成個 flat
  *  清單。An always-present「全部」tab 清空子分類篩選。
  *  @param barElId       子分類 tab bar 容器嘅 id
  *  @param actions       完整動作陣列 (allActions)

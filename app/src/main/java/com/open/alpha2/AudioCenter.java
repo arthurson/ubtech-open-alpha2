@@ -350,7 +350,7 @@ public final class AudioCenter {
      *  one) so a future change to one playback path can't accidentally affect the
      *  other. Stops whatever local music track was previously playing first.
      *
-     *  2026-08 更新: 在真正開始播放的那一刻 (onPreparedListener 裡面, 而不是
+     *  播歌時動作要不停郁到播完：在真正開始播放的那一刻 (onPreparedListener 裡面, 而不是
      *  prepareAsync() 的 request 一發出就做) 順便啟動
      *  startMusicFillerActionLoop() - 用戶要求「播歌時要不停動, 直到整首歌播
      *  完」, 見那個 method 的 javadoc。刻意放在 onPrepared 裡面 (真正 start()
@@ -477,7 +477,7 @@ public final class AudioCenter {
         }
     }
 
-    // 2026-08 新增: FM/網路電台播放 (經由 Radio Browser API, radio-browser.info,
+    // FM/網路電台播放 (經由 Radio Browser API, radio-browser.info,
     // 動態搜尋全世界公開電台 - 見 searchRadioStations()/resolveRadioStation() 的
     // javadoc) - 獨立一個 field/一套 method, 不和 currentMusicPlayer (本地檔案)
     // 共用, 理由和 currentMusicPlayer 不和 currentRingtonePlayer 共用一樣: 三種播放
@@ -604,21 +604,17 @@ public final class AudioCenter {
      *  API key, 資料來自電台自己申報給這個公開 directory 的串流位址 (不是擷取
      *  受保護內容那種), 詳見官方文件 docs.radio-browser.info。
      *
-     *  參數選擇 (2026-08 更新, 用戶回報「電台... 只選地方選電台也出現問題,
-     *  和格式無關」之後查 logcat 確認、加強):
+     *  參數選擇：
      *  - order=votes&reverse=true: 最多人投好的電台排在前面, 有助於過濾掉死台/垃圾台
      *  - hidebroken=true: 不顯示 Radio Browser 定期健康檢查已知播不了的台
      *  - codec=MP3: 只要 MP3 - Android 5.1 的 MediaPlayer 對 MP3 支援最穩定,
      *    某些台用的 codec (AAC+ 變種、OGG 等) 在這個 API level 未必個個都播得了
      *  - is_https=false: 只要串流位址本身是 http (不是 https) 的台 - 這個才是
-     *    用戶回報問題的真正根源 (見下面 "真正根源" 段落), 和選哪個地方/哪個
+     *    真正根源 (見下), 和選哪個地方/哪個
      *    電台無關, 每一次 search_radio/play_radio call 都是同一個 exception。
      *
-     *  真正根源 (2026-08 用 logcat 確認): 之前用戶回報「收音機要驗證, 用不了」
-     *  以為是播放格式問題所以加了 codec=MP3, 但現在憑實際 logcat 看到的
-     *  exception 是 java.security.cert.CertPathValidatorException: Trust
-     *  anchor for certification path not found - 這是 Android 5.1 (2015 年
-     *  出廠) 的系統 CA store 沒有收錄現代 CA/certificate chain, 而且 Android 5.1
+     *  根源 (logcat: java.security.cert.CertPathValidatorException: Trust
+     *  anchor for certification path not found)：Android 5.1 (2015 年出廠) 的系統 CA store 沒有收錄現代 CA/certificate chain, 而且 Android 5.1
      *  無法 OTA 更新系統 CA store, 所以連 https 握手都過不了, 完全和選哪個電台
      *  無關: (1) 這個 API 本身 (RADIO_BROWSER_API_HOST) 已經改用 http 避開了
      *  問題; (2) 但 station 的 "url_resolved" 播放位址本身也可能是 https,
@@ -739,7 +735,7 @@ public final class AudioCenter {
         }, "XiaozhiAutoRandomAction").start();
     }
 
-    /** 2026-08 新增: 本地音樂 tab 的拖放上傳功能 - 瀏覽器把檔案內容原封不動 POST
+    /** 本地音樂 tab 的拖放上傳功能 - 瀏覽器把檔案內容原封不動 POST
      *  到這個 endpoint (?name=<原本檔名>), 寫入 LOCAL_MUSIC_DIR。檔名只做
      *  sanitizeUploadFilename() (去掉路徑分隔符/上層目錄嘗試), 不做內容檢查
      *  (例如是否真的是一個有效的音訊檔) - 沿用 listLocalMusicFiles() 一致的原則:
@@ -790,7 +786,7 @@ public final class AudioCenter {
      *  "../"/"/" 這類路徑成分), 再去掉頭尾的空白, 保證寫入 LOCAL_MUSIC_DIR
      *  的結果一定在這個資料夾裡面, 不會因為用戶 (或惡意請求) 在檔名中夾帶
      *  路徑分隔符而寫到第二個資料夾度。
-     *  2026-09-09：先將 Windows 式反斜線轉正斜線——Linux 上 getName() 唔識剝
+     *  先將 Windows 式反斜線轉正斜線——Linux 上 getName() 唔識剝
      *  "a\b"，唔轉會成個 "a\b" 當檔名（寫唔出事但怪；轉咗取最後一截先啱）。*/
     private static String sanitizeUploadFilename(String rawName) {
         String base = new java.io.File(rawName.trim().replace('\\', '/')).getName();
@@ -823,9 +819,8 @@ public final class AudioCenter {
         for (java.io.File f : listLocalMusicFiles()) {
             if (!first) sb.append(",");
             first = false;
-            // 2026-08 新增 sizeBytes - 供音樂 tab 的檔案清單顯示檔案大小用,
-            // 舊有的語音/小智呼叫路徑 (resolveLocalMusicFile 只看 "name")
-            // 不受這個新加欄位影響, 純粹多加一個 key。
+            // sizeBytes 供音樂 tab 檔案清單顯示大小；舊有語音/小智呼叫路徑
+            // (resolveLocalMusicFile 只看 "name") 不受影響，純多一個 key。
             sb.append("{\"name\":\"").append(MainActivity.jsonSafe(f.getName())).append("\",")
                     .append("\"sizeBytes\":").append(f.length()).append("}");
         }
@@ -849,10 +844,8 @@ public final class AudioCenter {
         return HttpServer.ApiResponse.ok("{\"ok\":true}");
     }
 
-    // 2026-08 新增: 供瀏覽器音樂 tab 用的播放狀態/進度/音量 endpoint -
-    // 之前這一套 local_music 純粹供小智語音/AI tool call 使用, 進度
-    // 條 UI 用不到。這幾個 endpoint 沒有改動任何播放邏輯本身, 只是供前端
-    // 讀/寫 currentMusicPlayer 已有的狀態。
+    // 供瀏覽器音樂 tab 用的播放狀態/進度/音量 endpoint - 純讀/寫
+    // currentMusicPlayer 已有狀態，唔改播放邏輯。
     public HttpServer.ApiResponse localMusicStatus() {
         synchronized (this) {
             android.media.MediaPlayer mp = currentMusicPlayer;
@@ -917,8 +910,7 @@ public final class AudioCenter {
     // -- Media volume: STREAM_MUSIC, same stream the +/- gesture buttons and
     // the walkie-talkie/TTS playback all use (see MainActivity
     // registerGestureController()/startVolumeRepeat()) - so this slider and
-    // the physical +/- pads stay in sync with each other. (2026-09 dispatcher
-    // Phase 1 第四刀由 handleApi 搬入；經 appContext 攞同一個 service。)
+    // the physical +/- pads stay in sync with each other.
     public HttpServer.ApiResponse systemVolumeGet() {
         AudioManager audioManager =
                 (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
@@ -942,7 +934,7 @@ public final class AudioCenter {
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, vol, 0);
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"volume\":" + vol + ",\"max\":" + max + "}");
     }
-    // 2026-08 v2 新增: audio spectrum - 回傳最近一次 FFT 算出的頻譜
+    // audio spectrum - 回傳最近一次 FFT 算出的頻譜
     // (MUSIC_SPECTRUM_BANDS 條, 每條 0-255), 前端 ~100ms 輪詢一次畫 bar。
     // 沒播歌/Visualizer 建不起來就全部回傳 0。
     public HttpServer.ApiResponse localMusicSpectrum() {
@@ -957,10 +949,8 @@ public final class AudioCenter {
         return HttpServer.ApiResponse.ok(sbSpec.toString());
     }
 
-    // 2026-08 v2 新增: 真・暫停/恢復 - MediaPlayer.pause() 之後個播放位置
-    // 一直記住, 之後 start() 就從那裡繼續, 不用從頭播放。之前前端用
-    // "stop 當 pause" 的變通法, 恢復時整首歌從頭來, 用戶投訴過這一點。
-    // 注意: pause/resume 都不會動到 musicFillerActionLoop - 暫停期間那個 loop
+    // 真・暫停/恢復 - MediaPlayer.pause() 之後播放位置一直記住, 之後 start()
+    // 就從那裡繼續, 不用從頭播放。注意: pause/resume 都不會動到 musicFillerActionLoop - 暫停期間那個 loop
     // 仍在執行 (triggerRandomFillerAction() 有它自己「沒在播就不動」的
     // 判斷), 沿用原本播歌期間的行為。
     public HttpServer.ApiResponse localMusicPause() {
@@ -993,7 +983,7 @@ public final class AudioCenter {
         return HttpServer.ApiResponse.ok("{\"ok\":true}");
     }
 
-    // 2026-08 新增: Equalizer presets - 用返 android.media.audiofx.Equalizer
+    // Equalizer presets - 用返 android.media.audiofx.Equalizer
     // 自己的 preset 清單 (由裝置/廠商決定有多少個、叫什麼名, 例如 "Normal"、
     // "Classical"、"Rock" 等, 不是這個 app 自己定義的一套), 保證和這台機器
     // 實際安裝的 audio effect engine 一致, 不會出現選了個 UI 名但
@@ -1047,10 +1037,7 @@ public final class AudioCenter {
         return HttpServer.ApiResponse.ok("{\"ok\":true}");
     }
 
-    // 2026-08 新增: 「播歌隨機動作」開關 - 用戶要求可以自己開關, 之前呢個
-    // 行為一直都是跟著有沒有正在播歌自動開/關, 沒有獨立開關按鈕。預設 true
-    // (和 isMusicFillerActionEnabled() 尚未讀過設定時的預設值一致, 保持之前
-    // 行為)。
+    // 「播歌隨機動作」開關 - 預設 true。
     public HttpServer.ApiResponse fillerActionGet() {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":"
                 + isMusicFillerActionEnabled() + "}");
@@ -1115,7 +1102,7 @@ public final class AudioCenter {
         String url = ApiValidator.require(query, "url");
         String nameHint = ApiValidator.optionalNullable(query, "name");
         try {
-            // 2026-08 新增: 供前端直連 radio-browser.info fallback 用 — 瀏覽器自己
+            // 供前端直連 radio-browser.info fallback 用 — 瀏覽器自己
             // fetch 完搜尋結果 (繞過機械人本身 DNS/無外網問題看列表), 再將選中台的
             // url_resolved 直接送來此 endpoint 播放, 不再經 resolveRadioStation()
             // 重新打一次 Radio Browser API (那步在機械人無外網時必定失敗)。
@@ -1149,8 +1136,8 @@ public final class AudioCenter {
                 + MainActivity.jsonSafe(currentName == null ? "" : currentName) + "\"}");
     }
 
-    // -- MCP tools (XiaozhiBridge callTool switch 轉調；2026-09 MCP 收斂 Phase 2,
-    // case 本體逐字搬入，isError＋resultText 經 SonarCenter.McpResult 帶返出去。
+    // -- MCP tools (XiaozhiBridge callTool switch 轉調；
+    // isError＋resultText 經 SonarCenter.McpResult 帶返出去。
     // self.media.search_radio/play_radio 底層的 searchRadioStations()/
     // resolveRadioStation() 拋出的 IOException/JSONException 保持原樣拋出 -
     // 沿用原本 callTool() 外層 try/catch (Exception e) 接住的做法, 這裡不吞。) --

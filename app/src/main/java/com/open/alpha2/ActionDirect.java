@@ -13,13 +13,6 @@ import java.util.List;
 
 /**
  * 內建動作直驅：actionInfo.txt + UbxPlayer。
- *
- * 2026-09 由 MainActivity 抽出 (拆 god object 第二刀)：動作檔尋址、
- * 清單/播放/停止/回位原本全部係 MainActivity 私有成員，搬過嚟邏輯不變。
- * 和 ChestQuery 一樣，UbxPlayer 由 MainActivity 傳入共用同一個實例
- * (servo 讀寫、stopVoice、ubx/* response 仲喺嗰邊直接用緊)；胸串口經
- * appContext 攞 HardwareDirectManager。JSON 回應繼續用
- * MainActivity.jsonSafe 組，保持字串形狀一致。
  */
 public final class ActionDirect {
     private static final String TAG = "ActionDirect";
@@ -64,8 +57,7 @@ public final class ActionDirect {
         List<String[]> out = new ArrayList<>();
         try {
             java.io.File f = new java.io.File(ACTION_INFO);
-            // 2026-09-09：先驗大細（唔存在/空/超過 1MB 直接當空表；
-            // 之前按 f.length() 配 array，大檔即 OOM）。
+            // 先驗大細（唔存在/空/超過 1MB 直接當空表）。
             long flen = f.length();
             if (!f.isFile() || flen <= 0 || flen > 1024L * 1024L) {
                 Log.w(TAG, "loadActionInfo skip unusual file len=" + flen);
@@ -81,9 +73,7 @@ public final class ActionDirect {
                     if (n < 0) break;
                     off += n;
                 }
-                // 2026-09-09：用實際讀到嘅 bytes（之前成個 array 計埋尾零，
-                // 短讀會有 NUL 混入字串；另 UTF-8 strict 掂唔到先 fallback GBK，
-                // 之前寫死 GBK，UTF-8 檔中文亂碼）。
+                // 用實際讀到嘅 bytes（短讀會有 NUL 混入；UTF-8 strict 唔得先 fallback GBK）。
                 String text = decodeActionInfo(data, off);
                 for (String line : text.split("\n")) {
                 line = line.trim();
@@ -201,8 +191,7 @@ public final class ActionDirect {
     }
 
     /** 动作名/ID 解析：fileId > nameEn > nameCn，另支持同目錄 xxx.ubx。
-     *  2026-09-09：帶 / 嘅路徑只准 /sdcard/actions 內 .ubx（canonical 鎖死；
-     *  之前任意路徑 isFile 即回，可探全機檔案）。 */
+     *  帶 / 嘅路徑只准 /sdcard/actions 內 .ubx（canonical 鎖死）。 */
     private java.io.File resolveActionFile(String name) {
         if (name == null) return null;
         String n = name.trim();
@@ -321,10 +310,7 @@ public final class ActionDirect {
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
 
-    // -- MCP tools (XiaozhiBridge callTool switch 轉調；2026-09 MCP 收斂 Phase 2,
-    // case 本體逐字搬入，isError＋resultText 經 SonarCenter.McpResult 帶返出去 -
-    // 跟 self.sensors.* 那次抽取 (見 SonarCenter.java) 同一種做法, McpResult
-    // 本身唔屬於任何特定 controller, 純粹掛喺 SonarCenter 底下, 呢度直接沿用) --
+    // -- MCP tools (XiaozhiBridge callTool switch 轉調) --
 
     /** self.robot.list_actions 本體 (XiaozhiBridge 轉調)。純讀, 唔掂硬件。 */
     public SonarCenter.McpResult mcpListActions() {
@@ -336,12 +322,7 @@ public final class ActionDirect {
     }
 
     /** self.robot.play_action 本體 (XiaozhiBridge 轉調)。
-     *  2026-08 修正: 小智傳過來的是人類語言的動作名 (中文/英文, 不再是要它自己記住
-     *  的 id, 見 buildMcpToolsList() 的 self.robot.play_action description
-     *  comment) - 這裡做 fuzzy match 找出真正對應機身檔案的 id, 再傳給
-     *  action_PlayActionName()。找不到就直接告訴 LLM 哪個名找不到, 讓它有機會
-     *  呼叫 self.robot.list_actions 再試, 而不是盲目把 LLM 編的名直接傳給 AIDL
-     *  (會撞回 "raise_left_hand" 那種開不了檔案的老問題)。 */
+     *  小智傳過來的是人類語言的動作名 (中文/英文)，這裡做 fuzzy match 找出真正對應機身檔案的 id。 */
     public SonarCenter.McpResult mcpPlayAction(org.json.JSONObject arguments) {
         String actionName = arguments.optString("name", "");
         if (actionName.isEmpty()) {

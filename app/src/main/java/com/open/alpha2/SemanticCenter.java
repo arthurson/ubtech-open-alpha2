@@ -5,14 +5,6 @@ import java.util.Map;
 
 /**
  * 本地語意配對膠水：中英 matcher 二揀一 + TTS/動作執行。
- *
- * 2026-09 由 MainActivity 抽出 (拆 god object)：handleSemanticMatch、
- * looksChinese、toZhResult 原本全部係 MainActivity 私有成員，搬過嚟邏輯不改。
- * Matcher 實例由 MainActivity 起好傳入 (Vosk 都要用同一份)；播動作經
- * ActionDirect，讀答案經 TtsCenter。 speech/semantic_simulate endpoint
- * 經呢度一次驗晒成條鏈。
- * 2026-09 dispatcher Phase 1 第六刀加：speech/semantic_simulate response
- * (semanticSimulateResponse) 搬入。
  */
 public final class SemanticCenter {
 
@@ -37,7 +29,7 @@ public final class SemanticCenter {
     }
 
     /** 判斷一句輸入文字是否應該用中文 matcher 處理: 有任何 CJK 統一表意文字 (漢字)
-     *  就當中文, 完全沒有就當英文。2026-08 特意選這個做法, 不依靠 speech/set_asr_engine
+     *  就當中文, 完全沒有就當英文。不依靠 speech/set_asr_engine
      *  那個手動語言設定, 因為 iFlytek 引擎本身可能自動偵測用戶說的是什麼語言, 只看辨識
      *  出來的文字內容本身最可靠。中英文夾雜的句子 (例如 "跳個 dance") 會因為有漢字而
      *  當中文 - 這是刻意的簡化, 不追求完美的語言偵測, 對這個用途已經夠準確。 */
@@ -91,7 +83,7 @@ public final class SemanticCenter {
                             + "\"actionId\":\"" + MainActivity.jsonSafe(result.actionId) + "\"}");
         }
 
-        // 2026-09 更新: 機身已無 iFlytek/Nuance (無 alpha2services),
+        // 機身已無 iFlytek/Nuance (無 alpha2services),
         // robot.speech_startTTS() 只會回 NOT_INIT 全程靜音。語意配對答案改行
         // Android 內置 TTS (同 speech/tts engine=android 分支同一部機), 依答案
         // 語言揀 locale。嘴 LED 熄燈靠 Android TTS 個 UtteranceProgressListener
@@ -119,7 +111,7 @@ public final class SemanticCenter {
                 }
                 String actionId = result.actionId;
                 if (actionId != null && actionId.startsWith("__RANDOM_CATEGORY__")) {
-                    // 2026-08 新增: 用戶說到分類名 (例如「跳舞」/"Dance for me") 但沒有
+                    // 用戶說到分類名 (例如「跳舞」/"Dance for me") 但沒有
                     // 說出具體是哪個動作 - 在 202 動作清單的對應分類 (例如
                     // DANCE_KIDS/YOGA_ANY) 裡面隨機選一個。和下面 "__RANDOM__"
                     // (完全不限分類, 202 個隨便選) 不同, 這是分類限定的隨機。中英文
@@ -142,7 +134,7 @@ public final class SemanticCenter {
         return result;
     }
 
-    // 2026-08 新增: "打字當作自己說了這句" - 直接把輸入文字當成 iFlytek
+    // "打字當作自己說了這句" - 直接把輸入文字當成 iFlytek
     // 引擎已經辨識完的結果, 送去 handleSemanticMatch() 做 1000 條
     // 問法配對 (中英文各 1000 條, 依輸入文字有沒有漢字自動判斷用哪份 - 見
     // looksChinese()), 命中就立即執行悠聊原本的「TTS200ms動作」流程。
@@ -155,10 +147,9 @@ public final class SemanticCenter {
     // operation/answer/actionId), 不用等 WebSocket event - 方便對話
     // 界面直接顯示配對結果, 不用一直等 EventBus。
     //
-    // 2026-08 新增: match() 現在找不到問法也會回傳一個「聽不懂」的
-    // fallback 回應 (不再是 null), 所以 matched:false 分支現在只
-    // 剩返「輸入係空白字串」呢種 edge case 先會行到。
-    // (2026-09 dispatcher Phase 1 第六刀由 handleApi speech/semantic_simulate 搬入。)
+    // match() 找不到問法會回傳一個「聽不懂」的
+    // fallback 回應 (不再是 null), 所以 matched:false 分支只
+    // 剩「輸入係空白字串」呢種 edge case 先會行到。
     public HttpServer.ApiResponse semanticSimulateResponse(Map<String, String> query) {
         String simText = ApiValidator.require(query, "text");
         SemanticMatcherZh.MatchResult simResult = handleSemanticMatch(simText, false);

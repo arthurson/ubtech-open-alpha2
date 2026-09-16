@@ -1,5 +1,5 @@
 // Open Alpha2 — client logic (app-servo.js)
-// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: 媒體音量、servo grid (共用 buildServoGridInto())、聲納。
+// 內容: 媒體音量、servo grid (共用 buildServoGridInto())、聲納。
 // 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
 // <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
 
@@ -165,14 +165,8 @@ function servoReadAllAngles() {
   });
 }
 
-/** 2026-08 修正: 用戶要求「全部回到原位」唔再係逐粒 servo 拉去佢個 calibration
- *  表嘅 home 度數 (之前呢個做法), 改為播放「蹲下站起」呢個內建動作 (id 見
- *  STOP_RECOVERY_ACTION_ID_HINT 底下嘅 comment, 同 MainActivity.java 嘅
- *  STOP_RECOVERY_ACTION_ID 呼應) - 用返 action/play, 唔再逐粒 servo/one。UI
- *  sliders 淨係做返視覺提示噉將顯示值歸返做 home 度數 (方便用戶睇到「已經
- *  reset 咗」), 唔再另外逐粒 send servo/one - 實際擺位由播放緊嘅動作本身
- *  決定, sliders 嘅顯示值同動作播完之後嘅真實角度可能唔完全一致, 但呢個
- *  card 一路都純粹係手動微調用途, 唔係位置嘅 single source of truth。 */
+/** 「全部回到原位」直接寫入原廠角度 (servoAll)，sliders 顯示值歸 home；實際擺位以寫入為準，
+ *  呢個 card 純手動微調，唔係位置 single source of truth。 */
 // STOP_RECOVERY_ACTION_ID_HINT: 「蹲下站起」(id 1510818174706) - 同
 // MainActivity.java 嘅 STOP_RECOVERY_ACTION_ID 一致, 兩處各自維護一份常量
 // (前端 JS 同後端 Java 冇共用常量嘅機制), 改嗰陣要兩邊一齊改。
@@ -233,17 +227,13 @@ function toggleSonar() {
   return Alpha2Api.servoSonar( { distance: distance });
 }
 
-// 2026-08-15 更新: 真機已確認 cmd=72 開關生效, PIR 觸發正常 (見
-// RobotEventReceiver/MainActivity 嘅 comment)。撳 toggle 就送出去, 冇 optimistic
-// UI 假設一定成功 - 結果淨係睇 API response 嘅 ok/error, alpha2PirIndicator 本身要等
-// "alpha2_pir_state" WebSocket event 先會轉燈色 (見 app-log.js/onAlpha2PirState())。
+// 真機已確認 cmd=72 開關生效，PIR 觸發正常。撳 toggle 即送；結果睇 API response ok/error，indicator 等 "alpha2_pir_state" WS event 先轉燈色。
 function alpha2SetPir() {
   const on = document.getElementById("alpha2Pir").checked;
   return Alpha2Api.pirSet({on: on});
 }
 
-// 2026-08-15 新增: 獨立於 alpha2SetPir() 感應器硬體開關本身 - 純粹開/關「偵測到人
-// 就閃紅燈/響鈴」這個警示反應, 對應 MainActivity#setPirAlertEnabledAlpha2()。
+// 獨立於 alpha2SetPir() 硬體開關 — 純開/關「偵測到人就閃紅燈/響鈴」警示反應，對應 MainActivity#setPirAlertEnabledAlpha2()。
 function alpha2SetPirAlertEnabled() {
   const on = document.getElementById("alpha2PirAlertEnabled").checked;
   return Alpha2Api.pirAlertEnabled( { on: on });
@@ -295,16 +285,13 @@ function buildAdvTuner() {
   });
   grid.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   grid.addEventListener('selectstart', function(e){ e.preventDefault(); });
-  // 2026-09-06 晚：init 格留 "-"（未知），唔扮計出嚟嘅 0——舊版開頁即填
-  // "0 (即時)"，加埋 stale flag 導致出廠 trim 被計出嚟嘅 0 碌走，已出事。
+  // init 格留 "-"（未知），唔填計出嚟嘅 0 — 填 0 會碌走出廠 trim。
   advTrimScanned = {};
   // 版本標記：驗瀏覽器有無食舊 JS（見唔到呢行即係 cache 緊舊版，做 Ctrl+F5）。
   const statusEl = document.getElementById("advTunerStatus");
   if (statusEl) statusEl.textContent = t("servo_tuner_ready", { v: "0906l" });
 }
-// 2026-09-06 深夜加：校准掣（官方「校准」同款）——將 20 格有效 trim 順序寫入
-// chest EEPROM（掉電保持）。格內無數／未掃描過嗰粒自動 skip 並報告；
-// 每粒附帶送多次本身角度（time=100，本身已喺位，唔會郁）。
+// 校准掣（官方「校准」同款）——將 20 格有效 trim 順序寫入 chest EEPROM（掉電保持）。格內無數／未掃描 skip 並報告；每粒附帶送本身角度（time=100，已喺位唔會郁）。
 function advCalibrateAll() {
   const statusEl = document.getElementById("advTunerStatus");
   const jobs = [];
@@ -367,7 +354,7 @@ document.addEventListener('mouseleave', function(e){ if(e.target && e.target.clo
 function advServoTime() {
   return 500;
 }
-// 2026-09-06: offset 雙來源（同官方 tuner 一致，官方角:偏 = 1:3）。
+// offset 雙來源（同官方 tuner 一致，角:偏 = 1:3）。
 // - 即時值：格內現值 + angle變化×3（掃返嚟嘅 trim 做底：-33 再 +1 即 -30）。
 //   格內無數（-/讀失敗）先至用 3×(angle−home) 起步。
 // - 實讀值：掃描經 cmd13 讀 chest 存住的 trim 原值。寫入（cmd05）唔改 chest
@@ -412,9 +399,7 @@ function advNudgeOff(id, deltaAngle) {
   el.textContent = advFmtOff(cur + deltaAngle * 3) + t("servo_tuner_live_suffix");
 }
 function advTunerSend(id, timeMs) {
-  // 2026-09-06 晚（跟足官方 ServoCalibration）：加減/輸入格 Enter 一律淨送
-  // 角度 cmd05（Enter 500ms glide，加減 100ms 貼手跟）。trim 只經「校准」掣
-  // 成組寫入，呢度永不掂 EEPROM。
+  // 加減/輸入格 Enter 一律淨送角度 cmd05（Enter 500ms，加減 100ms）。trim 只經「校准」掣成組寫入，呢度唔掂 EEPROM。
   if (timeMs === undefined || timeMs === null) timeMs = advServoTime();
   const inp = document.getElementById("advServoVal_" + id);
   let v = parseInt(inp.value, 10);
@@ -445,8 +430,6 @@ function advTunerDec(id) {
   inp.value = v;
   return advTunerSend(id, 100);
 }
-// 2026-09: advTunerRead (單粒 trim 讀) 已刪 (live 路徑係 advTunerReadAll
-// 一次過掃晒；單粒版無 UI 入口)。
 function advTunerReadAll() {
   const statusEl = document.getElementById("advTunerStatus");
   statusEl.textContent = t("servo_tuner_read_all");
@@ -472,11 +455,7 @@ function advTunerReadAll() {
   }).catch(function(e){ statusEl.textContent = t("servo_tuner_read_err", { e: e.message }); });
 }
 function advTunerReset() {
-  // 2026-09-06: 復位 = 成組返 home，鬱完自動重掃 trim（chest 存值唔受郁角度
-  // 影響，掃返嚟先對得上）。2026-09-06 晚：取消確認框（用戶要求）。
-  // 2026-09-06 深夜修：格設「…」等掃，唔再即填計出嚟嘅數；兼清 scanned 旗——
-  // 舊版即填 0 加 stale 旗，之後 Enter/存偏差會將計出嚟嘅 0 寫入 EEPROM
-  // 碌走出廠 trim（已出事，多粒中招）。
+  // 復位 = 成組返 home，鬱完自動重掃 trim（chest 存值唔受郁角度影響）。格設「…」等掃，唔填計出嚟嘅數；兼清 scanned 旗 — 填 0 會寫入 EEPROM 碌走出廠 trim。
   const homes = [];
   for (let i = 1; i <= 20; i++) {
     const cal = SERVO_CALIBRATION[i];
@@ -501,8 +480,7 @@ function advTunerReset() {
   });
 }
 function _advPerformBackupNow() {
-  // 2026-09-06 晚改：淨備份 offsets（角度輸入格係即時目標，永遠唔會變，
-  // 寫落 file 無用）。讀失敗記 null；有效性經 advTrimScanned 判，唔再聞格仔字。
+  // 淨備份 offsets（角度格係即時目標，寫落 file 無用）。讀失敗記 null；有效性經 advTrimScanned 判。
   const offsets = {};
   for (let i = 1; i <= 20; i++) {
     if (!advTrimScanned[i]) { offsets[i] = null; continue; }
@@ -562,7 +540,7 @@ function advImport(input) {
   reader.onload = function(e) {
     try {
       const data = JSON.parse(e.target.result);
-      // 2026-09-06 晚改：淨還原 offsets（v1 舊檔有 angles 都唔理，角度格唔郁）。
+      // 淨還原 offsets（舊檔有 angles 都唔理，角度格唔郁）。
       let offsets = null;
       if (data && typeof data === "object" && data.offsets) {
         offsets = data.offsets;

@@ -136,12 +136,8 @@ public class HttpServer implements Runnable {
     private final CountDownLatch bindLatch = new CountDownLatch(1);
 
     /**
-     * 2026-08: TLS support (self-signed cert, see the now-deleted TlsSupport.java/
-     * SelfSignedCert.java) was removed outright rather than kept as a dead optional
-     * path - browsers on this device repeatedly rejected new TLS connections after the
-     * very first page load ("SSLHandshakeException: certificate unknown"), and the
-     * walkie-talkie mic feature that TLS existed for is permanently disabled in the UI
-     * anyway (see app-mic.js). This is now the only constructor - plain HTTP only.
+     * TLS 已移除，只剩 plain HTTP。之前瀏覽器對自簽 cert 反覆拒絕，且 walkie-talkie
+     * mic 在 UI 已永久關閉，TLS 唔再需要。This is now the only constructor - plain HTTP only.
      */
     public HttpServer(AssetManager assets, ApiHandler apiHandler, StreamHandler streamHandler,
             RawUploadHandler rawUploadHandler) {
@@ -191,16 +187,6 @@ public class HttpServer implements Runnable {
             bindLatch.countDown();
             while (running) {
                 final Socket client = serverSocket.accept();
-                // Capture the remote address HERE, immediately after accept() and
-                // before any TLS handshake happens - not inside handleClient()'s catch
-                // block. logcat_2026-07-30_05-28-17.txt showed that approach printing
-                // "remote=null" for every single SSLHandshakeException: once a TLS
-                // handshake fails, the underlying socket has typically already been
-                // torn down by the SSL layer by the time the exception propagates back
-                // out, and Socket.getRemoteSocketAddress() returns null for a closed
-                // socket per its own contract - so logging it after the fact was
-                // useless for exactly the failures we most wanted to identify. Right
-                // after accept(), the socket is freshly connected and this is reliable.
                 final String remoteAddr = String.valueOf(client.getRemoteSocketAddress());
                 pool.execute(new Runnable() {
                     @Override
@@ -221,40 +207,17 @@ public class HttpServer implements Runnable {
         try {
             socket.setTcpNoDelay(true);
             // Keep-alive loop: serve as many requests as the client sends on this same
-            // TCP/TLS connection instead of closing after one. This matters a lot more
-            // here than on a plain-HTTP server: over TLS with a self-signed cert, every
-            // *new* connection needs its own TLS handshake, and a browser's "I accept
-            // this untrusted cert" decision from clicking through the initial "not
-            // private" warning does not reliably cover every subsequent background
-            // connection the same tab opens (fetch()/XHR pooling, the WebSocket
-            // upgrade, ...) - some browsers re-validate those and reject outright with
-            // no prompt at all (surfaces as SSLHandshakeException / "certificate_unknown"
-            // server-side, exactly what shows up in logcat as repeated "handleClient
-            // error" entries clustered around API calls). Reusing one already-accepted
-            // connection for as many requests as possible avoids needing those extra
-            // handshakes in the first place. Loop ends when the client sends "Connection:
+            // TCP connection instead of closing after one. Loop ends when the client sends "Connection:
             // close", disconnects, or a request can't be parsed.
             boolean keepAlive = true;
             while (keepAlive) {
                 keepAlive = handleOneRequest(socket);
             }
         } catch (Exception e) {
-            // SSLHandshakeException here ("certificate unknown" / "sslv3 alert
-            // certificate unknown") is expected background noise from any TLS client
-            // that opens a raw connection to this self-signed HTTPS server without
-            // ever accepting the "not private" warning first (e.g. a background
-            // reconnect attempt, a health-check/scanner tool, or a browser tab that
-            // was never manually clicked through) - see the HTTPS section in
-            // README.md. It is not a crash: the exception is fully caught here and
+            // The exception is fully caught here and
             // the socket is always closed in the finally block below regardless, so
-            // this does not leak threads or sockets even if it happens hundreds of
-            // times. remoteAddr is captured by the caller immediately after accept()
-            // (see run()) rather than here - by the time a TLS handshake failure
-            // reaches this catch block, the SSL layer has typically already torn the
-            // underlying socket down, and socket.getRemoteSocketAddress() reliably
-            // returns null for a closed socket at that point (confirmed from
-            // logcat_2026-07-30_05-28-17.txt: every single occurrence logged
-            // "remote=null" under the old approach, making that diagnostic useless).
+            // this does not leak threads or sockets. remoteAddr is captured by the caller immediately after accept()
+            // (see run()).
             Log.e(TAG, "handleClient error (remote=" + remoteAddr + ")", e);
         } finally {
             try {
@@ -264,8 +227,8 @@ public class HttpServer implements Runnable {
         }
     }
 
-    /** Serves exactly one HTTP request off an already-open (and, for TLS, already
-     *  handshaken) socket. Returns true if the connection should stay open for another
+    /** Serves exactly one HTTP request off an already-open
+     *  socket. Returns true if the connection should stay open for another
      *  request (keep-alive), false if it should be closed - either because the client
      *  asked for that (Connection: close, or an HTTP/1.0 request with no keep-alive
      *  header), a WebSocket upgrade/stream/upload response already owns or closed the
@@ -293,8 +256,7 @@ public class HttpServer implements Runnable {
 
         Map<String, String> headers = new HashMap<>();
         String line;
-        // 2026-09-09：header 上限（之前無限逐 byte 讀，Slowloris 一條連線
-        // 塞爆記憶體；瀏覽器正常 header 唔會超過 2KB/廿行）。
+        // header 上限 100 行。
         int headerLines = 0;
         while ((line = readHttpLine(rawIn, 8192)) != null && !line.isEmpty()) {
             if (++headerLines > 100) return false;
@@ -362,15 +324,9 @@ public class HttpServer implements Runnable {
                 // connection instead of trying to guess/recover.
                 return false;
             }
-            // 2026-08 新增: 之前這裡沒有上限, len 直接來自客戶端的 Content-Length 這個
-            // header, 一個惡意或者損壞的請求 (例如 Content-Length: 2000000000) 會讓
-            // `new byte[len]` 立刻拋 OutOfMemoryError —— OOM Error 不是 Exception,
-            // handleClient() 那個 catch (Exception e) 接不住, 這個 pool thread 會直接
-            // 死掉, connection 也不會 close。這個上限要夠大不能誤傷正常請求 (最大
-            // 的正常 body 是 /upload/audio 那種 walkie-talkie PCM chunk, 看
-            // AudioController/app-mic.js 都是幾十 KB 級別), 但要小於任何合理的單一
-            // request body, 32MB 留有幾百倍餘裕。
-            // 2026-09-09：胸固件上載得 256KB，俾 1MB（/upload/chest 專用上限；
+            // body 上限：len 來自客戶端 Content-Length，不設限會 OOM。正常 body
+            // 最大係 /upload/audio walkie-talkie PCM chunk (幾十 KB)，32MB 留有餘裕。
+            // 胸固件上載得 256KB，俾 1MB（/upload/chest 專用上限；
             // handleChestUpload 自己都會再驗一次）。
             final int MAX_BODY_BYTES = path.startsWith("/upload/chest") ? (1024 * 1024) : (32 * 1024 * 1024);
             if (len < 0 || len > MAX_BODY_BYTES) {
@@ -408,8 +364,7 @@ public class HttpServer implements Runnable {
         String body = new String(rawBody, StandardCharsets.UTF_8);
 
         if (path.startsWith("/api/")) {
-            // 2026-09-09：response body 只 log 頭 200 字（之前全量，ssid/uuid/
-            // vision token 會入 logcat）。
+            // response body 只 log 頭 200 字（ssid/uuid/vision token 唔入 logcat）。
             Log.i(TAG, "API request: " + method + " " + path + (queryString.isEmpty() ? "" : "?" + redactQuery(queryString)));
             ApiResponse resp;
             try {
@@ -436,7 +391,7 @@ public class HttpServer implements Runnable {
         if (path.equals("/") || path.isEmpty()) {
             path = "/index.html";
         }
-        // 2026-09-09：擋 ..（AssetManager 會唔會 normalize 未驗證，唔搏）。
+        // 擋 ..（AssetManager 會唔會 normalize 未驗證，唔搏）。
         if (path.contains("..")) {
             byte[] msg = "Not found".getBytes(StandardCharsets.UTF_8);
             writeResponse(out, 404, "text/plain; charset=utf-8", msg, keepAlive, true);
@@ -540,11 +495,10 @@ public class HttpServer implements Runnable {
 
     /**
      * Reads one CRLF- or LF-terminated line directly off the raw socket stream, one byte
-     * at a time, without any internal read-ahead buffering. Slower than BufferedReader but
-     * leaves the stream positioned exactly where the line ended - required so a following
-     * WebSocket upgrade sees the correct first frame byte. Returns null on EOF with no data
-     * read yet.
-     * 2026-09-09：加 maxChars（超長行截斷，唔係無限食記憶體）。
+     *  at a time, without any internal read-ahead buffering. Slower than BufferedReader but
+     *  leaves the stream positioned exactly where the line ended - required so a following
+     *  WebSocket upgrade sees the correct first frame byte. Returns null on EOF with no data
+     *  read yet.
      */
     private static String readHttpLine(InputStream in) throws IOException {
         return readHttpLine(in, Integer.MAX_VALUE);
@@ -606,7 +560,7 @@ public class HttpServer implements Runnable {
                     map.put(java.net.URLDecoder.decode(pair, "UTF-8"), "");
                 }
             } catch (Exception e) {
-                // 2026-09-09：之前靜默吞（爛參數唔知去咗邊），留一行 debug。
+                // 爛參數記一行 debug。
                 android.util.Log.d(TAG, "parseQuery dropped pair: " + pair);
             }
         }

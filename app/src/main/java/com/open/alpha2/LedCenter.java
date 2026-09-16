@@ -19,16 +19,6 @@ import java.util.Map;
 
 /**
  * LED 層：5-mic 頭/眼、嘴部、底層 JNI/serial 除錯端點。
- *
- * 2026-09 由 MainActivity 抽出 (拆 god object 第八刀)：5 個 endpoint
- * case body (led/head/set、led/eye/set、led/mouth/set、debug/jni/led、
- * debug/serial/send) + TTS 嘴燈 bracket + hex 解析，邏輯一字不改搬過嚟。
- * Pad 燈 (手勢用，物理先驗到)、wifi 燈 (要切 wifi 先驗到)、PIR/避障指示
- * 留喺 MainActivity —— 遠程驗唔到嘅唔郁。只需要 Context
- * (頭串口 ready check)；嘴燈／5-mic／JNI 本身全部 static 直驅。
- * 2026-09 dispatcher Phase 1 第二刀加：pir/set、pir/alert_enabled
- * 2 個 handleApi case body 搬入；小件拼盤加埋 PIR 事件接線
- * (registerAlpha2PirAlertListener，警示反應本身早已喺呢度)。
  */
 public final class LedCenter {
     private static final String TAG = "LedCenter";
@@ -43,30 +33,28 @@ public final class LedCenter {
         this.ringtoneCenter = ringtoneCenter;
     }
 
-    /** onDestroy 共用：停 pad LED worker（下面 shutdownNow 嗰段搬過嚟）。 */
+    /** onDestroy 共用：停 pad LED worker。 */
     public void shutdown() {
         padLedExecutor.shutdownNow();
     }
 
     // -- Pad (+/-) 實體鍵指示燈 -----------------------------------------------
     // 真機掃描確認: ledSetOn(14) = volume- 燈, ledSetOn(16) = volume+ 燈。
-    // 2026-09 A/B 驗證：firmware 唔會自亮，按住期間由 app 連發補燈，放手補 OFF；
+    // firmware 唔會自亮，按住期間由 app 連發補燈，放手補 OFF；
     // wifi 燈 (12/13) firmware 唔會自己著，繼續手動（三態：熄/紅/藍）。
-    // （舊註：1.1.7.3 .so 年代註解保留作 mapping 參考。）
     private static final int PAD_LED_INDEX_MINUS = 14;
     private static final int PAD_LED_INDEX_PLUS = 16;
     private static final long PAD_LED_INTERVAL_MS = 80;
-    // 2026-09：alpha2services 已移除，無人再搶 /dev/led_eye，重試只防偶發打唔開。
+    // alpha2services 已移除，無人再搶 /dev/led_eye，重試只防偶發打唔開。
     private static final int PAD_LED_OPEN_ATTEMPTS = 3;
     private final java.util.concurrent.ExecutorService padLedExecutor =
             java.util.concurrent.Executors.newSingleThreadExecutor();
 
-    /** 2026-09: onDestroy() 會 shutdownNow() 上面條 executor，但 wifi receiver
+    /** onDestroy() 會 shutdownNow() 上面條 executor，但 wifi receiver
      *  之前 postDelayed 咗嘅 runnable (1200ms) 仲會喺之後照開，嗰陣再排就撞上
-     *  RejectedExecutionException 炒喺 main thread (實機 logcat 見過)——app
+     *  RejectedExecutionException 炒喺 main thread——app
      *  收緊皮嗰陣掉咗個 LED 更新係正確行為，吞咗佢。
-     *  公開係因為 mute 鍵小智開關／mute LED 發送都借呢條單線程做背景執行
-     *  (沿用舊安排，唔另開 thread 打亂排序)。 */
+     *  公開係因為 mute 鍵小智開關／mute LED 發送都借呢條單線程做背景執行。 */
     public void postPadLed(Runnable r) {
         try {
             padLedExecutor.execute(r);
@@ -88,8 +76,7 @@ public final class LedCenter {
     }
 
     /**
-     * 2026-09 A/B 驗證結論：撳住 +/- firmware 唔會自亮 14/16（press-ON 刪除後實測
-     * 全暗；早前 suppressed build 見到著燈未能重現，不可依賴），所以按住期間繼續由
+     * 撳住 +/- firmware 唔會自亮 14/16，所以按住期間繼續由
      * app 主動點亮；放手後補 ledSetOFF 清場。單線程 worker，跑緊唔重入。
      */
     public void padLedUpdate() {
@@ -366,20 +353,18 @@ public final class LedCenter {
     }
 
     // -- Alpha2 PIR 警示反應 (LED+鈴聲) ----------------------------------------------
-    // 2026-08-15 新增: 監聽獨立的 "alpha2_pir_state" event, 用 Alpha2 backend
+    // 監聽獨立的 "alpha2_pir_state" event, 用 Alpha2 backend
     // 的 LED API 觸發 LED/鈴聲。
     //
-    // 實機已確認: PIR raw 事件 (chest cmd=-109, "PIR HUMON DETECT") 會正常觸發 -
+    // PIR raw 事件 (chest cmd=-109, "PIR HUMON DETECT") 會正常觸發 -
     // 這台機器底層 chest MCU 硬體本身能做 PIR。
     //
     // LED 部分: 眼/頭 5-mic LED 長亮紅燈 (setHeadEyeLedLong(1, 9)), 顏色代碼 1=紅,
     // 已在 "led/head/set" case 上面那段 comment 經實機確認過 (color: 1=紅 2=綠 3=藍
     // 4=黃 5=紫 6=青 7=白)。
     //
-    // 2026-08-15 實機測試 (PIR sample test) 確認: 這台機器頭板的 5-mic head/eye LED
-    // 對 PIR 警示反應是有效的 (眼/頭會亮紅燈), 不像之前 applyObstacleIndicator()/
-    // registerChestMuteKeyTestListener() 遇到的情況 - 兩者用的是不同
-    // AIDL 方法/參數組合, 不能直接假設「一個不行全部都不行」。所以 PIR 警示只
+    // 這台機器頭板的 5-mic head/eye LED
+    // 對 PIR 警示反應是有效的 (眼/頭會亮紅燈)。PIR 警示只
     // 走這一條路, 沒有再加 mouth LED breathing 做 fallback, 嘴部不用閃, 和鈴聲一起
     // 淨係眼/頭長著紅燈。
     private volatile boolean alpha2PirAlertActive = false;
@@ -413,8 +398,7 @@ public final class LedCenter {
         }
         alpha2PirAlertActive = triggered;
         // PIR 警示（獨立網頁「PIR 測試」開關 alpha2PirAlertEnabled 控制）直接單發
-        // setHeadEyeLedLong()/stop——抢灯的补发线程与 alpha2services 熄灯循环都已
-        // 移除，后到者胜，无需取消任何东西。
+        // setHeadEyeLedLong()/stop——後到者胜，無需取消任何东西。
         try {
             if (triggered) {
                 setHeadEyeLedLong(1, 9); // 1 = 紅 (red), 9 = 最光
@@ -423,13 +407,7 @@ public final class LedCenter {
                 DirectLedController.stopEye5Mic();
             }
         } catch (Throwable t) {
-            // 2026-08-15 更新: 實機已確認這台機器頭板的 5-mic head/eye LED 對 PIR
-            // 警示反應有效 (眼/頭會亮紅燈), 不像之前 applyObstacleIndicator()/
-            // registerChestMuteKeyTestListener() 遇到的情況 (header_ledSetHead5Mic/
-            // header_ledSetEye5Mic 全部 preset 都回 API_ERROR_FAILED) - 兩者用的是不同
-            // AIDL 方法/參數組合, 不能直接假設「一個不行全部都不行」。所以 PIR 警示只
-            // 走這一條路, 沒有再加 mouth LED breathing 做 fallback, 嘴部不用閃, 和鈴聲一起
-            // 淨係眼/頭長著紅燈。
+            // 5-mic head/eye LED 路徑失敗時記 warning（PIR 警示只走呢條路，唔加 mouth fallback）。
             Log.w(TAG, "applyAlpha2PirLedAndSound: 5-mic head/eye LED path failed", t);
         }
         if (triggered) {
@@ -439,8 +417,7 @@ public final class LedCenter {
         }
     }
 
-    // -- PIR 事件接線 (2026-09 小件拼盤由 MainActivity.registerAlpha2PirAlertListener
-    // 搬入；警示反應本體 applyAlpha2PirLedAndSound 早已喺呢度) --
+    // -- PIR 事件接線 --
     public void registerAlpha2PirAlertListener() {
         EventBus.get().subscribe(new EventBus.Listener() {
             @Override
@@ -478,7 +455,7 @@ public final class LedCenter {
     }
 
     // directChestReady() 內聯：經 appContext
-    // 唔使 Activity (同上面 headerReady() 一樣形狀；原 MainActivity 私有版 2026-09 刪)。
+    // 唔使 Activity (同上面 headerReady() 一樣形狀)。
     private boolean directChestReady() {
         try {
             return HardwareDirectManager.get(appContext).chest().isAvailable();
@@ -487,18 +464,16 @@ public final class LedCenter {
         }
     }
 
-    // 2026-08-15 更新: 真機已確認 cmd=72 開關生效, PIR 觸發正常 (見
-    // RobotEventReceiver/registerAlpha2PirAlertListener 的 comment)。
+    // 真機已確認 cmd=72 開關生效, PIR 觸發正常。
     public HttpServer.ApiResponse pirSetResponse(Map<String, String> query) {
         boolean enabled = ApiValidator.requireBoolean(query, "on");
         boolean sent = HardwareDirectManager.get(appContext).chest().setPirEnabled(enabled);
         return MainActivity.codeResponseReady(MainActivity.directCode(sent), directChestReady());
     }
 
-    /** 2026-08-15 新增: 獨立於 pir/set 呢個感應器硬件開關本身, 純粹控制
-     *  「偵測到人就閃紅燈/響鈴」這個警示反應要不要開。已在實機確認 PIR 事件
-     *  本身 (cmd=-109, "PIR HUMON DETECT") 會正常觸發 (見 RobotEventReceiver
-     *  的 CHEST_ACTION case 裡面 alpha2_pir_state 那段 comment) - 這個
+    /** 獨立於 pir/set 呢個感應器硬件開關本身, 純粹控制
+     *  「偵測到人就閃紅燈/響鈴」這個警示反應要不要開。已確認 PIR 事件
+     *  本身 (cmd=-109, "PIR HUMON DETECT") 會正常觸發 - 這個
      *  endpoint 就是讓前端選擇要不要對這個事件有反應。 */
     public HttpServer.ApiResponse pirAlertEnabledResponse(Map<String, String> query) {
         boolean enabled = ApiValidator.requireBoolean(query, "on");
@@ -508,18 +483,16 @@ public final class LedCenter {
 
     /** Same "long" (solid, always-on) LED effect as led/head/set & led/eye/set's
      *  preset=long, but callable directly server-side without an HTTP round-trip.
-     *  抢灯时代（alpha2services 内部熄灯循环持续覆写）的补发线程已随 APK 移除而删除，
      *  pure-direct 下单发即稳住。 */
     public void setHeadEyeLedLong(int color, int brightness) {
         DirectLedController.setHead5MicRaw(color, brightness, 31, 31, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
         DirectLedController.setEye5MicRaw(color, brightness, 255, 255, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
     }
 
-    /** 2026-08 新增: 這台機器 (head board / firmware 1.1.1.14) 的
+    /** 這台機器 (head board / firmware 1.1.1.14) 的
      *  header_ledSetHead5Mic/header_ledSetEye5Mic 實測全部 preset 都回傳
      *  API_ERROR_FAILED (bindReady:true, 也就是不是尚未 ready, 是機身真的不支援/
-     *  沒實作 - 看起來這個機頭不是 5-mic variant, 或這個 firmware 沒實作這兩個
-     *  AIDL 方法)。Mouth LED (MouthLedData, 直接 JNI 不經 AIDL) 則實測正常。
+     *  沒實作)。Mouth LED (MouthLedData, 直接 JNI 不經 AIDL) 則實測正常。
      *
      *  這個方法把 obstacle-triggered 的 LED 指示同時發到兩條路: 5-mic
      *  head/eye (setHeadEyeLedLong) 照舊保留 - 在支援的機/firmware 上會亮紫燈,
@@ -661,7 +634,7 @@ public final class LedCenter {
     }
 
     public HttpServer.ApiResponse debugJniLed(Map<String, String> query) {
-        // 2026-08-25 新增: 直接試 /dev/led_eye 這個 JNI driver 的各個 native
+        // 直接試 /dev/led_eye 這個 JNI driver 的各個 native
         // function - 這塊 5-mic 板上眼/頭/嘴部 LED 全部走這條路, 兩顆 pad 燈
         // 很可能也是同一個 driver 另一個 ioctl (例如尚未用過的 ledSetOn(i))。
         // func=on&i=N -> ledSetOn(N); func=eye/head&a1..a8 -> 對應 setter。
@@ -704,7 +677,7 @@ public final class LedCenter {
     }
 
     public HttpServer.ApiResponse debugSerialSend(Map<String, String> query) {
-        // 2026-08-25 新增: raw serial 發送測試端點, 用來反推音量鍵 LED 和
+        // raw serial 發送測試端點, 用來反推音量鍵 LED 和
         // 胸口 mute 鍵 LED 的控制指令 (headboard v1.1 上 alpha2services v1.0
         // 協議不合, 只要它一動作 MCU 就不再自動點燈, 要自己 app 補上)。port=head
         // 走 header_sendRawData (ttyS3), port=chest 走 chest_sendRawData
@@ -735,12 +708,10 @@ public final class LedCenter {
         return out;
     }
 
-    // -- MCP tools (XiaozhiBridge callTool switch 轉調；2026-09 MCP 收斂 Phase 2,
-    // case 本體逐字搬入，isError＋resultText 經 SonarCenter.McpResult 帶返出去) --
+    // -- MCP tools (XiaozhiBridge callTool switch 轉調) --
 
     /** self.robot.led_set_head 本體 (XiaozhiBridge 轉調)。
-     *  pure-direct: 经 JNI 直驱，单发即稳住（抢灯的 alpha2services 内部熄灯循环
-     *  已随 APK 移除而消失，补发线程一并删除）。 */
+     *  pure-direct: 经 JNI 直驱，单发即稳住。 */
     public SonarCenter.McpResult mcpLedSetHead(org.json.JSONObject arguments) {
         String preset = arguments.optString("preset", "long");
         UbxErrorCode.API_ERROR_CODE code;

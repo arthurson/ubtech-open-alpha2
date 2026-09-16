@@ -9,11 +9,7 @@ import java.util.Map;
 
 /**
  * 相機拍照層：單幀快照／存檔／資訊（串流走 /stream/camera，唔喺度）。
- *
- * 2026-09 由 MainActivity 抽出 (拆 god object)：camera/snapshot、
- * snapshot_save、take_photo_save、shutter_sound、info、fps、
- * supported_sizes、resolution 8 個 case body + waitForFrame，邏輯一字不改
- * 搬過嚟。硬件經傳入嘅同一個 CameraController；存檔廣播經 Context；
+ * 硬件經傳入嘅同一個 CameraController；存檔廣播經 Context；
  * 快門聲經 RingtoneCenter。
  */
 public final class CameraApi {
@@ -60,7 +56,7 @@ public final class CameraApi {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
                     + MainActivity.jsonSafe(started.error) + "\"}");
         }
-        // 2026-09-10: 等 AE/AF 收斂 + 對焦 + 鎖 AE 才取幀，避免「未 ready 就按 shutter」糊/暗/過曝
+        // 等 AE/AF 收斂 + 對焦 + 鎖 AE 才取幀，避免「未 ready 就按 shutter」糊/暗/過曝
         cameraController.waitForPreviewReady(2500);
         cameraController.triggerAutoFocusAndWait(2200);
         cameraController.lockAeAwbSync(700);
@@ -85,7 +81,7 @@ public final class CameraApi {
 
     public HttpServer.ApiResponse snapshotSave(Map<String, String> query) {
         // 齊 9 檔影相並存入 Android：可選 w/h，未提供則用當前 preview 解像度；存至 /sdcard/DCIM/Alpha2
-        // 2026-09-09：有俾就要跟 spec 範圍（之前負/巨大值直入 Camera）。
+        // 有俾就要跟 spec 範圍驗。
         Integer wOpt = ApiValidator.optionalIntegerRange(query, "w", 1, 4208);
         Integer hOpt = ApiValidator.optionalIntegerRange(query, "h", 1, 3120);
         int reqW = 0, reqH = 0;
@@ -158,7 +154,7 @@ public final class CameraApi {
         if (photo.error != null) {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"" + MainActivity.jsonSafe(photo.error) + "\"}");
         }
-        // 2026-09-10: 軟件變焦fallback（硬件不支援時，拍照亦需裁切放大）
+        // 軟件變焦 fallback（硬件唔支援時，拍照裁切放大）
         byte[] outJpeg = photo.jpeg;
         float z2 = cameraController.getZoom();
         if (z2 > 1.01f) {
@@ -203,7 +199,7 @@ public final class CameraApi {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"fps\":" + fpsStr + ",\"streaming\":" + cameraController.isStreaming() + "}");
     }
 
-    // 2026-09-10 新增: 數位變焦 x1-x5（硬件支援時映射到最接近 ratio，否則由前端 CSS / 拍照軟件裁切實現）
+    // 數位變焦 x1-x5（硬件支援時映射到最接近 ratio，否則前端 CSS / 軟件裁切）
     public HttpServer.ApiResponse zoom(Map<String, String> query) {
         // 支援兩種用法：無參數=查詢，帶 zoom=設定並回當前狀態
         String zoomStr = query != null ? query.get("zoom") : null;
@@ -267,7 +263,7 @@ public final class CameraApi {
     }
 
     public HttpServer.ApiResponse resolution(Map<String, String> query) {
-        // 2026-09-09：跟 spec（w 1-4208，h 1-3120）顯式驗；之前負/巨大值直入 Camera。
+        // 跟 spec（w 1-4208，h 1-3120）顯式驗。
         int w = ApiValidator.requireIntRange(query, "w", 1, 4208);
         int h = ApiValidator.requireIntRange(query, "h", 1, 3120);
         cameraController.setRequestedResolution(w, h);

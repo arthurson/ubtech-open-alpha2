@@ -22,22 +22,16 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Android 系統 TTS 層：引擎綁定、讀出、語言／引擎清單。
- *
- * 2026-09 由 MainActivity 抽出 (拆 god object 第九刀)：init、speak、
- * 語言表 (getVoices + legacy fallback)、引擎表、TTS 卡語言 pref、
- * 7 個 endpoint body，邏輯一字不改搬過嚟。两个刻意保留的耦合有原因：
- * - 要 Activity (唔係 Context)：legacy 語言查詢行 startActivityForResult；
- * - 要 VoskController (可 null)：讀緊嘢嗰陣 pause 咪防迴音，播完 resume。
  */
 public final class TtsCenter {
     private static final String TAG = "TtsCenter";
 
-    /** 2026-09 新增: TTS 卡揀緊嘅 Android 語言 BCP-47 tag (空=沿用引擎目前
+    /** TTS 卡揀緊嘅 Android 語言 BCP-47 tag (空=沿用引擎目前
      *  語言)。前端 setAndroidTtsLang() 同步寫入，對話管線 speakAndroidTts()
      *  優先用佢——一揀即時跟，唔使等。 */
     private static final String PREF_ANDROID_TTS_LANG = "android_tts_lang";
 
-    /** 2026-09 新增: TTS 卡揀緊嘅具體聲音 (TextToSpeech.Voice.getName()，空=
+    /** TTS 卡揀緊嘅具體聲音 (TextToSpeech.Voice.getName()，空=
      *  用引擎該語言預設聲)。Google TTS 每個語言有多把聲（男女／網絡／裝置），
      *  前端揀完語言再揀聲；呢個名綁死引擎＋語言，轉引擎／轉語言嗰陣一齊清
      *  （見 setTtsEngine/setTtsLang），唔好將舊聲套落新語言度。 */
@@ -569,7 +563,7 @@ public final class TtsCenter {
                 // no-op: the mouth LED is already started right before speak() is
                 // called, not here, so it lights up without waiting for this callback's
                 // round-trip.
-                // 2026-09: Vosk 聆聽緊就 pause 返，唔好將自己把聲認返入去無限迴音。
+                // Vosk 聆聽緊就 pause 返，唔好將自己把聲認返入去無限迴音。
                 // mic 照 hold 住（pause 唔放 recorder），播完 onDone  resume。
                 if (vosk != null) {
                     try {
@@ -614,9 +608,9 @@ public final class TtsCenter {
     }
 
     /**
-     * 2026-09 新增: 經 Android 內置 TTS 讀一句 (供語意配對答案等唔經 speech/tts
+     * 經 Android 內置 TTS 讀一句 (供語意配對答案等唔經 speech/tts
      * endpoint 的內部調用)。同 speech/tts engine=android 分支同一個語義:
-     * 2026-09 更新: locale 參數而家只係 fallback —— TTS 卡有明確選擇
+     * locale 參數而家只係 fallback —— TTS 卡有明確選擇
      * (PREF_ANDROID_TTS_LANG 非空) 就優先用卡嘅選擇，對話 TTS 即時跟卡走；
      * 卡留空 ("沿用引擎目前語言") 先用傳入嘅自動判斷值。
      * 嘗試切 locale (唔支援就記 warning 照用引擎現有語言讀, 唔靜音),
@@ -765,7 +759,7 @@ public final class TtsCenter {
                 "{\"ok\":true,\"engine\":\"" + MainActivity.jsonSafe(androidTtsEnginePkg) + "\"}");
     }
 
-    // 2026-09 新增: TTS 卡語言選擇嘅後端 pref (BCP-47 tag，空=沿用引擎
+    // TTS 卡語言選擇嘅後端 pref (BCP-47 tag，空=沿用引擎
     // 目前語言)。前端 setAndroidTtsLang() 同步寫入；對話管線
     // speakAndroidTts() 優先讀佢——一揀即時跟。
     public HttpServer.ApiResponse setTtsLang(Map<String, String> query) {
@@ -790,7 +784,7 @@ public final class TtsCenter {
                 "{\"ok\":true,\"lang\":\"" + MainActivity.jsonSafe(lang == null ? "" : lang) + "\"}");
     }
 
-    // 2026-09 新增: TTS 卡聲音選擇嘅後端 pref (Voice.getName()，空=用該語言
+    // TTS 卡聲音選擇嘅後端 pref (Voice.getName()，空=用該語言
     // 預設聲)。前端揀完語言再載入該語言把聲嚟揀；對話管線 speakAndroidTts()
     // 同 speech/tts 都會用（經 applyVoiceByName，搵唔到跌返語言路）。
     // lang 參數（可空）：有就只回該語言把聲；空就回成個引擎（前端唔用，留俾診斷）。

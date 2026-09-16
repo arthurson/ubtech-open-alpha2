@@ -1,5 +1,5 @@
 // Open Alpha2 — client logic (app-vosk.js)
-// 2026-09 新增: Vosk 離線 ASR (語音 tab)。機身已無 iFlytek/Nuance，用 Vosk 頂上。
+// Vosk 離線 ASR (語音 tab)。
 // Model 放 sdcard (VoskController.scanModels 自動偵測)，一次一粒；成句結果沿用
 // asr_result event（見 app-log.js —— user 氣泡＋語意配對＋TTS 全自動），呢度淨係
 // 處理 model 按鍵 (一撳即載入＋自動開聽)＋開始停止 + partial 即時顯示。
@@ -105,8 +105,7 @@ function voskSyncModelBtns() {
   }
 }
 
-// 舊名保留（之前 voskRenderStatus 經呢個轉 highlight）：而家直接經
-// voskLastStatus＋voskSyncModelBtns，傳入嘅 activeId 唔再用。
+// 舊名保留；直接經 voskLastStatus＋voskSyncModelBtns，傳入 activeId 唔用。
 function voskMarkActiveModel(activeId) {
   voskSyncModelBtns();
 }
@@ -425,7 +424,7 @@ function voskRenderStatus(res) {
     dot.classList.toggle("vosk-state-dot-on", listening);
     dot.classList.toggle("vosk-state-dot-off", !listening);
   }
-  // 開始掣已移除（一撳語言鍵即自動開聽）：剩停止掣，聽緊先 enable。
+  // 剩停止掣，聽緊先 enable（一撳語言鍵即自動開聽）。
   const stopBtn = document.getElementById("voskStopBtn");
   if (stopBtn) stopBtn.disabled = !listening;
   // 用緊嗰粒藍色 (active)，其餘灰色；切換緊／下載緊成排鎖住（見 voskSyncModelBtns）。

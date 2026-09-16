@@ -1,20 +1,18 @@
 // Open Alpha2 — client logic (app-speech.js)
-// 呢個檔案係由原本單一嘅 app.js 拆出嚟嘅其中一份, 內容: TTS/ASR/自我打斷/service_config preset/語音三路輸入測試。
+// 內容: TTS/ASR/自我打斷/service_config preset/語音三路輸入測試。
 // 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
 // <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
 
 // ---------------- Speech / TTS (Android 內置 only) ----------------
 //
-// 2026-09: 機身已無 alpha2services, Nuance/iFlytek 兩個機身引擎唔存在,
-// 語音 tab 得返 Android 系統 TTS。之前個三引擎按鈕組 + iFlytek 聲音揀擇已
-// 移除 (見 index.html), 呢度 currentTtsEngine 恆等於 "android", setTtsEngine()
+// 語音 tab 得返 Android 系統 TTS。currentTtsEngine 恆等於 "android", setTtsEngine()
 // 只做 Android 引擎/語言列載入 (開頁初始化用, 保留個名唔改, 免得 app-log.js
 // 個 init call 要一齊改名)。
 let currentTtsEngine = "android";
 
 // ---------------- Speech / 對話界面 (全抄小智 tab 做法) ----------------
 //
-// 2026-08 新增: 對照 app-xiaozhi.js 嘅 xiaozhiAppendChatLine()/xiaozhiSendText() —
+// 對照 app-xiaozhi.js 嘅 xiaozhiAppendChatLine()/xiaozhiSendText() —
 // 呢度淨係「顯示層」, 將現有嘅 asr_result (辨識結果) 同 speakTts() (TTS 講嘅嘢) 兩條
 // 資料流分別渲染做 user/assistant 對話氣泡, 唔改任何底層 API。CSS class 直接沿用
 // style.css 已有嘅 xiaozhi-msg / xiaozhi-msg-user / xiaozhi-msg-assistant /
@@ -53,7 +51,7 @@ function clearSpeechChatLog() {
  *  判斷用邊份), 命中就即時做 TTS + (可能有嘅) 動作 - 唔使真係郁把口, 都可以測到
  *  「聽到 -> 講嘢/做動作」成條 pipeline。
  *
- *  同舊版 (speech/inject) 唔同: 呢條路徑唔經任何機身 AIDL 辨識, 純粹本地文字配對,
+ *  呢條路徑唔經任何機身 AIDL 辨識, 純粹本地文字配對,
  *  所以唔會觸發 asr_result WebSocket event - user 氣泡要喺呢度發送嗰刻自己樂觀
  *  顯示 (同 speakTts() 顯示 assistant 氣泡嗰種做法一致, 唔算「送出即顯示 + server
  *  echo 又顯示多一次」, 因為呢條路徑根本冇 server echo 會返嚟)。assistant 氣泡
@@ -89,15 +87,14 @@ function sendSpeechChatText() {
 }
 
 function setTtsEngine(engine) {
-  // 2026-09: 得返 "android" 一個引擎, 參數照收 (開頁 init 會傳 "android" 入嚟),
-  // 傳其他值都當 android 處理。直接載入 Android 引擎/語言清單。
+  // 恆行 Android：參數照收，傳其他值都當 android；直接載入引擎/語言清單。
   currentTtsEngine = "android";
   loadAndroidTtsEngines();
   loadAndroidTtsLanguages();
 }
 
 /** 揀 Android TTS 引擎 (speech/tts engine=android 分支實際講嘢用嗰個系統
- *  TTS, 唔係 Nuance/iFlytek) - 由 speech/set_tts_engine 切換, 呢個 switch
+ *  TTS) - 由 speech/set_tts_engine 切換, 呢個 switch
  *  本身係 async (後端拆舊起新一個 TextToSpeech instance), 所以完成之後短暫
  *  delay 先重新讀返 speech/cur_tts_engine 確認, 對照後端 MainActivity 個
  *  initAndroidTts() javadoc 講嘅「唔即刻 ready」。切換咗引擎, 舊引擎個語言
@@ -106,8 +103,7 @@ function setAndroidTtsEngine() {
   const select = document.getElementById("ttsAndroidEngineSelect");
   const enginePkg = select ? select.value : "";
   if (!enginePkg) return;
-  // 2026-09: 轉咗引擎, 舊語言選擇未必啱用, 前後端一齊重置 (後端 pref 都清，
-  // 等對話管線 TTS 跌返自動判斷)。聲綁死引擎＋語言，一齊清＋收埋聲行。
+  // 轉引擎：舊語言未必啱用，前後端一齊重置 (後端 pref 都清)。聲綁死引擎＋語言，一齊清＋收埋聲行。
   currentAndroidTtsLang = "";
   currentAndroidTtsVoice = "";
   hideAndroidTtsVoiceRow();
@@ -305,7 +301,7 @@ function setAndroidTtsVoice() {
 function speakTts() {
   const text = document.getElementById("ttsText").value.trim();
   if (!text) { showError("語音", t("speech_test_enter_text_alert")); return; }
-  // 2026-09: 恆行 Android TTS。lang 有揀先帶 (空字串=沿用引擎目前語言)。
+  // 恆行 Android TTS。lang 有揀先帶 (空=沿用引擎目前語言)。
   const params = { text: text, engine: "android" };
   // 空字串=沿用引擎目前語言 (見後端 speech/tts 個 android 分支 comment)。
   if (currentAndroidTtsLang) {
