@@ -245,11 +245,10 @@ public final class ApiValidator {
     }
 
     /** nuance/iflytek 已死 (機身無 alpha2services,
-     *  RobotStub.speech_startTTS 恆回 NOT_INIT)。呢兩個值仍然留喺允許 list - openapi spec (speech/tts)
-     *  明確承諾 engine=nuance/iflytek「照收但必定回 NOT_INIT」，唔係
-     *  invalid-parameter 錯誤；收窄呢個 list 會令傳呢兩個值嘅 caller 由「誠實話你個引擎已死」變成
-     *  「話你個參數本身唔合法」，係 API contract 嘅行為改變，唔係單純刪死
-     *  code，所以刻意唔收窄。 */
+     *  RobotStub.speech_startTTS 恆回 NOT_INIT)，呢個 list 已經收窄到淨 "android" -
+     *  傳舊值會直接 invalid-parameter（見下面 test）。之前試過留喺 list 誠實回
+     *  NOT_INIT，後來決定收窄：死引擎唔應該再出現喺合法參數裡面
+     *  (ApiValidatorTest 有覆蓋拒收)。 */
     /** TTS 引擎：只准 android（機身無 alpha2services，binder 已死）。 */
     public static String requireSpeechEngine(Map<String, String> q) {
         return optionalEnum(q, "engine", new String[]{"android"}, "android");

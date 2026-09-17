@@ -51,9 +51,8 @@ public final class TtsCenter {
         return activity.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    // Android system TTS (a third engine option alongside the robot's own Nuance/
-    // iFlytek, used directly rather than via ISpeechInterface). No voice selection -
-    // voice choice is only meaningful for iFlytek's named voices.
+    // Android system TTS (機身唯一仲用到嘅 TTS，直接用，唔經 ISpeechInterface)。
+    // 語言／聲選擇經下面 setTtsVoice() 等 endpoint 方法。
     // volatile: initAndroidTts() reassigns this from an HTTP worker thread when
     // switching engines, and it's read from other worker threads on every speech/tts
     // call - a plain field could let one thread see a stale/half-published reference.

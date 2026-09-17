@@ -508,7 +508,7 @@ const Alpha2Api = (function() {
   }
 
   function speechGetDefaultGrammar(params) {
-    // 取得預設 BNF 文法檔內容 (assets/iflytek/default_grammar.bnf；文法本身已無處上載，僅供參考)
+    // 取得預設 BNF 文法檔內容 (assets/semantic/default_grammar.bnf；文法本身已無處上載，僅供參考)
     return api('speech/get_default_grammar', params);
   }
 
@@ -621,7 +621,7 @@ const Alpha2Api = (function() {
   }
 
   function voskStatus(params) {
-    // Vosk 狀態 (state/model/listening)
+    // Vosk 狀態 (state/model/lang/listening)
     return api('vosk/status', params);
   }
 

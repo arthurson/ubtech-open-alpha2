@@ -55,7 +55,7 @@ public class WebSocketServer {
             // unsubscribe() 永遠沒機會執行到。結果: client 用回 connectWs() 的
             // 3 秒重連機制開多條新 connection, 但舊那條殭屍 connection 的 listener
             // 一直留在 EventBus, 讓同一個 event (例如 asr_result) 經好幾個 listener
-            // 各自送去前端, 觸發前端 triggerIflytekSimulate() 好幾次 -> 同一句話
+            // 各自送去前端, 觸發前端 triggerSemanticSimulate() 好幾次 -> 同一句話
             // TTS 講好幾次。(用戶回報: 語音tab, ASR重複兩次TTS。實測 logcat 見到
             // publish() 一直印 "5 listener(s) subscribed", 但整個 session 只有
             // "WebSocket upgrade accepted" 兩次、"closed normally" 一次 - 證明有

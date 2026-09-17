@@ -520,6 +520,8 @@ public final class AudioCenter {
     private volatile java.util.List<org.json.JSONObject> lastRadioSearchResults;
 
     private static final String RADIO_BROWSER_API_HOST = "http://de1.api.radio-browser.info";
+    /** 電台搜尋回傳數（三處：resolve 後備、HTTP endpoint、MCP tool 共用同一個 pool）。 */
+    private static final int RADIO_SEARCH_LIMIT = 50;
 
     /** 官方文件要求每個 request 都帶一個有意義的 User-Agent (格式 appname/version),
      *  讓他們知道哪些 app 在用這個服務 - 這裡老實地帶上這個 project 的名字。 */
@@ -634,7 +636,7 @@ public final class AudioCenter {
         // Cache 裡找不到 (或者根本沒搜過) - 把這個 query 當成新搜尋詞, 打一次
         // Radio Browser, 選第一個不是 HLS 的結果 (HLS 在舊版 MediaPlayer 支援
         // 不穩定, 直接跳過)。
-        java.util.List<org.json.JSONObject> fresh = searchRadioStations(q, 30);
+        java.util.List<org.json.JSONObject> fresh = searchRadioStations(q, RADIO_SEARCH_LIMIT);
         lastRadioSearchResults = fresh;
         for (org.json.JSONObject s : fresh) {
             if (s.optInt("hls", 0) == 0) {
@@ -935,7 +937,7 @@ public final class AudioCenter {
     public HttpServer.ApiResponse radioSearch(Map<String, String> query) {
         String q = ApiValidator.require(query, "query");
         try {
-            java.util.List<org.json.JSONObject> found = searchRadioStations(q, 30);
+            java.util.List<org.json.JSONObject> found = searchRadioStations(q, RADIO_SEARCH_LIMIT);
             lastRadioSearchResults = found;
             StringBuilder sb = new StringBuilder("{\"ok\":true,\"stations\":[");
             boolean first = true;
@@ -1051,7 +1053,7 @@ public final class AudioCenter {
         if (searchQuery.isEmpty()) {
             return SonarCenter.McpResult.missingArg("query");
         }
-        java.util.List<org.json.JSONObject> found = searchRadioStations(searchQuery, 30);
+        java.util.List<org.json.JSONObject> found = searchRadioStations(searchQuery, RADIO_SEARCH_LIMIT);
         if (found.isEmpty()) {
             return SonarCenter.McpResult.ok("no radio stations found matching \"" + searchQuery + "\"");
         }

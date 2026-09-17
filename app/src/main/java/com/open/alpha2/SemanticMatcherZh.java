@@ -9,7 +9,7 @@ import android.content.Context;
  *
  * 資料來源: 悠聊 APK 的 assets/local_semantic (一份 XLS 問法對照表, 850 條問法) 經
  * androguard 反編譯 + 人手核對 202_actions_classified.txt 之後轉出來的
- * assets/iflytek/iflytek_semantic_zh.json - 詳見對話 history。每條記錄:
+ * assets/semantic/semantic_zh.json - 詳見對話 history。每條記錄:
  *   q      - 用戶問法 (例如 "跳舞", "你好嗎")
  *   a      - 候選答案句 (0~3句, 隨機選一句做 TTS; 部分 FUNCTION 類沒答案句)
  *   type   - ACTION (有動作) | FUNCTION (系統操作, 例如音量/連線) | CHAT (純寒暄, 沒動作)
@@ -27,15 +27,15 @@ import android.content.Context;
  * 分類名 (例如「瑜伽」「跳舞」「講故事」) 就在那類裡面隨機選一個」, 三層 fallback:
  * 具體動作名 (原有 32 operation) > 子分類 (例如 DANCE_KIDS) > 大分類 (例如
  * DANCE_ANY)。分類 -> action id pool 的對照表存在
- * assets/iflytek/action_category_pools.json, 由 SemanticMatcherBase 讀入。
+ * assets/semantic/action_category_pools.json, 由 SemanticMatcherBase 讀入。
  *
  * 這個 class 只負責「文字 -> 配對結果」, 不負責執行 TTS/動作 - 跟著這個 project
  * 一貫的分層方式 (就像 resolveActionId() 只負責解析、不負責 call
  * robot.action_PlayActionName() 那樣), 執行那一步留給呼叫方 (SemanticCenter 的
- * handleIflytekSemanticText) 做, 方便測試和重用。
+ * handleSemanticMatch) 做, 方便測試和重用。
  *
  * 只做中文 - 英文 ASR 引擎那邊已經另有 SemanticMatcherEn 用另一份
- * iflytek_semantic_en.json, 不在這個 class 裡加 language 參數 (因為機身 ASR 引擎
+ * semantic_en.json, 不在這個 class 裡加 language 參數 (因為機身 ASR 引擎
  * 本身一次只能選到一種語言, 兩個 matcher 不會同時用)。載入/比對/分類 random 的實際
  * 邏輯 (和英文版逐字相同) 全部在 SemanticMatcherBase, 這裡只提供中文專屬的
  * TAG/assets 路徑/fallback 問法組 (2026-09 抽出共用 base 前, 這個 class 和
@@ -51,7 +51,7 @@ import android.content.Context;
  */
 public class SemanticMatcherZh extends SemanticMatcherBase {
     private static final String TAG = "SemanticMatcherZh";
-    private static final String ASSET_PATH = "iflytek/iflytek_semantic_zh.json";
+    private static final String ASSET_PATH = "semantic/semantic_zh.json";
 
     /** 2026-08 新增: 完全找不到問法對應那陣的 fallback 回應 - 5 句、各自配不同
      *  (已驗證沒聲效) 動作, match() 裡面隨機選一句, 讓機械人聽不懂都有反應, 不會

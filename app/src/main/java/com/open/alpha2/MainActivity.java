@@ -89,16 +89,15 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
 
     /** 完全取代悠聊 APK (com.ubtech.iflytekmix) 用的中文語意配對引擎
      *  實例。在 onCreate() 建立一次 (只持有 Context, 不碰 AIDL, 沒有初始化順序問題),
-     *  真正的 1000 條資料就到 handleIflytekSemanticText() 第一次被叫才讀 assets - 見
+     *  真正的 1000 條資料就到 handleSemanticMatch() 第一次被叫才讀 assets - 見
      *  SemanticMatcherZh 本身的 lazy-load 設計。 */
     private SemanticMatcherZh semanticMatcherZh;
 
     /** 完全取代 AlphaEnglishChat APK
      *  (com.ubtechinc.alphaenglishchat) 用的英文語意配對引擎實例, 和 semanticMatcherZh
      *  屬於同一套機制、獨立資料 (1000 條英文問法, 見 SemanticMatcherEn)。
-     *  哪句用哪個 matcher 由 handleIflytekSemanticText() 根據輸入文字有沒有 CJK 漢字
-     *  判斷 - 不靠 speech/set_asr_engine 的語言設定, 因為 iFlytek 引擎本身可能自動
-     *  偵測語言, 靠內容判斷更可靠。 */
+     *  哪句用哪個 matcher 由 SemanticCenter 根據對話語言／輸入文字決定
+     *  (見 handleSemanticMatch), 靠內容判斷更可靠。 */
     private SemanticMatcherEn semanticMatcherEn;
 
     /** Vosk 離線 ASR controller (語音 tab)。單例，onCreate 起，
@@ -255,7 +254,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         grammarCenter = new GrammarCenter(this, robot, xiaozhiBridge);
         // sticky broadcast，註冊即刻有現狀 (起好先叫得)。
         grammarCenter.registerConnectivityReceiver();
-        voskApi = new VoskApi(vosk, xiaozhiBridge);
+        voskApi = new VoskApi(vosk, xiaozhiBridge, semanticCenter);
         // TTS orchestration 包 (speech/tts＋stop＋總停)：要 xiaozhiBridge
         // (經 stopSpeechPlayback 停小智管道)，放 voskApi 之後、dispatcher 之前。
         speechCenter = new SpeechCenter(ttsCenter, vosk, xiaozhiBridge);
@@ -629,7 +628,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 : UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
     }
 
-    // -- iFlytek 語意配對: 完全取代悠聊 APK (com.ubtech.iflytekmix) -------------------
+    // -- 本地語意配對: 完全取代悠聊 APK (com.ubtech.iflytekmix) -------------------
     //
     // 悠聊 APK 反編譯還原出來的完整 pipeline (見對話 history) 是:
     //   機身 ASR 辨識完一句話 -> JsonResultParse 解析成 operation+slots
@@ -639,8 +638,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     // 這層語意配對 (SemanticMatcherZh, 由悠聊 assets/local_semantic 那 850 條
     // 問法還原) 以及這個時序。
     //
-    // 掛在哪裡: 前端統一經由 speech/iflytek_simulate 觸發, 讓所有輸入方法 (真人說話/打字模擬) 都走
-    // 同一條路, 避免重複 TTS。中英文由 looksChinese() 判斷, 只看輸入文字內容,
+    // 掛在哪裡: 前端統一經由 speech/semantic_simulate 觸發, 讓所有輸入方法 (真人說話/打字模擬) 都走
+    // 同一條路, 避免重複 TTS。中英文由 SemanticCenter 根據對話語言／輸入文字決定, 只看輸入文字內容,
     // 不理會 ASR engine 目前設定的是哪種語言。
 
     // static 縫留喺度 (frozen onDirectChestFrame／RobotEventReceiver 經呢度入，簽名不變)。

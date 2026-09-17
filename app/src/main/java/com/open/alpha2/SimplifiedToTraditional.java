@@ -5,9 +5,9 @@ import java.util.Map;
 
 /**
  * 簡體轉繁體的單字對照表 - 純粹用來 normalize ASR 辨識結果的輸入文字, 讓
- * SemanticMatcherZh/SemanticMatcherEn 的問法比對不會因為 online iFlytek
- * ASR 引擎輸出簡體字 (例如 "你的爸爸是谁啊") 而和 database 裡面的繁體問法
- * (iflytek_semantic_zh.json 全部書面繁體中文) 配對不中。用戶已確認: 文字輸入
+ * SemanticMatcherZh/SemanticMatcherEn 的問法比對不會因為 ASR 引擎輸出簡體字
+ * (例如 "你的爸爸是谁啊") 而和 database 裡面的繁體問法
+ * (semantic_zh.json 全部書面繁體中文) 配對不中。用戶已確認: 文字輸入
  * (真人說話/打字模擬) 需要繁簡兩種都認得到, 但 TTS 文字輸出只要繁體。
  *
  * 用途只是「輸入 normalize」, 不涉及 TTS 輸出 - database 本身的答案句已經是繁體,

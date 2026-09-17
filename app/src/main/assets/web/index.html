@@ -448,11 +448,11 @@
 
     <div class="row">
       <label class="switch-label">
+        <span data-i18n="xiaozhi_session_toggle_label">🤖 小智（開＝連線並隨時語音對話，關＝斷開）</span>
         <span class="toggle-switch">
           <input type="checkbox" id="xiaozhiSessionToggle" onchange="xiaozhiToggleSession()">
           <span class="toggle-track"></span>
         </span>
-        <span data-i18n="xiaozhi_session_toggle_label">🤖 小智（開＝連線並隨時語音對話，關＝斷開）</span>
       </label>
       <span id="xiaozhiStatusBadge" class="hint" data-i18n="xiaozhi_status_disconnected">未連接</span>
     </div>
@@ -492,11 +492,11 @@
     <h3 data-i18n="xiaozhi_ota_custom_heading">⚙️ 自訂小智 server</h3>
     <div class="row">
       <label class="switch-label">
+        <span data-i18n="xiaozhi_ota_custom_label">開＝自架 server，關＝官方 xiaozhi.me</span>
         <span class="toggle-switch">
           <input type="checkbox" id="xiaozhiOtaCustomToggle" onchange="xiaozhiToggleOtaCustom()">
           <span class="toggle-track"></span>
         </span>
-        <span data-i18n="xiaozhi_ota_custom_label">開＝自架 server，關＝官方 xiaozhi.me</span>
       </label>
     </div>
     <div id="xiaozhiOtaCustomBox" style="display:none">
@@ -537,11 +537,11 @@
     </p>
     <div class="row">
       <label class="switch-label">
+        <span data-i18n="xiaozhi_mcp_tools_expand_label">展開</span>
         <span class="toggle-switch">
           <input type="checkbox" id="xiaozhiMcpExpandToggle" onchange="xiaozhiToggleMcpExpandAll()">
           <span class="toggle-track"></span>
         </span>
-        <span data-i18n="xiaozhi_mcp_tools_expand_label">展開</span>
       </label>
     </div>
     <div id="xiaozhiMcpToolsBox" style="display:none">
@@ -591,7 +591,7 @@
   <!-- 來源卡：網絡電台 (radio-browser.info) -->
   <section class="card" id="radioCard">
     <h2 data-i18n="radio_heading">📻 網絡電台</h2>
-    <p class="hint"><a href="https://www.radio-browser.info/" target="_blank" rel="noopener">radio-browser.info</a> · 30 條隨機</p>
+    <p class="hint"><a href="https://www.radio-browser.info/" target="_blank" rel="noopener">radio-browser.info</a> · <span data-i18n="radio_browser_hint">全球公開電台：搜尋即列出 50 個隨機結果，撳名即播</span></p>
     <div class="row">
       <input id="radioSearchInput" placeholder="搜尋電台名稱、國家、標籤…" data-i18n="radio_search_placeholder" data-i18n-attr="placeholder" style="flex:1" onkeydown="radioOnSearchKeydown(event)">
       <button onclick="radioSearch()" data-i18n="radio_search_btn">🔍 搜尋</button>
@@ -613,7 +613,22 @@
     <div id="radioListContainer" class="radio-list"></div>
   </section>
 
-  <!-- 共用播放器：頻譜 / 進度 / 控制 / 音量+隨機動作 / EQ — 本地與電台共用 -->
+  <!-- 網上點歌卡：Internet Archive 免費音樂，唔使 login。搜尋＋metadata 經瀏覽器
+       直打 archive.org（機械人 TLS 太舊打唔到 https），攞到 http MP3 直鏈之後經
+       現成 audio/radio/play_url 叫機械人播（見 app-archive.js）。內容期望：
+       現場／獨立／舊錄音，冇商業流行榜歌。 -->
+  <section class="card" id="archiveCard">
+    <h2 data-i18n="arc_heading">🌐 網上點歌</h2>
+    <p class="hint" data-i18n="arc_hint">Internet Archive 免費音樂（現場／獨立／舊錄音），唔使 login；搜尋經你個瀏覽器，播放經機械人。</p>
+    <div class="row">
+      <input id="archiveSearchInput" placeholder="搜尋歌名、歌手、樂隊…" data-i18n="arc_search_placeholder" data-i18n-attr="placeholder" style="flex:1" onkeydown="arcOnSearchKeydown(event)">
+      <button onclick="archiveSearch()" data-i18n="arc_search_btn">🔍 搜尋</button>
+    </div>
+    <p id="archiveSearchStatus" class="hint"></p>
+    <div id="archiveListContainer" class="radio-list"></div>
+  </section>
+
+  <!-- 共用播放器：頻譜 / 進度 / 控制 / 音量+隨機動作 — 本地與電台共用 -->
   <section class="card" id="sharedPlayerCard">
     <h3 data-i18n="music_now_playing_heading">播放中</h3>
     <!-- 共用顯示：本地或電台，JS 同步更新 #musicNowPlaying/#radioNowPlaying/#sharedNowPlaying -->
@@ -899,6 +914,7 @@
 <script src="app-xiaozhi.js"></script>
 <script src="app-music.js"></script>
 <script src="app-radio.js"></script>
+<script src="app-archive.js"></script>
 <script src="app-mic.js"></script>
 <script src="app-accel.js"></script>
 <script src="app-qr.js"></script>

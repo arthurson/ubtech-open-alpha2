@@ -34,7 +34,7 @@ import java.util.Random;
  * 引擎)。2026-09 改名做 SemanticMatcher* 消除呢個誤導。
  */
 public abstract class SemanticMatcherBase {
-    private static final String ASSET_PATH_CATEGORIES = "iflytek/action_category_pools.json";
+    private static final String ASSET_PATH_CATEGORIES = "semantic/action_category_pools.json";
     private static final String RANDOM_CATEGORY_PREFIX = "__RANDOM_CATEGORY__";
 
     /** 中英文共用嘅「聽不懂」fallback 動作組（5 個已驗證沒聲效動作；兩子類之前各自複製同一份）。 */
@@ -47,7 +47,9 @@ public abstract class SemanticMatcherBase {
     };
 
     /** 配對結果。type 和 MainActivity 已有的 asr_result event 格式對齊,
-     *  answer/actionId 可能是 null (例如 CHAT 類沒 actionId, 部分 FUNCTION 沒 answer)。 */
+     *  answer/actionId 可能是 null (例如 CHAT 類沒 actionId, 部分 FUNCTION 沒 answer)。
+     *  matched＝真命中問法庫／false＝fallback 亂答（SemanticCenter 跨語言兜底用：
+     *  主 matcher 唔中先試另一個，兩個都唔中就用主嗰個 fallback）。 */
     public static final class MatchResult {
         public final String question;   // 命中的原始問法 (debug 用)
         public final String type;       // "ACTION" | "FUNCTION" | "CHAT"
@@ -55,15 +57,17 @@ public abstract class SemanticMatcherBase {
         public final String slot;       // 方向/情緒 slot, 沒有就是 null
         public final String answer;     // 隨機選一句的回覆句, 沒答案句就是 null
         public final String actionId;   // 202動作清單裡面的 action id, 沒動作就是 null
+        public final boolean matched;   // 真命中／fallback
 
         public MatchResult(String question, String type, String operation, String slot,
-                    String answer, String actionId) {
+                    String answer, String actionId, boolean matched) {
             this.question = question;
             this.type = type;
             this.operation = operation;
             this.slot = slot;
             this.answer = answer;
             this.actionId = actionId;
+            this.matched = matched;
         }
     }
 
@@ -96,7 +100,7 @@ public abstract class SemanticMatcherBase {
     private java.util.Map<String, List<String>> categoryPoolsCache;
 
     /** @param tag 子類專屬的 Log tag
-     *  @param assetPath 問法 json 的 assets 路徑 (例如 "iflytek/iflytek_semantic_zh.json")
+     *  @param assetPath 問法 json 的 assets 路徑 (例如 "semantic/semantic_zh.json")
      *  @param fallbackQuestions "聽不懂" 的候選回應句
      *  @param fallbackActionIds 對應 fallbackQuestions 每一句的動作 id (長度要相等,
      *         下標一一對應) */
@@ -154,7 +158,7 @@ public abstract class SemanticMatcherBase {
      *  (text 為 null 或者只有空白字元) 就真的沒東西好答, 依然回傳 null。
      *
      *  輸入文字先經 SimplifiedToTraditional.toTraditional() normalize 做繁體再
-     *  比對 - online iFlytek ASR 引擎輸出的是簡體中文, 但兩份 database 全部是
+     *  比對 - ASR 引擎輸出簡體中文, 但兩份 database 全部是
      *  書面繁體中文, 不 normalize 的話簡體輸入會完全 match 不中任何問法。這層
      *  轉換只影響「用來比對」的 q, 不改動 MatchResult.question (依然是 e.q 的
      *  原文) - answer/actionId 一律來自 database 本身。 */
@@ -194,7 +198,7 @@ public abstract class SemanticMatcherBase {
     private MatchResult fallback() {
         int i = random.nextInt(fallbackQuestions.length);
         return new MatchResult(fallbackQuestions[i], "CHAT", null, null,
-                fallbackQuestions[i], fallbackActionIds[i]);
+                fallbackQuestions[i], fallbackActionIds[i], false);
     }
 
     private MatchResult toResult(Entry e) {
@@ -209,7 +213,7 @@ public abstract class SemanticMatcherBase {
             // 有 loadXiaozhiActions(), 這個 class 不重複讀多一次 202 動作清單),
             // 這裡回傳 "__RANDOM__" 標記給呼叫方識別。
         }
-        return new MatchResult(e.q, e.type, e.op, e.slot, answer, actionId);
+        return new MatchResult(e.q, e.type, e.op, e.slot, answer, actionId, true);
     }
 
     /** debug/量度用: 已載入多少條記錄。 */
@@ -226,7 +230,7 @@ public abstract class SemanticMatcherBase {
         return new java.util.ArrayList<>(set);
     }
 
-    /** 由 assets/iflytek/action_category_pools.json 讀入 17 個分類 -> action id
+    /** 由 assets/semantic/action_category_pools.json 讀入 17 個分類 -> action id
      *  pool 的對照表 (中英文共用同一份)。讀取/parse 失敗就回傳空 map (不會拋出),
      *  和 load() 一致的「不崩潰、log 一次」哲學。 */
     private synchronized java.util.Map<String, List<String>> loadCategoryPools() {
@@ -269,7 +273,7 @@ public abstract class SemanticMatcherBase {
      *  回傳。找不到對應分類、或者分類是空 pool, 回傳 null (呼叫方要自行 fallback,
      *  例如 resolveRandomActionId() 隨機動作池)。
      *
-     *  呼叫方 (SemanticCenter.handleIflytekSemanticText()) 應該在拿到 MatchResult
+     *  呼叫方 (SemanticCenter.handleSemanticMatch()) 應該在拿到 MatchResult
      *  之後、真正 call robot.action_PlayActionName() 之前, 用這個方法將
      *  actionId 解析成真實可播放的 id - 和 "__RANDOM__" 標記屬於同一種「延遲到
      *  執行時才選」的設計, 但這是分類限定的隨機, 不是全部 202 個隨便選。 */

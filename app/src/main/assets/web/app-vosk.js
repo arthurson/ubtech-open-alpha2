@@ -87,27 +87,24 @@ function voskRenderModelBtns(models, activeId) {
 }
 
 // 成排模型鍵 enable／active／switching 一次過同步：下載緊或者切換緊就鎖晒
-//（inline onclick 唔擋，disabled 先真係撳唔到）；active 淨一粒（藍），其餘灰。
+//（inline onclick 唔擋，disabled 先真係撳唔到）；active（藍）淨係聽緊嗰粒——
+// 同狀態燈（voskStateDot）一致：stop 之後就緒都係灰，唔係藍。
 function voskSyncModelBtns() {
   const box = document.getElementById("voskModelBtns");
   if (!box || !voskCachedModels.length) return;
   const d = voskLastDownload;
   const dlActive = !!d && (d.state === "downloading" || d.state === "unzipping");
   const locked = dlActive || !!voskPendingModel;
+  const listening = !!(voskLastStatus && (voskLastStatus.state === "listening"
+      || !!voskLastStatus.listening));
   const activeId = voskPendingModel
-      || (voskLastStatus && (voskLastStatus.state === "listening"
-          || voskLastStatus.state === "ready") ? voskLastStatus.model : null);
+      || (listening ? voskLastStatus.model : null);
   const btns = box.querySelectorAll("button");
   for (let i = 0; i < btns.length && i < voskCachedModels.length; i++) {
     btns[i].disabled = locked;
     btns[i].classList.toggle("active", voskCachedModels[i].id === activeId && !voskPendingModel);
     btns[i].classList.toggle("switching", voskCachedModels[i].id === voskPendingModel);
   }
-}
-
-// 舊名保留；直接經 voskLastStatus＋voskSyncModelBtns，傳入 activeId 唔用。
-function voskMarkActiveModel(activeId) {
-  voskSyncModelBtns();
 }
 
 // 實驗 tab 下載卡開關（同 panelAuthCardToggle 一致寫法）：預設收埋，唔記狀態。
@@ -261,13 +258,19 @@ function voskRenderDownload(res) {
 // 一撳即用：先停舊（用緊中文嗰陣撳英文，後端一次淨駐留一粒，
 // load 會頂走舊嘅；呢度先顯式 stop，等舊聆聽即刻停＋partial 清走，
 // 再載入指定 model，ready 即自動開始聆聽（唔使再撳開始掣）。
-// 撳緊同一粒（聽緊／就緒）就唔當一回事，唔重載。
+// 撳緊同一粒：聽緊就唔當一回事；就緒（撳過 stop）就直接開聽唔重載。
 function voskUseModel(id) {
   if (!id || voskPendingModel === id) return Promise.resolve();
-  if (voskLastStatus && voskLastStatus.model === id
-      && (voskLastStatus.state === "listening" || voskLastStatus.state === "ready"
-        || !!voskLastStatus.listening)) {
-    return Promise.resolve(); // 已經係呢粒，唔使郁
+  const st = voskLastStatus;
+  const sameModel = !!(st && st.model === id);
+  const active = !!(st && (st.state === "listening" || !!st.listening));
+  if (sameModel && active) return Promise.resolve(); // 聽緊，唔使郁
+  if (sameModel && st.state === "ready") return voskStart(); // 就緒，直接開聽唔重載
+  if (sameModel && st.state === "loading") {
+    // 後端載入緊呢粒（例如轉頁 reload 撞正）：跟返進度，ready 即開聽。
+    voskPendingModel = id;
+    voskSyncModelBtns();
+    return voskWaitReady(id, 0);
   }
   voskPendingModel = id;
   voskSyncModelBtns(); // 即刻灰晒＋切換緊嗰粒閃，唔使用戶估
@@ -424,15 +427,9 @@ function voskRenderStatus(res) {
     dot.classList.toggle("vosk-state-dot-on", listening);
     dot.classList.toggle("vosk-state-dot-off", !listening);
   }
-  // 剩停止掣，聽緊先 enable（一撳語言鍵即自動開聽）。
+  // 剩停止掣，聽緊先 enable（一撳模型鍵即自動開聽）。
   const stopBtn = document.getElementById("voskStopBtn");
   if (stopBtn) stopBtn.disabled = !listening;
-  // 用緊嗰粒藍色 (active)，其餘灰色；切換緊／下載緊成排鎖住（見 voskSyncModelBtns）。
-  if (listening || res.state === "ready") {
-    voskMarkActiveModel(res.model || null);
-  } else if (res.state === "idle") {
-    voskMarkActiveModel(null);
-  } else {
-    voskSyncModelBtns();
-  }
+  // 模型鍵高亮經 voskSyncModelBtns 統一：淨聽緊嗰粒藍，其餘（就緒／閒置／錯）灰。
+  voskSyncModelBtns();
 }

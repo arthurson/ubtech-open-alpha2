@@ -8,10 +8,12 @@ import java.util.Map;
 public final class VoskApi {
     private final VoskController vosk;
     private final XiaozhiBridge xiaozhiBridge;
+    private final SemanticCenter semanticCenter;
 
-    public VoskApi(VoskController vosk, XiaozhiBridge xiaozhiBridge) {
+    public VoskApi(VoskController vosk, XiaozhiBridge xiaozhiBridge, SemanticCenter semanticCenter) {
         this.vosk = vosk;
         this.xiaozhiBridge = xiaozhiBridge;
+        this.semanticCenter = semanticCenter;
     }
 
     /** vosk/* endpoint 熔斷：vosk 係 null（API 19 機唔起 controller，或者
@@ -67,6 +69,10 @@ public final class VoskApi {
         String id = ApiValidator.require(query, "model");
         String err = vosk.loadModel(id);
         if (err != null) return HttpServer.ApiResponse.error(err);
+        // 直接打 model 鍵換咗 model 都一併轉埋配對語言（認唔到語言唔郁）。
+        // load 係背景做，呢度樂觀同步——同前端即刻轉掣行為一致。
+        String mapped = VoskController.langOfModelId(id);
+        if (mapped != null) semanticCenter.setDialogueLang(mapped);
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"loading\":\""
                 + MainActivity.jsonSafe(id) + "\"}");
     }
@@ -80,6 +86,7 @@ public final class VoskApi {
         return HttpServer.ApiResponse.ok("{\"ok\":true"
                 + ",\"state\":\"" + vosk.getState().name().toLowerCase(java.util.Locale.US) + "\""
                 + ",\"model\":" + (mid == null ? "null" : "\"" + MainActivity.jsonSafe(mid) + "\"")
+                + ",\"lang\":\"" + vosk.getDialogueLang() + "\""
                 + ",\"listening\":" + vosk.isListening()
                 + ",\"epMode\":" + vosk.getEpMode()
                 + ",\"epTEnd\":" + (Float.isNaN(epTEnd) ? "null"

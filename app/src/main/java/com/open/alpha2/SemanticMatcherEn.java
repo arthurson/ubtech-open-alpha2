@@ -6,10 +6,10 @@ import android.content.Context;
  * 英文語意配對引擎 - 和 SemanticMatcherZh (中文版) 屬於同一套「完全取代悠聊/
  * AlphaEnglishChat」的語意配對機制, 但這個 class 專門處理英文。
  *
- * 資料來源: assets/iflytek/iflytek_semantic_en.json, 1000 條英文問法/答案/動作記錄。
+ * 資料來源: assets/semantic/semantic_en.json, 1000 條英文問法/答案/動作記錄。
  * 這份資料不是悠聊/AlphaEnglishChat 逐字拆出來或者翻譯來的 - 反編譯確認了
  * AlphaEnglishChat 主要靠 Api.ai (Dialogflow V1) 雲端 NLU, 而那個 API 已經在 2020 年
- * 3 月正式關閉, 英文語料沒得直接沿用。這 1000 句是跟著中文版 iflytek_semantic_zh.json
+ * 3 月正式關閉, 英文語料沒得直接沿用。這 1000 句是跟著中文版 semantic_zh.json
  * 的結構和動作對照表 (operation/actionId/分類 pool 全部一致, 已驗證 202 動作清單裡面
  * 沒撞聲效), 用道地英文重新創作的問法/答案 - 詳見對話 history。每條記錄:
  *   q      - 用戶問法 (例如 "Dance for me", "How old are you")
@@ -25,18 +25,18 @@ import android.content.Context;
  *              要在那個分類裡面隨機選一個 - 見 resolveCategoryRandomActionId())
  *
  * 分類 random (__RANDOM_CATEGORY__): 和中文版共用同一份
- * assets/iflytek/action_category_pools.json (17 個分類, 已排除全部有聲效的動作),
+ * assets/semantic/action_category_pools.json (17 個分類, 已排除全部有聲效的動作),
  * 三層 fallback: 具體動作名 (原有 32 operation) > 子分類 (例如 DANCE_KIDS) > 大分類
  * (例如 DANCE_ANY)。
  *
  * 這個 class 只負責「文字 -> 配對結果」, 不負責執行 TTS/動作 - 跟著這個 project
  * 一貫的分層方式 (就像 resolveActionId() 只負責解析、不負責 call
  * robot.action_PlayActionName() 那樣), 執行那一步留給呼叫方 (SemanticCenter 的
- * handleIflytekSemanticText) 做, 方便測試和重用。
+ * handleSemanticMatch) 做, 方便測試和重用。
  *
  * 只做英文 - 和 SemanticMatcherZh (中文版) 各自獨立, 沒在這個 class 裡加
  * language 參數 (因為機身 ASR 引擎本身一次只能選到一種語言, 兩個 matcher 不會同時用)。
- * SemanticCenter.handleIflytekSemanticText() 根據 looksChinese() 判斷結果, 選用哪一個。
+ * SemanticCenter.handleSemanticMatch() 根據對話語言／文字判斷結果, 選用哪一個。
  * 載入/比對/分類 random 的實際邏輯 (和中文版逐字相同) 全部在
  * SemanticMatcherBase, 這裡只提供英文專屬的 TAG/assets 路徑/fallback 問法組
  * (2026-09 抽出共用 base 前, 這個 class 和 SemanticMatcherZh 是兩份幾乎逐字
@@ -53,7 +53,7 @@ import android.content.Context;
  */
 public class SemanticMatcherEn extends SemanticMatcherBase {
     private static final String TAG = "SemanticMatcherEn";
-    private static final String ASSET_PATH = "iflytek/iflytek_semantic_en.json";
+    private static final String ASSET_PATH = "semantic/semantic_en.json";
 
     /** 2026-08 新增: 完全找不到問法對應那陣的 fallback 回應 - 5 句、各自配不同
      *  (已驗證沒聲效) 動作, match() 裡面隨機選一句, 讓機械人聽不懂都有反應, 不會

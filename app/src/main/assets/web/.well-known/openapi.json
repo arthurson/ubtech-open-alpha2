@@ -2325,7 +2325,7 @@
         "tags": [
           "speech"
         ],
-        "summary": "取得預設 BNF 文法檔內容 (assets/iflytek/default_grammar.bnf；文法本身已無處上載，僅供參考)",
+        "summary": "取得預設 BNF 文法檔內容 (assets/semantic/default_grammar.bnf；文法本身已無處上載，僅供參考)",
         "parameters": [
           {
             "$ref": "#/components/parameters/PanelToken"
@@ -2516,7 +2516,7 @@
         "tags": [
           "speech"
         ],
-        "summary": "Vosk 狀態 (state/model/listening)",
+        "summary": "Vosk 狀態 (state/model/lang/listening)",
         "parameters": [
           {
             "$ref": "#/components/parameters/PanelToken"

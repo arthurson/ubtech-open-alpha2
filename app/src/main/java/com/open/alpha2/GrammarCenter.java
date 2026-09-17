@@ -9,7 +9,7 @@ import org.json.JSONObject;
 import java.util.Map;
 
 /**
- * 離線文法包：iFlytek 本地 BNF 文法生命週期 (doInit/doStart/doStop)＋
+ * 離線文法包：本地 BNF 文法生命週期 (doInit/doStart/doStop)＋
  * connectivity 觸發自動切換 (probe/apply/cooldown)＋wakeup probe＋
  * speech/offline_auto_switch、get_default_grammar 兩個 endpoint＋
  * CONNECTIVITY_ACTION receiver。
@@ -46,7 +46,7 @@ public final class GrammarCenter {
         }
     }
 
-    /** 離線文法辨識 (iFlytek local BNF grammar) 模式現在開不開。
+    /** 離線文法辨識 (本地 BNF grammar) 模式現在開不開。
      *  開了之後, 機身 alpha2services 會用 engine_type=local + APK 裡面的
      *  assets/asr/common.jet 離線資源做本地文法辨識 (完全不用上網), 辨識結果
      *  經 grammar listener 這條路徑回來。同時 onServerCallBack() 那條正常聽寫
@@ -163,7 +163,7 @@ public final class GrammarCenter {
                 + ",\"offlineActive\":" + offlineGrammarActive + "}");
     }
     /** onServerCallBack() 收到的 raw 字串, 在「語法識別」(grammar,
-     *  logcat type:1) 路徑底下是一個未解析的 iFlytek JSON, 例如
+     *  logcat type:1) 路徑底下是一個未解析的本地文法 JSON, 例如
      *  {"text":"你的爸爸是谁啊","rc":4}, 而不是純文字 (純文字是「聽寫識別」
      *  dictation, type:0, 那條路徑才有的格式)。這個 method 判斷輸入是否這種
      *  JSON 格式, 是的話就抽出 text field, 不是 (或 parse 失敗/text field
@@ -211,15 +211,15 @@ public final class GrammarCenter {
     }
 
     /** 預設文法是一份預先在 PC 上做好的靜態檔案
-     *  (assets/iflytek/default_grammar.bnf: 中文 1212 句 (q0-q12) + greet
+     *  (assets/semantic/default_grammar.bnf: 中文 1212 句 (q0-q12) + greet
      *  slot 裡的 hello/hi 兩個英文字, 全繁體, 無重複, 已剔除乘數表)。來源 =
-     *  語意庫 + 悠聊原裝 call.bnf 合併轉換, App 不再做任何運行時生成/解析/
+     *  語意庫 + 悠聊原裝 BNF 合併轉換, App 不再做任何運行時生成/解析/
      *  簡繁轉換, 淨係讀檔。
      *
      *  離線文法只支援中文普通話（訊飛文檔＋common.jet 無英文音素，已確認），不含英文詞；離線英文用其他引擎。 */
     private String readDefaultGrammarAsset() {
         try {
-            java.io.InputStream in = appContext.getAssets().open("iflytek/default_grammar.bnf");
+            java.io.InputStream in = appContext.getAssets().open("semantic/default_grammar.bnf");
             try {
                 java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
                 byte[] buf = new byte[4096];
@@ -242,7 +242,7 @@ public final class GrammarCenter {
     public HttpServer.ApiResponse getDefaultGrammar() {
         String bnf = readDefaultGrammarAsset();
         if (bnf == null) {
-            return HttpServer.ApiResponse.error("assets/iflytek/default_grammar.bnf unreadable");
+            return HttpServer.ApiResponse.error("assets/semantic/default_grammar.bnf unreadable");
         }
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"bnf\":\"" + MainActivity.jsonSafe(bnf) + "\"}");
     }
@@ -251,7 +251,7 @@ public final class GrammarCenter {
     // doInitGrammar/doStartGrammar/doStopGrammar 供
     // 「自動跟網路切換」和 HTTP endpoint 兩邊共用。自動切換規則 (開啟
     // offlineGrammarAutoSwitch 才生效):
-    //   沒網路 → 確保 iFlytek binding → 文法未構建就先構建 → 構建成功立即 start
+    //   沒網路 → （舊 iFlytek binding 路已死，見 stub）文法未構建就先構建 → 構建成功立即 start
     //   有網路 → 離線模式開著的話就 stop, 回到雲端聽寫 (自由講話)
     // 狀態變化會 publish "offline_mode" event 供前端 UI 更新。
 
@@ -313,7 +313,7 @@ public final class GrammarCenter {
             if (offlineGrammarActive || grammarInitInFlight) {
                 return; // 已經在離線模式/已經構建中, 不用重複開啟
             }
-            // 確保 ASR binding 走 iFlytek (zh_cn), 這個 call 對已綁定的情況無害
+            // 確保 ASR binding 走 zh_cn（舊 iFlytek 路已死，stub 即回；這個 call 對已綁定的情況無害）
             try {
                 robot.speech_setRecognizedLanguage("zh_cn");
             } catch (Exception e) {
@@ -417,7 +417,7 @@ public final class GrammarCenter {
                     public void onSpeechGrammarResult(int type, String result) {
                         // type: firmware SpeechManager d.a(int,String) 那邊
                         // "语法识别成功:<result> type:<n>" 的同一個 int -
-                        // type=1 是辨識文字結果 (iFlytek JSON {"text":..,"rc":..}),
+                        // type=1 是辨識文字結果 (本地文法 JSON {"text":..,"rc":..}),
                         // 其他 type 是 focus/state 類訊號, 原樣轉發給前端查看。
                         String text = extractGrammarResultText(result);
                         EventBus.get().publish("grammar_result",

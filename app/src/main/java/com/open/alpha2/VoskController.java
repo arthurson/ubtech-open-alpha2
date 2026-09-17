@@ -50,6 +50,8 @@ public final class VoskController {
     public static final float SAMPLE_RATE = 16000.0f;
     private static final String PREFS_NAME = "robotpanel";
     private static final String PREF_MODEL_ID = "vosk_model_id";
+    /** 對話語言（zh/en）：loadModel 成功嗰陣記低，開機還原＋status 顯示用。 */
+    private static final String PREF_DIALOGUE_LANG = "vosk_dialogue_lang";
     private static final String PREF_EP_MODE = "vosk_ep_mode";
     private static final String PREF_EP_T_START = "vosk_ep_t_start";
     private static final String PREF_EP_T_END = "vosk_ep_t_end";
@@ -384,7 +386,14 @@ public final class VoskController {
                         model = m;
                         grammarJson = grammar;
                     }
-                    prefs().edit().putString(PREF_MODEL_ID, id).apply();
+                    android.content.SharedPreferences.Editor ed = prefs().edit();
+                    ed.putString(PREF_MODEL_ID, id);
+                    String mappedLang = langOfModelId(id);
+                    if (mappedLang != null) {
+                        // model 即語言：換 model 一併記低對話語言，等 status／前端唔使估。
+                        ed.putString(PREF_DIALOGUE_LANG, mappedLang);
+                    }
+                    ed.apply();
                     Log.i(TAG, "model loaded: " + id
                             + (grammar != null ? " (grammar constrained)" : " (open vocab)"));
                     setState(State.READY, id, null);
@@ -397,6 +406,28 @@ public final class VoskController {
         return null;
     }
 
+    /** model id → 對話語言（zh/en；認唔到回 null）。同 buildGrammar 之前內聯
+     *  嗰串 contains 逐字一樣，抽出嚟等 vosk/load 同步配對語言都用同一套。 */
+    static String langOfModelId(String id) {
+        if (id == null) return null;
+        String lower = id.toLowerCase(java.util.Locale.US);
+        if (lower.contains("cn") || lower.contains("zh") || lower.contains("mandarin")) return "zh";
+        if (lower.contains("en")) return "en";
+        return null;
+    }
+
+    /** 而家對話語言（zh/en）：上次 load 記低嘅；未記過就由而家個 model 推（都冇就 zh）。
+     *  語言跟 model 行——模型鍵就係語言掣，唔使用家另外揀。 */
+    public String getDialogueLang() {
+        try {
+            String v = prefs().getString(PREF_DIALOGUE_LANG, null);
+            if ("zh".equals(v) || "en".equals(v)) return v;
+            String m = langOfModelId(modelId);
+            if (m != null) return m;
+        } catch (Throwable ignore) {}
+        return "zh";
+    }
+
     /** 起限定文法（問法庫）；唔得就回 null 用開放式。絕不 throw。
      *  中文要逐字空格（"你好嗎"→"你 好 嗎"）：small-cn 嘅 words.txt 係字級，
      *  成句當一個 entry 會全部 OOV 被 ignore（logcat 實證）。輸出嗰陣認返
@@ -404,17 +435,15 @@ public final class VoskController {
     private String buildGrammar(String id) {
         try {
             List<String> phrases;
-            String lower = id.toLowerCase(java.util.Locale.US);
-            boolean cn = lower.contains("cn") || lower.contains("zh")
-                    || lower.contains("mandarin");
-            if (cn) {
+            String lang = langOfModelId(id);
+            if ("zh".equals(lang)) {
                 phrases = new ArrayList<>();
                 for (String q : matcherZh.questions()) {
                     String s = SimplifiedToTraditional.toSimplified(q);
                     if (s != null && !s.isEmpty()) phrases.add(spaced(s));
                 }
                 stripSpaces = true;
-            } else if (lower.contains("en")) {
+            } else if ("en".equals(lang)) {
                 phrases = matcherEn.questions();
                 stripSpaces = false;
             } else {

@@ -147,13 +147,6 @@ function appendLog(msg) {
       voskPollDownload();
     }
   }
-  // 真正 online iFlytek ASR 語意配對結果 (由 MainActivity handleIflytekSemanticText() publish) — 真人講嘢/打字模擬兩條路徑喺對話界面出一致 assistant 氣泡。
-  if (msg.type === "iflytek_match" && msg.data) {
-    // 對話界面淨出 assistant 答案氣泡；[TYPE operation] 動作ID detail 行唔顯示 — 技術代碼喺 Event Log 睇得到。
-    if (msg.data.answer && typeof appendSpeechChatLine === "function") {
-      appendSpeechChatLine("xiaozhi-msg-assistant", msg.data.answer);
-    }
-  }
   if (msg.type === "sonar_obstacle" && msg.data) {
     sonarThresholdCm = msg.data.thresholdCm;
     sonarHistory.push({ triggered: !!msg.data.triggered });
