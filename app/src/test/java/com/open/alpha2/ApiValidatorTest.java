@@ -186,7 +186,7 @@ public final class ApiValidatorTest {
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireUbxSpeed(q()); } }, "ubxSpeed.missing");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.parseUbxSpeedValue(null); } }, "ubxSpeed.null");
 
-        // ── uuid / volume / endpointer mode / angles ──
+        // ── uuid / volume / angles ──
         eq("ABC123", ApiValidator.requireUuidValue(q("value", "ABC123")), "uuid.ok");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireUuidValue(q("value", "01234567890123456789012345678901")); } }, "uuid.tooLong");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireUuidValue(q("value", "ABC\u00e4")); } }, "uuid.nonAscii");
@@ -194,9 +194,6 @@ public final class ApiValidatorTest {
         eq(50, ApiValidator.requireVolumePercent(q("percent", "50")), "volume.ok");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireVolumePercent(q("percent", "101")); } }, "volume.high");
         eq(50, ApiValidator.requireVolumePercent(q("percent", "50"), "percent"), "volume.keyed");
-        eq(-1, ApiValidator.optionalVoskEndpointerMode(q()), "epMode.default");
-        eq(2, ApiValidator.optionalVoskEndpointerMode(q("mode", "2")), "epMode.present");
-        throwsIllegal(new Runnable() { public void run() { ApiValidator.optionalVoskEndpointerMode(q("mode", "4")); } }, "epMode.high");
         int[] angles = ApiValidator.requireAngles20(q("angles", "90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90"));
         eq(20, angles.length, "angles20.len");
         eq(90, angles[0], "angles20.first");

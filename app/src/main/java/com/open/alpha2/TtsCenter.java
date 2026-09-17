@@ -26,15 +26,15 @@ import java.util.concurrent.TimeUnit;
 public final class TtsCenter {
     private static final String TAG = "TtsCenter";
 
-    /** TTS 卡揀緊嘅 Android 語言 BCP-47 tag (空=沿用引擎目前
+    /** TTS 卡選擇中的 Android 語言 BCP-47 tag (空=沿用引擎目前
      *  語言)。前端 setAndroidTtsLang() 同步寫入，對話管線 speakAndroidTts()
-     *  優先用佢——一揀即時跟，唔使等。 */
+     *  優先用它——一選即時跟，不用等。 */
     private static final String PREF_ANDROID_TTS_LANG = "android_tts_lang";
 
-    /** TTS 卡揀緊嘅具體聲音 (TextToSpeech.Voice.getName()，空=
+    /** TTS 卡選擇中的具體聲音 (TextToSpeech.Voice.getName()，空=
      *  用引擎該語言預設聲)。Google TTS 每個語言有多把聲（男女／網絡／裝置），
-     *  前端揀完語言再揀聲；呢個名綁死引擎＋語言，轉引擎／轉語言嗰陣一齊清
-     *  （見 setTtsEngine/setTtsLang），唔好將舊聲套落新語言度。 */
+     *  前端選完語言再選聲；這個名綁死引擎＋語言，轉引擎／轉語言時一齊清
+     *  （見 setTtsEngine/setTtsLang），不要將舊聲套到新語言上。 */
     private static final String PREF_ANDROID_TTS_VOICE = "android_tts_voice";
 
     public static final int TTS_DATA_CHECK_REQUEST_CODE = 0x7454; // "T T" leetspeak-ish, 只是要一個穩定、未用過的 code
@@ -51,7 +51,7 @@ public final class TtsCenter {
         return activity.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    // Android system TTS (機身唯一仲用到嘅 TTS，直接用，唔經 ISpeechInterface)。
+    // Android system TTS (機身唯一還用得到的 TTS，直接用，不經 ISpeechInterface)。
     // 語言／聲選擇經下面 setTtsVoice() 等 endpoint 方法。
     // volatile: initAndroidTts() reassigns this from an HTTP worker thread when
     // switching engines, and it's read from other worker threads on every speech/tts
@@ -72,7 +72,7 @@ public final class TtsCenter {
         return androidTtsReady;
     }
 
-    /** speech/stop 等共用：停咗佢 (唔 shutdown，留返下次用)。 */
+    /** speech/stop 等共用：停掉它 (不 shutdown，留給下次用)。 */
     public void stop() {
         TextToSpeech tts = androidTts;
         if (tts != null) {
@@ -185,10 +185,10 @@ public final class TtsCenter {
             Intent checkIntent = new Intent();
             checkIntent.setAction(TextToSpeech.Engine.ACTION_CHECK_TTS_DATA);
             checkIntent.setPackage(enginePkg); // 指定該 engine, 不是「隨便哪個應用程式搶到就用哪個」
-            // 註：呢度多數跑喺 HttpServer worker thread——startActivityForResult
-            // 係 binder call，唔掂 View，worker thread 調用無問題；結果經主線程
-            // onActivityResult → latch 返嚟，唔好「修正」做 mainHandler.post
-            //（post 完仲要等 latch，多此一舉；直接調用先唔會 deadlock）。
+            // 註：這裡多數跑在 HttpServer worker thread——startActivityForResult
+            // 是 binder call，不碰 View，worker thread 調用無問題；結果經主線程
+            // onActivityResult → latch 回來，不要「修正」做 mainHandler.post
+            //（post 完還要等 latch，多此一舉；直接調用才不會 deadlock）。
             activity.startActivityForResult(checkIntent, TTS_DATA_CHECK_REQUEST_CODE);
         } catch (Exception e) {
             Log.e(TAG, "ACTION_CHECK_TTS_DATA launch failed for engine=" + enginePkg, e);
@@ -212,7 +212,7 @@ public final class TtsCenter {
         }
         Map<String, TtsLanguageOption> options = new HashMap<>();
         for (String voice : raw) {
-            // "eng" 或 "eng-USA" 或 "eng-USA-FEMALE" - 拆開, 淨係要 lang[-country],
+            // "eng" 或 "eng-USA" 或 "eng-USA-FEMALE" - 拆開, 只需要 lang[-country],
             // 去除第 4 段開始的任何 variant 後綴 (不是 Locale 的 country, 也
             // 不是 toLanguageTag() 任何位置會放置的 engine-specific variant 標籤)。
             String[] parts = voice.split("-");
@@ -273,9 +273,9 @@ public final class TtsCenter {
                 try {
                     String lang3 = l.getISO3Language();
                     // 用 containsKey()+put() 而不是 putIfAbsent() - user-confirmed
-                    // 真機 crash: 呢部機 Android 版本早過 API 24 (Nougat),
-                    // Map.putIfAbsent() 係 default method, 淨係 API 24 開始先有
-                    // (呢個 app 自己個 minSdkVersion 係 19) - call 落去會 throw
+                    // 真機 crash: 這部機 Android 版本早過 API 24 (Nougat),
+                    // Map.putIfAbsent() 是 default method, 僅 API 24 開始才有
+                    // (這個 app 自己個 minSdkVersion 是 19) - 調用下去會 throw
                     // NoSuchMethodError 令成個 app 死埋。containsKey()+put() 用
                     // pre-Java-8/pre-API-24 都支援的 Map method 做出同樣「keep the
                     // first mapping seen」的效果。
@@ -327,10 +327,10 @@ public final class TtsCenter {
         }
     }
 
-    /** speech/tts_voices 一粒聲：name 係 set 時傳返嚟嘅 id (Voice.getName())，
-     *  localeTag 係呢把聲屬邊個語言，network＝要上網先讀到，quality＝
-     *  Voice.getQuality() (API 21+ 先有 Voice，見 listAndroidTtsVoices 守門)。
-     *  顯示名唔喺呢度砌——中／英文後綴（本地／網絡）由前端按 uiLang 加。 */
+    /** speech/tts_voices 一把聲：name 是 set 時傳回來的 id (Voice.getName())，
+     *  localeTag 是這把聲屬哪個語言，network＝要上網先讀到，quality＝
+     *  Voice.getQuality() (API 21+ 才有 Voice，見 listAndroidTtsVoices 守門)。
+     *  顯示名不在這裡砌——中／英文後綴（本地／網絡）由前端按 uiLang 加。 */
     private static final class TtsVoiceOption {
         final String name;
         final String localeTag;
@@ -344,11 +344,11 @@ public final class TtsCenter {
         }
     }
 
-    /** 列出指定語言（BCP-47 tag，空＝唔過濾，成個引擎）嘅全部具體聲音。
-     *  用 getVoices()（API 21+，呢個 APK 要行 API 19，守門＋Throwable 全接，
-     *  舊機回空清單唔炒；同 checkTtsDataViaGetVoices 同一假設）。
+    /** 列出指定語言（BCP-47 tag，空＝不過濾，整個引擎）的全部具體聲音。
+     *  用 getVoices()（API 21+，這個 APK 要行 API 19，守門＋Throwable 全接，
+     *  舊機回空清單不崩；同 checkTtsDataViaGetVoices 同一假設）。
      *  配對規則：locale 完全等於要求先排頭，其次同 language（zh-HK 要 zh 把聲
-     *  頂上，唔好回家；Google TTS 每個語言多把聲就係靠呢層撈出嚟）。 */
+     *  頂上，不要返回；Google TTS 每個語言多把聲就是靠這層撈出來）。 */
     private List<TtsVoiceOption> listAndroidTtsVoices(String langTag) {
         List<TtsVoiceOption> out = new ArrayList<>();
         if (android.os.Build.VERSION.SDK_INT < 21) return out;
@@ -371,7 +371,7 @@ public final class TtsCenter {
             }
             if (req != null && (req.getLanguage() == null || req.getLanguage().isEmpty()
                     || "und".equals(req.getLanguage()))) {
-                req = null; // 傳咗個怪 tag，當無過濾好過回空
+                req = null; // 傳了個怪 tag，當無過濾比回空好
             }
         }
         List<TtsVoiceOption> exact = new ArrayList<>();
@@ -411,15 +411,15 @@ public final class TtsCenter {
         Collections.sort(exact, byName);
         Collections.sort(langOnly, byName);
         Collections.sort(rest, byName);
-        // 同語言先（完全配對行先），唔啱語言嘅唔回（前端揀咗中文唔應該見到英文聲）。
+        // 同語言先（完全配對行先），不合語言的不回（前端選了中文不應該見到英文聲）。
         out.addAll(exact);
         out.addAll(langOnly);
         if (req == null) out.addAll(rest);
         return out;
     }
 
-    /** 名揾聲＋setVoice。return true＝已切聲（連 locale 一齊換埋，唔使再
-     *  setLanguage）；false＝搵唔到／唔支援（caller 跌返 setLanguage 路）。 */
+    /** 以名找聲＋setVoice。return true＝已切聲（連 locale 一齊換，不用再
+     *  setLanguage）；false＝找不到／不支援（caller 跌回 setLanguage 路）。 */
     private boolean applyVoiceByName(TextToSpeech tts, String voiceName) {
         if (tts == null || voiceName == null || voiceName.isEmpty()) return false;
         if (android.os.Build.VERSION.SDK_INT < 21) return false;
@@ -562,8 +562,8 @@ public final class TtsCenter {
                 // no-op: the mouth LED is already started right before speak() is
                 // called, not here, so it lights up without waiting for this callback's
                 // round-trip.
-                // Vosk 聆聽緊就 pause 返，唔好將自己把聲認返入去無限迴音。
-                // mic 照 hold 住（pause 唔放 recorder），播完 onDone  resume。
+                // Vosk 聆聽中就暫停回去，不要將自己的聲音再識別回去造成無限迴音。
+                // mic 照樣 hold 住（pause 不放 recorder），播完 onDone  resume。
                 if (vosk != null) {
                     try {
                         vosk.setPaused(true);
@@ -607,15 +607,15 @@ public final class TtsCenter {
     }
 
     /**
-     * 經 Android 內置 TTS 讀一句 (供語意配對答案等唔經 speech/tts
+     * 經 Android 內置 TTS 讀一句 (供語意配對答案等不經 speech/tts
      * endpoint 的內部調用)。同 speech/tts engine=android 分支同一個語義:
-     * locale 參數而家只係 fallback —— TTS 卡有明確選擇
-     * (PREF_ANDROID_TTS_LANG 非空) 就優先用卡嘅選擇，對話 TTS 即時跟卡走；
-     * 卡留空 ("沿用引擎目前語言") 先用傳入嘅自動判斷值。
-     * 嘗試切 locale (唔支援就記 warning 照用引擎現有語言讀, 唔靜音),
-     * QUEUE_FLUSH 單句播放。嘴 LED 由 UtteranceProgressListener 負責熄,
-     * 呼叫方開始前點亮、失敗時自己熄即可。
-     * @return true = 已送去播放, false = Android TTS 未 ready (呼叫方要自己熄燈)
+     * locale 參數現在只是 fallback —— TTS 卡有明確選擇
+     * (PREF_ANDROID_TTS_LANG 非空) 就優先用卡的選擇，對話 TTS 即時跟卡走；
+     * 卡留空 ("沿用引擎目前語言") 先用傳入的自動判斷值。
+     * 嘗試切 locale (不支援就記 warning 照用引擎現有語言讀, 不靜音),
+     * QUEUE_FLUSH 單句播放。嘴 LED 由 UtteranceProgressListener 負責關,
+     * 呼叫方開始前點亮、失敗時自己關即可。
+     * @return true = 已送去播放, false = Android TTS 未 ready (呼叫方要自己關燈)
      */
     public boolean speakAndroidTts(String text, java.util.Locale locale) {
         TextToSpeech tts = androidTts;
@@ -623,7 +623,7 @@ public final class TtsCenter {
             Log.w(TAG, "speakAndroidTts: Android TTS not ready, drop: " + text);
             return false;
         }
-        // TTS 卡優先：有明確選擇就用佢，否則用傳入嘅自動判斷值。
+        // TTS 卡優先：有明確選擇就用它，否則用傳入的自動判斷值。
         java.util.Locale effective = locale;
         try {
             String cardLang = prefs().getString(PREF_ANDROID_TTS_LANG, "");
@@ -633,7 +633,7 @@ public final class TtsCenter {
         } catch (Throwable ignore) {
         }
         locale = effective;
-        // 卡有揀具體聲就用聲（setVoice 連 locale 一齊換）；搵唔到先跌返下面 setLanguage。
+        // 卡有選具體聲就用聲（setVoice 連 locale 一齊換）；找不到先跌回下面 setLanguage。
         boolean voiced = false;
         try {
             voiced = applyVoiceByName(tts, ttsVoicePref());
@@ -680,7 +680,7 @@ public final class TtsCenter {
 
     /** speech/tts engine=android 分支本體。回 null = 已送去讀；回字串 = 錯誤訊息。
      *  voice（可空）＝ Voice.getName()：有就優先 setVoice（連 locale 一齊換，
-     *  唔使 lang 都啱）；搵唔到先跌返 lang 路。空就照舊只用 lang。 */
+     *  不要求 lang 相符）；找不到先跌回 lang 路。空就照舊只用 lang。 */
     public String speakPanelTts(String text, String lang, String voice) {
         if (androidTts == null || !androidTtsReady) {
             return "Android TTS not ready";
@@ -704,10 +704,10 @@ public final class TtsCenter {
         return null;
     }
 
-    // Android TTS 語言揀擇 - 淨係 engine=android 用得 (Nuance/iFlytek
+    // Android TTS 語言選擇 - 僅 engine=android 用得 (Nuance/iFlytek
     // 兩個 AIDL engine 沒有語言參數選擇, lang 已經由 engine 本身固定死,
     // 見 speech/tts 的 android 分支)。ui_lang ("zh"/"en") 控制的是
-    // displayName 用邊種語言顯示。
+    // displayName 用哪種語言顯示。
     public HttpServer.ApiResponse ttsLanguages(Map<String, String> query) {
         boolean english = "en".equals(ApiValidator.optionalUiLang(query));
         List<TtsLanguageOption> langs = listAndroidTtsLanguages(
@@ -741,12 +741,12 @@ public final class TtsCenter {
     public HttpServer.ApiResponse setTtsEngine(Map<String, String> query) {
         String enginePkg = ApiValidator.require(query, "engine");
         initAndroidTts(enginePkg);
-        // 轉引擎＝舊聲作廢（個名綁死舊引擎），一齊清，唔好套落新引擎度。
+        // 轉引擎＝舊聲作廢（個名綁死舊引擎），一齊清，不要套到新引擎上。
         try {
             prefs().edit().putString(PREF_ANDROID_TTS_VOICE, "").apply();
         } catch (Throwable ignore) {
         }
-        // 呢個切換本身係 async (initAndroidTts() 拆舊起新一個
+        // 這個切換本身是 async (initAndroidTts() 拆舊起新一個
         // TextToSpeech instance, 再等 OnInitListener 先真正 ready) -
         // 這裡的 "ok" 只是說已經觸發了切換, 不代表立即可以講話, 前端
         // 應該延遲少少先再 poll speech/cur_tts_engine。
@@ -758,13 +758,13 @@ public final class TtsCenter {
                 "{\"ok\":true,\"engine\":\"" + MainActivity.jsonSafe(androidTtsEnginePkg) + "\"}");
     }
 
-    // TTS 卡語言選擇嘅後端 pref (BCP-47 tag，空=沿用引擎
+    // TTS 卡語言選擇的後端 pref (BCP-47 tag，空=沿用引擎
     // 目前語言)。前端 setAndroidTtsLang() 同步寫入；對話管線
-    // speakAndroidTts() 優先讀佢——一揀即時跟。
+    // speakAndroidTts() 優先讀它——一選即時跟。
     public HttpServer.ApiResponse setTtsLang(Map<String, String> query) {
         String lang = ApiValidator.optional(query, "lang", "");
         prefs().edit().putString(PREF_ANDROID_TTS_LANG, lang == null ? "" : lang).apply();
-        // 轉語言＝舊聲作廢（唔同語言唔同聲），一齊清。
+        // 轉語言＝舊聲作廢（不同語言不同聲），一齊清。
         try {
             prefs().edit().putString(PREF_ANDROID_TTS_VOICE, "").apply();
         } catch (Throwable ignore) {
@@ -783,10 +783,10 @@ public final class TtsCenter {
                 "{\"ok\":true,\"lang\":\"" + MainActivity.jsonSafe(lang == null ? "" : lang) + "\"}");
     }
 
-    // TTS 卡聲音選擇嘅後端 pref (Voice.getName()，空=用該語言
-    // 預設聲)。前端揀完語言再載入該語言把聲嚟揀；對話管線 speakAndroidTts()
-    // 同 speech/tts 都會用（經 applyVoiceByName，搵唔到跌返語言路）。
-    // lang 參數（可空）：有就只回該語言把聲；空就回成個引擎（前端唔用，留俾診斷）。
+    // TTS 卡聲音選擇的後端 pref (Voice.getName()，空=用該語言
+    // 預設聲)。前端選完語言再載入該語言的聲來選；對話管線 speakAndroidTts()
+    // 同 speech/tts 都會用（經 applyVoiceByName，找不到跌回語言路）。
+    // lang 參數（可空）：有就只回該語言的聲；空就回整個引擎（前端不用，留給診斷）。
     public HttpServer.ApiResponse ttsVoices(Map<String, String> query) {
         String lang = ApiValidator.optional(query, "lang", "");
         List<TtsVoiceOption> voices = listAndroidTtsVoices(lang == null ? "" : lang);

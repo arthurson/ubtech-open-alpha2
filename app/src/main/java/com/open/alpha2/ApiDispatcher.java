@@ -281,8 +281,6 @@ public final class ApiDispatcher {
                 return voskApi.voskStop();
             case "vosk/unload":
                 return voskApi.voskUnload();
-            case "vosk/mic_test":
-                return voskApi.voskMicTest();
             case "vosk/download":
                 return voskApi.voskDownload(query);
             case "vosk/download_status":
@@ -291,8 +289,6 @@ public final class ApiDispatcher {
                 return voskApi.voskDownloadCancel();
             case "vosk/catalog":
                 return voskApi.voskCatalog();
-            case "vosk/endpointer":
-                return voskApi.voskEndpointer(query);
             // -- Servos -----------------------------------------------------------------
             case "servo/one":
                 return ubxApi.servoOneResponse(query);

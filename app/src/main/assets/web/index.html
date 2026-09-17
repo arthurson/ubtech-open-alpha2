@@ -9,8 +9,8 @@
 <body>
 
 <!-- 面板鎖屏浮層：auth 啟用＋未解鎖時由 panelLockCheck() 打開（加 .open），蓋住
-     成個面版唔 show 內容；浮層解鎖成功即記住 token＋reload。預設收埋（display:none），
-     停用認證時永遠唔出現，預設行為零影響。 -->
+     整個面板不顯示內容；浮層解鎖成功即記住 token＋reload。預設收起（display:none），
+     停用認證時永遠不出現，預設行為零影響。 -->
 <div id="panelLockOverlay">
   <div class="panel-lock-card">
     <h2>🔐 面板已鎖定 / Panel Locked</h2>
@@ -108,7 +108,7 @@
     </section>
 
     <!-- PIR card：toggle 開關＋警示反應開關＋指示燈，用 chest_setPirSensorEnabled()
-         (chest serial cmd=72)。後端 publish "alpha2_pir_state" event，前端唔使理背後路徑。
+         (chest serial cmd=72)。後端 publish "alpha2_pir_state" event，前端不用理背後路徑。
          indicator id: alpha2PirIndicator（見 app-status.js onAlpha2PirState()）。
          警示反應（紅燈＋"Heaven" 鈴聲）經 MainActivity#applyAlpha2PirLedAndSound() 實現，
          預設關。 -->
@@ -175,7 +175,7 @@
     <section class="card">
       <h2 data-i18n="actions_heading">動作 (Actions)</h2>
       <div class="row">
-        <button onclick="loadActionList()" data-i18n="actions_load_btn">攞動作列表</button>
+        <button onclick="loadActionList()" data-i18n="actions_load_btn">取得動作列表</button>
       </div>
       <div id="actionSubTabBar" class="sub-tab-bar"></div>
       <div id="actionSubSubTabBar" class="sub-tab-bar sub-sub-tab-bar"></div>
@@ -210,7 +210,7 @@
         <button onclick="servoReadAllAngles()" data-i18n="servo_read_all_btn">📖 讀取全部</button>
         <span id="servoReadStatus" class="hint"></span>
       </div>
-      <p class="hint" data-i18n="servo_read_hint">讀指定一顆或一次過讀全部舵機即時角度（讀完即寫回上力），顯示喺對應行右邊；讀不到顯示 -。全部約 6 秒，讀取時請固定好機械人。</p>
+      <p class="hint" data-i18n="servo_read_hint">讀指定一顆或一次過讀全部舵機即時角度（讀完即寫回上力），顯示在對應行右邊；讀不到顯示 -。全部約 6 秒，讀取時請固定好機械人。</p>
       <div id="servoGroups"></div>
     </section>
   </div>
@@ -219,13 +219,13 @@
   <div id="tab-speech" class="tab-page">
     <!-- 對話界面：全抄小智 tab 做法，一個 event-log 樣式 chat log
          (xiaozhi-msg-user/assistant/system 三種氣泡，見 style.css)，底下文字輸入＋送出。
-         純「顯示層」，唔改底層 API。打字當做已辨識完的一句話，送去問法配對引擎
-        （中英文各 1000 條，按有冇漢字自動判斷），命中即做 TTS＋動作。
+         純「顯示層」，不改底層 API。打字當作已辨識完的一句話，送去問法配對引擎
+        （中英文各 1000 條，按有無漢字自動判斷），命中即做 TTS＋動作。
          底層叫 speech/semantic_simulate，配對答案行 Android 內置 TTS
         （見 MainActivity.speakAndroidTts()）。 -->
     <section class="card">
       <h2 data-i18n="speech_chat_heading">💬 對話界面</h2>
-      <!-- Vosk 聆聽指示燈（綠＝聽緊，灰＝其他）：擺呢行，唔可以擺入上面 h2
+      <!-- Vosk 聆聽指示燈（綠＝聆聽中，灰＝其他）：放這行，不可以放入上面 h2
           （applyUiLanguage 會成個 textContent 覆寫）。 -->
       <div class="row" style="margin-bottom:-4px">
         <span id="voskStateDot" class="vosk-state-dot vosk-state-dot-off"></span>
@@ -240,60 +240,44 @@
     </section>
 
     <!-- Vosk 離線 ASR 卡：Model 放 sdcard 頂層 vosk-* 目錄（有 am/final.mdl 即算），
-         開頁自動掃描出鍵；撳鍵即載入＋自動開聽，成句經 asr_result 入對話管線
-        （氣泡＋語意配對＋TTS＋動作），partial 即時顯示喺下面。辨識限定喺問法庫範圍
+         開啟頁面自動掃描出鍵；按鍵即載入＋自動開聽，成句經 asr_result 入對話管線
+        （氣泡＋語意配對＋TTS＋動作），partial 即時顯示在下方。辨識限定在問法庫範圍
         （中文轉簡體先對 acoustic，見 VoskController）。 -->
     <section class="card" id="voskCard">
       <h2 data-i18n="vosk_heading">🎙️ 語音辨識 (Vosk 離線)</h2>
-      <p class="hint" data-i18n="vosk_hint">模型放 sdcard 頂層（如 vosk-model-small-cn-0.22），開頁自動偵測，不跟 App。載入需幾秒＋約 200MB 記憶體，一次一粒。</p>
-      <!-- 有咩 model 出咩鍵（名跟面板語言，見 app-vosk.js voskLangName），一次淨一粒有效——
-           有效藍色，其餘灰色；一撳即先停舊再載入＋自動開聽。 -->
+      <p class="hint" data-i18n="vosk_hint">模型放 sdcard 頂層（如 vosk-model-small-cn-0.22），開啟頁面自動偵測，不跟 App。載入需幾秒＋約 200MB 記憶體，一次一個。</p>
+      <!-- 有什麼 model 出什麼鍵（名跟面板語言，見 app-vosk.js voskLangName），一次僅一個有效——
+           有效藍色，其餘灰色；一按即先停舊再載入＋自動開聽。 -->
       <div class="row">
         <label data-i18n="vosk_model_label">模型：</label>
         <div id="voskModelBtns" style="flex:1; display:flex; gap:6px; flex-wrap:wrap"></div>
       </div>
-      <!-- 淨顯示已下載模型鍵，一撳即載入＋自動開聽；呢度剩停止＋測試咪。下載喺實驗 tab（voskDlCard）。 -->
-      <div class="row" style="margin-top:6px">
-        <button id="voskStopBtn" onclick="voskStop()" data-i18n="vosk_stop_btn" disabled>停止</button>
-        <button class="secondary" onclick="voskMicTest()" data-i18n="vosk_mic_test_btn">測試咪</button>
-      </div>
-      <div class="row" style="margin-top:6px">
-        <label for="voskEpMode" data-i18n="vosk_ep_label">收音延遲：</label>
-        <select id="voskEpMode">
-          <option value="-1" data-i18n="vosk_ep_default">跟預設</option>
-          <option value="1" data-i18n="vosk_ep_short">短</option>
-          <option value="2" data-i18n="vosk_ep_long">長</option>
-          <option value="3" data-i18n="vosk_ep_verylong">很長</option>
-        </select>
-        <input id="voskEpTEnd" type="number" min="0.1" max="10" step="0.1" placeholder="尾音秒" style="width:80px">
-        <button class="secondary" onclick="voskSetEndpointer()" data-i18n="vosk_ep_apply_btn">套用</button>
-      </div>
+      <!-- 僅顯示已下載模型鍵：藍＝聆聽中（再按即停變灰），灰色按即載入＋自動開聽。下載在實驗 tab（voskDlCard）。 -->
       <p class="hint" style="margin-top:6px" id="voskPartialOut">—</p>
-      <p class="hint" style="margin-top:6px" id="voskMicOut">—</p>
       <p class="hint" style="margin-top:6px" id="voskStatusOut">—</p>
     </section>
     <section class="card">
       <h2 data-i18n="tts_heading">語音 / TTS</h2>
-      <!-- TTS 只用 Android 內置；引擎／語言揀擇常駐顯示。 -->
+      <!-- TTS 只用 Android 內置；引擎／語言選擇常駐顯示。 -->
       <div class="row" id="ttsAndroidEngineRow">
         <label for="ttsAndroidEngineSelect" data-i18n="tts_android_engine_label">TTS 引擎：</label>
         <select id="ttsAndroidEngineSelect" onchange="setAndroidTtsEngine()" style="flex:1"></select>
       </div>
-      <!-- Android TTS 語言揀擇, 語言清單跟住而家揀咗嘅引擎變化 (揀新引擎之後要
+      <!-- Android TTS 語言選擇，語言清單跟著現在選擇的引擎變化 (選新引擎之後要
            重新載入語言清單)。 -->
       <div class="row" id="ttsAndroidLangRow">
         <label for="ttsAndroidLangSelect" data-i18n="tts_android_lang_label">語言：</label>
         <select id="ttsAndroidLangSelect" onchange="setAndroidTtsLang()" style="flex:1"></select>
       </div>
-      <!-- 聲音揀擇：揀完具體語言先出現，每個語言把聲唔同
-           （經 speech/tts_voices 按 lang 攞，見 app-speech.js loadAndroidTtsVoices）。 -->
+      <!-- 聲音選擇：選完具體語言先出現，每個語言的聲音不同
+           （經 speech/tts_voices 按 lang 取得，見 app-speech.js loadAndroidTtsVoices）。 -->
       <div class="row" id="ttsAndroidVoiceRow" style="display:none">
         <label for="ttsAndroidVoiceSelect" data-i18n="tts_android_voice_label">聲音：</label>
         <select id="ttsAndroidVoiceSelect" onchange="setAndroidTtsVoice()" style="flex:1"></select>
       </div>
       <div class="row">
         <input id="ttsText" placeholder="要說的文字" data-i18n="tts_text_placeholder" data-i18n-attr="placeholder" style="flex:1">
-        <button onclick="speakTts()" data-i18n="tts_speak_btn">講嘢 (TTS)</button>
+        <button onclick="speakTts()" data-i18n="tts_speak_btn">說話 (TTS)</button>
         <button onclick="stopTts()" data-i18n="tts_stop_btn">停止 TTS</button>
       </div>
     </section>
@@ -346,7 +330,7 @@
       </div>
 
       <div class="led-block">
-        <h3 data-i18n="led_mouth_heading">咀部 LED</h3>
+        <h3 data-i18n="led_mouth_heading">嘴部 LED</h3>
         <div class="row">
           <label><span data-i18n="led_mouth_speed_label">速度 (0–5000)：</span><span id="mouthSpeedVal">0</span></label>
           <input id="mouthSpeed" type="range" min="0" max="5000" value="0"
@@ -426,10 +410,10 @@
   </section>
 </div>
 
-<!-- 小智 AI 對話 - 同 tab-camera 一樣, 唔屬於任何一個 AIDL backend (連線/MCP 橋接
-     喺 server 端由 handleXiaozhiApi() 處理, 佢讀緊嘅 backend 係 call-time 動態揀嘅,
-     見 xiaozhiMcpBridge() 個 javadoc), 所以喺呢度 top-level 擺一份, 兩個 nav 都指到
-     呢一份, 唔重複起。 -->
+<!-- 小智 AI 對話 - 同 tab-camera 一樣, 不屬於任何一個 AIDL backend (連線/MCP 橋接
+     在 server 端由 handleXiaozhiApi() 處理, 它讀取的 backend 是 call-time 動態選擇的,
+     見 xiaozhiMcpBridge() 的 javadoc), 所以在這裡 top-level 放一份, 兩個 nav 都指向
+     這一份, 不重複建立。 -->
 <div id="tab-xiaozhi" class="tab-page">
   <section class="card">
     <h2 data-i18n="xiaozhi_heading">🤖 小智 AI 對話</h2>
@@ -459,22 +443,22 @@
 
     <div class="row">
       <span id="xiaozhiMicLed" class="led-dot led-dot-off"></span>
-      <span id="xiaozhiMicStatusBadge" class="hint" data-i18n="xiaozhi_mic_released">🎤 麥克風：已放低</span>
+      <span id="xiaozhiMicStatusBadge" class="hint" data-i18n="xiaozhi_mic_released">🎤 麥克風：已釋放</span>
     </div>
 
     <div id="xiaozhiChatLog" class="event-log" style="min-height:200px"></div>
 
-    <!-- 總停鍵喺「送出」呢行尾：一撳停晒動作播放／TTS／本地音樂／電台，
-         純粹係幾個現有 stop endpoint 的前端 fan-out，冇新增後端邏輯，詳見 xiaozhiStopAll()。 -->
+    <!-- 總停鍵在「送出」這行尾：一按停止全部動作播放／TTS／本地音樂／電台，
+         純粹是幾個現有 stop endpoint 的前端 fan-out，沒有新增後端邏輯，詳見 xiaozhiStopAll()。 -->
     <div class="row">
-      <input id="xiaozhiTextInput" placeholder="打字同小智傾偈…" data-i18n="xiaozhi_text_placeholder" data-i18n-attr="placeholder" autocomplete="off" style="flex:2" onkeydown="if(event.key==='Enter'){xiaozhiSendText();}">
+      <input id="xiaozhiTextInput" placeholder="打字與小智聊天…" data-i18n="xiaozhi_text_placeholder" data-i18n-attr="placeholder" autocomplete="off" style="flex:2" onkeydown="if(event.key==='Enter'){xiaozhiSendText();}">
       <button id="xiaozhiSendTextBtn" onclick="xiaozhiSendText()" disabled data-i18n="xiaozhi_send_text">送出</button>
       <button class="secondary" onclick="clearXiaozhiChatLog()" data-i18n="xiaozhi_clear_btn">清空</button>
       <button id="xiaozhiStopAllBtn" class="danger-btn" onclick="xiaozhiStopAll()" data-i18n="xiaozhi_stop_all_btn">⏹ 全部停止</button>
     </div>
 
-    <!-- TTS 輸出引擎揀擇：「小智」＝ server 送 opus 聲（XiaozhiAudioController 解碼播放）；
-         揀 Android 就靜音 opus，改用本地 speech/tts（Android 內置）逐句讀出
+    <!-- TTS 輸出引擎選擇：「小智」＝ server 送 opus 聲（XiaozhiAudioController 解碼播放）；
+         選 Android 就靜音 opus，改用本地 speech/tts（Android 內置）逐句讀出
          （見 xiaozhiHandleEvent() "xiaozhi_tts" case 同 MainActivity.xiaozhiTtsEngine）。 -->
     <div class="row">
       <label data-i18n="xiaozhi_tts_engine_label">語音輸出：</label>
@@ -485,8 +469,8 @@
     </div>
   </section>
 
-  <!-- 自訂小智 server：進階／一次性設定，擺 XiaoZhi 面板最底。四個欄位淨 OTA 位址必要，
-       其餘三個（WebSocket 位址／MAC／Token）留空即自動由 OTA response 攞，
+  <!-- 自訂小智 server：進階／一次性設定，擺 XiaoZhi 面板最底。四個欄位僅 OTA 位址必要，
+       其餘三個（WebSocket 位址／MAC／Token）留空即自動由 OTA response 取得，
        可選 override 應付要手動配置的情況（見 MainActivity "ota_config/set"）。 -->
   <section class="card">
     <h3 data-i18n="xiaozhi_ota_custom_heading">⚙️ 自訂小智 server</h3>
@@ -525,10 +509,10 @@
     </div>
   </section>
 
-  <!-- 內置MCP功能列表 card（read-only）：顯示經 xiaozhiMcpBridge() 暴露俾遠端 LLM 的
-       MCP tool 清單（name/description），同 xiaozhi.me console「MCP接入點」係兩回事
-       （嗰個係第三方工具連入用的獨立 websocket 端口）。device 側 tool 經
-       WebSocket "initialize"/"tools/list" 自動交換，冇手動配置。頂部開關純粹係「展開」
+  <!-- 內置MCP功能列表 card（read-only）：顯示經 xiaozhiMcpBridge() 暴露給遠端 LLM 的
+       MCP tool 清單（name/description），同 xiaozhi.me console「MCP接入點」是兩回事
+       （那個是第三方工具連入用的獨立 websocket 端口）。device 側 tool 經
+       WebSocket "initialize"/"tools/list" 自動交換，無手動配置。頂部開關純粹是「展開」
        （跟自訂 server card 樣式）：開＝展開清單＋逐項 enable/disable，關＝收埋。 -->
   <section class="card">
     <h3 data-i18n="xiaozhi_mcp_tools_heading">🔧 內置MCP功能列表</h3>
@@ -552,7 +536,7 @@
     </div>
   </section>
 
-  <!-- 小智控制台快速連結 card：新分頁開 https://xiaozhi.me/（睇配對狀態、對話紀錄等）。 -->
+  <!-- 小智控制台快速連結 card：新分頁開 https://xiaozhi.me/（看配對狀態、對話紀錄等）。 -->
   <section class="card">
     <h3 data-i18n="xiaozhi_console_heading">🌐 小智控制台</h3>
     <div class="row">
@@ -561,9 +545,9 @@
   </section>
 </div>
 
-<!-- 本地音樂 tab：前端純 UI，真播／隨機動作全喺 server 端
+<!-- 本地音樂 tab：前端純 UI，真播／隨機動作全在 server 端
      (MainActivity.java playLocalMusicFile()/
-     startMusicFillerActionLoop())。歌喺 /mnt/internal_sd/music/，
+     startMusicFillerActionLoop())。歌在 /mnt/internal_sd/music/，
      同小智語音「播放音樂」同一套後端。 -->
 <div id="tab-music" class="tab-page">
   <!-- 本地／電台共用同一套播放器（頻譜／音量／隨機動作） -->
@@ -591,7 +575,7 @@
   <!-- 來源卡：網絡電台 (radio-browser.info) -->
   <section class="card" id="radioCard">
     <h2 data-i18n="radio_heading">📻 網絡電台</h2>
-    <p class="hint"><a href="https://www.radio-browser.info/" target="_blank" rel="noopener">radio-browser.info</a> · <span data-i18n="radio_browser_hint">全球公開電台：搜尋即列出 50 個隨機結果，撳名即播</span></p>
+    <p class="hint"><a href="https://www.radio-browser.info/" target="_blank" rel="noopener">radio-browser.info</a> · <span data-i18n="radio_browser_hint">全球公開電台：搜尋即列出 50 個隨機結果，點擊名稱即播</span></p>
     <div class="row">
       <input id="radioSearchInput" placeholder="搜尋電台名稱、國家、標籤…" data-i18n="radio_search_placeholder" data-i18n-attr="placeholder" style="flex:1" onkeydown="radioOnSearchKeydown(event)">
       <button onclick="radioSearch()" data-i18n="radio_search_btn">🔍 搜尋</button>
@@ -613,13 +597,13 @@
     <div id="radioListContainer" class="radio-list"></div>
   </section>
 
-  <!-- 網上點歌卡：Internet Archive 免費音樂，唔使 login。搜尋＋metadata 經瀏覽器
-       直打 archive.org（機械人 TLS 太舊打唔到 https），攞到 http MP3 直鏈之後經
+  <!-- 網上點歌卡：Internet Archive 免費音樂，無需 login。搜尋＋metadata 經瀏覽器
+       直打 archive.org（機械人 TLS 太舊打不到 https），拿到 http MP3 直鏈之後經
        現成 audio/radio/play_url 叫機械人播（見 app-archive.js）。內容期望：
-       現場／獨立／舊錄音，冇商業流行榜歌。 -->
+       現場／獨立／舊錄音，無商業流行榜歌。 -->
   <section class="card" id="archiveCard">
     <h2 data-i18n="arc_heading">🌐 網上點歌</h2>
-    <p class="hint" data-i18n="arc_hint">Internet Archive 免費音樂（現場／獨立／舊錄音），唔使 login；搜尋經你個瀏覽器，播放經機械人。</p>
+    <p class="hint" data-i18n="arc_hint">Internet Archive 免費音樂（現場／獨立／舊錄音），無需登入；搜尋經你的瀏覽器，播放經機械人。</p>
     <div class="row">
       <input id="archiveSearchInput" placeholder="搜尋歌名、歌手、樂隊…" data-i18n="arc_search_placeholder" data-i18n-attr="placeholder" style="flex:1" onkeydown="arcOnSearchKeydown(event)">
       <button onclick="archiveSearch()" data-i18n="arc_search_btn">🔍 搜尋</button>
@@ -675,19 +659,19 @@
 </div>
 
   <!-- ============ TAB: ADVANCED ============ -->
-  <!-- 機械人 ID 變更器：一張 card 走晒查詢／複製／QR 顯示、打新 ID 即時同 canvas
+  <!-- 機械人 ID 變更器：一張 card 涵蓋查詢／複製／QR 顯示、輸入新 ID 即時在 canvas
        預覽新 QR（oninput，未寫入 EEPROM）、寫入 EEPROM、手動重開機提示。
        QR 內容 "robotSeq=<ID>"（同官方 bind QR 一致），離線生成（app-qr.js）。
        寫入後請長按電源鍵手動重開機（App 無 REBOOT 權限）。
-       高風險操作（直寫 chest EEPROM），預設收埋，要開關揭開先顯示；
-       每次入頁預設關，唔記狀態（見 uuidCardToggle()）。 -->
+       高風險操作（直寫 chest EEPROM），預設收起，要開關展開後顯示；
+       每次入頁預設關閉，不記狀態（見 uuidCardToggle()）。 -->
   <div id="tab-advanced" class="tab-page">
-    <!-- 面板 token 認證（opt-in，預設關＝全開）：啟用後成個面板上鎖
-         （全部 /api/*＋/upload/* 要帶 token；淨 auth/*＋靜態頁＋ws/stream 開放），
-         其他分頁＋Blockly 照跟同一粒 token（localStorage，同 browser 通用）。
+    <!-- 面板 token 認證（opt-in，預設關＝全開）：啟用後整個面板上鎖
+         （全部 /api/*＋/upload/* 要帶 token；僅 auth/*＋靜態頁＋ws/stream 開放），
+         其他分頁＋Blockly 照跟同一個 token（localStorage，同 browser 通用）。
          後端見 PanelAuth＋system/auth/*，前端 token 自動帶見 app-core.js
-         withPanelToken（blockly-page.js 獨立一份）。呢張卡預設收埋，用開關
-         揭開先顯示詳情（同 UUID 卡一致，每次入頁預設關，唔記狀態）。 -->
+         withPanelToken（blockly-page.js 獨立一份）。這張卡預設收起，用開關
+         展開後顯示詳情（同 UUID 卡一致，每次入頁預設關閉，不記狀態）。 -->
     <section class="card">
       <div class="row" style="justify-content:space-between;align-items:center">
         <h2 style="margin:0" data-i18n="panel_auth_heading">🔐 面板認證</h2>
@@ -700,7 +684,7 @@
       </div>
       <p id="panelAuthDisabledHint" class="hint" data-i18n="panel_auth_card_disabled_hint">開啟先會顯示面板認證設定</p>
       <div id="panelAuthCardBody" style="display:none">
-      <p class="hint" data-i18n="panel_auth_hint">啟用後，成個面板（全部 API＋上載，含其他分頁）要帶 token。預設關閉（全開）。未啟用時打新值撳儲存即啟用；已啟用時打現有值撳儲存即解鎖（要換新值就先清除再儲存）。Token 記喺瀏覽器，同一個面板地址跨 tab 共用。</p>
+      <p class="hint" data-i18n="panel_auth_hint">啟用後，整個面板（全部 API＋上載，含其他分頁）要帶 token。預設關閉（全開）。未啟用時輸入新值按儲存即啟用；已啟用時輸入現有值按儲存即解鎖（如需更換新值，先清除再儲存）。Token 記在瀏覽器，同一個面板地址跨 tab 共用。</p>
       <div class="row">
         <span id="panelAuthStatus" class="hint">-</span>
       </div>
@@ -756,9 +740,9 @@
       </div>
     </section>
 
-    <!-- Vosk 模型下載卡：開關揭開先顯示全部可下載模型（含其他語言；已下載唔顯示）。
-         撳即後端直落官方 zip＋自動 unzip 到 sdcard 頂層，完咗自動 load，
-         語音頁會即時多返粒對應語言鍵。後端見 VoskController DL_CATALOG＋
+    <!-- Vosk 模型下載卡：開關揭開先顯示，分有對話／無對話兩區。
+         點擊後端直落官方 zip＋自動 unzip 到 sdcard 頂層，完成自動 load，
+         語音頁會即時多一個對應語言鍵。後端見 VoskController DL_CATALOG＋
          vosk/catalog、vosk/download、vosk/download_status、vosk/download_cancel。 -->
     <section class="card">
       <div class="row" style="justify-content:space-between;align-items:center">
@@ -772,7 +756,10 @@
       </div>
       <p id="voskDlCardDisabledHint" class="hint" data-i18n="vosk_dl_disabled_hint">開啟後才會顯示可下載模型</p>
       <div id="voskDlCardBody" style="display:none">
-        <p class="hint" data-i18n="vosk_dl_hint">撳即下載官方模型並自動解壓到 sdcard（完咗自動載入，語音頁即多一粒鍵）。已下載唔會顯示。</p>
+        <p class="hint" data-i18n="vosk_dl_hint">點擊下載官方模型並自動解壓到 sdcard（完成自動載入，語音頁即多一個按鍵）。下面分有對話／無對話兩區。</p>
+        <h4 data-i18n="vosk_dl_supported_heading" style="margin:8px 0 4px">✓ 有對話（有 matcher）</h4>
+        <div id="voskCatalogSupported" style="display:flex; gap:6px; flex-wrap:wrap"></div>
+        <h4 data-i18n="vosk_dl_unsupported_heading" style="margin:8px 0 4px">無對話（只聽寫）</h4>
         <div id="voskCatalogList" style="display:flex; gap:6px; flex-wrap:wrap"></div>
         <div class="row" style="margin-top:6px">
           <button class="secondary" id="voskCatCancelBtn" onclick="voskCancelDownload()" data-i18n="vosk_download_cancel_btn" style="display:none">取消下載</button>
@@ -879,7 +866,7 @@
     </section>
   </div>
 
-  <!-- ============ EVENT LOG (常駐,喺 main 嘅捲動區域內,唔屬於任何一個tab) ============ -->
+  <!-- ============ EVENT LOG (常駐，在 main 的捲動區域內，不屬於任何一個tab) ============ -->
   <section class="card event-log-card">
     <h2 data-i18n="event_log_heading">即時事件 Log (WebSocket)</h2>
     <div class="row">
@@ -896,12 +883,12 @@
 
 </main>
 
-<!-- 全部檔案共用 window/global scope（冇用 ES module），所以順序有講究：
+<!-- 全部檔案共用 window/global scope（沒有用 ES module），所以順序有講究：
        1. app-core.js 第一：定義 api()/hwApi()、SERVO_CALIBRATION、I18N 等核心 helper。
-       2. app-log.js 最尾：佢個 DOMContentLoaded handler 會 call 上面定義的 build*()/refresh*()。
-       3. 中間檔案之間冇排序依賴（function hoisting），保持原 section 順序方便對照。
+       2. app-log.js 最尾：它的 DOMContentLoaded handler 會 call 上面定義的 build*()/refresh*()。
+       3. 中間檔案之間沒有排序依賴（function hoisting），保持原 section 順序方便對照。
      尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
-     所以全部 <script src> 一定要行完先到嗰個 inline script。 -->
+     所以全部 <script src> 一定要行完先到那個 inline script。 -->
 <script src="app-core.js"></script>
 <script src="api-client.js"></script>
 <script src="app-status.js"></script>
@@ -924,10 +911,10 @@
 <!-- ============================================================
      Sample: 4角度傾側控制頭/眼 LED
      ============================================================
-     獨立喺呢個 <script>、唔寫入 app-accel.js：app-accel.js 的 onAccelSample()
-     淨負責畫圖／讀數，唔驅動「反應」行為。做法：保留原本參照，用 wrapper
+     獨立在這個 <script>、不寫入 app-accel.js：app-accel.js 的 onAccelSample()
+     只負責畫圖／讀數，不驅動「反應」行為。做法：保留原本參照，用 wrapper
      覆寫 window.onAccelSample，wrapper 先 call 原本（保住畫圖），再做傾側判斷。
-     appendLog() 喺執行嗰刻先解析 window.onAccelSample，所以會攞到覆寫版。
+     appendLog() 在執行那刻先解析 window.onAccelSample，所以會拿到覆寫版。
 
      四方向四色（同一組頭／眼 LED 一次只顯示一色，用 tiltActiveOrder 記最後觸發者為贏）:
        y >  9 -> 開; y <  6 -> 關   -> 黃 (yellow)
@@ -945,23 +932,23 @@
     { id: "xHigh", axis: "x", onThresh: 9, offThresh: 6, sign: 1, color: 6, name: "青", nameEn: "Cyan" },
     { id: "xLow", axis: "x", onThresh: -9, offThresh: -6, sign: -1, color: 5, name: "紫", nameEn: "Purple" },
   ];
-  const tiltState = {}; // id -> boolean (目前是否觸發緊)
+  const tiltState = {}; // id -> boolean (目前是否觸發中)
   TILT_DIRECTIONS.forEach(function (d) { tiltState[d.id] = false; });
   let tiltActiveOrder = []; // 目前觸發中的 id, 舊的排前面, 最後觸發的排最後
-  let tiltCurrentColor = null; // 頭/眼 LED 目前顯示的顏色碼, null = 熄了
+  let tiltCurrentColor = null; // 頭/眼 LED 目前顯示的顏色碼, null = 已關閉
 
   function setHint(text) {
     const el = document.getElementById("tiltLedHint");
     if (el) el.textContent = text;
   }
 
-  /** 熄返頭/眼 LED。 */
+  /** 關閉頭/眼 LED。 */
   function stopTiltLed() {
     api("led/head/set", { preset: "stop" });
     api("led/eye/set", { preset: "stop" });
   }
 
-  /** 用指定顏色開返頭/眼 LED (「閃燈」preset, 5-mic 序列協議)。 */
+  /** 用指定顏色開啟頭/眼 LED (「閃燈」preset, 5-mic 序列協議)。 */
   function applyTiltLed(wantColor) {
     const headBrightness = document.getElementById("headBrightness").value;
     const eyeBrightness = document.getElementById("eyeBrightness").value;
@@ -1015,8 +1002,8 @@
     updateTiltLed(data);
   }
 
-  // 保留一份原本 (app-accel.js 定義嗰份, 淨係畫圖/讀數) 嘅參照, wrapper 入面先
-  // call 返佢, 再執行呢度嘅傾側判斷 - 兩者職責分開, 唔互相取代。
+  // 保留一份原本 (app-accel.js 定義的那份, 只負責畫圖/讀數) 的參照, wrapper 裡面先
+  // call 回它, 再執行這裡的傾側判斷 - 兩者職責分開, 不互相取代。
   const previousOnAccelSample = window.onAccelSample;
   window.onAccelSample = function (data) {
     if (typeof previousOnAccelSample === "function") previousOnAccelSample(data);

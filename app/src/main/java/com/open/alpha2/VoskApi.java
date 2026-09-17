@@ -3,7 +3,7 @@ package com.open.alpha2;
 import java.util.Map;
 
 /**
- * Vosk 離線 ASR endpoint 層：models/load/status/start/stop/unload/mic_test/endpointer。
+ * Vosk 離線 ASR endpoint 層：models/load/status/start/stop/unload/download/catalog。
  */
 public final class VoskApi {
     private final VoskController vosk;
@@ -82,15 +82,11 @@ public final class VoskApi {
         if (need != null) return need;
         String mid = vosk.getModelId();
         String msg = vosk.getLastError();
-        float epTEnd = vosk.getEpTEnd();
         return HttpServer.ApiResponse.ok("{\"ok\":true"
                 + ",\"state\":\"" + vosk.getState().name().toLowerCase(java.util.Locale.US) + "\""
                 + ",\"model\":" + (mid == null ? "null" : "\"" + MainActivity.jsonSafe(mid) + "\"")
                 + ",\"lang\":\"" + vosk.getDialogueLang() + "\""
                 + ",\"listening\":" + vosk.isListening()
-                + ",\"epMode\":" + vosk.getEpMode()
-                + ",\"epTEnd\":" + (Float.isNaN(epTEnd) ? "null"
-                        : String.format(java.util.Locale.US, "%.2f", epTEnd))
                 + (msg == null ? "" : ",\"message\":\"" + MainActivity.jsonSafe(msg) + "\"")
                 + "}");
     }
@@ -119,22 +115,6 @@ public final class VoskApi {
         if (need != null) return need;
         vosk.unload();
         return HttpServer.ApiResponse.okTrue();
-    }
-
-    // 咪測試——開 1 秒錄音計 RMS/Peak (dBFS)，幫用戶判斷
-    // 係唔係收得細。聽緊嗰陣唔做 (單 input HAL)，先㩒停止。
-    public HttpServer.ApiResponse voskMicTest() {
-        HttpServer.ApiResponse need = voskOrError();
-        if (need != null) return need;
-        // 單 input HAL：小智拎緊 mic 就唔開第二個 recorder（撞 HAL；同 voskStart
-        // 未 yieldMicToVosk 之前開 recorder 炒 FATAL 同一類）。唔似 voskStart 咁
-        // 踢斷小智——1 秒測試唔值得，直接叫用戶先停小智 mic（同 micTestJson 擋
-        // 自己 listen 緊對稱；spec 話「聽緊嗰陣唔做」）。
-        if (xiaozhiBridge.isMicCapturing()) {
-            return HttpServer.ApiResponse.error("xiaozhi holds the mic - stop xiaozhi mic first (mic/stop)");
-        }
-        // micTestJson 自帶 {"ok":...}，直接透傳。
-        return HttpServer.ApiResponse.ok(vosk.micTestJson());
     }
 
     // 模型下載＋自動 unzip（實驗 tab 下載卡用）。
@@ -178,21 +158,5 @@ public final class VoskApi {
     // 純檔案掃描 static，API 19 都用得，同 models 一樣唔經 voskOrError 熔斷）。
     public HttpServer.ApiResponse voskCatalog() {
         return HttpServer.ApiResponse.ok(VoskController.catalogJson());
-    }
-
-    // 收音延遲調校。mode -1/省略=跟預設，0=標準 1=短
-    // 2=長 3=很長；t_start/t_end/t_max 三個一齊俾先有效 (秒，見 vosk_api.h，
-    // t_end 係講完幾耐靜音先 finalize，0.5-1.0 左右）。在聽緊即時生效，
-    // 並 persist 跨重開；status 會帶返現值。
-    public HttpServer.ApiResponse voskEndpointer(Map<String, String> query) {
-        HttpServer.ApiResponse need = voskOrError();
-        if (need != null) return need;
-        int mode = ApiValidator.optionalVoskEndpointerMode(query);
-        float tStart = ApiValidator.optionalFloat(query, "t_start", Float.NaN);
-        float tEnd = ApiValidator.optionalFloat(query, "t_end", Float.NaN);
-        float tMax = ApiValidator.optionalFloat(query, "t_max", Float.NaN);
-        String err = vosk.setEndpointer(mode, tStart, tEnd, tMax);
-        if (err != null) return HttpServer.ApiResponse.error(err);
-        return HttpServer.ApiResponse.okTrue();
     }
 }

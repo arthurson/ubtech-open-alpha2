@@ -594,24 +594,13 @@ const Alpha2Api = (function() {
     return api('vosk/download_status', params);
   }
 
-  function voskEndpointer(params) {
-    if (params && params.mode != null) assertRange(Number(params.mode), -1, 3, 'mode');
-    // 收音延遲調校 (mode/t_start/t_end/t_max，省略=跟預設並 persist)
-    return api('vosk/endpointer', params);
-  }
-
   function voskLoad(params) {
     // 載入指定 Vosk model (背景幾秒，一次一粒)
     return api('vosk/load', params);
   }
 
-  function voskMicTest(params) {
-    // 咪測試 (開 1 秒錄音計 RMS/Peak dBFS，聽緊嗰陣唔做)
-    return api('vosk/mic_test', params);
-  }
-
   function voskModels(params) {
-    // 列出 sdcard 掃描到的 Vosk model (有 am/final.mdl 即算)
+    // 列出 sdcard 掃描到的 Vosk model (標準 am/final.mdl 或官方扁平包頂層 final.mdl 都算)
     return api('vosk/models', params);
   }
 
@@ -907,9 +896,7 @@ const Alpha2Api = (function() {
     voskDownload,
     voskDownloadCancel,
     voskDownloadStatus,
-    voskEndpointer,
     voskLoad,
-    voskMicTest,
     voskModels,
     voskStart,
     voskStatus,

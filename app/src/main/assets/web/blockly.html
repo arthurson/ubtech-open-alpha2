@@ -34,7 +34,7 @@
   </div>
 
   <div class="bk-toolbar-group">
-    <button class="bk-btn" onclick="AlphaBlockly.refreshActionDropdown()" data-i18n="page_refresh_actions_btn">🔄 攞動作列表</button>
+    <button class="bk-btn" onclick="AlphaBlockly.refreshActionDropdown()" data-i18n="page_refresh_actions_btn">🔄 取得動作列表</button>
   </div>
 
   <div class="bk-toolbar-group">
@@ -74,9 +74,9 @@
 <script src="blocks_compressed.js"></script>
 <script src="blockly_msg_zh-hant.js"></script>
 <script>
-  // 兩份 Blockly 內建 msg 檔 (zh-hant/en) 揸手都係直接寫入 Blockly.Msg,
-  // 冇留低獨立 dictionary 俾之後切換用 —— 呢度喺 zh-hant load 完、en load
-  // 之前, 影一份快照低, 等 blockly-i18n.js 之後可以喺兩者之間 runtime 切換
+  // 兩份 Blockly 內建 msg 檔 (zh-hant/en) 本來都是直接寫入 Blockly.Msg,
+  // 沒有留下獨立 dictionary 給之後切換用 —— 這裡在 zh-hant load 完、en load
+  // 之前, 影一份快照下來, 等 blockly-i18n.js 之後可以在兩者之間 runtime 切換
   // (詳見 blockly-i18n.js 開頭註解)。
   window.__ALPHA_BLOCKLY_MSG_ZH = Object.assign({}, Blockly.Msg);
 </script>
@@ -93,7 +93,7 @@
 <script src="blockly-toolbox.js"></script>
 <script src="blockly-run.js"></script>
 <script src="blockly-page.js"></script>
-<!-- 型別化 API client (同 index.html 一樣, 一定要喺提供 window.api 嘅 blockly-page.js 之後載入) -->
+<!-- 型別化 API client (同 index.html 一樣, 一定要在提供 window.api 的 blockly-page.js 之後載入) -->
 <script src="api-client.js"></script>
 </body>
 </html>

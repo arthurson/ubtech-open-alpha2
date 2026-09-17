@@ -1433,7 +1433,7 @@ paths:
     get:
       tags:
       - speech
-      summary: 列出 sdcard 掃描到的 Vosk model (有 am/final.mdl 即算)
+      summary: 列出 sdcard 掃描到的 Vosk model (標準 am/final.mdl 或官方扁平包頂層 final.mdl 都算)
       parameters:
       - $ref: '#/components/parameters/PanelToken'
       responses:
@@ -1561,27 +1561,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
       operationId: voskUnload_get
-  /api/vosk/mic_test:
-    get:
-      tags:
-      - speech
-      summary: 咪測試 (開 1 秒錄音計 RMS/Peak dBFS，聽緊嗰陣唔做)
-      parameters:
-      - $ref: '#/components/parameters/PanelToken'
-      responses:
-        '401':
-          description: 面板 token 缺／錯（僅啟用後）
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OkWrapper'
-        '200':
-          description: 音量 (rmsDb/peakDb/samples)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OkWrapper'
-      operationId: voskMicTest_get
   /api/vosk/catalog:
     get:
       tags:
@@ -1672,50 +1651,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
       operationId: voskDownloadCancel_get
-  /api/vosk/endpointer:
-    get:
-      tags:
-      - speech
-      summary: 收音延遲調校 (mode/t_start/t_end/t_max，省略=跟預設並 persist)
-      parameters:
-      - name: mode
-        in: query
-        schema:
-          type: integer
-          minimum: -1
-          maximum: 3
-          default: -1
-        description: -1/省略=跟預設，0=標準 1=短 2=長 3=很長 (ApiValidator.optionalVoskEndpointerMode 範圍)
-      - name: t_start
-        in: query
-        schema:
-          type: number
-        description: 開頭靜音幾耐算無聲 (秒，預設 ~5)
-      - name: t_end
-        in: query
-        schema:
-          type: number
-        description: 講完幾耐靜音先 finalize (秒，0.5-1.0 左右)
-      - name: t_max
-        in: query
-        schema:
-          type: number
-        description: 逼斷句上限 (秒，20-30 左右；三個要一齊俾先有效)
-      - $ref: '#/components/parameters/PanelToken'
-      responses:
-        '401':
-          description: 面板 token 缺／錯（僅啟用後）
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OkWrapper'
-        '200':
-          description: 已套用
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OkWrapper'
-      operationId: voskEndpointer_get
   /api/servo/one:
     get:
       tags:

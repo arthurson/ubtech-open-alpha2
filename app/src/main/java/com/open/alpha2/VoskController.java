@@ -4,7 +4,6 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
-import android.media.MediaRecorder;
 import android.os.Environment;
 import android.os.SystemClock;
 import android.util.Log;
@@ -28,36 +27,32 @@ import java.util.Set;
  * Vosk 離線 ASR（語音 tab）。機身已無 iFlytek/Nuance，用 Vosk
  * （alphacephei/vosk-android AAR，armeabi-v7a native，API 21+）頂上。
  *
- * <p>Model 唔跟 app（~65MB 粒）：放 sdcard，呢度掃描自動偵測（user 要求）。
+ * <p>Model 不跟 app（每個約 65MB）：放 sdcard，這裡掃描自動偵測（user 要求）。
  * 掃描根：{@link Environment#getExternalStorageDirectory()}＋{@code /mnt/internal_sd}
  * 頂層目錄，有 {@code am/final.mdl} 就算一個可用 model（id＝目錄名）。
  *
  * <p>流程：{@link #scanModels()} 列出 → {@link #loadModel(String)}（背景 thread，
  * 幾秒＋~200MB RAM，一次只駐留一個）→ {@link #startListening()}（SpeechService
  * 自己開 AudioRecord，16kHz）→ partial 經 {@code asr_partial} event 即時顯示，
- * final 經沿用嘅 {@code asr_result} event（前端同打字模擬同一條：user 氣泡＋
+ * final 經沿用的 {@code asr_result} event（前端同打字模擬同一條：user 氣泡＋
  * 語意配對＋Android TTS）。
  *
- * <p>限定文法：load 嗰陣用問法庫起 grammar（中文問法轉簡體先對得上普通話
+ * <p>限定文法：load 時用問法庫起 grammar（中文問法轉簡體先對得上普通話
  * acoustic 輸出，見 SimplifiedToTraditional.toSimplified），命中率遠高過開放
- * 式。起唔到就跌返無約束 Recognizer（唔死）。
+ * 式。起不到就跌回無約束 Recognizer（不死）。
  *
  * <p>所有 public 方法 thread-safe；heavy 工（load）自己開 thread，callback
- * 經 listener 返（SpeechService 嗰啲喺 main thread，要輕手）。
+ * 經 listener 返回（SpeechService 那些在 main thread，要輕手）。
  */
 public final class VoskController {
     private static final String TAG = "VoskController";
     public static final float SAMPLE_RATE = 16000.0f;
     private static final String PREFS_NAME = "robotpanel";
     private static final String PREF_MODEL_ID = "vosk_model_id";
-    /** 對話語言（zh/en）：loadModel 成功嗰陣記低，開機還原＋status 顯示用。 */
+    /** 對話語言（zh/en）：loadModel 成功時記下，開機還原＋status 顯示用。 */
     private static final String PREF_DIALOGUE_LANG = "vosk_dialogue_lang";
-    private static final String PREF_EP_MODE = "vosk_ep_mode";
-    private static final String PREF_EP_T_START = "vosk_ep_t_start";
-    private static final String PREF_EP_T_END = "vosk_ep_t_end";
-    private static final String PREF_EP_T_MAX = "vosk_ep_t_max";
 
-    /** 掃描到嘅一個可用 model（langHint＝中文名，langEn＝英文名，前端跟 UI 語言揀顯示）。 */
+    /** 掃描到的一個可用 model（langHint＝中文名，langEn＝英文名，前端跟 UI 語言選顯示）。 */
     public static final class VoskModelInfo {
         public final String id;
         public final String path;
@@ -85,8 +80,8 @@ public final class VoskController {
 
     // -- 模型下載 (實驗 tab 下載卡，後端直落 zip＋unzip) --
     // 官方 small 模型 catalog（對照 alphacephei.com/vosk/models）：
-    // {modelId, url, sizeMb}：sizeMb 係官頁標示（約數，等用戶判斷流量）。
-    // 大粒（1G 級）唔收：部機 RAM 頂唔順。固定 allowlist，唔收任意 URL（防 SSRF）。
+    // {modelId, url, sizeMb}：sizeMb 是官頁標示（約數，給用戶判斷流量）。
+    // 大體積（1G 級）不收：部機 RAM 頂不住。固定 allowlist，不收任意 URL（防 SSRF）。
     private static final String DL_BASE = "https://alphacephei.com/vosk/models/";
     private static final String[][] DL_CATALOG = {
         {"vosk-model-small-cn-0.22", "42"},
@@ -119,7 +114,7 @@ public final class VoskController {
         {"vosk-model-small-kz-0.42", "58"},
         {"vosk-model-small-uk-v3-nano", "73"},
     };
-    // 下載狀態機（同上面 load/listen State 獨立：下載中主 State 照舊 IDLE，唔干擾）。
+    // 下載狀態機（同上面 load/listen State 獨立：下載中主 State 照舊 IDLE，不干擾）。
     // idle＝未開始／完成後重置前；downloading／unzipping 進行中；done／error／cancelled 終態。
     private volatile String dlState = "idle";
     private volatile String dlLang; // "cn"/"en"
@@ -133,14 +128,8 @@ public final class VoskController {
     private Model model;
     private Recognizer recognizer;
     private SpeechService speechService;
-    private String grammarJson; // 建好嗰陣記低，start 先 new Recognizer
-    private boolean stripSpaces; // 中文 char-grammar 吐字之間有空格，發佈前要搣走
-    // endpointer 調校（-1/NaN＝跟 library 預設，persist 跨重啟）。語義見 vosk_api.h：
-    // mode 0=預設 1=短 2=長 3=很長；delays 要三個一齊 set 先有效。
-    private int epMode = -1;
-    private float epTStart = Float.NaN;
-    private float epTEnd = Float.NaN;
-    private float epTMax = Float.NaN;
+    private String grammarJson; // 建好時記下，start 先 new Recognizer
+    private boolean stripSpaces; // 中文 char-grammar 吐字之間有空格，發佈前要去掉
 
     public VoskController(Context context, SemanticMatcherZh zh,
             SemanticMatcherEn en) {
@@ -151,18 +140,10 @@ public final class VoskController {
             LibVosk.setLogLevel(LogLevel.WARNINGS);
         } catch (Throwable ignore) {
         }
-        // 上次揀過嘅 model（如果仲喺度）背景自動載入，開頁即 ready。
+        // 上次選過的 model（如果還在）背景自動載入，開啟頁面即 ready。
         final String saved = prefs().getString(PREF_MODEL_ID, null);
         if (saved != null && findModelDir(saved) != null) {
             loadModel(saved);
-        }
-        // endpointer 上次調校一併讀返。
-        try {
-            epMode = prefs().getInt(PREF_EP_MODE, -1);
-            epTStart = prefs().getFloat(PREF_EP_T_START, Float.NaN);
-            epTEnd = prefs().getFloat(PREF_EP_T_END, Float.NaN);
-            epTMax = prefs().getFloat(PREF_EP_T_MAX, Float.NaN);
-        } catch (Throwable ignore) {
         }
     }
 
@@ -172,9 +153,11 @@ public final class VoskController {
 
     // -- 掃描 ---------------------------------------------------------------
 
-    /** 掃 sdcard 頂層，搵有 am/final.mdl 嘅目錄。快，邊條 thread call 都得。
-     *  純檔案 IO，唔掂 org.vosk，API 19 都用得（static 係刻意嘅，等
-     *  vosk/models endpoint 喺 controller 未起（19 機）都列到表）。 */
+    /** 掃 sdcard 頂層找模型目錄（標準版 am/final.mdl，或官方扁平包頂層
+     *  final.mdl——例 pt-0.3 出廠即扁平，libvosk 原生讀得到，之前驗收卡太嚴
+     *  反而將之下載判失敗）。快，哪條 thread call 都得。純檔案 IO，不碰
+     *  org.vosk，API 19 都用得（static 是刻意的，等 vosk/models endpoint
+     *  在 controller 未起（19 機）都列到表）。 */
     public static List<VoskModelInfo> scanModels() {
         Set<String> roots = new LinkedHashSet<>();
         try {
@@ -195,8 +178,7 @@ public final class VoskController {
             if (dirs == null) continue;
             for (File d : dirs) {
                 if (!d.isDirectory()) continue;
-                File mdl = new File(new File(d, "am"), "final.mdl");
-                if (!mdl.isFile()) continue;
+                if (!isModelDir(d)) continue;
                 String canon;
                 try {
                     canon = d.getCanonicalPath();
@@ -211,7 +193,13 @@ public final class VoskController {
         return out;
     }
 
-    /** 由 model id parse 語言段 (vosk-model[-small]-xx-...，xx 係語言碼)，
+    /** 目錄算不算可用模型：標準版（am/final.mdl）或官方扁平版（頂層 final.mdl）。 */
+    private static boolean isModelDir(File d) {
+        if (new File(new File(d, "am"), "final.mdl").isFile()) return true;
+        return new File(d, "final.mdl").isFile();
+    }
+
+    /** 由 model id parse 語言段 (vosk-model[-small]-xx-...，xx 是語言碼)，
      *  查全表。parse 段兩語版共用（之前 guessLang／guessLangEn 各複製一份）。 */
     private static String[] parseLangSub(String id) {
         String lang = null;
@@ -219,8 +207,8 @@ public final class VoskController {
         String[] parts = id.toLowerCase(java.util.Locale.US).split("-");
         for (int i = 0; i < parts.length; i++) {
             if (parts[i].equals("model") || parts[i].equals("small")) {
-                // 跳過 "model"/"small" 呢啲固定前綴 (如 vosk-model-small-cn-0.22，
-                // 語言段係 "small" 後面嗰格，唔係 "model" 後面)。
+                // 跳過 "model"/"small" 這些固定前綴 (如 vosk-model-small-cn-0.22，
+                // 語言段是 "small" 後面那格，不是 "model" 後面)。
                 int j = i + 1;
                 while (j < parts.length
                         && (parts[j].equals("model") || parts[j].equals("small"))) {
@@ -280,8 +268,8 @@ public final class VoskController {
         return m;
     }
 
-    /** guessLang 嘅英文版（同一個 parse，前端 uiLang＝en 嗰陣顯示；catalog/models
-     *  帶 langEn，舊客淨讀 lang 唔受影響）。 */
+    /** guessLang 的英文版（同一個 parse，前端 uiLang＝en 時顯示；catalog/models
+     *  帶 langEn，舊客只讀 lang 不受影響）。 */
     private static String guessLangEn(String id) {
         String[] ls = parseLangSub(id);
         String lang = ls[0];
@@ -351,7 +339,7 @@ public final class VoskController {
                         + "}");
     }
 
-    /** 背景載入 model（幾秒）。return null＝已開始載入，否則係即時錯誤。
+    /** 背景載入 model（幾秒）。return null＝已開始載入，否則是即時錯誤。
      *  進度／結果經 vosk_state event＋status 查。 */
     public String loadModel(final String id) {
         final String path = findModelDir(id);
@@ -375,7 +363,7 @@ public final class VoskController {
                     Model m = new Model(path);
                     String grammar = buildGrammar(id);
                     synchronized (VoskController.this) {
-                        // 載入期間被 unload／load 過就掉咗呢個
+                        // 載入期間被 unload／load 過就丟掉這個
                         if (state != State.LOADING) {
                             try {
                                 m.close();
@@ -390,7 +378,7 @@ public final class VoskController {
                     ed.putString(PREF_MODEL_ID, id);
                     String mappedLang = langOfModelId(id);
                     if (mappedLang != null) {
-                        // model 即語言：換 model 一併記低對話語言，等 status／前端唔使估。
+                        // model 即語言：換 model 一併記下對話語言，等 status／前端不用估。
                         ed.putString(PREF_DIALOGUE_LANG, mappedLang);
                     }
                     ed.apply();
@@ -406,8 +394,8 @@ public final class VoskController {
         return null;
     }
 
-    /** model id → 對話語言（zh/en；認唔到回 null）。同 buildGrammar 之前內聯
-     *  嗰串 contains 逐字一樣，抽出嚟等 vosk/load 同步配對語言都用同一套。 */
+    /** model id → 對話語言（zh/en；認不到回 null）。同 buildGrammar 之前內聯
+     *  那串 contains 逐字一樣，抽出來等 vosk/load 同步配對語言都用同一套。 */
     static String langOfModelId(String id) {
         if (id == null) return null;
         String lower = id.toLowerCase(java.util.Locale.US);
@@ -416,8 +404,8 @@ public final class VoskController {
         return null;
     }
 
-    /** 而家對話語言（zh/en）：上次 load 記低嘅；未記過就由而家個 model 推（都冇就 zh）。
-     *  語言跟 model 行——模型鍵就係語言掣，唔使用家另外揀。 */
+    /** 目前對話語言（zh/en）：上次 load 記下的；未記過就由目前 model 推斷（都沒有就 zh）。
+     *  語言跟 model 行——模型鍵就是語言鍵，不用用家另外選。 */
     public String getDialogueLang() {
         try {
             String v = prefs().getString(PREF_DIALOGUE_LANG, null);
@@ -428,10 +416,10 @@ public final class VoskController {
         return "zh";
     }
 
-    /** 起限定文法（問法庫）；唔得就回 null 用開放式。絕不 throw。
-     *  中文要逐字空格（"你好嗎"→"你 好 嗎"）：small-cn 嘅 words.txt 係字級，
-     *  成句當一個 entry 會全部 OOV 被 ignore（logcat 實證）。輸出嗰陣認返
-     *  stripSpaces 搣走空格。英文 keep 原樣（本身係 word 級）。 */
+    /** 起限定文法（問法庫）；不行就回 null 用開放式。絕不 throw。
+     *  中文要逐字空格（"你好嗎"→"你 好 嗎"）：small-cn 的 words.txt 是字級，
+     *  成句當一個 entry 會全部 OOV 被 ignore（logcat 實證）。輸出時認回
+     *  stripSpaces 去掉空格。英文 keep 原樣（本身是 word 級）。 */
     private String buildGrammar(String id) {
         try {
             List<String> phrases;
@@ -465,10 +453,10 @@ public final class VoskController {
         }
     }
 
-    /** "你好嗎？" → "你 好 嗎 ？"（Vosk 中文 char 級文法用，空白先係分隔符）。
-     *  標點/拉丁/數字原樣保留：small-cn words.txt 無嘅字，Vosk 起文法嗰陣會
-     *  逐個 ignore（logcat "Ignoring word"），唔影響其他字嘅約束，唔使自己
-     *  預先過濾（亂濾反而可能濾走 acoustic 認得嘅字，例如數字）。 */
+    /** "你好嗎？" → "你 好 嗎 ？"（Vosk 中文 char 級文法用，空白才是分隔符）。
+     *  標點/拉丁/數字原樣保留：small-cn words.txt 沒有的字，Vosk 起文法時會
+     *  逐個 ignore（logcat "Ignoring word"），不影響其他字的約束，不用自己
+     *  預先過濾（亂濾反而可能濾走 acoustic 認得的字，例如數字）。 */
     private static String spaced(String s) {
         StringBuilder sb = new StringBuilder(s.length() * 2);
         for (int i = 0; i < s.length(); i++) {
@@ -480,7 +468,7 @@ public final class VoskController {
         return sb.toString();
     }
 
-    /** 掉咗個 model（唔清 prefs 記住嘅選擇）。 */
+    /** 丟掉個 model（不清 prefs 記住的選擇）。 */
     public synchronized void unload() {
         stopLocked();
         closeModelLocked();
@@ -511,7 +499,7 @@ public final class VoskController {
     // -- 聆聽 -----------------------------------------------------------------
 
     /**
-     * 開始聆聽。return null＝已開始，否則係錯誤字串（model 未載入／已在聽／mic 開唔到）。
+     * 開始聆聽。return null＝已開始，否則是錯誤字串（model 未載入／已在聽／mic 開不到）。
      * 結果經 asr_partial（即時）／asr_result（成句，沿用舊管線：氣泡＋語意配對＋TTS）。
      */
     public synchronized String startListening() {
@@ -519,12 +507,12 @@ public final class VoskController {
         return startListeningLocked();
     }
 
-    /** 開始聆聽內部實作（完整問法文法）。必須喺 synchronized 內／LISTENING 檢查之後 call。 */
+    /** 開始聆聽內部實作（完整問法文法）。必須在 synchronized 內／LISTENING 檢查之後 call。 */
     private synchronized String startListeningLocked() {
         if (state != State.READY || model == null) {
             return state == State.LOADING ? "model loading, try later" : "load a model first";
         }
-        // mic 預檢：部機唔支援 16kHz capture 就唔好開（開咗都係垃圾/[unk]）。
+        // mic 預檢：部機不支援 16kHz capture 就不要開（開了都是垃圾/[unk]）。
         // 同 SpeechService 內部同一個參數（MONO／PCM16）。
         try {
             int minBuf = AudioRecord.getMinBufferSize(16000,
@@ -554,7 +542,7 @@ public final class VoskController {
             } else {
                 rec = new Recognizer(model, SAMPLE_RATE);
             }
-            applyEndpointer(rec);
+            // endpointer 調校已移除：Recognizer 一律用 library 預設（之前跟 persist 偏好）。
             service = new SpeechService(rec, SAMPLE_RATE);
             service.startListening(new RecognitionListener() {
                 @Override
@@ -618,12 +606,12 @@ public final class VoskController {
     }
 
     /** 成句結果：沿用舊管線（氣泡＋語意配對＋TTS）。
-     *  跑喺 SpeechService listener thread（main）。絕不 throw。 */
+     *  跑在 SpeechService listener thread（main）。絕不 throw。 */
     private void onVoskFinal(String hypothesis) {
         try {
             String text = transcript(hypothesis, "text");
             if (text == null || text.isEmpty()) return;
-            // 斷症用：log 低認到咩（EventBus 只帶去前端，logcat 睇唔到內容）。
+            // 斷症用：log 下認到什麼（EventBus 只帶去前端，logcat 看不到內容）。
             Log.i(TAG, "final: " + text);
             EventBus.get().publish("asr_result",
                     "{\"text\":\"" + escape(text) + "\"}");
@@ -632,66 +620,8 @@ public final class VoskController {
         }
     }
 
-    /** endpointer 調校＋persist。mode -1＝跟預設；delays 要三個一齊俾先有效
-     *  （跟 vosk_api.h），唔齊就三個都當預設。return null＝ok。 */
-    public synchronized String setEndpointer(int mode, float tStart, float tEnd, float tMax) {
-        if (mode < -1 || mode > 3) return "mode must be -1..3";
-        float[] vs = new float[]{tStart, tEnd, tMax};
-        for (int i = 0; i < vs.length; i++) {
-            if (!Float.isNaN(vs[i]) && !(vs[i] > 0 && vs[i] < 600)) {
-                return "delays must be 0..600 or unset";
-            }
-        }
-        boolean delaysOk = !Float.isNaN(tStart) && !Float.isNaN(tEnd) && !Float.isNaN(tMax);
-        epMode = mode;
-        if (delaysOk) {
-            epTStart = tStart;
-            epTEnd = tEnd;
-            epTMax = tMax;
-        } else {
-            epTStart = Float.NaN;
-            epTEnd = Float.NaN;
-            epTMax = Float.NaN;
-        }
-        try {
-            prefs().edit().putInt(PREF_EP_MODE, epMode)
-                    .putFloat(PREF_EP_T_START, epTStart)
-                    .putFloat(PREF_EP_T_END, epTEnd)
-                    .putFloat(PREF_EP_T_MAX, epTMax).apply();
-        } catch (Throwable ignore) {
-        }
-        if (recognizer != null) applyEndpointer(recognizer);
-        Log.i(TAG, "endpointer set mode=" + epMode
-                + (delaysOk ? (" t=" + epTStart + "/" + epTEnd + "/" + epTMax) : " delays=default"));
-        return null;
-    }
-
-    public synchronized int getEpMode() {
-        return epMode;
-    }
-
-    public synchronized float getEpTEnd() {
-        return epTEnd;
-    }
-
-    private void applyEndpointer(Recognizer rec) {
-        if (rec == null) return;
-        try {
-            if (epMode >= 0) rec.setEndpointerMode(epMode);
-        } catch (Throwable e) {
-            Log.w(TAG, "setEndpointerMode failed", e);
-        }
-        try {
-            if (!Float.isNaN(epTStart) && !Float.isNaN(epTEnd) && !Float.isNaN(epTMax)) {
-                rec.setEndpointerDelays(epTStart, epTEnd, epTMax);
-            }
-        } catch (Throwable e) {
-            Log.w(TAG, "setEndpointerDelays failed", e);
-        }
-    }
-
-    /** TTS 播音嗰陣 pause 返（唔放 mic，淨係唔 decode），播完 resume。
-     *  唔在聽就 no-op。 */
+    /** TTS 播音時 pause 回來（不放 mic，只是不 decode），播完 resume。
+     *  不在聽就 no-op。 */
     public synchronized void setPaused(boolean paused) {
         if (speechService != null && state == State.LISTENING) {
             try {
@@ -701,78 +631,12 @@ public final class VoskController {
         }
     }
 
-    /** 咪測試：開 1 秒錄音計 RMS/Peak (dBFS)，幫用戶判斷係唔係收得細。
-     *  同 SpeechService 同一個源 (VOICE_RECOGNITION) 同格式。聽緊嗰陣唔做
-     *  （單 input HAL 容唔落第二個 recorder）——先㩒停止。
-     *  回完整 JSON（成功 {"ok":true,...}，失敗 {"ok":false,"error":...}）。 */
-    public String micTestJson() {
-        synchronized (this) {
-            if (state == State.LISTENING) {
-                return "{\"ok\":false,\"error\":\"stop listening first (mic busy)\"}";
-            }
-        }
-        AudioRecord rec = null;
-        try {
-            int minBuf = AudioRecord.getMinBufferSize(16000,
-                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
-            if (minBuf <= 0) {
-                return "{\"ok\":false,\"error\":\"mic does not support 16kHz mono PCM\"}";
-            }
-            rec = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                    16000, AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT, Math.max(minBuf * 2, 32000));
-            if (rec.getState() != AudioRecord.STATE_INITIALIZED) {
-                return "{\"ok\":false,\"error\":\"AudioRecord not initialized\"}";
-            }
-            rec.startRecording();
-            short[] buf = new short[16000];
-            int got = 0;
-            long deadline = SystemClock.elapsedRealtime() + 2500;
-            while (got < buf.length && SystemClock.elapsedRealtime() < deadline) {
-                int n = rec.read(buf, got, buf.length - got);
-                if (n < 0) break;
-                if (n > 0) got += n;
-            }
-            try {
-                rec.stop();
-            } catch (Throwable ignore) {
-            }
-            if (got < 1600) {
-                return "{\"ok\":false,\"error\":\"too few samples: " + got + "\"}";
-            }
-            double sum = 0;
-            double peak = 0;
-            for (int i = 0; i < got; i++) {
-                double v = buf[i] / 32768.0;
-                sum += v * v;
-                double a = Math.abs(v);
-                if (a > peak) peak = a;
-            }
-            double rmsDb = 20 * Math.log10(Math.sqrt(sum / got) + 1e-9);
-            double peakDb = 20 * Math.log10(peak + 1e-9);
-            return "{\"ok\":true"
-                    + ",\"rmsDb\":" + String.format(java.util.Locale.US, "%.1f", rmsDb)
-                    + ",\"peakDb\":" + String.format(java.util.Locale.US, "%.1f", peakDb)
-                    + ",\"samples\":" + got + "}";
-        } catch (Throwable e) {
-            Log.w(TAG, "micTest failed", e);
-            return "{\"ok\":false,\"error\":\"" + escape(String.valueOf(e.getMessage())) + "\"}";
-        } finally {
-            if (rec != null) {
-                try {
-                    rec.release();
-                } catch (Throwable ignore) {
-                }
-            }
-        }
-    }
-
     public synchronized String stopListening() {
         stopLocked();
         if (state == State.LISTENING || model != null) {
             state = model != null ? State.READY : State.IDLE;
         }
-        // server 側停 (如讓咪俾小智) 都要推 event，前端先會熄燈。
+        // server 側停 (如讓咪給小智) 都要推 event，前端才會關燈。
         EventBus.get().publish("vosk_state",
                 "{\"state\":\"" + state.name().toLowerCase(java.util.Locale.US) + "\""
                         + ",\"model\":" + (modelId == null ? "null" : "\"" + escape(modelId) + "\"")
@@ -808,8 +672,8 @@ public final class VoskController {
         state = State.IDLE;
     }
 
-    /** optText＋中文 char 文法空格清理（stripSpaces 開嗰陣）＋[unk] 過濾。
-     *  [unk]（大小寫唔拘）代表 Vosk 認唔到——唔發佈，唔係會觸發語意配對亂答
+    /** optText＋中文 char 文法空格清理（stripSpaces 開時）＋[unk] 過濾。
+     *  [unk]（大小寫不拘）代表 Vosk 認不到——不發佈，否則會觸發語意配對亂答
      *  （fallback 隨機答案＋可能隨機動作）。partial 同 final 共用。 */
     private String transcript(String json, String key) {
         String s = optText(json, key);
@@ -837,12 +701,12 @@ public final class VoskController {
     }
 
     // -- 模型下載＋自動 unzip -------------------------------------------------
-    // 前端流程：實驗 tab 下載卡 → vosk/catalog 列出全部可下載（已下載唔 show）→
+    // 前端流程：實驗 tab 下載卡 → vosk/catalog 列出全部可下載（已下載不顯示）→
     // vosk/download?model=<id> 起背景 thread → 前端 poll vosk/download_status
     // （或聽 vosk_download event）顯示進度 → done 後自動 refresh＋load
-    // （呢度做埋 auto-load，省一 round trip）。
+    // （這裡順便 auto-load，省一 round trip）。
 
-    /** modelId→{modelId,url}。唔喺 catalog 就回 null（由上層轉做 400）。 */
+    /** modelId→{modelId,url}。不在 catalog 就回 null（由上層轉做 400）。 */
     public static String[] downloadTarget(String modelId) {
         if (modelId == null) return null;
         for (String[] e : DL_CATALOG) {
@@ -855,8 +719,9 @@ public final class VoskController {
         return downloadTarget(modelId) != null;
     }
 
-    /** 實驗 tab 下載卡用：全部可下載＋已下載旗（前端已下載唔顯示）。
-     *  純檔案 IO（downloaded 判定），邊條 thread call 都得。 */
+    /** 實驗 tab 下載卡用：全部可下載＋已下載旗＋對話旗。
+     *  dialogue＝有對認 matcher、可對話（現在中英；同 SemanticCenter 規則一致，
+     *  未有 matcher 的語言一律 false）。純檔案 IO＋常數判斷，哪條 thread call 都得。 */
     public static String catalogJson() {
         StringBuilder sb = new StringBuilder("{\"ok\":true,\"catalog\":[");
         boolean first = true;
@@ -864,11 +729,13 @@ public final class VoskController {
             if (!first) sb.append(',');
             first = false;
             String id = e[0];
+            String ml = langOfModelId(id);
             sb.append("{\"id\":\"").append(escape(id)).append('"');
             sb.append(",\"lang\":\"").append(escape(guessLang(id))).append('"');
             sb.append(",\"langEn\":\"").append(escape(guessLangEn(id))).append('"');
             sb.append(",\"sizeMb\":").append(e[1]);
             sb.append(",\"downloaded\":").append(findModelDir(id) != null);
+            sb.append(",\"dialogue\":").append("zh".equals(ml) || "en".equals(ml));
             sb.append('}');
         }
         return sb.append("]}").toString();
@@ -884,7 +751,7 @@ public final class VoskController {
         if (ext != null) {
             try {
                 if (ext.exists() ? ext.canWrite() : ext.mkdirs()) return ext;
-                // exists 但唔肯定寫得入都照試（舊機 canWrite 誤報），寫唔入後面會再錯。
+                // exists 但不肯定寫得入也照樣嘗試（舊機 canWrite 誤報），寫不入後面會再錯。
                 return ext;
             } catch (Throwable ignore) {
             }
@@ -892,7 +759,7 @@ public final class VoskController {
         return new File("/mnt/internal_sd");
     }
 
-    /** 開始下載＋unzip。modelId 必須喺 catalog（見 downloadTarget）。
+    /** 開始下載＋unzip。modelId 必須在 catalog（見 downloadTarget）。
      *  return null＝已開始，否則即時錯誤字串。 */
     public synchronized String startDownload(String modelId) {
         String[] target = downloadTarget(modelId);
@@ -901,8 +768,17 @@ public final class VoskController {
             return "already downloading (" + dlModel + " " + dlProgress + "%)";
         }
         final String url = target[1];
-        // 已有就唔好重落（scan 同 loadModel 共用判定：有 am/final.mdl 即算）。
-        if (findModelDir(modelId) != null) return "already exists: " + modelId;
+        // 已有就不要重落（scan 同 loadModel 共用判定：見 isModelDir）。
+        // 狀態順手撥 done——之前失敗殘留的 error 訊息不用再留。
+        if (findModelDir(modelId) != null) {
+            dlModel = modelId;
+            dlLang = guessLang(modelId);
+            dlBytes = 0;
+            dlTotal = 0;
+            setDl("done", 100, null);
+            publishDl();
+            return "already exists: " + modelId;
+        }
         dlState = "downloading";
         dlLang = guessLang(modelId);
         dlModel = modelId;
@@ -930,7 +806,7 @@ public final class VoskController {
         return null;
     }
 
-    /** download_status endpoint 用（透傳 JSON，唔經 ApiResponse 包多層）。 */
+    /** download_status endpoint 用（透傳 JSON，不經 ApiResponse 包多層）。 */
     public String downloadStatusJson() {
         String st;
         String lang;
@@ -999,11 +875,15 @@ public final class VoskController {
         File root = downloadRoot();
         File zipTmp = new File(root, modelId + ".zip.tmp");
         File zipDone = new File(root, modelId + ".zip");
+        java.util.Set<String> beforeDl = new java.util.HashSet<>();
         try {
             try {
                 root.mkdirs();
             } catch (Throwable ignore) {
             }
+            // 快照：之後新增的頂層目錄都是今次 unzip 落的，失敗／取消即清走，
+            // 免每次重試都在 sdcard 留低一份垃圾。
+            beforeDl = listDirNames(root);
             // --- 下載 ---
             java.net.HttpURLConnection conn = null;
             java.io.InputStream in = null;
@@ -1025,8 +905,8 @@ public final class VoskController {
                     throw new java.io.IOException("HTTP " + code);
                 }
                 // 用 int 版 getContentLength（API 1 已有）：model zip ~50MB 遠細過 2GB；
-                // getContentLengthLong 要 API 24+，呢個 APK 要行 API 21/22（見 manifest），
-                // 直接 call 會 NoSuchMethodError 炒（同 vosk 熔斷保 API 19 同一類）。
+                // getContentLengthLong 要 API 24+，這個 APK 要行 API 21/22（見 manifest），
+                // 直接 call 會拋 NoSuchMethodError（同 vosk 熔斷保 API 19 同一類）。
                 long total = -1;
                 try {
                     total = conn.getContentLength();
@@ -1080,7 +960,7 @@ public final class VoskController {
             synchronized (this) {
                 if (dlCancel) throw new java.io.IOException("cancelled");
             }
-            // --- unzip（自己解，唔依賴系統 unzip binary）---
+            // --- unzip（自己解，不依賴系統 unzip binary）---
             setDl("unzipping", 100, null);
             try {
                 zipTmp.renameTo(zipDone);
@@ -1096,19 +976,35 @@ public final class VoskController {
                 if (zipTmp.exists()) zipTmp.delete();
             } catch (Throwable ignore) {
             }
-            // 驗收：要有 am/final.mdl 先算數（zip 損壞／路徑唔啱即錯）。
+            // 驗收：解完要有模型目錄才算數（標準 am/final.mdl 或官方扁平包
+            // 頂層 final.mdl，見 isModelDir）。唔收貨就連 zip 帶今次新增目錄
+            // 一齊清走——舊的 model 目錄（快照之前已存在）一律唔掂。
             if (findModelDir(modelId) == null) {
+                cleanupNewDirs(root, beforeDl);
+                try {
+                    src.delete();
+                } catch (Throwable ignore) {
+                }
                 throw new java.io.IOException("unzip ok but model not found: " + modelId
-                        + "/am/final.mdl missing");
+                        + " (need am/final.mdl or top-level final.mdl)");
             }
             setDl("done", 100, null);
             Log.i(TAG, "model downloaded+unzipped: " + modelId);
-            // 顺手自動載入（省前端一 round trip；失敗唔當下載失敗，狀態照 done）。
-            try {
-                String err = loadModel(modelId);
-                if (err != null) Log.w(TAG, "auto-load after download failed: " + err);
-            } catch (Throwable e) {
-                Log.w(TAG, "auto-load after download threw", e);
+            // 順手自動載入（省前端一 round trip；失敗不當下載失敗，狀態照 done）。
+            // 用家聽緊就讓路——loadModel 會停咪斷 session，等用家自己切過去。
+            boolean listeningNow;
+            synchronized (this) {
+                listeningNow = state == State.LISTENING;
+            }
+            if (listeningNow) {
+                Log.i(TAG, "skip auto-load after download (user listening): " + modelId);
+            } else {
+                try {
+                    String err = loadModel(modelId);
+                    if (err != null) Log.w(TAG, "auto-load after download failed: " + err);
+                } catch (Throwable e) {
+                    Log.w(TAG, "auto-load after download threw", e);
+                }
             }
         } catch (Throwable e) {
             boolean cancelled;
@@ -1121,12 +1017,74 @@ public final class VoskController {
                 zipTmp.delete();
             } catch (Throwable ignore) {
             }
-            // zip 損壞先清，唔郁已存在嘅舊 model 目錄。
+            // 失敗／取消都清場：刪走今次 unzip 新增的目錄（zip 損壞／中途取消
+            // 留低的半包），快照之前已存在的目錄一律唔掂。
+            cleanupNewDirs(root, beforeDl);
             if (cancelled || "cancelled".equalsIgnoreCase(msg)) {
                 setDl("cancelled", dlProgress, "cancelled");
             } else {
                 setDl("error", dlProgress, msg);
             }
+        }
+    }
+
+    /** 列出 root 下頂層目錄（canonical path 集，下載前快照用）。 */
+    private static java.util.Set<String> listDirNames(File root) {
+        java.util.Set<String> s = new java.util.HashSet<>();
+        File[] fs;
+        try {
+            fs = root.listFiles();
+        } catch (Throwable t) {
+            return s;
+        }
+        if (fs == null) return s;
+        for (File f : fs) {
+            try {
+                if (f.isDirectory()) s.add(f.getCanonicalPath());
+            } catch (Throwable ignore) {
+            }
+        }
+        return s;
+    }
+
+    /** 刪走不在快照內的頂層目錄（今次 unzip 落的；用家舊檔一律唔掂）。 */
+    private static void cleanupNewDirs(File root, java.util.Set<String> before) {
+        File[] fs;
+        try {
+            fs = root.listFiles();
+        } catch (Throwable t) {
+            return;
+        }
+        if (fs == null) return;
+        for (File f : fs) {
+            try {
+                if (f.isDirectory() && !before.contains(f.getCanonicalPath())) {
+                    deleteRecursive(f);
+                }
+            } catch (Throwable ignore) {
+            }
+        }
+    }
+
+    private static void deleteRecursive(File f) {
+        File[] fs;
+        try {
+            fs = f.listFiles();
+        } catch (Throwable t) {
+            fs = null;
+        }
+        if (fs != null) {
+            for (File c : fs) {
+                try {
+                    if (c.isDirectory()) deleteRecursive(c);
+                    else c.delete();
+                } catch (Throwable ignore) {
+                }
+            }
+        }
+        try {
+            f.delete();
+        } catch (Throwable ignore) {
         }
     }
 
@@ -1144,7 +1102,7 @@ public final class VoskController {
                     if (dlCancel) throw new java.io.IOException("cancelled");
                 }
                 String name = e.getName();
-                // 擋絕對路徑／.. 跳出（官方包唔會有，但唔信外來 zip）。
+                // 擋絕對路徑／.. 跳出（官方包不會有，但不信外來 zip）。
                 File f = new File(root, name);
                 String canon = f.getCanonicalPath();
                 if (!canon.equals(rootCanon) && !canon.startsWith(rootCanon + File.separator)) {

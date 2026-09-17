@@ -86,15 +86,15 @@ function voskRenderModelBtns(models, activeId) {
   voskSyncModelBtns();
 }
 
-// 成排模型鍵 enable／active／switching 一次過同步：下載緊或者切換緊就鎖晒
-//（inline onclick 唔擋，disabled 先真係撳唔到）；active（藍）淨係聽緊嗰粒——
+// 成排模型鍵 enable／active／switching 一次過同步：切換緊先鎖晒
+//（inline onclick 唔擋，disabled 先真係撳唔到）。下載緊唔鎖——下載行背景
+// thread、寫唔同目錄，撳鍵載入／開聽照行（後端完成自動 load 撞正聽緊會讓路）。
+// active（藍）淨係聽緊嗰粒——
 // 同狀態燈（voskStateDot）一致：stop 之後就緒都係灰，唔係藍。
 function voskSyncModelBtns() {
   const box = document.getElementById("voskModelBtns");
   if (!box || !voskCachedModels.length) return;
-  const d = voskLastDownload;
-  const dlActive = !!d && (d.state === "downloading" || d.state === "unzipping");
-  const locked = dlActive || !!voskPendingModel;
+  const locked = !!voskPendingModel;
   const listening = !!(voskLastStatus && (voskLastStatus.state === "listening"
       || !!voskLastStatus.listening));
   const activeId = voskPendingModel
@@ -140,15 +140,17 @@ function voskRenderCatalogBtns() {
   list.innerHTML = "";
   let shown = 0;
   (voskCachedCatalog || []).forEach(function (c) {
-    if (c.downloaded) return; // 已下載唔顯示（去語音頁撳就用得）
-    const btn = document.createElement("button");
-    btn.className = "secondary vosk-dl-btn";
-    btn.textContent = "⬇ " + voskLangName(c) + " (~" + c.sizeMb + "MB)";
-    btn.title = c.id;
-    btn.onclick = (function (id) {
-      return function () { voskCatalogDownload(id); };
-    })(c.id);
-    list.appendChild(btn);
+    if (c.dialogue) return; // 有對話嗰區顯示，呢度淨冇對話
+    if (c.downloaded) {
+      const chip = document.createElement("span");
+      chip.className = "hint";
+      chip.textContent = "✓ " + voskLangName(c) + "（" + t("vosk_dl_transcribe_only") + ")";
+      chip.title = c.id;
+      list.appendChild(chip);
+      shown++;
+      return;
+    }
+    list.appendChild(voskDlButton(c));
     shown++;
   });
   if (!shown) {
@@ -157,8 +159,50 @@ function voskRenderCatalogBtns() {
     hint.textContent = t("vosk_dl_all_done");
     list.appendChild(hint);
   }
+  voskRenderCatalogSupported();
   // 下載緊鎖住（voskRenderDownload 都會再鎖，呢度補語言切換重畫嗰陣）。
   if (voskLastDownload) voskRenderDownload(voskLastDownload);
+}
+
+// 下載掣共用（兩區一樣）：名跟面板語言＋MB＋id 做 title。
+function voskDlButton(c) {
+  const btn = document.createElement("button");
+  btn.className = "secondary vosk-dl-btn";
+  btn.textContent = "⬇ " + voskLangName(c) + " (~" + c.sizeMb + "MB)";
+  btn.title = c.id;
+  btn.onclick = (function (id) {
+    return function () { voskCatalogDownload(id); };
+  })(c.id);
+  return btn;
+}
+
+// 有對話區：有 matcher、可對答（而家中英）。落咗 ✓ 顯示（去語音頁撳嚟用，
+// 呢度淨顯示唔操作）；未落就出下載掣。
+function voskRenderCatalogSupported() {
+  const box = document.getElementById("voskCatalogSupported");
+  if (!box) return;
+  box.innerHTML = "";
+  let shown = 0;
+  (voskCachedCatalog || []).forEach(function (c) {
+    if (!c.dialogue) return;
+    if (c.downloaded) {
+      const chip = document.createElement("span");
+      chip.className = "hint";
+      chip.textContent = "✓ " + voskLangName(c) + " (~" + c.sizeMb + "MB)";
+      chip.title = c.id;
+      box.appendChild(chip);
+      shown++;
+      return;
+    }
+    box.appendChild(voskDlButton(c));
+    shown++;
+  });
+  if (!shown) {
+    const hint = document.createElement("span");
+    hint.className = "hint";
+    hint.textContent = t("vosk_dl_none_hint");
+    box.appendChild(hint);
+  }
 }
 
 // 下載中顯示個名都跟面板語言（catalog 有先譯到，否則跌返 id）。
@@ -243,28 +287,28 @@ function voskRenderDownload(res) {
   } else if (out && res.state === "cancelled") {
     out.textContent = t("vosk_download_cancelled");
   }
-  // 下載緊鎖晒 catalog 掣＋語音頁模型鍵（模型未齊，解完會 refresh 重開）。
-  const list = document.getElementById("voskCatalogList");
-  if (list) {
+  // 下載緊淨鎖兩區下載掣（後端一次淨落一粒）；語音頁模型鍵照用——
+  // 下載唔掂聽嘢，解完 refresh 會加返新鍵。
+  ["voskCatalogList", "voskCatalogSupported"].forEach(function (boxId) {
+    const list = document.getElementById(boxId);
+    if (!list) return;
     const btns = list.querySelectorAll("button");
     for (let i = 0; i < btns.length; i++) btns[i].disabled = !!active;
-  }
+  });
   const cancelBtn = document.getElementById("voskCatCancelBtn");
   if (cancelBtn) cancelBtn.style.display = active ? "" : "none";
   // 語音頁模型鍵同步鎖／解（voskSyncModelBtns 識睇 voskLastDownload）。
   voskSyncModelBtns();
 }
 
-// 一撳即用：先停舊（用緊中文嗰陣撳英文，後端一次淨駐留一粒，
-// load 會頂走舊嘅；呢度先顯式 stop，等舊聆聽即刻停＋partial 清走，
-// 再載入指定 model，ready 即自動開始聆聽（唔使再撳開始掣）。
-// 撳緊同一粒：聽緊就唔當一回事；就緒（撳過 stop）就直接開聽唔重載。
+// 一撳即用：聽緊嗰粒再撳即停（變灰）；唔同粒就先停舊再載入＋ready 自動開聽。
+// 就緒（停咗）嗰粒再撳就直接開聽唔重載。
 function voskUseModel(id) {
   if (!id || voskPendingModel === id) return Promise.resolve();
   const st = voskLastStatus;
   const sameModel = !!(st && st.model === id);
   const active = !!(st && (st.state === "listening" || !!st.listening));
-  if (sameModel && active) return Promise.resolve(); // 聽緊，唔使郁
+  if (sameModel && active) return voskStop(); // 藍色嗰粒再撳＝停，變返灰
   if (sameModel && st.state === "ready") return voskStart(); // 就緒，直接開聽唔重載
   if (sameModel && st.state === "loading") {
     // 後端載入緊呢粒（例如轉頁 reload 撞正）：跟返進度，ready 即開聽。
@@ -348,50 +392,9 @@ function voskStop() {
   });
 }
 
-// 咪測試：1 秒錄音計 RMS/Peak，後端回 dB 數，前端按閾值判夠唔夠大聲。
-function voskMicTest() {
-  const out = document.getElementById("voskMicOut");
-  if (out) out.textContent = "…";
-  return Alpha2Api.voskMicTest().then(function (res) {
-    if (!out) return res;
-    if (!res || !res.ok) {
-      out.textContent = t("vosk_mic_fail_prefix") + (res && res.error ? res.error : "?");
-      return res;
-    }
-    const verdict = res.rmsDb >= -30 ? t("vosk_mic_loud")
-        : res.rmsDb >= -50 ? t("vosk_mic_quiet") : t("vosk_mic_silent");
-    out.textContent = "RMS " + res.rmsDb + "dB / Peak " + res.peakDb + "dB — " + verdict;
-    return res;
-  });
-}
-
-// 收音延遲套用：mode + 尾音秒 (t_end)；t_start/t_max 罕用，留 HTTP。
-// 空即跟預設。
-function voskSetEndpointer() {
-  const modeEl = document.getElementById("voskEpMode");
-  const teEl = document.getElementById("voskEpTEnd");
-  const params = {};
-  if (modeEl && modeEl.value !== "") params.mode = modeEl.value;
-  if (teEl && teEl.value !== "") params.t_end = teEl.value;
-  const out = document.getElementById("voskStatusOut");
-  return Alpha2Api.voskEndpointer(params).then(function (res) {
-    if (!res || !res.ok) {
-      if (out) out.textContent = t("vosk_ep_fail_prefix") + (res && res.error ? res.error : "?");
-    }
-    return voskStatus();
-  });
-}
-
 function voskStatus() {
   return Alpha2Api.voskStatus().then(function (res) {
     if (!res || !res.ok) return res;
-    // 後端現值 sync 返個延遲 UI (唔冚用戶打緊字嗰格)。
-    const epMode = document.getElementById("voskEpMode");
-    if (epMode && res.epMode !== undefined) epMode.value = String(res.epMode);
-    const epT = document.getElementById("voskEpTEnd");
-    if (epT && document.activeElement !== epT) {
-      epT.value = (res.epTEnd === undefined || res.epTEnd === null) ? "" : res.epTEnd;
-    }
     voskRenderStatus(res);
     return res;
   });
@@ -427,9 +430,6 @@ function voskRenderStatus(res) {
     dot.classList.toggle("vosk-state-dot-on", listening);
     dot.classList.toggle("vosk-state-dot-off", !listening);
   }
-  // 剩停止掣，聽緊先 enable（一撳模型鍵即自動開聽）。
-  const stopBtn = document.getElementById("voskStopBtn");
-  if (stopBtn) stopBtn.disabled = !listening;
-  // 模型鍵高亮經 voskSyncModelBtns 統一：淨聽緊嗰粒藍，其餘（就緒／閒置／錯）灰。
+  // 模型鍵高亮經 voskSyncModelBtns 統一：淨聽緊嗰粒藍（再撳即停），其餘灰。
   voskSyncModelBtns();
 }

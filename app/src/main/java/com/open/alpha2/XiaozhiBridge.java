@@ -16,27 +16,27 @@ import java.util.Map;
  * mute 鍵開關＋連線指示燈。
  *
  * 擁有關係：
- * - MainActivity 只留：implements HostState（TTS 兩法＋sonar 四法，轉交緊
+ * - MainActivity 只留：implements HostState（TTS 兩法＋sonar 四法，轉交正在
  *   SpeechCenter／SonarCenter）、接線
  *   （onCreate 建構、onDestroy shutdown()、router 轉發、PIR/mute key 兩個硬件入口）。
- *   呢度 sonar state 唔經 HostState——MCP sensors 4 tool
+ *   這裡 sonar state 不經 HostState——MCP sensors 4 tool
  *   經下面 sonarCenter 直調 SonarCenter。
- * - xiaozhiClient/xiaozhiAudioController/xiaozhiConfig 全部由呢度擁有。
- * - stopAllSpeechPlayback() 喺 SpeechCenter（TTS core，跨域
- *   orchestration），經 stopSpeechPlayback() 掂 xiaozhi 嗰條播放管道。
+ * - xiaozhiClient/xiaozhiAudioController/xiaozhiConfig 全部由這裡擁有。
+ * - stopAllSpeechPlayback() 在 SpeechCenter（TTS core，跨域
+ *   orchestration），經 stopSpeechPlayback() 碰 xiaozhi 那條播放管道。
  *
  * 線程：HTTP handler thread 可阻塞；activation/reconnect 自開
  * 背景 thread；mic hold enforcer 獨立 thread；mainHandler 只做延遲計時。
  *
- * 實機驗證限制（無穩定上網）：connect 後嘅成功路徑（語音對話、vision、
- * callTool 硬件工具）驗唔到，要外網嗰陣補驗。離線可驗：status/
- * activation_status/mcp_tools/list/validation error 路徑＋開機唔炒。
+ * 實機驗證限制（無穩定上網）：connect 後的成功路徑（語音對話、vision、
+ * callTool 硬件工具）驗不到，要有外網時補驗。離線可驗：status/
+ * activation_status/mcp_tools/list/validation error 路徑＋開機不崩潰。
  */
 public final class XiaozhiBridge {
     private static final String TAG = "XiaozhiBridge";
 
     /**
-     * 宿主縫：TTS state（enforcer＋gap 計時經呢度讀）。sonar state 唔經呢度——
+     * 宿主縫：TTS state（enforcer＋gap 計時經這裡讀）。sonar state 不經這裡——
      * MCP sensors 4 tool 經上面 sonarCenter 直調 SonarCenter。
      * 由 MainActivity 實現。
      */
@@ -59,7 +59,7 @@ public final class XiaozhiBridge {
     private final CameraController cameraController;
     private final LedCenter ledCenter;
     private final HostState hostState;
-    // sensors 4 tool 經呢度直調 (放最尾，慣例)。
+    // sensors 4 tool 經這裡直調 (放最尾，慣例)。
     private final SonarCenter sonarCenter;
     private XiaozhiConfig xiaozhiConfig;
 
@@ -78,14 +78,14 @@ public final class XiaozhiBridge {
         this.ledCenter = ledCenter;
         this.hostState = hostState;
         this.sonarCenter = sonarCenter;
-        // 小智設定層 (含 TTS 引擎讀取+舊值遷移) 喺呢度建構。
+        // 小智設定層 (含 TTS 引擎讀取+舊值遷移) 在這裡建構。
         this.xiaozhiConfig = new XiaozhiConfig(context);
         // device id 讀 prefs。
         this.xiaozhiClient = new XiaozhiClient(getXiaozhiDeviceId());
     }
 
     /** onDestroy 共用：斷線＋停 audio。 */
-    // guard，重複調用唔好每次都 new thread。
+    // guard，重複調用不要每次都 new thread。
     private final java.util.concurrent.atomic.AtomicBoolean shutdownGuard =
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
@@ -113,7 +113,7 @@ public final class XiaozhiBridge {
         xiaozhiAudioController.shutdown();
     }
 
-    /** stopAllSpeechPlayback() 經呢度停小智嗰條播放管道。 */
+    /** stopAllSpeechPlayback() 經這裡停小智那條播放管道。 */
     public void stopSpeechPlayback() {
         xiaozhiAudioController.stopPlayback();
     }
@@ -123,7 +123,7 @@ public final class XiaozhiBridge {
         return xiaozhiClient != null && xiaozhiClient.isOpen();
     }
 
-    /** 同 MainActivity.releaseMicForAudioIo() 一字不差嘅副本 (speech_SetMIC(true) +
+    /** 同 MainActivity.releaseMicForAudioIo() 一字不差的副本 (speech_SetMIC(true) +
      *  300ms) - startXiaozhiMic 專用。 */
     private void releaseMicForAudioIo() {
         robot.speech_SetMIC(true);
@@ -139,11 +139,11 @@ public final class XiaozhiBridge {
         return DirectProbes.isChestReady(appContext);
     }
 
-    // -- 斷線／連線共用核（三處同一個順序，抽出嚟免改漏一處）--
+    // -- 斷線／連線共用核（三處同一個順序，抽出來免改漏一處）--
 
-    /** 斷線清理共用核：落 autoMode、停 mic、熄嘴燈、（可選）斷 socket。
+    /** 斷線清理共用核：關閉 autoMode、停 mic、關閉嘴燈、（可選）斷 socket。
      *  胸燈由各 call site 自己處理（mute 鍵行 setChestMuteLed(!wasOpen)，其餘行 false），
-     *  呢度唔包，等時序同以前逐字一樣。 */
+     *  這裡不含，等時序同以前逐字一樣。 */
     private void teardownSession(boolean disconnectSocket) {
         xiaozhiAutoMode.set(false);
         xiaozhiReconnectAttempts.set(0);
@@ -152,14 +152,14 @@ public final class XiaozhiBridge {
         if (disconnectSocket) xiaozhiClient.disconnect();
     }
 
-    /** activation gate 已搶到之後嘅尾段：設 checking、攞 deviceId、背景起 flow。
+    /** activation gate 已搶到之後的尾段：設 checking、取 deviceId、背景起 flow。
      *  調用前必須已 compareAndSet(false, true) 成功（三處：mute 鍵／connect／auto_mode）。 */
     private void launchActivationFlow() {
         launchActivationFlow("XiaozhiActivationThread", null);
     }
 
     /** 同上，但 thread 名／deviceId 可指明（auto-connect／reconnect 保留各自 thread 名；
-     *  reconnect 沿用傳入 deviceId，唔重讀）。 */
+     *  reconnect 沿用傳入 deviceId，不重讀）。 */
     private void launchActivationFlow(String threadName, String deviceId) {
         xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
         final String id = deviceId != null ? deviceId : getXiaozhiDeviceId();
@@ -172,8 +172,8 @@ public final class XiaozhiBridge {
     }
 
     /** speech/stop -> 新 TTS race guard：等上次 stop 起碼
-     *  SpeechCenter.STOP_TO_TTS_MIN_GAP_MS 先開始播，唔係 Nuance teardown 未完
-     *  會掟 IllegalStateException（見嗰個 const 嘅 comment）。
+     *  SpeechCenter.STOP_TO_TTS_MIN_GAP_MS 先開始播，否則 Nuance teardown 未完成
+     *  會拋 IllegalStateException（見那個 const 的 comment）。
      *  speakActivationCode() 同 self.robot.speak MCP tool 共用（之前兩份逐字一樣）。 */
     private void awaitTtsGap() {
         long sinceStopMs = System.currentTimeMillis() - hostState.getLastSpeechStopAtMs();
@@ -186,13 +186,13 @@ public final class XiaozhiBridge {
         }
     }
 
-    // -- MCP tools: self.robot.servo_set_one/all 留喺 XiaozhiBridge,
-    // 冇搬去 UbxApi/ActionDirect: UbxApi.servoSendOneCode()
-    // 底層邏輯睇落一樣, 但佢對超範圍輸入係靜默 clamp, 呢度係刻意
-    // 要求明確報錯、唔靜默 clamp, 跟 servoSendOneCode() 共用會令呢個已驗證嘅
+    // -- MCP tools: self.robot.servo_set_one/all 留在 XiaozhiBridge,
+    // 沒有搬去 UbxApi/ActionDirect: UbxApi.servoSendOneCode()
+    // 底層邏輯看來一樣, 但它對超範圍輸入是靜默 clamp, 這裡是刻意
+    // 要求明確報錯、不靜默 clamp, 跟 servoSendOneCode() 共用會令這個已驗證的
     // 行為分別消失, 所以保留獨立實現。 --
 
-    /** self.robot.servo_set_one/all 共用嘅 time_ms 範圍驗：啱回 null，唔啱回 err
+    /** self.robot.servo_set_one/all 共用的 time_ms 範圍驗：正確返回 null，錯誤返回 err
      *  McpResult（兩個 servo tool 共用）。範圍經 ApiValidator（同 servo/one HTTP、
      *  spec/MCP 單一來源）；error 字面由常數砌出，同舊字面逐字一樣。 */
     private static SonarCenter.McpResult checkServoTimeMs(int timeMs) {
@@ -204,7 +204,7 @@ public final class XiaozhiBridge {
         return null;
     }
 
-    /** self.robot.servo_set_one/all 共用尾巴：直發結果＋chest 就緒打包（之前兩份淨變量名唔同）。 */
+    /** self.robot.servo_set_one/all 共用尾巴：直發結果＋chest 就緒打包（之前兩份僅變量名不同）。 */
     private SonarCenter.McpResult directServoResult(boolean sent, boolean ready) {
         UbxErrorCode.API_ERROR_CODE code = MainActivity.directCode(sent);
         return new SonarCenter.McpResult(!MainActivity.isOk(code) || !ready,
@@ -214,7 +214,7 @@ public final class XiaozhiBridge {
     /** self.robot.servo_set_one 本體。
      *  pure-direct: 经 /dev/ttyS1 直发。
      *  同 servo/one HTTP 一套範圍（id 1-20、angle 0-255、
-     *  time 20-32767），唔啱即報錯，唔靜默 clamp。 */
+     *  time 20-32767），不合即報錯，不靜默 clamp。 */
     private SonarCenter.McpResult mcpServoSetOne(org.json.JSONObject arguments) {
         int mcpId = arguments.optInt("id", -1);
         if (!arguments.has("angle")) {
@@ -243,7 +243,7 @@ public final class XiaozhiBridge {
             return SonarCenter.McpResult.err("angles is required (20 comma-separated integers)");
         }
         String[] parts = anglesCsv.split(",");
-        // 要啱啱 20 粒、逐粒 0-255，唔啱直接報錯。
+        // 要恰好 20 個、逐個 0-255，不合直接報錯。
         if (parts.length != ApiValidator.SERVO_COUNT) {
             return SonarCenter.McpResult.err("angles must have exactly " + ApiValidator.SERVO_COUNT + " comma-separated values, got " + parts.length);
         }
@@ -277,12 +277,12 @@ public final class XiaozhiBridge {
      *  兩個 block), 所以要獨立一個設定。自訂 server 開著的時候如果沒填這個, 就跟回
      *  官方這個 - 很多自架 server 都沒實作 vision explain, 這種情況下 take_photo
      *  call 出去會收到 404/連不到, self.camera.take_photo 的 case 會將這個原因
-     *  告訴 LLM 知道, 而不是靜靜地假裝成功。
+     *  告訴 LLM 知道, 而不是默默假裝成功。
      *
      * 官方 esp32_camera.cc (SetExplainUrl/Explain()) 同 GitHub issue #708
      *  實機 log 顯示官方 firmware 打的是 http:// (不加密):
      *  "Opening HTTP connection to http://api.xiaozhi.me/mcp/vision/explain"，
-     *  不同 scheme 在 server 側可能是不同 virtual host/冇 mapping，會 404。 */
+     *  不同 scheme 在 server 側可能是不同 virtual host/沒有 mapping，會 404。 */
     /** Fallback vision/explain URL, only used when the server hasn't (yet) told us
      *  its real one via the "initialize" MCP request's params.capabilities.vision
      *  (see XiaozhiClient.getVisionUrl()'s comment for the full story - that's the
@@ -292,7 +292,7 @@ public final class XiaozhiBridge {
      *
      * 反編譯實測拍照成功的第三方 apk (package com.huihongcloud.xiaozhi)
      *  證實 OTA 用的是 https://api.tenclass.net/xiaozhi/ota/
-     *  (和 DEFAULT_OTA_URL 一致)；api.xiaozhi.me 冇 /mcp/vision/explain 路由，
+     *  (和 DEFAULT_OTA_URL 一致)；api.xiaozhi.me 沒有 /mcp/vision/explain 路由，
      *  所以跟 api.tenclass.net，scheme 跟 DEFAULT_OTA_URL 一致用 https。 */
     private static final String DEFAULT_VISION_URL = "https://api.tenclass.net/xiaozhi/mcp/vision/explain";
     private static final String PREF_XIAOZHI_VISION_URL = "xiaozhi_vision_url";
@@ -351,13 +351,13 @@ public final class XiaozhiBridge {
     /** xiaozhiScheduleReconnect() 意外斷線之後有 5 秒 backoff delay,
      *  這 5 秒裡面 xiaozhiActivationStatus 還停留在斷線前那個值 (通常是
      *  CONNECTED), 不在 "connect" case 的 guard 擋著的 stage 名單裡面, 用戶如果
-     *  在這 5 秒內按「連線」就會通過 guard、額外起多一條 runXiaozhiActivationFlow
-     *  thread - 和 5 秒後真正觸發的自動重連 thread 同時運行, 兩條互相踩
-     *  xiaozhiActivationStatus/xiaozhiClient 的狀態, 讓連線更加不穩定、越按
-     *  越糟。單靠 xiaozhiActivationStatus 的 stage 判斷不夠, 因為由「決定要
+     *  在這 5 秒內按「連線」就會通過 guard、額外啟動多一條 runXiaozhiActivationFlow
+     *  thread - 和 5 秒後真正觸發的自動重連 thread 同時運行, 兩條互相干擾
+     *  xiaozhiActivationStatus/xiaozhiClient 的狀態, 讓連線更加不穩定、越來越
+     *  糟。單靠 xiaozhiActivationStatus 的 stage 判斷不夠, 因為由「決定要
      *  起 thread」到「thread 真正設回那個 stage」中間有時間差, 這個窗口裡面
      *  判斷會判錯。用這個獨立的 AtomicBoolean 做 compareAndSet 原子操作,
-     *  保證整個 app 任何時候最多只有一條 runXiaozhiActivationFlow 在跑著 -
+     *  保證整個 app 任何時候最多只有一條 runXiaozhiActivationFlow 在執行 -
      *  三個起 thread 的入口 (connect case / auto_mode case /
      *  xiaozhiScheduleReconnect 的 delayed runnable) 都要經這個 gate,
      *  runXiaozhiActivationFlow() 本身在 finally 釋放。 */
@@ -384,7 +384,7 @@ public final class XiaozhiBridge {
     private volatile String xiaozhiAccessToken;
     // vision/explain 要送同 WebSocket 連接一樣的 Device-Id/Client-Id/Authorization
     // headers；反編譯實測成功的第三方 apk 證實有送 Client-Id (連接 WebSocket
-    // 嗰個 client_id)。呢個 field 存低 session 用的 clientId，畀 vision request 讀。
+    // 那個 client_id)。這個 field 保存 session 用的 clientId，供 vision request 讀。
     private volatile String xiaozhiClientId;
 
     // listTools() (見 xiaozhiMcpBridge()) 每次被 call 都會存下一份
@@ -397,7 +397,7 @@ public final class XiaozhiBridge {
 
     // -- 心口 mute 鍵 LED (chest cmd=68) ------------------------------------------
     // headboard v1.1 + 舊版 alpha2services 之下按 mute 鍵 MCU 不會
-    // 自己點燈, 我們在這裡補上: 按下一下 → toggle 燈 (亮=muted 視覺狀態), 放開不理。
+    // 自己點燈, 我們在這裡補上: 按一下 → toggle 燈 (亮=muted 視覺狀態), 放開不理。
     private static final byte CHEST_MUTE_LED_CMD = 68; // 0x44, 實機掃描確認
     private volatile boolean chestMuteLedOn = false;
     // 實機 log：每次按鍵送出去的全部是 68[00] - press 事件重複
@@ -408,8 +408,8 @@ public final class XiaozhiBridge {
 
     /** 胸口 mute 鍵 (-111) 硬件入口本體。
      *  pressed=true (按下) 就 toggle mute LED (小智開關); pressed=false (放開)
-     *  不理。static 縫留喺 MainActivity.onMuteKeyEvent (RobotEventReceiver／
-     *  frozen onDirectChestFrame 經嗰度入，簽名不變)。 */
+     *  不理。static 縫留在 MainActivity.onMuteKeyEvent (RobotEventReceiver／
+     *  frozen onDirectChestFrame 經那裡進入，簽名不變)。 */
     public void onMuteKeyEvent(final boolean pressed) {
         if (!pressed) {
             return;
@@ -425,10 +425,10 @@ public final class XiaozhiBridge {
             return;
         }
         lastMutePressMs.set(now);
-        // mute 鍵係「小智開關」- 撳一下連線 (燈着 = 已連接),
-        // 再撳一下斷線 (燈熄)。LED 由實際連線事件驅動 (見 runXiaozhiActivationFlow()
-        // 個 connected hook / DisconnectListener / activation error hook), 呢度
-        // 按下當下的 send 只是即時的視覺反應, 之後會被真實狀態 hook 校正。
+        // mute 鍵是「小智開關」- 按一下連線 (燈亮 = 已連接),
+        // 再按一下斷線 (燈滅)。LED 由實際連線事件驅動 (見 runXiaozhiActivationFlow()
+        // 的 connected hook / DisconnectListener / activation error hook), 這裡
+        // 按下瞬間的 send 只是即時的視覺反應, 之後會被真實狀態 hook 校正。
         final boolean wasOpen = xiaozhiClient.isOpen();
         ledCenter.postPadLed(() -> {
             if (wasOpen) {
@@ -436,9 +436,9 @@ public final class XiaozhiBridge {
                 teardownSession(true);
                 Log.i(TAG, "mute key -> xiaozhi DISCONNECT");
             } else {
-                // 連線 - 同 "connect" case 一致: 搶 activation gate, 背景行
+                // 連線 - 同 "connect" case 一致: 搶 activation gate, 背景執行
                 // OTA/activation flow; 完成後 CONNECTED hook 會再確認 LED。
-                // 開關語意係「連線並隨時語音對話」，連線完成後 auto_mode 會立即
+                // 開關語意是「連線並隨時語音對話」，連線完成後 auto_mode 會立即
                 // startXiaozhiMic() 取得 mic (見 runXiaozhiActivationFlow() 的
                 // CONNECTED branch 和 "auto_mode" case)。
                 xiaozhiAutoMode.set(true);
@@ -610,7 +610,7 @@ public final class XiaozhiBridge {
                 // wake-word engine (speech_SetMIC(false)) and the mic LED/hold-enforcer
                 // thread are torn down too - see stopXiaozhiMic()'s javadoc.
                 teardownSession(true);
-                // mute 鍵 LED = 小智連線指示燈 - web UI 斷線都要熄燈。
+                // mute 鍵 LED = 小智連線指示燈 - web UI 斷線都要關燈。
                 setChestMuteLed(false);
                 return HttpServer.ApiResponse.okTrue();
 
@@ -623,7 +623,7 @@ public final class XiaozhiBridge {
             }
 
             case "auto_mode": {
-                // 行 requireBoolean（前端/MCP 傳真 boolean 即 "true"/"false"）。
+                // 用 requireBoolean（前端/MCP 傳真 boolean 即 "true"/"false"）。
                 boolean enabled = ApiValidator.requireBoolean(query, "enabled");
                 xiaozhiAutoMode.set(enabled);
                 if (enabled) {
@@ -683,18 +683,18 @@ public final class XiaozhiBridge {
      *  thread** (例如 HTTP handler thread, 或刻意開的背景 thread) - 絕對不可以
      *  在 BroadcastReceiver.onReceive()、UI thread, 或任何有時限的 callback
      *  裡直接呼叫, 否則會撞上 Android 的 broadcast timeout / ANR 機制。
-     *  (PIR 密集 broadcast 時連環阻塞會 hold 死成個 system 連 adb 都冇反應，
-     *  所以 onPirStateReceived() 要用獨立 thread 包住先呼叫呢個方法。)
+     *  (PIR 密集 broadcast 時連環阻塞會卡死整個 system 連 adb 都沒有反應，
+     *  所以 onPirStateReceived() 要用獨立 thread 包住才呼叫這個方法。)
      *
      *  送成功就回傳 null, 失敗就回傳錯誤訊息 (不拋 exception, 讓 caller 自己決定
      *  要不要讓用戶看到 / 要不要 log)。
      *
-     * 官方 xiaozhi.me 對冇標記的 "detect" 訊息會拒絕長文字 (錯誤 "detect is only
+     * 官方 xiaozhi.me 對沒有標記的 "detect" 訊息會拒絕長文字 (錯誤 "detect is only
      *  for wake words, do not send long texts")；送出訊息要多附 "source":"text"
-     *  同 "session_id" (見 XiaozhiClient.sendListenDetectText())，server 就唔會
-     *  誤當 wake-word 驗長度，所以唔使切段，一次送完。
+     *  同 "session_id" (見 XiaozhiClient.sendListenDetectText())，server 就不會
+     *  誤當 wake-word 驗長度，所以不用切段，一次送完。
      *
-     *  小智常開時 mic 一直開著持續送 Opus binary frame，detect JSON 喺 audio
+     *  小智常開時 mic 一直開著持續送 Opus binary frame，detect JSON 在 audio
      *  micActive/micHeld 都是 true), 打字那句 detect JSON message 就在這股持續
      *  的 audio stream 中途插入送出 - server 側極可能把 mic 錄到的背景聲音當成
      *  「主要輸入」, 打字那句被 audio stream 蓋過/觸發衝突判斷, 兩者都沒有被正常
@@ -703,7 +703,7 @@ public final class XiaozhiBridge {
      *  之後如果小智常開仍然開著就重新開啟 mic (沿用
      *  startXiaozhiMic()/stopXiaozhiMic() 已有的 mic 生命週期管理)。
      *
-     *  長打字對白仍係開放問題，未確診，等真機 log 先處理。 */
+     *  長打字對白仍是開放問題，未確診，等真機 log 先處理。 */
     public String sendDetectText(String text) {
         if (!xiaozhiClient.isOpen()) {
             return "not connected";
@@ -730,15 +730,15 @@ public final class XiaozhiBridge {
             return e.getMessage();
         }
         if (micWasActive && xiaozhiAutoMode.get()) {
-            // 送完 detect 即重開 mic 會喺幾百毫秒內再送 {"type":"listen","state":"start",
-            // "mode":"auto"}，兩個連續 listen 轉換之間冇足夠時間畀 server 處理前一個，
-            // 可能重置 session 蓋過文字訊息；所以多給 300ms 緩衝，等 server 處理完 detect。
+            // 送完 detect 即重開 mic 會在幾百毫秒內再送 {"type":"listen","state":"start",
+            // "mode":"auto"}，兩個連續 listen 轉換之間沒有足夠時間給 server 處理前一個，
+            // 可能重置 session 蓋過文字訊息；所以多給 300ms 緩衝，等 server 處理完 detect.
             try {
                 Thread.sleep(300);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            // 後開者得 mic：呢段時間 vosk 搶咗 mic 就唔回搶（等用戶手動 mic/start）。
+            // 後開者得 mic：這段時間 vosk 搶了 mic 就不回搶（等用戶手動 mic/start）。
             if (vosk == null || !vosk.isListening()) {
                 startXiaozhiMic();
             }
@@ -758,9 +758,9 @@ public final class XiaozhiBridge {
         if (!xiaozhiClient.isOpen()) {
             return HttpServer.ApiResponse.error("not connected - call xiaozhi/connect first");
         }
-        // alpha2services wake-word 引擎持續佔用 mic，呢部機 HAL 唔支援多 process
-        // 同時開 mic input，直接開 AudioRecord 會收唔到聲。同 handleMicStream()
-        // (Speech/Mic tab 獨立 mic 串流) 一樣，先用 releaseMicForAudioIo() 攞
+        // alpha2services wake-word 引擎持續佔用 mic，這部機 HAL 不支援多 process
+        // 同時開 mic input，直接開 AudioRecord 會收不到聲。同 handleMicStream()
+        // (Speech/Mic tab 獨立 mic 串流) 一樣，先用 releaseMicForAudioIo() 拿
         // mic 擁有權 (speech_SetMIC(true) + 300ms 避 race)，先開 AudioRecord。
         releaseMicForAudioIo();
         try {
@@ -769,11 +769,11 @@ public final class XiaozhiBridge {
             robot.speech_SetMIC(false); // 硬體都還沒開就立即放棄, 將 mic 還給機器人
             return HttpServer.ApiResponse.error("failed to signal listen-start: " + e.getMessage());
         }
-        // 後開者得 mic (單 input HAL)：vosk 個 recorder 一日唔停，呢度開
-        // playback/capture 就撞 HAL（開唔到／讀垃圾／成條 recognizer thread 炒
+        // 後開者得 mic (單 input HAL)：vosk 的 recorder 一日不停，這裡開
+        // playback/capture 就撞 HAL（開不到／讀垃圾／整條 recognizer thread 崩潰
         // FATAL，見實測）。先停 vosk 再開自己，同 VoskApi.voskStart 經
-        // yieldMicToVosk 停小智對稱。唔自動重開——vosk_state event 會話返前端
-        // 轉灰燈，用戶手動返去撳開始。
+        // yieldMicToVosk 停小智對稱。不自動重開——vosk_state event 會通知前端
+        // 轉灰燈，用戶手動回去按開始。
         if (vosk != null && vosk.isListening()) {
             vosk.stopListening();
             Log.i(TAG, "vosk stopped to yield mic to xiaozhi");
@@ -790,10 +790,10 @@ public final class XiaozhiBridge {
             robot.speech_SetMIC(false);
             return HttpServer.ApiResponse.error("failed to start playback: " + playbackResult.error);
         }
-        // AudioHardwareTiny 啱開完 AudioTrack (output) 個 pthread 未 settle 即開
+        // AudioHardwareTiny 剛開完 AudioTrack (output) 的 pthread 未 settle 即開
         // AudioRecord (input)，會撞 "adev_open_input_stream:channel is not support"；
         // Java 層 STATE_INITIALIZED 照過 check，但底層 HAL 開 input 失敗，.read()
-        // 收唔到真聲，送去 server 係靜音/垃圾。所以加短 sleep，等 output HAL settle
+        // 收不到真聲，送去 server 是靜音/垃圾。所以加短 sleep，等 output HAL settle
         // 先開 input，避開 race。
         try {
             Thread.sleep(250);
@@ -833,8 +833,8 @@ public final class XiaozhiBridge {
         stopXiaozhiMicHoldEnforcer();
         xiaozhiAudioController.stopCapture();
         xiaozhiAudioController.stopPlayback();
-        // 小智 session 完咗，Vosk 嗰邊如果 pause 緊就 resume
-        // (播 opus／TTS 嗰陣 pause 咗)。唔自動重開聆聽——要開用戶自己撳。
+        // 小智 session 完了，Vosk 那邊如果已暫停就 resume
+        // (播 opus／TTS 的時候 pause 了)。不自動重開聆聽——要開用戶自己按。
         if (vosk != null) {
             try {
                 vosk.setPaused(false);
@@ -864,22 +864,15 @@ public final class XiaozhiBridge {
         }
     }
 
-    /** 後開者得 mic 嘅 vosk 方向：vosk/start 調用（見 VoskApi.voskStart）。
-     *  小智開緊（連線 and/or 拎緊 mic）就成條 session 踢斷——唔止停 mic，
-     *  同 "disconnect" case / mute 鍵斷線同一個清理順序（落 autoMode、停 mic、
-     *  熄嘴燈、斷線、熄胸燈），等 vosk 先開到 recorder（單 input HAL）。
-     *  同 startXiaozhiMic() 停 vosk 對稱。唔自動幫小智重開（對稱嗰邊停完
-     *  vosk 都唔自動重開，要開用戶自己撳 mute 鍵/auto_mode）。
-     *  順序重要：先落 autoMode 再斷線——DisconnectListener 靠佢決定係咪
-     *  自動重連；用戶主動 disconnect() 本身唔會觸發 listener（見 XiaozhiClient）。
-     *  冇開緊、冇拎緊、autoMode 又冇開就即刻返（平時 vosk 起停零額外開銷）。 */
-    /** Vosk mic_test 用：小智拎緊 mic 就唔好另開 recorder（單 input HAL，
-     *  同 voskStart 未讓 mic 之前開 recorder 撞 HAL 炒 FATAL 同一類）。
-     *  唔似 voskStart 咁讓 mic——1 秒測試唔值得踢斷成個小智 session，直接叫
-     *  用戶先停小智 mic（同 micTestJson 擋自己 listen 緊對稱）。 */
-    public boolean isMicCapturing() {
-        return xiaozhiMicHeld || xiaozhiAudioController.isCapturing();
-    }
+    /** 後開者得 mic 的 vosk 方向：vosk/start 調用（見 VoskApi.voskStart）。
+     *  小智開著（連線 and/or 拿著 mic）就整條 session 踢斷——不止停 mic，
+     *  同 "disconnect" case / mute 鍵斷線同一個清理順序（關閉 autoMode、停 mic、
+     *  關閉嘴燈、斷線、關閉胸燈），等 vosk 先開到 recorder（單 input HAL）。
+     *  同 startXiaozhiMic() 停 vosk 對稱。不自動幫小智重開（對稱那邊停完
+     *  vosk 都不自動重開，要開用戶自己按 mute 鍵/auto_mode）。
+     *  順序重要：先關 autoMode 再斷線——DisconnectListener 靠它決定是否
+     *  自動重連；用戶主動 disconnect() 本身不會觸發 listener（見 XiaozhiClient）。
+     *  沒有開著、沒有拿著、autoMode 又沒開就立刻返回（平時 vosk 啟停零額外開銷）。 */
 
     public void yieldMicToVosk() {
         boolean open = xiaozhiClient.isOpen();
@@ -908,7 +901,7 @@ public final class XiaozhiBridge {
                     // (iflytek/nuance) 正在播放就跳過這一輪, 不要用
                     // speech_SetMIC(true) 打斷它。跳過也不會讓 mic 太久沒人持有:
                     // 下一個 tick (MainActivity.MIC_HOLD_ENFORCER_INTERVAL_MS 之後) 會再檢查
-                    // 一次, TTS 讀完 (onServerPlayEnd 揭返 false) 就會搶返。
+                    // 一次, TTS 讀完 (onServerPlayEnd 改回 false) 就會搶回。
                     if (xiaozhiMicHeld && !hostState.isRobotTtsSpeaking()) {
                         robot.speech_SetMIC(true);
                     }
@@ -939,9 +932,9 @@ public final class XiaozhiBridge {
      *  exactly as Phase 1/2 did - this method's only job is to arrive at a real
      *  websocket url/token, not to duplicate XiaozhiClient's own connection logic. */
     private void runXiaozhiActivationFlow(String deviceId) {
-        // 呢個 try/finally 包住成個 method body，保證無論點 exit，
-        // xiaozhiActivationInFlight 呢個 gate 一定會釋放——釋放唔到會永久鎖死
-        // 喺「activation already in progress」。見 field javadoc。
+        // 這個 try/finally 包住整個 method body，保證無論如何 exit，
+        // xiaozhiActivationInFlight 這個 gate 一定會釋放——釋放不到會永久鎖死
+        // 在「activation already in progress」。見 field javadoc。
         try {
             // 自訂 server 開關 (見 PREF_XIAOZHI_OTA_CUSTOM_ENABLED/PREF_XIAOZHI_OTA_URL) -
             // 開啟就用自己填的 OTA URL, 關閉則沿用官方 xiaozhi.me 預設。OTA endpoint 一般
@@ -963,8 +956,8 @@ public final class XiaozhiBridge {
             // capture deviceId, capture 到的 local variable 一定要是 effectively
             // final, 重新賦值會導致這個 method 編譯不過。
             final String effectiveDeviceId = deviceIdOverride.isEmpty() ? deviceId : deviceIdOverride;
-            // 存低呢個 session 用的 clientId，畀 xiaozhiVisionExplain()
-            // 送返同一個 Client-Id header (見 xiaozhiClientId field)。
+            // 存下這個 session 用的 clientId，給 xiaozhiVisionExplain()
+            // 送回同一個 Client-Id header (見 xiaozhiClientId field)。
             final String effectiveClientId = java.util.UUID.randomUUID().toString();
             xiaozhiClientId = effectiveClientId;
             XiaozhiOtaClient ota = new XiaozhiOtaClient(otaUrl,
@@ -981,11 +974,11 @@ public final class XiaozhiBridge {
                 String message = checkResult.activationMessage;
                 xiaozhiActivationStatus.set(XiaozhiActivationStatus.awaitingCode(code, message));
                 // 配對碼經 EventBus -> WebSocketServer -> 前端 event log 推送一次，
-                // 同 HTTP polling 並存 (唔衝突，前端防重複邏輯獨立處理 polling 嗰邊)。
+                // 同 HTTP polling 並存 (不衝突，前端防重複邏輯獨立處理 polling 那邊)。
                 EventBus.get().publish("xiaozhi_activation",
                         "{\"code\":\"" + MainActivity.jsonSafe(code) + "\",\"message\":\""
                                 + MainActivity.jsonSafe(message != null ? message : "") + "\"}");
-                // 機身讀出配對碼，畀用戶有足夠反應時間去開 xiaozhi.me 輸入。
+                // 機身讀出配對碼，給用戶有足夠反應時間打開 xiaozhi.me 輸入。
                 speakActivationCode(code);
 
                 xiaozhiActivationStatus.set(XiaozhiActivationStatus.polling(code, message));
@@ -1034,22 +1027,22 @@ public final class XiaozhiBridge {
             // 但這裡要對應 XiaoZhi 自己那套 tts state (start/sentence_start/stop, 見
             // websocket.md 和實測 logcat), 不是本地 TTS 那個單次 speech_startTTS。
             // "start" = 這句/這段回應開始播 -> 點亮; "sentence_start" 純粹是分句
-            // (同一段回應裡面, 中途不停) -> 不用理會, 燈應該一直亮到整段答案講完;
-            // "stop" = 整段回應播完 -> 熄燈。沿用 xiaozhiAutoMode/mic-restart 那個
-            // 同一個 case 分支, 熄燈和重新聆聽是同一時機發生, 沒有額外 race。
+                            // (同一段回應裡面, 中途不停) -> 不用理會, 燈應該一直亮到整段答案說完;
+                            // "stop" = 整段回應播完 -> 關燈。沿用 xiaozhiAutoMode/mic-restart 那個
+                            // 同一個 case 分支, 關燈和重新聆聽是同一時機發生, 沒有額外 race。
             xiaozhiClient.setTtsStateListener(new XiaozhiClient.TtsStateListener() {
                 @Override
                 public void onTtsState(String stateValue) {
                     if ("start".equals(stateValue)) {
                         LedCenter.startMouthLedForTts();
-                        // random 動作要同 tts 一齊發生，唔係講完先做：喺 "start"
-                        // (開講嗰刻) 即觸發，等動作同說話同步。實際邏輯喺
+                        // random 動作要同 tts 一齊發生，不是說完再做：在 "start"
+                        // (開講那刻) 即觸發，等動作同說話同步。實際邏輯在
                         // AudioCenter.triggerRandomFillerAction()，播本地音樂都用同一個 helper。
                         audioCenter.triggerRandomFillerAction();
                     } else if ("stop".equals(stateValue)) {
                         LedCenter.stopMouthLedForTts();
                         if (xiaozhiAutoMode.get()) {
-                            // 後開者得 mic：vosk 搶咗 mic 就唔回搶（等用戶手動 mic/start）。
+                            // 後開者得 mic：vosk 搶了 mic 就不回搶（等用戶手動 mic/start)。
                             if (vosk == null || !vosk.isListening()) {
                                 startXiaozhiMic();
                             }
@@ -1057,20 +1050,20 @@ public final class XiaozhiBridge {
                     }
                 }
             });
-            // server 可能喺對話中途主動 send WebSocket close frame 斷線
+            // server 可能在對話中途主動 send WebSocket close frame 斷線
             // (見 XiaozhiClient case 0x8 describeCloseFrame() log 查 close code)。
             // 小智常開時意外斷線會自動重連，見 xiaozhiScheduleReconnect() backoff。
             xiaozhiClient.setDisconnectListener(new XiaozhiClient.DisconnectListener() {
                 @Override
                 public void onUnexpectedDisconnect() {
-                    // mute 鍵 LED = 小智連線指示燈，斷線就熄。
+                    // mute 鍵 LED = 小智連線指示燈，斷線就關燈。
                     setChestMuteLed(false);
-                    // 意外斷線可能發生喺 TTS 播放中途 (收到 "start" 未收到 "stop")，
-                    // 嘴部 LED 會停留喺點亮 breathing 狀態，所以斷線一定熄燈。
+                    // 意外斷線可能發生在 TTS 播放中途 (收到 "start" 未收到 "stop")，
+                    // 嘴部 LED 會停留在點亮 breathing 狀態，所以斷線一定關燈。
                     LedCenter.stopMouthLedForTts();
-                    // 一斷線即 set 為 idle()，等 UI/guard 即時反映真實狀態——唔係會停留
-                    // 喺斷線前嘅 CONNECTED，直到 5 秒 backoff 後重連 thread 先更新，
-                    // 中間手動撳「連線」會同自動重連撞埋一齊 (見 field javadoc)。
+                    // 一斷線即 set 為 idle()，等 UI/guard 即時反映真實狀態——否則會停留
+                    // 在斷線前的 CONNECTED，直到 5 秒 backoff 後重連 thread 才更新，
+                    // 中間手動按「連線」會同自動重連撞在一起 (見 field javadoc)。
                     xiaozhiActivationStatus.set(XiaozhiActivationStatus.idle());
                     if (xiaozhiAutoMode.get()) {
                         xiaozhiScheduleReconnect(effectiveDeviceId);
@@ -1083,8 +1076,8 @@ public final class XiaozhiBridge {
             // comment for why (same auth domain as the WebSocket connection).
             xiaozhiAccessToken = wsToken;
             xiaozhiActivationStatus.set(XiaozhiActivationStatus.connected(xiaozhiClient.getSessionId()));
-            // mute 鍵 LED = 小智連線指示燈，真正連上先亮 (按鍵當下只係即時反應，
-            // 只是即時反應, 這裡才是權威狀態)。
+            // mute 鍵 LED = 小智連線指示燈，真正連上才亮 (按鍵當下只是即時反應，
+            // 這裡才是權威狀態)。
             setChestMuteLed(true);
             // 連接成功, 重置重試計數 - 下次意外斷線才從 0 開始計算 backoff, 不會
             // 因為之前重試過就跳到長 delay (見 xiaozhiScheduleReconnect() 的
@@ -1099,25 +1092,25 @@ public final class XiaozhiBridge {
                 startXiaozhiMic();
             }
         } catch (Throwable e) {
-            // catch (Throwable) 兜底 (唔止 IOException——handshake/URL parse 等
-            // RuntimeException 都包)，保證任何失敗 stage 都退返 ERROR，唔卡死中途。
+            // catch (Throwable) 兜底 (不止 IOException——handshake/URL parse 等
+            // RuntimeException 都包含)，保證任何失敗 stage 都退回 ERROR，不卡死中途。
             Log.w(TAG, "XiaoZhi activation flow failed: " + e.getMessage());
             xiaozhiActivationStatus.set(XiaozhiActivationStatus.error(
                     e.getMessage() != null ? e.getMessage() : e.toString()));
-            // activation 失敗 (例如 TLS 證書/網絡問題)，mute LED 熄返，唔留「假連線」燈號。
+            // activation 失敗 (例如 TLS 證書/網絡問題)，mute LED 關閉，不留「假連線」燈號。
             setChestMuteLed(false);
         } finally {
             // 見這個 method 開頭那個 try 和 xiaozhiActivationInFlight field 的
             // javadoc: 不論上面如何 exit, 這個 gate 一定會被釋放, 下次 connect
-            // (手動撳掣或者自動重連) 先可以再次通過。
+            // (手動按鍵或者自動重連) 先可以再次通過。
             xiaozhiActivationInFlight.set(false);
         }
     }
 
     /**
      * 開機語音模式分派（實驗 tab「開機語音」卡三選一，開機延遲任務唯一入口）。
-     * off＝乜都唔做；xiaozhi＝沿用 maybeAutoConnect；vosk＝等 model READY
-     * 即起聆聽（背景 thread，唔塞開機）。冪等：模式唔啱／已在聽直接返。
+     * off＝什麼都不做；xiaozhi＝沿用 maybeAutoConnect；vosk＝等 model READY
+     * 即時啟動聆聽（背景 thread，不阻塞開機）。冪等：模式不合／已在聽直接返回。
      */
     public void maybeBootVoice(final String why) {
         final String mode = xiaozhiConfig.getBootVoiceMode();
@@ -1132,8 +1125,8 @@ public final class XiaozhiBridge {
         }
         new Thread(new Runnable() {
             @Override public void run() {
-                // Model 載入中（VoskController 建構嗰陣已背景起載上次嗰粒）就等，
-                // 等到 READY 即起；中途轉咗模式／load 炒咗／等極唔 ready 就收工。
+                // Model 載入中（VoskController 建構時已在背景載入上次那粒）就等，
+                // 等到 READY 即啟動；中途轉換了模式／load 失敗了／久等不 ready 就結束。
                 for (int i = 0; i < 45; i++) {
                     if (!XiaozhiConfig.BOOT_VOICE_VOSK.equals(xiaozhiConfig.getBootVoiceMode())) {
                         Log.i(TAG, "boot voice vosk cancelled (mode changed)");
@@ -1147,7 +1140,7 @@ public final class XiaozhiBridge {
                         return;
                     }
                     if (st == VoskController.State.IDLE) {
-                        // 冇載入緊、冇載好：唔使等，直接收工（等極都唔會變 READY）。
+                        // 沒有載入中、沒有載好：不用等，直接結束（再等也不會變 READY）。
                         if (VoskController.scanModels().isEmpty()) {
                             Log.w(TAG, "boot voice vosk skipped: no model on sdcard");
                         } else {
@@ -1167,7 +1160,7 @@ public final class XiaozhiBridge {
                     Log.w(TAG, "boot voice vosk skipped: model not ready in time");
                     return;
                 }
-                // 同 VoskApi.voskStart 同順序：先讓小智讓 mic（開機正常係 no-op），再起聽。
+                // 同 VoskApi.voskStart 同順序：先讓小智讓 mic（開機正常時是 no-op），再起聽。
                 yieldMicToVosk();
                 String err = vosk.startListening();
                 if (err != null) {
@@ -1180,9 +1173,9 @@ public final class XiaozhiBridge {
     }
 
     /**
-     * 開app自動連接小智（開機語音模式＝xiaozhi 嗰陣先行，見 maybeBootVoice；
-     * 開關冇開/已連線/已有 activation 在飛都直接返，由開機延遲任務同
-     * connectivity 恢復兩處觸發，唔會重複連。
+     * 開app自動連接小智（開機語音模式＝xiaozhi 時才執行，見 maybeBootVoice；
+     * 開關沒開/已連線/已有 activation 在執行都直接返回，由開機延遲任務同
+     * connectivity 恢復兩處觸發，不會重複連。
      */
     public void maybeAutoConnect(String why) {
         if (!xiaozhiConfig.isAutoConnectEnabled()) return;
@@ -1200,7 +1193,7 @@ public final class XiaozhiBridge {
      *  (例如 token 失效、伺服器維護), 無限制地重試只會不斷再取得新 activation code
      *  (可能重新觸發配對流程) 和浪費電量/流量, 對用戶完全沒幫助; 加了上限之後,
      *  重試完都連不上就停止, 保留 xiaozhiActivationStatus 的 error 狀態讓用戶看到
-     *  發生了什麼事, 好過默默不斷重試下去。用戶隨時可以手動關開開關重新嘗試,
+     *  發生了什麼事, 勝過默默不斷重試下去。用戶隨時可以手動關開開關重新嘗試,
      *  重新開始個 backoff (見 runXiaozhiActivationFlow() 連接成功會 reset
      *  xiaozhiReconnectAttempts)。 */
     private void xiaozhiScheduleReconnect(final String deviceId) {
@@ -1214,8 +1207,8 @@ public final class XiaozhiBridge {
         long delayMs = Math.min(5000L * (1L << (attempt - 1)), 60000L);
             Log.i(TAG, "XiaoZhi reconnect: attempt " + attempt + "/" + maxAttempts
                 + " in " + delayMs + "ms");
-        // mainHandler 綁住 main thread——postDelayed() 只係延遲，Runnable 本身
-        // 仲係喺 main thread 跑；runXiaozhiActivationFlow() 會做 HTTPS POST，
+        // mainHandler 綁住 main thread——postDelayed() 只是延遲，Runnable 本身
+        // 仍然在 main thread 跑；runXiaozhiActivationFlow() 會做 HTTPS POST，
         // 主 thread 做網絡 I/O 會拋 NetworkOnMainThreadException。所以實際工作
         // 放獨立背景 thread，mainHandler 只做延遲計時。
         mainHandler.postDelayed(new Runnable() {
@@ -1242,16 +1235,16 @@ public final class XiaozhiBridge {
      *  but Alpha2RobotApi's TTS has no SSML/digit-mode control exposed - see
      *  AIDL_REFERENCE.md's ISpeechInterface notes, which document no such parameter -
      *  so this spells the digits out with spaces in the text itself
-     *  ("一 二 三 四 五" for Chinese TTS), which both iFlytek and Nuance reliably read
-     *  as individual digits rather than a single large number. Reads the message twice
+     *  ("一 二 三 四 五" for Chinese TTS), 經實測各 TTS 引擎都會逐字讀出，
+     *  不會讀成一整個大數字。Reads the message twice
      *  with a pause, matching how a person might naturally repeat something they want
      *  written down. Mirrors the existing "speech/tts" endpoint's
      *  SpeechCenter.STOP_TO_TTS_MIN_GAP_MS race guard and mouth-LED bracket (see handleApi() below)
      *  since this runs from a background thread, not through that HTTP endpoint. */
-    /** 讀出小智配對碼：行 Android 內置 TTS (同小智頁揀 "Android"
-     *  同一條路)——配對嗰刻未連 server，用唔到雲端聲，只可以用本地讀。
-     *  機身 TTS 無 alpha2services 會靜音，所以唔用。
-     *  讀唔到 (engine 未 ready) 就淨係靠前端顯示個碼 (xiaozhi_activation event)。 */
+    /** 讀出小智配對碼：行 Android 內置 TTS (同小智頁選 "Android"
+     *  同一條路)——配對時刻未連 server，用不到雲端聲，只可以用本地讀。
+     *  機身 TTS 無 alpha2services 會靜音，所以不用。
+     *  讀不到 (engine 未 ready) 就只靠前端顯示個碼 (xiaozhi_activation event)。 */
     private void speakActivationCode(String code) {
         if (code == null || code.isEmpty()) return;
         StringBuilder spoken = new StringBuilder();
@@ -1354,16 +1347,16 @@ public final class XiaozhiBridge {
         static XiaozhiVisionResult fail(String error) { return new XiaozhiVisionResult(null, error); }
     }
 
-    /** resolveVisionEndpoint() 回包：vision/explain 用邊條 URL＋邊個 token。 */
+    /** resolveVisionEndpoint() 回包：vision/explain 用哪條 URL＋哪個 token。 */
     private static final class VisionEndpoint {
         final String url;
         final String token;
         VisionEndpoint(String url, String token) { this.url = url; this.token = token; }
     }
 
-    /** vision url 優先順序：server 喺 "initialize" 附上嘅 (最新鮮、最權威，
+    /** vision url 優先順序：server 在 "initialize" 附上的 (最新鮮、最權威，
      *  見 XiaozhiClient.getVisionUrl() 同官方 mcp-protocol.md) -> 用戶自訂設定
-     *  (開咗自訂 server 又冇收到 server url) -> DEFAULT_VISION_URL (最後保險)。
+     *  (開啟自訂 server 又沒收到 server url) -> DEFAULT_VISION_URL (最後保險)。
      *  xiaozhiTakePhotoAndExplain() 同 xiaozhiFetchImageToText() 共用（之前兩份逐字一樣）。 */
     private VisionEndpoint resolveVisionEndpoint() {
         android.content.SharedPreferences prefs = appContext.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE);
@@ -1390,8 +1383,8 @@ public final class XiaozhiBridge {
      *  a few seconds, which is acceptable for a tool call the LLM is explicitly waiting
      *  on. */
     private XiaozhiVisionResult xiaozhiTakePhotoAndExplain(String question) {
-        // 用返 XiaoZhi 語音對話同一個 cameraController 實例 (成個 app 淨係一個相機
-        // 硬件, camera/snapshot 呢類其他功能都共用緊佢) - setRequestedResolution()
+        // 沿用 XiaoZhi 語音對話同一個 cameraController 實例 (整個 app 只有一個相機
+        // 硬件, camera/snapshot 這類其他功能都共用它) - setRequestedResolution()
         // 只影響下一次 start(), 不會影響目前正在使用的其他 session (見
         // CameraController 的 requestedWidth/Height javadoc)。
         cameraController.setRequestedResolution(XIAOZHI_PHOTO_WIDTH, XIAOZHI_PHOTO_HEIGHT);
@@ -1402,7 +1395,7 @@ public final class XiaozhiBridge {
         byte[] jpeg;
         try {
             // 用 CameraController.takePhoto() (Camera1 takePicture()) 做真正單張拍攝——
-            // preview frame 冇經過 HAL 完整單張 AE/AF/降噪 pipeline。
+            // preview frame 沒有經過 HAL 完整單張 AE/AF/降噪 pipeline。
             CameraController.PhotoResult photoResult =
                     cameraController.takePhoto(XIAOZHI_PHOTO_WIDTH, XIAOZHI_PHOTO_HEIGHT, 8000);
             if (photoResult.error != null) {
@@ -1439,9 +1432,9 @@ public final class XiaozhiBridge {
      *  anywhere (see the async comment) - it's this codebase's best guess given the
      *  server's own wording ("call the tool `image_to_text`... using the uuid"), so the
      *  raw response is logged in full for correcting the shape if this guess is wrong. */
-    // 判斷字串「似唔似」真 UUID (8-4-4-4-12 hex 用 "-" 分隔)——用喺
+    // 判斷字串是否像真 UUID (8-4-4-4-12 hex 用 "-" 分隔)——用在
     // self.camera.image_to_text，篩走 LLM 填佔位符字面值 (如 "placeholder")
-    // 嘅情況。刻意寬鬆 regex：「格式對就信」，好過逐個字面值比對。
+    // 的情況。刻意寬鬆 regex：格式正確即採信，勝過逐個字面值比對。
     private static final java.util.regex.Pattern UUID_LIKE_PATTERN = java.util.regex.Pattern.compile(
             "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
@@ -1496,7 +1489,7 @@ public final class XiaozhiBridge {
         } catch (java.io.IOException e) {
             return XiaozhiVisionResult.fail("image_to_text request failed: " + e.getMessage());
         } catch (org.json.JSONException e) {
-            // 理論上 payloadJson.put("type",...)/put("uuid",...) 呢兩個 put(String,
+            // 理論上 payloadJson.put("type",...)/put("uuid",...) 這兩個 put(String,
             // Object) overload 不會真的 throw (value 本身沒問題), 但它們簽名有
             // 宣告 throws JSONException, 純粹補上這個 catch 通過 javac 的 checked
             // exception 檢查, 不代表這裡預期會撞到。
@@ -1514,8 +1507,8 @@ public final class XiaozhiBridge {
     /** vision/explain POST 共用骨架：開連接、Device-Id/Client-Id/Authorization
      *  headers、connect/read timeouts、fixed-length 寫 payload、讀 status＋全文。
      *  multipart explain 同 JSON image_to_text 之前逐字一樣（除 Content-Type，
-     *  同 explain 版多咗個 os.flush()——close() 本身會 flush，行為一致）。
-     *  logging 留喺 caller（兩邊 log 字面唔同）。 */
+     *  同 explain 版多了一個 os.flush()——close() 本身會 flush，行為一致）。
+     *  logging 留在 caller（兩邊 log 字面不同）。 */
     private static VisionHttpResult postVisionRequest(String urlStr, String deviceId, String clientId,
             String accessToken, String contentType, byte[] payload) throws java.io.IOException {
         java.net.HttpURLConnection conn = null;
@@ -1553,8 +1546,8 @@ public final class XiaozhiBridge {
         }
     }
 
-    /** vision 回包 text 抽取："text" 攞唔到就試 result.text／data.text 幾種常見巢狀。
-     *  未經證實邊個啱、純粹碰運氣，主要靠 caller 印 raw response 先真正確診。
+    /** vision 回包 text 抽取："text" 拿不到就試 result.text／data.text 幾種常見巢狀。
+     *  未經證實哪個對、純粹碰運氣，主要靠 caller 印 raw response 先真正確診。
      *  image_to_text 同 explain 共用（之前兩份逐字一樣）。 */
     private static String extractVisionText(org.json.JSONObject json) {
         String text = json.optString("text", "");
@@ -1573,7 +1566,7 @@ public final class XiaozhiBridge {
         return text;
     }
 
-    /** vision error 回包頭 200 字（唔成個 response 塞落 error string）。 */
+    /** vision error 回包頭 200 字（不將整個 response 塞落 error string）。 */
     private static String head200(String s) {
         return s.substring(0, Math.min(200, s.length()));
     }
@@ -1585,13 +1578,13 @@ public final class XiaozhiBridge {
      *  esp32_camera.cc's Explain() for the request shape being matched: a "question"
      *  text field alongside a "file" field holding the JPEG.
      *
-     *  multipart body 開頭多一個 "type" part (值 "multipart"，喺 "question" part 之前)，
+     *  multipart body 開頭多一個 "type" part (值 "multipart"，在 "question" part 之前)，
      *  同送 Client-Id header（同 WebSocket 一樣）。 */
     private XiaozhiVisionResult xiaozhiVisionExplainRequest(String urlStr, String deviceId,
             String clientId,
             String accessToken, byte[] jpeg, String question) throws java.io.IOException {
         // boundary 用固定字串 "----ESP32_CAMERA_BOUNDARY" (官方 esp32-camera.cc 同款)，
-        // 唔自己動態生成。
+        // 不自己動態生成。
         String boundary = "----ESP32_CAMERA_BOUNDARY";
         java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
         java.io.Writer w = new java.io.OutputStreamWriter(body, java.nio.charset.StandardCharsets.UTF_8);
@@ -1621,7 +1614,7 @@ public final class XiaozhiBridge {
         int status = res.status;
         String responseText = res.text;
         if (status == 404) {
-            // 404 唔係 URL 打錯，多數係呢個帳戶/agent 喺 xiaozhi.me
+            // 404 不是 URL 打錯，多數是這個帳戶/agent 在 xiaozhi.me
             // console 未開通 vision/camera MCP 服務。
             return XiaozhiVisionResult.fail("vision/explain returned HTTP 404 - this usually "
                     + "means the vision/camera MCP service has not been enabled for this "
@@ -1640,11 +1633,11 @@ public final class XiaozhiBridge {
                     + (responseText.length() > 300 ? responseText.substring(0, 300) + "…(" + responseText.length() + "B)" : responseText));
             if (json.optBoolean("success", false)) {
                 String text = extractVisionText(json);
-                if (text.isEmpty()) {
-                    // vision/explain 係異步：成功但無 text 時回 {"success":true,"uuid":"...",
-                    // "message":"Please call the tool `image_to_text`..."}，真正描述要 LLM
-                    // 再發 tools/call 問 "image_to_text" 先攞到。呢度將 server 嘅 "message"
-                    // 原文傳返俾 LLM，等佢主動再問。
+                    if (text.isEmpty()) {
+                        // vision/explain 是異步：成功但無 text 時回 {"success":true,"uuid":"...",
+                        // "message":"Please call the tool `image_to_text`..."}，真正描述要 LLM
+                        // 再發 tools/call 問 "image_to_text" 先拿到。這裡將 server 的 "message"
+                        // 原文傳回給 LLM，等它主動再問。
                     String uuid = json.optString("uuid", null);
                     String message = json.optString("message", null);
                     if (uuid != null && !uuid.isEmpty() && message != null && !message.isEmpty()) {
@@ -1743,7 +1736,7 @@ public final class XiaozhiBridge {
                 try {
                     // 純轉發 case（下面 19 個）只填 r，switch 後統一 unpack 成
                     // isError/resultText（之前每 case 3 行逐字一樣）；take_photo／
-                    // image_to_text／speak／default 自行填，唔經 r。
+                    // image_to_text／speak／default 自行填，不經 r。
                     SonarCenter.McpResult r = null;
                     switch (name) {
                         case "self.robot.list_actions":
@@ -1779,7 +1772,7 @@ public final class XiaozhiBridge {
                         case "self.robot.led_set_mouth":
                             r = ledCenter.mcpLedSetMouth(arguments);
                             break;
-                        // sensors 4 tool 本體喺 SonarCenter；薄 delegate。
+                        // sensors 4 tool 本體在 SonarCenter；薄 delegate。
                         case "self.sensors.get_pir":
                             r = sonarCenter.mcpGetPir();
                             break;
@@ -1809,7 +1802,7 @@ public final class XiaozhiBridge {
                             // xiaozhiVisionExplainRequest() 裡 "vision/explain is async"
                             // 那段 comment。vision/explain 後端行為和用哪個 model 無關。
                             String uuid = arguments.optString("uuid", "");
-                            // LLM 有時帶佔位符字面值 (如 "placeholder") 而唔係真 uuid，
+                            // LLM 有時帶佔位符字面值 (如 "placeholder") 而不是真 uuid，
                             // 用寬鬆 UUID 格式檢查篩走，fallback 用 device 記低的 lastPendingPhotoUuid。
                             if (!isLikelyUuid(uuid)) {
                                 uuid = lastPendingPhotoUuid;
@@ -1822,14 +1815,14 @@ public final class XiaozhiBridge {
                             }
                             XiaozhiVisionResult imgResult = xiaozhiFetchImageToText(uuid);
                             if (imgResult.error != null) {
-                                // image_to_text 格式未定，失敗時回自然說法唔回技術 error，
+                                // image_to_text 格式未定，失敗時回自然說法不回技術 error，
                                 // 原始 error 已有 log。
                                 Log.w("XiaozhiVision", "image_to_text follow-up failed, "
                                         + "using fallback reply: " + imgResult.error);
                                 resultText = "拍到照片了，不過現在還看不到照片裡面的內容，晚點可能才答得出來。";
                             } else {
                                 resultText = imgResult.text;
-                                lastPendingPhotoUuid = null; // 用完即清, 避免舊 uuid 谷落去
+                                lastPendingPhotoUuid = null; // 用完即清, 避免舊 uuid 混入新的
                             }
                             break;
                         }
@@ -1861,7 +1854,7 @@ public final class XiaozhiBridge {
                             break;
                         }
 
-                        // -- Local music/FM radio: 薄包裝, 邏輯全部委托返 AudioCenter
+                        // -- Local music/FM radio: 薄包裝, 邏輯全部委托給 AudioCenter
                         // mcp*() (跟 audio/local_music/*、audio/radio/* 那幾個 HTTP
                         // endpoint 共用同一批底層 method), 不在這裡重複實現。
                         case "self.media.list_music":

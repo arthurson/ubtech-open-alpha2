@@ -336,10 +336,6 @@ public final class ApiValidator {
         return requireIntRange(q, key, 0, 100);
     }
 
-    public static int optionalVoskEndpointerMode(Map<String, String> q) {
-        return optionalIntRange(q, "mode", -1, 3, -1);
-    }
-
     public static int[] requireAngles20(Map<String, String> q) {
         String csv = require(q, "angles");
         String[] parts = csv.split(",");
