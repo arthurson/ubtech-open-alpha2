@@ -6,12 +6,14 @@ import android.content.Context;
  * 英文語意配對引擎 - 和 SemanticMatcherZh (中文版) 屬於同一套「完全取代悠聊/
  * AlphaEnglishChat」的語意配對機制, 但這個 class 專門處理英文。
  *
- * 資料來源: assets/semantic/semantic_en.json, 1000 條英文問法/答案/動作記錄。
- * 這份資料不是悠聊/AlphaEnglishChat 逐字拆出來或者翻譯來的 - 反編譯確認了
+ * 資料來源: assets/semantic/semantic_en.json, 3993 條英文問法/答案/動作記錄
+ * (2026-09 起 v2 grouped 格式, 同中文版同一個 schema - 見 SemanticMatcherZh
+ *  同 SemanticMatcherBase.load())。這份資料不是悠聊/AlphaEnglishChat 逐字拆出來
+ *  或者翻譯來的 - 反編譯確認了
  * AlphaEnglishChat 主要靠 Api.ai (Dialogflow V1) 雲端 NLU, 而那個 API 已經在 2020 年
- * 3 月正式關閉, 英文語料沒得直接沿用。這 1000 句是跟著中文版 semantic_zh.json
+ * 3 月正式關閉, 英文語料沒得直接沿用。這 3993 句是跟著中文版 semantic_zh.json
  * 的結構和動作對照表 (operation/actionId/分類 pool 全部一致, 已驗證 202 動作清單裡面
- * 沒撞聲效), 用道地英文重新創作的問法/答案 - 詳見對話 history。每條記錄:
+ * 沒撞聲效), 用道地英文重新創作的問法/答案 - 詳見對話 history。每個 intent 內:
  *   q      - 用戶問法 (例如 "Dance for me", "How old are you")
  *   a      - 候選答案句 (5句, 隨機選一句做 TTS; 部分 FUNCTION 類沒答案句)
  *   type   - ACTION (有動作) | FUNCTION (系統操作, 例如音量/連線) | CHAT (純寒暄, 沒動作)

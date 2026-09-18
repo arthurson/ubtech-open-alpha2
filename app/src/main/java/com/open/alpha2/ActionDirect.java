@@ -190,7 +190,11 @@ public final class ActionDirect {
     };
 
     /** 有聲效動作 id 表 (實機人耳驗證，fallback/隨機/filler 共用池一律剔走)。
-     *  2026-09 初版：待用戶實機逐個聽完填 (候選就係上面 30 個隨機短/長)。 */
+     *  判定方法：桌面 UBX 目錄（alpha2/UBX/actions）有同名子目錄
+     * （入面有 mp3）者即有聲，共 86 個。
+     *  2026-09 掃完結論：60 個池成員（30 隨機＋26 ACT＋4 頭部）無一有聲，
+     *  所以呢個表暫時留空；舊 fallback 五子（搖頭/思考/眨眼/賣萌/點頭）
+     *  複驗亦無聲。有新發現（例如將來加新動作入池）先填 id 入嚟。 */
     private static final String[] SOUND_ACTION_IDS = {
     };
 
