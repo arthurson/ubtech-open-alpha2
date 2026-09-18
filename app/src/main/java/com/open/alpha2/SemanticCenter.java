@@ -1,12 +1,16 @@
 package com.open.alpha2;
 
 
+import android.util.Log;
+
 import java.util.Map;
 
 /**
  * 本地語意配對膠水：對話語言→matcher（未設就文字判斷）＋TTS/動作執行。
  */
 public final class SemanticCenter {
+
+    private static final String TAG = "SemanticCenter";
 
     /** TTS 之後要等多久才播動作, 沿用悠聊 RobotActionBusiness.startBusiness() 反編譯
      *  出來的原本時序 (先 TTS, sleep 200ms, 才播動作 - 兩者是分開、非同步的 AIDL
@@ -120,21 +124,8 @@ public final class SemanticCenter {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                if (ttsAnswer != null && !ttsAnswer.isEmpty()) {
-                    LedCenter.startMouthLedForTts();
-                    if (!ttsCenter.speakAndroidTts(ttsAnswer, ttsLocale)) {
-                        LedCenter.stopMouthLedForTts();
-                    }
-                }
-                if (finalResult.actionId == null) {
-                    return; // CHAT 類或部分 FUNCTION 類沒有對應動作, TTS 完就結束
-                }
-                try {
-                    Thread.sleep(SEMANTIC_TTS_TO_ACTION_DELAY_MS);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
+                // 先 resolve 做真實 action id（分類隨機/__RANDOM__ 本來播嗰刻先解，
+                // 家下播之前就要知有無聲，所以提早解；解唔到 null 就當無動作行）。
                 String actionId = finalResult.actionId;
                 if (actionId != null && actionId.startsWith("__RANDOM_CATEGORY__")) {
                     // 用戶說到分類名 (例如「跳舞」/"Dance for me") 但沒有
@@ -152,9 +143,30 @@ public final class SemanticCenter {
                     // 「隨機短/長」開頭的那批, 專門用來做這種「動一下讓它生動一點」的效果)。
                     actionId = actionDirect.resolveRandomActionId();
                 }
-                if (actionId != null) {
+                // 有聲動作：成句 TTS 對白唔講（免同動作本身嘅音效搶喇叭），
+                // 直接播動作就算。注意 simulate response 照回 answer 文字
+                //（前端氣泡顯示用），淨係唔出聲。
+                if (actionId != null && ActionDirect.isSoundAction(actionId)) {
+                    Log.i(TAG, "sound action " + actionId + ", suppressing TTS answer");
                     actionDirect.playActionDirect(actionId); // pure-direct：旧 AIDL 已无服务承载
+                    return;
                 }
+                if (ttsAnswer != null && !ttsAnswer.isEmpty()) {
+                    LedCenter.startMouthLedForTts();
+                    if (!ttsCenter.speakAndroidTts(ttsAnswer, ttsLocale)) {
+                        LedCenter.stopMouthLedForTts();
+                    }
+                }
+                if (actionId == null) {
+                    return; // CHAT 類或部分 FUNCTION 類沒有對應動作, TTS 完就結束
+                }
+                try {
+                    Thread.sleep(SEMANTIC_TTS_TO_ACTION_DELAY_MS);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                actionDirect.playActionDirect(actionId); // pure-direct：旧 AIDL 已无服务承载
             }
         }, "SemanticMatchAction").start();
         return result;

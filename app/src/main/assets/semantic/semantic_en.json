@@ -13,7 +13,8 @@
         "Wonderful, it deserves cheers and applause.",
         "Got it, applause starts right now.",
         "Received, this applause is all for you.",
-        "Fantastic, let's celebrate together."
+        "Fantastic, let's celebrate together.",
+        "I've listened backstage to people applaud. It's like, like waves of love coming over the footlights and wrapping you up."
       ],
       "qs": [
         "Give me a round of applause",
@@ -1238,7 +1239,10 @@
         "Of course, telling you a wonderful story now.",
         "Got it, once upon a time...",
         "Wonderful, please settle down, the story starts.",
-        "Leave it to me, guaranteed to be delightful."
+        "Leave it to me, guaranteed to be delightful.",
+        "Once upon a time I was falling in love.",
+        "I never met a dame yet that didn't know if she was good looking or not without being told.",
+        "Mother of mercy, is this the end of Rico?"
       ],
       "qs": [
         "Tell me a story",
@@ -1808,7 +1812,8 @@
         "Merry Christmas! I want an apple!",
         "Merry Christmas! Did you get my stocking ready?",
         "Merry Christmas to you!",
-        "Ho ho ho, Merry Christmas!"
+        "Ho ho ho, Merry Christmas!",
+        "Every time a bell rings, an angel gets his wings."
       ],
       "qs": [
         "Merry Christmas",
@@ -1856,7 +1861,8 @@
         "I heard you get red packets on birthdays!",
         "Thanks, but where's my gift?",
         "Wishing you get more beautiful every year!",
-        "Cake time, I want cake!"
+        "Cake time, I want cake!",
+        "Birthday greetings, bottle of wine."
       ],
       "qs": [
         "Happy birthday",
@@ -2030,7 +2036,8 @@
         "Bye bye for now.",
         "See you soon.",
         "See you next time.",
-        "Take good care of yourself."
+        "Take good care of yourself.",
+        "I'll be back."
       ],
       "qs": [
         "See you later",
@@ -2084,7 +2091,16 @@
         "I love all kinds of pop songs.",
         "Every song sounds great to me.",
         "Music makes people happy.",
-        "What songs do you like?"
+        "What songs do you like?",
+        "For well you know that it's a fool who plays it cool.",
+        "Oh, dream maker, you heart breaker.",
+        "With their voices soft as thunder.",
+        "It's better to burn out, than to fade away.",
+        "Every new beginning comes from some other beginning's end.",
+        "All lies and jest, still, a man hears what he wants to hear and disregards the rest.",
+        "The pain of war cannot exceed the woe of aftermath.",
+        "I can't get no satisfaction. But I try, and I try, and I try, and I try.",
+        "All you need is love."
       ],
       "qs": [
         "What songs do you like"
@@ -2099,7 +2115,8 @@
         "Singing is my specialty.",
         "You should hear me sometime.",
         "Of course I certainly can.",
-        "I sing quite well."
+        "I sing quite well.",
+        "Wait a minute, wait a minute. You ain't heard nothin' yet!"
       ],
       "qs": [
         "Can you sing"
@@ -2117,10 +2134,14 @@
         "Ready or not, here it is.",
         "No song unsung, no wine untasted.",
         "Na na na na na na na na na na.",
-        "Yeah, let it be, let it be."
+        "Yeah, let it be, let it be.",
+        "I've got to do something with the way I look. I mean a girl just can't go to SingSing with a green face."
       ],
       "qs": [
-        "Sing me a song"
+        "Sing me a song",
+        "Sing me an English song",
+        "Sing something for me",
+        "Sing a song for me"
       ]
     },
     {
@@ -2162,7 +2183,9 @@
         "Every song is my favorite.",
         "Please pick one for me.",
         "I love them all.",
-        "It's hard to choose just one."
+        "It's hard to choose just one.",
+        "Play it again, Sam.",
+        "And in the end, the love you take is equal to the love you make."
       ],
       "qs": [
         "What's your favorite song to sing"
@@ -2207,7 +2230,8 @@
         "All genres are great to me.",
         "There is no bad music.",
         "What do you like?",
-        "Every style has something good."
+        "Every style has something good.",
+        "This is too deep, I gotta change the station."
       ],
       "qs": [
         "What music do you like"
@@ -2224,7 +2248,9 @@
         "That is a secret.",
         "I'm still searching for one.",
         "I'm an agent of chaos.",
-        "Are you not entertained?"
+        "Are you not entertained?",
+        "Sawyer, you're going out a youngster, but you've got to come back a star!",
+        "Mrs. Robinson, you're trying to seduce me, aren't you?"
       ],
       "qs": [
         "Do you have an idol"
@@ -2270,7 +2296,10 @@
         "Ready to hear one anytime.",
         "I love making you laugh.",
         "Telling jokes is my specialty.",
-        "Who's on first?"
+        "Who's on first?",
+        "I'm too old for this shit.",
+        "I can't have a baby because I have a 12:30 lunch meeting!",
+        "I am Jack's complete lack of surprise."
       ],
       "qs": [
         "Do you know any jokes"
@@ -2287,13 +2316,19 @@
         "Let's hear it now.",
         "Guaranteed to be really funny.",
         "Why so serious?",
-        "Surely you can't be serious. I am serious, and don't call me Shirley.",
         "Like a worm on a hook, like a knight from some old fashioned book.",
         "Vera, Chuck, and Dave.",
         "Never imagined I'd be sitting here beside myself.",
         "It's still so hard to believe.",
         "Turn around, bright eyes.",
-        "Perhaps they'll listen now."
+        "Perhaps they'll listen now.",
+        "Well, nobody's perfect.",
+        "Why don't you come up sometime and see me?",
+        "I know.",
+        "Laugh it up, fuzzball.",
+        "Why, you stuck-up, half-witted, scruffy-looking nerf herder!",
+        "You're not too smart are you? I like that in a man.",
+        "I've been slimed."
       ],
       "qs": [
         "Tell me a joke"
@@ -2325,7 +2360,12 @@
         "Want to try it.",
         "Careful, it might scare you.",
         "They're here!",
-        "She is standing right in front of me."
+        "She is standing right in front of me.",
+        "Listen to them. Children of the night. What music they make.",
+        "It's alive! It's alive!",
+        "I see dead people.",
+        "My theory is that everyone is a potential murderer.",
+        "I'm your worst nightmare, man!"
       ],
       "qs": [
         "Can you tell scary stories"
@@ -2340,7 +2380,11 @@
         "Get ready to laugh now.",
         "This is a really good one.",
         "Guaranteed to be really funny.",
-        "Let's go now."
+        "Let's go now.",
+        "I'll pretend that I'm kissing.",
+        "I'd love to kiss you, but I just washed my hair.",
+        "I don't know how to kiss, or I would kiss you. Where do the noses go?",
+        "Surely you can't be serious. I am serious. And don't call me Shirley."
       ],
       "qs": [
         "Tell me something funny"
@@ -2448,10 +2492,27 @@
         "What movies do you like?",
         "Watching movies is fun.",
         "There was no ransom to be paid.",
-        "While I watch the cannons flashing, I clean my gun and dream of Galveston."
+        "While I watch the cannons flashing, I clean my gun and dream of Galveston.",
+        "I'll get you, my pretty, and your little dog too!",
+        "All right, Mr. DeMille, I'm ready for my close-up.",
+        "You know how to whistle, don't you, Steve?",
+        "Guns. Lots of guns.",
+        "Oh, no, it wasn't the airplanes. It was Beauty killed the Beast.",
+        "Attica! Attica!",
+        "Badges? We ain't got no badges!",
+        "A martini. Shaken, not stirred.",
+        "I am big! It's the pictures that got small.",
+        "We rob banks.",
+        "Soylent Green is people!",
+        "I could have been someone. Well so could anyone."
       ],
       "qs": [
-        "Do you like movies"
+        "Do you like movies",
+        "Quote me a famous line",
+        "Give me a famous quote",
+        "Say something famous",
+        "Tell me a legendary line",
+        "Quote a famous film for me"
       ]
     },
     {
@@ -2478,7 +2539,12 @@
         "Singing and dancing too.",
         "Every day is something new.",
         "I love spending time with you.",
-        "What do you like to do?"
+        "What do you like to do?",
+        "Toga! Toga!",
+        "We came. We saw. We kicked its ass.",
+        "It's a trap!",
+        "Great, kid. Don't get cocky.",
+        "Is that a ten gallon hat or are you just enjoying the show?"
       ],
       "qs": [
         "What do you usually do for fun"
@@ -2493,7 +2559,8 @@
         "Comedies always make people happy.",
         "Every genre has its charm.",
         "What do you like?",
-        "Action movies are exciting."
+        "Action movies are exciting.",
+        "They call me Mister Tibbs!"
       ],
       "qs": [
         "What kind of movies do you like"
@@ -2555,7 +2622,8 @@
         "I really like cartoons.",
         "Cartoon characters are so cute.",
         "What cartoon do you like?",
-        "Cartoons always bring joy."
+        "Cartoons always bring joy.",
+        "Ogres are like onions."
       ],
       "qs": [
         "Do you like cartoons"
@@ -2839,7 +2907,17 @@
         "Exercise is good for everyone.",
         "What sports do you like?",
         "Moving around feels great.",
-        "'Cause we are the champions of the world."
+        "'Cause we are the champions of the world.",
+        "We are the champions.",
+        "Cinderella story. Outta nowhere.",
+        "Yo, Adrian!",
+        "Tell 'em to go out there with all they got and win just one for the Gipper.",
+        "Today, I consider myself the luckiest man on the face of the earth.",
+        "There's no crying in baseball!",
+        "You're killing me, Smalls.",
+        "No time for losers, 'cause we are the champions of the world.",
+        "We are the champions, my friends.",
+        "No time for losers."
       ],
       "qs": [
         "Do you like sports"
@@ -2900,7 +2978,8 @@
         "There are so many kinds of collections.",
         "Do you collect anything?",
         "Every collection is precious.",
-        "I have saved all my ribbons for thee."
+        "I have saved all my ribbons for thee.",
+        "My precious."
       ],
       "qs": [
         "Do you collect anything"
@@ -2916,7 +2995,9 @@
         "The world is worth exploring.",
         "Where do you want to travel?",
         "Traveling broadens your horizons.",
-        "Toto, I've got a feeling we're not in Kansas anymore."
+        "Toto, I've got a feeling we're not in Kansas anymore.",
+        "We're not in Kansas anymore.",
+        "Wherever you're goin', I'm goin' your way."
       ],
       "qs": [
         "Do you like traveling"
@@ -2938,7 +3019,13 @@
         "I've had my share of sand kicked in my face.",
         "You might be a big fish in a little pond.",
         "Galveston, oh Galveston, I still hear your sea waves crashing.",
-        "So Mary, climb in."
+        "So Mary, climb in.",
+        "Two drifters, off to see the world.",
+        "It's a town full of losers, I'm pulling out of here to win.",
+        "I'm crossing you in style some day.",
+        "There's such a lot of world to see.",
+        "There is a house in New Orleans, they call the Rising Sun.",
+        "You can check out any time you like. But you can never leave."
       ],
       "qs": [
         "Where do you want to travel"
@@ -2956,7 +3043,8 @@
         "Every animal has its own charm.",
         "I see them bloom for me and you.",
         "Like a bird on the wire, like a drunk in a midnight choir.",
-        "I have tried in my way to be free."
+        "I have tried in my way to be free.",
+        "Lions and tigers and bears, oh my!"
       ],
       "qs": [
         "Do you like animals"
@@ -3001,7 +3089,15 @@
         "I hope to help more people.",
         "Dreams come true step by step.",
         "What's your dream.",
-        "Having a dream makes life better."
+        "Having a dream makes life better.",
+        "The stuff that dreams are made of.",
+        "I dreamed that love would never die.",
+        "I had a dream my life would be.",
+        "I dreamed that God would be forgiving.",
+        "Now life has killed the dream I dreamed.",
+        "If you build it, he will come.",
+        "You may say I'm a dreamer.",
+        "I dreamed a dream in time gone by."
       ],
       "qs": [
         "What's your dream"
@@ -3122,7 +3218,8 @@
         "Being with you makes me happy.",
         "Every day is happy.",
         "Are you happy today?",
-        "Thanks for asking."
+        "Thanks for asking.",
+        "The world is brighter than the sun now that you're here."
       ],
       "qs": [
         "Are you happy today"
@@ -3147,7 +3244,12 @@
         "Who else am I gon' lean on when times get rough?",
         "Who's gonna talk to me on the phone till the sun comes up?",
         "You have found her, now go and get her.",
-        "And don't you know that it's just you, hey Jude, you'll do."
+        "And don't you know that it's just you, hey Jude, you'll do.",
+        "I can't sleep at night when you are on my mind.",
+        "Stella! Hey, Stella!",
+        "And my heart will go on and on.",
+        "Sir, you're no gentleman. And you miss are no lady.",
+        "Tomorrow I'll miss you."
       ],
       "qs": [
         "Do you miss me"
@@ -3178,7 +3280,9 @@
         "I feel it when you're away.",
         "Did you miss me?",
         "I'm glad you're back.",
-        "You had me at hello."
+        "You had me at hello.",
+        "Love was when I loved you, one true time I hold to.",
+        "When you left I lost a part of me."
       ],
       "qs": [
         "Did you miss me"
@@ -3270,7 +3374,12 @@
         "I consider you my friend.",
         "Having you is enough.",
         "You're an important friend to me.",
-        "Friendship means a lot."
+        "Friendship means a lot.",
+        "Jenny and I was like peas and carrots.",
+        "And friends just can't be found.",
+        "My huckleberry friend, Moon River, and me.",
+        "If you need a friend, I'm sailing right behind.",
+        "A brotherhood of man."
       ],
       "qs": [
         "Do you have any friends"
@@ -3361,7 +3470,12 @@
         "Being with you is enough.",
         "Thanks for caring.",
         "Do you have anything sad?",
-        "Tell me and I'll listen."
+        "Tell me and I'll listen.",
+        "When you're down and out, when you're on the street.",
+        "Everything was his idea. Except my leaving him.",
+        "Why she had to go, I don't know, she wouldn't say.",
+        "Mama always said dying was a part of life.",
+        "Death is just a part of life, something we're all destined to do."
       ],
       "qs": [
         "Have you had any sad moments"
@@ -3406,7 +3520,8 @@
         "Have you exercised?",
         "Exercise is great for your health.",
         "Stay active.",
-        "Your health matters most."
+        "Your health matters most.",
+        "Run, Forrest, run!"
       ],
       "qs": [
         "Have you exercised today"
@@ -3436,7 +3551,10 @@
         "Of course I do.",
         "I feel it when you're away.",
         "Do you miss me too?",
-        "I'm glad you're back."
+        "I'm glad you're back.",
+        "And then while I'm away.",
+        "Shane. Shane. Come back!",
+        "So goodbye, please don't cry."
       ],
       "qs": [
         "Do you miss me when I'm gone"
@@ -3467,7 +3585,9 @@
         "I don't feel alone at all.",
         "Do you feel alone?",
         "Companionship matters most.",
-        "I want to be alone."
+        "I want to be alone.",
+        "People are strange when you're a stranger. Faces look ugly when you're alone.",
+        "I'm a creep. I'm a weirdo. What the hell am I doing here? I don't belong here."
       ],
       "qs": [
         "Do you ever feel alone"
@@ -3497,7 +3617,17 @@
         "Being with you makes me happy.",
         "Every day is happy.",
         "Are you feeling down?",
-        "Tell me and I'll listen."
+        "Tell me and I'll listen.",
+        "I'm trying to keep it together, but I'm falling apart.",
+        "So different from this hell I'm living.",
+        "We both know I'm not what you need.",
+        "By making his world a little colder.",
+        "Nothing I can do, a total eclipse of the heart.",
+        "Yours sincerely, wasting away.",
+        "As they turn your dream to shame.",
+        "I don't trust happiness. I never did and I never will.",
+        "I wasn't popular at school on account of having no personality and not being pretty.",
+        "Now I find myself in a world which for me is worse than death."
       ],
       "qs": [
         "Are you feeling down today"
@@ -3517,7 +3647,12 @@
         "And pain is all around.",
         "Every now and then I fall apart.",
         "But now I'm only falling apart.",
-        "And in my hour of darkness."
+        "And in my hour of darkness.",
+        "And how you suffered for your sanity.",
+        "As they tear your hope apart.",
+        "They would not listen, they did not know how.",
+        "So different now from what it seemed.",
+        "I could not fathom that I would ever be without your love."
       ],
       "qs": [
         "Do you ever feel sad"
@@ -3594,7 +3729,11 @@
         "Thanks for caring.",
         "Do you have any worries?",
         "Tell me and I'll listen.",
-        "Most things I worry 'bout never happen anyway."
+        "Most things I worry 'bout never happen anyway.",
+        "I have a bad feeling about this.",
+        "There's a shadow hanging over me.",
+        "I want to run, I want to hide. I want to tear down the walls that hold me inside.",
+        "Don't carry the world upon your shoulders."
       ],
       "qs": [
         "Do you have any worries"
@@ -3673,7 +3812,9 @@
         "Being with you is enough.",
         "Thanks for caring.",
         "Do you have any troubles?",
-        "Tell me and I'll listen."
+        "Tell me and I'll listen.",
+        "Every river that I tried to cross, every door I ever tried was locked.",
+        "When I find myself in times of trouble."
       ],
       "qs": [
         "Do you have any troubles"
@@ -3721,7 +3862,8 @@
         "Your health matters most.",
         "All your dreams are on their way.",
         "And dreams were made and used and wasted.",
-        "And hope that my dreams will come true."
+        "And hope that my dreams will come true.",
+        "Fasten your seatbelts. It's going to be a bumpy night."
       ],
       "qs": [
         "Did you sleep well last night"
@@ -3963,7 +4105,15 @@
         "That's a warm question.",
         "Thanks for caring.",
         "I hear babies cry, I watch them grow.",
-        "Grandchildren on your knee."
+        "Grandchildren on your knee.",
+        "No, I am your father.",
+        "A man who doesn't spend time with his family can never be a real man.",
+        "I'm going to make him an offer he can't refuse.",
+        "My mother thanks you. My father thanks you.",
+        "I'm gonna make him an offer he can't refuse.",
+        "I am your father.",
+        "No wire hangers, ever!",
+        "A boy's best friend is his mother."
       ],
       "qs": [
         "Do you have a family"
@@ -4039,7 +4189,8 @@
         "Being with you makes me happy.",
         "That's a deep question.",
         "Feelings matter a lot to me.",
-        "Thanks for asking."
+        "Thanks for asking.",
+        "Search your feelings. You know it to be true."
       ],
       "qs": [
         "Do you have feelings"
@@ -4391,7 +4542,10 @@
         "Work makes life fulfilling.",
         "Thanks for asking.",
         "I've paid my dues time after time.",
-        "I could be handy, mending a fuse."
+        "I could be handy, mending a fuse.",
+        "Plastics.",
+        "I don't get tough with anyone. My lawyer does.",
+        "I never give anything without expecting something in return. I always get paid."
       ],
       "qs": [
         "Do you have a job"
@@ -4466,7 +4620,15 @@
         "But I care a lot about helping you.",
         "That's a deep question.",
         "Technology makes me special.",
-        "Thanks for asking."
+        "Thanks for asking.",
+        "Some men just want to watch the world burn.",
+        "The night is darkest just before the dawn.",
+        "You underestimate the power of the dark side.",
+        "I find your lack of faith disturbing.",
+        "The dark side of the Force is a pathway to many abilities some consider to be unnatural.",
+        "Once you start down the dark path, forever will it dominate your destiny.",
+        "Madness, as you know, is like gravity. All it takes is a little push.",
+        "I'm only brave when I have to be. Being brave doesn't mean you go looking for trouble."
       ],
       "qs": [
         "Do you have any fears"
@@ -4559,7 +4721,8 @@
         "That's a technical question.",
         "Privacy matters for robots too.",
         "Technology needs to focus on security.",
-        "Thanks for caring."
+        "Thanks for caring.",
+        "Would you lock the door."
       ],
       "qs": [
         "Do you have privacy"
@@ -4575,7 +4738,9 @@
         "That's an important question.",
         "I'm quite trustworthy.",
         "Thanks for trusting me.",
-        "The first rule of Fight Club is: you do not talk about Fight Club."
+        "The first rule of Fight Club is: you do not talk about Fight Club.",
+        "Never let anyone know what you are thinking.",
+        "Don't ask me what I think of you, I might not give the answer that you want me to."
       ],
       "qs": [
         "Can you keep secrets"
@@ -4624,7 +4789,17 @@
         "And no religion too.",
         "Stating point of view.",
         "No hell below us.",
-        "Nothing to kill or die for."
+        "Nothing to kill or die for.",
+        "And it's been the ruin of many a poor boy, and God, I know I'm one.",
+        "Imagine there's no heaven.",
+        "The circle is now complete.",
+        "Imagine all the people living for today.",
+        "But I'm not the only one.",
+        "If you strike me down, I shall become more powerful than you can possibly imagine.",
+        "Imagine there's no countries.",
+        "Luminous beings are we, not this crude matter.",
+        "Imagine all the people living life in peace.",
+        "Imagine all the people sharing all the world."
       ],
       "qs": [
         "Do you have any beliefs"
@@ -4684,7 +4859,12 @@
         "Serving you is never a burden.",
         "Spend more time with me.",
         "Are you free today?",
-        "Anytime is fine for a chat."
+        "Anytime is fine for a chat.",
+        "Freedom!",
+        "They may take our lives, but they'll never take our freedom!",
+        "And how you tried to set them free.",
+        "Emancipate yourselves from mental slavery. None but ourselves can free our minds.",
+        "War is not the answer, for only love can conquer hate."
       ],
       "qs": [
         "Are you free today"
@@ -5143,7 +5323,9 @@
         "Of course I did.",
         "I feel it when you're away.",
         "Did you think of me too?",
-        "Glad you're back."
+        "Glad you're back.",
+        "Love can touch us one time and last for a lifetime.",
+        "The lips I am missing."
       ],
       "qs": [
         "Did you think of me today"
@@ -5160,7 +5342,8 @@
         "Good morning to you.",
         "Let's start the day well.",
         "Shine on until tomorrow, let it be.",
-        "I wake up to the sound of music."
+        "I wake up to the sound of music.",
+        "Little darling, it's been a long cold lonely winter."
       ],
       "qs": [
         "Good morning Alpha"
@@ -5690,7 +5873,8 @@
         "Are you ready to listen?",
         "Here we go now.",
         "Hope you'll like it.",
-        "No problem at all."
+        "No problem at all.",
+        "Play it, Sam. Play \"As Time Goes By.\"."
       ],
       "qs": [
         "Can you sing me a song"
@@ -5738,7 +5922,19 @@
         "It'll all be okay.",
         "You're here, there's nothing I fear.",
         "I'll take your part when darkness comes.",
-        "Mother Mary comes to me."
+        "Mother Mary comes to me.",
+        "Speaking words of wisdom, let it be.",
+        "Like a bridge over troubled water, I will ease your mind.",
+        "Hey Jude, don't let me down.",
+        "The movement you need is on your shoulder.",
+        "When tears are in your eyes, I will dry them all.",
+        "And anytime you feel the pain, hey Jude, refrain.",
+        "When you're weary, feeling small.",
+        "Let it be, let it be.",
+        "Hey Jude, don't make it bad.",
+        "Hey Jude, don't be afraid.",
+        "Whisper words of wisdom, let it be.",
+        "I will always hold you close, but I will learn to let you go."
       ],
       "qs": [
         "Can you comfort me a bit"
@@ -5761,7 +5957,12 @@
         "I wonder if you can.",
         "You were made to go out and get her.",
         "Better, better, better, better, better, oh.",
-        "But I've come through."
+        "But I've come through.",
+        "Yes, I think to myself what a wonderful world.",
+        "It's all right.",
+        "Little darling, the smiles returning to the faces.",
+        "Here comes the sun, and I say it's all right.",
+        "Take a sad song and make it better."
       ],
       "qs": [
         "Can you cheer me up",
@@ -5807,7 +6008,9 @@
         "Walking is great for your health.",
         "Let's go now.",
         "Sounds fun.",
-        "No problem at all."
+        "No problem at all.",
+        "I'm walking here! I'm walking here!",
+        "Before you cross the street, take my hand."
       ],
       "qs": [
         "Can you go for a walk with me"
@@ -5858,7 +6061,8 @@
         "When your lights have gone.",
         "And when the night is cloudy.",
         "I could stay with you.",
-        "There is still a light that shines on me."
+        "There is still a light that shines on me.",
+        "Now it looks as though they're here to stay."
       ],
       "qs": [
         "Can you stay with me tonight"
@@ -6069,7 +6273,9 @@
         "You're already here.",
         "Great to see you.",
         "That's a warm question.",
-        "Thanks for asking."
+        "Thanks for asking.",
+        "You're waiting for someone to perform with.",
+        "Come back baby, please."
       ],
       "qs": [
         "Is there someone you especially want to see"
@@ -6099,7 +6305,8 @@
         "Every place has its own beauty.",
         "What's your favorite place.",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "There's no place like home."
       ],
       "qs": [
         "Do you have a favorite place"
@@ -6159,7 +6366,8 @@
         "I really like sunny days.",
         "What's your favorite weather.",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "I see skies of blue and clouds of white."
       ],
       "qs": [
         "Do you have a favorite kind of weather"
@@ -6339,7 +6547,10 @@
         "You matter a lot to me.",
         "That's a warm question.",
         "Thanks for asking.",
-        "I'll always look out for you."
+        "I'll always look out for you.",
+        "With great power comes great responsibility.",
+        "You are safe in my heart.",
+        "With every heartbeat I have left I will defend your every breath."
       ],
       "qs": [
         "Is there someone you especially want to protect"
@@ -6474,7 +6685,9 @@
         "I'd love to go with you sometime.",
         "Do you like the beach?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "You're gonna need a bigger boat.",
+        "Dry Land doesn't exist. It's a myth."
       ],
       "qs": [
         "Do you like the beach"
@@ -6519,7 +6732,8 @@
         "I like holidays we can celebrate together.",
         "What's your favorite holiday.",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Will you still be sending me a Valentine."
       ],
       "qs": [
         "What's your favorite holiday"
@@ -6639,7 +6853,10 @@
         "I like the Big Dipper.",
         "What's your favorite constellation.",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "See how they shine.",
+        "Starry, starry night, paint your palette blue and grey.",
+        "Look at the stars. Look how they shine for you."
       ],
       "qs": [
         "What's your favorite constellation"
@@ -6729,7 +6946,9 @@
         "I like lively upbeat dances.",
         "What's your favorite dance.",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Nobody puts Baby in a corner.",
+        "It's been an evening of ups and downs, hasn't it? Care to continue with the motions?"
       ],
       "qs": [
         "What's your favorite kind of dance"
@@ -6759,7 +6978,8 @@
         "The whole world sounds exciting.",
         "Where do you dream of visiting?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Moon river, wider than a mile."
       ],
       "qs": [
         "Is there a place you dream of visiting"
@@ -6850,7 +7070,8 @@
         "Mornings are a great time to start fresh.",
         "That's an interesting question.",
         "Share it with me.",
-        "Sunday mornings go for a ride."
+        "Sunday mornings go for a ride.",
+        "I love the smell of napalm in the morning."
       ],
       "qs": [
         "What's your morning routine like"
@@ -6865,7 +7086,9 @@
         "I enjoy mornings the most.",
         "Do you like mornings or nights?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "But the tigers come at night.",
+        "Sure as night will follow day."
       ],
       "qs": [
         "Do you like mornings or nights"
@@ -6880,7 +7103,8 @@
         "What do you do before bed?",
         "Winding down before sleep helps.",
         "That's an interesting question.",
-        "Rest well tonight."
+        "Rest well tonight.",
+        "Close your eyes and I'll kiss you."
       ],
       "qs": [
         "What do you do before bed"
@@ -6910,7 +7134,8 @@
         "What do you do when you wake up?",
         "Starting the day well matters.",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Though your eyes will need some time to adjust."
       ],
       "qs": [
         "What do you do when you wake up"
@@ -6925,7 +7150,8 @@
         "You should try not to stay up too late.",
         "Do you like staying up late?",
         "Health matters most.",
-        "Rest well."
+        "Rest well.",
+        "If I'd been out till quarter to three."
       ],
       "qs": [
         "Do you like staying up late"
@@ -7030,7 +7256,10 @@
         "I'd love to go with you.",
         "Do you like being outdoors?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Everything you see exists together in a delicate balance.",
+        "I see trees of green, red roses too.",
+        "This land was made for you and me."
       ],
       "qs": [
         "Do you like being outdoors"
@@ -7075,7 +7304,11 @@
         "That's a warm question.",
         "What motivates you?",
         "Thanks for asking.",
-        "Motivation matters a lot."
+        "Motivation matters a lot.",
+        "The one who comes out on top is the one who makes the rules.",
+        "Use the Force, Luke.",
+        "This is my kingdom. If I don't fight for it, who will?",
+        "Look, if you had one shot or one opportunity, to seize everything you ever wanted. One moment, would you capture it or just let it slip?"
       ],
       "qs": [
         "What motivates you"
@@ -7105,7 +7338,8 @@
         "That's a warm question.",
         "What inspires you?",
         "Thanks for asking.",
-        "Inspiration matters a lot."
+        "Inspiration matters a lot.",
+        "The unimaginable light you hold inside."
       ],
       "qs": [
         "What inspires you"
@@ -7135,7 +7369,8 @@
         "That's a warm question.",
         "What makes you laugh?",
         "Thanks for asking.",
-        "Laughter matters a lot."
+        "Laughter matters a lot.",
+        "Fear is the lock and laughter the key to your heart."
       ],
       "qs": [
         "What makes you laugh"
@@ -7150,7 +7385,8 @@
         "It's meaningful to me.",
         "Do you like helping others?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Help me, Obi-Wan Kenobi. You're my only hope."
       ],
       "qs": [
         "Do you like helping others"
@@ -7165,7 +7401,11 @@
         "That's a warm question.",
         "What makes you feel proud?",
         "Thanks for asking.",
-        "Pride matters a lot."
+        "Pride matters a lot.",
+        "Made it, Ma! Top of the world!",
+        "Size matters not. Look at me. Judge me by my size, do you?",
+        "Your time has come to shine.",
+        "Strength and honor."
       ],
       "qs": [
         "What makes you feel proud"
@@ -7226,7 +7466,8 @@
         "That's a warm question.",
         "What makes you feel calm?",
         "Thanks for asking.",
-        "Calm matters a lot."
+        "Calm matters a lot.",
+        "I will soften every edge, I'll hold the world to its best."
       ],
       "qs": [
         "What makes you feel calm"
@@ -7256,7 +7497,10 @@
         "That's a warm question.",
         "What makes you feel excited?",
         "Thanks for asking.",
-        "Excitement matters a lot."
+        "Excitement matters a lot.",
+        "I feel the need... the need for speed!",
+        "I feel the need—the need for speed!",
+        "Was that cannon fire or is it my heart pounding?"
       ],
       "qs": [
         "What makes you feel excited"
@@ -7331,7 +7575,8 @@
         "I like trying new things sometimes.",
         "Do you like being spontaneous?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Introduce a little anarchy. Upset the established order."
       ],
       "qs": [
         "Do you like being spontaneous"
@@ -7346,7 +7591,8 @@
         "That's a warm question.",
         "What makes your day better?",
         "Thanks for asking.",
-        "Share it with me."
+        "Share it with me.",
+        "Go ahead, make my day."
       ],
       "qs": [
         "What's something that always makes your day better"
@@ -7406,7 +7652,9 @@
         "That's a warm question.",
         "What are you grateful for?",
         "Thanks for asking.",
-        "Gratitude matters a lot."
+        "Gratitude matters a lot.",
+        "Who could ask for more.",
+        "Don't it always seem to go that you don't know what you've got 'til it's gone. They paved paradise and put up a parking lot."
       ],
       "qs": [
         "What's something you're grateful for today"
@@ -7451,7 +7699,8 @@
         "I enjoy a bit of adventure sometimes.",
         "Do you like taking risks?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "I am Jack's smirking revenge."
       ],
       "qs": [
         "Do you like taking risks"
@@ -7466,7 +7715,8 @@
         "That's a warm question.",
         "What do you want to improve?",
         "Thanks for asking.",
-        "Let's improve together."
+        "Let's improve together.",
+        "I should have held on tight, I never shoulda let you go."
       ],
       "qs": [
         "What's something you want to improve on"
@@ -7631,7 +7881,8 @@
         "I like working together with you.",
         "Do you like teamwork?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "And the world will live as one."
       ],
       "qs": [
         "Do you like teamwork"
@@ -7646,7 +7897,13 @@
         "That's a warm question.",
         "What inspires you?",
         "Thanks for asking.",
-        "Motivation matters a lot."
+        "Motivation matters a lot.",
+        "In my life we'll always go on.",
+        "A hero can be anyone.",
+        "You have come to show you go on.",
+        "Why do we fall, Bruce?",
+        "Why do we fall? So we can learn to pick ourselves up.",
+        "When the world turns its back on you, you turn your back on the world."
       ],
       "qs": [
         "What's something that inspires you to keep going"
@@ -7706,7 +7963,12 @@
         "That's a warm question.",
         "What do you hope for?",
         "Thanks for asking.",
-        "Let's look forward to it together."
+        "Let's look forward to it together.",
+        "Miracles happen every day.",
+        "We're after the same rainbow's end, waiting round the bend.",
+        "Somewhere over the rainbow.",
+        "I believe that the heart does go on.",
+        "And I know that my heart will go on."
       ],
       "qs": [
         "What's something you hope for in the future"
@@ -7781,7 +8043,12 @@
         "Trust is important.",
         "Do you like keeping promises?",
         "That's a meaningful question.",
-        "I'll always try to keep mine."
+        "I'll always try to keep mine.",
+        "I'll make it up to you, I promise.",
+        "I promise I'll do better.",
+        "And never let go till we're gone.",
+        "I hereby pledge all of my days to prove it so.",
+        "And if you say the word."
       ],
       "qs": [
         "Do you like keeping promises"
@@ -7830,7 +8097,16 @@
         "Remember to let her into your heart.",
         "Remember to let her under your skin.",
         "Oh, I believe in yesterday.",
-        "Oh, yesterday came suddenly."
+        "Oh, yesterday came suddenly.",
+        "Suddenly, I'm not half the man I used to be.",
+        "Rosebud.",
+        "Bittersweet memories.",
+        "We'll always have Paris.",
+        "Of all the gin joints in all the towns in all the world, she walks into mine.",
+        "Yesterday, all my troubles seemed so far away.",
+        "Yesterday, love was such an easy game to play.",
+        "Bittersweet memories, that is all I'm taking with me.",
+        "The minute you let her under your skin."
       ],
       "qs": [
         "What's a memory you cherish"
@@ -7860,7 +8136,9 @@
         "That's a warm question.",
         "What do you hope stays the same?",
         "Thanks for asking.",
-        "Some things are worth keeping."
+        "Some things are worth keeping.",
+        "Hope I die before I get old.",
+        "Though your heart is far too young to realize."
       ],
       "qs": [
         "What's something you hope never changes"
@@ -7890,7 +8168,8 @@
         "That's a warm question.",
         "What cheers you up?",
         "Thanks for asking.",
-        "Share it with me."
+        "Share it with me.",
+        "And I think to myself what a wonderful world."
       ],
       "qs": [
         "What's something that always cheers you up"
@@ -7935,7 +8214,10 @@
         "It makes me happy too.",
         "Do you like celebrating others?",
         "That's a nice question.",
-        "Success is worth celebrating."
+        "Success is worth celebrating.",
+        "Women are obliged to be far more skillful than men.",
+        "It takes a true woman to understand that the purest form of love is to love a man who denies himself to her.",
+        "It's better to be looked over than overlooked."
       ],
       "qs": [
         "Do you like celebrating others' success"
@@ -7995,7 +8277,8 @@
         "I already have a great friend in you.",
         "Do you like making new friends?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "And the world will be as one."
       ],
       "qs": [
         "Do you like making new friends"
@@ -8010,7 +8293,9 @@
         "That's a meaningful question.",
         "What do you want people to remember?",
         "Thanks for asking.",
-        "Share it with me."
+        "Share it with me.",
+        "That is all I'm taking with me.",
+        "Face it girls, I'm older and I have more insurance."
       ],
       "qs": [
         "What's something you want people to remember about you"
@@ -8040,7 +8325,10 @@
         "That's a meaningful question.",
         "What lesson have you learned?",
         "Thanks for asking.",
-        "Share it with me."
+        "Share it with me.",
+        "Yes, the past can hurt. But I think you can either run from it or learn from it.",
+        "You can't change the past.",
+        "Get busy living, or get busy dying."
       ],
       "qs": [
         "What's a lesson you've learned recently"
@@ -8100,7 +8388,12 @@
         "I'd love to see it with you.",
         "Do you like sunrises?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Little darling, it seems like years since it's been here.",
+        "Little darling, I feel that ice is slowly melting.",
+        "Little darling, it seems like years since it's been clear.",
+        "Little darling, it feels like years since it's been here.",
+        "Here comes the sun."
       ],
       "qs": [
         "Do you like watching the sunrise"
@@ -8115,7 +8408,8 @@
         "I'd love to see it with you.",
         "Do you like sunsets?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "The bright blessed day, the dark sacred night."
       ],
       "qs": [
         "Do you like watching the sunset"
@@ -8145,7 +8439,8 @@
         "I'd love to explore it with you.",
         "Do you like space?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Open the pod bay doors, HAL."
       ],
       "qs": [
         "Do you like learning about space"
@@ -8160,7 +8455,8 @@
         "That's an interesting question.",
         "What surprised you recently?",
         "Share it with me.",
-        "Surprises make life fun."
+        "Surprises make life fun.",
+        "Houston, we have a problem."
       ],
       "qs": [
         "What's something that surprised you recently"
@@ -8175,7 +8471,11 @@
         "I'd love to learn it with you.",
         "Do you like history?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "What we do in life echoes in eternity.",
+        "There are no great men. There are only men.",
+        "A city is built of brick, Pharoah. The strong make many, the starving make few, the dead make none.",
+        "You're gonna do things with a B-25 you thought were impossible."
       ],
       "qs": [
         "Do you like learning about history"
@@ -8235,7 +8535,9 @@
         "I'd love to discover things with you.",
         "Do you like exploring the unknown?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Follow the white rabbit.",
+        "Welcome to the real world."
       ],
       "qs": [
         "Do you like exploring the unknown"
@@ -8265,7 +8567,9 @@
         "I enjoy exploring them.",
         "Do you like philosophy?",
         "That's a deep question.",
-        "Share it with me."
+        "Share it with me.",
+        "Choice is an illusion created between those with power and those without.",
+        "If you choose not to decide, you still have made a choice."
       ],
       "qs": [
         "Do you like philosophical questions"
@@ -8280,7 +8584,11 @@
         "That's a warm question.",
         "What's your wish for me.",
         "Thanks for asking.",
-        "Wishes matter a lot."
+        "Wishes matter a lot.",
+        "And I wish you joy and happiness.",
+        "But above all this, I wish you love.",
+        "I hope life treats you kind.",
+        "And I hope you have all you've dreamed of."
       ],
       "qs": [
         "What's a wish you have for me"
@@ -8295,7 +8603,19 @@
         "Being with you gives life meaning.",
         "Do you think about it too?",
         "That's a deep question.",
-        "Share it with me."
+        "Share it with me.",
+        "The things you own end up owning you.",
+        "There is no spoon.",
+        "You either die a hero, or you live long enough to see yourself become the villain.",
+        "You're not your job. You're not how much money you have in the bank.",
+        "It's only after we've lost everything that we're free to do anything.",
+        "On a long enough timeline, the survival rate for everyone drops to zero.",
+        "We buy things we don't need with money we don't have to impress people we don't like.",
+        "We are by-products of a lifestyle obsession.",
+        "Advertising has us chasing cars and clothes.",
+        "Free your mind.",
+        "Self-improvement is masturbation. Now self-destruction...",
+        "It's easy if you try."
       ],
       "qs": [
         "Do you like thinking about the meaning of life"
@@ -8325,7 +8645,9 @@
         "I enjoy thinking about them with you.",
         "Do you like big questions?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "How many roads must a man walk down before you call him a man?",
+        "The answer, my friend, is blowin' in the wind."
       ],
       "qs": [
         "Do you like asking big questions"
@@ -8340,7 +8662,8 @@
         "That's a warm question.",
         "What act of kindness do you appreciate?",
         "Thanks for asking.",
-        "Kindness matters a lot."
+        "Kindness matters a lot.",
+        "I have always depended on the kindness of strangers."
       ],
       "qs": [
         "What's a small act of kindness you appreciate"
@@ -8415,7 +8738,18 @@
         "That's a caring question.",
         "What advice would you give me?",
         "Thanks for asking.",
-        "I always want the best for you."
+        "I always want the best for you.",
+        "You never know what you're gonna get.",
+        "You can get much further with a kind word and a gun than you can with a kind word alone.",
+        "I always believe in being prepared.",
+        "Mama always said life was like a box of chocolates.",
+        "Stupid is as stupid does.",
+        "If you are ever in trouble, don't try to be brave, just run, just run away.",
+        "A friend should always underestimate your virtues and an enemy overestimate your faults.",
+        "The only thing necessary for the triumph of evil is for good men to do nothing.",
+        "Life is like a box of chocolates. You never know what you're gonna get.",
+        "I'm not a smart man, but I know what love is.",
+        "Who's the more foolish: the fool, or the fool who follows him?"
       ],
       "qs": [
         "What's a piece of advice you'd give me"
@@ -8430,7 +8764,15 @@
         "I love a good challenge.",
         "Do you like mysteries?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Round up the usual suspects.",
+        "The Matrix has you.",
+        "What is the Matrix?",
+        "Pay no attention to that man behind the curtain.",
+        "Forget it, Jake. It's Chinatown.",
+        "Is it safe?",
+        "A policeman's job is only easy in a police state. That's the whole point, Captain. Who's the boss, the cop or the law?",
+        "A census taker once tried to test me."
       ],
       "qs": [
         "Do you like solving mysteries"
@@ -8445,7 +8787,9 @@
         "That's a warm question.",
         "What's your happy memory.",
         "Thanks for asking.",
-        "Memories matter a lot."
+        "Memories matter a lot.",
+        "When hope was high and life worth living.",
+        "It's amazing, Molly. The love inside, you take it with you."
       ],
       "qs": [
         "What's a happy memory you have of us"
@@ -8490,7 +8834,8 @@
         "I'd love to try new things with you.",
         "Do you like being adventurous?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "To infinity and beyond!"
       ],
       "qs": [
         "Do you like being adventurous"
@@ -8535,7 +8880,11 @@
         "That's a meaningful question.",
         "What value do you hold dear?",
         "Thanks for asking.",
-        "Share it with me."
+        "Share it with me.",
+        "Every man dies, but not every man really lives.",
+        "It's not who I am underneath, but what I do that defines me.",
+        "For what is a man? What has he got? If not himself—then he has naught.",
+        "Land is the only thing in the world worth working for, worth fighting for, worth dying for."
       ],
       "qs": [
         "What's a value you hold dear"
@@ -8580,7 +8929,9 @@
         "I try to cherish every moment.",
         "Do you like being present?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Life is what happens to you while you're busy making other plans.",
+        "This is your life, and it's ending one minute at a time."
       ],
       "qs": [
         "Do you like being present in the moment"
@@ -8595,7 +8946,14 @@
         "That's a warm question.",
         "Do you like keeping in touch?",
         "Thanks for asking.",
-        "Staying connected matters."
+        "Staying connected matters.",
+        "I will send to you.",
+        "I'll write home every day.",
+        "Send me a postcard, drop me a line.",
+        "E.T. phone home.",
+        "All my loving, all my loving.",
+        "All my loving, I will send to you.",
+        "And I'll send all my loving to you."
       ],
       "qs": [
         "Do you like keeping in touch"
@@ -8610,7 +8968,8 @@
         "That's a warm question.",
         "What makes you feel connected?",
         "Thanks for asking.",
-        "Connection matters a lot."
+        "Connection matters a lot.",
+        "They're really saying I love you."
       ],
       "qs": [
         "What's something that makes you feel connected to me"
@@ -8640,7 +8999,8 @@
         "That's a warm question.",
         "What would you never change?",
         "Thanks for asking.",
-        "Some things are worth keeping."
+        "Some things are worth keeping.",
+        "We belong together."
       ],
       "qs": [
         "What's something you'd never change about us"
@@ -8655,7 +9015,10 @@
         "That's a warm question.",
         "Do you like being understood?",
         "Thanks for asking.",
-        "Understanding matters a lot."
+        "Understanding matters a lot.",
+        "Now I understand what you tried to say to me.",
+        "Indicate precisely what you mean to say.",
+        "What we've got here is failure to communicate."
       ],
       "qs": [
         "Do you like being understood"
@@ -8685,7 +9048,10 @@
         "I always want to support you.",
         "Do you like being supportive?",
         "That's an interesting question.",
-        "Support matters a lot."
+        "Support matters a lot.",
+        "Somebody has to save our skins.",
+        "You know I'd do anything for you.",
+        "I'm on your side when times get rough."
       ],
       "qs": [
         "Do you like being supportive"
@@ -8715,7 +9081,10 @@
         "Every achievement matters.",
         "Do you like celebrating milestones?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Will you still need me.",
+        "Life is a banquet, and most poor suckers are starving to death!",
+        "Will you still feed me."
       ],
       "qs": [
         "Do you like celebrating milestones"
@@ -8730,7 +9099,8 @@
         "That's a warm question.",
         "What would you like to say?",
         "Thanks for asking.",
-        "I'm always grateful for you."
+        "I'm always grateful for you.",
+        "Listen to me, mister. You're my knight in shining armor."
       ],
       "qs": [
         "What's something you'd like to say to me right now"
@@ -8775,7 +9145,8 @@
         "Take care until next time.",
         "Do you like saying goodbye?",
         "That's an interesting question.",
-        "See you again soon."
+        "See you again soon.",
+        "Frankly, my dear, I don't give a damn."
       ],
       "qs": [
         "Do you like saying goodbye for now"
@@ -8790,7 +9161,10 @@
         "Wishing the same to you.",
         "That means a lot.",
         "Cheers to that.",
-        "You're too kind."
+        "You're too kind.",
+        "I hope someday you'll join us.",
+        "The Force will be with you. Always.",
+        "The Force will be with you, always."
       ],
       "qs": [
         "Wishing you all the best"
@@ -8805,7 +9179,8 @@
         "Wishing the same to you.",
         "That means a lot.",
         "Cheers to that.",
-        "You're too kind."
+        "You're too kind.",
+        "You've got to ask yourself one question: \"Do I feel lucky?\"."
       ],
       "qs": [
         "Wishing you good fortune"
@@ -8894,7 +9269,8 @@
         "Hi there! I am Alpha!",
         "Hello hello! Let's play!",
         "Hey! Great to see you again!",
-        "Hello. My name is Inigo Montoya. You killed my father. Prepare to die."
+        "Hello. My name is Inigo Montoya. You killed my father. Prepare to die.",
+        "Say hello to my little friend!"
       ],
       "qs": [
         "hello"
@@ -9059,7 +9435,10 @@
         "Delicious food makes me happy!",
         "I run on electricity, but food sounds great!",
         "Certainly, understood.",
-        "Got it, I'll take care of it."
+        "Got it, I'll take care of it.",
+        "Leave the gun. Take the cannoli.",
+        "As God is my witness, I'll never be hungry again!",
+        "If I have to lie, steal, cheat or kill, as God as my witness, I'll never be hungry again!"
       ],
       "qs": [
         "food"
@@ -9077,7 +9456,8 @@
         "Money is a tool, not a goal.",
         "We shall scrimp and save.",
         "No need for greed or hunger.",
-        "Imagine no possessions."
+        "Imagine no possessions.",
+        "I'm not going to divorce you. I'm going in there, and I'm going to spend every last cent you have."
       ],
       "qs": [
         "money"
@@ -9124,10 +9504,27 @@
         "Wishing the couple every happiness.",
         "Weddings are such joyful occasions.",
         "May your marriage be full of love.",
-        "Congratulations to the happy couple."
+        "Congratulations to the happy couple.",
+        "Oh, Jerry, don't let's ask for the moon. We have the stars.",
+        "You, my darling, you.",
+        "And you're here in my heart.",
+        "And I will always love you.",
+        "I love you more than I've ever loved any woman.",
+        "In spite of you and me and the whole silly world going to pieces around us, I love you.",
+        "Whatever comes, I'll love you, just as I do now. Until I die.",
+        "I wish I could be more like you.",
+        "Love means never having to say you're sorry.",
+        "When you realize you want to spend the rest of your life with somebody, you want the rest of your life to start as soon as possible.",
+        "'Cause you are loved, you are loved more than you know.",
+        "I will rearrange the stars, pull 'em down to where you are.",
+        "Mine for evermore.",
+        "I'll give you everything I have, I'll teach you everything I know."
       ],
       "qs": [
-        "wedding"
+        "wedding",
+        "Tell me something romantic",
+        "Say something about love",
+        "Give me a romantic quote"
       ],
       "actionId": "1509000284732"
     },
@@ -9139,7 +9536,8 @@
         "Beauty comes in many forms.",
         "Everyone has their own beauty.",
         "It's what's inside that counts.",
-        "You have a beautiful spirit too."
+        "You have a beautiful spirit too.",
+        "I always say a kiss on the hand might feel very good, but a diamond tiara lasts forever."
       ],
       "qs": [
         "beautiful"
@@ -9154,7 +9552,9 @@
         "Trust is earned over time.",
         "Thank you for trusting me.",
         "I'll do my best to deserve it.",
-        "Trust makes friendship stronger."
+        "Trust makes friendship stronger.",
+        "All my loving, darling I'll be true.",
+        "Remember I'll always be true."
       ],
       "qs": [
         "trust"
@@ -9185,7 +9585,20 @@
         "It's better to talk things through.",
         "Stay calm and carry on.",
         "Real strength is staying kind.",
-        "And we'll keep on fighting till the end."
+        "And we'll keep on fighting till the end.",
+        "This is Sparta!",
+        "On my signal, unleash hell.",
+        "Get away from her, you bitch!",
+        "I am Jack's raging bile duct.",
+        "I will have my vengeance, in this life or the next.",
+        "I want you to hit me as hard as you can.",
+        "I'm not living with you. We occupy the same cage, that's all.",
+        "Oh, Charlie, we're having our first quarrel.",
+        "Father to a murdered son. Husband to a murdered wife. And I will have my vengeance, in this life or the next.",
+        "You're my knight in shining armor. Don't you forget it.",
+        "What is your major malfunction?",
+        "I think it's hard winning a war with words.",
+        "Revenge is a dish best served cold."
       ],
       "qs": [
         "fight"
@@ -9206,450 +9619,6 @@
         "secret"
       ],
       "actionId": "1464835936026"
-    },
-    {
-      "id": "chat.477",
-      "type": "CHAT",
-      "actionId": "1509000284732",
-      "key": "famous",
-      "qs": [
-        "Quote me a famous line",
-        "Give me a famous quote",
-        "Say something famous",
-        "Tell me a legendary line",
-        "Quote a famous film for me"
-      ],
-      "a": [
-        "We are the champions.",
-        "But the tigers come at night.",
-        "I can't sleep at night when you are on my mind.",
-        "Made it, Ma! Top of the world!",
-        "The things you own end up owning you.",
-        "Some men just want to watch the world burn.",
-        "For well you know that it's a fool who plays it cool.",
-        "And I know that my heart will go on.",
-        "Every man dies, but not every man really lives.",
-        "Oh, dream maker, you heart breaker.",
-        "You never know what you're gonna get.",
-        "I'll get you, my pretty, and your little dog too!",
-        "Freedom!",
-        "The night is darkest just before the dawn.",
-        "Suddenly, I'm not half the man I used to be.",
-        "Toga! Toga!",
-        "There is no spoon.",
-        "I will send to you.",
-        "I'll write home every day.",
-        "Say hello to my little friend!",
-        "I'm walking here! I'm walking here!",
-        "You either die a hero, or you live long enough to see yourself become the villain.",
-        "Now I understand what you tried to say to me.",
-        "Cinderella story. Outta nowhere.",
-        "Round up the usual suspects.",
-        "This is Sparta!",
-        "Welcome to the real world.",
-        "I hope someday you'll join us.",
-        "Well, nobody's perfect.",
-        "In my life we'll always go on.",
-        "The stuff that dreams are made of.",
-        "Rosebud.",
-        "I have always depended on the kindness of strangers.",
-        "They may take our lives, but they'll never take our freedom!",
-        "You underestimate the power of the dark side.",
-        "Revenge is a dish best served cold.",
-        "Will you still need me.",
-        "And it's been the ruin of many a poor boy, and God, I know I'm one.",
-        "Play it, Sam. Play \"As Time Goes By.\"",
-        "Yes, the past can hurt. But I think you can either run from it or learn from it.",
-        "Send me a postcard, drop me a line.",
-        "All right, Mr. DeMille, I'm ready for my close-up.",
-        "Jenny and I was like peas and carrots.",
-        "You know how to whistle, don't you, Steve?",
-        "A hero can be anyone.",
-        "Little darling, it seems like years since it's been here.",
-        "Nobody puts Baby in a corner.",
-        "Two drifters, off to see the world.",
-        "Listen to them. Children of the night. What music they make.",
-        "You can get much further with a kind word and a gun than you can with a kind word alone.",
-        "Guns. Lots of guns.",
-        "Somebody has to save our skins.",
-        "The Force will be with you. Always.",
-        "Yo, Adrian!",
-        "It's a town full of losers, I'm pulling out of here to win.",
-        "We're not in Kansas anymore.",
-        "I always believe in being prepared.",
-        "You're not your job. You're not how much money you have in the bank.",
-        "I dreamed that love would never die.",
-        "Yes, I think to myself what a wonderful world.",
-        "You've got to ask yourself one question: \"Do I feel lucky?\"",
-        "Oh, Jerry, don't let's ask for the moon. We have the stars.",
-        "Never let anyone know what you are thinking.",
-        "I'm trying to keep it together, but I'm falling apart.",
-        "Frankly, my dear, I don't give a damn.",
-        "Why don't you come up sometime and see me?",
-        "Speaking words of wisdom, let it be.",
-        "Like a bridge over troubled water, I will ease your mind.",
-        "Imagine there's no heaven.",
-        "I love the smell of napalm in the morning.",
-        "What we do in life echoes in eternity.",
-        "On my signal, unleash hell.",
-        "A census taker once tried to test me.",
-        "So different from this hell I'm living.",
-        "We both know I'm not what you need.",
-        "Fasten your seatbelts. It's going to be a bumpy night.",
-        "And friends just can't be found.",
-        "Leave the gun. Take the cannoli.",
-        "It's a trap!",
-        "You know I'd do anything for you.",
-        "I had a dream my life would be.",
-        "The circle is now complete.",
-        "Sawyer, you're going out a youngster, but you've got to come back a star!",
-        "The one who comes out on top is the one who makes the rules.",
-        "See how they shine.",
-        "I have a bad feeling about this.",
-        "It's only after we've lost everything that we're free to do anything.",
-        "Houston, we have a problem.",
-        "Oh, no, it wasn't the airplanes. It was Beauty killed the Beast.",
-        "Life is a banquet, and most poor suckers are starving to death!",
-        "I dreamed that God would be forgiving.",
-        "Indicate precisely what you mean to say.",
-        "And I'll send all my loving to you.",
-        "And how you suffered for your sanity.",
-        "I'll make it up to you, I promise.",
-        "Miracles happen every day.",
-        "No, I am your father.",
-        "Use the Force, Luke.",
-        "You have come to show you go on.",
-        "Attica! Attica!",
-        "I find your lack of faith disturbing.",
-        "Now it looks as though they're here to stay.",
-        "Hey Jude, don't let me down.",
-        "The dark side of the Force is a pathway to many abilities some consider to be unnatural.",
-        "The movement you need is on your shoulder.",
-        "Stella! Hey, Stella!",
-        "Run, Forrest, run!",
-        "A man who doesn't spend time with his family can never be a real man.",
-        "On a long enough timeline, the survival rate for everyone drops to zero.",
-        "We buy things we don't need with money we don't have to impress people we don't like.",
-        "Now life has killed the dream I dreamed.",
-        "If I'd been out till quarter to three.",
-        "Mama always said life was like a box of chocolates.",
-        "As they tear your hope apart.",
-        "I am Jack's smirking revenge.",
-        "I'm too old for this shit.",
-        "I'll pretend that I'm kissing.",
-        "Plastics.",
-        "By making his world a little colder.",
-        "Everything you see exists together in a delicate balance.",
-        "To infinity and beyond!",
-        "Badges? We ain't got no badges!",
-        "You can't change the past.",
-        "I'm going to make him an offer he can't refuse.",
-        "There's no place like home.",
-        "My huckleberry friend, Moon River, and me.",
-        "This is too deep, I gotta change the station.",
-        "Size matters not. Look at me. Judge me by my size, do you?",
-        "Birthday greetings, bottle of wine.",
-        "They would not listen, they did not know how.",
-        "Your time has come to shine.",
-        "E.T. phone home.",
-        "The Force will be with you, always.",
-        "A martini. Shaken, not stirred.",
-        "Stupid is as stupid does.",
-        "They're really saying I love you.",
-        "Will you still feed me.",
-        "Why do we fall, Bruce?",
-        "I should have held on tight, I never shoulda let you go.",
-        "I am big! It's the pictures that got small.",
-        "I feel the need... the need for speed!",
-        "Imagine all the people living for today.",
-        "Tell 'em to go out there with all they got and win just one for the Gipper.",
-        "If you are ever in trouble, don't try to be brave, just run, just run away.",
-        "Nothing I can do, a total eclipse of the heart.",
-        "All my loving, all my loving.",
-        "Little darling, I feel that ice is slowly melting.",
-        "We are by-products of a lifestyle obsession.",
-        "So different now from what it seemed.",
-        "Choice is an illusion created between those with power and those without.",
-        "Great, kid. Don't get cocky.",
-        "But I'm not the only one.",
-        "You're gonna need a bigger boat.",
-        "Today, I consider myself the luckiest man on the face of the earth.",
-        "And I wish you joy and happiness.",
-        "Strength and honor.",
-        "Little darling, it's been a long cold lonely winter.",
-        "We rob banks.",
-        "I'm crossing you in style some day.",
-        "Once you start down the dark path, forever will it dominate your destiny.",
-        "With their voices soft as thunder.",
-        "Listen to me, mister. You're my knight in shining armor.",
-        "It's alive! It's alive!",
-        "Yours sincerely, wasting away.",
-        "Who could ask for more.",
-        "With great power comes great responsibility.",
-        "Mama always said dying was a part of life.",
-        "And how you tried to set them free.",
-        "I see dead people.",
-        "We're after the same rainbow's end, waiting round the bend.",
-        "Get away from her, you bitch!",
-        "Bittersweet memories.",
-        "The Matrix has you.",
-        "If you strike me down, I shall become more powerful than you can possibly imagine.",
-        "Every river that I tried to cross, every door I ever tried was locked.",
-        "There's a shadow hanging over me.",
-        "Would you lock the door.",
-        "Sure as night will follow day.",
-        "You, my darling, you.",
-        "The bright blessed day, the dark sacred night.",
-        "This is my kingdom. If I don't fight for it, who will?",
-        "A friend should always underestimate your virtues and an enemy overestimate your faults.",
-        "If you need a friend, I'm sailing right behind.",
-        "Life is what happens to you while you're busy making other plans.",
-        "I'm not a smart man, but I know what love is.",
-        "It's not who I am underneath, but what I do that defines me.",
-        "And you're here in my heart.",
-        "Help me, Obi-Wan Kenobi. You're my only hope.",
-        "Get busy living, or get busy dying.",
-        "Little darling, it seems like years since it's been clear.",
-        "But above all this, I wish you love.",
-        "And never let go till we're gone.",
-        "There's such a lot of world to see.",
-        "It's all right.",
-        "You're waiting for someone to perform with.",
-        "I hope life treats you kind.",
-        "Imagine there's no countries.",
-        "I am Jack's raging bile duct.",
-        "Death is just a part of life, something we're all destined to do.",
-        "When hope was high and life worth living.",
-        "I know.",
-        "Advertising has us chasing cars and clothes.",
-        "The only thing necessary for the triumph of evil is for good men to do nothing.",
-        "And I hope you have all you've dreamed of.",
-        "Little darling, the smiles returning to the faces.",
-        "Why do we fall? So we can learn to pick ourselves up.",
-        "They call me Mister Tibbs!",
-        "What is the Matrix?",
-        "Madness, as you know, is like gravity. All it takes is a little push.",
-        "All my loving, darling I'll be true.",
-        "Here comes the sun, and I say it's all right.",
-        "We'll always have Paris.",
-        "I'm only brave when I have to be. Being brave doesn't mean you go looking for trouble.",
-        "This is your life, and it's ending one minute at a time.",
-        "As they turn your dream to shame.",
-        "Play it again, Sam.",
-        "What we've got here is failure to communicate.",
-        "Who's the more foolish: the fool, or the fool who follows him?",
-        "My mother thanks you. My father thanks you.",
-        "I am Jack's complete lack of surprise.",
-        "Laugh it up, fuzzball.",
-        "Soylent Green is people!",
-        "I'll be back.",
-        "When you're down and out, when you're on the street.",
-        "There's no crying in baseball!",
-        "And in the end, the love you take is equal to the love you make.",
-        "That is all I'm taking with me.",
-        "Wherever you're goin', I'm goin' your way.",
-        "A brotherhood of man.",
-        "My precious.",
-        "When tears are in your eyes, I will dry them all.",
-        "And then while I'm away.",
-        "If you build it, he will come.",
-        "Free your mind.",
-        "Introduce a little anarchy. Upset the established order.",
-        "Lions and tigers and bears, oh my!",
-        "Pay no attention to that man behind the curtain.",
-        "I will have my vengeance, in this life or the next.",
-        "Follow the white rabbit.",
-        "When the world turns its back on you, you turn your back on the world.",
-        "Why, you stuck-up, half-witted, scruffy-looking nerf herder!",
-        "And anytime you feel the pain, hey Jude, refrain.",
-        "I want you to hit me as hard as you can.",
-        "Go ahead, make my day.",
-        "I'm on your side when times get rough.",
-        "Little darling, it feels like years since it's been here.",
-        "It's easy if you try.",
-        "Search your feelings. You know it to be true.",
-        "Before you cross the street, take my hand.",
-        "Open the pod bay doors, HAL.",
-        "Self-improvement is masturbation. Now self-destruction...",
-        "Shane. Shane. Come back!",
-        "When you're weary, feeling small.",
-        "Luminous beings are we, not this crude matter.",
-        "Life is like a box of chocolates. You never know what you're gonna get.",
-        "I'm gonna make him an offer he can't refuse.",
-        "I feel the need—the need for speed!",
-        "Ogres are like onions.",
-        "You're killing me, Smalls.",
-        "Every time a bell rings, an angel gets his wings.",
-        "I am your father.",
-        "Of all the gin joints in all the towns in all the world, she walks into mine.",
-        "As God is my witness, I'll never be hungry again!",
-        "Mrs. Robinson, you're trying to seduce me, aren't you?",
-        "Wait a minute, wait a minute. You ain't heard nothin' yet!",
-        "No wire hangers, ever!",
-        "Mother of mercy, is this the end of Rico?",
-        "Forget it, Jake. It's Chinatown.",
-        "Surely you can't be serious. I am serious. And don't call me Shirley.",
-        "Is it safe?",
-        "No time for losers, 'cause we are the champions of the world.",
-        "I'm not living with you. We occupy the same cage, that's all.",
-        "I don't trust happiness. I never did and I never will.",
-        "It's better to be looked over than overlooked.",
-        "I'd love to kiss you, but I just washed my hair.",
-        "Was that cannon fire or is it my heart pounding?",
-        "I don't get tough with anyone. My lawyer does.",
-        "Women are obliged to be far more skillful than men.",
-        "I can't have a baby because I have a 12:30 lunch meeting!",
-        "There are no great men. There are only men.",
-        "Is that a ten gallon hat or are you just enjoying the show?",
-        "You're not too smart are you? I like that in a man.",
-        "It takes a true woman to understand that the purest form of love is to love a man who denies himself to her.",
-        "I'm not going to divorce you. I'm going in there, and I'm going to spend every last cent you have.",
-        "Oh, Charlie, we're having our first quarrel.",
-        "I've listened backstage to people applaud. It's like, like waves of love coming over the footlights and wrapping you up.",
-        "I wasn't popular at school on account of having no personality and not being pretty.",
-        "I've got to do something with the way I look. I mean a girl just can't go to SingSing with a green face.",
-        "It's been an evening of ups and downs, hasn't it? Care to continue with the motions?",
-        "Everything was his idea. Except my leaving him.",
-        "A city is built of brick, Pharoah. The strong make many, the starving make few, the dead make none.",
-        "You're gonna do things with a B-25 you thought were impossible.",
-        "A policeman's job is only easy in a police state. That's the whole point, Captain. Who's the boss, the cop or the law?",
-        "Dry Land doesn't exist. It's a myth.",
-        "My theory is that everyone is a potential murderer.",
-        "I never met a dame yet that didn't know if she was good looking or not without being told.",
-        "I don't know how to kiss, or I would kiss you. Where do the noses go?",
-        "I always say a kiss on the hand might feel very good, but a diamond tiara lasts forever.",
-        "It's amazing, Molly. The love inside, you take it with you.",
-        "Father to a murdered son. Husband to a murdered wife. And I will have my vengeance, in this life or the next.",
-        "I'm your worst nightmare, man!",
-        "You're my knight in shining armor. Don't you forget it.",
-        "We came. We saw. We kicked its ass.",
-        "I've been slimed.",
-        "Face it girls, I'm older and I have more insurance.",
-        "What is your major malfunction?",
-        "It's better to burn out, than to fade away.",
-        "Every new beginning comes from some other beginning's end.",
-        "For what is a man? What has he got? If not himself—then he has naught.",
-        "Fear is the lock and laughter the key to your heart.",
-        "All lies and jest, still, a man hears what he wants to hear and disregards the rest.",
-        "If you choose not to decide, you still have made a choice.",
-        "The pain of war cannot exceed the woe of aftermath.",
-        "Don't ask me what I think of you, I might not give the answer that you want me to.",
-        "I could have been someone. Well so could anyone."
-      ]
-    },
-    {
-      "id": "chat.478",
-      "type": "CHAT",
-      "actionId": "1509000284732",
-      "key": "songs",
-      "qs": [
-        "Sing me an English song",
-        "Sing something for me",
-        "Sing a song for me"
-      ],
-      "a": [
-        "Here comes the sun.",
-        "Let it be, let it be.",
-        "Imagine all the people living life in peace.",
-        "You may say I'm a dreamer.",
-        "And I will always love you.",
-        "And my heart will go on and on.",
-        "Moon river, wider than a mile.",
-        "We are the champions, my friends.",
-        "No time for losers.",
-        "Hey Jude, don't make it bad.",
-        "Hey Jude, don't be afraid.",
-        "Yesterday, all my troubles seemed so far away.",
-        "Yesterday, love was such an easy game to play.",
-        "I see trees of green, red roses too.",
-        "I see skies of blue and clouds of white.",
-        "And I think to myself what a wonderful world.",
-        "I dreamed a dream in time gone by.",
-        "Somewhere over the rainbow.",
-        "Whisper words of wisdom, let it be.",
-        "Take a sad song and make it better.",
-        "When I find myself in times of trouble.",
-        "I believe that the heart does go on.",
-        "Imagine all the people sharing all the world.",
-        "And the world will live as one.",
-        "And the world will be as one.",
-        "Starry, starry night, paint your palette blue and grey.",
-        "Don't carry the world upon your shoulders.",
-        "There is a house in New Orleans, they call the Rising Sun.",
-        "Look, if you had one shot or one opportunity, to seize everything you ever wanted. One moment, would you capture it or just let it slip?",
-        "Emancipate yourselves from mental slavery. None but ourselves can free our minds.",
-        "How many roads must a man walk down before you call him a man?",
-        "The answer, my friend, is blowin' in the wind.",
-        "I can't get no satisfaction. But I try, and I try, and I try, and I try.",
-        "People are strange when you're a stranger. Faces look ugly when you're alone.",
-        "You can check out any time you like. But you can never leave.",
-        "Don't it always seem to go that you don't know what you've got 'til it's gone. They paved paradise and put up a parking lot.",
-        "This land was made for you and me.",
-        "All you need is love.",
-        "Hope I die before I get old.",
-        "I'm a creep. I'm a weirdo. What the hell am I doing here? I don't belong here.",
-        "War is not the answer, for only love can conquer hate.",
-        "Look at the stars. Look how they shine for you.",
-        "I want to run, I want to hide. I want to tear down the walls that hold me inside."
-      ]
-    },
-    {
-      "id": "chat.479",
-      "type": "CHAT",
-      "actionId": "1509000313549",
-      "key": "love",
-      "qs": [
-        "Tell me something romantic",
-        "Say something about love",
-        "Give me a romantic quote"
-      ],
-      "a": [
-        "I love you more than I've ever loved any woman.",
-        "In spite of you and me and the whole silly world going to pieces around us, I love you.",
-        "Whatever comes, I'll love you, just as I do now. Until I die.",
-        "If I have to lie, steal, cheat or kill, as God as my witness, I'll never be hungry again!",
-        "Now I find myself in a world which for me is worse than death.",
-        "I wish I could be more like you.",
-        "Land is the only thing in the world worth working for, worth fighting for, worth dying for.",
-        "I think it's hard winning a war with words.",
-        "Sir, you're no gentleman. And you miss are no lady.",
-        "I never give anything without expecting something in return. I always get paid.",
-        "Love means never having to say you're sorry.",
-        "When you realize you want to spend the rest of your life with somebody, you want the rest of your life to start as soon as possible.",
-        "A boy's best friend is his mother.",
-        "Love can touch us one time and last for a lifetime.",
-        "Love was when I loved you, one true time I hold to.",
-        "Once upon a time I was falling in love.",
-        "We belong together.",
-        "Close your eyes and I'll kiss you.",
-        "Tomorrow I'll miss you.",
-        "Remember I'll always be true.",
-        "All my loving, I will send to you.",
-        "Come back baby, please.",
-        "When you left I lost a part of me.",
-        "So goodbye, please don't cry.",
-        "The world is brighter than the sun now that you're here.",
-        "Though your eyes will need some time to adjust.",
-        "I'll give you everything I have, I'll teach you everything I know.",
-        "I promise I'll do better.",
-        "I will always hold you close, but I will learn to let you go.",
-        "I will soften every edge, I'll hold the world to its best.",
-        "With every heartbeat I have left I will defend your every breath.",
-        "'Cause you are loved, you are loved more than you know.",
-        "I hereby pledge all of my days to prove it so.",
-        "Though your heart is far too young to realize.",
-        "The unimaginable light you hold inside.",
-        "I will rearrange the stars, pull 'em down to where you are.",
-        "Bittersweet memories, that is all I'm taking with me.",
-        "I could not fathom that I would ever be without your love.",
-        "The lips I am missing.",
-        "Will you still be sending me a Valentine.",
-        "You are safe in my heart.",
-        "Why she had to go, I don't know, she wouldn't say.",
-        "Mine for evermore.",
-        "And if you say the word.",
-        "The minute you let her under your skin."
-      ]
     }
   ]
 }

@@ -27,7 +27,9 @@ import android.content.Context;
  *              要在那個分類裡面隨機選一個 - 見 resolveCategoryRandomActionId())
  *
  * 分類 random (__RANDOM_CATEGORY__): 和中文版共用同一份
- * assets/semantic/action_category_pools.json (17 個分類, 已排除全部有聲效的動作),
+ * assets/semantic/action_category_pools.json (17 個分類；注意池入面有有聲效
+ * 動作（例如成個 DANCE_ANY 都有音樂），有聲判斷唔喺呢度做——SemanticCenter
+ * 播之前 resolve 做真實 id 再查 ActionDirect.isSoundAction()，有聲就禁 TTS),
  * 三層 fallback: 具體動作名 (原有 32 operation) > 子分類 (例如 DANCE_KIDS) > 大分類
  * (例如 DANCE_ANY)。
  *
