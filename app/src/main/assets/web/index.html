@@ -156,7 +156,7 @@
       <p class="hint" id="accelHint"></p>
 
       <!-- 4角度傾側控制頭/眼 LED：尾段獨立 <script> 實現（見底）。用開關控制，
-           要先開上面「加速度計」開關先會收到讀數。 -->
+           要先開上面「加速度計」開關才會收到讀數。 -->
       <div class="row" style="margin-top:8px;">
         <label class="switch-label">
           <span class="toggle-switch">
@@ -226,7 +226,7 @@
     <section class="card">
       <h2 data-i18n="speech_chat_heading">💬 對話界面</h2>
       <!-- Vosk 聆聽指示燈（綠＝聆聽中，灰＝其他）：放這行，不可以放入上面 h2
-          （applyUiLanguage 會成個 textContent 覆寫）。 -->
+          （applyUiLanguage 會整個 textContent 覆寫）。 -->
       <div class="row" style="margin-bottom:-4px">
         <span id="voskStateDot" class="vosk-state-dot vosk-state-dot-off"></span>
       </div>
@@ -513,7 +513,7 @@
        MCP tool 清單（name/description），同 xiaozhi.me console「MCP接入點」是兩回事
        （那個是第三方工具連入用的獨立 websocket 端口）。device 側 tool 經
        WebSocket "initialize"/"tools/list" 自動交換，無手動配置。頂部開關純粹是「展開」
-       （跟自訂 server card 樣式）：開＝展開清單＋逐項 enable/disable，關＝收埋。 -->
+       （跟自訂 server card 樣式）：開＝展開清單＋逐項 enable/disable，關＝收起。 -->
   <section class="card">
     <h3 data-i18n="xiaozhi_mcp_tools_heading">🔧 內置MCP功能列表</h3>
     <p class="hint" data-i18n="xiaozhi_mcp_tools_hint">

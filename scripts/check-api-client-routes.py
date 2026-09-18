@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-檢查 api-client.js 每個 wrapper 打去嘅 URL 真係有後端接。
+檢查 api-client.js 每個 wrapper 打去的 URL 真正有後端接。
 
 Caller 對後端路由 (見 MainActivity dispatch + app-core.js helper)：
   api('X')        -> /api/alpha2/X   -> handleApi case X
@@ -9,8 +9,8 @@ Caller 對後端路由 (見 MainActivity dispatch + app-core.js helper)：
   xiaozhiApi('X') -> /api/xiaozhi/X  -> XiaozhiBridge.handleXiaozhiApi case X
 
 之前試過 generator 語無倫次出 `api('system/...')` → 打去
-/api/alpha2/system/... → handleApi 404，而 drift check 睇唔到
-(佢只對 code case ↔ spec)。呢個 script 補返 client → server 呢段。
+/api/alpha2/system/... → handleApi 404，而 drift check 看不到
+(它只對 code case ↔ spec)。這個 script 補回 client → server 這段。
 
 用法: python scripts/check-api-client-routes.py (啱 CI 用)
 回傳 0=全對，1=有錯。
@@ -40,16 +40,16 @@ def handler_cases(name: str, src: str = text, tail: str = r"\n    (?:private|pub
 
 
 cases = {
-    # handleApi 成段搬咗去 ApiDispatcher (檔尾，最後一個 method)。
+    # handleApi 成段搬了去 ApiDispatcher (檔尾，最後一個 method)。
     "api": handler_cases("handleApi", disptext, tail=r"\n\}\s*$"),
-    # handleSystemApi/directApi 跟埋搬過去 (system 在中間，direct 喺檔尾)。
+    # handleSystemApi/directApi 跟著搬過去 (system 在中間，direct 在檔尾)。
     "sysApi": handler_cases("handleSystemApi", disptext),
     "directApi": handler_cases("handleDirectApi", disptext, tail=r"\n\}\s*$"),
     "xiaozhiApi": handler_cases("handleXiaozhiApi", xztext),
 }
 
 client = CLIENT.read_text(encoding="utf-8")
-# 2026-09-09：單雙引號都認（之前淨係單引號，手寫雙引號即漏檢）。
+# 2026-09-09：單雙引號都認（之前僅單引號，手寫雙引號即漏檢）。
 calls = re.findall(r"return (api|sysApi|directApi|xiaozhiApi)\([\"']([^\"']+)[\"'], params\)", client)
 assert calls, "api-client.js 內一個 wrapper call 都搵唔到"
 

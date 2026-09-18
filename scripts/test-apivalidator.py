@@ -3,9 +3,9 @@
 ApiValidator 單元測試執行器 (零依賴，不用 JUnit/gradle)。
 
 原因見 app/src/test/java/com/open/alpha2/ApiValidatorTest.java 檔頭：
-gradle cache 無 junit，唔想整斷 `--offline` build。
+gradle cache 無 junit，不想整斷 `--offline` build。
 
-流程：搵 android.jar (SDK) + javac → 編譯 ApiValidator/HttpServer/Test
+流程：找 android.jar (SDK) + javac → 編譯 ApiValidator/HttpServer/Test
 → 跑 main() → 非零 exit = 失敗 (啱 CI 用)。
 
 用法: python scripts/test-apivalidator.py
@@ -23,13 +23,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 def find_sdk() -> pathlib.Path:
     cands = []
-    # 1. local.properties (本機，唔入 repo)
+    # 1. local.properties (本機，不入 repo)
     lp = ROOT / "local.properties"
     if lp.exists():
         m = re.search(r"sdk\.dir\s*=\s*(.+)", lp.read_text(encoding="utf-8"))
         if m:
             cands.append(pathlib.Path(m.group(1).strip()))
-    # 2. 環境變數 (CI 用呢個)
+    # 2. 環境變數 (CI 用這個)
     for env in ("ANDROID_SDK_ROOT", "ANDROID_HOME"):
         if os.environ.get(env):
             cands.append(pathlib.Path(os.environ[env]))
@@ -48,7 +48,7 @@ def find_sdk() -> pathlib.Path:
 
 
 def find_android_jar(sdk: pathlib.Path) -> pathlib.Path:
-    # 跟 app/build.gradle compileSdkVersion，搵唔到就用最高版 (stub 嚟，邊版都得)
+    # 跟 app/build.gradle compileSdkVersion，找不到就用最高版 (stub 來，邊版都得)
     want = "android-25"
     gradle = (ROOT / "app" / "build.gradle").read_text(encoding="utf-8")
     m = re.search(r"compileSdkVersion\s+(\d+)", gradle)
@@ -63,7 +63,7 @@ def find_android_jar(sdk: pathlib.Path) -> pathlib.Path:
     for p in plats:
         if p.name == want:
             return p / "android.jar"
-    print(f"注意：無 {want}，用 {plats[-1].name} 代替 (只係 stub，无影响)");
+    print(f"注意：無 {want}，用 {plats[-1].name} 代替 (只是 stub，无影响)");
     return plats[-1] / "android.jar"
 
 
@@ -78,11 +78,11 @@ def main() -> int:
 
     src = ROOT / "app" / "src" / "main" / "java" / "com" / "open" / "alpha2"
     test = ROOT / "app" / "src" / "test" / "java" / "com" / "open" / "alpha2" / "ApiValidatorTest.java"
-    assert test.exists(), f"測試檔唔見咗: {test}"
+    assert test.exists(), f"測試檔不見了: {test}"
 
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="apivalidator-test-"))
-    # ApiValidator → HttpServer → WebSocketServer → EventBus 呢條 closure
-    # 淨係掂到 android.util/Log + java.*，一齊編即可 (唔使成個 app)。
+    # ApiValidator → HttpServer → WebSocketServer → EventBus 這條 closure
+    # 僅掂到 android.util/Log + java.*，一齊編即可 (不用整個 app)。
     # 2026-09 橫切簡化後 HttpServer/EventBus 共用 JsonUtil/IOUtil，一齊編。
     files = [
         str(src / "ApiValidator.java"),

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """官方 f/b.f() 調度模擬：逐條 d/d 葉計 v7 gate + d/a 選擇。
-v7 = fkey[a()==leaf.d].d；da = d/a[e_field==leaf.c]；inner 分支睇 da.f_flag。
+v7 = fkey[a()==leaf.d].d；da = d/a[e_field==leaf.c]；inner 分支看 da.f_flag。
 v7==0/3 -> 播（inner：f==0 servo / 1 f/e / 2 e/d / 4 voice）；否則 skip/return。"""
 import struct
 import sys
@@ -91,7 +91,7 @@ for fid in sys.argv[1:]:
             v7 = dict(fkeys).get(dd, -1)
             dai = emap.get(c, None)
             if dai is None:
-                print("   leaf(a=%d,c=%d,d=%d): v7=%d da=MISSING -> 官方播唔到！" % (a, c, dd, v7))
+                print("   leaf(a=%d,c=%d,d=%d): v7=%d da=MISSING -> 官方播不到！" % (a, c, dd, v7))
             else:
                 ff = das[dai][1]
                 play = (v7 in (0, 3)) and (ff in BR)

@@ -1,43 +1,43 @@
 # Open Alpha2 — beta5 (pure-direct)
 
-`com.open.alpha2` —— 裝喺 UBTECH Alpha2 機械人本機嘅 Android App（`versionName "beta 5"`
+`com.open.alpha2` —— 裝在 UBTECH Alpha2 機械人本機的 Android App（`versionName "beta 5"`
 / `versionCode 5`）。開機自動起一個 HTTP + WebSocket server（port `8888`），同一
-WiFi 任何瀏覽器開 `http://<機械人IP>:8888/` 就係成部機嘅控制面板；另有 Blockly
+WiFi 任何瀏覽器開 `http://<機械人IP>:8888/` 就是成部機的控制面板；另有 Blockly
 積木編程頁同小智 AI 語音對話橋接。
 
-beta5 同 beta3 最大分別：**機身根本無 `alpha2services.apk`，成套 AIDL 已經死咗**——
-全部舊 binder 調用註定失敗，一律唔再經 `RobotStub` 以外嘅路；硬件改行直驅，
-訊飛離線引擎成套移除。beta3 時代嘅文件收咗喺 `docs/legacy-beta3/`，只供考古。
+beta5 同 beta3 最大分別：**機身根本無 `alpha2services.apk`，成套 AIDL 已經死了**——
+全部舊 binder 調用註定失敗，一律不再經 `RobotStub` 以外的路；硬件改行直驅，
+訊飛離線引擎成套移除。beta3 時代的文件收了在 `docs/legacy-beta3/`，只供考古。
 
 ## 前提（beta5 實測組合）
 
 - 機械人：RK3288（`armeabi-v7a` 單一 ABI）、Android 5.1.1（API 22）；App
-  `minSdkVersion 19`、`targetSdkVersion 22`（刻意唔升，唔上架 Play Store）。
+  `minSdkVersion 19`、`targetSdkVersion 22`（刻意不升，不上架 Play Store）。
 - 胸板 MCU：`/dev/ttyS1`；頭板 MCU：`/dev/ttyS3`；波特率 `115200`；幀
   `F8 8F LEN CMD PARAM SUM ED`。頭頂 +/- pad：`/dev/input/event0`
  （rk29-keypad）；眼/頭/嘴燈：`libhead_led.so` JNI。
-- 機械人同瀏覽器裝置要喺同一個 WiFi。Server 純 HTTP（自簽 HTTPS 方案已永久移除）。
-- ⚠️ **只用可信 LAN**：預設無 auth，同網段任何人可播動作、睇相機/聽 mic、上傳固件；
-  唔好橋接上網、唔好放公用/宿舍大 LAN，亦唔好經 port-forward 對外網。
+- 機械人同瀏覽器裝置要在同一個 WiFi。Server 純 HTTP（自簽 HTTPS 方案已永久移除）。
+- ⚠️ **只用可信 LAN**：預設無 auth，同網段任何人可播動作、看相機/聽 mic、上傳固件；
+  不要橋接上網、不要放公用/宿舍大 LAN，亦不要經 port-forward 對外網。
   實驗 tab 另有 opt-in 面板 token（`system/auth/*`，見 `PanelAuth.java`）：預設關閉
-  （全開）；啟用後成個面板上鎖——全部 `/api/*`（含讀操作、其他分頁、Blockly）
-  同 `/upload/*` 要帶 `panel_token`（缺／錯回 401）；淨 `system/auth/*`
-  （解鎖入口）、靜態頁、`/ws`、`/stream/*` 開放。Token 記喺瀏覽器
-  localStorage（同一個面板地址跨 tab 共用）。認證卡預設收埋，開開關先見詳情；
-  啟用後未解鎖開面板會成版鎖屏浮層蓋住（數據靠後端閘，靜態 HTML/JS 殼擋唔住下載）。
-- 動作檔喺機身 `/sdcard/actions/`：`<id>.ubx`＋同名目錄 `<id>/xxx.mp3`＋
+  （全開）；啟用後整個面板上鎖——全部 `/api/*`（含讀操作、其他分頁、Blockly）
+  同 `/upload/*` 要帶 `panel_token`（缺／錯回 401）；僅 `system/auth/*`
+  （解鎖入口）、靜態頁、`/ws`、`/stream/*` 開放。Token 記在瀏覽器
+  localStorage（同一個面板地址跨 tab 共用）。認證卡預設收起，開開關先見詳情；
+  啟用後未解鎖開面板會成版鎖屏浮層蓋住（數據靠後端閘，靜態 HTML/JS 殼擋不住下載）。
+- 動作檔在機身 `/sdcard/actions/`：`<id>.ubx`＋同名目錄 `<id>/xxx.mp3`＋
   `actionInfo.txt`（GBK，`<fileId>##中文名##英文名##type`；機身檔版本眾多，
-  「202 個」係指 `actionInfo.txt` 行數口徑，實機 `.ubx` 檔數／前端 preset
+  「202 個」是指 `actionInfo.txt` 行數口徑，實機 `.ubx` 檔數／前端 preset
   數（199→200）會因版本差一兩個，以機身 `actionInfo.txt` 為準）。
 
 ## 控制面板（`app/src/main/assets/web/`）
 
 分頁（`index.html`，TAB 註記）：STATUS（系統狀態/裝置資訊/聲納/PIR/加速度計）·
-ACTIONS（動作列表＋分類＋播放/停止＋**變速 0.5/0.67/1/1.5/2**）· SERVO（20 軸逐粒/
+ACTIONS（動作列表＋分類＋播放/停止＋**變速 0.5/0.67/1/1.5/2**）· SERVO（20 軸逐顆/
 全組＋Angle Tuner）· SPEECH（對話界面/TTS/引擎）· LED（頭/眼/嘴 preset）· ADVANCED
 （UUID/胸板固件升級/事件 Log）＋相機（串流/拍照/錄影/pan-tilt 搖桿）＋小智＋
 本地音樂＋網絡電台＋Blockly（`blockly.html`，獨立頁）。中英雙語
-（`app-core.js` 字典），WebSocket 即時事件唔使 refresh。
+（`app-core.js` 字典），WebSocket 即時事件不用 refresh。
 
 ## .ubx 播放（`sdk-module/hardware-direct/.../ubx/`）
 
@@ -51,8 +51,8 @@ ACTIONS（動作列表＋分類＋播放/停止＋**變速 0.5/0.67/1/1.5/2**）
 - 配樂：servo 鏈內 `type==4` 塊走 `a/j/a/o`，同 clock 並行——槽位起播、播至多
   `b×timeBase` 自停、切幀打斷；路徑 `ubx去扩展名/music名`（`UbxPlayer` + `VoiceStream`）。
 - 變速：舵機槽位/move 同縮放；歌 1x 行 MediaPlayer，非 1x 行 decode+線性重採樣
-  「磁帶式」變速（API 22 無 PlaybackParams，不變調刻意唔做）。播緊轉速自動由頭重播。
-- 一鍵全停：播緊撳第二個動作抢占；頭頂雙 pad（`0x5e` 拍頭）、MCP、HTTP 共用
+  「磁帶式」變速（API 22 無 PlaybackParams，不變調刻意不做）。正在播轉速自動由頭重播。
+- 一鍵全停：正在播按第二個動作抢占；頭頂雙 pad（`0x5e` 拍頭）、MCP、HTTP 共用
   `stopActionWithRecovery()`（截停＋蹲下站起回位）。
 
 ## API
@@ -62,7 +62,7 @@ ACTIONS（動作列表＋分類＋播放/停止＋**變速 0.5/0.67/1/1.5/2**）
   `system/*`、`xiaozhi/*`；另有 `/api/direct/*`（底層直調）、`/upload/*`、
   `/stream/*`、`/ws`（RFC6455 即時事件）。
 - OpenAPI 3.0（`openapi/open-alpha2-openapi.yml`，142 paths＝134 條 API＋
-  5 upload/stream＋`/、blockly.html、/ws` 3 個）係單一真相源；
+  5 upload/stream＋`/、blockly.html、/ws` 3 個）是單一真相源；
   `app/.../web/api-client.js`（`Alpha2Api.*`，134 個 wrapper）由
   `scripts/generate-api-client.py` 生成，改 spec 必重 gen；
   `scripts/check-openapi-drift.py` 保 code↔spec 對齊；另有 AsyncAPI
@@ -75,11 +75,11 @@ ACTIONS（動作列表＋分類＋播放/停止＋**變速 0.5/0.67/1/1.5/2**）
 
 ## Build / 裝機
 
-> ⚠️ **JAVA_HOME 必須指 Temurin JDK 11**（唔係 JDK 17/21：AGP 4.2.2 嘅 manifest
-> merger 會死，見下「地雷」）。CI 同本地同一個組合先編到一樣嘅嘢。
+> ⚠️ **JAVA_HOME 必須指 Temurin JDK 11**（不是 JDK 17/21：AGP 4.2.2 的 manifest
+> merger 會死，見下「地雷」）。CI 同本地同一個組合先編到一樣的東西。
 
 組合：Temurin JDK 11 + Gradle 7.0 + Android SDK（`ANDROID_SDK_ROOT` 指向 SDK；
-`local.properties` 只放你自己部機，唔入 repo）：
+`local.properties` 只放你自己部機，不入 repo）：
 
 ```bash
 ./gradlew assembleDebug --offline
@@ -89,27 +89,27 @@ adb -s <serial> forward tcp:8888 tcp:8888
 ```
 
 輸出 `app-debug.apk`（CI 會改名 `open-alpha2-beta5.apk` 做 artifact）。
-`app/debug.keystore` 係確定性 debug key（密碼 `android`），簽名唔同要先解除安裝。
-呢條 key 視為公開（標準 Android debug key，入咗 repo 正常）；release 另用正式 key，唔好靠簽名做權限隔離。
-prebuilt `.so`（`head_led/head_key_mgr/serial_port`）一律喺
+`app/debug.keystore` 是確定性 debug key（密碼 `android`），簽名不同要先解除安裝。
+這條 key 視為公開（標準 Android debug key，入了 repo 正常）；release 另用正式 key，不要靠簽名做權限隔離。
+prebuilt `.so`（`head_led/head_key_mgr/serial_port`）一律在
 `sdk-module/hardware-direct/src/main/jniLibs`；`libeasyopus.so` 由
 `app/src/main/cpp` CMake 即編。
 
 ### 本地工具鏈地雷（2026-09 實測）
 
-- 本機 JDK 21 + AGP 4.2.2：manifest merger 用咗 JDK 16+ 已封嘅反射——平時
-  incremental build 無事（manifest UP-TO-DATE 就唔跑）；**唔 clean、唔
-  `--rerun-tasks`**，任何逼 `processDebugMainManifest` 重跑嘅操作會死
+- 本機 JDK 21 + AGP 4.2.2：manifest merger 用了 JDK 16+ 已封的反射——平時
+  incremental build 無事（manifest UP-TO-DATE 就不跑）；**不 clean、不
+  `--rerun-tasks`**，任何逼 `processDebugMainManifest` 重跑的操作會死
   （`File.path accessible: module java.base does not open java.io`）。
-  萬一逼死咗：直接再跑一次普通 `assembleDebug --offline`，等佢慢慢行完就返綠。
-- 唔 `adb kill-server`；壞 build 唔好短 loop 重試（前人經驗：1.5s loop 會炒）。
-- 出 APK 必 `dexdump` **方法級**驗（類表唔夠；`dexdump -d classes.dex`，APK 直 dump 會 mmap 死，先 unzip）。
-- `ApiResponse.error()` 天生回 500；`Get-Content` 量行數試過唔準（以實測為準）。
-- 寫路徑齋打缺參 400，唔打真值：`misc/set_uuid`、`pir/set`、`servo/*`、
+  萬一逼死了：直接再跑一次普通 `assembleDebug --offline`，等它慢慢行完就變綠。
+- 不 `adb kill-server`；壞 build 不要短 loop 重試（前人經驗：1.5s loop 會崩潰）。
+- 出 APK 必 `dexdump` **方法級**驗（類表不夠；`dexdump -d classes.dex`，APK 直 dump 會 mmap 死，先 unzip）。
+- `ApiResponse.error()` 天生回 500；`Get-Content` 量行數試過不準（以實測為準）。
+- 寫路徑只打缺參 400，不打真值：`misc/set_uuid`、`pir/set`、`servo/*`、
   `vosk/endpointer`。
 - 每輪必做：compile＋`test-apivalidator.py`（104）＋routes＋drift＋dexdump＋
   裝機＋端點＋logcat `FATAL EXCEPTION`。
-- `C:/Users/user/AppData/Local/Temp/opencode`（即 `%TEMP%\opencode`）有舊 session 幾百 MB log，唔好理。
+- `C:/Users/user/AppData/Local/Temp/opencode`（即 `%TEMP%\opencode`）有舊 session 幾百 MB log，不要理。
 
 ## 檔案結構
 
@@ -140,11 +140,11 @@ open-alpha2/
 ## 已知限制
 
 - HTTPS / 瀏覽器麥克風（walkie-talkie）永久停用；「聽機械人」正常。
-- 舊 AIDL passthrough（進階分頁大部份）回 `NOT_INIT`；`RobotStub` 只係誠實失敗嘅 facade。
+- 舊 AIDL passthrough（進階分頁大部份）回 `NOT_INIT`；`RobotStub` 只是誠實失敗的 facade。
 - 無舵機電流回授；聲納圖表等部份 UI 仍只畫 triggered。角度方面：單粒 cmd6
-  實讀已證實可用（`06 [00] [id] [hi] [lo]`，同 `servo/one` 同單位，跟位誤差約
-  1°），但硬件連讀會整冧全機出力（15ms／100ms 兩種節奏都試過，Lynx 嗰邊
+  實際讀取已證實可用（`06 [00] [id] [hi] [lo]`，同 `servo/one` 同單位，跟位誤差約
+  1°），但硬件連讀會弄垮全機出力（15ms／100ms 兩種節奏都試過，Lynx 那邊
   同樣結論），故 SERVO 分頁個榜顯示命令位姿（零 wire：跳舞逐幀＋servo/one
-  逐粒追踪，開機伸展後即已知），單粒即時驗證行 `servo/angle`。
-- 複合編排動作嘅多 block 窗口偏移忽略；歌尾可以長過舵機（跟官方）。
-- 跳大舞嗰陣 USB 易震甩（實測多次），長驗證建議先固定條線或用 `adb logcat` 內錄。
+  逐顆追踪，開機伸展後即已知），單粒即時驗證行 `servo/angle`。
+- 複合編排動作的多 block 窗口偏移忽略；歌尾可以長過舵機（跟官方）。
+- 跳大舞當時 USB 易震掉（實測多次），長驗證建議先固定條線或用 `adb logcat` 內錄。

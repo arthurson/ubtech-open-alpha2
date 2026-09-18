@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""步相檢查：一個步態循環內，各關節極值出現嘅相位（cycle fraction）。
-原版 6 格 vs V4 38 格/循環 —— 相位走位即步姿散（跛行感）。"""
+"""步相檢查：一個步態循環內，各關節極值出現的相位（cycle fraction）。
+原版 6 格 vs V4 38 格/循環 —— 相位移位即步姿散（跛行感）。"""
 import sys
 
 sys.argv = ["x"]

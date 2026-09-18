@@ -131,6 +131,19 @@ public final class VoskController {
     private String grammarJson; // 建好時記下，start 先 new Recognizer
     private boolean stripSpaces; // 中文 char-grammar 吐字之間有空格，發佈前要去掉
 
+    /** 最近發佈過的 final 全文＋時間 - onVoskFinal 去重用 (Vosk 會經 onResult
+     *  同 onFinalResult 將同一句派兩次, 不擋機械人會答兩次)。 */
+    private volatile String lastFinalText = null;
+    private volatile long lastFinalAtMs = 0;
+    private static final long DEDUP_WINDOW_MS = 4000;
+
+    /** TTS pause 序號 - onTtsStarted() 加一, onTtsFinished() 延遲 resume 當時
+     *  對不上就不 resume (新一句 TTS 已經正在開始, 即 resume 會當場製造迴音)。 */
+    private volatile int ttsPauseSeq = 0;
+    /** TTS 播完多少 ms 先 resume decode - 等房間殘響散去, 否則自己句尾誤認
+     *  轉頭造成自言自語迴圈。 */
+    private static final long RESUME_AFTER_TTS_MS = 800;
+
     public VoskController(Context context, SemanticMatcherZh zh,
             SemanticMatcherEn en) {
         this.appContext = context.getApplicationContext();
@@ -606,11 +619,20 @@ public final class VoskController {
     }
 
     /** 成句結果：沿用舊管線（氣泡＋語意配對＋TTS）。
-     *  跑在 SpeechService listener thread（main）。絕不 throw。 */
+     *  跑在 SpeechService listener thread（main）。絕不 throw。
+     *  去重：同一全文 4 秒內再派就吞掉 (Vosk onResult/onFinalResult 會將
+     *  同一句派兩次；靜音環境重複噪音 final 亦擋一次，不會連珠炮自言自語)。 */
     private void onVoskFinal(String hypothesis) {
         try {
             String text = transcript(hypothesis, "text");
             if (text == null || text.isEmpty()) return;
+            long now = System.currentTimeMillis();
+            if (text.equals(lastFinalText) && now - lastFinalAtMs < DEDUP_WINDOW_MS) {
+                Log.i(TAG, "dup final skipped: " + text);
+                return;
+            }
+            lastFinalText = text;
+            lastFinalAtMs = now;
             // 斷症用：log 下認到什麼（EventBus 只帶去前端，logcat 看不到內容）。
             Log.i(TAG, "final: " + text);
             EventBus.get().publish("asr_result",
@@ -629,6 +651,38 @@ public final class VoskController {
             } catch (Throwable ignore) {
             }
         }
+    }
+
+    /** TTS 開始播：記序號＋即 pause decode (同 setPaused(true)，多個序號防亂序)。 */
+    public synchronized void onTtsStarted() {
+        ttsPauseSeq++;
+        setPaused(true);
+    }
+
+    /** TTS 播完：等殘響散去先 resume, 序號對不上 (新一句已經開始) 就不 resume。
+     *  不可以直接 setPaused(false) - onDone 即 resume 會將自己句尾殘響誤認
+     *  轉頭，機械人就會自己同自己聊天。 */
+    public void onTtsFinished() {
+        final int seq;
+        synchronized (VoskController.this) {
+            seq = ttsPauseSeq;
+        }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Thread.sleep(RESUME_AFTER_TTS_MS);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                synchronized (VoskController.this) {
+                    if (seq != ttsPauseSeq) return; // 新一句正在播，不要 resume
+                    Log.i(TAG, "resume decode after tts");
+                    setPaused(false);
+                }
+            }
+        }, "VoskResume").start();
     }
 
     public synchronized String stopListening() {
@@ -1148,5 +1202,6 @@ public final class VoskController {
         }
     }
 }
+
 
 

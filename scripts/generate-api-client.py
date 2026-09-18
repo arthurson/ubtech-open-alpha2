@@ -6,7 +6,7 @@ Usage:
   python scripts/generate-api-client.py
   -> writes app/src/main/assets/web/api-client.js
   python scripts/generate-api-client.py --check
-  -> 只比對唔寫檔，drift 即 exit 1 (啱 CI 用；本地誤跑唔會覆寫)
+  -> 只比對不寫檔，drift 即 exit 1 (啱 CI 用；本地誤跑不會覆寫)
 
 This is the "2. 前端 Typed JS" part of the 1+2 OpenAPI simplification:
 - Single source of truth: openapi yaml
@@ -24,7 +24,7 @@ SPEC = ROOT / "openapi" / "open-alpha2-openapi.yml"
 OUT = ROOT / "app" / "src" / "main" / "assets" / "web" / "api-client.js"
 
 def js_value(v):
-    # enum 值轉 JS 字面值。YAML 1.1 地雷：off/on/yes/no 唔加引號會 parse 做
+    # enum 值轉 JS 字面值。YAML 1.1 地雷：off/on/yes/no 不加引號會 parse 做
     # boolean，直接 f-string 會漏出 Python 字面值（False/True/None）整壞 JS。
     if v is True: return "true"
     if v is False: return "false"
@@ -93,7 +93,7 @@ lines.append("const Alpha2Api = (function() {")
 lines.append("  function qs(params) { return params ? '?' + new URLSearchParams(params).toString() : ''; }")
 lines.append("  function assertEnum(val, allowed, key) { if (val != null && !allowed.includes(val)) throw new Error(key + ' must be one of ' + allowed.join(',')); }")
 lines.append("  // 2026-09-09：數字 enum（ubx/speed 0.5/0.67/…）用數值比對＋後端同款 0.001 容差——")
-lines.append("  // URL/query 嚟嘅係字串，嚴格 includes 會誤殺 \"1\" 之類合法值。")
+lines.append("  // URL/query 來的是字串，嚴格 includes 會誤殺 \"1\" 之類合法值。")
 lines.append("  function assertEnumNum(val, allowed, key) { if (val != null && !allowed.some(function(a){ return Math.abs(Number(val)-a) < 0.001; })) throw new Error(key + ' must be one of ' + allowed.join(',')); }")
 lines.append("  function assertRange(val, min, max, key) { if (val < min || val > max) throw new Error(key + ' must be between '+min+' and '+max); }")
 lines.append("")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""解剖檢查：睇指定 .ubx 郁邊幾粒舵機（同 home 差 >=15 即列出）。"""
+"""解剖檢查：看指定 .ubx 動邊幾粒舵機（同 home 差 >=15 即列出）。"""
 import sys
 
 sys.argv = ["x"]

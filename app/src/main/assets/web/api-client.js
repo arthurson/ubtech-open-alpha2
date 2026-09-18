@@ -12,7 +12,7 @@ const Alpha2Api = (function() {
   function qs(params) { return params ? '?' + new URLSearchParams(params).toString() : ''; }
   function assertEnum(val, allowed, key) { if (val != null && !allowed.includes(val)) throw new Error(key + ' must be one of ' + allowed.join(',')); }
   // 2026-09-09：數字 enum（ubx/speed 0.5/0.67/…）用數值比對＋後端同款 0.001 容差——
-  // URL/query 嚟嘅係字串，嚴格 includes 會誤殺 "1" 之類合法值。
+  // URL/query 來的是字串，嚴格 includes 會誤殺 "1" 之類合法值。
   function assertEnumNum(val, allowed, key) { if (val != null && !allowed.some(function(a){ return Math.abs(Number(val)-a) < 0.001; })) throw new Error(key + ' must be one of ' + allowed.join(',')); }
   function assertRange(val, min, max, key) { if (val < min || val > max) throw new Error(key + ' must be between '+min+' and '+max); }
 
@@ -313,7 +313,7 @@ const Alpha2Api = (function() {
 
   function directUbxSpeed(params) {
     if (params && params.value != null) assertEnumNum(params.value, [0.5, 0.67, 1, 1.5, 2], 'value');
-    // 動作播放變速（舵機+配樂同縮放；黏性，播緊時設會由頭重播即時生效）
+    // 動作播放變速（舵機+配樂同縮放；黏性，正在播時設會由頭重播即時生效）
     return directApi('ubx/speed', params);
   }
 
@@ -339,7 +339,7 @@ const Alpha2Api = (function() {
 
   function ubxSpeed(params) {
     if (params && params.value != null) assertEnumNum(params.value, [0.5, 0.67, 1, 1.5, 2], 'value');
-    // 動作播放變速（舵機+配樂同縮放；黏性，播緊時設會由頭重播即時生效）
+    // 動作播放變速（舵機+配樂同縮放；黏性，正在播時設會由頭重播即時生效）
     return api('ubx/speed', params);
   }
 
@@ -450,7 +450,7 @@ const Alpha2Api = (function() {
 
   function servoAngle(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
-    // 實讀單顆舵機絕對角度（胸 cmd6 live query）
+    // 實際讀取單顆舵機絕對角度（胸 cmd6 live query）
     return api('servo/angle', params);
   }
 
@@ -476,12 +476,12 @@ const Alpha2Api = (function() {
 
   function servoRead(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
-    // 實讀單顆舵機 trim（胸 cmd13 live query，官方 tuner 同款）
+    // 實際讀取單顆舵機 trim（胸 cmd13 live query，官方 tuner 同款）
     return api('servo/read', params);
   }
 
   function servoReadAll(params) {
-    // 逐顆實讀全部 20 軸 trim（tuner 掃描 offset 用，官方節奏約十幾 ms 一粒）
+    // 逐顆實際讀取全部 20 軸 trim（tuner 掃描 offset 用，官方節奏約十幾 ms 一粒）
     return api('servo/read-all', params);
   }
 
@@ -570,7 +570,7 @@ const Alpha2Api = (function() {
   }
 
   function speechTtsVoices(params) {
-    // 列出某語言嘅可用聲音 (Google TTS 每個語言多把聲)
+    // 列出某語言的可用聲音 (Google TTS 每個語言多把聲)
     return api('speech/tts_voices', params);
   }
 
@@ -580,7 +580,7 @@ const Alpha2Api = (function() {
   }
 
   function voskDownload(params) {
-    // 下載 Vosk 模型並自動 unzip 到 sdcard（完咗自動 load）
+    // 下載 Vosk 模型並自動 unzip 到 sdcard（完了自動 load）
     return api('vosk/download', params);
   }
 
@@ -642,12 +642,12 @@ const Alpha2Api = (function() {
   }
 
   function systemAuthVerify(params) {
-    // 校驗候選 token（前端解鎖掣用；永遠回 200，結果在 valid）
+    // 校驗候選 token（前端解鎖按鈕用；永遠回 200，結果在 valid）
     return sysApi('auth/verify', params);
   }
 
   function systemDiscover(params) {
-    // 一野搜齊機器資料（app/胸固件/UUID/電量/聲納/PIR/位姿；慢 query 各 1.5s 上限）
+    // 一次搜齊機器資料（app/胸固件/UUID/電量/聲納/PIR/位姿；慢 query 各 1.5s 上限）
     return sysApi('discover', params);
   }
 

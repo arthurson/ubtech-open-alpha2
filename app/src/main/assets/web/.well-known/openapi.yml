@@ -437,7 +437,7 @@ paths:
     get:
       tags:
       - direct
-      summary: 動作播放變速（舵機+配樂同縮放；黏性，播緊時設會由頭重播即時生效）
+      summary: 動作播放變速（舵機+配樂同縮放；黏性，正在播時設會由頭重播即時生效）
       parameters:
       - name: value
         in: query
@@ -455,7 +455,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
         '200':
-          description: '{ok, code, speed, restarted}（restarted=播緊時是否已重播）'
+          description: '{ok, code, speed, restarted}（restarted=正在播時是否已重播）'
           content:
             application/json:
               schema:
@@ -874,7 +874,7 @@ paths:
     get:
       tags:
       - direct
-      summary: 動作播放變速（舵機+配樂同縮放；黏性，播緊時設會由頭重播即時生效）
+      summary: 動作播放變速（舵機+配樂同縮放；黏性，正在播時設會由頭重播即時生效）
       parameters:
       - name: value
         in: query
@@ -892,7 +892,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
         '200':
-          description: '{ok, code, speed, restarted}（restarted=播緊時是否已重播）'
+          description: '{ok, code, speed, restarted}（restarted=正在播時是否已重播）'
           content:
             application/json:
               schema:
@@ -914,7 +914,7 @@ paths:
       - speech
       summary: 播 TTS（恆用 Android 系統 TTS）
       description: 2026-09 機身已無 Nuance/iFlytek 引擎（alpha2services 已移除，binder
-        已死），nuance/iflytek 已經永久唔再用，engine 參數只准 "android"，其餘值一律被
+        已死），nuance/iflytek 已經永久不再用，engine 參數只准 "android"，其餘值一律被
         validation 拒收（{ok:false}，HTTP 400）。
       parameters:
       - name: text
@@ -929,13 +929,13 @@ paths:
           enum:
           - android
           default: android
-        description: 只准 android（唯一會出聲嘅引擎；nuance/iflytek 已經永久唔再用，2026-09
-          起唔再係合法值）
+        description: 只准 android（唯一會出聲的引擎；nuance/iflytek 已經永久不再用，2026-09
+          起不再是合法值）
       - name: voice
         in: query
         schema:
           type: string
-        description: 聲音名 (speech/tts_voices 回傳，空=該語言預設聲；搵唔到跌返 lang 路)
+        description: 聲音名 (speech/tts_voices 回傳，空=該語言預設聲；找不到跌回 lang 路)
       - name: lang
         in: query
         schema:
@@ -1163,14 +1163,14 @@ paths:
     get:
       tags:
       - speech
-      summary: 列出某語言嘅可用聲音 (Google TTS 每個語言多把聲)
+      summary: 列出某語言的可用聲音 (Google TTS 每個語言多把聲)
       parameters:
       - name: lang
         in: query
         schema:
           type: string
           example: yue-HK
-        description: BCP-47 tag (speech/tts_languages 回傳；空=成個引擎唔過濾)
+        description: BCP-47 tag (speech/tts_languages 回傳；空=整個引擎不過濾)
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -1586,7 +1586,7 @@ paths:
     get:
       tags:
       - speech
-      summary: 下載 Vosk 模型並自動 unzip 到 sdcard（完咗自動 load）
+      summary: 下載 Vosk 模型並自動 unzip 到 sdcard（完了自動 load）
       parameters:
       - name: model
         in: query
@@ -1656,7 +1656,7 @@ paths:
       tags:
       - servo
       summary: 控制單顆舵機角度（cmd05 單發；可選連 trim 經 cmd12 寫入 chest EEPROM）
-      description: 只郁目標一粒。trim 有帶就接著寫入（掉電保持，亂寫會改出廠校準；掃描驗證）。17/18 號手指天生無回授，trim 寫入會報失敗
+      description: 只動目標一粒。trim 有帶就接著寫入（掉電保持，亂寫會改出廠校準；掃描驗證）。17/18 號手指天生無回授，trim 寫入會報失敗
       parameters:
       - name: id
         in: query
@@ -1687,7 +1687,7 @@ paths:
           type: integer
           minimum: -1000
           maximum: 1000
-        description: 偏差值（signed），經 cmd12 寫入 chest EEPROM 並掉電保持；唔帶就淨郁角度
+        description: 偏差值（signed），經 cmd12 寫入 chest EEPROM 並掉電保持；不帶就僅動角度
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -1715,7 +1715,7 @@ paths:
                       type: boolean
                     trimUnknown:
                       type: boolean
-                      description: true = 已送出但回覆被搶食（未知寫入否，重掃驗證；實測零 ACK 照存入）
+                      description: true = 已送出但回覆被搶食（未知寫入否，重新掃描驗證；實測零 ACK 照存入）
       operationId: servoOne_get
   /api/servo/all:
     get:
@@ -1757,8 +1757,8 @@ paths:
     get:
       tags:
       - servo
-      summary: 實讀單顆舵機 trim（胸 cmd13 live query，官方 tuner 同款）
-      description: 發 f8 8f 08 05 00 0d <id> 讀 chest 存住的偏差原值（官方角:偏 = 1:3），不是絕對角度；8 號例：位姿 65 下橫跨多次讀數恒為 -33。讀唔到（超時／舵機回 01 error，如本機 5/6 號硬件壞；17/18 號手指天生無回授）報 ok:false。commanded 係命令位姿追踪值，僅供參考
+      summary: 實際讀取單顆舵機 trim（胸 cmd13 live query，官方 tuner 同款）
+      description: 發 f8 8f 08 05 00 0d <id> 讀 chest 存住的偏差原值（官方角:偏 = 1:3），不是絕對角度；8 號例：位姿 65 下橫跨多次讀數恒為 -33。讀不到（超時／舵機回 01 error，如本機 5/6 號硬件壞；17/18 號手指天生無回授）報 ok:false。commanded 是命令位姿追踪值，僅供參考
       parameters:
       - name: id
         in: query
@@ -1776,7 +1776,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
         '200':
-          description: trim 實讀值（或讀失敗）
+          description: trim 實際讀取值（或讀失敗）
           content:
             application/json:
               schema:
@@ -1804,7 +1804,7 @@ paths:
     get:
       tags:
       - servo
-      summary: 逐顆實讀全部 20 軸 trim（tuner 掃描 offset 用，官方節奏約十幾 ms 一粒）
+      summary: 逐顆實際讀取全部 20 軸 trim（tuner 掃描 offset 用，官方節奏約十幾 ms 一粒）
       parameters:
       - $ref: '#/components/parameters/PanelToken'
       responses:
@@ -1815,7 +1815,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
         '200':
-          description: 20 軸 trim 原值；讀唔到嗰粒記 null 並列入 failed
+          description: 20 軸 trim 原值；讀不到那顆記 null 並列入 failed
           content:
             application/json:
               schema:
@@ -1839,8 +1839,8 @@ paths:
     get:
       tags:
       - servo
-      summary: 實讀單顆舵機絕對角度（胸 cmd6 live query）
-      description: 發 f8 8f 08 00 00 06 <id> 讀即時角度（同 servo/one 同單位；跟位實測誤差約 1°）。注意唔係 servo/read 嗰個 trim/偏差。讀唔到（超時）報 ok:false
+      summary: 實際讀取單顆舵機絕對角度（胸 cmd6 live query）
+      description: 發 f8 8f 08 00 00 06 <id> 讀即時角度（同 servo/one 同單位；跟位實測誤差約 1°）。注意不是 servo/read 那個 trim/偏差。讀不到（超時）報 ok:false
       parameters:
       - name: id
         in: query
@@ -1858,7 +1858,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
         '200':
-          description: 絕對角度實讀值（或讀失敗）
+          description: 絕對角度實際讀取值（或讀失敗）
           content:
             application/json:
               schema:
@@ -1879,7 +1879,7 @@ paths:
       tags:
       - servo
       summary: 讀單顆舵機絕對角度並即寫回上力（原子操作）
-      description: 先 cmd6 實讀（會鬆開嗰粒），即用 servo/one（cmd05）寫返同一個位上力，全程後端內完成。讀唔到（超時）報 ok:false 且唔寫回
+      description: 先 cmd6 實際讀取（會鬆開那顆），即用 servo/one（cmd05）寫回同一個位上力，全程後端內完成。讀不到（超時）報 ok:false 且不寫回
       parameters:
       - name: id
         in: query
@@ -1921,7 +1921,7 @@ paths:
       tags:
       - servo
       summary: 連讀 20 軸絕對角度，每粒即寫回上力（100ms 間隔）
-      description: 逐粒 cmd6 實讀＋即 servo/one 寫返同位（讀會鬆開嗰粒，寫回即上力；單粒已證實無鬆無郁，20 連讀實測中）。讀唔到嗰粒記 null 並列入 failed，且唔寫回
+      description: 逐顆 cmd6 實際讀取＋即 servo/one 寫回同位（讀會鬆開那顆，寫回即上力；單粒已證實無鬆無動，20 連讀實測中）。讀不到那顆記 null 並列入 failed，且不寫回
       parameters:
       - $ref: '#/components/parameters/PanelToken'
       responses:
@@ -1932,7 +1932,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
         '200':
-          description: 20 軸即時角度＋逐粒有無寫回；讀唔到嗰粒記 null
+          description: 20 軸即時角度＋逐顆有無寫回；讀不到那顆記 null
           content:
             application/json:
               schema:
@@ -1950,7 +1950,7 @@ paths:
                         nullable: true
                     restored:
                       type: array
-                      description: 逐粒有無即寫回上力
+                      description: 逐顆有無即寫回上力
                       items:
                         type: boolean
                     failed:
@@ -2630,7 +2630,7 @@ paths:
           type: integer
           minimum: 1
           maximum: 4208
-        description: setRequestedResolution 會揀最接近嘅 supported preview size (不超過 sensor picture 上限 4208)
+        description: setRequestedResolution 會選最接近的 supported preview size (不超過 sensor picture 上限 4208)
       - name: h
         in: query
         required: true
@@ -2638,7 +2638,7 @@ paths:
           type: integer
           minimum: 1
           maximum: 3120
-        description: setRequestedResolution 會揀最接近嘅 supported preview size (不超過 sensor picture 上限 3120)
+        description: setRequestedResolution 會選最接近的 supported preview size (不超過 sensor picture 上限 3120)
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -3617,7 +3617,7 @@ paths:
     get:
       tags:
       - system
-      summary: 一野搜齊機器資料（app/胸固件/UUID/電量/聲納/PIR/位姿；慢 query 各 1.5s 上限）
+      summary: 一次搜齊機器資料（app/胸固件/UUID/電量/聲納/PIR/位姿；慢 query 各 1.5s 上限）
       description: lynx 年代 sys/* 七連發的 pure-direct 版；電池版本字串本機胸固件無此命令，如實缺席
       parameters:
       - $ref: '#/components/parameters/PanelToken'
@@ -3710,7 +3710,7 @@ paths:
     get:
       tags:
       - system
-      summary: 校驗候選 token（前端解鎖掣用；永遠回 200，結果在 valid）
+      summary: 校驗候選 token（前端解鎖按鈕用；永遠回 200，結果在 valid）
       description: 永遠開放，不觸發閘口。見 PanelAuth.java。
       parameters:
       - $ref: '#/components/parameters/PanelToken'
@@ -4413,7 +4413,7 @@ paths:
         schema:
           type: string
           enum: ['off', xiaozhi, vosk]
-        description: off=乜都唔自動起，xiaozhi=開app自動連接小智，vosk=開app自動起Vosk聆聽
+        description: off=什麼都不自動起，xiaozhi=開app自動連接小智，vosk=開app自動起Vosk聆聽
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '200':

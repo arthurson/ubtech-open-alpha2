@@ -261,29 +261,29 @@ pre {
 }
 
 /* 小智 (XiaoZhi) AI 對話氣泡 - user/assistant 左右對齊分開, system 行 (連接狀態/
-   MCP 工具調用/錯誤) 用淡色置中, 好似其他聊天介面咁易分辨邊句係邊個講。 */
+   MCP 工具調用/錯誤) 用淡色置中, 好似其他聊天介面這麼易分辨邊句是哪個講。 */
 .xiaozhi-msg { padding: 6px 10px; border-radius: 12px; margin: 3px 0; max-width: 78%; }
 /* 小智 (assistant) 靠左主題色底；用戶 (user) 靠右中性底 — 顏色同排位雙重區分。
-   用 display:table 縮窄闊度兼保持獨立 block，不用 width:fit-content（舊 WebView，如 Android 5.1，不支援，會撐滿成行分唔到左右）。 */
+   用 display:table 縮窄闊度兼保持獨立 block，不用 width:fit-content（舊 WebView，如 Android 5.1，不支援，會撐滿成行分不到左右）。 */
 .xiaozhi-msg-user { background: var(--accent); color: #fff; margin-left: auto; margin-right: 0;
   text-align: right; display: table; }
 .xiaozhi-msg-assistant { background: var(--card-bg); border: 1px solid var(--border); margin-right: auto;
   margin-left: 0; text-align: left; display: table; }
 .xiaozhi-msg-system { color: var(--muted); font-size: 0.85em; text-align: center; max-width: 100%; margin-left: auto; margin-right: auto; display: block; }
 
-/* 每句同時掛 ".log-line"（見 xiaozhiAppendChatLine），.log-line 排後面會冚 margin:auto；用 .xiaozhi-msg.xiaozhi-msg-user 複合 selector (specificity 高) 重宣告 margin，唔使 !important。 */
+/* 每句同時掛 ".log-line"（見 xiaozhiAppendChatLine），.log-line 排後面會冚 margin:auto；用 .xiaozhi-msg.xiaozhi-msg-user 複合 selector (specificity 高) 重宣告 margin，不用 !important。 */
 .xiaozhi-msg.xiaozhi-msg-user { margin-left: auto; margin-right: 0; }
 .xiaozhi-msg.xiaozhi-msg-assistant { margin-right: auto; margin-left: 0; }
 
-/* 每句訊息底下嘅細字時間戳。用戶氣泡本身係實心底色, 細字要用半透明白色先睇得清;
-   assistant 氣泡係淡色底, 用返 --muted 就夠。 */
+/* 每句訊息底下的細字時間戳。用戶氣泡本身是實心底色, 細字要用半透明白色先看得清;
+   assistant 氣泡是淡色底, 用回 --muted 就夠。 */
 .xiaozhi-msg-meta { font-size: 0.75em; margin-top: 2px; opacity: 0.75; }
 .xiaozhi-msg-user .xiaozhi-msg-meta { color: rgba(255,255,255,0.85); }
 .xiaozhi-msg-assistant .xiaozhi-msg-meta { color: var(--muted); }
 
-/* MCP 工具呼叫卡片 - 跟返 xiaozhi.me console 「歷史對話」畫面嘅
-   「🔧 工具呼叫」樣式, 獨立、置中、比一般對話氣泡闊嘅卡片, 一眼分辨得出呢個唔係
-   對話內容而係協議層動作。 */
+/* MCP 工具呼叫卡片 - 遵循 xiaozhi.me console 「歷史對話」畫面的
+   「🔧 工具呼叫」樣式, 獨立、置中、比一般對話氣泡闊的卡片, 一眼分辨得出這個不是
+   對話內容而是協議層動作。 */
 .xiaozhi-mcp-card { max-width: 92%; margin: 6px auto; border: 1px solid var(--border); border-radius: 10px;
   background: var(--card-bg); overflow: hidden; }
 .xiaozhi-mcp-card-header { padding: 6px 10px; font-size: 0.85em; font-weight: 600; color: var(--muted);
@@ -322,8 +322,8 @@ pre {
   border-color: var(--accent);
 }
 
-/* Vosk 模型按鍵：一次淨一粒有效——有效嗰粒藍色 (active)，其餘灰色；
-   切換緊嗰粒閃爍，鎖住嗰陣撳唔到（disabled）。 */
+/* Vosk 模型按鍵：一次僅一粒有效——有效那顆藍色 (active)，其餘灰色；
+   正在切換那顆閃爍，鎖住當時按不到（disabled）。 */
 .vosk-model-btn {
   background: var(--track);
   color: var(--text);
@@ -347,7 +347,7 @@ pre {
   opacity: 0.75;
 }
 .vosk-model-btn.active:disabled {
-  opacity: 1; /* 有效嗰粒鎖住嗰陣都保持藍色，唔好灰埋 */
+  opacity: 1; /* 有效那顆鎖住當時都保持藍色，不要灰埋 */
 }
 
 /* Action sub-tabs (basic/dance/story/yoga/others): each button carries its own
@@ -563,7 +563,7 @@ input[type="range"] {
 .log-type-grammar_error { color: #dc2626; }
 .log-type-offline_mode { color: #9333ea; }
 
-/* .log-type-* 顏色保留 (Event Log 照樣顯示呢啲 type)。 */
+/* .log-type-* 顏色保留 (Event Log 照樣顯示這些 type)。 */
 .asr-mode-label {
   font-size: 12px;
   font-weight: normal;
@@ -1068,8 +1068,8 @@ input[type="range"] {
   gap: 8px;
 }
 
-/* Mic 擁有權指示燈 - 綠色 = 呢個 app 攞到 mic 擁有權 (setWakeState(false) 已生效,
-   語音對話搶到咗), 灰色 = 已放低 (system 嘅 wake-word 引擎攞返)。 */
+/* Mic 擁有權指示燈 - 綠色 = 這個 app 拿到 mic 擁有權 (setWakeState(false) 已生效,
+   語音對話搶到了), 灰色 = 已釋放 (system 的 wake-word 引擎取回)。 */
 .led-dot {
   display: inline-block;
   width: 10px;
@@ -1120,7 +1120,7 @@ input[type="range"] {
   box-shadow: 0 0 12px 2px rgba(220, 38, 38, 0.55);
 }
 
-/* Vosk 聆聽指示燈 — 綠=聽緊，灰=其他。 */
+/* Vosk 聆聽指示燈 — 綠=正在聽，灰=其他。 */
 .vosk-state-dot {
   display: inline-block;
   width: 12px;
@@ -1348,9 +1348,9 @@ input[type="range"] {
   }
 }
 
-/* 面板鎖屏浮層（PanelAuth 全面板上鎖＋未解鎖時蓋住成個面版，見 index.html
+/* 面板鎖屏浮層（PanelAuth 全面板上鎖＋未解鎖時蓋住整個面版，見 index.html
    #panelLockOverlay＋app-core.js panelLockCheck/panelLockUnlock；裡面沿用
-   全局 .row／button／input／.hint 樣式，呢度淨係定位＋卡盒）。 */
+   全局 .row／button／input／.hint 樣式，這裡僅定位＋卡盒）。 */
 #panelLockOverlay {
   display: none;
   position: fixed;

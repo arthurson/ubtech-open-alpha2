@@ -563,10 +563,11 @@ public final class TtsCenter {
                 // called, not here, so it lights up without waiting for this callback's
                 // round-trip.
                 // Vosk 聆聽中就暫停回去，不要將自己的聲音再識別回去造成無限迴音。
-                // mic 照樣 hold 住（pause 不放 recorder），播完 onDone  resume。
+                // mic 照樣 hold 住（pause 不放 recorder），播完 onDone 延遲 resume
+                //（見 VoskController.onTtsFinished，等殘響散去先解封）。
                 if (vosk != null) {
                     try {
-                        vosk.setPaused(true);
+                        vosk.onTtsStarted();
                     } catch (Throwable ignore) {
                     }
                 }
@@ -577,7 +578,7 @@ public final class TtsCenter {
                 LedCenter.stopMouthLedForTts();
                 if (vosk != null) {
                     try {
-                        vosk.setPaused(false);
+                        vosk.onTtsFinished();
                     } catch (Throwable ignore) {
                     }
                 }
@@ -594,7 +595,7 @@ public final class TtsCenter {
                 LedCenter.stopMouthLedForTts();
                 if (vosk != null) {
                     try {
-                        vosk.setPaused(false);
+                        vosk.onTtsFinished();
                     } catch (Throwable ignore) {
                     }
                 }

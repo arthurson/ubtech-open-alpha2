@@ -33,13 +33,19 @@ function nowTimeStr() {
 }
 
 /** 統一的語意配對＋TTS＋動作觸發函數 — 各種輸入方法（文字輸入等）都用這個
- *  方法處理，同 sendSpeechChatText() 後半段邏輯一致。 */
-function triggerSemanticSimulate(text) {
+ *  方法處理，同 sendSpeechChatText() 後半段邏輯一致。
+ *  fromVoice＝經 Vosk 語音觸發：短句 fallback 之後有 2.5 秒靜音窗
+ *  （環境噪音 final 成串來當時不會連珠炮亂答；打字觸發一律不閘）。 */
+var lastFallbackQuietUntil = 0;
+function triggerSemanticSimulate(text, fromVoice) {
   if (!text) return;
   Alpha2Api.speechSemanticSimulate( { text: text }).then(function (res) {
     if (!res || !res.ok) return;
     if (!res.matched) {
       appendSpeechChatLine("xiaozhi-msg-system", t("speech_chat_simulate_no_match"));
+      if (fromVoice && text.length < 4) {
+        lastFallbackQuietUntil = Date.now() + 2500;
+      }
       return;
     }
     // 對話界面僅顯示中英文對白 — [TYPE operation] 動作ID detail 行不在對話流顯示 (Event Log 有同樣資訊)。
@@ -124,8 +130,22 @@ function appendLog(msg) {
     // 對話界面：辨識結果顯示做 user 氣泡 (經 cleanChatText 過濾，JSON 碎片不出現在對話流)。
     const cleanAsr = cleanChatText(msg.data.text);
     if (cleanAsr && typeof appendSpeechChatLine === "function") {
-      appendSpeechChatLine("xiaozhi-msg-user", cleanAsr);
-      triggerSemanticSimulate(cleanAsr);
+      // 單字 final（啊/嗯/哦之類底噪幻聽）連氣泡都不出——出了都不會配對
+      // （下面道閘），僅洗版。真人講的單字指令（嗨）一樣不出氣泡，
+      // 可用「你好」代替；打字照出不影響。想看 Vosk 實際聽到什麼，
+      // 語音頁即時 partial 行＋logcat "final:" 照有。
+      if (cleanAsr.length < 2) {
+        // 不出氣泡，不配對，直接處理下一個 event。
+      } else {
+        appendSpeechChatLine("xiaozhi-msg-user", cleanAsr);
+      // 語音觸發兩重閘：單字噪音 final（啊/嗯/哦之類）只出氣泡不配對，
+      // 否則經包含配對會撞入「早啊」之類招呼；短句 fallback 後 2.5 秒內
+      // 的短句亦只出氣泡（打斷噪音連珠炮）。打字觸發行另一條路，不受影響。
+      if (cleanAsr.length >= 2
+          && (cleanAsr.length >= 4 || Date.now() >= lastFallbackQuietUntil)) {
+        triggerSemanticSimulate(cleanAsr, true);
+      }
+      }
     }
   }
   // Vosk 即時 partial — 僅顯示在語音頁 Vosk 卡狀態行，不入對話流 (成句先經 asr_result 入氣泡＋管線)。
@@ -217,4 +237,5 @@ window.addEventListener("DOMContentLoaded", function () {
   if (typeof refreshSupportedSizes === "function") refreshSupportedSizes();
   if (typeof buildCameraPhoto9Grid === "function") buildCameraPhoto9Grid();
 });
+
 

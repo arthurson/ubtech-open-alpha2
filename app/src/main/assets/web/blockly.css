@@ -1,21 +1,21 @@
 /* Open Alpha2 — Blockly 頁面樣式。
-   刻意唔重新定義色系, 全部食 style.css 已有嘅 CSS 變數 (--bg/--accent/--border/...),
-   等呢頁同「控制面板」個幾個 tab 睇落係同一個產品, 唔係外掛第三方風格。 */
+   刻意不重新定義色系, 全部食 style.css 已有的 CSS 變數 (--bg/--accent/--border/...),
+   等這頁同「控制面板」個幾個 tab 看來是同一個產品, 不是外掛第三方風格。 */
 
 .blockly-body {
-  /* style.css 個 body 本身已經係 flex column + height:100vh + overflow:hidden,
-     呢度淨係補返 Blockly 頁專屬嘅內層排版, 唔覆寫 body 本身。 */
+  /* style.css 個 body 本身已經是 flex column + height:100vh + overflow:hidden,
+     這裡僅補回 Blockly 頁專屬的內層排版, 不覆寫 body 本身。 */
 }
 
-/* 2026-08 修正: 之前呢個 class 完全冇任何 rule - showError() (blockly-page.js)
-   淨係識得 banner.style.display = 'block'/'none' 去切換, 但個 <div id="errorBanner">
-   本身喺 HTML 入面冇 inline style, 亦冇對應 css rule 提供預設 display:none, 令佢
-   一開波 (未觸發任何錯誤) 就用返瀏覽器 <div> 嘅 default display:block 顯示緊 -
-   雖然因為冇文字/冇 padding 大部分情況下唔算好顯眼, 但一旦真係有錯誤發生, 個
-   banner 顯示出嚟嘅係完全冇樣式嘅純黑字, 冇背景色冇邊框, 達唔到「警示」呢個
-   UX 目的。呢度補返: 預設用 display:none (同 showError()/clearError() 嘅
-   assumption 一致), 出現錯誤嗰陣用返呢個 project 已有嘅 --err 紅色系, 同
-   .bk-btn-danger 保持一致嘅設計語言。 */
+/* 2026-08 修正: 之前這個 class 完全沒有任何 rule - showError() (blockly-page.js)
+   僅支援得 banner.style.display = 'block'/'none' 去切換, 但個 <div id="errorBanner">
+   本身在 HTML 裡面沒有 inline style, 亦沒有對應 css rule 提供預設 display:none, 令它
+   一開始 (未觸發任何錯誤) 就用回瀏覽器 <div> 的 default display:block 正在顯示 -
+   雖然因為沒有文字/沒有 padding 大部分情況下不算好顯眼, 但一旦真正有錯誤發生, 個
+   banner 顯示出來的是完全沒有樣式的純黑字, 沒有背景色沒有邊框, 達不到「警示」這個
+   UX 目的。這裡補回: 預設用 display:none (同 showError()/clearError() 的
+   assumption 一致), 出現錯誤當時用回這個 project 已有的 --err 紅色系, 同
+   .bk-btn-danger 保持一致的設計語言。 */
 .error-banner {
   display: none;
   flex: 0 0 auto;
@@ -205,27 +205,27 @@
   position: relative;
 }
 
-/* 2026-08: 復原/取消復原/剪下/複製/貼上/刪除 6 粒掣, 同「收埋/展開執行紀錄
-   面板」嗰粒 ›/‹ 掣, 之前用嘅係獨立喺 Blockly 之外嘅 HTML <div>/<button>,
-   靠 CSS position:absolute + JS 度度 Blockly 垃圾桶而家喺邊嚟跟實佢 ——
-   試過兩次都始終同 Blockly 真正嘅內部排位邏輯對唔實 (scrollbar/toolbox
-   闊度/zoom 等因素動態影響垃圾桶實際位置, HTML overlay 追極都會慢半拍或者
-   量錯)。而家改用 Blockly 官方嘅 Blockly.ComponentManager +
-   Blockly.uiPosition 呢一套 IPositionable 機制重寫呢兩組掣, 同垃圾桶/zoom
-   controls 用返完全同一套定位管線 (WorkspaceSvg 內部會將所有已註冊嘅
+/* 2026-08: 復原/取消復原/剪下/複製/貼上/刪除 6 粒按鈕, 同「收起/展開執行紀錄
+   面板」那顆 ›/‹ 按鈕, 之前用的是獨立在 Blockly 之外的 HTML <div>/<button>,
+   靠 CSS position:absolute + JS 度度 Blockly 垃圾桶現在在哪正在裡隨它 ——
+   試過兩次都始終同 Blockly 真正的內部排位邏輯對不實 (scrollbar/toolbox
+   闊度/zoom 等因素動態影響垃圾桶實際位置, HTML overlay 怎麼追都會慢半拍或者
+   量錯)。現在改用 Blockly 官方的 Blockly.ComponentManager +
+   Blockly.uiPosition 這一套 IPositionable 機制重寫這兩組按鈕, 同垃圾桶/zoom
+   controls 用回完全同一套定位管線 (WorkspaceSvg 內部會將所有已註冊的
    POSITIONABLE component 按 weight 排序, 逐個 call .position(metrics,
-   alreadyPositionedRects) 再攞返 .getBoundingRectangle() 傳俾下一個, 等
-   佢哋自動 stacking 唔會疊埋), 所以呢兩組掣而家係真正嘅 Blockly SVG UI
-   component (喺 blockly-run.js 嘅 EditToolbarControls/SidePanelToggle
-   class 度實現), 唔再需要呢度有對應嘅 HTML/CSS —— 呢兩組掣自己嘅視覺
-   style 直接用 inline SVG attribute/CSS class (.bk-svg-fab 系列, 定義喺
+   alreadyPositionedRects) 再取回 .getBoundingRectangle() 傳給下一個, 等
+   它們自動 stacking 不會重疊), 所以這兩組按鈕現在是真正的 Blockly SVG UI
+   component (在 blockly-run.js 的 EditToolbarControls/SidePanelToggle
+   class 度實現), 不再需要這裡有對應的 HTML/CSS —— 這兩組按鈕自己的視覺
+   style 直接用 inline SVG attribute/CSS class (.bk-svg-fab 系列, 定義在
    下面) 控制。 */
 .bk-svg-fab-group {
   cursor: pointer;
 }
-/* 2026-08: 跟 Code Lab 個風格 —— 平時透明底、冇邊框, 純線條圖示浮喺畫布
-   之上; hover 先出返淺灰圓底 (提示可以撳)。唔再有連埋一整條嘅 pill 背景
-   (.bk-svg-fab-bg 已拆走), 每粒掣係獨立一個透明區域。 */
+/* 2026-08: 跟 Code Lab 個風格 —— 平時透明底、沒有邊框, 純線條圖示浮在畫布
+   之上; hover 先出返淺灰圓底 (提示可以按)。不再有一併一整條的 pill 背景
+   (.bk-svg-fab-bg 已拆走), 每粒按鈕是獨立一個透明區域。 */
 .bk-svg-fab-circle {
   fill: transparent;
 }
@@ -272,9 +272,9 @@
 }
 
 .bk-main.bk-side-collapsed .bk-side {
-  /* display:none 會令 Blockly.svgResize() 攞唔到正確嘅剩餘闊度 (flex 计算
-     喺個元素消失嗰一刻已經定咗), 用 flex-basis:0 + overflow:hidden 淨係將
-     佢闊度收窄到 0, 保留返個 flex box 存在, resize 先計得啱。 */
+  /* display:none 會令 Blockly.svgResize() 拿不到正確的剩餘闊度 (flex 计算
+     在個元素消失那一刻已經定了), 用 flex-basis:0 + overflow:hidden 僅將
+     它闊度收窄到 0, 保保留個 flex box 存在, resize 先計得啱。 */
   flex: 0 0 0;
   min-width: 0;
   overflow: hidden;
@@ -335,8 +335,8 @@
   }
   .bk-header h1 { font-size: 15px; }
   /* 窄螢幕 (手機直向) 個 header 已經幾迫: 返回箭頭 + 標題 + WS 連接狀態,
-     版本號 badge 淨係參考資訊, 唔係核心操作, 索性喺呢個闊度隱藏, 留返空間
-     俾 WebSocket 連接狀態 (呢個先係用家實際需要留意嘅嘢)。 */
+     版本號 badge 僅參考資訊, 不是核心操作, 索性在這個闊度隱藏, 保留空間
+     給 WebSocket 連接狀態 (這個才是用家實際需要留意的東西)。 */
   .bk-version-badge { display: none; }
   .bk-lang-toggle button { padding: 3px 8px; font-size: 11px; }
   .bk-backend-btn { padding: 3px 8px; font-size: 11px; }

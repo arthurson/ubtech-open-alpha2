@@ -52,7 +52,7 @@ public final class LedCenter {
 
     /** onDestroy() 會 shutdownNow() 上面條 executor，但 wifi receiver
      *  之前 postDelayed 了的 runnable (1200ms) 還會在之後照開，當時再排就撞上
-     *  RejectedExecutionException 炒在 main thread——app
+     *  RejectedExecutionException 崩潰在 main thread——app
      *  收緊皮當時掉了個 LED 更新是正確行為，吞了它。
      *  公開是因為 mute 鍵小智開關／mute LED 發送都借這條單線程做背景執行。 */
     public void postPadLed(Runnable r) {

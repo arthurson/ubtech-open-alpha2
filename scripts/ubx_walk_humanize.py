@@ -2,19 +2,19 @@
 """
 .ubx 步態擬人化重建：去一格格頓挫 (零依賴，不用 gradle)。
 
-背景：1508999860568.ubx（前進）主步態係 6 個關鍵幀循環兩次，
-每幀槽位 (s+e)*T 長達 500~900ms，move 完仲要 hold (e=5) 先跳下幀，
-速度三角波、逐格停 → 目視一格格。手腳對擺相位原檔已有，只係被頓挫遮住。
+背景：1508999860568.ubx（前進）主步態是 6 個關鍵幀循環兩次，
+每幀槽位 (s+e)*T 長達 500~900ms，move 完還要 hold (e=5) 先跳下幀，
+速度三角波、逐格停 → 目視一格格。手腳對擺相位原檔已有，只是被頓挫遮住。
 
-做法（保守、安全第一，唔發明新步幅）：
+做法（保守、安全第一，不發明新步幅）：
 1. 逐軸 Catmull-Rom 插值（步態循環用 ghost 起步＋seam 真鄰居，首尾不斷速；
    起步/收步用 duplicated endpoint，自然 ease-in/out）。
 2. 每個原間隔細分為 5-tick 子幀（track1 每格 100ms；track0/2 每格 250ms；
-   v2 試過 1 tick/20ms 太密太惡，棄用），s=5、e=0：move 郁滿成格，
-   格與格之間零停留，總 tick 守恆（唔計 lead-in）。
-3. 開場 2 秒 lead-in：由企直 home pose 慢慢沉入起步 pose（v2 無呢段，
+   v2 試過 1 tick/20ms 太密太惡，棄用），s=5、e=0：move 動滿成格，
+   格與格之間零停留，總 tick 守恆（不計 lead-in）。
+3. 開場 2 秒 lead-in：由站直 home pose 慢慢沉入起步 pose（v2 無這段，
    首格 50ms 直扯 85 格，部機發狂 reboot）。
-4. 2 pass 鄰域平均磨走 CR 過關鍵幀嗰下曲率突變（步態 wrap，起收段釘死首尾）。
+4. 2 pass 鄰域平均磨走 CR 過關鍵幀那下曲率突變（步態 wrap，起收段釘死首尾）。
 5. 全部角度 clamp 入 SERVO_CALIBRATION（同 blockly-servo-data.js 一致），
    防插值 overshoot 整壞舵機。
 5. 非舵機字節（燈 type2/3、ftable、d.d 葉、eblob 非角度字節、aux 副段）
@@ -31,7 +31,7 @@ import struct
 import sys
 
 # 同 app/.../blockly-servo-data.js SERVO_CALIBRATION（min/max/home），
-# 插值後 clamp 用，唔好超出硬件校準範圍。
+# 插值後 clamp 用，不要超出硬件校準範圍。
 CAL = {
     1: (5, 235), 2: (50, 210), 3: (55, 185), 4: (5, 235), 5: (30, 190),
     6: (55, 185), 7: (100, 200), 8: (20, 220), 9: (35, 230), 10: (35, 215),
@@ -41,28 +41,28 @@ CAL = {
 SUB_TICKS = 5  # 子幀 tick 數（100ms 級：track1 每格 100ms，track0/2 每格 250ms）
 SUB_S = 5      # 子幀 move 部
 SUB_E = 1      # 子幀 hold 部（預設跟原版節奏；e=0 零停留只限明確版本）
-SMOOTH_PASSES = 0  # 鄰域平均 pass 數（預設唔磨；要順滑先開）
-LEAD_TICKS = 0  # 開場 lead-in（預設冇；官方原檔係即時起步）
-# 開場 lead-in：由企直 home pose 慢速沉入起步 pose K0（只限明確版本，例 LEAD_TICKS=40
-# 即 40 ticks x 50ms = 2000ms；教訓：v2 首格由企直 50ms 直扯 K0 致發狂 reboot）。
+SMOOTH_PASSES = 0  # 鄰域平均 pass 數（預設不磨；要順滑先開）
+LEAD_TICKS = 0  # 開場 lead-in（預設沒有；官方原檔是即時起步）
+# 開場 lead-in：由站直 home pose 慢速沉入起步 pose K0（只限明確版本，例 LEAD_TICKS=40
+# 即 40 ticks x 50ms = 2000ms；教訓：v2 首格由站直 50ms 直扯 K0 致發狂 reboot）。
 # 預設 0 ＝跟官方即時起步。
 LEAD_TICKS = 0
 HOME_POSE = [120, 120, 120, 120, 120, 120, 120, 65, 145, 140,
              120, 120, 175, 95, 100, 120, 120, 120, 120, 120]
 # 步數＋變速（只限明確版本參數化；預設 N_CYCLES=2 即原循環數，SPEEDUP=1 即原速）。
 # 例 8 步：N_CYCLES=4；變速經 timeBase bake 入檔（整數 ms 檔位：20→13，50→33，
-# 約 1.53x；App 變速掣播呢檔時要留喺 1x，唔好疊加）。
+# 約 1.53x；App 變速按鈕播這檔時要留在 1x，不要疊加）。
 N_CYCLES = 2
 SPEEDUP = 1
 # 步態段弦長勻速重採樣（原 25/45-tick 交替一衝一停，拉勻做等速；格數時長不變）。
-# 預設 0＝唔做。
+# 預設 0＝不做。
 UNIFORM_RESAMPLE = 0
-# 收步：尾循環 blend 入企定 STAND（出廠校準 home 位，最穩陣企姿）。
-# 背景：步態尾格係風車手（膊頭 204/37），播完凍住＋慢鬆開，睇落似無端擘開；
-# 收埋入企定就企定收尾（真機片實證）。預設 0＝唔做（跟原檔尾格）。
+# 收步：尾循環 blend 入站定 STAND（出廠校準 home 位，最穩陣站姿）。
+# 背景：步態尾格是風車手（膊頭 204/37），播完凍住＋慢鬆開，看來似無端擘開；
+# 收起入站定就站定收尾（真機片實證）。預設 0＝不做（跟原檔尾格）。
 # BLEND_ARMS/BLEND_LEGS：手／腳各用尾幾個循環收（手可早過腳開始收）；
-# OUTRO_HOME：id==2 收步段單格手臂撳返 HOME（原 O0 擘開 200/40，
-# 播唔播都好，留喺度係計時炸彈）。
+# OUTRO_HOME：id==2 收步段單格手臂按返 HOME（原 O0 擘開 200/40，
+# 播不播都好，留在這裡是計時炸彈）。
 END_BLEND = 0
 BLEND_ARMS = 1
 BLEND_LEGS = 1
@@ -243,7 +243,7 @@ def build_servo_frame(template_raw, s, e, angles):
 
 def build_block(template_raw, frame_bytes_list, win=None):
     """template_raw 為原 block bo 起 bl1 字節；只換幀列，更新 echo/count。
-    win=(start,end) 另計 block 窗口（v4 步數加倍後原窗口唔啱用；player 忽略，純記帳）。"""
+    win=(start,end) 另計 block 窗口（v4 步數加倍後原窗口不合用；player 忽略，純記帳）。"""
     head = template_raw[:80]  # echo+a+b+c+d[30]+count
     body = b"".join(w32(len(f)) + f for f in frame_bytes_list)
     new_l1 = 80 + len(body)
@@ -276,7 +276,7 @@ def build_da(template, new_chain):
     """template 為 parse_blist_frames 的 da 項；重建整個 d.a（含 outer+echo）。"""
     ftab = template["ftab"]
     head = bytearray(template["head224"])
-    struct.pack_into("<i", head, 220, len(new_chain))  # h = i-blob 長要跟住改
+    struct.pack_into("<i", head, 220, len(new_chain))  # h = i-blob 長要跟著改
     new_l1 = 8 + len(ftab) + 224 + len(new_chain)
     out = w32(new_l1) + w32(new_l1) + w32(len(ftab)) + ftab + bytes(head) + new_chain
     return out
@@ -294,7 +294,7 @@ def catmull(p0, p1, p2, p3, t):
 
 
 def smooth_seq(poses, cyclic, passes=SMOOTH_PASSES):
-    """鄰域平均（半徑 1）：CR 保過關鍵幀但曲率突變，呢度磨埋佢。
+    """鄰域平均（半徑 1）：CR 保過關鍵幀但曲率突變，這裡磨埋它。
     cyclic 步態 wrap 首尾；起收段首尾兩格釘死（保出入 pose 精確銜接）。"""
     n = len(poses)
     for _ in range(passes):
@@ -335,7 +335,7 @@ def smooth_pairs(keys2, ticks, sub_ticks=None):
 def resample_uniform(fine, n_out):
     """按關節空間弦長勻速重採樣：fine 為密採樣 pose 列（含起終點），
     回 n_out 個 pose（不含起點、含終點），總時長不變、每格走等距，
-    消滅原 25/45-tick 交替造成嘅一衝一停節奏。"""
+    消滅原 25/45-tick 交替造成的一衝一停節奏。"""
     import math
     cum = [0.0]
     for i in range(1, len(fine)):
@@ -430,7 +430,7 @@ def humanize(in_path, out_path):
         ghost_of[key] = prev_last  # 首個為 None（lead-in 由 HOME 起步）
         prev_last = lasts[key]
     pos_in_order = {key: i for i, key in enumerate(order)}
-    # ghost 用重建後尾 pose（串行跟進）：blend 改尾嗰陣，下一段唔可以再用原尾
+    # ghost 用重建後尾 pose（串行跟進）：blend 改尾當時，下一段不可以再用原尾
     # （否則 track1 收 HOME、track2 由舊 W5 起步，中間斷一截——實證捉到）。
     rebuilt_end = {}
     new_tracks = []
@@ -473,7 +473,7 @@ def humanize(in_path, out_path):
                     # v4 變速：timeBase 照 SPEEDUP 縮（20→13，50→33）
                     a0 = le(data, 0)
                     # loop-cap 跟內容加大：新 cap＝新內容＋原 margin（原 cap－原內容）。
-                    # 唔跟會官方播半腰斬（f/i$a 線程 b<cap 停，8 步檔實證）。
+                    # 不跟會官方播半腰斬（f/i$a 線程 b<cap 停，8 步檔實證）。
                     margin = le(data, 4) - orig_ticks
                     if margin < 0:
                         margin = 0
@@ -524,7 +524,7 @@ def rebuild_type1(data, ghost_prev, lead_ticks=0, tid=None):
     ticks = [f["s"] + f["e"] for f in seq]
     n = len(keys)
     # 步態循環判定：6 格一循環、重複多次（原檔 12 幀 = 2 次）。
-    # v4 擴到 N_CYCLES 次：keys2=[ghost]+cycle*N（seam 係內點，鄰居正確不斷速）。
+    # v4 擴到 N_CYCLES 次：keys2=[ghost]+cycle*N（seam 是內點，鄰居正確不斷速）。
     cyc = None
     if n >= 6 and n % 6 == 0 and all(k == keys[i % 6] for i, k in enumerate(keys)):
         cyc = (keys[:6], ticks[:6])
@@ -574,12 +574,12 @@ def rebuild_type1(data, ghost_prev, lead_ticks=0, tid=None):
         tmpl_frames = [b["frames"] for b in blks]
     else:
         if OUTRO_HOME and tid == 2 and len(keys) == 1:
-            # 收步段單格：手臂撳返 HOME（原 O0 擘開，播出嚟就係尾段十字；
-            # 腳本來已企定，成格置 HOME 等於企定 1.25 秒，時長不變）
+            # 收步段單格：手臂按返 HOME（原 O0 擘開，播出來就是尾段十字；
+            # 腳本來已站定，成格置 HOME 等於站定 1.25 秒，時長不變）
             keys = [list(STAND_POSE)]
         if lead_ticks > 0:
             # 開場：HOME→K0 用 lead_ticks 慢速沉入，取代原首格 slot
-            # （v2 血淚：唔加呢段會發狂 reboot）
+            # （v2 血淚：不加這段會發狂 reboot）
             assert ghost_prev is None
             keys2 = [HOME_POSE] + keys
             ticks2 = [lead_ticks] + ticks[1:]
@@ -742,7 +742,7 @@ def chain(path):
 
 
 def droptrack(in_path, out_path, keep_ids):
-    """抌走指定外 track（試驗用：驗證收步段係咪 spread 元兇）。
+    """抌走指定外 track（試驗用：驗證收步段是否 spread 元兇）。
     只重算 motion 層長度，保留段一字不改；keep_ids 以外全抌。"""
     d = open(in_path, "rb").read()
     ms = 21
