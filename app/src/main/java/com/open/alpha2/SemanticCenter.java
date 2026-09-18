@@ -182,9 +182,14 @@ public final class SemanticCenter {
         SemanticMatcherZh.MatchResult simResult = handleSemanticMatch(simText, false);
         if (simResult == null) {
             return HttpServer.ApiResponse.ok(
-                    "{\"ok\":true,\"matched\":false,\"input\":\"" + MainActivity.jsonSafe(simText) + "\"}");
+                    "{\"ok\":true,\"matched\":false,\"fallback\":false,\"input\":\"" + MainActivity.jsonSafe(simText) + "\"}");
         }
+        // fallback:true＝聽唔明亂答（台詞池＋隨機動作；TTS/動作照行）。
+        // matched 維持 true（沿用舊語義：有嘢答就算 matched），前端靠呢個旗
+        // 做短句靜音窗（見 app-log.js），唔影響對話顯示。
+        boolean isFallback = !simResult.matched;
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"matched\":true,"
+                + "\"fallback\":" + (isFallback ? "true" : "false") + ","
                 + "\"input\":\"" + MainActivity.jsonSafe(simText) + "\","
                 + "\"question\":\"" + MainActivity.jsonSafe(simResult.question) + "\","
                 + "\"type\":\"" + MainActivity.jsonSafe(simResult.type) + "\","

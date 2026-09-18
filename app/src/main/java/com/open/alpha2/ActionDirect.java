@@ -127,27 +127,78 @@ public final class ActionDirect {
         return result;
     }
 
-    /** Picks a random id from the "隨機短/隨機長" action group in
-     *  xiaozhi_actions.json - these are the robot's own pre-recorded filler-movement
-     *  actions (20 of them: 隨機短1-10、隨機長1-10, with a couple of duplicate ids for
-     *  the same name e.g. two "隨機短2" entries - both are valid, harmless to include
-     *  twice in the pool), meant for exactly this "play something to look alive"
-     *  use case rather than reacting to any specific emotion/content. Matched by
+    /** Picks a random id from the "隨機短/隨機長/ACT*" action groups in
+     *  xiaozhi_actions.json plus the head-gesture extras below - these are the
+     *  robot's own pre-recorded filler-movement actions (隨機組 30 entries:
+     *  隨機長1-10、隨機短1-10 x 2 sets of ids, with duplicate names for the same
+     *  name e.g. two "隨機短2" entries - both are valid, harmless to include
+     *  twice in the pool; ACT 家族 26 entries: ACT0-9 基本小動作＋ACT2-1～
+     *  ACT13-3), meant for exactly this "play something to look alive" use case
+     *  rather than reacting to any specific emotion/content. Groups matched by
      *  nameCn prefix rather than a hardcoded id list so this keeps working if
-     *  xiaozhi_actions.json is regenerated from a different 202_actions_classified.txt
-     *  with different ids. Returns null (never throws) if the group is empty for any
-     *  reason - caller must handle that as a normal "nothing to play" case, not a bug. */
+     *  xiaozhi_actions.json is regenerated with different ids; gesture extras
+     *  are explicit ids (user-verified silent).
+     *
+     *  兩類唔入池 (見下面兩個表)：
+     *  - 有聲效動作：播嗰陣韌體會自己出 MP3/音效 (同 TTS 打架，亦唔適合 fallback
+     *    亂答嗰陣突然響)。repo 同機身檔都無標記邊個有聲，靠實機人耳驗，
+     *    有新發現加 id 入 SOUND_ACTION_IDS 即可。
+     *  - Neuron 起身動作 (BackStand/FrontStand)：未經機身實測，驚佢瞓喺度
+     *    突然起身撞到嘢；本身唔喺隨機組，呢度硬剔純粹防將來 JSON 再生嗰陣
+     *    入錯池。
+     *  Returns null (never throws) if the group is empty for any reason -
+     *  caller must handle that as a normal "nothing to play" case, not a bug. */
     public String resolveRandomActionId() {
         java.util.List<org.json.JSONObject> actions = loadXiaozhiActions();
         java.util.List<String> pool = new java.util.ArrayList<>();
         for (org.json.JSONObject a : actions) {
+            String id = a.optString("id");
             String cn = a.optString("nameCn");
-            if (cn.startsWith("隨機短") || cn.startsWith("隨機長")) {
-                pool.add(a.optString("id"));
+            boolean inRandomGroup = cn.startsWith("隨機短") || cn.startsWith("隨機長")
+                    || cn.startsWith("ACT");
+            boolean inBasicExtras = false;
+            for (String eid : EXTRA_RANDOM_IDS) {
+                if (eid.equals(id)) {
+                    inBasicExtras = true;
+                    break;
+                }
             }
+            if (!inRandomGroup && !inBasicExtras) continue;
+            if (isNeuronAction(id, cn)) continue;
+            boolean noisy = false;
+            for (String sid : SOUND_ACTION_IDS) {
+                if (sid.equals(id)) {
+                    noisy = true;
+                    break;
+                }
+            }
+            if (noisy) continue;
+            pool.add(id);
         }
-        if (pool.isEmpty()) return null;
+        if (pool.isEmpty()) {
+            Log.w(TAG, "resolveRandomActionId: pool empty after exclusions!");
+            return null;
+        }
         return pool.get(new java.util.Random().nextInt(pool.size()));
+    }
+
+    /** 隨機池頭部動作加料：低頭／否定／揮右手／揮左手 (全部已驗證無聲效) -
+     *  用戶指定可當 random 用。顯式 id，唔靠名 (再生 JSON 改名都唔怕)。
+     *  ACT0-9 同 ACT2-1～ACT13-3 行上面字頭規則，唔使逐個列。 */
+    private static final String[] EXTRA_RANDOM_IDS = {
+            "1464835936012", "1464835936013", "1464835936017", "1464835936018",
+    };
+
+    /** 有聲效動作 id 表 (實機人耳驗證，fallback/隨機/filler 共用池一律剔走)。
+     *  2026-09 初版：待用戶實機逐個聽完填 (候選就係上面 30 個隨機短/長)。 */
+    private static final String[] SOUND_ACTION_IDS = {
+    };
+
+    /** Neuron 起身動作：id 或者中英文名對得上就係 (Blockly 側叫
+     *  「Neuron 企身動作」，未經機身實測)。 */
+    static boolean isNeuronAction(String id, String nameCn) {
+        if ("BackStand".equals(id) || "FrontStand".equals(id)) return true;
+        return "仰躺站立".equals(nameCn) || "趴著站立".equals(nameCn);
     }
 
     /** Resolves a human-supplied action name (Chinese or English, as passed by the

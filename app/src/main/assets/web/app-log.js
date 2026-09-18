@@ -48,6 +48,11 @@ function triggerSemanticSimulate(text, fromVoice) {
       }
       return;
     }
+    // fallback 台詞一樣顯示（matched 恒 true，見 SemanticCenter），但短句
+    // 語音 fallback 照入靜音窗，唔好畀噪音連珠炮長台詞＋隨機動作。
+    if (res.fallback && fromVoice && text.length < 4) {
+      lastFallbackQuietUntil = Date.now() + 2500;
+    }
     // 對話界面僅顯示中英文對白 — [TYPE operation] 動作ID detail 行不在對話流顯示 (Event Log 有同樣資訊)。
     if (res.answer) {
       appendSpeechChatLine("xiaozhi-msg-assistant", res.answer);
