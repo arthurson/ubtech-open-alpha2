@@ -3,27 +3,27 @@ package com.open.alpha2;
 import java.util.Map;
 
 /**
- * TTS orchestration 包：speech/tts＋speech/stop＋0x5e 總停鍵共用嘅 stopAllSpeech。
+ * TTS orchestration 包：speech/tts＋speech/stop＋0x5e 總停鍵共用的 stopAllSpeech。
  *
  * mic 路設計（掂 mic 所以要講清楚）：
  * - MicCenter 同 XiaozhiBridge 兩條 mic-hold enforcer 繼續經
- *   XiaozhiBridge.HostState.isRobotTtsSpeaking() 讀旗——唔改佢哋 ctor
- *   （兩條 enforcer 已 E2E 驗過後開者得，唔郁接線）。
+ *   XiaozhiBridge.HostState.isRobotTtsSpeaking() 讀旗——不改它們 ctor
+ *   （兩條 enforcer 已 E2E 驗過後開者得，不動接線）。
  * - MainActivity 繼續做 HostState 提供者，TTS 兩法
- *   （isRobotTtsSpeaking/getLastSpeechStopAtMs）轉交呢度（null-guard：
+ *   （isRobotTtsSpeaking/getLastSpeechStopAtMs）轉交這裡（null-guard：
  *   onCreate 同一 thread 先後建構，enforcer 未起，預設 false/0 安全）。
- * - 咁樣 SpeechCenter→XiaozhiBridge 係單向（經 stopSpeechPlayback 停小智嗰條
- *   管道），XiaozhiBridge→SpeechCenter 唔經 ctor（經 MainActivity delegate），
- *   無循環依賴。sonar 四法將來由 SonarCenter 收返，到時 HostState 再拆。
+ * - 這樣 SpeechCenter→XiaozhiBridge 是單向（經 stopSpeechPlayback 停小智那條
+ *   管道），XiaozhiBridge→SpeechCenter 不經 ctor（經 MainActivity delegate），
+ *   無循環依賴。sonar 四法將來由 SonarCenter 收到，到時 HostState 再拆。
  *
  * 現狀備註：
- * - nuance/iflytek 唔再用 (機身無 alpha2services), requireSpeechEngine() 只准 "android",
+ * - nuance/iflytek 不再用 (機身無 alpha2services), requireSpeechEngine() 只准 "android",
  *   handleSpeechTts() 恆行 android 一條路。
- * - robotTtsSpeaking 而家恆 false；flag 機制
- *   本身保留唔刪——兩條 mic-hold enforcer 仍然讀緊呢個 flag, 將來如果直驅 TTS
- *   接上要用返。
+ * - robotTtsSpeaking 現在恆 false；flag 機制
+ *   本身保留不刪——兩條 mic-hold enforcer 仍然正在讀這個 flag, 將來如果直驅 TTS
+ *   接上要用回。
  * - XiaozhiBridge 內兩個 gap 引用（speakActivationCode/self.robot.speak MCP
- *   tool）繼續留喺嗰邊，const 經呢度
+ *   tool）繼續留在那邊，const 經這裡
  *   （SpeechCenter.STOP_TO_TTS_MIN_GAP_MS），時戳經 HostState 讀。
  */
 public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Host {
@@ -56,8 +56,8 @@ public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Hos
     private volatile boolean robotTtsSpeaking = false;
 
     private final TtsCenter ttsCenter;
-    private final VoskController vosk; // 可 null：API 19 機起唔到 Vosk（見 MainActivity.onCreate 熔斷）
-    private final XiaozhiBridge xiaozhiBridge; // 經 stopSpeechPlayback() 停小智嗰條播放管道
+    private final VoskController vosk; // 可 null：API 19 機起不到 Vosk（見 MainActivity.onCreate 熔斷）
+    private final XiaozhiBridge xiaozhiBridge; // 經 stopSpeechPlayback() 停小智那條播放管道
 
     public SpeechCenter(TtsCenter ttsCenter, VoskController vosk,
             XiaozhiBridge xiaozhiBridge) {
@@ -66,7 +66,7 @@ public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Hos
         this.xiaozhiBridge = xiaozhiBridge;
     }
 
-    /** XiaozhiBridge.HostState 轉交用：enforcer 讀緊播緊旗。 */
+    /** XiaozhiBridge.HostState 轉交用：enforcer 正在讀正在播旗。 */
     public boolean isRobotTtsSpeaking() { return robotTtsSpeaking; }
 
     /** XiaozhiBridge.HostState 轉交用：gap 計時讀上次 stop。 */
@@ -78,13 +78,13 @@ public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Hos
      *  的音訊 (XiaozhiAudioController, WebSocket 收 Opus frame -> 解碼 ->
      *  AudioTrack, 詳見 XiaozhiAudioController.onIncomingOpusFrame()/
      *  stopPlayback() 的 javadoc) - 互相獨立的播放管道, 停一條不會連帶讓另一條
-     *  也停。機身本地 TTS (Nuance/iflytek) 已隨 alpha2services 移除，無嘢要停。 */
+     *  也停。機身本地 TTS (Nuance/iflytek) 已隨 alpha2services 移除，無東西要停。 */
     public void stopAllSpeechPlayback() {
         lastSpeechStopAtMs = System.currentTimeMillis();
         robotTtsSpeaking = false; // 見 robotTtsSpeaking field javadoc - 手動/總停鍵停止時都要立即放行 mic enforcer
         ttsCenter.stop();
         // 手動全部停止都要 resume Vosk（UtteranceProgressListener
-        // 嘅 onDone 唔一定會嚟）。
+        // 的 onDone 不一定會來）。
         if (vosk != null) {
             try {
                 vosk.setPaused(false);
@@ -96,10 +96,10 @@ public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Hos
     }
 
     // -- ApiDispatcher.Host (speech/tts、speech/stop) --
-    // engine 恆係 "android" (requireSpeechEngine() 只准 "android")。
+    // engine 恆是 "android" (requireSpeechEngine() 只准 "android")。
     @Override public HttpServer.ApiResponse handleSpeechTts(Map<String, String> query) {
         String text = ApiValidator.require(query, "text");
-        ApiValidator.requireSpeechEngine(query); // 保留做 validation (未來若加返其他 engine 值時仍要驗)
+        ApiValidator.requireSpeechEngine(query); // 保留做 validation (未來若加回其他 engine 值時仍要驗)
         String ttsErr = ttsCenter.speakPanelTts(text, ApiValidator.optional(query, "lang", ""),
                 ApiValidator.optional(query, "voice", ""));
         if (ttsErr != null) return HttpServer.ApiResponse.error(ttsErr);
@@ -114,3 +114,6 @@ public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Hos
     // -- GestureCenter.Host (0x5e 總停鍵)：經 stopAllSpeechPlayback（TTS orchestration）。 --
     @Override public void stopAllSpeech() { stopAllSpeechPlayback(); }
 }
+
+
+

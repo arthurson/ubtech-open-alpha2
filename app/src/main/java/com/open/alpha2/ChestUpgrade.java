@@ -14,7 +14,7 @@ import java.util.Map;
 /**
  * 胸口固件升級 (48/49/50 協議，鏡像 alpha2services h.a.a$b)。
  *
- * 胸串口經 appContext 攞 HardwareDirectManager；
+ * 胸串口經 appContext 拿 HardwareDirectManager；
  * 查詢側 latch 共用 ChestQuery (升級開始前要一齊清)。
  * 進度經 EventBus chest_upgrade_progress / chest_upgrade_done 發布，
  * 前端輪詢 chest/upgrade/status。另帶 chest/page 調試讀頁
@@ -76,7 +76,7 @@ public final class ChestUpgrade {
             int status = b.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
             boolean charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL;
             if (level < 0 || scale <= 0) return charging ? 100 : -1;
-            // 充緊電都要睇實際電量（升級途中拔電掉電即變磚）；電量讀唔到先當 100% 放行。
+            // 正在充電都要看實際電量（升級途中拔電掉電即變磚）；電量讀不到先當 100% 放行。
             return (level * 100) / scale;
         } catch (Exception e) { return -1; }
     }
@@ -103,8 +103,8 @@ public final class ChestUpgrade {
         chestUpgradeLatch = latch;
         try {
             boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
-            // 唔係自己呢代 latch（abort/retry 清過）即唔好再行，
-            // 回 false 等上層 throw 退出（唔係 abort 早醒會當成功繼續燒）。
+            // 不是自己這代 latch（abort/retry 清過）即不要再行，
+            // 回 false 等上層 throw 退出（不是 abort 早醒會當成功繼續燒）。
             if (chestUpgradeLatch != latch) return false;
             if (!ok) {
                 byte[] lastVer = chestQuery.getLastVersionRaw();
@@ -131,7 +131,7 @@ public final class ChestUpgrade {
 
     /** 中止升級 (chest/upgrade/abort)：清狀態 + 標 aborted，和以前三行 inline 一致。 */
     public synchronized void abort() {
-        // countDown 叫醒 waitForChestAck（否則等足成個 timeout 先醒，中止唔即時）。
+        // countDown 叫醒 waitForChestAck（否則等足整個 timeout 先醒，中止不即時）。
         java.util.concurrent.CountDownLatch latch = chestUpgradeLatch;
         chestUpgradeLatch = null;
         if (latch != null) {
@@ -296,8 +296,8 @@ public final class ChestUpgrade {
         if (body == null || body.length == 0) {
             return HttpServer.ApiResponse.badRequest("empty file body");
         }
-        // 大細唔啱直接 400 唔寫入（壞 bin 留喺度、下次升級攞錯檔即變磚；
-        // 下次升級攞錯檔即變磚；magic 無文件記載唔驗，靠升級時 MCU ACK 把關）。
+        // 大小不合直接 400 不寫入（壞 bin 留在這裡、下次升級拿錯檔即變磚；
+        // 下次升級拿錯檔即變磚；magic 無文件記載不驗，靠升級時 MCU ACK 把關）。
         if (body.length != 256 * 1024) {
             return HttpServer.ApiResponse.badRequest("chest firmware must be 262144 bytes, got " + body.length);
         }
@@ -313,3 +313,5 @@ public final class ChestUpgrade {
         }
     }
 }
+
+

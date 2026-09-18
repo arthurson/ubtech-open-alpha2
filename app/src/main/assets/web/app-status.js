@@ -1,8 +1,8 @@
 // Open Alpha2 — client logic (app-status.js)
 // 內容: Tab 切換、裝置資訊
 // (電量/WiFi/藍牙/UUID直顯/胸板固件)。
-// 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
-// <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
+// 全部檔案共用 window/global scope (沒有用 ES module), 載入順序由 index.html 的
+// <script src="..."> 順序決定 - 詳見 index.html 頭那段 comment。
 
 // ---------------- Tabs ----------------
 
@@ -37,8 +37,8 @@ function refreshDeviceInfo() {
 }
 
 // ---------------- 胸板固件直顯 ----------------
-// 同 ADVANCED 卡 chestCheck() 讀同一個 chest/version，呢度寫自己格 (chestFwOut)。
-// 入頁自動查一次；胸 MCU 唔覆會顯示 not found（同 ADVANCED 卡一致，唔係 bug）。
+// 同 ADVANCED 卡 chestCheck() 讀同一個 chest/version，這裡寫自己格 (chestFwOut)。
+// 入頁自動查一次；胸 MCU 不覆會顯示 not found（同 ADVANCED 卡一致，不是 bug）。
 function refreshChestFw() {
   const out = document.getElementById("chestFwOut");
   if (out) out.textContent = t("uuid_querying_hint");
@@ -48,4 +48,5 @@ function refreshChestFw() {
     if (out) out.textContent = "錯誤: " + err.message;
   });
 }
+
 

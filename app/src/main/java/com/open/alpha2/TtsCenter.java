@@ -276,7 +276,7 @@ public final class TtsCenter {
                     // 真機 crash: 這部機 Android 版本早過 API 24 (Nougat),
                     // Map.putIfAbsent() 是 default method, 僅 API 24 開始才有
                     // (這個 app 自己個 minSdkVersion 是 19) - 調用下去會 throw
-                    // NoSuchMethodError 令成個 app 死埋。containsKey()+put() 用
+                    // NoSuchMethodError 令整個 app 死掉。containsKey()+put() 用
                     // pre-Java-8/pre-API-24 都支援的 Map method 做出同樣「keep the
                     // first mapping seen」的效果。
                     if (lang3 != null && !lang3.isEmpty() && !map.containsKey(lang3)) {
@@ -705,7 +705,7 @@ public final class TtsCenter {
     }
 
     // Android TTS 語言選擇 - 僅 engine=android 用得 (Nuance/iFlytek
-    // 兩個 AIDL engine 沒有語言參數選擇, lang 已經由 engine 本身固定死,
+    // 兩個 AIDL engine 沒有語言參數選擇, lang 已經由 engine 本身固定,
     // 見 speech/tts 的 android 分支)。ui_lang ("zh"/"en") 控制的是
     // displayName 用哪種語言顯示。
     public HttpServer.ApiResponse ttsLanguages(Map<String, String> query) {
@@ -814,3 +814,5 @@ public final class TtsCenter {
                 "{\"ok\":true,\"voice\":\"" + MainActivity.jsonSafe(ttsVoicePref()) + "\"}");
     }
 }
+
+

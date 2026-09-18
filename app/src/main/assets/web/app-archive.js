@@ -1,16 +1,16 @@
 // Open Alpha2 — client logic (app-archive.js)
-// 網上點歌卡：Internet Archive (archive.org) 免費音樂，唔使 login。
+// 網上點歌卡：Internet Archive (archive.org) 免費音樂，不用 login。
 // 架構同電台前端 fallback 一樣（見 app-radio.js radioSearchFrontendFallback）：
-// 瀏覽器經 https 打 archive.org API（機械人 TLS 太舊打唔到 https），
-// 攞到 http 直鏈之後經現成 audio/radio/play_url 叫機械人播。
-// archive.org 係 CORS *，瀏覽器直打無問題；回嚟嘅 download 鏈係 http，
-// 部機 MediaPlayer 食得到（已驗：PC 同部機都 200 audio/mpeg）。
-// 內容期望管理：archive.org 係現場錄音／獨立音樂／舊錄音，冇商業流行榜歌。
-// 全部函數共用 window/global scope (冇用 ES module)，載入順序見 index.html.
+// 瀏覽器經 https 打 archive.org API（機械人 TLS 太舊打不到 https），
+// 拿到 http 直鏈之後經現成 audio/radio/play_url 叫機械人播。
+// archive.org 是 CORS *，瀏覽器直打無問題；回來的 download 鏈是 http，
+// 部機 MediaPlayer 相容（已驗：PC 同部機都 200 audio/mpeg）。
+// 內容期望管理：archive.org 是現場錄音／獨立音樂／舊錄音，沒有商業流行榜歌。
+// 全部函數共用 window/global scope (沒有用 ES module)，載入順序見 index.html.
 
-let archiveItems = [];           // 上次 archiveSearch() 攞返嚟嘅專輯清單 {identifier, title, creator}
-let archiveTracks = [];          // 展開緊嗰隻碟嘅曲目 {name, sizeMb, url}
-let archiveOpenItem = null;      // 展開緊嘅 identifier（冇就係專輯列表模式）
+let archiveItems = [];           // 上次 archiveSearch() 取回來的專輯清單 {identifier, title, creator}
+let archiveTracks = [];          // 正在展開那張專輯的曲目 {name, sizeMb, url}
+let archiveOpenItem = null;      // 正在展開的 identifier（沒有就是專輯列表模式）
 
 function arcOnSearchKeydown(event) {
   if (event.key === "Enter") archiveSearch();
@@ -65,7 +65,7 @@ function archiveSearch() {
   });
 }
 
-// 撳專輯：攞 metadata，揀 MP3（唔要 sample）；一首即播，多首列曲目揀。
+// 按專輯：拿 metadata，選 MP3（不要 sample）；一首即播，多首列曲目選。
 function archiveOpenItemTracks(identifier, title) {
   const container = document.getElementById("archiveListContainer");
   const statusEl = document.getElementById("archiveSearchStatus");
@@ -183,7 +183,7 @@ function archivePlayTrack(tr, albumTitle) {
   clearError();
   const label = tr.name || albumTitle || tr.url;
   if (statusEl) statusEl.textContent = t("radio_playing_prefix") + label + "…";
-  // 行電台播放鏈（play_url → currentRadioPlayer）：共用頻譜／狀態／停止掣，
+  // 行電台播放鏈（play_url → currentRadioPlayer）：共用頻譜／狀態／停止按鈕，
   // 同 radioPlay 一樣要同步 shared 卡。
   if (typeof sharedActiveSource !== "undefined") sharedActiveSource = "radio";
   if (typeof musicCurrentName !== "undefined") { musicCurrentName = null; }
@@ -200,3 +200,4 @@ function archivePlayTrack(tr, albumTitle) {
     if (statusEl) statusEl.textContent = t("radio_play_ok_prefix") + (res.playing || label);
   });
 }
+

@@ -1,7 +1,7 @@
 // Open Alpha2 — client logic (app-camera.js)
 // 內容: 相機直播、影相、錄影、拖拽準星頭部瞄準。
-// 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
-// <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
+// 全部檔案共用 window/global scope (沒有用 ES module), 載入順序由 index.html 的
+// <script src="..."> 順序決定 - 詳見 index.html 頭那段 comment。
 
 
 // ---------------- Camera: MJPEG live stream ----------------
@@ -315,10 +315,10 @@ function addCaptureItem(kind, url, filename, thumbSrc) {
   list.insertBefore(item, list.firstChild);
 }
 
-/** 影相一刻頭/眼 LED 白燈閃半秒。"flash" preset 本身會不斷循環閃落去唔會自動停
- *  (見 led/head/set 個 p5/p6/p7 timing), 所以要自己計時, 500ms 後主動送返
- *  stop / 或者還原返錄影中/聽聲中嗰個長開色 (見 restoreBaseLed()) - 唔係淨係盲目
- *  stop, 否則影相嗰刻如果啱啱好錄緊影/聽緊聲, 個燈會俾呢下閃燈永久蓋走底層長開色。 */
+/** 影相一刻頭/眼 LED 白燈閃半秒。"flash" preset 本身會不斷循環閃下去不會自動停
+ *  (見 led/head/set 個 p5/p6/p7 timing), 所以要自己計時, 500ms 後主動送回
+ *  stop / 或者還原回錄影中/聽聲中那個長開色 (見 restoreBaseLed()) - 不是僅盲目
+ *  stop, 否則影相那刻如果剛剛好正在錄影/正在聽聲, 個燈會給這下閃燈永久覆蓋底層長開色。 */
 function flashCaptureLed() {
   const headBrightness = document.getElementById("headBrightness").value;
   const eyeBrightness = document.getElementById("eyeBrightness").value;
@@ -327,8 +327,8 @@ function flashCaptureLed() {
   setTimeout(restoreBaseLed, 500);
 }
 
-/** 攞返而家「底層」應該長開嘅 LED 狀態 - 錄影中(紅) > 聽機械人中(綠) > 冇(熄)。
- *  影相閃燈完之後、或者其他一次性效果完咗之後, 用嚟還原返正確嘅長開狀態。 */
+/** 取回現在「底層」應該長開的 LED 狀態 - 錄影中(紅) > 聽機械人中(綠) > 沒有(熄)。
+ *  影相閃燈完之後、或者其他一次性效果完了之後, 用來還原回正確的長開狀態。 */
 function restoreBaseLed() {
   const headBrightness = document.getElementById("headBrightness").value;
   const eyeBrightness = document.getElementById("eyeBrightness").value;
@@ -536,7 +536,7 @@ function joystickAutoReturnToggle() {
   joystickAutoReturn = cb ? cb.checked : true;
   try { localStorage.setItem("joystickAutoReturn", joystickAutoReturn ? "1" : "0"); } catch(e){}
   if (joystickAutoReturn) {
-    // 開啟自動回中時立即回正（符合「關左再開返會立即回中」預期）
+    // 開啟自動回中時立即回正（符合「關了再重新開啟會立即回中」預期）
     setKnobPosition(0, 0);
     try {
       const t = (typeof servoTime === 'function' ? servoTime() : 500);
@@ -786,4 +786,5 @@ if (document.readyState === "loading") {
 } else {
   initCameraUiToggles();
 }
+
 

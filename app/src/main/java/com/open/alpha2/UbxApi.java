@@ -65,7 +65,7 @@ public final class UbxApi {
             f = new java.io.File(p);
             if (!isAllowedUbxFile(f)) return HttpServer.ApiResponse.error("path must be a .ubx under /sdcard/actions");
         } else if (name != null) {
-            // name 只准係檔名，唔准帶路徑（../../、/、\ 一律拒）。
+            // name 只准是檔名，不准帶路徑（../../、/、\ 一律拒）。
             if (name.isEmpty() || name.contains("/") || name.contains("\\") || name.contains("..")) {
                 return HttpServer.ApiResponse.error("invalid name");
             }
@@ -94,7 +94,7 @@ public final class UbxApi {
         if (!ubxPlayer.setSpeed(f)) {
             throw new IllegalArgumentException("parameter 'value' must be one of [0.5, 0.67, 1, 1.5, 2], got: " + v);
         }
-        // 播緊時即時生效：用新速度由頭重播同一文件（内部快照隔离，旧计划安全交接）。
+        // 正在播時即時生效：用新速度由頭重播同一文件（内部快照隔离，旧计划安全交接）。
         boolean restarted = false;
         java.io.File last = actionDirect.getLastPlayedFile();
         if (ubxPlayer.isPlaying() && last != null && last.isFile()) {
@@ -127,8 +127,8 @@ public final class UbxApi {
     // 官方 PC tuner 實測證實 cmd05
     //（05 00 頭）正常驅動本機舵機，用戶目視確認。舊 cmd03 全幀寫法有安全問題：
     // 它用位姿追踪（dead reckoning）補齊其餘 19 軸，追踪值一過時（重啟/跳舞後）
-    // 就會一次過將 19 粒舵機扯去錯位姿——即「一寫入就發狂」。cmd05 只郁目標
-    // 一粒，其他軸完全唔掂，天然安全；亦唔再需要 pose 已知先郁得。
+    // 就會一次過將 19 粒舵機扯去錯位姿——即「一寫入就發狂」。cmd05 只動目標
+    // 一粒，其他軸完全不碰，天然安全；亦不再需要 pose 已知先動得。
     /** 單舵機經 cmd05 直發；只在串口不可用時 FAILED。 */
     public UbxErrorCode.API_ERROR_CODE servoSendOneCode(int id, int angle, int timeMs) {
         if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
@@ -138,7 +138,7 @@ public final class UbxApi {
         boolean sent = HardwareDirectManager.get(appContext).chest()
                 .setSingleServo((byte) id, angle, (short) timeMs);
         if (!sent) return UbxErrorCode.API_ERROR_CODE.API_ERROR_FAILED;
-        // 位姿追踪：記低呢一軸命令值（逐軸 known；命令位姿榜／commanded 回讀用）。
+        // 位姿追踪：記下這一軸命令值（逐軸 known；命令位姿榜／commanded 回讀用）。
         ubxPlayer.notePoseOne(id, angle & 0xFF);
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
@@ -186,8 +186,8 @@ public final class UbxApi {
         sb.append(",\"bindReady\":").append(directChestReady());
         sb.append(",\"id\":").append(id).append(",\"angle\":").append(angle & 0xFF);
         sb.append(",\"trim\":").append(trim);
-        // written==null（回覆被官方 service 搶食晒）唔等於
-        // 寫失敗——id2 實測零 ACK 照存入。報 unknown 唔報失敗，叫前端重掃驗證。
+        // written==null（回覆被官方 service 搶食完）不等於
+        // 寫失敗——id2 實測零 ACK 照存入。報 unknown 不報失敗，叫前端重新掃描驗證。
         sb.append(",\"trimWritten\":").append(written != null && written);
         sb.append(",\"trimUnknown\":").append(written == null);
         sb.append('}');
@@ -204,11 +204,11 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoReadResponse(Map<String, String> query) {
-        // 單粒 live 實讀 (cmd 13)：官方 PC tuner 同款問法。注意回的是
+        // 單粒 live 實際讀取 (cmd 13)：官方 PC tuner 同款問法。注意回的是
         // chest 存住的 trim（偏差，官方角:偏 = 1:3），<b>不是</b>絕對角度——8 號
-        // 例子：位姿 65 不變，橫跨幾次動作都係讀返 -33（見官方 session logcat
-        // 比較）。trim 即 offset 原值，前端照 show，唔使再減 home。
-        // 讀唔到（超時／舵機回 01 error，如本機 5/6 號硬件壞；17/18 號手指
+        // 例子：位姿 65 不變，橫跨幾次動作都是讀回 -33（見官方 session logcat
+        // 比較）。trim 即 offset 原值，前端照 show，不用再減 home。
+        // 讀不到（超時／舵機回 01 error，如本機 5/6 號硬件壞；17/18 號手指
         // 天生無回授）如實報 ok:false，不編 0。
         int idInt = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
         Integer live = readServoLive(idInt);
@@ -226,7 +226,7 @@ public final class UbxApi {
                 + ",\"known\":" + (commanded != null) + "}");
     }
 
-    /** 20 連讀粒間隔 100ms（servoReadAll／servoAngleAll 逐字一樣；被打斷回 false 畀 caller break）。 */
+    /** 20 連讀粒間隔 100ms（servoReadAll／servoAngleAll 逐字一樣；被打斷回 false 給 caller break）。 */
     private static boolean sleepBetweenServos() {
         try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
         return true;
@@ -240,10 +240,10 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoReadAllResponse() {
-        // 20 連讀 trim（官方 tuner 節奏：逐粒約十幾 ms 間隔）。
-        // trims[i] = 該軸 chest 存住的偏差原值，讀唔到嗰粒記 null 並列入 failed。
-        // 注意：呢度唔係絕對角度，唔好攞去填 angle 輸入格。
-        // 逐粒之間一律等 100ms（成功失敗都等）。
+        // 20 連讀 trim（官方 tuner 節奏：逐顆約十幾 ms 間隔）。
+        // trims[i] = 該軸 chest 存住的偏差原值，讀不到那顆記 null 並列入 failed。
+        // 注意：這裡不是絕對角度，不要拿去填 angle 輸入格。
+        // 逐顆之間一律等 100ms（成功失敗都等）。
         Integer[] trims = new Integer[20];
         StringBuilder failed = new StringBuilder("[");
         boolean firstFail = true;
@@ -268,11 +268,11 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoAngleResponse(Map<String, String> query) {
-        // 單舵機絕對角度實讀 (cmd 6)。同 servo/one 同單位，
-        // 跟位實測誤差約 1°——注意唔係 servo/read 嗰個 trim/偏差。
-        // 讀唔到（超時）如實報 ok:false，不編 0。
-        // 注意：讀本身會令嗰粒鬆力（firmware 行為，兩部機證實），要上返力就行
-        // servo/angle-restore（讀寫原子）或隨便郁佢一郁。
+        // 單舵機絕對角度實際讀取 (cmd 6)。同 servo/one 同單位，
+        // 跟位實測誤差約 1°——注意不是 servo/read 那個 trim/偏差。
+        // 讀不到（超時）如實報 ok:false，不編 0。
+        // 注意：讀本身會令那顆鬆力（firmware 行為，兩部機證實），要重新上力就行
+        // servo/angle-restore（讀寫原子）或隨便動它一動。
         int idInt = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
         Integer angle = readServoAbsLive(idInt);
         if (angle == null) {
@@ -284,10 +284,10 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoAngleRestoreResponse(Map<String, String> query) {
-        // 讀＋即寫回原子操作。cmd6 讀會鬆開嗰粒（見上），
-        // 呢度讀到即用 servo/one（cmd05）寫返同一個位上力，全程後端內完成、
-        // 唔經瀏覽器來回——鬆力窗口得幾十毫秒，跌都未跌得切，肉眼唔覺郁。
-        // time 用最細 20ms：純粹為快趣上力，唔係為郁。
+        // 讀＋即寫回原子操作。cmd6 讀會鬆開那顆（見上），
+        // 這裡讀到即用 servo/one（cmd05）寫回同一個位上力，全程後端內完成、
+        // 不經瀏覽器來回——鬆力窗口得幾十毫秒，跌都未跌得切，肉眼不覺動。
+        // time 用最細 20ms：純粹為快趣上力，不是為動。
         int idInt = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
         Integer angle = readServoAbsLive(idInt);
         if (angle == null) {
@@ -301,10 +301,10 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoAngleAllResponse() {
-        // 20 連讀＋逐粒即寫回（每粒讀寫原子，粒與粒之間隔 100ms）。
-        // 背景：純連讀（唔寫回）已被兩部機證實會逐粒整冧出力；但單粒讀＋即寫回
-        // 已證實無鬆無郁，故連讀版都係同一個原子操作逐粒做。讀唔到嗰粒唔寫回、
-        // 記 null 入 failed。未知能否全程企穩——實測中。
+        // 20 連讀＋逐顆即寫回（每粒讀寫原子，粒與粒之間隔 100ms）。
+        // 背景：純連讀（不寫回）已被兩部機證實會逐顆弄垮出力；但單粒讀＋即寫回
+        // 已證實無鬆無動，故連讀版都是同一個原子操作逐顆做。讀不到那顆不寫回、
+        // 記 null 入 failed。未知能否全程站穩——實測中。
         Integer[] angles = new Integer[20];
         boolean[] restored = new boolean[20];
         StringBuilder failed = new StringBuilder("[");
@@ -338,8 +338,8 @@ public final class UbxApi {
     }
 
     /**
-     * 帶重試的單粒絕對角度實讀（3 次 × 250ms；重試之間隔 100ms，同連讀同級，
-     * 唔好密 hammer 胸板——見 servoAngleAllResponse 事故 comment）。
+     * 帶重試的單粒絕對角度實際讀取（3 次 × 250ms；重試之間隔 100ms，同連讀同級，
+     * 不要密 hammer 胸板——見 servoAngleAllResponse 事故 comment）。
      */
     private Integer readServoAbsLive(final int id) {
         return retryServoLive(100, new ServoRetry<Integer>() {
@@ -347,7 +347,7 @@ public final class UbxApi {
         });
     }
 
-    /** 重試骨架共用形（上面三個 live* 方法之前逐字一樣，淨 query call／重試間隔唔同；
+    /** 重試骨架共用形（上面三個 live* 方法之前逐字一樣，僅 query call／重試間隔不同；
      *  3 次、attempt==2 即停、打斷回 null，全部保留）。成功回值，全部超時／發送失敗回 null。 */
     private interface ServoRetry<T> { T attempt(); }
 
@@ -363,9 +363,9 @@ public final class UbxApi {
     }
 
     /**
-     * 帶重試的單粒實讀。機身仲有官方 alpha2services 同揸 ttyS1，回覆 bytes
+     * 帶重試的單粒實際讀取。機身還有官方 alpha2services 還佔用 ttyS1，回覆 bytes
      * 會被搶食，偶發超時屬預期之內，故重試 3 次（官方 ACK 約 10-15ms，
-     * 250ms timeout 好闊綽；重試之間隔 100ms，唔好密 hammer 胸板）。
+     * 250ms timeout 好闊綽；重試之間隔 100ms，不要密 hammer 胸板）。
      */
     private Integer readServoLive(final int id) {
         return retryServoLive(100, new ServoRetry<Integer>() {
@@ -374,7 +374,7 @@ public final class UbxApi {
     }
 
     /**
-     * 帶重試的 trim 寫入（3 次 × 250ms，與實讀同級——官方 service 爭食回覆
+     * 帶重試的 trim 寫入（3 次 × 250ms，與實際讀取同級——官方 service 爭食回覆
      * bytes 時超時常見）。回 TRUE/FALSE（ACK 語意）；全部超時／發送失敗回 null。
      */
     private Boolean writeServoTrimLive(final int id, final int trim) {
@@ -383,3 +383,5 @@ public final class UbxApi {
         });
     }
 }
+
+

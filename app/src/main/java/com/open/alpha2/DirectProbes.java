@@ -8,10 +8,10 @@ import com.ubtechinc.alpha.hardware.HardwareDirectManager;
  * 直驅串口就緒探針。
  *
  * 之前 {@code directChestReady()}/{@code directHeaderReady()}/{@code headerReady()}/
- * {@code chestReady()} 喺 ApiDispatcher / UbxApi / LedCenter / DeviceStatus /
+ * {@code chestReady()} 在 ApiDispatcher / UbxApi / LedCenter / DeviceStatus /
  * SonarCenter / ChestQuery / XiaozhiBridge 各自內聯複製同一段
  * {@code HardwareDirectManager.get(ctx).chest()/head().isAvailable()} try/catch。
- * 收斂到呢度，行為不變（拋錯即 false）。
+ * 收斂到這裡，行為不變（拋錯即 false）。
  */
 public final class DirectProbes {
     private DirectProbes() {}
@@ -32,3 +32,4 @@ public final class DirectProbes {
         }
     }
 }
+

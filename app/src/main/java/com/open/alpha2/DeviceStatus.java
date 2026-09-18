@@ -22,13 +22,13 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 裝置狀態直讀：WiFi／藍牙（標準 Android framework，唔經機身服務）、
+ * 裝置狀態直讀：WiFi／藍牙（標準 Android framework，不經機身服務）、
  * 電池 receiver（含低電量自動蹲下）+ battery/status、accelerometer set/get +
  * SensorEventListener、handleApi status 健康聚合 (statusResponse)。
- * 低電量蹲下經傳入嘅同一個 ActionDirect；synchronized 鎖用自己
+ * 低電量蹲下經傳入的同一個 ActionDirect；synchronized 鎖用自己
  * (調用方全部經同一個 instance，互斥等價；見 AudioCenter 同例)。
  * reboot 無（App 無 REBOOT 權限，實機 verified 永遠 SecurityException)；
- * TtsCenter readiness 經傳入嘅同一個 instance 讀。
+ * TtsCenter readiness 經傳入的同一個 instance 讀。
  */
 public final class DeviceStatus implements SensorEventListener {
     private static final String TAG = "DeviceStatus";
@@ -46,8 +46,8 @@ public final class DeviceStatus implements SensorEventListener {
         this.actionDirect = actionDirect;
         this.ubxPlayer = ubxPlayer;
         this.ttsCenter = ttsCenter;
-        // 原 registerGestureController() 嗰兩行搬入：sensorManager 經 appContext
-        // 攞，同 Activity 嗰個係同一個 service (audioManager 唔郁，留喺手勢嗰邊)。
+        // 原 registerGestureController() 那兩行搬入：sensorManager 經 appContext
+        // 拿到的和 Activity 那個是同一個 service (audioManager 不動，留在手勢那邊)。
         sensorManager = (SensorManager) appContext.getSystemService(Context.SENSOR_SERVICE);
         accelerometerSensor = sensorManager != null
                 ? sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) : null;
@@ -118,7 +118,7 @@ public final class DeviceStatus implements SensorEventListener {
                 EventBus.get().publish("battery", "{\"level\":" + level + ",\"scale\":" + scale
                         + ",\"charging\":" + lastBatteryCharging + ",\"status\":\"" + lastBatteryStatus + "\"}");
                 // 用戶要求：電量跌到 10%（且不在充電）自動蹲下一次。ACTION_BATTERY_CHANGED
-                // 係 sticky broadcast，註冊即刻有一次，latch 防重複；充緊電/回升過 12% 重置。
+                // 是 sticky broadcast，註冊即刻有一次，latch 防重複；正在充電/回升過 12% 重置。
                 int pct = (level >= 0 && scale > 0) ? (level * 100 / scale) : -1;
                 if (lastBatteryCharging || pct > 12) {
                     batteryLowSquatDone = false;
@@ -304,11 +304,11 @@ public final class DeviceStatus implements SensorEventListener {
                 + "\"androidTtsReady\":" + ttsCenter.isReady() + "}");
     }
 
-    // 無 reboot：App 係第三方 sideload，無 REBOOT 權限 (signature|system)，實機回
+    // 無 reboot：App 是第三方 sideload，無 REBOOT 權限 (signature|system)，實機回
     // "Neither user 10020 nor current process has android.permission.REBOOT"，su
-    // 亦喺 app context 攞唔到 (Permission denied)——UUID 卡改做手動重開機提示。
+    // 亦在 app context 拿不到 (Permission denied)——UUID 卡改做手動重開機提示。
 
-    // 面板 URL/顯示用本機 IP（updatePanelUrlDisplay/複製連結經呢度讀）。
+    // 面板 URL/顯示用本機 IP（updatePanelUrlDisplay/複製連結經這裡讀）。
     public String getWifiIp() {
         try {
             WifiManager wm = (WifiManager) appContext.getSystemService(Context.WIFI_SERVICE);
@@ -328,7 +328,7 @@ public final class DeviceStatus implements SensorEventListener {
                         if (!addr.isLoopbackAddress() && addr instanceof java.net.Inet4Address) {
                             String host = addr.getHostAddress();
                             // 192.168/10./172.16/12 私網先算數；另見 isSiteLocal 註：fd00::/8
-                            // IPv6 ULA 呢部機用唔着，唔判）。
+                            // IPv6 ULA 這部機用不着，不判）。
                             if (host != null && (host.startsWith("192.168.") || host.startsWith("10.")
                                     || isPrivate172(host))) {
                                 return host;
@@ -356,3 +356,4 @@ public final class DeviceStatus implements SensorEventListener {
         }
     }
 }
+

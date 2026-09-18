@@ -38,17 +38,17 @@ public final class XiaozhiConfig {
     public static final String PREF_XIAOZHI_MCP_DISABLED_TOOLS = "xiaozhi_mcp_disabled_tools";
     // 見 getTtsEngine() 的 javadoc。
     public static final String PREF_XIAOZHI_TTS_ENGINE = "xiaozhi_tts_engine";
-    /** 開機語音模式三選一（實驗 tab 卡，見 boot_voice/get|set）：off＝乜都唔自動起、
+    /** 開機語音模式三選一（實驗 tab 卡，見 boot_voice/get|set）：off＝什麼都不自動起、
      *  xiaozhi＝開app自動連接小智、vosk＝開app自動載 model 起 Vosk 聆聽。預設 off。 */
     public static final String PREF_BOOT_VOICE_MODE = "boot_voice_mode";
     public static final String BOOT_VOICE_OFF = "off";
     public static final String BOOT_VOICE_XIAOZHI = "xiaozhi";
     public static final String BOOT_VOICE_VOSK = "vosk";
     /** 舊版小智 tab「開app自動連接」boolean（已由上面三態取代）。key 保留只為
-     *  開機遷移：未存過新值、舊值係 true 就當 xiaozhi 並寫返落去，之後唔再讀。 */
+     *  開機遷移：未存過新值、舊值是 true 就當 xiaozhi 並寫回去，之後不再讀。 */
     public static final String PREF_XIAOZHI_AUTO_CONNECT = "xiaozhi_auto_connect";
 
-    /** OTA 自架設定快照 (activation / vision 讀一次攞齊，唔使逐個 key 查)。 */
+    /** OTA 自架設定快照 (activation / vision 讀一次取齊，不用逐個 key 查)。 */
     public static final class OtaConfig {
         public final boolean customEnabled;
         public final String otaUrl;
@@ -77,7 +77,7 @@ public final class XiaozhiConfig {
         this.appContext = context.getApplicationContext();
         // 讀取上次選定的 TTS 引擎, 如果沒有存過就用預設值 "xiaozhi" (原本行為,
         // 不靜音)。舊版本存落的 "iflytek"/"nuance" 已無對應引擎, 一律遷移到
-        // "xiaozhi" 並寫返落去, 唔係隊列會經 speech/tts 打去死 binder 全程靜音。
+        // "xiaozhi" 並寫回去, 不是隊列會經 speech/tts 打去死 binder 全程靜音。
         xiaozhiTtsEngine = prefs().getString(PREF_XIAOZHI_TTS_ENGINE, "xiaozhi");
         if (!"xiaozhi".equals(xiaozhiTtsEngine) && !"android".equals(xiaozhiTtsEngine)) {
             Log.i(TAG, "migrate legacy xiaozhiTtsEngine " + xiaozhiTtsEngine + " -> xiaozhi");
@@ -201,7 +201,7 @@ public final class XiaozhiConfig {
             if (!url.startsWith("http://") && !url.startsWith("https://")) {
                 throw new IllegalArgumentException("url must start with http:// or https://");
             }
-            // 自訂 http 明文會送 token 明文，留警告（唔擋：LAN 自架 server 合理）。
+            // 自訂 http 明文會送 token 明文，留警告（不擋：LAN 自架 server 合理）。
             if (url.startsWith("http://")) {
                 android.util.Log.w("XiaozhiConfig", "custom OTA url is plain http (token 明文，限可信 LAN)");
             }
@@ -294,3 +294,5 @@ public final class XiaozhiConfig {
                 + MainActivity.jsonSafe(mode) + "\"}");
     }
 }
+
+

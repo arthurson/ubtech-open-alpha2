@@ -14,10 +14,10 @@ import java.util.Map;
  *
  * 注意兩個刻意保留的耦合：
  * - 和 UbxPlayer 共用同一個實例 (動作配樂 stopVoice)，由 MainActivity 傳入；
- * - 隨機動作 id 經 Supplier 攞 (x random 短/長池喺 MainActivity 嗰邊，
- *   MCP fuzzy + 語意路徑仲用緊同一份，唔拆散)。
+ * - 隨機動作 id 經 Supplier 拿 (x random 短/長池在 MainActivity 那邊，
+ *   MCP fuzzy + 語意路徑還正在用同一份，不拆散)。
  * 所有 synchronized 鎖由 MainActivity.this 轉做自己 (調用方全部經同一個
- * instance，互斥等價)；排程用傳入嘅 mainHandler (main looper)。
+ * instance，互斥等價)；排程用傳入的 mainHandler (main looper)。
  */
 public final class AudioCenter {
     private static final String TAG = "AudioCenter";
@@ -337,7 +337,7 @@ public final class AudioCenter {
      *  one) so a future change to one playback path can't accidentally affect the
      *  other. Stops whatever local music track was previously playing first.
      *
-     *  播歌時動作要不停郁到播完：在真正開始播放的那一刻 (onPreparedListener 裡面, 而不是
+     *  播歌時動作要不停動到播完：在真正開始播放的那一刻 (onPreparedListener 裡面, 而不是
      *  prepareAsync() 的 request 一發出就做) 順便啟動
      *  startMusicFillerActionLoop() - 用戶要求「播歌時要不停動, 直到整首歌播
      *  完」, 見那個 method 的 javadoc。刻意放在 onPrepared 裡面 (真正 start()
@@ -399,8 +399,8 @@ public final class AudioCenter {
         }
     }
 
-    /** 本地音樂 OnCompletion/OnError 共用：停 filler loop、（電台冇播先）放共用
-     *  頻譜、release 嗰部 player、係 current 先清掉（之前兩個 listener 內逐字一樣）。 */
+    /** 本地音樂 OnCompletion/OnError 共用：停 filler loop、（電台沒有播先）放共用
+     *  頻譜、release 那部 player、是 current 先清掉（之前兩個 listener 內逐字一樣）。 */
     private void releaseDoneMusicPlayerLocked(android.media.MediaPlayer mp) {
         stopMusicFillerActionLoop();
         stopSharedFillerLoopIfIdle();
@@ -669,8 +669,8 @@ public final class AudioCenter {
      *  (例如是否真的是一個有效的音訊檔) - 沿用 listLocalMusicFiles() 一致的原則:
      *  只看副檔名, 真正播不播得了留給 MediaPlayer.prepareAsync() 時自然
      *  onError, 不在這裡重複做判斷。副檔名要在 LOCAL_MUSIC_EXTENSIONS 裡面才
-     *  收 (避免用呢個 endpoint 上載任意檔案類型到機身)。如果 LOCAL_MUSIC_DIR
-     *  仲未存在 (第一次用呢個功能), 順手 mkdirs()。 */
+     *  收 (避免用這個 endpoint 上載任意檔案類型到機身)。如果 LOCAL_MUSIC_DIR
+     *  還未存在 (第一次用這個功能), 順手 mkdirs()。 */
     public HttpServer.ApiResponse handleMusicUpload(Map<String, String> query, byte[] body) {
         String rawName = query.get("name");
         if (rawName == null || rawName.trim().isEmpty()) {
@@ -713,9 +713,9 @@ public final class AudioCenter {
     /** 只保留檔名本身的最後一截 (new File(name).getName() 已經剝掉任何
      *  "../"/"/" 這類路徑成分), 再去掉頭尾的空白, 保證寫入 LOCAL_MUSIC_DIR
      *  的結果一定在這個資料夾裡面, 不會因為用戶 (或惡意請求) 在檔名中夾帶
-     *  路徑分隔符而寫到第二個資料夾度。
-     *  先將 Windows 式反斜線轉正斜線——Linux 上 getName() 唔識剝
-     *  "a\b"，唔轉會成個 "a\b" 當檔名（寫唔出事但怪；轉咗取最後一截先啱）。*/
+     *  路徑分隔符而寫到第二個資料夾裡。
+     *  先將 Windows 式反斜線轉正斜線——Linux 上 getName() 不懂剝
+     *  "a\b"，不轉換會整個 "a\b" 當檔名（寫入不會出問題但奇怪；轉了取最後一截才對）。*/
     private static String sanitizeUploadFilename(String rawName) {
         String base = new java.io.File(rawName.trim().replace('\\', '/')).getName();
         return base.trim();
@@ -773,7 +773,7 @@ public final class AudioCenter {
     }
 
     // 供瀏覽器音樂 tab 用的播放狀態/進度/音量 endpoint - 純讀/寫
-    // currentMusicPlayer 已有狀態，唔改播放邏輯。
+    // currentMusicPlayer 已有狀態，不改播放邏輯。
     public HttpServer.ApiResponse localMusicStatus() {
         synchronized (this) {
             android.media.MediaPlayer mp = currentMusicPlayer;
@@ -1011,7 +1011,7 @@ public final class AudioCenter {
     }
 
     // -- MCP tools (XiaozhiBridge callTool switch 轉調；
-    // isError＋resultText 經 SonarCenter.McpResult 帶返出去。
+    // isError＋resultText 經 SonarCenter.McpResult 帶出去。
     // self.media.search_radio/play_radio 底層的 searchRadioStations()/
     // resolveRadioStation() 拋出的 IOException/JSONException 保持原樣拋出 -
     // 沿用原本 callTool() 外層 try/catch (Exception e) 接住的做法, 這裡不吞。) --
@@ -1088,3 +1088,5 @@ public final class AudioCenter {
         return SonarCenter.McpResult.ok("ok");
     }
 }
+
+

@@ -1,20 +1,20 @@
 package com.open.alpha2;
 
 /**
- * JSON 字串轉義 + 極輕量組裝 helper，取代之前散喺各處嘅手寫轉義。
+ * JSON 字串轉義 + 極輕量組裝 helper，取代之前散在各處的手寫轉義。
  *
- * 之前 {@link MainActivity#jsonSafe} 同 {@link HttpServer.ApiResponse} 嘅
- * {@code esc()} 係同一套轉義各自複製一份（comment 寫明「唔直接引用免循環」）。
- * 而家單一實現放呢度，兩邊都 delegate 過嚟，行為不變。
+ * 之前 {@link MainActivity#jsonSafe} 同 {@link HttpServer.ApiResponse} 的
+ * {@code esc()} 是同一套轉義各自複製一份（comment 寫明「不直接引用免循環」）。
+ * 現在單一實現放這裡，兩邊都 delegate 過來，行為不變。
  *
- * 零依賴、API 22 相容（唔用 String.join / Map.getOrDefault）。
+ * 零依賴、API 22 相容（不用 String.join / Map.getOrDefault）。
  */
 public final class JsonUtil {
     private JsonUtil() {}
 
     private static final char[] HEX = "0123456789abcdef".toCharArray();
 
-    /** JSON string 內容轉義（唔包外層引號）。null 回 ""。 */
+    /** JSON string 內容轉義（不包外層引號）。null 回 ""。 */
     public static String esc(String s) {
         if (s == null) return "";
         StringBuilder sb = new StringBuilder(s.length());
@@ -67,3 +67,4 @@ public final class JsonUtil {
         return s.substring(0, maxLen) + "...";
     }
 }
+

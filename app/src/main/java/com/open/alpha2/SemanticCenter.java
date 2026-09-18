@@ -19,14 +19,14 @@ public final class SemanticCenter {
     private final ActionDirect actionDirect;
     private final TtsCenter ttsCenter;
 
-    /** 對話語言（zh/en；null＝未設）：vosk/load 換 model 嗰陣經 setDialogueLang()
-     *  傳入。vosk 咩話就對咩 matcher；冇對認 matcher 嘅語言一律行英文（下面
-     *  "zh".equals 即係呢條規則——將來加嘅語言未有 matcher 之前都係咁）。 */
+    /** 對話語言（zh/en；null＝未設）：vosk/load 換 model 當時經 setDialogueLang()
+     *  傳入。vosk 什麼話就對什麼 matcher；沒有對認 matcher 的語言一律行英文（下面
+     *  "zh".equals 就是這條規則——將來加的語言未有 matcher 之前都是這樣）。 */
     private volatile String dialogueLang;
 
-    /** 對話語言設定（VoskApi 經 vosk/load 換 model 嗰陣傳入；淨收 zh/en）。
-     *  TTS 唔綁呢個——用咩 TTS 全由用家決定，呢度淨係決定用邊個 matcher，
-     *  答案讀咩 locale 跟命中嗰邊（見 handleSemanticMatch）。 */
+    /** 對話語言設定（VoskApi 經 vosk/load 換 model 當時傳入；僅收 zh/en）。
+     *  TTS 不綁這個——用什麼 TTS 全由用家決定，這裡僅決定用哪個 matcher，
+     *  答案讀什麼 locale 跟命中那邊（見 handleSemanticMatch）。 */
     public void setDialogueLang(String lang) {
         if ("zh".equals(lang) || "en".equals(lang)) dialogueLang = lang;
     }
@@ -41,9 +41,9 @@ public final class SemanticCenter {
     }
 
     /** 判斷一句輸入文字是否應該用中文 matcher 處理: 有任何 CJK 統一表意文字 (漢字)
-     *  就當中文, 完全沒有就當英文。而家降做後備：淨係對話語言未設（開機預設、
-     *  從來冇 set 過）嗰陣用；一設咗就跟設定行，主 matcher 唔中先試另一個
-     *  （見 handleSemanticMatch），唔再單靠文字。中英文夾雜的句子
+     *  就當中文, 完全沒有就當英文。現在降做後備：僅對話語言未設（開機預設、
+     *  從來沒有 set 過）當時用；一設了就跟設定行，主 matcher 不中先試另一個
+     *  （見 handleSemanticMatch），不再單靠文字。中英文夾雜的句子
      *  (例如 "跳個 dance") 會因為有漢字而當中文 - 這是刻意的簡化,
      *  不追求完美的語言偵測, 對這個用途已經夠準確。 */
     private static boolean looksChinese(String text) {
@@ -59,16 +59,16 @@ public final class SemanticCenter {
     /** 將一句文字 (可能是語音引擎真正辨識到的, 也可能是 speech/semantic_simulate
      *  這個 endpoint 用來測試的打字輸入) 對照 1000 條問法配對, 命中就執行悠聊原本的
      *  「先 TTS、再隔 200ms 播動作」流程。找不到就什麼都不做 (不是錯誤 - 用戶說的話不在
-     *  那 1000 條裡面是很正常的事, 靜靜地不回應好過亂回一個不相關的回覆), 回傳 null。
+     *  那 1000 條裡面是很正常的事, 悄悄地不回應好過亂回一個不相關的回覆), 回傳 null。
      *
-     *  用邊個 matcher：有設對話語言就跟設定（vosk 咩話就對咩 matcher；
-     *  SemanticMatcherZh/En 結構一致、資料獨立, 不會互相影響），主嗰個唔中
-     *  先試另一個（兜底直接打 model 鍵換咗 model、或者混合輸入嗰啲 case）；
-     *  兩個都唔中就用主嗰個 fallback（同以前單試一個效果一樣，唔會播兩次）。
+     *  用哪個 matcher：有設對話語言就跟設定（vosk 什麼話就對什麼 matcher；
+     *  SemanticMatcherZh/En 結構一致、資料獨立, 不會互相影響），主那個不中
+     *  先試另一個（兜底直接打 model 鍵換了 model、或者混合輸入那些 case）；
+     *  兩個都不中就用主那個 fallback（同以前單試一個效果一樣，不會播兩次）。
      *  未設就沿用 looksChinese()（有漢字行中文 semantic_zh.json，
-     *  冇就行英文 semantic_en.json）。
+     *  沒有就行英文 semantic_en.json）。
      *
-     *  TTS locale 跟命中嗰邊（唔係跟輸入文字），嘴 LED 同動作流程不變。
+     *  TTS locale 跟命中那邊（不是跟輸入文字），嘴 LED 同動作流程不變。
      *
      *  回傳 MatchResult (而不是 void) 是為了讓 speech/semantic_simulate 這個 endpoint 用來
      *  即時告訴前端「有沒有配對中」, publishEvent=false 那個用法不會再經由 EventBus
@@ -94,11 +94,11 @@ public final class SemanticCenter {
             }
         }
         if (result == null) {
-            return null; // 空白輸入 - 靜靜地不做事, 不算錯誤
+            return null; // 空白輸入 - 悄悄地不做事, 不算錯誤
         }
-        // 入面條 thread 捉唔到 reassigned 過嘅 result，用 final 影子。
+        // 裡面條 thread 捉不到 reassigned 過的 result，用 final 影子。
         final SemanticMatcherBase.MatchResult finalResult = result;
-        // 命中嗰邊（主／兜底）：TTS locale＋分類隨機都跟佢（final 落嚟畀下面條 thread 用）。
+        // 命中那邊（主／兜底）：TTS locale＋分類隨機都跟它（final 下來給下面條 thread 用）。
         final boolean hitChinese = chinese;
         if (publishEvent) {
             EventBus.get().publish("semantic_match",
@@ -112,8 +112,8 @@ public final class SemanticCenter {
         // 機身已無 iFlytek/Nuance (無 alpha2services),
         // robot.speech_startTTS() 只會回 NOT_INIT 全程靜音。語意配對答案改行
         // Android 內置 TTS (同 speech/tts engine=android 分支同一部機), 依答案
-        // 語言揀 locale。嘴 LED 熄燈靠 Android TTS 個 UtteranceProgressListener
-        // (見 TtsCenter.initAndroidTts), 唔使自己熄。
+        // 語言選 locale。嘴 LED 熄燈靠 Android TTS 個 UtteranceProgressListener
+        // (見 TtsCenter.initAndroidTts), 不用自動熄滅。
         final String ttsAnswer = finalResult.answer;
         final java.util.Locale ttsLocale =
                 hitChinese ? java.util.Locale.SIMPLIFIED_CHINESE : java.util.Locale.ENGLISH;
@@ -142,7 +142,7 @@ public final class SemanticCenter {
                     // DANCE_KIDS/YOGA_ANY) 裡面隨機選一個。和下面 "__RANDOM__"
                     // (完全不限分類, 202 個隨便選) 不同, 這是分類限定的隨機。中英文
                     // matcher 共用同一份 action_category_pools.json, 哪個 instance
-                    // 呼叫結果都一樣, 只是依命中嗰邊揀對應的 instance。
+                    // 呼叫結果都一樣, 只是依命中那邊選對應的 instance。
                     actionId = hitChinese
                             ? semanticMatcherZh.resolveCategoryRandomActionId(actionId)
                             : semanticMatcherEn.resolveCategoryRandomActionId(actionId);
@@ -162,7 +162,7 @@ public final class SemanticCenter {
 
     // "打字當作自己說了這句" - 直接把輸入文字當成語音引擎
     // 已經辨識完的結果, 送去 handleSemanticMatch() 做 1000 條
-    // 問法配對 (中英文各 1000 條, 有設對話語言就跟設定，冇就依輸入文字
+    // 問法配對 (中英文各 1000 條, 有設對話語言就跟設定，沒有就依輸入文字
     // 有沒有漢字自動判斷用哪份 - 見 handleSemanticMatch), 命中就立即執行
     // 悠聊原本的「TTS200ms動作」流程。
     // 和 speech/inject 不同: 這裡不經任何機身 AIDL (不靠
@@ -176,7 +176,7 @@ public final class SemanticCenter {
     //
     // match() 找不到問法會回傳一個「聽不懂」的
     // fallback 回應 (不再是 null), 所以 matched:false 分支只
-    // 剩「輸入係空白字串」呢種 edge case 先會行到。
+    // 剩「輸入是空白字串」這種 edge case 才會行到。
     public HttpServer.ApiResponse semanticSimulateResponse(Map<String, String> query) {
         String simText = ApiValidator.require(query, "text");
         SemanticMatcherZh.MatchResult simResult = handleSemanticMatch(simText, false);
@@ -193,3 +193,5 @@ public final class SemanticCenter {
                 + "\"actionId\":\"" + MainActivity.jsonSafe(simResult.actionId) + "\"}");
     }
 }
+
+

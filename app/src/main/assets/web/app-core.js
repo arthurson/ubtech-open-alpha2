@@ -1,7 +1,7 @@
 // Open Alpha2 — client logic (app-core.js)
-// 內容: 全局狀態、UI 語言字典、servo 校準表、api()/hwApi() 呢啲所有其他 app-*.js 都要用嘅核心 helper。呢個檔案要第一個 load。
-// 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
-// <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
+// 內容: 全局狀態、UI 語言字典、servo 校準表、api()/hwApi() 這些所有其他 app-*.js 都要用的核心 helper。這個檔案要第一個 load。
+// 全部檔案共用 window/global scope (沒有用 ES module), 載入順序由 index.html 的
+// <script src="..."> 順序決定 - 詳見 index.html 頭那段 comment。
 
 // Open Alpha2 — client logic.
 // Talks to the on-robot HTTP server (HttpServer.java) via /api/*, and to the
@@ -10,9 +10,9 @@
 const API = "/api/";
 
 // ---------------- App / project metadata ----------------
-// XIAOZHI_CONSOLE_URL 冇喺呢個 web panel 度用 - 版本號/原始碼連結改咗擺喺
-// 機身/手機原生畫面 (MainActivity.java 個 onCreate() 起嗰個 TextView UI,
-// 顯示緊 http://<ip>:8888/ 嗰版)。
+// XIAOZHI_CONSOLE_URL 沒有在這個 web panel 度用 - 版本號/原始碼連結改了擺在
+// 機身/手機原生畫面 (MainActivity.java 個 onCreate() 起那個 TextView UI,
+// 正在顯示 http://<ip>:8888/ 那版)。
 const XIAOZHI_CONSOLE_URL = "https://xiaozhi.me/";
 
 // ---------------- UI language (whole-panel zh/en translation) ----------------
@@ -152,7 +152,7 @@ const I18N = {
   vosk_switching_hint:     { zh: "切換中（停舊開新）…", en: "Switching (stopping old, starting new)…" },
   vosk_load_fail_prefix:   { zh: "❌ 載入失敗：", en: "❌ Load failed: " },
   vosk_start_fail_prefix:  { zh: "❌ 開始失敗：", en: "❌ Start failed: " },
-  // 語音頁狀態行跟面板語言（voskRenderStatus 用，唔識嘅 state 跌返原文）。
+  // 語音頁狀態行跟面板語言（voskRenderStatus 用，不懂的 state 跌回原文）。
   vosk_state_idle:         { zh: "閒置", en: "Idle" },
   vosk_state_loading:      { zh: "載入中", en: "Loading" },
   vosk_state_ready:        { zh: "就緒", en: "Ready" },
@@ -199,20 +199,20 @@ const I18N = {
   camera_heading:        { zh: "相機",             en: "Camera" },
   camera_feature_key:    { zh: "功能鍵",           en: "Feature Key" },
 
-  // -- Alpha2 版 PIR card (見 index.html/app-servo.js/app-accel.js 嘅 comment) --
+  // -- Alpha2 版 PIR card (見 index.html/app-servo.js/app-accel.js 的 comment) --
   // 真機已確認 PIR 觸發正常。
   alpha2_pir_heading:       { zh: "PIR 感應器", en: "PIR Sensor" },
   alpha2_pir_switch_label:  { zh: "感應器開關", en: "Sensor Switch" },
   alpha2_pir_alert_label:   { zh: "警示反應 (LED+鈴聲)", en: "Alert Reaction (LED + Chime)" },
 
   // -- Alpha2 speech tab (TTS engine/voice buttons) --
-  // tts_engine_android_btn 保留 (小智頁 Android 掣仲用緊)。
+  // tts_engine_android_btn 保留 (小智頁 Android 按鈕還正在用)。
   tts_engine_android_btn: { zh: "Android 預設", en: "Android Default" },
-  // tts_engine_*_btn 保留 (小智 tab 仲用緊)。
+  // tts_engine_*_btn 保留 (小智 tab 還正在用)。
   tts_android_engine_label: { zh: "TTS 引擎：", en: "TTS Engine:" },
   tts_android_lang_label: { zh: "語言：", en: "Language:" },
   tts_android_lang_keep_option: { zh: "（沿用引擎目前語言）", en: "(Keep engine's current language)" },
-  // Google TTS 每個語言多把聲，揀完語言再揀聲（無具體語言就成行收埋）。
+  // Google TTS 每個語言多把聲，選完語言再選聲（無具體語言就成行收起）。
   // 顯示跟足 Google 系統設定：「語音 I、II、III…」編號（英文面板就 "Voice I…"）。
   tts_android_voice_label: { zh: "聲音：", en: "Voice:" },
   tts_android_voice_name: { zh: "語音", en: "Voice" },
@@ -221,10 +221,10 @@ const I18N = {
 
   // reboot_confirm/rebooting/
   // reboot_ok/reboot_failed_prefix/suffix 保留 (app-accel.js UUID 卡個獨立
-  // 重開機掣仲用緊)。
+  // 重開機按鈕還正在用)。
 
   // asr_reset_failed_unknown 保留
-  // (app-accel.js/app-speech.js 仲用緊做通用「未知錯誤」)。
+  // (app-accel.js/app-speech.js 還正在用做通用「未知錯誤」)。
   asr_reset_failed_unknown: { zh: "未知錯誤", en: "Unknown error" },
 
   // -- Alpha2 speech tab (對話界面 speech/semantic_simulate 動態字串) --
@@ -469,7 +469,7 @@ function setUiLanguage(lang) {
       document.getElementById("advServoTunerGrid").scrollTop = scrollPos;
     }
   } catch(e) {}
-  // Vosk 模型鍵＋下載鍵＋兩條狀態行都係動態起（名跟 uiLang），重畫一次就轉埋語言。
+  // Vosk 模型鍵＋下載鍵＋兩條狀態行都是動態起（名跟 uiLang），重畫一次就一併轉換語言。
   try {
     if (typeof voskApplyUiLanguage === "function") voskApplyUiLanguage();
   } catch(e) {}
@@ -505,7 +505,7 @@ function relabelServoGrid() {
 }
 
 // ---------------- Backend ----------------
-// currentBackend 保留：app-camera.js/app-mic.js 有 "if (currentBackend !== 'alpha2') return;" guard，留常數等佢哋照樣 work。
+// currentBackend 保留：app-camera.js/app-mic.js 有 "if (currentBackend !== 'alpha2') return;" guard，留常數等它們照樣 work。
 const currentBackend = "alpha2";
 
 // Surface any uncaught JS exception to console.error, which MainActivity's
@@ -579,7 +579,7 @@ const SERVO_NAMES = {
   20: { zh: "頭上下",   en: "Head Pitch" },
 };
 
-/** 攞返一個 servo 嘅顯示名, 跟主 UI 語言 (uiLang)。 */
+/** 取回一個 servo 的顯示名, 跟主 UI 語言 (uiLang)。 */
 function servoNameOf(id) {
   const entry = SERVO_NAMES[id];
   if (!entry) return String(id);
@@ -603,7 +603,7 @@ const SERVO_GROUPS = [
 // api() call now route failures through here so the UI always shows *something*.
 
 function showError(context, err) {
-  // 鎖屏中：後面 init 嘅 API 401 係預期之內，唔洗版（浮層已經講明要解鎖）。
+  // 鎖屏中：後面 init 的 API 401 是預期之內，不洗版（浮層已經講明要解鎖）。
   if (typeof window !== "undefined" && window.__panelLocked) return;
   const banner = document.getElementById("errorBanner");
   const msg = (err && err.message) ? err.message : String(err);
@@ -654,12 +654,12 @@ function hwApi(path, params) {
   return api(path, params);
 }
 
-// Namespaced fetch helpers - 同 api() 一樣形狀, 淨係前綴唔同, 對應
+// Namespaced fetch helpers - 同 api() 一樣形狀, 僅前綴不同, 對應
 // MainActivity 三個獨立路由 (見開頭 dispatch): sysApi() -> /api/system/*
 // (handleSystemApi), directApi() -> /api/direct/* (handleDirectApi)。
-// xiaozhiApi() 住喺 app-xiaozhi.js (佢要跟小智 UI 狀態, 唔放呢度)。
-// api-client.js (Alpha2Api.*) 會按 OpenAPI path 自動揀啱嘅一個, 直接用
-// api('system/...') 會打去 /api/alpha2/system/... 而 404, 唔好咁做。
+// xiaozhiApi() 住在 app-xiaozhi.js (它要跟小智 UI 狀態, 不放這裡)。
+// api-client.js (Alpha2Api.*) 會按 OpenAPI path 自動選中的一個, 直接用
+// api('system/...') 會打去 /api/alpha2/system/... 而 404, 不要這麼做。
 function sysApi(path, params) {
   clearError();
   const merged = withPanelToken(params);
@@ -700,11 +700,11 @@ function directApi(path, params) {
 
 // ---------------- Panel token（實驗 tab 認證，見 PanelAuth.java） ----------------
 //
-// 範圍：opt-in，預設關＝全開。啟用後成個面板上鎖（全部 /api/*＋/upload/* 要帶
-// token；淨 auth/*＋靜態頁＋ws/stream 開放），其他 tab／Blockly 照跟同一粒
+// 範圍：opt-in，預設關＝全開。啟用後整個面板上鎖（全部 /api/*＋/upload/* 要帶
+// token；僅 auth/*＋靜態頁＋ws/stream 開放），其他 tab／Blockly 照跟同一粒
 // token（下面自動帶）。token 放 localStorage（同一個 browser＋同一個面板地址
-// 跨 tab 共用，閂 browser 都仲記得；要忘記就撳「清除」）。
-// 傳遞 key 用 panel_token（唔用 token：xiaozhi ota_config/set 個 token 係另一樣嘢，
+// 跨 tab 共用，關 browser 都還記得；要忘記就按「清除」）。
+// 傳遞 key 用 panel_token（不用 token：xiaozhi ota_config/set 個 token 是另一樣東西，
 // 同名會撞；受保護 endpoint 另收 token 別名方便 curl，見 PanelAuth）。
 function panelTokenGet() {
   try { return localStorage.getItem("panel_token") || ""; } catch (e) { return ""; }
@@ -714,10 +714,10 @@ function panelTokenSet(t) {
   try {
     if (t) localStorage.setItem("panel_token", t);
     else localStorage.removeItem("panel_token");
-  } catch (e) { /* private mode 等寫唔入就當無記住，唔阻操作 */ }
+  } catch (e) { /* private mode 等寫不入就當無記住，不阻操作 */ }
 }
 
-/** 將記住嘅 token 混入 params（無 token 即原樣；已有 panel_token 唔覆寫）。 */
+/** 將記住的 token 混入 params（無 token 即原樣；已有 panel_token 不覆寫）。 */
 function withPanelToken(params) {
   const tok = panelTokenGet();
   if (!tok) return params;
@@ -728,7 +728,7 @@ function withPanelToken(params) {
 }
 
 // ---------------- 認證卡開關（同 UUID 卡 uuidCardToggle 一致寫法） ----------------
-// 預設收埋詳情，用戶揭開先睇到／用到；唔記狀態，每次入頁預設關。
+// 預設收起詳情，用戶揭開先看到／用到；不記狀態，每次入頁預設關。
 function panelAuthCardToggle() {
   const enabled = document.getElementById("panelAuthCardEnabled");
   const body = document.getElementById("panelAuthCardBody");
@@ -766,7 +766,7 @@ function panelAuthRefreshStatus() {
       els.status.textContent = t("panel_auth_enabled_locked");
       return;
     }
-    // 有記住 token 都要 verify（可能喺另一 tab 清咗／改咗）。
+    // 有記住 token 都要 verify（可能在另一 tab 清了／改了）。
     Alpha2Api.systemAuthVerify({}).then(function (v) {
       els.status.textContent = t(v && v.ok && v.valid
         ? "panel_auth_enabled_unlocked" : "panel_auth_enabled_locked");
@@ -776,7 +776,7 @@ function panelAuthRefreshStatus() {
 
 /** 儲存（單一輸入框，一兼三職）。
  * 送 token（新值）＋current（舊值證明，同一個值）：未啟用→後端忽略 current，
- * 直接啟用；已啟用＋打啱現有值→後端當無改（set 同值）回 ok，前端記住＝解鎖；
+ * 直接啟用；已啟用＋相符現有值→後端當無改（set 同值）回 ok，前端記住＝解鎖；
  * 已啟用＋打錯→401。要換新值就先清除再儲存。成功即記住（localStorage）。 */
 function panelAuthSet() {
   const els = panelAuthElements();
@@ -809,7 +809,7 @@ function panelAuthClear() {
   });
 }
 
-/** 中英雙語（鎖屏浮層＋眼仔 title 用：語言掣收埋喺面版後面，唔知睇緊邊種文，兩種一次過 show）。 */
+/** 中英雙語（鎖屏浮層＋眼仔 title 用：語言按鈕收起在面版後面，不知正在看邊種文，兩種一次過 show）。 */
 function tBoth(key) {
   const entry = (typeof I18N !== "undefined" && I18N[key]) || null;
   if (!entry) return key;
@@ -817,7 +817,7 @@ function tBoth(key) {
   return entry.zh + " / " + entry.en;
 }
 
-/** 密碼框「眼仔」開關：撳一下睇到打緊咩，再撳收返（token 輸入框用，見 index.html）。 */
+/** 密碼框「眼仔」開關：按一下看到正在打什麼，再按收到（token 輸入框用，見 index.html）。 */
 function togglePwVisibility(inputId, btn) {
   const el = document.getElementById(inputId);
   if (!el) return;
@@ -830,28 +830,28 @@ function togglePwVisibility(inputId, btn) {
 }
 
 // ---------------- 面板鎖屏浮層（見 index.html #panelLockOverlay） ----------------
-// auth 啟用＋記住嘅 token 驗唔過→開浮層蓋住成個面版唔 show 內容。浮層解鎖同儲存
+// auth 啟用＋記住的 token 驗不過→開浮層蓋住整個面版不 show 內容。浮層解鎖同儲存
 // 同一個語義（token＋current 同值），得即記住＋reload，成頁用正常流程重行。
-// 注意：HTML／JS 靜態檔本身擋唔住下載（瀏覽器要載入先行到），真正敏感數據靠後端
-// 全面板閘口（未解鎖 API 一律 401）；浮層只係唔 show 操作面。
+// 注意：HTML／JS 靜態檔本身擋不住下載（瀏覽器要載入先行到），真正敏感數據靠後端
+// 全面板閘口（未解鎖 API 一律 401）；浮層只是不 show 操作面。
 function panelLockCheck() {
   if (typeof Alpha2Api === "undefined" || !Alpha2Api.systemAuthStatus) return;
   Alpha2Api.systemAuthStatus({}).then(function (res) {
-    if (!res || !res.ok || !res.enabled) return;  // 停用＝全開，乜都唔做
+    if (!res || !res.ok || !res.enabled) return;  // 停用＝全開，什麼都不做
     const open = function () {
-      window.__panelLocked = true;  // 壓住 showError：後面 init 嘅 401 唔洗版
+      window.__panelLocked = true;  // 壓住 showError：後面 init 的 401 不洗版
       const ov = document.getElementById("panelLockOverlay");
       if (ov && ov.classList) ov.classList.add("open");
     };
     if (!panelTokenGet()) { open(); return; }  // 記住都無，直接鎖
-    // 有記住都要 verify（可能喺另一 tab 清咗／改咗）。
+    // 有記住都要 verify（可能在另一 tab 清了／改了）。
     Alpha2Api.systemAuthVerify({}).then(function (v) {
       if (!(v && v.ok && v.valid)) open();
     });
   });
 }
 
-/** 浮層解鎖掣（＋Enter）：得即記住＋reload；唔得留喺鎖屏 show 錯。 */
+/** 浮層解鎖按鈕（＋Enter）：得即記住＋reload；不得留在鎖屏 show 錯。 */
 function panelLockUnlock() {
   const input = document.getElementById("panelLockInput");
   const msg = document.getElementById("panelLockMsg");
@@ -869,4 +869,5 @@ function panelLockUnlock() {
     }
   });
 }
+
 

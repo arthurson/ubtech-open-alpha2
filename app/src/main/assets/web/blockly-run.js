@@ -1,16 +1,16 @@
 // Open Alpha2 — Blockly 直譯執行引擎。
 //
 // 設計原則：
-//  1. 唔用 Blockly 內建 code generator 生成一段 JS 再 eval — 改用「行樹」直譯
-//     (interpretBlock), 咁樣可以喺 wait/repeat 中途逐格 highlight, 亦可以隨時
-//     `running = false` 安全中斷, 唔會有半行 JS 卡死喺 eval 入面嘅問題。
-//  2. 每個「動作類」block (播放動作/TTS/LED/伺服...) 對應現有已驗證嘅 /api/* 端點,
+//  1. 不用 Blockly 內建 code generator 生成一段 JS 再 eval — 改用「行樹」直譯
+//     (interpretBlock), 這樣可以在 wait/repeat 中途逐格 highlight, 亦可以隨時
+//     `running = false` 安全中斷, 不會有半行 JS 卡死在 eval 裡面的問題。
+//  2. 每個「動作類」block (播放動作/TTS/LED/伺服...) 對應現有已驗證的 /api/* 端點,
 //     經型別化 Alpha2Api.* wrapper 呼叫 (api-client.js, 內建 assertEnum/assertRange,
 //     同後端 ApiValidator 同一套規則), 保證同「面板」分頁行為完全一致。
 //  3. 事件 block (alpha_event_accel_threshold / alpha_event_sonar_triggered /
-//     alpha_event_pir_triggered) 唔喺主程式流程之內執行, 而係喺 workspace
-//     load 嗰陣就註冊做 WebSocket listener,
-//     常駐監聽 — 呢個係事件驅動模型, 同「按 ▶ 執行」嗰個線性 program 係兩回事,
+//     alpha_event_pir_triggered) 不在主程式流程之內執行, 而是在 workspace
+//     load 當時就註冊做 WebSocket listener,
+//     常駐監聽 — 這個是事件驅動模型, 同「按 ▶ 執行」那個線性 program 是兩回事,
 //     可以同時存在。
 
 (function () {
@@ -21,7 +21,7 @@
   let running = false;
   let stopRequested = false;
   let workspace = null;
-  const variables = new Map(); // 變數名稱 -> 值 (直譯器自己嘅 scope, 唔用 Blockly 內建 code-gen 嘅變數系統)
+  const variables = new Map(); // 變數名稱 -> 值 (直譯器自己的 scope, 不用 Blockly 內建 code-gen 的變數系統)
   const accelHandlers = []; // { axis, cmp, threshold, varName, bodyBlock, hatBlock }
   const sonarHandlers = []; // { varName, bodyBlock, hatBlock, wasTriggered }
   const pirHandlers = []; // { state: 'detected'|'cleared', varName, bodyBlock, hatBlock, wasTriggered }
@@ -48,8 +48,8 @@
 
   function sleep(ms) {
     return new Promise(function (resolve) {
-      // 用短間隔輪詢 stopRequested, 咁樣「停止」掣先可以喺 wait 中途即時生效,
-      // 而唔使等成個 setTimeout 完先檢查。
+      // 用短間隔輪詢 stopRequested, 這樣「停止」按鈕先可以在 wait 中途即時生效,
+      // 而不用等整個 setTimeout 完先檢查。
       const step = 50;
       let elapsed = 0;
       const timer = setInterval(function () {
@@ -76,13 +76,13 @@
     await Alpha2Api.servoOne({ id: id, angle: angle, time: time });
   }
   async function servoAllAdapter(angles, time) {
-    // angles: 長度 20 嘅 number 陣列, index 0 對應 servo id 1。
+    // angles: 長度 20 的 number 陣列, index 0 對應 servo id 1。
     await Alpha2Api.servoAll({ angles: angles.join(','), time: time });
   }
 
   // ---- LED ----
   // led/head/set 同 led/eye/set 用「preset (long/flash/breathe/chase/dual/stop)
-  // + color + brightness」一個 endpoint 包晒所有效果。
+  // + color + brightness」一個 endpoint 包完所有效果。
   async function ledHeadAdapter(preset, color, brightness) {
     const params = { preset: preset };
     if (preset !== 'stop') { params.color = color; params.brightness = brightness; }
@@ -93,16 +93,16 @@
     if (preset !== 'stop') { params.color = color; params.brightness = brightness; }
     await Alpha2Api.ledEyeSet(params);
   }
-  // 嘴部 LED：淨係得「off / breathe(speed)」兩態 (冇 solid-on)。
+  // 嘴部 LED：僅得「off / breathe(speed)」兩態 (沒有 solid-on)。
   async function ledMouthAdapter(mode, speed) {
     if (mode === 'off') await Alpha2Api.ledMouthSet({ preset: 'off' });
     else await Alpha2Api.ledMouthSet({ speed: speed });
   }
 
   // ---- 語音 TTS ----
-  // speech/tts 得 android 先會響：nuance/iflytek 經機身 speech_startTTS
-  // 恒回 NOT_INIT（無 alpha2services，見 RobotStub）。舊存檔可能仲帶住
-  // 嗰兩個值，呢度一律轉 android＋warn，唔靜默吞（VOICE 照傳，後端 android
+  // speech/tts 得 android 才會響：nuance/iflytek 經機身 speech_startTTS
+  // 恒回 NOT_INIT（無 alpha2services，見 RobotStub）。舊存檔可能還帶住
+  // 那兩個值，這裡一律轉 android＋warn，不靜默吞（VOICE 照傳，後端 android
   // 分支無視）。
   async function speechTtsAdapter(text, engine, voice) {
     if (engine !== 'android') {
@@ -115,7 +115,7 @@
   }
 
   // ------------------------------------------------------------------
-  // 值運算：攞一個 value-input block 嘅結果 (數字/文字/布林/物件皆可)
+  // 值運算：拿一個 value-input block 的結果 (數字/文字/布林/物件皆可)
   // ------------------------------------------------------------------
   async function evalValue(block) {
     if (!block) return null;
@@ -237,7 +237,7 @@
         return vals.join(',');
       }
       default:
-        // procedures_callreturn 同其他未特別支援嘅 value block: 嘗試用變數 getter 邏輯行為
+        // procedures_callreturn 同其他未特別支援的 value block: 嘗試用變數 getter 邏輯行為
         if (block.type === 'variables_get_reporter') {
           return variables.has(block.getFieldValue('VAR')) ? variables.get(block.getFieldValue('VAR')) : null;
         }
@@ -249,53 +249,53 @@
   // ------------------------------------------------------------------
   // 播放動作 + (可選) 等待完成。
   //
-  // 關鍵次序: 一定要「先掛好 action_stop 嘅 listener, 先至真正送出 /api/action/play」。
-  // 如果反過來 (先送 API 先掛 listener), 遇到一個好快播完嘅動作 (甚至比 HTTP round-trip
-  // 仲快), 個 action_stop event 可能喺 listener 掛好之前就已經到咗 WebSocket, 咁就會
-  // 執漏, 卡到個 timeout 先放行 —— 呢個係經典嘅 setup-before-fire race condition。
+  // 關鍵次序: 一定要「先掛好 action_stop 的 listener, 先至真正送出 /api/action/play」。
+  // 如果反過來 (先送 API 先掛 listener), 遇到一個好快播完的動作 (甚至比 HTTP round-trip
+  // 還快), 個 action_stop event 可能在 listener 掛好之前就已經到了 WebSocket, 這樣就會
+  // 遺漏, 卡到個 timeout 先放行 —— 這個是經典的 setup-before-fire race condition。
   //
-  // 另外用 evt.data.name 同送出嘅 name 做精準匹配, 而唔係「隨便收到一個 action_stop
-  // 就當自己嗰個播完」—— 如果程式入面有第二條並行嘅事件驅動 block 喺呢段時間都觸發咗
+  // 另外用 evt.data.name 同送出的 name 做精準匹配, 而不是「隨便收到一個 action_stop
+  // 就當自己那個播完」—— 如果程式裡面有第二條並行的事件驅動 block 在這段時間都觸發了
   // 另一個動作, 盲目匹配就會提早誤判「完成」。
   //
-  // 2026-08 bugfix (用家回報「整動作會 crash」): 「等待完成」揀「唔等」嗰個分支
-  // 之前完全冇任何序列化 —— 一路排落嚟嘅 alpha_action_play block (或者 loop 入面
-  // 逐格都揀「唔等」), 個個都係「送出去就即刻放行落下一格」, 令幾個 action/play
-  // request 可以喺幾 ms 之內連環送到 MainActivity#handleApi()。而
-  // AlphaActionServiceUtil.playActionName() 入面嘅 AIDL call 係一個會真正
-  // block 住等 UBTECH 機身側 IActionService 回應嘅 Binder call —— 呢個
-  // service 底層對應嘅係實體馬達, 冇可能同一時間執行多過一個動作。用 logcat 追查
-  // 過一次真實個案 (見對話紀錄): 6 個 action/play request 喺 15ms 內連環送到,
-  // 之後成個 app 嘅 HttpServer 就再冇任何回應 log, 一直到用家自己強制關 app 為止
-  // —— 即係其中一個 AIDL call 卡死咗冇返, 掗住咗個共用嘅 Binder thread,
-  // 連累埋之後所有 AIDL 呼叫 (唔止 action, 連 servo/LED 都一齊唔郁得), 用家會
-  // 睇落好似「成個 app 死咗」。
+  // 2026-08 bugfix (用家回報「整動作會 crash」): 「等待完成」選「不等」那個分支
+  // 之前完全沒有任何序列化 —— 一路排下來的 alpha_action_play block (或者 loop 裡面
+  // 逐格都選「不等」), 個個都是「送出遷就即刻放行落下一格」, 令幾個 action/play
+  // request 可以在幾 ms 之內連環送到 MainActivity#handleApi()。而
+  // AlphaActionServiceUtil.playActionName() 裡面的 AIDL call 是一個會真正
+  // block 住等 UBTECH 機身側 IActionService 回應的 Binder call —— 這個
+  // service 底層對應的是實體馬達, 沒有可能同一時間執行多過一個動作。用 logcat 追查
+  // 過一次真實個案 (見對話紀錄): 6 個 action/play request 在 15ms 內連環送到,
+  // 之後整個 app 的 HttpServer 就再沒有任何回應 log, 一直到用家自己強制關 app 為止
+  // —— 就是其中一個 AIDL call 卡死了沒有返, 卡住了個共用的 Binder thread,
+  // 連累埋之後所有 AIDL 呼叫 (不止 action, 連 servo/LED 都一齊不動得), 用家會
+  // 看來好似「整個 app 死了」。
   //
-  // 修法: 唔理 WAIT 揀「等」定「唔等」, 一律用呢個 module-level 嘅
-  // actionBusyPromise 做序列化閘 —— 保證同一時間淨係得一個 action/play 在途。
+  // 修法: 不理 WAIT 選「等」定「不等」, 一律用這個 module-level 的
+  // actionBusyPromise 做序列化閘 —— 保證同一時間僅得一個 action/play 在途。
   //
-  // 2026-08 第二次 bugfix (見對話紀錄嘅 logcat: 兩個 action/play 連環撞到
-  // server 個 "API_ERROR_BUSY"): 呢個閘原本嘅設計淨係等到 HTTP round-trip
-  // 本身返嚟就放行 (「唔等」個 block 唔應該等成個動作播完先郁落一格, 呢個
-  // 諗法本身冇錯)。但 server 端嘅「busy」定義已經變咗做「呢個動作真正
-  // 播緊, 直到 onStopActionResult() 先解鎖」, 同呢度「HTTP 一 round-trip
-  // 完就當唔 busy」唔一致 —— 結果就係第二個 action/play 嘅 HTTP request 一早
-  // 過咗第一個嘅 HTTP round-trip, 但機身實際仲喺度播緊第一個動作, server
+  // 2026-08 第二次 bugfix (見對話紀錄的 logcat: 兩個 action/play 連環撞到
+  // server 個 "API_ERROR_BUSY"): 這個閘原本的設計僅等到 HTTP round-trip
+  // 本身回來就放行 (「不等」個 block 不應該等整個動作播完先動落一格, 這個
+  // 想法本身沒有錯)。但 server 端的「busy」定義已經變了做「這個動作真正
+  // 正在播, 直到 onStopActionResult() 先解鎖」, 同這裡「HTTP 一 round-trip
+  // 完就當不 busy」不一致 —— 結果就是第二個 action/play 的 HTTP request 一早
+  // 過了第一個的 HTTP round-trip, 但機身實際還在這裡正在播第一個動作, server
   // 就會拒絕。
   //
-  // 而家改做: client 端嘅「busy」都要對齊做「等到呢個動作真正完成 (收到
-  // action_stop event) 先算」—— 唔理個 block 本身係咪揀咗「唔等」, gate 內部
-  // 都會靜靜地等 action_stop (或者一個保守嘅 safety timeout, 見下面), 先至
-  // 放行俾下一個排隊嘅 action/play 送出。呢個唔改變「唔等」個 block 本身嘅
-  // 用家可見行為 (playActionAndMaybeWait 嘅 !wait 分支依然係送咗就即刻
-  // return, 唔會令使用者要多等), 淨係令幾個 action/play 之間唔會再打交。
+  // 現在改做: client 端的「busy」都要對齊做「等到這個動作真正完成 (收到
+  // action_stop event) 先算」—— 不理個 block 本身是否選了「不等」, gate 內部
+  // 都會悄悄地等 action_stop (或者一個保守的 safety timeout, 見下面), 先至
+  // 放行給下一個排隊的 action/play 送出。這個不改變「不等」個 block 本身的
+  // 用家可見行為 (playActionAndMaybeWait 的 !wait 分支依然是送了就即刻
+  // return, 不會令使用者要多等), 僅令幾個 action/play 之間不會再打交。
   let actionBusyPromise = Promise.resolve();
 
-  // 保守嘅 safety timeout —— 如果 action_stop event 因為某啲原因冚唔到 (例如
-  // WebSocket 斷咗、或者呢個動作嘅 callback 本身有 bug 冇 fire), gate 都唔可以
-  // 永久卡死, 否則之後成個程式所有 action/play 都會停晒。20 秒已經比
-  // playActionAndMaybeWait() 自己個 15 秒 timeout 仲長, 保證真正需要嘅等待
-  // 一定會由嗰邊先放行, 呢個純粹係最後一道保險。
+  // 保守的 safety timeout —— 如果 action_stop event 因為某啲原因冚不到 (例如
+  // WebSocket 斷了、或者這個動作的 callback 本身有 bug 沒有 fire), gate 都不可以
+  // 永久卡死, 否則之後整個程式所有 action/play 都會停完。20 秒已經比
+  // playActionAndMaybeWait() 自己個 15 秒 timeout 還長, 保證真正需要的等待
+  // 一定會由那邊先放行, 這個純粹是最後一道保險。
   const ACTION_GATE_SAFETY_TIMEOUT_MS = 20000;
 
   function waitForActionStopOrTimeout() {
@@ -313,19 +313,19 @@
     const gated = actionBusyPromise.then(function () {
       return Alpha2Api.actionPlay({ name: name });
     });
-    // 下一個排隊嘅 action/play 要等「呢個動作真正播完」先可以送出, 唔係淨係
+    // 下一個排隊的 action/play 要等「這個動作真正播完」先可以送出, 不是僅
     // 等 HTTP round-trip ——見上面大段註解。無論今次 API 呼叫成功/失敗/收到
-    // action_stop/等到 timeout, 都一定要放行 (.catch 吞晒錯誤), 否則一次
-    // 失敗就會永久卡死成條隊。
+    // action_stop/等到 timeout, 都一定要放行 (.catch 吞完錯誤), 否則一次
+    // 失敗就會永久卡死整個隊。
     actionBusyPromise = gated
       .then(function (r) {
-        // API 本身都送唔出 (network fail 或者 server 話 busy) 就冇必要再等
-        // action_stop, 佢根本唔會嚟 —— 即刻放行, 等下一個 block 有機會送出
-        // (可能上一個「busy」其實係一場誤會, 例如網絡短暫唔穩)。
+        // API 本身都送不出 (network fail 或者 server 話 busy) 就沒有必要再等
+        // action_stop, 它根本不會來 —— 即刻放行, 等下一個 block 有機會送出
+        // (可能上一個「busy」其實是一場誤會, 例如網絡短暫不穩)。
         if (!r || !r.ok) return;
         return waitForActionStopOrTimeout();
       })
-      .catch(function () { /* 見上面註解: 吞錯誤, 淨係用嚟放行 */ });
+      .catch(function () { /* 見上面註解: 吞錯誤, 僅用來放行 */ });
     return gated;
   }
 
@@ -345,11 +345,11 @@
       const timer = setTimeout(function () { cleanup(); resolve('timeout'); }, timeoutSeconds * 1000);
       function cleanup() { clearTimeout(timer); window.__alphaOffEvent(onEvt); }
       window.__alphaOnEvent(onEvt);
-      // listener 掛好之後先送出真正嘅 API request。
-      // .catch(...) 唔可以少: window.api() 內部理論上已經接住曬 fetch 嘅 network error,
-      // 但為咗唔靠呢一層假設, 呢度都要有自己嘅 .catch, 否則萬一有意外拋出, 呢個
-      // .then() 冇接住嘅 rejection 會逸出做 unhandled promise rejection, 喺頁面度
-      // 彈紅色 error banner, 但個動作播放狀態 (donePromise) 就會卡住唔鬱 (冇 resolve)。
+      // listener 掛好之後先送出真正的 API request。
+      // .catch(...) 不可以少: window.api() 內部理論上已經接住曬 fetch 的 network error,
+      // 但為了不靠這一層假設, 這裡都要有自己的 .catch, 否則萬一有意外拋出, 這個
+      // .then() 沒有接住的 rejection 會逸出做 unhandled promise rejection, 在頁面度
+      // 彈紅色 error banner, 但個動作播放狀態 (donePromise) 就會卡住不動 (沒有 resolve)。
       sendActionPlay(name).then(function (r) {
         if (!r || !r.ok) { cleanup(); resolve('api_failed'); }
       }).catch(function (err) {
@@ -380,9 +380,9 @@
         await playActionAndMaybeWait(name, wait, timeout);
         return;
       }
-      // 2026-08 更新: alpha_action_play_builtin 拆咗做獨立 block (基本/跳舞
-      // /故事/瑜伽/其他), 但每粒嘅 field 結構 (NAME/WAIT/TIMEOUT) 完全一樣,
-      // 唔使分開寫 case, 一個 case 蓋晒所有 type 就夠。
+      // 2026-08 更新: alpha_action_play_builtin 拆了做獨立 block (基本/跳舞
+      // /故事/瑜伽/其他), 但每粒的 field 結構 (NAME/WAIT/TIMEOUT) 完全一樣,
+      // 不用分開寫 case, 一個 case 蓋完所有 type 就夠。
       case 'alpha_action_play_basic':
       case 'alpha_action_play_dance':
       case 'alpha_action_play_story':
@@ -441,20 +441,20 @@
         return;
       // 2026-09 移除: alpha_speech_start_asr / alpha_speech_set_voice /
       // alpha_speech_set_language / alpha_speech_self_interrupt —— 對應後端
-      // endpoint 已經唔存在 (404)，block 定義、toolbox、i18n 一齊拎走。
-      // 2026-08 更新: 電話鈴聲 / 通知鈴聲已經拆做兩粒獨立 block (以前係一粒
-      // alpha_speech_ringtone + TYPE dropdown), type 依家寫死喺呢兩個 case。
-      // 播放依家送 title (唔再送 index), call 新增嘅 /api/audio/ringtones/play_by_title
+      // endpoint 已經不存在 (404)，block 定義、toolbox、i18n 一齊拿走。
+      // 2026-08 更新: 電話鈴聲 / 通知鈴聲已經拆做兩粒獨立 block (以前是一粒
+      // alpha_speech_ringtone + TYPE dropdown), type 現在寫死在這兩個 case。
+      // 播放現在送 title (不再送 index), call 新增的 /api/audio/ringtones/play_by_title
       // (見 blockly-blocks.js makeRingtoneBlock() 註解: title 對應機制同相機分頁
-      // 快門聲一樣穩陣, 唔使理 RingtoneManager cursor index 排序)。
+      // 快門聲一樣穩陣, 不用理 RingtoneManager cursor index 排序)。
       //
-      // 2026-08 再更新: 加咗 DURATION 呢個 value input —— 之前個 block 播完成首
-      // 系統鈴聲先返 (無得控制播幾耐, 亦都係之前「不斷重覆聽落唔停」問題嘅源頭
-      // 之一), 而家播放之後, 若果 duration > 0, 就 sleep 夠鐘再主動 call
-      // /api/audio/ringtones/stop 停佢 (跟 MainActivity.playRingtoneUri() 依家
-      // 有 currentRingtonePlayer 呢個 field 追蹤緊播緊嗰個, stop 可以隨時安全咁
-      // 打斷)。填 0 = 唔設自動停止時間, 播到成個音效檔案自然完為止 (舊行為)。
-      // toolbox 入面電話鈴聲預設 10 秒, 通知鈴聲預設 5 秒。
+      // 2026-08 再更新: 加了 DURATION 這個 value input —— 之前個 block 播完成首
+      // 系統鈴聲先返回 (無得控制播多久, 亦都是之前「不斷重覆聽起來不停」問題的源頭
+      // 之一), 現在播放之後, 如果 duration > 0, 就 sleep 夠鐘再主動 call
+      // /api/audio/ringtones/stop 停它 (跟 MainActivity.playRingtoneUri() 現在
+      // 有 currentRingtonePlayer 這個 field 正在追蹤正在播那個, stop 可以隨時安全咁
+      // 打斷)。填 0 = 不設自動停止時間, 播到整個音效檔案自然完為止 (舊行為)。
+      // toolbox 裡面電話鈴聲預設 10 秒, 通知鈴聲預設 5 秒。
       case 'alpha_speech_ringtone_phone':
       case 'alpha_speech_ringtone_notification': {
         const type = (block.type === 'alpha_speech_ringtone_notification') ? 'notification' : 'ringtone';
@@ -472,9 +472,9 @@
         await Alpha2Api.audioRingtonesPlayByTitle({ type: type, title: title });
         if (duration > 0) {
           await sleep(duration * 1000);
-          // 就算 stopRequested (用家撳咗「停止程式」), 都要停返個鈴聲,
-          // 唔係佢會繼續喺機械人度播落去 (Java 個 MediaPlayer 唔會因為
-          // 呢個網頁 loop 停咗就自動停)。
+          // 就算 stopRequested (用家按了「停止程式」), 都要停掉個鈴聲,
+          // 不是它會繼續在機械人度播下去 (Java 個 MediaPlayer 不會因為
+          // 這個網頁 loop 停了就自動停)。
           await Alpha2Api.audioRingtonesStop();
         }
         return;
@@ -485,9 +485,9 @@
         return;
 
       // ---------------- 伺服 ----------------
-      // 2026-08 更新: alpha_servo_one 拆咗做 5 粒獨立 block (頭/右手/左手/右腳
-      // /左腳), 但五粒嘅 field 結構 (ID/ANGLE/TIME) 完全一樣, 唔使分開寫 case,
-      // 一個 case 蓋晒 5 個 type 就夠。
+      // 2026-08 更新: alpha_servo_one 拆了做 5 粒獨立 block (頭/右手/左手/右腳
+      // /左腳), 但五粒的 field 結構 (ID/ANGLE/TIME) 完全一樣, 不用分開寫 case,
+      // 一個 case 蓋完 5 個 type 就夠。
       case 'alpha_servo_one_head':
       case 'alpha_servo_one_right_arm':
       case 'alpha_servo_one_left_arm':
@@ -495,9 +495,9 @@
       case 'alpha_servo_one_left_leg': {
         const id = block.getFieldValue('ID');
         let angle = Number(block.getFieldValue('ANGLE'));
-        // 執行層再 clamp 多一次做保險 — field validator 已經喺 UI 層擋咗大部分
-        // 情況, 但透過「匯入 .xml」載入嘅程式可能繞過咗 UI (XML 入面隨便打
-        // 一個超出範圍嘅數值), 所以真正送出 API 之前一定要再夾一次。
+        // 執行層再 clamp 多一次做保險 — field validator 已經在 UI 層擋了大部分
+        // 情況, 但透過「匯入 .xml」載入的程式可能繞過了 UI (XML 裡面隨便打
+        // 一個超出範圍的數值), 所以真正送出 API 之前一定要再夾一次。
         if (window.ALPHA_SERVO_CLAMP) {
           const clamped = window.ALPHA_SERVO_CLAMP(id, angle);
           if (clamped !== angle) {
@@ -513,8 +513,8 @@
       case 'alpha_servo_all': {
         const anglesVal = await evalValue(block.getInputTargetBlock('ANGLES'));
         const time = block.getFieldValue('TIME');
-        // CSV 字串入面 20 個數值逐粒對應 #1~#20 校準表 clamp 一次, 唔理呢串
-        // CSV 嚟自邊粒 block (helper 組合定係直接打字/變數), 送出前都要係安全值。
+        // CSV 字串裡面 20 個數值逐顆對應 #1~#20 校準表 clamp 一次, 不理這串
+        // CSV 來自哪粒 block (helper 組合還是直接打字/變數), 送出前都要是安全值。
         let angles = String(anglesVal == null ? '' : anglesVal).split(',').map(function (s) { return Number(s.trim()); });
         if (window.ALPHA_SERVO_CLAMP) {
           angles = angles.map(function (v, idx) { return window.ALPHA_SERVO_CLAMP(idx + 1, v); });
@@ -526,7 +526,7 @@
       case 'alpha_servo_home': {
         // Home 值一律由共用校準表 (window.ALPHA_SERVO_CALIBRATION, 同「伺服部位」
         // block 及「伺服」分頁三處共用同一份資料, 見 blockly-servo-data.js) 讀出,
-        // 唔再喺呢度另外 hardcode 一份可能會走數嘅副本。
+        // 不再在這裡另外 hardcode 一份可能會出錯的副本。
         const cal = window.ALPHA_SERVO_CALIBRATION;
         const home = [];
         for (let i = 1; i <= 20; i++) home.push(cal && cal[i] ? cal[i].home : 120);
@@ -625,7 +625,7 @@
         for (let i = 0; i < times && !stopRequested; i++) {
           const flow = await runSequenceGuarded(block.getInputTargetBlock('DO'));
           if (flow === 'BREAK') break;
-          // flow === 'CONTINUE' 或 null: 直接入下一輪, 冇特別動作要做
+          // flow === 'CONTINUE' 或 null: 直接入下一輪, 沒有特別動作要做
         }
         return;
       }
@@ -662,7 +662,7 @@
         return;
       }
       case 'controls_flow_statements':
-        // break/continue: 用簡化模型, 直接拋出特殊訊號俾 runSequence/loop 接住。
+        // break/continue: 用簡化模型, 直接拋出特殊訊號給 runSequence/loop 接住。
         throw { __alphaFlow: block.getFieldValue('FLOW') };
 
       case 'variables_set': {
@@ -696,9 +696,9 @@
         await execStatement(block);
       } catch (e) {
         if (e && e.__alphaFlow) {
-          // break/continue 冒出去俾最近嘅迴圈接住;呢度用最簡單方式 — 直接向上拋,
-          // runProgram() 頂層接唔到就當停止, 每個 loop-case 分支已經隱含用返
-          // runSequence 嘅呼叫堆疊, 冒出一層即係跳出嗰層 loop 嘅 body。
+          // break/continue 冒出去給最近的迴圈接住;這裡用最簡單方式 — 直接向上拋,
+          // runProgram() 頂層接不到就當停止, 每個 loop-case 分支已經隱含用回
+          // runSequence 的呼叫堆疊, 冒出一層就是跳出那層 loop 的 body。
           throw e;
         }
         logLine(t('run_error', { err: (e && e.message ? e.message : String(e)) }), 'err');
@@ -707,8 +707,8 @@
     }
   }
 
-  // controls_repeat_ext / whileUntil / for 用嘅 runSequence 需要接住 break/continue,
-  // 包一層 try/catch 令佢哋喺該迴圈中斷,而唔係成個程式炸咗。
+  // controls_repeat_ext / whileUntil / for 用的 runSequence 需要接住 break/continue,
+  // 包一層 try/catch 令它們在該迴圈中斷,而不是整個程式炸了。
   const _rawRunSequence = runSequence;
   async function runSequenceGuarded(startBlock) {
     try {
@@ -723,14 +723,14 @@
   async function runProgram() {
     if (running) return;
     // 2026-08 bugfix: rewireEventHandlers() 平時靠 workspace change listener
-    // debounce 300ms 先執行 (見 AlphaBlockly.init), 目的係避免一連串拖拽/
-    // undo/redo 觸發太多次掃描。但如果用家啱啱先拖低一粒 accel/sonar 事件
-    // block, 跟住手快即刻撳「執行」, 個 300ms debounce 未到, accelHandlers/
-    // sonarHandlers 就仲係之前(冇呢粒新 block)嘅舊狀態 —— 結果個 hat block
-    // 完全冇被註冊到, 「執行紀錄」會見到「已註冊 0 個」, 一直要等到下一次
-    // workspace 有改動 (例如用家郁一下個 block) 先會補做一次 rewire。
-    // 而家喺執行程式之前, 強制同步做多一次 rewireEventHandlers(), 確保
-    // accel/sonar handler 一定反映緊畫布上最新狀態, 唔使靠彩。
+    // debounce 300ms 先執行 (見 AlphaBlockly.init), 目的是避免一連串拖拽/
+    // undo/redo 觸發太多次掃描。但如果用家剛剛先拖低一粒 accel/sonar 事件
+    // block, 跟著手快即刻按「執行」, 個 300ms debounce 未到, accelHandlers/
+    // sonarHandlers 就還是之前(沒有這粒新 block)的舊狀態 —— 結果個 hat block
+    // 完全沒有被註冊到, 「執行紀錄」會見到「已註冊 0 個」, 一直要等到下一次
+    // workspace 有改動 (例如用家動一下個 block) 才會補做一次 rewire。
+    // 現在在執行程式之前, 強制同步做多一次 rewireEventHandlers(), 確保
+    // accel/sonar handler 一定反正在映畫布上最新狀態, 不用靠彩。
     rewireEventHandlers();
     const EVENT_HAT_TYPES = ['alpha_event_accel_threshold', 'alpha_event_sonar_triggered', 'alpha_event_pir_triggered'];
     const topBlocks = workspace.getTopBlocks(true).filter(function (b) {
@@ -768,7 +768,7 @@
   }
 
   // ------------------------------------------------------------------
-  // 事件驅動：掃描 workspace 入面所有 alpha_event_accel_threshold /
+  // 事件驅動：掃描 workspace 裡面所有 alpha_event_accel_threshold /
   // alpha_event_sonar_triggered / alpha_event_pir_triggered, 註冊做 WS listener
   // ------------------------------------------------------------------
   function rewireEventHandlers() {
@@ -785,24 +785,24 @@
           varName: b.getFieldValue('VAR'),
           bodyBlock: b.getInputTargetBlock('DO'),
           hatBlock: b,
-          running: false, // re-entrancy guard: 呢個 handler 嘅 DO 序列係咪跑緊
+          running: false, // re-entrancy guard: 這個 handler 的 DO 序列是否正在跑
         });
       } else if (b.type === 'alpha_event_sonar_triggered' && !b.disabled) {
         sonarHandlers.push({
           varName: b.getFieldValue('VAR'),
           bodyBlock: b.getInputTargetBlock('DO'),
           hatBlock: b,
-          wasTriggered: false, // 邊緣觸發用: 上次收到嘅 triggered 狀態
-          running: false, // re-entrancy guard: 呢個 handler 嘅 DO 序列係咪跑緊
+          wasTriggered: false, // 邊緣觸發用: 上次收到的 triggered 狀態
+          running: false, // re-entrancy guard: 這個 handler 的 DO 序列是否正在跑
         });
       } else if (b.type === 'alpha_event_pir_triggered' && !b.disabled) {
         pirHandlers.push({
-          state: b.getFieldValue('STATE'), // 'detected' 或 'cleared' —— 用戶揀邊個方向先觸發
+          state: b.getFieldValue('STATE'), // 'detected' 或 'cleared' —— 用戶選哪個方向先觸發
           varName: b.getFieldValue('VAR'),
           bodyBlock: b.getInputTargetBlock('DO'),
           hatBlock: b,
-          wasTriggered: null, // 邊緣觸發用: 上次收到嘅 triggered 狀態; null=未收過任何 PIR 事件, 唔算邊緣
-          running: false, // re-entrancy guard: 呢個 handler 嘅 DO 序列係咪跑緊
+          wasTriggered: null, // 邊緣觸發用: 上次收到的 triggered 狀態; null=未收過任何 PIR 事件, 不算邊緣
+          running: false, // re-entrancy guard: 這個 handler 的 DO 序列是否正在跑
         });
       }
     });
@@ -810,25 +810,25 @@
   }
 
   async function onWsEvent(evt) {
-    window.__alphaFireEvent(evt); // 俾 alpha_action_wait_done 等 ad-hoc listener 用
-    // 加速度計：每次收到 accel 事件, 逐個已註冊嘅門檻 block 檢查一次, 讀數
-    // (含重力分量, 見 MainActivity onSensorChanged 註解) 嘅絕對值過咗門檻就
+    window.__alphaFireEvent(evt); // 給 alpha_action_wait_done 等 ad-hoc listener 用
+    // 加速度計：每次收到 accel 事件, 逐個已註冊的門檻 block 檢查一次, 讀數
+    // (含重力分量, 見 MainActivity onSensorChanged 註解) 的絕對值過了門檻就
     // 觸發。
     //
-    // 2026-08 bugfix: 之前呢度冇任何防抖/re-entrancy guard —— accel 事件本身
-    // 高頻 (~150-250ms 一次), 而 DO 入面隨便一個 servo 動作就成 1 秒以上。
-    // 結果一個 body 仲喺度 await runSequence() 跑緊, 下一個/幾個 accel 事件
-    // 又已經到咗, 而個 for-loop 冇擋住, 會即刻再 call 多次 runSequence(),
-    // 變成同一個 hatBlock 有多個 sequence 同時間疊住跑, 睇落就好似「動作會
-    // 不斷重複」。呢個唔關「冇邊緣觸發」事 (accel 本身就係「持續超過門檻就
-    // 反覆觸發」嘅語意, 唔似 sonar 有明確嘅「啱啱先偵測到」一次性語意) ——
-    // 真正問題係冇擋住重疊執行。跟返 Scratch runtime 個標準做法: 同一個
-    // hat block 同一時間淨係俾佢跑緊一份 sequence, 上一輪未完之前, 新嚟嘅
-    // 觸發事件直接跳過 (skip), 唔會 queue 起或者疊加。
+    // 2026-08 bugfix: 之前這裡沒有任何防抖/re-entrancy guard —— accel 事件本身
+    // 高頻 (~150-250ms 一次), 而 DO 裡面隨便一個 servo 動作就成 1 秒以上。
+    // 結果一個 body 還在這裡 await runSequence() 正在跑, 下一個/幾個 accel 事件
+    // 又已經到了, 而個 for-loop 沒有擋住, 會即刻再 call 多次 runSequence(),
+    // 變成同一個 hatBlock 有多個 sequence 同時間疊住跑, 看來就好似「動作會
+    // 不斷重複」。這個不關「沒有邊緣觸發」事 (accel 本身就是「持續超過門檻就
+    // 反覆觸發」的語意, 不似 sonar 有明確的「剛剛先偵測到」一次性語意) ——
+    // 真正問題是沒有擋住重疊執行。遵循 Scratch runtime 個標準做法: 同一個
+    // hat block 同一時間僅給它正在跑一份 sequence, 上一輪未完之前, 新來的
+    // 觸發事件直接跳過 (skip), 不會 queue 起或者疊加。
     if (evt.type === 'accel' && evt.data) {
       for (const h of accelHandlers) {
         if (!h.bodyBlock) continue;
-        if (h.running) continue; // 上一輪 DO 仲未跑完, 呢次觸發直接跳過
+        if (h.running) continue; // 上一輪 DO 還未跑完, 這次觸發直接跳過
         const v = Math.abs(Number(evt.data[h.axis]));
         const hit = h.cmp === 'gt' ? v > h.threshold : v < h.threshold;
         if (!hit) continue;
@@ -846,15 +846,15 @@
         }
       }
     }
-    // 聲納：sonar_obstacle 事件本身喺 MainActivity 側已經 debounce 過 (連續同
-    // 狀態嘅 frame 唔會重複 publish LED 開關, 但事件本身可能仍然逐 frame 送),
-    // 呢度用 wasTriggered 做「由未觸發變觸發」嘅邊緣偵測, 令「偵測到障礙」
-    // 呢個語意係「啱啱先偵測到」, 唔會物件持續喺門檻範圍入面就不斷重複執行。
+    // 聲納：sonar_obstacle 事件本身在 MainActivity 側已經 debounce 過 (連續同
+    // 狀態的 frame 不會重複 publish LED 開關, 但事件本身可能仍然逐 frame 送),
+    // 這裡用 wasTriggered 做「由未觸發變觸發」的邊緣偵測, 令「偵測到障礙」
+    // 這個語意是「剛剛先偵測到」, 不會物件持續在門檻範圍裡面就不斷重複執行。
     //
-    // 2026-08 bugfix: 單靠邊緣偵測唔夠 —— 如果物件反覆進出門檻距離 (例如喺
-    // 門檻邊緣徘徊), wasTriggered 會反覆 false→true, 每次都係一個新嘅
-    // 「edge」, 一樣會喺上一輪 DO 未跑完之前又觸發多次, 造成同一個 hatBlock
-    // 有多個 sequence 疊住跑。加返同 accel 一樣嘅 running guard。
+    // 2026-08 bugfix: 單靠邊緣偵測不夠 —— 如果物件反覆進出門檻距離 (例如在
+    // 門檻邊緣徘徊), wasTriggered 會反覆 false→true, 每次都是一個新的
+    // 「edge」, 一樣會在上一輪 DO 未跑完之前又觸發多次, 造成同一個 hatBlock
+    // 有多個 sequence 疊住跑。加回同 accel 一樣的 running guard。
     if (evt.type === 'sonar_obstacle' && evt.data) {
       const triggeredNow = !!evt.data.triggered;
       for (const h of sonarHandlers) {
@@ -862,7 +862,7 @@
         const edge = triggeredNow && !h.wasTriggered;
         h.wasTriggered = triggeredNow;
         if (!edge) continue;
-        if (h.running) continue; // 上一輪 DO 仲未跑完, 呢次觸發直接跳過
+        if (h.running) continue; // 上一輪 DO 還未跑完, 這次觸發直接跳過
         variables.set(h.varName, evt.data);
         highlight(h.hatBlock.id);
         h.running = true;
@@ -877,19 +877,19 @@
         }
       }
     }
-    // PIR 人體感應器: alpha2_pir_state 事件 payload 淨係 {triggered: true/false}
-    // (true=偵測到人, false=偵測唔到人/離開), 見 RobotEventReceiver 個
+    // PIR 人體感應器: alpha2_pir_state 事件 payload 僅 {triggered: true/false}
+    // (true=偵測到人, false=偵測不到人/離開), 見 RobotEventReceiver 個
     // registerAlpha2PirAlertListener 附近 comment。同 sonar 一樣用邊緣偵測,
-    // 但用戶要求「偵測到/偵測唔到」兩個方向都要俾用家獨立揀 (STATE 欄位),
-    // 唔似 sonar 淨係「由遠變近」一個方向 —— 所以呢度要分開睇 detected
-    // (false→true 嘅邊) 定 cleared (true→false 嘅邊) 先啱嗰粒 hat block
-    // 自己揀嘅方向。
+    // 但用戶要求「偵測到/偵測不到」兩個方向都要給用家獨立選 (STATE 欄位),
+    // 不似 sonar 僅「由遠變近」一個方向 —— 所以這裡要分開看 detected
+    // (false→true 的邊) 還是 cleared (true→false 的邊) 才對那顆 hat block
+    // 自己選的方向。
     //
-    // wasTriggered 初始值用 null (唔係 false), 用嚟分辨「呢個 handler 啱啱
-    // 先註冊, 仲未收過任何 PIR 事件」同「上次收到嘅係『冇人』狀態」—— 如果
-    // 唔咁做, 第一個收到嘅事件假如啱啱好係 triggered=false, 會被誤判做一次
-    // 「由 undefined 變 false」嘅 cleared 邊緣, 一開始執行就無啦啦觸發一次
-    // 「偵測唔到人」個 block, 用家會覺得莫名其妙。
+    // wasTriggered 初始值用 null (不是 false), 用來分辨「這個 handler 剛剛
+    // 先註冊, 還未收過任何 PIR 事件」同「上次收到的是『沒有人』狀態」—— 如果
+    // 不這麼做, 第一個收到的事件假如剛剛好是 triggered=false, 會被誤判做一次
+    // 「由 undefined 變 false」的 cleared 邊緣, 一開始執行就無啦啦觸發一次
+    // 「偵測不到人」個 block, 用家會覺得莫名其妙。
     if (evt.type === 'alpha2_pir_state' && evt.data) {
       const triggeredNow = !!evt.data.triggered;
       for (const h of pirHandlers) {
@@ -899,7 +899,7 @@
         const edgeCleared = h.state === 'cleared' && !triggeredNow && hadPrior && h.wasTriggered;
         h.wasTriggered = triggeredNow;
         if (!edgeDetected && !edgeCleared) continue;
-        if (h.running) continue; // 上一輪 DO 仲未跑完, 呢次觸發直接跳過
+        if (h.running) continue; // 上一輪 DO 還未跑完, 這次觸發直接跳過
         variables.set(h.varName, evt.data);
         highlight(h.hatBlock.id);
         h.running = true;
@@ -916,7 +916,7 @@
     }
   }
 
-  // 簡易 pub/sub, 俾 wait_done 呢類 ad-hoc 一次性 listener 用, 唔使全部塞入 accelHandlers/sonarHandlers。
+  // 簡易 pub/sub, 給 wait_done 這類 ad-hoc 一次性 listener 用, 不用全部塞入 accelHandlers/sonarHandlers。
   const adHocListeners = new Set();
   window.__alphaOnEvent = function (fn) { adHocListeners.add(fn); };
   window.__alphaOffEvent = function (fn) { adHocListeners.delete(fn); };
@@ -999,8 +999,8 @@
     if (!sel) return;
     const list = getSavedProgramList();
     const names = Object.keys(list).sort();
-    // 2026-09-09：逐粒 createElement＋textContent（之前字串拼 innerHTML，
-    // 程式名嚟自 localStorage/匯入檔，stored XSS）。
+    // 2026-09-09：逐顆 createElement＋textContent（之前字串拼 innerHTML，
+    // 程式名來自 localStorage/匯入檔，stored XSS）。
     while (sel.firstChild) sel.removeChild(sel.firstChild);
     const ph = document.createElement('option');
     ph.value = "";
@@ -1042,17 +1042,17 @@
   }
 
   // ------------------------------------------------------------------
-  // 動作清單下拉：由 /api/action/list 抓返嚟, 填入 alpha_action_play_dropdown
+  // 動作清單下拉：由 /api/action/list 抓回來, 填入 alpha_action_play_dropdown
   //
-  // 分類前綴用 action id 去查 window.ALPHA_ACTION_CATEGORY_OF (定義喺
-  // blockly-actions-data.js, 由 action_classified.txt 嘅 id -> main 對照表建構)。
+  // 分類前綴用 action id 去查 window.ALPHA_ACTION_CATEGORY_OF (定義在
+  // blockly-actions-data.js, 由 action_classified.txt 的 id -> main 對照表建構)。
   //
-  // 注意: 呢度一定要用 a.id, 唔可以用 a.type —— 機械人 /api/action/list 回傳嘅
-  // "type" 係機身 firmware 自己嘅內部動作類型編號 (跟 IAlphaActionListListener
-  // 個 4 欄 id/type/nameCn/nameEn 對應), 同我哋喺 action_classified.txt 人手分類
-  // 出嚟嘅 4 大分類 (basic/dance/story/yoga) 係完全獨立、冇關係嘅兩套編號,
-  // 撞得啱純屬巧合。之前舊版靠 type 數字做白名單推斷分類, 表面上部分「啱」都係
-  // 因為兩套編號剛巧喺某啲數值範圍重疊, 唔可靠。
+  // 注意: 這裡一定要用 a.id, 不可以用 a.type —— 機械人 /api/action/list 回傳的
+  // "type" 是機身 firmware 自己的內部動作類型編號 (跟 IAlphaActionListListener
+  // 個 4 欄 id/type/nameCn/nameEn 對應), 和我們在 action_classified.txt 人手分類
+  // 出來的 4 大分類 (basic/dance/story/yoga) 是完全獨立、沒有關係的兩套編號,
+  // 碰巧純屬巧合。之前舊版靠 type 數字做白名單推斷分類, 表面上部分「啱」都是
+  // 因為兩套編號剛巧在某啲數值範圍重疊, 不可靠。
   // ------------------------------------------------------------------
   async function refreshActionDropdown() {
     logLine(t('run_fetching_action_list'), 'sys');
@@ -1073,17 +1073,17 @@
       logLine(t('run_action_list_failed'), 'err');
       window.__alphaActionOptions = [[t('run_action_list_load_failed_option'), '']];
     }
-    // 強制所有現存嘅 dropdown block 重新渲染,顯示新選項。
+    // 強制所有現存的 dropdown block 重新渲染,顯示新選項。
     //
-    // ⚠ 呢度一定要連 setValue 埋一齊做, 唔可以淨係 getOptions()+forceRerender():
-    // 個 field 之前 (未攞清單前) 存住嘅值好可能係 fallback 選項嘅 '' (即係
-    // [['(未載入...)', '']] 嗰個 value), 而依家攞到嘅新清單入面已經冇呢個 ''
-    // value 呢一項——變成「field 目前存住嘅值,喺 field 自己個 menuGenerator
-    // 而家會返嘅 options 入面搵唔到」呢種 value/options 唔一致嘅狀態。呢個狀態
-    // 底下 Blockly 嘅 dropdown 會撳極都冇反應 (曾經實測出現嘅 bug), 睇落成個
-    // dropdown 壞咗一樣。所以攞到新清單之後, 如果個 field 現存嘅值唔喺新
-    // options 入面, 要主動 setValue 去新清單第一項, 令個 field 隨時都處於
-    // 「目前值 ∈ 目前 options」呢個一致狀態。
+    // ⚠ 這裡一定要連 setValue 在一起做, 不可以僅 getOptions()+forceRerender():
+    // 個 field 之前 (未拿清單前) 存住的值好可能是 fallback 選項的 '' (就是
+    // [['(未載入...)', '']] 那個 value), 而現在拿到的新清單裡面已經沒有這個 ''
+    // value 這一項——變成「field 目前存住的值,在 field 自己個 menuGenerator
+    // 現在會返的 options 裡面找不到」這種 value/options 不一致的狀態。這個狀態
+    // 底下 Blockly 的 dropdown 會怎麼按都沒有反應 (曾經實測出現的 bug), 看來整個
+    // dropdown 壞了一樣。所以拿到新清單之後, 如果個 field 現存的值不在新
+    // options 裡面, 要主動 setValue 去新清單第一項, 令個 field 隨時都處於
+    // 「目前值 ∈ 目前 options」這個一致狀態。
     if (workspace) {
       workspace.getBlocksByType('alpha_action_play_dropdown', false).forEach(function (b) {
         const field = b.getField('NAME');
@@ -1099,36 +1099,36 @@
     }
   }
 
-  // 2026-08 更新: 系統鈴聲清單依家靜態內嵌喺 blockly-ringtone-data.js (由實機
-  // adb 抓一次, 見該檔頭註解), 唔再喺呢度即時查 /api/audio/ringtones/list —
-  // refreshRingtoneDropdown() 呢個 function 同工具箱嗰粒「攞鈴聲清單」按鈕已經
+  // 2026-08 更新: 系統鈴聲清單現在靜態內嵌在 blockly-ringtone-data.js (由實機
+  // adb 抓一次, 見該檔頭註解), 不再在這裡即時查 /api/audio/ringtones/list —
+  // refreshRingtoneDropdown() 這個 function 同工具箱那顆「拿鈴聲清單」按鈕已經
   // 一齊移除, 見 blockly.html。
 
   // ------------------------------------------------------------------
-  // 剪貼/復原/收埋側欄呢兩組掣 —— 抄自 NuwaRobotics Code Lab, 用 Blockly 官方嘅
+  // 剪貼/復原/收起側欄這兩組按鈕 —— 抄自 NuwaRobotics Code Lab, 用 Blockly 官方的
   // Blockly.ComponentManager + Blockly.uiPosition (IPositionable 介面) 重寫,
-  // 同垃圾桶 (Trashcan) / 縮放掣 (ZoomControls) 用返完全同一套定位管線：
-  // WorkspaceSvg 內部每次 resize 都會攞晒所有已註冊嘅 POSITIONABLE component,
+  // 同垃圾桶 (Trashcan) / 縮放按鈕 (ZoomControls) 用回完全同一套定位管線：
+  // WorkspaceSvg 內部每次 resize 都會拿完所有已註冊的 POSITIONABLE component,
   // 按 weight 由細到大逐個 call .position(uiMetrics, alreadyPositionedRects),
-  // 每個 call 完之後攞返佢 .getBoundingRectangle() 加入 alreadyPositionedRects
-  // 度, 等下一個 (weight 更大嘅) component 定位嗰陣可以自動避開佢 —— 呢個
-  // 就係點解垃圾桶/縮放掣之間永遠唔會疊埋嘅原因, 而家我哋自己嘅掣都用返
-  // 呢一套, 所以永遠都會跟實佢哋, 唔會再走位。
+  // 每個 call 完之後取回它 .getBoundingRectangle() 加入 alreadyPositionedRects
+  // 度, 等下一個 (weight 更大的) component 定位當時可以自動避開它 —— 這個
+  // 就是為什麼垃圾桶/縮放按鈕之間永遠不會重疊的原因, 現在我們自己的按鈕都用回
+  // 這一套, 所以永遠都正在會隨它們, 不會再移位。
   //
   // 之前試過兩次用獨立 HTML <div> + CSS position:absolute + JS 度
-  // getBoundingClientRect() 量度 Blockly 垃圾桶而家喺邊嚟追 —— 但 Blockly
+  // getBoundingClientRect() 量度 Blockly 垃圾桶現在在哪裡追 —— 但 Blockly
   // 內部個位置公式 (uiPosition.getStartPositionRect/bumpPositionRect) 本身
-  // 都有唔少因素 (scrollbar 有冇、toolbox 響邊、RTL) 會影響實際數值, 追極都會
-  // 慢半拍或者算錯, 依家改用返 Blockly 官方機制先係真正治本嘅做法。
+  // 都有不少因素 (scrollbar 有沒有、toolbox 在哪裡、RTL) 會影響實際數值, 怎麼追都都會
+  // 慢半拍或者算錯, 現在改用回 Blockly 官方機制才是真正治本的做法。
   //
-  // Blockly.utils.dom.createSvgElement(tag, attrs, parent) 呢個 helper 同
-  // Blockly 自己 Trashcan/ZoomControls 起 DOM 用緊嘅係同一個 function
-  // (喺 minified source 度確認過, 對應 Blockly.utils.dom.createSvgElement)。
+  // Blockly.utils.dom.createSvgElement(tag, attrs, parent) 這個 helper 同
+  // Blockly 自己 Trashcan/ZoomControls 起 DOM 正在用的是同一個 function
+  // (在 minified source 裡確認過, 對應 Blockly.utils.dom.createSvgElement)。
 
   const EDIT_FAB_ICON_PATHS = {
-    // 每個 icon 用 20x20 嘅 viewBox 座標系統畫, 用 <path> stroke 勾線 (唔用
+    // 每個 icon 用 20x20 的 viewBox 座標系統畫, 用 <path> stroke 勾線 (不用
     // 實心 fill), 對齊返 Code Lab 個線條風格 (undo/redo 箭頭、剪刀、複製兩個
-    // 疊埋嘅方格、貼上剪貼板形狀、垃圾桶)。
+    // 重疊的方格、貼上剪貼板形狀、垃圾桶)。
     undo: 'M6 6 L6 3 M6 6 L9 6 M6 6 C6 6 15 4 15 11 C15 15.5 11.5 17 8.5 17 C6.5 17 5 16.3 4 15.3',
     redo: 'M14 6 L14 3 M14 6 L11 6 M14 6 C14 6 5 4 5 11 C5 15.5 8.5 17 11.5 17 C13.5 17 15 16.3 16 15.3',
     cut: 'M6 5 L14 15 M14 5 L10 9 M6 15 L8.5 12.5 M6 5 A1.6 1.6 0 1 0 6 8.2 A1.6 1.6 0 1 0 6 5 Z M6 11.8 A1.6 1.6 0 1 0 6 15 A1.6 1.6 0 1 0 6 11.8 Z',
@@ -1138,14 +1138,14 @@
   };
 
   // ------------------------------------------------------------------
-  // EditFabControls — 一個 IPositionable component, 內部包住五粒小掣
+  // EditFabControls — 一個 IPositionable component, 內部包住五粒小按鈕
   // (復原/取消復原/剪下/複製/貼上), 成組一齊定位, 行為好似 Blockly 個
-  // ZoomControls 咁 (裡面雖然有幾粒掣, 但對 ComponentManager 嚟講係一個
-  // component, 一次 getBoundingRectangle() covers 晒成組)。
-  // 注意: editAction() 落面仲有一個 'delete' case (checkAndDelete()) 冇被
-  // 呢度任何掣觸發 —— 刪除功能刻意冇獨立掣, 由 Blockly 內建垃圾桶負責 (見
-  // updateButtonStates() 嘅 comment), 個 case 純粹留低方便將來想加返一個
-  // 獨立掣嗰陣可以直接用, 唔係漏刪嘅死 code。
+  // ZoomControls 咁 (裡面雖然有幾粒按鈕, 但對 ComponentManager 來講是一個
+  // component, 一次 getBoundingRectangle() covers 完成組)。
+  // 注意: editAction() 下面還有一個 'delete' case (checkAndDelete()) 沒有被
+  // 這裡任何按鈕觸發 —— 刪除功能刻意沒有獨立按鈕, 由 Blockly 內建垃圾桶負責 (見
+  // updateButtonStates() 的 comment), 個 case 純粹留下方便將來想加回一個
+  // 獨立按鈕當時可以直接用, 不是漏刪的死 code。
   // ------------------------------------------------------------------
   class EditFabControls {
     constructor(ws) {
@@ -1153,14 +1153,14 @@
       this.id = 'alphaEditFabControls';
       this.top = 0;
       this.left = 0;
-      // 版面: 每粒掣係獨立嘅圓形按鈕 (直徑 32px), 自己一個圓圈背景, 掣與掣之間
-      // 淨係用間距分隔 (冇連埋一條 pill, 冇分隔線), 橫向排晒一行, 抄 Code Lab
-      // 個排位 (六粒獨立圓形掣, 一行, 唔係分兩行/直排)。分組之間 (復原/取消
-      // 復原 ｜ 剪/copy/貼 ｜ 刪除) 用較大嘅 GROUP_GAP 帶出視覺分隔, 唔再靠
+      // 版面: 每粒按鈕是獨立的圓形按鈕 (直徑 32px), 自己一個圓圈背景, 按鈕與按鈕之間
+      // 僅用間距分隔 (沒有一併一條 pill, 沒有分隔線), 橫向排完一行, 抄 Code Lab
+      // 個排位 (六粒獨立圓形按鈕, 一行, 不是分兩行/直排)。分組之間 (復原/取消
+      // 復原 ｜ 剪/copy/貼 ｜ 刪除) 用較大的 GROUP_GAP 帶出視覺分隔, 不再靠
       // 實體分隔線。
       this.BUTTON_SIZE = 36;
       this.GAP = 8;
-      this.GROUP_GAP = 16; // 分組之間嘅額外間距 (取代之前嘅分隔線)
+      this.GROUP_GAP = 16; // 分組之間的額外間距 (取代之前的分隔線)
       this.MARGIN_HORIZONTAL = 12;
       this.MARGIN_VERTICAL = 12;
       this.buttons = [
@@ -1176,19 +1176,19 @@
       ws.getComponentManager().addComponent({
         component: this,
         capabilities: [Blockly.ComponentManager.Capability.POSITIONABLE],
-        weight: 3, // Trashcan 通常係 weight 2, ZoomControls weight 1 —— 擺
-                   // 喺佢哋之後 (數值愈大愈遲定位), 等呢兩個 Blockly 自己嘅
-                   // component 先取得佢哋慣常嘅角落位置, 我哋成組先至喺
-                   // bumpPositionRect() 嗰陣自動被推去再上少少, 唔會疊埋。
+        weight: 3, // Trashcan 通常是 weight 2, ZoomControls weight 1 —— 擺
+                   // 在它們之後 (數值愈大愈遲定位), 等這兩個 Blockly 自己的
+                   // component 先取得它們慣常的角落位置, 我們成組先至在
+                   // bumpPositionRect() 當時自動被推去再上少少, 不會重疊。
       });
       this.workspace.resizeContents();
     }
 
     getGroupWidth() {
-      // 直接模擬返 createDom() 入面個 x 累加邏輯, 唔用獨立公式計 (兩者之前試過
-      // 對唔實, 因為分隔線嘅 GAP 計算方式好易手民之誤), 保證呢度攞到嘅闊度
-      // 同真正畫出嚟嘅闊度完全一致 —— 呢個闊度會直接影響
-      // getBoundingRectangle(), 錯咗會令 bumpPositionRect() 嘅避讓計算唔準。
+      // 直接模擬返 createDom() 裡面個 x 累加邏輯, 不用獨立公式計 (兩者之前試過
+      // 對不實, 因為分隔線的 GAP 計算方式好易手民之誤), 保證這裡拿到的闊度
+      // 同真正畫出來的闊度完全一致 —— 這個闊度會直接影響
+      // getBoundingRectangle(), 錯了會令 bumpPositionRect() 的避讓計算不準。
       let x = 0;
       let lastButtonEnd = 0;
       for (const b of this.buttons) {
@@ -1205,9 +1205,9 @@
     createDom() {
       const svg = this.workspace.getParentSvg();
       this.svgGroup = Blockly.utils.dom.createSvgElement('g', { class: 'bk-svg-fab-bar' }, null);
-      // 冇連埋一條嘅背景 pill —— 每粒掣自己嘅 circle 就係佢個背景 (獨立圓形
-      // 按鈕, 掣與掣之間有留白, 抄 Code Lab 個排位)。分組之間 (sep 位置) 淨係
-      // 加大間距 (GROUP_GAP), 唔畫實體分隔線。
+      // 沒有一併一條的背景 pill —— 每粒按鈕自己的 circle 就是它個背景 (獨立圓形
+      // 按鈕, 按鈕與按鈕之間有留白, 抄 Code Lab 個排位)。分組之間 (sep 位置) 僅
+      // 加大間距 (GROUP_GAP), 不畫實體分隔線。
       let x = 0;
       for (const b of this.buttons) {
         if (b.sep) {
@@ -1246,9 +1246,9 @@
       svg.appendChild(this.svgGroup);
     }
 
-    // 更新複製/剪下兩粒掣嘅 disabled 狀態 (同之前 HTML 版一樣邏輯: 冇揀緊
-    // block 就 disable 呢兩粒, 復原/取消復原一路留低俾用家自己試; 刪除功能
-    // 已經冇獨立掣, 由垃圾桶本身負責, 唔關呢度事)。
+    // 更新複製/剪下兩粒按鈕的 disabled 狀態 (同之前 HTML 版一樣邏輯: 沒有正在選
+    // block 就 disable 這兩粒, 復原/取消復原一路留下給用家自己試; 刪除功能
+    // 已經沒有獨立按鈕, 由垃圾桶本身負責, 不關這裡事)。
     updateButtonStates() {
       const hasSelection = !!currentSelectedBlock();
       for (const action of ['cut', 'copy']) {
@@ -1257,8 +1257,8 @@
       }
     }
 
-    // 語言切換後, title (SVG <title> tooltip) 要跟住換 —— 同 blockly-i18n.js
-    // 嘅 applyUiTextLocale() 對應嘅 HTML 版做法一致, 呢度用嚟俾佢 call。
+    // 語言切換後, title (SVG <title> tooltip) 要跟著換 —— 同 blockly-i18n.js
+    // 的 applyUiTextLocale() 對應的 HTML 版做法一致, 這裡用來給它 call。
     updateI18n() {
       for (const b of this.buttons) {
         if (b.sep) continue;
@@ -1278,19 +1278,19 @@
       const size = new Blockly.utils.Size(width, this.BUTTON_SIZE);
       const trashcan = this.workspace.trashcan;
       if (trashcan && typeof trashcan.getBoundingRectangle === 'function') {
-        // 直接貼住垃圾桶個左邊, 垂直同垃圾桶中心對齊 —— 呢個先係 Code Lab
-        // 個排位 (掣組同垃圾桶企埋一行, 唔係分開喺畫布另一角)。之前用
-        // getCornerOppositeToolbox + bumpPositionRect 嗰套「自動避讓」邏輯,
-        // 喺呢個 toolbox 唔喺角落嘅 layout 度計錯咗位, 令成組掣跑出畫布外
-        // 完全冇顯示, 所以改用返最直接可靠嘅做法: 讀垃圾桶自己嘅
-        // getBoundingRectangle() 嚟計。
+        // 直接貼住垃圾桶個左邊, 垂直同垃圾桶中心對齊 —— 這個才是 Code Lab
+        // 個排位 (按鈕組同垃圾桶並排一行, 不是分開在畫布另一角)。之前用
+        // getCornerOppositeToolbox + bumpPositionRect 那套「自動避讓」邏輯,
+        // 在這個 toolbox 不在角落的 layout 度計錯了位, 令成組按鈕跑出畫布外
+        // 完全沒有顯示, 所以改用回最直接可靠的做法: 讀垃圾桶自己的
+        // getBoundingRectangle() 來計。
         const tRect = trashcan.getBoundingRectangle();
         const tHeight = tRect.bottom - tRect.top;
         this.left = tRect.left - this.MARGIN_HORIZONTAL - width;
         this.top = tRect.top + (tHeight - this.BUTTON_SIZE) / 2;
       } else {
-        // fallback: 垃圾桶未起好 (理論上唔應該發生, addTrashcan() 一定早過
-        // 呢個 component 註冊), 保留原本嘅角落定位邏輯做保險。
+        // fallback: 垃圾桶未起好 (理論上不應該發生, addTrashcan() 一定早過
+        // 這個 component 註冊), 保留原本的角落定位邏輯做保險。
         const corner = Blockly.uiPosition.getCornerOppositeToolbox(this.workspace, uiMetrics);
         let rect = Blockly.uiPosition.getStartPositionRect(
           corner, size, this.MARGIN_HORIZONTAL, this.MARGIN_VERTICAL, uiMetrics, this.workspace);
@@ -1311,11 +1311,11 @@
   }
 
   // ------------------------------------------------------------------
-  // SidePanelToggleControl — 同上面一樣機制嘅另一個 IPositionable component,
-  // 「收埋/展開執行紀錄面板」嗰粒 ›/‹ 掣。獨立成一個 component (唔係塞入
-  // EditFabControls 度) 係因為佢嘅 weight/擺位邏輯唔同 —— 呢粒掣要貼住
-  // .bk-side 個左邊界, 唔係跟 Blockly 慣常嘅「畫布角落」定位, 所以 position()
-  // 入面唔用 uiPosition 嗰套, 改為直接讀 .bk-side 嘅實際 DOM 閂位置。
+  // SidePanelToggleControl — 同上面一樣機制的另一個 IPositionable component,
+  // 「收起/展開執行紀錄面板」那顆 ›/‹ 按鈕。獨立成一個 component (不是塞入
+  // EditFabControls 度) 是因為它的 weight/擺位邏輯不同 —— 這粒按鈕要貼住
+  // .bk-side 個左邊界, 不是跟 Blockly 慣常的「畫布角落」定位, 所以 position()
+  // 裡面不用 uiPosition 那套, 改為直接讀 .bk-side 的實際 DOM 緊貼位置。
   // ------------------------------------------------------------------
   class SidePanelToggleControl {
     constructor(ws) {
@@ -1330,8 +1330,8 @@
       ws.getComponentManager().addComponent({
         component: this,
         capabilities: [Blockly.ComponentManager.Capability.POSITIONABLE],
-        weight: 10, // 呢粒掣位置獨立計算, 唔使理其他 component bump 佢, 擺
-                    // 喺最後 (weight 最大) 就得。
+        weight: 10, // 這粒按鈕位置獨立計算, 不用理其他 component bump 它, 擺
+                    // 在最後 (weight 最大) 就得。
       });
     }
 
@@ -1361,8 +1361,8 @@
       });
     }
 
-    // 未收埋顯示 › (指緊右, 即係「撳咗會收埋去右邊」), 收埋咗顯示 ‹ (指緊左,
-    // 即係「撳咗會展開返嚟」) —— 同 Code Lab 個箭頭方向邏輯一致。
+    // 未收起顯示 › (正在指右, 就是「按了會收起去右邊」), 收起了顯示 ‹ (正在指左,
+    // 就是「按了會展開回來」) —— 同 Code Lab 個箭頭方向邏輯一致。
     arrowPath(collapsed) {
       const cx = this.WIDTH / 2, cy = this.HEIGHT / 2;
       return collapsed
@@ -1383,11 +1383,11 @@
       return new Blockly.utils.Rect(this.top, this.top + this.HEIGHT, this.left, this.left + this.WIDTH);
     }
 
-    // 呢粒掣要半浮喺「畫布/側欄交界」—— 唔跟 Blockly 慣常嘅四角定位, 直接讀
-    // .bk-side 個 DOM 元素實際企喺邊 (getBoundingClientRect()), 減返
-    // .bk-canvas 個 SVG 原點嘅螢幕座標, 就攞到啱嘅 SVG 內部座標。側欄收埋咗
-    // 嗰陣 (.bk-side flex-basis 變 0) 佢個 left 都會自動變做 canvas 右邊緣,
-    // 掣就自然跟住郁埋去右邊界, 唔使額外邏輯。
+    // 這粒按鈕要半浮在「畫布/側欄交界」—— 不跟 Blockly 慣常的四角定位, 直接讀
+    // .bk-side 個 DOM 元素實際站在哪裡 (getBoundingClientRect()), 減返
+    // .bk-canvas 個 SVG 原點的螢幕座標, 就拿到正確的 SVG 內部座標。側欄收起了
+    // 當時 (.bk-side flex-basis 變 0) 它個 left 都會自動變做 canvas 右邊緣,
+    // 按鈕就自然跟著動埋去右邊界, 不用額外邏輯。
     position(uiMetrics, savedPositions) {
       const svg = this.workspace.getParentSvg();
       const svgRect = svg.getBoundingClientRect();
@@ -1464,8 +1464,8 @@
       rewireEventHandlers();
       refreshSavedProgramDropdown();
       // rewire + autosave 都用 debounce: 一連串 block 改動 (例如拖拽、程式化建立、
-      // undo/redo) 會喺短時間內觸發好多個 non-UI change event, 逐個即時處理既浪費
-      // 又會令 log 洗版, debounce 到「呢輪改動停咗」先做一次就夠。
+      // undo/redo) 會在短時間內觸發好多個 non-UI change event, 逐個即時處理既浪費
+      // 又會令 log 洗版, debounce 到「這輪改動停了」先做一次就夠。
       let rewireTimer = null;
       let saveTimer = null;
       workspace.addChangeListener(function (e) {
@@ -1475,8 +1475,8 @@
         clearTimeout(saveTimer);
         saveTimer = setTimeout(autoSaveToLocalStorage, 800);
       });
-      // 揀/取消揀 block 都係 UI event (isUiEvent === true, 上面嗰個 listener
-      // 特登 return 咗唔理), 所以剪貼掣嘅 enable/disable 狀態要獨立一個
+      // 選/取消選 block 都是 UI event (isUiEvent === true, 上面那個 listener
+      // 特登 return 了不理), 所以剪貼按鈕的 enable/disable 狀態要獨立一個
       // listener 專門聽 SELECTED 事件先追得到。
       workspace.addChangeListener(function (e) {
         if (e.type === Blockly.Events.SELECTED || e.type === Blockly.Events.FINISHED_LOADING) {
@@ -1484,9 +1484,9 @@
         }
       });
       // 起返兩組 IPositionable component (詳見上面 EditFabControls/
-      // SidePanelToggleControl 呢兩個 class 嘅大段註解) —— 一定要喺 workspace
-      // inject 咗、有真正嘅 SVG root 之後先可以起, 所以擺喺 init() 呢度做,
-      // 唔係喺 module load 嗰陣就起。
+      // SidePanelToggleControl 這兩個 class 的大段註解) —— 一定要在 workspace
+      // inject 了、有真正的 SVG root 之後先可以起, 所以擺在 init() 這裡做,
+      // 不是在 module load 當時就起。
       editFabControls = new EditFabControls(workspace);
       sidePanelToggleControl = new SidePanelToggleControl(workspace);
       editFabControls.updateButtonStates();
@@ -1500,12 +1500,12 @@
     exportXmlFile: exportXmlFile,
     importXmlFile: importXmlFile,
     refreshActionDropdown: refreshActionDropdown,
-    refreshSavedProgramDropdown: refreshSavedProgramDropdown, // 俾 blockly-i18n.js 切語言嗰陣攞返嚟用, 令 "-- 已儲存的程式 --" placeholder 跟住重新 render
+    refreshSavedProgramDropdown: refreshSavedProgramDropdown, // 給 blockly-i18n.js 切語言當時取回來用, 令 "-- 已儲存的程式 --" placeholder 跟著重新 render
     editAction: editAction,
-    // 語言切換後 (blockly-i18n.js setUiLanguage()) 要跟住換返呢兩組 SVG
-    // component 嘅 <title> tooltip 文字, HTML 版 data-i18n 呢套機制淨係識
-    // 揾 DOM 元素, 執行唔到我哋自己起嘅 SVG UI, 要俾 blockly-i18n.js 專登
-    // call 呢個 method。
+    // 語言切換後 (blockly-i18n.js setUiLanguage()) 要跟著換返這兩組 SVG
+    // component 的 <title> tooltip 文字, HTML 版 data-i18n 這套機制僅支援
+    // 找 DOM 元素, 執行不到我們自己起的 SVG UI, 要給 blockly-i18n.js 專登
+    // call 這個 method。
     refreshEditControlsI18n: function () {
       if (editFabControls) editFabControls.updateI18n();
       if (sidePanelToggleControl) sidePanelToggleControl.updateI18n();
@@ -1516,11 +1516,11 @@
       const collapsed = !main.classList.contains('bk-side-collapsed');
       main.classList.toggle('bk-side-collapsed', collapsed);
       if (sidePanelToggleControl) sidePanelToggleControl.setCollapsed(collapsed);
-      try { localStorage.setItem('blocklySideCollapsed', collapsed ? '1' : '0'); } catch (e) { /* 唔緊要, 冇記錄低就下次預設展開 */ }
+      try { localStorage.setItem('blocklySideCollapsed', collapsed ? '1' : '0'); } catch (e) { /* 不緊要, 沒有記錄低就下次預設展開 */ }
       // .bk-side flex-basis 有 CSS transition (0.18s), 畫布闊度同
-      // SidePanelToggleControl 個位置都要跟住個過渡動畫慢慢郁, resize
-      // 幾次涵蓋成個過程 (Blockly.svgResize 會觸發 ComponentManager
-      // 重新 position 一次, 所以呢度淨係要負責喺啱嘅時間點 call 佢)。
+      // SidePanelToggleControl 個位置都要跟著個過渡動畫慢慢動, resize
+      // 幾次涵蓋整個過程 (Blockly.svgResize 會觸發 ComponentManager
+      // 重新 position 一次, 所以這裡僅要負責在正確的時間點 call 它)。
       if (workspace) {
         Blockly.svgResize(workspace);
         setTimeout(function () { Blockly.svgResize(workspace); }, 100);
@@ -1528,9 +1528,9 @@
       }
     },
     setSidePanelCollapsedInitial: function (collapsed) {
-      // 頁面啱啱 load, 讀返 localStorage 記住嘅上次收/展開狀態嗰陣用 —— 唔想
-      // 用 toggleSidePanel() (佢帶埋 0.18s transition 嘅 setTimeout 級聯),
-      // 淨係要直接set 好個初始狀態, 唔使播動畫。
+      // 頁面剛剛 load, 讀回 localStorage 記住的上次收/展開狀態當時用 —— 不想
+      // 用 toggleSidePanel() (它附帶 0.18s transition 的 setTimeout 級聯),
+      // 僅要直接set 好個初始狀態, 不用播動畫。
       const main = document.querySelector('.bk-main');
       if (!main) return;
       main.classList.toggle('bk-side-collapsed', collapsed);
@@ -1541,3 +1541,5 @@
     }
   };
 })();
+
+

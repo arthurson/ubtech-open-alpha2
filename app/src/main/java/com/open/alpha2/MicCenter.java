@@ -104,7 +104,7 @@ public final class MicCenter {
      *  用途不同: handleMicStream() 只在有人真的開啟 /stream/mic 才執行, 而
      *  這個 enforcer 是只要用戶在 mic card 開啟了「持續搶佔 mic」開關, 就算沒人
      *  開著 mic stream 也要生效 (例如只想用 TTS, 但不想讓機器人自己的
-     *  wake-word 引擎不時搶返支 mic)。 */
+     *  wake-word 引擎不時搶回支 mic)。 */
     private void startMicHoldEnforcer() {
         if (micHoldEnforcerThread != null) return;
         micHoldEnforced = true;
@@ -185,7 +185,7 @@ public final class MicCenter {
             while (true) {
                 AudioController.Chunk chunk;
                 try {
-                    // 靜音唔自動斷開。stream connection 本身斷了
+                    // 靜音不自動斷開。stream connection 本身斷了
                     // (用家關掉瀏覽器分頁/收起 tab) 會由下面 out.write() 拋出
                     // IOException 讓 loop 自然跳出, 不用靠這裡的逾時判斷。
                     //
@@ -225,7 +225,7 @@ public final class MicCenter {
                 // 例外: 如果用家在 TTS tab 按了「釋放麥克風給 App」(micHeldByApp),
                 // 就代表他想長期由 app 持有 mic - 這個 stream 斷開 (背景化分頁/
                 // 網路短暫中斷都會觸發這個 finally) 不應該把 mic 悄悄還給機器人,
-                // 否則個「釋放」狀態就會被呢度無聲蓋走, 要用家自己再撳一次先頂到住。
+                // 否則個「釋放」狀態就會被這裡無聲覆蓋, 要用家自己再按一次先頂得住。
                 if (!micHeldByApp) {
                     robot.speech_SetMIC(false);
                 }
@@ -301,3 +301,6 @@ public final class MicCenter {
         return HttpServer.ApiResponse.okTrue();
     }
 }
+
+
+

@@ -126,12 +126,12 @@ public class RobotEventReceiver extends BroadcastReceiver {
                     break;
                 }
                 case RobotWire.CHEST_ACTION: {
-                    // sonar 讀數唔經呢度，經下面獨立的
-                    // RobotWire.SONAR_DISTANCE_ACTION case；呢度只做輔助
+                    // sonar 讀數不經這裡，經下面獨立的
+                    // RobotWire.SONAR_DISTANCE_ACTION case；這裡只做輔助
                     // debug (可以看到機身內部 raw command byte 的時序)。
                     //
-                    // CHEST_ACTION broadcast 未必每次都轉發給第三方 app（實測收得唔齊），
-                    // 這裡直接印每一次收到的完整 raw value，方便對比官方收到幾多次 -109。
+                    // CHEST_ACTION broadcast 未必每次都轉發給第三方 app（實測收不齊），
+                    // 這裡直接印每一次收到的完整 raw value，方便對比官方收到多少次 -109。
                     Log.i(TAG, "CHEST_ACTION received, raw value=" + bundleToJson(intent.getExtras()));
                     EventBus.get().publish("chest_broadcast_debug",
                             "{\"action\":\"" + action + "\",\"extras\":" + bundleToJson(intent.getExtras()) + "}");
@@ -140,8 +140,8 @@ public class RobotEventReceiver extends BroadcastReceiver {
                     // 會有 -111 (0x91)。wire frame f8 8f 08 00 00 91 01 9a ed /
                     // f8 8f 08 00 00 91 00 99 ed。
                     //
-                    // 唔假設 -111 喺固定 index，掃描成個陣列；已知樣本 (cmd -115/-111/-109/-128
-                    // checksum 分別 0x97/0x9a,0x99/0x9c/0x8c) 唔會同 0x91 撞值，唔會誤觸發。
+                    // 不假設 -111 在固定 index，掃描整個陣列；已知樣本 (cmd -115/-111/-109/-128
+                    // checksum 分別 0x97/0x9a,0x99/0x9c/0x8c) 不會同 0x91 撞值，不會誤觸發。
                     Object rawValue = readAny(intent, "value");
                     if (rawValue instanceof byte[]) {
                         byte[] arr = (byte[]) rawValue;
@@ -170,14 +170,14 @@ public class RobotEventReceiver extends BroadcastReceiver {
                         // (1: ENTER)  (0: EXIT)")。
                         //
                         // 1.1.7.3 官方 code 對 -109/-111/-108 無支援，只 log "ches cmd = -109"，
-                        // 唔會轉發 pirStatus broadcast；自己 app 直接讀呢個廣播的
+                        // 不會轉發 pirStatus broadcast；自己 app 直接讀這個廣播的
                         // raw "value" byte[] 照樣讀得到。
                         //
-                        // Sub-value (ENTER=1/EXIT=0) 喺 cmd byte 之後嗰一個 byte。SDK 傳過嚟的
-                        // "value" 陣列可能係完整 wire frame (例如
-                        // f8 8f 08 00 00 93 01 9c ed) 或者已拆剩 param (例如 {01})，做法係: 找到 -109
+                        // Sub-value (ENTER=1/EXIT=0) 在 cmd byte 之後那一個 byte。SDK 傳過來的
+                        // "value" 陣列可能是完整 wire frame (例如
+                        // f8 8f 08 00 00 93 01 9c ed) 或者已拆剩 param (例如 {01})，做法是: 找到 -109
                         // 的 index, 如果它不是陣列最後一個, 就取它下一個 byte 做
-                        // ENTER/EXIT 判斷; 如果剛好係最後一個 byte, 就冇 sub-value 可取,
+                        // ENTER/EXIT 判斷; 如果剛好是最後一個 byte, 就沒有 sub-value 可取,
                         // triggered 保守當 true。
                         for (int i = 0; i < arr.length; i++) {
                             if (arr[i] == (byte) -109) {
@@ -195,8 +195,8 @@ public class RobotEventReceiver extends BroadcastReceiver {
                     break;
                 }
                 case "com.ubtech.securityCamera.pirStatus": {
-                    // 未經真機驗證 (1.1.7.3 理論上唔會送出)。保留呢個 case 係為咗
-                    // 將來換咗支援嘅 firmware 版本，兩條路都
+                    // 未經真機驗證 (1.1.7.3 理論上不會送出)。保留這個 case 是為了
+                    // 將來換了支援的 firmware 版本，兩條路都
                     // 餵去同一個 "alpha2_pir_state" event, 前端不用理背後走哪條路。
                     // extra
                     // "pirStatus" 是 byte, 1=有人進入, 0=無人離開 - 和 Lynx 的
@@ -229,9 +229,9 @@ public class RobotEventReceiver extends BroadcastReceiver {
                 }
                 // 用來查 speech_SetMIC()/setWakeState()
                 // 拿回 mic 這一刻機身有沒有發任何 broadcast 通知這個問題。
-                // 呢 6 個 action 名字/extras 看起來和 TTS、ASR、mic 相關
+                // 這 6 個 action 名字/extras 看起來和 TTS、ASR、mic 相關
                 // 事件有關, 但實際哪個會不會在 setWakeState() 那一刻觸發、payload
-                // 實際裝著什麼, 純粹反編譯 bytecode 看不出來 (bytecode 只能看到那個
+                // 實際裝了什麼, 純粹反編譯 bytecode 看不出來 (bytecode 只能看到那個
                 // action 字串和 putExtra() 的 key 名/型別, 看不到什麼時候會走到那段
                 // code) —— 所以這裡刻意不立刻假設哪個 extra 代表 mic 狀態、不立刻
                 // 拿出來做獨立 UI event, 只用同一個 mic_broadcast_debug event
@@ -408,3 +408,4 @@ public class RobotEventReceiver extends BroadcastReceiver {
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }
+

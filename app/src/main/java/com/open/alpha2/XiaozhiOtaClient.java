@@ -166,7 +166,7 @@ public class XiaozhiOtaClient {
         // 這個逾時 - 真機 logcat 見到配對碼剛出現 10 秒左右就 "Read timed out",
         // 用戶連打開 xiaozhi.me 網站的時間都還不夠就已經失敗了, 讓用戶感覺「binding
         // 不到」。這裡將暫時性的網路 IOException 在 loop 裡面捕捉、log 下來、當一次
-        // 「這輪沒拿到結果」處理, 跟著正常流程 sleep 完再試下一輪, 只有在
+        // 「這輪沒拿到結果」處理, 跟著正常流程 sleep 完再試試一輪, 只有在
         // deadline 真正到了都還是拿不到結果才真正失敗。4xx/5xx fatal error (見
         // 下面 result.statusCode >= 400 那個 branch) 不受這個改動影響, 依然是
         // 立刻失敗, 因為那些代表 server 明確拒絕了, 重試也沒用。
@@ -363,3 +363,4 @@ public class XiaozhiOtaClient {
         }
     }
 }
+

@@ -80,7 +80,7 @@ final class XiaozhiTrustAllSsl {
      *  CertPathValidatorException)。Lazy + cache: SSLContext.init() 不算
      *  重, 但沒必要每次連接都重新起一個。
      *  警告：此 factory 不驗證憑證鏈/hostname，只可用於小智兩條連線；
-     *  同網段 MITM 可偷 token/voice，唔好喺不可信網絡用。 */
+     *  同網段 MITM 可偷 token/voice，不要在不可信網絡用。 */
     static SSLSocketFactory getTrustAllSocketFactory() {
         if (!warned) {
             warned = true;
@@ -96,7 +96,7 @@ final class XiaozhiTrustAllSsl {
                     cachedFactory = ctx.getSocketFactory();
                 } catch (NoSuchAlgorithmException | KeyManagementException e) {
                     // 理論上不應該發生 (TLS 這個 algorithm 名和 SSLContext API 在
-                    // 所有 Android 版本都有) - 出事就 fallback 用回系統 default,
+                    // 所有 Android 版本都有) - 出問題就 fallback 用回系統 default,
                     // 至少行為退回「未改之前」, 不會讓 app 直接 crash 掉。
                     Log.e(TAG, "建立 trust-all SSLContext 失敗, fallback 用回系統 default", e);
                     cachedFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
@@ -119,3 +119,5 @@ final class XiaozhiTrustAllSsl {
         }
     }
 }
+
+

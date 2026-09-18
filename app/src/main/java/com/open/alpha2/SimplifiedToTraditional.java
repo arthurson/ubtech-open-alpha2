@@ -79,7 +79,7 @@ final class SimplifiedToTraditional {
         return map;
     }
 
-    /** 將輸入文字入面每一個簡體字轉做對應繁體字, 已經係繁體/非中文字符 (英文、
+    /** 將輸入文字裡面每一個簡體字轉做對應繁體字, 已經是繁體/非中文字符 (英文、
      *  標點、數字等) 原封不動。null 輸入回傳 null, 不拋出。 */
     static String toTraditional(String text) {
         if (text == null) return null;
@@ -95,9 +95,9 @@ final class SimplifiedToTraditional {
     private static volatile Map<Character, Character> tradToSimp;
 
     /** 反向：繁體轉簡體（同一張表倒查，早出現者優先）。
-     *  ⚠️ 用途唯一：Vosk 普通話 model 吐簡體，問法庫係繁體——起限定文法嗰陣
-     *  要將問法轉做簡體先對得上 acoustic 輸出。絕對唔可以用喺顯示/TTS/配對
-     *  輸出（嗰啲一定要繁體，見上面 toTraditional 嘅 javadoc）。 */
+     *  ⚠️ 用途唯一：Vosk 普通話 model 吐簡體，問法庫是繁體——起限定文法當時
+     *  要將問法轉做簡體先對得上 acoustic 輸出。絕對不可以用在顯示/TTS/配對
+     *  輸出（那些一定要繁體，見上面 toTraditional 的 javadoc）。 */
     static String toSimplified(String text) {
         if (text == null) return null;
         Map<Character, Character> rev = tradToSimp;
@@ -126,3 +126,4 @@ final class SimplifiedToTraditional {
         return sb.toString();
     }
 }
+

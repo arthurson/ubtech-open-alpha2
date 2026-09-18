@@ -1,13 +1,13 @@
 // Open Alpha2 — client logic (app-radio.js)
-// 網絡電台 tab: 對接 MainActivity.java 已有嘅 "audio/radio/*" 呢一套 endpoint
+// 網絡電台 tab: 對接 MainActivity.java 已有的 "audio/radio/*" 這一套 endpoint
 // (本身經 Radio Browser API radio-browser.info 動態搜全世界公開電台, 見
 // MainActivity.java searchRadioStations()/resolveRadioStation() javadoc)。
-// 真正串流 (MediaPlayer setDataSource url_resolved, STREAM_MUSIC) 喺 server 端做,
-// 呢個檔案純粹係 UI — 搜尋、列表、播放/停止、狀態顯示。
-// 全部函數共用 window/global scope (冇用 ES module), load 順序見 index.html.
+// 真正串流 (MediaPlayer setDataSource url_resolved, STREAM_MUSIC) 在 server 端做,
+// 這個檔案純粹是 UI — 搜尋、列表、播放/停止、狀態顯示。
+// 全部函數共用 window/global scope (沒有用 ES module), load 順序見 index.html.
 
-let radioStations = [];          // 上次 radioSearch() 攞返嚟嘅清單 {name, country}
-let radioCurrentName = null;     // 目前播放緊嘅電台名 (由 status 或 play 回來)
+let radioStations = [];          // 上次 radioSearch() 取回來的清單 {name, country}
+let radioCurrentName = null;     // 目前正在播放的電台名 (由 status 或 play 回來)
 let radioCurrentId = null;
 
 function radioInit() {
@@ -43,8 +43,8 @@ function radioSearch() {
       radioRenderList();
       return;
     }
-    // 後端搜尋失敗（多數係機械人無外網/DNS 解析唔到 de1.api.radio-browser.info，見 MainActivity.java:4385 註解）
-    // → 前端直接 fetch radio-browser.info 試下（用瀏覽器本身嘅網絡，唔經機械人）
+    // 後端搜尋失敗（多數是機械人無外網/DNS 解析不到 de1.api.radio-browser.info，見 MainActivity.java:4385 註解）
+    // → 前端直接 fetch radio-browser.info 試試（用瀏覽器本身的網絡，不經機械人）
     radioSearchFrontendFallback(q);
   }).catch(function () {
     radioSearchFrontendFallback(q);
@@ -77,7 +77,7 @@ function radioSearchFrontendFallback(q) {
     }
     const base = mirrors[mirrorIdx++];
     const url = base + "/json/stations/search?name=" + encodeURIComponent(q) + "&order=random&reverse=true&hidebroken=true&limit=50";
-    // 對外留痕（同後端 NetLog 同形）：瀏覽器直連邊個 mirror，event log 睇到。
+    // 對外留痕（同後端 NetLog 同形）：瀏覽器直連哪個 mirror，event log 看到。
     if (typeof appendLog === "function" && typeof nowTimeStr === "function") {
       appendLog({ type: "net_connect", time: nowTimeStr(), data: { purpose: "radio-search", url: base } });
     }
@@ -105,7 +105,7 @@ function radioSearchFrontendFallback(q) {
       }
       radioRenderList();
     }).catch(function (err) {
-      // 試下一個 mirror
+      // 試試一個 mirror
       tryNextMirror();
     });
   }
@@ -283,3 +283,4 @@ function radioPlayRandom() {
 function radioOnSearchKeydown(e) {
   if (e.key === "Enter") radioSearch();
 }
+

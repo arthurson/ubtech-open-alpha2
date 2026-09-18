@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit;
 final class HandlerDrain {
     private HandlerDrain() { }
 
-    /** 預設排空超時（之前 5 處各自寫裸 2000，收斂到呢度）。 */
+    /** 預設排空超時（之前 5 處各自寫裸 2000，收斂到這裡）。 */
     static final long DEFAULT_TIMEOUT_MS = 2000;
 
     /** Blocks up to {@code timeoutMs} for any work already queued on {@code handler}
@@ -48,3 +48,4 @@ final class HandlerDrain {
         }
     }
 }
+

@@ -17,7 +17,7 @@ import java.util.List;
 public final class ActionDirect {
     private static final String TAG = "ActionDirect";
 
-    /** 一鍵全停之後補播嘅「蹲下站起」回位動作。 */
+    /** 一鍵全停之後補播的「蹲下站起」回位動作。 */
     public static final String STOP_RECOVERY_ACTION_ID = "1510818174706";
 
     // actionInfo.txt 行格式（GBK 编码）：<fileId>##<nameCn>##<nameEn>##<type>，
@@ -43,7 +43,7 @@ public final class ActionDirect {
         this.ubxPlayer = ubxPlayer;
     }
 
-    /** 最後一次播緊/播過嘅檔 (ubx/speed 播緊重播用；可 null)。 */
+    /** 最後一次正在播/播過的檔 (ubx/speed 正在播重播用；可 null)。 */
     public java.io.File getLastPlayedFile() {
         return lastPlayedFile;
     }
@@ -57,7 +57,7 @@ public final class ActionDirect {
         List<String[]> out = new ArrayList<>();
         try {
             java.io.File f = new java.io.File(ACTION_INFO);
-            // 先驗大細（唔存在/空/超過 1MB 直接當空表）。
+            // 先驗大小（不存在/空/超過 1MB 直接當空表）。
             long flen = f.length();
             if (!f.isFile() || flen <= 0 || flen > 1024L * 1024L) {
                 Log.w(TAG, "loadActionInfo skip unusual file len=" + flen);
@@ -73,7 +73,7 @@ public final class ActionDirect {
                     if (n < 0) break;
                     off += n;
                 }
-                // 用實際讀到嘅 bytes（短讀會有 NUL 混入；UTF-8 strict 唔得先 fallback GBK）。
+                // 用實際讀到的 bytes（短讀會有 NUL 混入；UTF-8 strict 不得先 fallback GBK）。
                 String text = decodeActionInfo(data, off);
                 for (String line : text.split("\n")) {
                 line = line.trim();
@@ -92,9 +92,9 @@ public final class ActionDirect {
         return out;
     }
 
-    /** actionInfo.txt 解碼：UTF-8 strict 得就用佢，唔得（GBK 中文）先 fallback
-     *  GBK。new String(bytes,"UTF-8") 從來唔掟錯（爛 byte 變 U+FFFD），所以要用
-     *  REPORT 嘅 CharsetDecoder 先分得出。 */
+    /** actionInfo.txt 解碼：UTF-8 strict 得就用它，不得（GBK 中文）先 fallback
+     *  GBK。new String(bytes,"UTF-8") 從來不掟錯（爛 byte 變 U+FFFD），所以要用
+     *  REPORT 的 CharsetDecoder 先分得出。 */
     private static String decodeActionInfo(byte[] data, int len) throws Exception {
         try {
             java.nio.charset.CharsetDecoder dec = java.nio.charset.Charset.forName("UTF-8").newDecoder();
@@ -191,7 +191,7 @@ public final class ActionDirect {
     }
 
     /** 动作名/ID 解析：fileId > nameEn > nameCn，另支持同目錄 xxx.ubx。
-     *  帶 / 嘅路徑只准 /sdcard/actions 內 .ubx（canonical 鎖死）。 */
+     *  帶 / 的路徑只准 /sdcard/actions 內 .ubx（canonical 鎖死）。 */
     private java.io.File resolveActionFile(String name) {
         if (name == null) return null;
         String n = name.trim();
@@ -269,7 +269,7 @@ public final class ActionDirect {
     /**
      * 内部共用：pure-direct 播指定动作（fileId/中英文名/xxx.ubx 皆可），抢占式——
      * 先停当前再播，与原厂 playActionName 打断语义一致。供手势总停、MCP tool、
-     * 语义动作、随机 filler 共用，HTTP action/play 另有「播緊先報錯」守卫故不经此。
+     * 语义动作、随机 filler 共用，HTTP action/play 另有「正在播先報錯」守卫故不经此。
      */
     public UbxErrorCode.API_ERROR_CODE playActionDirect(String nameOrId) {
         java.io.File f = resolveActionFile(nameOrId);
@@ -294,7 +294,7 @@ public final class ActionDirect {
 
     /**
      * 内部共用：一键全停（动作部分）——截停 UbxPlayer 后补播 STOP_RECOVERY_ACTION_ID
-     * 蹲下站起回位。回位播唔播到唔影响返回值。供 0x5e 手势（含拍头双 pad）、
+     * 蹲下站起回位。回位播不播到不影响返回值。供 0x5e 手势（含拍头双 pad）、
      * MCP stop_action、HTTP action/stop 共用。
      */
     public UbxErrorCode.API_ERROR_CODE stopActionWithRecovery() {
@@ -312,7 +312,7 @@ public final class ActionDirect {
 
     // -- MCP tools (XiaozhiBridge callTool switch 轉調) --
 
-    /** self.robot.list_actions 本體 (XiaozhiBridge 轉調)。純讀, 唔掂硬件。 */
+    /** self.robot.list_actions 本體 (XiaozhiBridge 轉調)。純讀, 不碰硬件。 */
     public SonarCenter.McpResult mcpListActions() {
         org.json.JSONArray arr = new org.json.JSONArray();
         for (org.json.JSONObject a : loadXiaozhiActions()) {
@@ -356,3 +356,4 @@ public final class ActionDirect {
                 String.valueOf(code) + " (played random action id " + randomId + ")");
     }
 }
+

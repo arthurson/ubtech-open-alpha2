@@ -15,11 +15,11 @@ import java.util.Map;
  * CONNECTIVITY_ACTION receiver。
  *
  * 注意：機身已無 alpha2services，robot.speech_*Grammar() 全部即時回 NOT_INIT
- * （見 RobotStub），listener 永遠唔會 callback——state 機照行（latch/gate
- * 照守），只係永遠唔會真正入離線模式。
+ * （見 RobotStub），listener 永遠不會 callback——state 機照行（latch/gate
+ * 照守），只是永遠不會真正入離線模式。
  * 擁有關係：
  * - MainActivity 只留：triggerWakeupProbe static 薄 shim（RobotEventReceiver
- *   經佢入）、接線（onCreate 建構＋register、onDestroy unregister）。
+ *   經它入）、接線（onCreate 建構＋register、onDestroy unregister）。
  * - ApiDispatcher 經下面 offlineAutoSwitch/getDefaultGrammar 直調。
  */
 public final class GrammarCenter {
@@ -106,10 +106,10 @@ public final class GrammarCenter {
      *  最可信, 而且探測 (~1-7s) 和講話+辨識並行, 機器人回答時模式已經和現實
      *  一致。由 RobotEventReceiver 的 tts_hint_wakeup case 叫。
      *
-     *  用即開即走嘅 plain thread
-     *  (同 speech/offline_auto_switch toggle 嗰個 probeThread 同一 pattern)。
+     *  用即開即走的 plain thread
+     *  (同 speech/offline_auto_switch toggle 那個 probeThread 同一 pattern)。
      *  一定要背景 thread (hasRealInternet() 會 block；Main thread 會彈
-     *  NetworkOnMainThreadException)。只喺 auto-switch 開住先做。 */
+     *  NetworkOnMainThreadException)。只在 auto-switch 開著先做。 */
     public void triggerWakeupProbe() {
         if (!offlineGrammarAutoSwitch) {
             return;
@@ -204,7 +204,7 @@ public final class GrammarCenter {
                 }
             }
         } catch (JSONException e) {
-            // parse 不到就當它不是這種格式, 原樣返回 - 避免因為格式猜錯而搞壞
+            // parse 不到就當它不是這種格式, 原樣返回 - 避免因為格式猜錯而弄壞
             // 其他沒問題的 ASR 路徑
         }
         return raw;
@@ -214,7 +214,7 @@ public final class GrammarCenter {
      *  (assets/semantic/default_grammar.bnf: 中文 1212 句 (q0-q12) + greet
      *  slot 裡的 hello/hi 兩個英文字, 全繁體, 無重複, 已剔除乘數表)。來源 =
      *  語意庫 + 悠聊原裝 BNF 合併轉換, App 不再做任何運行時生成/解析/
-     *  簡繁轉換, 淨係讀檔。
+     *  簡繁轉換, 僅讀檔。
      *
      *  離線文法只支援中文普通話（訊飛文檔＋common.jet 無英文音素，已確認），不含英文詞；離線英文用其他引擎。 */
     private String readDefaultGrammarAsset() {
@@ -255,7 +255,7 @@ public final class GrammarCenter {
     //   有網路 → 離線模式開著的話就 stop, 回到雲端聽寫 (自由講話)
     // 狀態變化會 publish "offline_mode" event 供前端 UI 更新。
 
-    /** 真正的「雲端聽寫能不能用」探測。唔可以用 WiFi link 狀態
+    /** 真正的「雲端聽寫能不能用」探測。不可以用 WiFi link 狀態
      *  代替 - 連著一個沒有後備網路的手機 hotspot 時照樣回報
      *  connected, 但實際上不了網。而且單純「有網際網路」也不夠: 如果網路
      *  封鎖了訊飛伺服器, 雲端聽寫照樣全部網路錯誤 (實測 logcat: 10114/20002)
@@ -363,9 +363,9 @@ public final class GrammarCenter {
                         + ",\"connected\":" + lastProbeOnline
                         + ",\"reason\":\"" + MainActivity.jsonSafe(reason) + "\"}");
     }
-    /** 初始化 (構建) 本地文法。結果係 async - grammar_init event/callback 收貨,
+    /** 初始化 (構建) 本地文法。結果是 async - grammar_init event/callback 收貨,
      *  errorCode==0 先算數 (lastGrammarBuildOk)。
-     *  防重入鎖: 構建進行中再叫呢個 method 會直接略過 - firmware
+     *  防重入鎖: 構建進行中再叫這個 method 會直接略過 - firmware
      *  每次都 destroyASR 重建, 疊 build 會打壞剛建好的辨識 session。 */
     private UbxErrorCode.API_ERROR_CODE doInitGrammar(final String bnf) {
         if (grammarInitInFlight) {
@@ -374,7 +374,7 @@ public final class GrammarCenter {
         }
         grammarInitInFlight = true;
         lastGrammarBuildOk = false;
-        // stub 即時回 NOT_INIT 且永遠唔 callback，即時清 flag，否則下次會誤判
+        // stub 即時回 NOT_INIT 且永遠不 callback，即時清 flag，否則下次會誤判
         // "already in flight"。
         UbxErrorCode.API_ERROR_CODE initCode = robot.speech_initGrammar(bnf,
                 new RobotStub.IAlpha2SpeechGrammarInitListener() {
@@ -402,7 +402,7 @@ public final class GrammarCenter {
                     }
                 });
         if (initCode != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-            // 即時失敗（例如 stub NOT_INIT）唔會有 callback 嚟清 flag，呢度即刻清，
+            // 即時失敗（例如 stub NOT_INIT）不會有 callback 來清 flag，這裡即刻清，
             // 否則下次會誤判 "already in flight"。
             grammarInitInFlight = false;
         }
@@ -447,3 +447,5 @@ public final class GrammarCenter {
         return robot.speech_stopGrammar();
     }
 }
+
+

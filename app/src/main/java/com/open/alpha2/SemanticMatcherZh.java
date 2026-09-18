@@ -9,7 +9,11 @@ import android.content.Context;
  *
  * 資料來源: 悠聊 APK 的 assets/local_semantic (一份 XLS 問法對照表, 850 條問法) 經
  * androguard 反編譯 + 人手核對 202_actions_classified.txt 之後轉出來的
- * assets/semantic/semantic_zh.json - 詳見對話 history。每條記錄:
+ * assets/semantic/semantic_zh.json (2026-09 起 v2 grouped 格式:
+ * {"version":2,"lang":"zh","intents":[{"id","type","op","slot","actionId",
+ * "a":答案句,"qs":問法陣列}]}, 同 intent 共用同一組答案/動作, 免重複 -
+ * 詳見該 JSON 檔頭註解/對話 history, 載入邏輯見 SemanticMatcherBase.load())。
+ * 每個 intent 內:
  *   q      - 用戶問法 (例如 "跳舞", "你好嗎")
  *   a      - 候選答案句 (0~3句, 隨機選一句做 TTS; 部分 FUNCTION 類沒答案句)
  *   type   - ACTION (有動作) | FUNCTION (系統操作, 例如音量/連線) | CHAT (純寒暄, 沒動作)
@@ -44,10 +48,10 @@ import android.content.Context;
  * Zero-third-party-dependency: 只用 org.json (Android 內建, 經 base class), 沒額外
  * library。
  *
- * 命名備註: 2026-09 之前呢個 class 叫 IflytekSemanticMatcher - 個名純粹歷史原因
- * (問法資料最初由 iFlytek APK 反編譯還原), 同機身已經永久唔再用嘅 Nuance/iFlytek
- * binder TTS/ASR 引擎完全冇關係, 淨係個名容易誤導。改名做 SemanticMatcherZh
- * 消除呢個誤導 (功能行為完全不變)。
+ * 命名備註: 2026-09 之前這個 class 叫 IflytekSemanticMatcher - 個名純粹歷史原因
+ * (問法資料最初由 iFlytek APK 反編譯還原), 同機身已經永久不再用的 Nuance/iFlytek
+ * binder TTS/ASR 引擎完全沒有關係, 僅個名容易誤導。改名為 SemanticMatcherZh
+ * 消除這個誤導 (功能行為完全不變)。
  */
 public class SemanticMatcherZh extends SemanticMatcherBase {
     private static final String TAG = "SemanticMatcherZh";
@@ -67,3 +71,4 @@ public class SemanticMatcherZh extends SemanticMatcherBase {
         super(context, TAG, ASSET_PATH, FALLBACK_QUESTIONS, DEFAULT_FALLBACK_ACTION_IDS);
     }
 }
+

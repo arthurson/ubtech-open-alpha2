@@ -1,24 +1,24 @@
 // Open Alpha2 — client logic (app-vosk.js)
 // Vosk 離線 ASR (語音 tab)。
 // Model 放 sdcard (VoskController.scanModels 自動偵測)，一次一粒；成句結果沿用
-// asr_result event（見 app-log.js —— user 氣泡＋語意配對＋TTS 全自動），呢度淨係
-// 處理 model 按鍵 (一撳即載入＋自動開聽)＋開始停止 + partial 即時顯示。
-// 全部檔案共用 window/global scope (冇用 ES module)，載入順序由 index.html 嘅
+// asr_result event（見 app-log.js —— user 氣泡＋語意配對＋TTS 全自動），這裡僅
+// 處理 model 按鍵 (一按即載入＋自動開聽)＋開始停止 + partial 即時顯示。
+// 全部檔案共用 window/global scope (沒有用 ES module)，載入順序由 index.html 的
 // <script src="..."> 順序決定。
 
 // 下載輪詢句柄。
 var voskDlTimer = null;
-// 上次掃到嘅 models（voskStatus 攞唔到列表，highlight 用緊嗰粒靠呢個）。
+// 上次掃到的 models（voskStatus 拿不到列表，highlight 正在用那顆靠這個）。
 var voskCachedModels = [];
-// 上次掃到嘅 catalog 全表（含已下載，前端過濾顯示；語言切換重畫唔使再問後端）。
+// 上次掃到的 catalog 全表（含已下載，前端過濾顯示；語言切換重畫不用再問後端）。
 var voskCachedCatalog = [];
-// 最近一次 status／download（語言切換嗰陣重畫狀態行用，唔使再問後端）。
+// 最近一次 status／download（語言切換當時重畫狀態行用，不用再問後端）。
 var voskLastStatus = null;
 var voskLastDownload = null;
-// 一撳即用嗰粒等緊 ready（load 要幾秒，ready 即自動開聽）。
+// 一按即用那顆正在等 ready（load 要幾秒，ready 即自動開聽）。
 var voskPendingModel = null;
 
-// 後端同時俾中文名 (lang)＋英文名 (langEn)，跟面板語言揀顯示邊個；舊版冇 langEn 就跌返 lang。
+// 後端同時給中文名 (lang)＋英文名 (langEn)，跟面板語言選顯示哪個；舊版沒有 langEn 就跌回 lang。
 function voskLangName(m) {
   if (!m) return "";
   if (typeof uiLang !== "undefined" && uiLang === "en") {
@@ -27,7 +27,7 @@ function voskLangName(m) {
   return m.lang || m.langEn || m.id || "";
 }
 
-// 全局語言切換（setUiLanguage）嗰陣重畫：模型鍵＋下載鍵＋兩條狀態行，唔使再問後端。
+// 全局語言切換（setUiLanguage）當時重畫：模型鍵＋下載鍵＋兩條狀態行，不用再問後端。
 function voskApplyUiLanguage() {
   voskRenderModelBtns(voskCachedModels, voskLastStatus && voskLastStatus.model);
   voskRenderCatalogBtns();
@@ -36,7 +36,7 @@ function voskApplyUiLanguage() {
 }
 
 function voskRefreshModels() {
-  // API 19 熔斷：部機太舊就成張卡收埋（後端 voskOrError 會擋，但唔好晒位）。
+  // API 19 熔斷：部機太舊就成張卡收起（後端 voskOrError 會擋，但不要完位）。
   return Alpha2Api.status().then(function (st) {
     if (st && st.ok && st.apiLevel && st.apiLevel < 21) {
       const card = document.getElementById("voskCard");
@@ -46,11 +46,11 @@ function voskRefreshModels() {
     return Alpha2Api.voskModels();
   }).then(function (res) {
     const card = document.getElementById("voskCard");
-    if (card && card.style.display === "none") return res; // API<21 已收埋，唔好再打擾
+    if (card && card.style.display === "none") return res; // API<21 已收起，不要再打擾
     if (!res || !res.ok) return res;
     voskCachedModels = res.models || [];
     voskRenderModelBtns(voskCachedModels, null);
-    // 轉頁 reload 嗰陣下載緊：靜靜跟返進度（開頁唔再自動彈下載提示）。
+    // 轉頁 reload 當時正在下載：悄悄跟進（開啟頁面不再自動彈下載提示）。
     if (res.download && (res.download.state === "downloading" || res.download.state === "unzipping")) {
       voskRenderDownload(res.download);
       voskPollDownload();
@@ -59,9 +59,9 @@ function voskRefreshModels() {
   });
 }
 
-// 有咩 model 出咩鍵：名跟面板語言（中文／English），一次淨一粒有效——
-// 有效嗰粒藍色 (active)，其餘灰色；切換緊嗰粒閃爍＋成排鎖住防連撳。
-// 撳即 voskUseModel：一撳即載入＋ready 即自動開聽。
+// 有什麼 model 出什麼鍵：名跟面板語言（中文／English），一次僅一粒有效——
+// 有效那顆藍色 (active)，其餘灰色；切正在換那顆閃爍＋成排鎖住防連按。
+// 按即 voskUseModel：一按即載入＋ready 即自動開聽。
 function voskRenderModelBtns(models, activeId) {
   const box = document.getElementById("voskModelBtns");
   if (!box) return;
@@ -86,11 +86,11 @@ function voskRenderModelBtns(models, activeId) {
   voskSyncModelBtns();
 }
 
-// 成排模型鍵 enable／active／switching 一次過同步：切換緊先鎖晒
-//（inline onclick 唔擋，disabled 先真係撳唔到）。下載緊唔鎖——下載行背景
-// thread、寫唔同目錄，撳鍵載入／開聽照行（後端完成自動 load 撞正聽緊會讓路）。
-// active（藍）淨係聽緊嗰粒——
-// 同狀態燈（voskStateDot）一致：stop 之後就緒都係灰，唔係藍。
+// 成排模型鍵 enable／active／switching 一次過同步：切正在換先鎖完
+//（inline onclick 不擋，disabled 先真正按不到）。正在下載不鎖——下載行背景
+// thread、寫不同目錄，按鍵載入／開聽照行（後端完成自動 load 撞正正在聽會讓路）。
+// active（藍）僅正在聽那顆——
+// 同狀態燈（voskStateDot）一致：stop 之後就緒都是灰，不是藍。
 function voskSyncModelBtns() {
   const box = document.getElementById("voskModelBtns");
   if (!box || !voskCachedModels.length) return;
@@ -107,7 +107,7 @@ function voskSyncModelBtns() {
   }
 }
 
-// 實驗 tab 下載卡開關（同 panelAuthCardToggle 一致寫法）：預設收埋，唔記狀態。
+// 實驗 tab 下載卡開關（同 panelAuthCardToggle 一致寫法）：預設收起，不記狀態。
 function voskDlCardToggle() {
   const enabled = document.getElementById("voskDlCardEnabled");
   const body = document.getElementById("voskDlCardBody");
@@ -118,7 +118,7 @@ function voskDlCardToggle() {
   if (on) voskRefreshCatalog();
 }
 
-// 實驗 tab 下載卡：列出全部可下載（已下載唔顯示），一粒一粒撳即落。
+// 實驗 tab 下載卡：列出全部可下載（已下載不顯示），一粒一粒按即下載。
 function voskRefreshCatalog() {
   const list = document.getElementById("voskCatalogList");
   if (!list) return Promise.resolve();
@@ -133,14 +133,14 @@ function voskRefreshCatalog() {
   });
 }
 
-// 下載鍵名跟面板語言；已下載唔顯示；全部落齊就出提示唔留白。
+// 下載鍵名跟面板語言；已下載不顯示；全部落齊就出提示不留白。
 function voskRenderCatalogBtns() {
   const list = document.getElementById("voskCatalogList");
   if (!list) return;
   list.innerHTML = "";
   let shown = 0;
   (voskCachedCatalog || []).forEach(function (c) {
-    if (c.dialogue) return; // 有對話嗰區顯示，呢度淨冇對話
+    if (c.dialogue) return; // 有對話那區顯示，這裡僅沒有對話
     if (c.downloaded) {
       const chip = document.createElement("span");
       chip.className = "hint";
@@ -160,11 +160,11 @@ function voskRenderCatalogBtns() {
     list.appendChild(hint);
   }
   voskRenderCatalogSupported();
-  // 下載緊鎖住（voskRenderDownload 都會再鎖，呢度補語言切換重畫嗰陣）。
+  // 正在下載鎖住（voskRenderDownload 都會再鎖，這裡補語言切換重畫當時）。
   if (voskLastDownload) voskRenderDownload(voskLastDownload);
 }
 
-// 下載掣共用（兩區一樣）：名跟面板語言＋MB＋id 做 title。
+// 下載按鈕共用（兩區一樣）：名跟面板語言＋MB＋id 做 title。
 function voskDlButton(c) {
   const btn = document.createElement("button");
   btn.className = "secondary vosk-dl-btn";
@@ -176,8 +176,8 @@ function voskDlButton(c) {
   return btn;
 }
 
-// 有對話區：有 matcher、可對答（而家中英）。落咗 ✓ 顯示（去語音頁撳嚟用，
-// 呢度淨顯示唔操作）；未落就出下載掣。
+// 有對話區：有 matcher、可對答（現在中英）。落了 ✓ 顯示（去語音頁點擊使用，
+// 這裡僅顯示不操作）；未落就出下載按鈕。
 function voskRenderCatalogSupported() {
   const box = document.getElementById("voskCatalogSupported");
   if (!box) return;
@@ -205,7 +205,7 @@ function voskRenderCatalogSupported() {
   }
 }
 
-// 下載中顯示個名都跟面板語言（catalog 有先譯到，否則跌返 id）。
+// 下載中顯示個名都跟面板語言（catalog 有先譯到，否則跌回 id）。
 function voskDownloadName(id) {
   if (!id) return "";
   for (let i = 0; i < voskCachedCatalog.length; i++) {
@@ -225,8 +225,8 @@ function voskCatalogDownload(id) {
       if (out) out.textContent = t("vosk_download_fail_prefix") + (res && (res.message || res.error) ? (res.message || res.error) : "?");
       return res;
     }
-    // 後端「already exists / already downloading」都回 ok＋現狀：前者係 idle
-    //（另一邊已落好），直接 refresh 唔使 poll；否則跟進度。
+    // 後端「already exists / already downloading」都回 ok＋現狀：前者是 idle
+    //（另一邊已落好），直接 refresh 不用 poll；否則跟進度。
     if (res.state !== "downloading" && res.state !== "unzipping" && res.state !== "done") {
       return voskRefreshCatalog().then(function () { return voskRefreshModels(); });
     }
@@ -256,7 +256,7 @@ function voskPollDownloadOnce() {
       if (voskDlTimer) { clearInterval(voskDlTimer); voskDlTimer = null; }
       const out = document.getElementById("voskCatStatusOut");
       if (out) out.textContent = t("vosk_download_done");
-      // 後端已自動 load：下載卡剔走已落好嗰粒，語音頁即多一粒鍵＋highlight。
+      // 後端已自動 load：下載卡剔除已落好那顆，語音頁即多一粒鍵＋highlight。
       return voskRefreshCatalog().then(function () {
         return voskRefreshModels().then(function () { return voskStatus(); });
       });
@@ -269,7 +269,7 @@ function voskPollDownloadOnce() {
 }
 
 // vosk_download event（後端 VoskController 主動推）＋上面 poll 共用渲染：
-// 進度出喺實驗 tab 下載卡。done/error/cancelled 交 poll 收尾（停 timer＋refresh）。
+// 進度出在實驗 tab 下載卡。done/error/cancelled 交 poll 收尾（停 timer＋refresh）。
 function voskRenderDownload(res) {
   if (!res) return;
   voskLastDownload = res;
@@ -287,8 +287,8 @@ function voskRenderDownload(res) {
   } else if (out && res.state === "cancelled") {
     out.textContent = t("vosk_download_cancelled");
   }
-  // 下載緊淨鎖兩區下載掣（後端一次淨落一粒）；語音頁模型鍵照用——
-  // 下載唔掂聽嘢，解完 refresh 會加返新鍵。
+  // 正在下載僅鎖兩區下載按鈕（後端一次僅落一粒）；語音頁模型鍵照用——
+  // 下載不碰聽東西，解完 refresh 會加回新鍵。
   ["voskCatalogList", "voskCatalogSupported"].forEach(function (boxId) {
     const list = document.getElementById(boxId);
     if (!list) return;
@@ -297,35 +297,35 @@ function voskRenderDownload(res) {
   });
   const cancelBtn = document.getElementById("voskCatCancelBtn");
   if (cancelBtn) cancelBtn.style.display = active ? "" : "none";
-  // 語音頁模型鍵同步鎖／解（voskSyncModelBtns 識睇 voskLastDownload）。
+  // 語音頁模型鍵同步鎖／解（voskSyncModelBtns 懂得看 voskLastDownload）。
   voskSyncModelBtns();
 }
 
-// 一撳即用：聽緊嗰粒再撳即停（變灰）；唔同粒就先停舊再載入＋ready 自動開聽。
-// 就緒（停咗）嗰粒再撳就直接開聽唔重載。
+// 一按即用：正在聽那顆再按即停（變灰）；不同粒就先停舊再載入＋ready 自動開聽。
+// 就緒（停了）那顆再按就直接開聽不重載。
 function voskUseModel(id) {
   if (!id || voskPendingModel === id) return Promise.resolve();
   const st = voskLastStatus;
   const sameModel = !!(st && st.model === id);
   const active = !!(st && (st.state === "listening" || !!st.listening));
-  if (sameModel && active) return voskStop(); // 藍色嗰粒再撳＝停，變返灰
-  if (sameModel && st.state === "ready") return voskStart(); // 就緒，直接開聽唔重載
+  if (sameModel && active) return voskStop(); // 藍色那顆再按＝停，變回灰
+  if (sameModel && st.state === "ready") return voskStart(); // 就緒，直接開聽不重載
   if (sameModel && st.state === "loading") {
-    // 後端載入緊呢粒（例如轉頁 reload 撞正）：跟返進度，ready 即開聽。
+    // 後端正在載入這粒（例如轉頁 reload 撞正）：跟進，ready 即開聽。
     voskPendingModel = id;
     voskSyncModelBtns();
     return voskWaitReady(id, 0);
   }
   voskPendingModel = id;
-  voskSyncModelBtns(); // 即刻灰晒＋切換緊嗰粒閃，唔使用戶估
+  voskSyncModelBtns(); // 即刻灰完＋切正在換那顆閃，不用用戶估
   const out = document.getElementById("voskStatusOut");
   const switching = !!(voskLastStatus && voskLastStatus.model && voskLastStatus.model !== id
       && (voskLastStatus.state === "listening" || voskLastStatus.state === "ready"
         || !!voskLastStatus.listening));
   if (out) out.textContent = t(switching ? "vosk_switching_hint" : "vosk_loading_hint");
-  // 先停舊（閒置嗰陣 stop 係無害 no-op），停完先 load，保證同一時間淨一粒有效。
+  // 先停舊（閒置當時 stop 是無害 no-op），停完先 load，保證同一時間僅一粒有效。
   return Alpha2Api.voskStop().then(function () {
-    if (voskPendingModel !== id) return null; // 停嗰陣用戶撳咗停止掣，收手
+    if (voskPendingModel !== id) return null; // 停當時用戶按了停止按鈕，收手
     const partial = document.getElementById("voskPartialOut");
     if (partial) partial.textContent = "";
     return Alpha2Api.voskLoad({ model: id });
@@ -341,7 +341,7 @@ function voskUseModel(id) {
   });
 }
 
-// load 要幾秒：半秒 poll 一次 status，ready 即自動開聽；30 秒都唔 ready 就收手。
+// load 要幾秒：半秒 poll 一次 status，ready 即自動開聽；30 秒都不 ready 就收手。
 function voskWaitReady(id, tries) {
   if (voskPendingModel !== id) return Promise.resolve();
   if (tries > 60) {
@@ -359,7 +359,7 @@ function voskWaitReady(id, tries) {
     if (res.state === "ready") {
       voskPendingModel = null;
       voskSyncModelBtns();
-      return voskStart(); // ready 即開聽，一撳即用得
+      return voskStart(); // ready 即開聽，一按即用得
     }
     if (res.state === "listening" || res.state === "error") {
       voskPendingModel = null;
@@ -383,7 +383,7 @@ function voskStart() {
 }
 
 function voskStop() {
-  // 手動撳停＝唔要自動開聽，取消一撳即用嘅等待。
+  // 手動按停＝不要自動開聽，取消一按即用的等待。
   voskPendingModel = null;
   return Alpha2Api.voskStop().then(function () {
     const partial = document.getElementById("voskPartialOut");
@@ -401,7 +401,7 @@ function voskStatus() {
 }
 
 // vosk_state event (後端 VoskController 主動推) 同上面 voskStatus() HTTP 輪詢
-// 共用呢個渲染：狀態行（跟面板語言）＋停止掣 enable/disable＋模型鍵單活高亮。
+// 共用這個渲染：狀態行（跟面板語言）＋停止按鈕 enable/disable＋模型鍵單活高亮。
 function voskRenderStatus(res) {
   if (!res) return;
   voskLastStatus = res;
@@ -409,7 +409,7 @@ function voskRenderStatus(res) {
   if (out) {
     const st = (res.state || "idle").toLowerCase();
     const key = "vosk_state_" + st;
-    // t() 唔識嘅 key 會回 raw key：未知 state 照出原文，唔洗版。
+    // t() 不懂的 key 會回 raw key：未知 state 照出原文，不洗版。
     let stateName = t(key);
     if (stateName === key) stateName = res.state || "-";
     let modelName = "";
@@ -430,6 +430,7 @@ function voskRenderStatus(res) {
     dot.classList.toggle("vosk-state-dot-on", listening);
     dot.classList.toggle("vosk-state-dot-off", !listening);
   }
-  // 模型鍵高亮經 voskSyncModelBtns 統一：淨聽緊嗰粒藍（再撳即停），其餘灰。
+  // 模型鍵高亮經 voskSyncModelBtns 統一：僅正在聽那顆藍（再按即停），其餘灰。
   voskSyncModelBtns();
 }
+

@@ -168,7 +168,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
 
     /** RobotEventReceiver 收到 SONAR_DISTANCE_ACTION 之後的入口 (正本在
      *  SonarCenter#onSonarDistanceReceived)：轉交；
-     *  沒 instance／sonarCenter 就靜靜地不做事。 */
+     *  沒 instance／sonarCenter 就悄悄地不做事。 */
     static void onSonarDistanceReceived(int distanceCm, boolean triggered) {
         MainActivity m = sInstance;
         if (m == null || m.sonarCenter == null) {
@@ -287,7 +287,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
             @Override
             public HttpServer.ApiResponse handle(String path, Map<String, String> query, String method, String body) {
                 // 實驗 tab 面板 token 中央閘口（見 PanelAuth：opt-in，預設關＝全開；
-                // 啟用後成個面板上鎖：全部 /api/* 都要 token，淨 system/auth/*
+                // 啟用後整個面板上鎖：全部 /api/* 都要 token，僅 system/auth/*
                 //（解鎖入口）開放；靜態頁／ws／stream 不經這裡，維持開放）。
                 if (!PanelAuth.isOpenApi(path)) {
                     HttpServer.ApiResponse gate = PanelAuth.requireAuth(MainActivity.this, query);
@@ -793,7 +793,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
      *  start it, so a stray upload after the user has stopped talking doesn't
      *  re-open the speaker session on its own. */
     private HttpServer.ApiResponse handleUpload(String path, Map<String, String> query, byte[] body) {
-        // 成個面板上鎖：啟用中全部上載（chest／music／audio）都要 token
+        // 整個面板上鎖：啟用中全部上載（chest／music／audio）都要 token
         //（見 PanelAuth.requireAuth；未啟用即放行）。
         HttpServer.ApiResponse gate = PanelAuth.requireAuth(this, query);
         if (gate != null) return gate;
@@ -835,7 +835,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     }
 
     // action/list 一律行 ActionDirect.actionListDirect() (讀 actionInfo.txt + UbxPlayer)。
-    // 以下淨返 ubx/servo 共用實現。
+    // 以下僅剩 ubx/servo 共用實現。
     // -- Ubx 直播共用实现（/api/direct/ubx/* 与 /api/alpha2/ubx/* 同调；
     // 抢占式：播新动作自动停旧动作，与原厂 playActionName 打断语义一致）--
     // 动作配乐已并入 UbxPlayer 内 voice 线（a/j/a/o 官方语义），此处不再另起 MediaPlayer。
@@ -907,3 +907,6 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         return sb.toString();
     }
 }
+
+
+

@@ -1,7 +1,7 @@
 // Open Alpha2 — Blockly 頁面初始化。
-// 提供同 index.html (app-core.js) 完全一致嘅 api()/連 WebSocket 邏輯 (獨立一份, 等呢版
-// 頁面可以自己開一個分頁使用, 唔一定要靠 index.html 嗰邊已經執行緊), 再初始化 Blockly
-// workspace、綁定工具列按鈕、接駁 blockly-run.js 嘅事件系統。
+// 提供同 index.html (app-core.js) 完全一致的 api()/連 WebSocket 邏輯 (獨立一份, 等這版
+// 頁面可以自己開一個分頁使用, 不一定要靠 index.html 那邊已經正在執行), 再初始化 Blockly
+// workspace、綁定工具列按鈕、接駁 blockly-run.js 的事件系統。
 
 const API = '/api/';
 
@@ -20,9 +20,9 @@ function clearError() {
 window.addEventListener('error', function (e) { showError('JavaScript error', e.error || e.message); });
 window.addEventListener('unhandledrejection', function (e) { showError('Unhandled promise rejection', e.reason); });
 
-// 面板 token（見 PanelAuth.java＋app-core.js）：啟用後成個面板上鎖，Blockly
+// 面板 token（見 PanelAuth.java＋app-core.js）：啟用後整個面板上鎖，Blockly
 // 頁都要帶 token。key 同 index.html 共用（localStorage "panel_token"，同一個
-// browser＋同一個面板地址跨 tab 共用），喺實驗 tab 解鎖一次，呢頁即用到。
+// browser＋同一個面板地址跨 tab 共用），在實驗 tab 解鎖一次，這頁即用到。
 function panelTokenGet() {
   try { return localStorage.getItem('panel_token') || ''; } catch (e) { return ''; }
 }
@@ -35,7 +35,7 @@ function withPanelToken(params) {
   return out;
 }
 
-// 統一嘅 api() helper — 同 app-core.js 個版本行為一致 (GET + query string, 回傳 parsed JSON)。
+// 統一的 api() helper — 同 app-core.js 個版本行為一致 (GET + query string, 回傳 parsed JSON)。
 window.api = function (path, params) {
   clearError();
   const merged = withPanelToken(params);
@@ -56,10 +56,10 @@ window.api = function (path, params) {
 };
 
 // 命名空間 helper — 對應 MainActivity 三個獨立路由, 同 app-core.js /
-// app-xiaozhi.js 嗰套一樣形狀。api-client.js (Alpha2Api.*) 會自動揀啱嘅
+// app-xiaozhi.js 那套一樣形狀。api-client.js (Alpha2Api.*) 會自動選中的
 // 一個: sysApi() -> /api/system/*, directApi() -> /api/direct/*,
-// xiaozhiApi() -> /api/xiaozhi/*。hwApi 係 api() 嘅 alias (俾 api-client.js
-// 嘅 legacy hw() 用, 同 index.html 一致)。
+// xiaozhiApi() -> /api/xiaozhi/*。hwApi 是 api() 的 alias (給 api-client.js
+// 的 legacy hw() 用, 同 index.html 一致)。
 function namespacedApi(prefix, label) {
   return function (path, params) {
     clearError();
@@ -105,8 +105,8 @@ function connectWs() {
   }
   ws.onopen = function () { setWsStatus(true); };
   ws.onclose = function () { setWsStatus(false); scheduleReconnect(); };
-  // 2026-09-09：error 即 close，行統一 onclose→重連（之前淨係 set 燈，
-  // error 後無 close 事件就永唔重連；同 app-log.js 睇齊）。
+  // 2026-09-09：error 即 close，行統一 onclose→重連（之前僅 set 燈，
+  // error 後無 close 事件就永不重連；同 app-log.js 看齊）。
   ws.onerror = function () { setWsStatus(false); try { ws.close(); } catch (e) {} };
   ws.onmessage = function (evt) {
     let parsed;
@@ -128,10 +128,10 @@ function scheduleReconnect() {
 // ---------------- Blockly workspace 初始化 ----------------
 let workspace = null;
 
-// 喺頁面頂部 header 顯示實際載入緊嘅 Blockly 版本 —— 直接讀 Blockly.VERSION
-// (Blockly library 內建常數, 喺 blockly_compressed.js 入面已經寫死), 唔係手動
-// 打一個數字落 HTML, 咁樣升級/替換 blockly_compressed.js 之後個顯示會自動跟
-// 返實際檔案版本, 唔會走漏眼漏更新。
+// 在頁面頂部 header 顯示實際正在載入的 Blockly 版本 —— 直接讀 Blockly.VERSION
+// (Blockly library 內建常數, 在 blockly_compressed.js 裡面已經寫死), 不是手動
+// 打一個數字落 HTML, 這樣升級/替換 blockly_compressed.js 之後個顯示會自動跟
+// 返實際檔案版本, 不會疏漏漏更新。
 function showBlocklyVersionBadge() {
   const badge = document.getElementById('blocklyVersionBadge');
   if (!badge) return;
@@ -143,11 +143,11 @@ function initWorkspace() {
   showBlocklyVersionBadge();
   workspace = Blockly.inject('blocklyDiv', {
     toolbox: window.ALPHA_TOOLBOX,
-    // 呢個 Blockly 版本嘅預設 pathToMedia 係 "https://static.blockly.com/media/"
-    // (外部 CDN) —— 喺呢個 app 嘅 WebView 環境入面攞唔到, 令
+    // 這個 Blockly 版本的預設 pathToMedia 是 "https://static.blockly.com/media/"
+    // (外部 CDN) —— 在這個 app 的 WebView 環境裡面拿不到, 令
     // 還原/放大/縮細/垃圾桶 (undo/redo/zoom-in/zoom-out/zoom-reset/trashcan)
-    // 嗰批 icon 全部壞曬 (SVG sprite 攞唔到)。改用本機 media/ 資料夾 (已經
-    // copy 咗 Blockly 官方 npm package 嘅 media 檔案落嚟), 全部 offline 可用。
+    // 那批 icon 全部壞掉 (SVG sprite 拿不到)。改用本機 media/ 資料夾 (已經
+    // copy 了 Blockly 官方 npm package 的 media 檔案下來), 全部 offline 可用。
     media: 'media/',
     grid: { spacing: 24, length: 2, colour: '#c3cad6', snap: true },
     zoom: { controls: true, wheel: true, startScale: 0.9, maxScale: 3, minScale: 0.3, scaleSpeed: 1.1 },
@@ -156,33 +156,33 @@ function initWorkspace() {
     theme: buildAlphaTheme(),
     sounds: false,
   });
-  window.__alphaBlocklyWorkspace = workspace; // 俾 blockly-i18n.js 切語言嗰陣攞返嚟用
-  // AlphaBlockly.init() 入面而家連埋起返「復原/剪貼掣列」同「側欄收埋掣」呢兩組
-  // Blockly IPositionable component (詳見 blockly-run.js 嘅 EditFabControls/
-  // SidePanelToggleControl 大段註解) —— 佢哋同垃圾桶/zoom controls 用返完全
-  // 同一套 Blockly 官方定位管線, 一定要喺 workspace inject 咗之後先可以起。
+  window.__alphaBlocklyWorkspace = workspace; // 給 blockly-i18n.js 切語言當時取回來用
+  // AlphaBlockly.init() 裡面現在一併起返「復原/剪貼按鈕列」同「側欄收起按鈕」這兩組
+  // Blockly IPositionable component (詳見 blockly-run.js 的 EditFabControls/
+  // SidePanelToggleControl 大段註解) —— 它們同垃圾桶/zoom controls 用回完全
+  // 同一套 Blockly 官方定位管線, 一定要在 workspace inject 了之後先可以起。
   window.AlphaBlockly.init(workspace);
 
   // 視窗 resize 時重新計算 Blockly 畫布大小。
   window.addEventListener('resize', resizeBlockly);
   resizeBlockly();
 
-  // 抄自 Code Lab (見對話紀錄嘅截圖): 側欄 (執行紀錄面板) 收埋/展開狀態,
-  // 記喺 localStorage, 等用家下次開返呢個分頁都記得住上次揀嘅收/開。用
-  // setSidePanelCollapsedInitial() 唔係 toggleSidePanel(), 因為呢個係
-  // 「頁面啱啱 load 就要已經係咁」, 唔應該播 0.18s 嘅收埋動畫。
+  // 抄自 Code Lab (見對話紀錄的截圖): 側欄 (執行紀錄面板) 收起/展開狀態,
+  // 記在 localStorage, 等用家下次重新開啟這個分頁都記得住上次選的收/開。用
+  // setSidePanelCollapsedInitial() 不是 toggleSidePanel(), 因為這個是
+  // 「頁面剛剛 load 就要已經是這樣」, 不應該播 0.18s 的收起動畫。
   try {
     if (localStorage.getItem('blocklySideCollapsed') === '1') {
       window.AlphaBlockly.setSidePanelCollapsedInitial(true);
       resizeBlockly();
     }
-  } catch (e) { /* localStorage 喺部分 WebView 環境可能唔可用, 冇記錄就預設展開, 唔緊要 */ }
+  } catch (e) { /* localStorage 在部分 WebView 環境可能不可用, 沒有記錄就預設展開, 不緊要 */ }
 }
 
 // 視窗 resize / 側欄收/展開之後都要重新計算 Blockly 畫布大小 —— Blockly.svgResize()
-// 一 call, 內部會自動連埋 ComponentManager 嗰批 POSITIONABLE component (垃圾桶/
-// zoom controls/我哋自己嘅 EditFabControls/SidePanelToggleControl) 一齊重新
-// 定位, 唔使各自另外再郁佢哋。拆做獨立 function 等 window resize listener 同
+// 一 call, 內部會自動一併 ComponentManager 那批 POSITIONABLE component (垃圾桶/
+// zoom controls/我們自己的 EditFabControls/SidePanelToggleControl) 一齊重新
+// 定位, 不用各自另外再動它們。拆做獨立 function 等 window resize listener 同
 // AlphaBlockly.toggleSidePanel() 可以共用。
 function resizeBlockly() {
   if (workspace) Blockly.svgResize(workspace);
@@ -196,8 +196,8 @@ function toggleSidePanel() {
 window.toggleSidePanel = toggleSidePanel;
 
 function buildAlphaTheme() {
-  // 用返 style.css 個淡藍/白色系 (--bg #f5f7fa / --accent #3b7dff),
-  // 等成個頁面 (工具列/積木畫布) 睇落係同一個產品,唔係外掛一份第三方風格。
+  // 用回 style.css 個淡藍/白色系 (--bg #f5f7fa / --accent #3b7dff),
+  // 等整個頁面 (工具列/積木畫布) 看來是同一個產品,不是外掛一份第三方風格。
   try {
     return Blockly.Theme.defineTheme('alphaTheme', {
       base: Blockly.Themes.Classic,
@@ -260,3 +260,4 @@ document.addEventListener('DOMContentLoaded', function () {
   initWorkspace();
   connectWs();
 });
+

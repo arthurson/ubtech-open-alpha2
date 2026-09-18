@@ -40,21 +40,21 @@ public final class LedCenter {
 
     // -- Pad (+/-) 實體鍵指示燈 -----------------------------------------------
     // 真機掃描確認: ledSetOn(14) = volume- 燈, ledSetOn(16) = volume+ 燈。
-    // firmware 唔會自亮，按住期間由 app 連發補燈，放手補 OFF；
-    // wifi 燈 (12/13) firmware 唔會自己著，繼續手動（三態：熄/紅/藍）。
+    // firmware 不會自亮，按住期間由 app 連發補燈，放手補 OFF；
+    // wifi 燈 (12/13) firmware 不會自己著，繼續手動（三態：熄/紅/藍）。
     private static final int PAD_LED_INDEX_MINUS = 14;
     private static final int PAD_LED_INDEX_PLUS = 16;
     private static final long PAD_LED_INTERVAL_MS = 80;
-    // alpha2services 已移除，無人再搶 /dev/led_eye，重試只防偶發打唔開。
+    // alpha2services 已移除，無人再搶 /dev/led_eye，重試只防偶發打不開。
     private static final int PAD_LED_OPEN_ATTEMPTS = 3;
     private final java.util.concurrent.ExecutorService padLedExecutor =
             java.util.concurrent.Executors.newSingleThreadExecutor();
 
     /** onDestroy() 會 shutdownNow() 上面條 executor，但 wifi receiver
-     *  之前 postDelayed 咗嘅 runnable (1200ms) 仲會喺之後照開，嗰陣再排就撞上
-     *  RejectedExecutionException 炒喺 main thread——app
-     *  收緊皮嗰陣掉咗個 LED 更新係正確行為，吞咗佢。
-     *  公開係因為 mute 鍵小智開關／mute LED 發送都借呢條單線程做背景執行。 */
+     *  之前 postDelayed 了的 runnable (1200ms) 還會在之後照開，當時再排就撞上
+     *  RejectedExecutionException 炒在 main thread——app
+     *  收緊皮當時掉了個 LED 更新是正確行為，吞了它。
+     *  公開是因為 mute 鍵小智開關／mute LED 發送都借這條單線程做背景執行。 */
     public void postPadLed(Runnable r) {
         try {
             padLedExecutor.execute(r);
@@ -66,7 +66,7 @@ public final class LedCenter {
     private volatile boolean padPlusHeld = false;
     private volatile boolean padLedWorkerRunning = false;
 
-    /** 手勢層設定實體鍵狀態 (0x5a-0x5f)，跟住即刻調 padLedUpdate()。 */
+    /** 手勢層設定實體鍵狀態 (0x5a-0x5f)，跟著即刻調 padLedUpdate()。 */
     public void setPadMinusHeld(boolean held) {
         padMinusHeld = held;
     }
@@ -76,8 +76,8 @@ public final class LedCenter {
     }
 
     /**
-     * 撳住 +/- firmware 唔會自亮 14/16，所以按住期間繼續由
-     * app 主動點亮；放手後補 ledSetOFF 清場。單線程 worker，跑緊唔重入。
+     * 按住 +/- firmware 不會自亮 14/16，所以按住期間繼續由
+     * app 主動點亮；放手後補 ledSetOFF 清場。單線程 worker，正在跑不重入。
      */
     public void padLedUpdate() {
         if (padLedWorkerRunning) {
@@ -98,7 +98,7 @@ public final class LedCenter {
                     }
                     assertPadLedsOffBurst();
                     if (!padMinusHeld && !padPlusHeld) break;
-                    // 熄燈途中又撳過：兜返去 loop，唔交棒
+                    // 熄燈途中又按過：回到 loop，不交棒
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -124,7 +124,7 @@ public final class LedCenter {
 
     /**
      * 按住期間點亮組合 burst：open 到就按 padMinusHeld/padPlusHeld 點 14/16
-     *（累加式，兩顆齊撳兩顆都著），打唔開就重試。
+     *（累加式，兩顆齊按兩顆都著），打不開就重試。
      */
     private boolean assertPadLedsComboBurst() {
         for (int attempt = 1; attempt <= PAD_LED_OPEN_ATTEMPTS; attempt++) {
@@ -205,7 +205,7 @@ public final class LedCenter {
             @Override
             public void onReceive(Context context, Intent intent) {
                 String action = intent != null ? intent.getAction() : "";
-                // 收斂：熄 wifi 時 DISABLED 同 disconnected 兩個 broadcast 先後不定，
+                // 收斂：關閉 wifi 時 DISABLED 同 disconnected 兩個 broadcast 先後不定，
                 // 先到的若判了紅，後到的熄燈蓋過；反之亦然。1.2s 後按權威狀態重設一次，
                 // 保證最終一致（單線程 executor 保序，debounce 防堆積）。
                 if (wifiLedReapply != null) mainHandler.removeCallbacks(wifiLedReapply);
@@ -214,7 +214,7 @@ public final class LedCenter {
                 };
                 mainHandler.postDelayed(wifiLedReapply, 1200);
                 if (WifiManager.WIFI_STATE_CHANGED_ACTION.equals(action)) {
-                    // 開關掣本身：熄了即熄燈；其他狀態轉 query 最新為準。
+                    // 開關本身：關了即熄燈；其他狀態轉 query 最新為準。
                     int st = intent.getIntExtra(WifiManager.EXTRA_WIFI_STATE, -1);
                     if (st == WifiManager.WIFI_STATE_DISABLED
                             || st == WifiManager.WIFI_STATE_DISABLING) {
@@ -225,10 +225,10 @@ public final class LedCenter {
                     return;
                 }
                 // 連線變化：intent 自帶的 NetworkInfo 即權威新狀態，直接用，
-                // 唔重查（重查有 race：broadcast 到咗但 ConnectivityManager
-                // 仲係舊值，會凍結喺紅燈，實機見過）。但開關制要現查——熄 wifi
+                // 不重查（重查有 race：broadcast 到了但 ConnectivityManager
+                // 還是舊值，會凍結在紅燈，實機見過）。但開關制要現查——關閉 wifi
                 // 時 DISABLED 同 disconnected 兩個 broadcast 先後到，後者若
-                // 當 wifi 仲開住就會點返紅燈蓋過熄燈。
+                // 當 wifi 還開著就會重新點亮紅燈蓋過熄燈。
                 android.net.NetworkInfo info = intent != null ? intent
                         .getParcelableExtra(WifiManager.EXTRA_NETWORK_INFO) : null;
                 if (info != null && info.getType()
@@ -264,7 +264,7 @@ public final class LedCenter {
         postPadLed(() -> applyWifiLedInternal(wifiOn, connected));
     }
 
-    /** 現查 wifi 開關制（裹 try/catch，查唔到當開住，由連線態決定）。 */
+    /** 現查 wifi 開關制（裹 try/catch，查不到當開著，由連線態決定）。 */
     private boolean isWifiEnabledNow() {
         try {
             android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager)
@@ -307,8 +307,8 @@ public final class LedCenter {
     }
 
     /**
-     * 實際切換: 先 ledSetOFF() 清走舊色, 等 100ms, 再點目標顏色
-     * （wifi 熄就唔點）。兩步都係 burst 重試式。
+     * 實際切換: 先 ledSetOFF() 清除舊色, 等 100ms, 再點目標顏色
+     * （wifi 關閉就不點亮）。兩步都是 burst 重試式。
      */
     private void applyWifiLedInternal(boolean wifiOn, boolean connected) {
         try {
@@ -362,9 +362,9 @@ public final class LedCenter {
     // 這台機器頭板的 5-mic head/eye LED
     // 對 PIR 警示反應是有效的 (眼/頭會亮紅燈)。PIR 警示只
     // 走這一條路, 沒有再加 mouth LED breathing 做 fallback, 嘴部不用閃, 和鈴聲一起
-    // 淨係眼/頭長著紅燈。
+    // 僅眼/頭長著紅燈。
     private volatile boolean alpha2PirAlertActive = false;
-    // 獨立於 pir/set 感應器硬件開關本身 - 預設關, 使用者要自己揀開先會有 LED/聲反應,
+    // 獨立於 pir/set 感應器硬件開關本身 - 預設關, 使用者要自己選開才會有 LED/聲反應,
     // 避免一開機就無啦啦閃紅燈/響鈴。
     private volatile boolean alpha2PirAlertEnabled = false;
 
@@ -403,7 +403,7 @@ public final class LedCenter {
                 DirectLedController.stopEye5Mic();
             }
         } catch (Throwable t) {
-            // 5-mic head/eye LED 路徑失敗時記 warning（PIR 警示只走呢條路，唔加 mouth fallback）。
+            // 5-mic head/eye LED 路徑失敗時記 warning（PIR 警示只走這條路，不加 mouth fallback）。
             Log.w(TAG, "applyAlpha2PirLedAndSound: 5-mic head/eye LED path failed", t);
         }
         if (triggered) {
@@ -462,7 +462,7 @@ public final class LedCenter {
         return MainActivity.sentReadyResponse(sent, directChestReady());
     }
 
-    /** 獨立於 pir/set 呢個感應器硬件開關本身, 純粹控制
+    /** 獨立於 pir/set 這個感應器硬件開關本身, 純粹控制
      *  「偵測到人就閃紅燈/響鈴」這個警示反應要不要開。已確認 PIR 事件
      *  本身 (cmd=-109, "PIR HUMON DETECT") 會正常觸發 - 這個
      *  endpoint 就是讓前端選擇要不要對這個事件有反應。 */
@@ -766,3 +766,6 @@ public final class LedCenter {
         return new SonarCenter.McpResult(!ok, "ok=" + ok);
     }
 }
+
+
+

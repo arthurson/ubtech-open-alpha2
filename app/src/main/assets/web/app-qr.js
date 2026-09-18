@@ -1,9 +1,9 @@
 // Open Alpha2 — client logic (app-qr.js)
-// 離線 QR code 產生器 — 機械人冇 internet, 唔可以 CDN,
+// 離線 QR code 產生器 — 機械人沒有 internet, 不可以 CDN,
 // 所以自帶一個精簡 QR encoder。固定 version 2 / EC level L / byte mode,
 // 容量 32 bytes — 機械人 UUID (17 字元) 綽綽有餘。
 // 演算法跟 QR standard (ISO/IEC 18004): Reed-Solomon EC over GF(256),
-// mask 0-7 全試 + penalty 評分揀最好。
+// mask 0-7 全試 + penalty 評分選最好。
 
 function qrGfMul(a, b) {
   let r = 0;
@@ -280,3 +280,4 @@ function qrDrawToCanvas(canvas, text, darkColor) {
     }
   }
 }
+

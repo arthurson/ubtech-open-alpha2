@@ -36,7 +36,7 @@ public final class ApiValidator {
 
     /** servo 範圍單一來源（同 openapi spec／MCP schema／McpToolsGenerated 約束一致）：
      *  id 1-20、angle 0-255、time 20-32767ms。之前 UbxApi／ApiDispatcher／
-     *  XiaozhiBridge 各寫裸 literal，改漏一處即前後端驗證唔一致，收斂到呢度。 */
+     *  XiaozhiBridge 各寫裸 literal，改漏一處即前後端驗證不一致，收斂到這裡。 */
     public static final int SERVO_ID_MIN = 1;
     public static final int SERVO_ID_MAX = 20;
     /** 全機舵機粒數（servo/all CSV 長度、loop 上限）。 */
@@ -112,7 +112,7 @@ public final class ApiValidator {
     }
 
     // ── 整數 ────────────────────────────────────────────────────────
-    // 全部 trim（URL 傳 " 90 " 唔應該 400）。
+    // 全部 trim（URL 傳 " 90 " 不應該 400）。
     public static int requireInt(Map<String, String> q, String key) {
         return parseIntOrThrow(key, require(q, key));
     }
@@ -172,7 +172,7 @@ public final class ApiValidator {
     }
 
     // ── Nullable (缺席/空字串回 null, 有值則嚴格解析, 非法拋錯) ──────
-    // 用於「兩個可選參數要一齊俾先有效」(camera w/h) 同「有參數=設定, 無=查詢」
+    // 用於「兩個可選參數要一齊給先有效」(camera w/h) 同「有參數=設定, 無=查詢」
     // (speech/offline_auto_switch on) 這類三態邏輯, 取代 query.get() + 手動判空。
     public static Integer optionalInteger(Map<String, String> q, String key) {
         String v = q.get(key);
@@ -245,9 +245,9 @@ public final class ApiValidator {
     }
 
     /** nuance/iflytek 已死 (機身無 alpha2services,
-     *  RobotStub.speech_startTTS 恆回 NOT_INIT)，呢個 list 已經收窄到淨 "android" -
-     *  傳舊值會直接 invalid-parameter（見下面 test）。之前試過留喺 list 誠實回
-     *  NOT_INIT，後來決定收窄：死引擎唔應該再出現喺合法參數裡面
+     *  RobotStub.speech_startTTS 恆回 NOT_INIT)，這個 list 已經收窄到僅 "android" -
+     *  傳舊值會直接 invalid-parameter（見下面 test）。之前試過留在 list 誠實回
+     *  NOT_INIT，後來決定收窄：死引擎不應該再出現在合法參數裡面
      *  (ApiValidatorTest 有覆蓋拒收)。 */
     /** TTS 引擎：只准 android（機身無 alpha2services，binder 已死）。 */
     public static String requireSpeechEngine(Map<String, String> q) {
@@ -344,7 +344,7 @@ public final class ApiValidator {
         }
         int[] out = new int[SERVO_COUNT];
         for (int i = 0; i < SERVO_COUNT; i++) {
-            // 逐粒 0-255（同 spec/MCP schema；同 servo/one 一致，防靜默截 byte wrap 落舵機）。
+            // 逐顆 0-255（同 spec/MCP schema；同 servo/one 一致，防靜默截 byte wrap 落舵機）。
             int v;
             try {
                 v = Integer.parseInt(parts[i].trim());
@@ -372,3 +372,4 @@ public final class ApiValidator {
         return HttpServer.ApiResponse.error(msg);
     }
 }
+

@@ -149,8 +149,8 @@ public final class RingtoneCenter {
         currentRingtonePlayer = null;
     }
 
-    /** OnCompletion/OnError 共用：release 播完／出錯嗰部 player，係 current 先清掉
-     *  （之前兩個 listener 內逐字一樣；裸 release——completed/errored state 唔啱 stop）。 */
+    /** OnCompletion/OnError 共用：release 播完／出錯那部 player，是 current 先清掉
+     *  （之前兩個 listener 內逐字一樣；裸 release——completed/errored state 不合 stop）。 */
     private void releaseDonePlayerLocked(android.media.MediaPlayer mp) {
         mp.release();
         if (currentRingtonePlayer == mp) {
@@ -292,3 +292,4 @@ public final class RingtoneCenter {
         return HttpServer.ApiResponse.okTrue();
     }
 }
+

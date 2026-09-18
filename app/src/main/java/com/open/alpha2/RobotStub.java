@@ -6,17 +6,17 @@ import android.content.Intent;
 /**
  * 2026-09: 脫離 Alpha2OpenSdk —— 取代 sdk-module/ubtechalpha2robot 的
  * Alpha2RobotApi。機身根本無 com.ubtechinc.alpha2services，所有 binder
- * 調用註定失敗，所以呢個係一個永久嘅 no-op facade：每個方法都即時回一個
- * 誠實嘅失敗值（{@link UbxErrorCode.API_ERROR_CODE#API_ERROR_NOT_INIT}、
- * {@code false}、{@code null}），listener 永遠唔會被 callback，絕不 block、
- * 絕不 throw。行為同之前（util 全 null）一模一樣，純粹唔再需要成個 SDK module。
+ * 調用註定失敗，所以這個是一個永久的 no-op facade：每個方法都即時回一個
+ * 誠實的失敗值（{@link UbxErrorCode.API_ERROR_CODE#API_ERROR_NOT_INIT}、
+ * {@code false}、{@code null}），listener 永遠不會被 callback，絕不 block、
+ * 絕不 throw。行為同之前（util 全 null）一模一樣，純粹不再需要整個 SDK module。
  *
- * <p>例外（唔經 binder、本來就 work，保留原語義）：
+ * <p>例外（不經 binder、本來就 work，保留原語義）：
  * <ul>
  *   <li>{@link #requestRobotUUID()} - 照發 broadcast（無人收，純粹向後相容；
  *       真正讀值行 {@code queryChestRobotUuid()} direct 路）。</li>
- *   <li>{@link #speech_SetMIC(boolean)} - 照回 {@code true}（同 SDK 喺 util
- *       null 時一樣，乜都唔做）。</li>
+ *   <li>{@link #speech_SetMIC(boolean)} - 照回 {@code true}（同 SDK 在 util
+ *       null 時一樣，什麼都不做）。</li>
  *   <li>{@link #releaseApi()} - no-op。</li>
  * </ul>
  *
@@ -30,7 +30,7 @@ public final class RobotStub {
         this.mContext = context.getApplicationContext();
     }
 
-    /** Grammar-build callback (binder 時代遺留接口，listener 永遠唔會被叫）。 */
+    /** Grammar-build callback (binder 時代遺留接口，listener 永遠不會被叫）。 */
     public interface IAlpha2SpeechGrammarInitListener {
         void speechGrammarInitCallback(String grammarId, int errorCode);
     }
@@ -66,9 +66,9 @@ public final class RobotStub {
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_NOT_INIT;
     }
 
-    // -- Mic (假成功：同 SDK 在 util null 時一樣回 true，乜都唔做) ---------------
-    // 注意：回 true 唔代表搶到 mic——調用方（MicCenter 持鎖管線）唔可以靠呢個
-    // 返回值判斷擁有權，只當「已通知（無人收）」；真實 mic 状态睇自家 AudioRecord。
+    // -- Mic (假成功：同 SDK 在 util null 時一樣回 true，什麼都不做) ---------------
+    // 注意：回 true 不代表搶到 mic——調用方（MicCenter 持鎖管線）不可以靠這個
+    // 返回值判斷擁有權，只當「已通知（無人收）」；真實 mic 状态看自家 AudioRecord。
     public boolean speech_SetMIC(boolean isWake) {
         return true;
     }
@@ -82,3 +82,5 @@ public final class RobotStub {
     public void releaseApi() {
     }
 }
+
+

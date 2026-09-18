@@ -16,8 +16,8 @@ public final class VoskApi {
         this.semanticCenter = semanticCenter;
     }
 
-    /** vosk/* endpoint 熔斷：vosk 係 null（API 19 機唔起 controller，或者
-     *  21+ 機 init 失敗）就回清晰錯誤，唔好逐個 case 寫 if。
+    /** vosk/* endpoint 熔斷：vosk 是 null（API 19 機不起 controller，或者
+     *  21+ 機 init 失敗）就回清晰錯誤，不要逐個 case 寫 if。
      *  return null = 可用，照行。 */
     private HttpServer.ApiResponse voskOrError() {
         if (vosk != null) return null;
@@ -32,8 +32,8 @@ public final class VoskApi {
     // Model 放 sdcard 自動偵測 (見 VoskController.scanModels)，一次一粒。
     // 成句結果沿用 asr_result event（前端同打字模擬同一條管線：氣泡＋
     // 語意配對＋Android TTS＋direct 動作）。
-    // API 19 熔斷：除 models（純檔案掃描，static，邊個 API 都得）之外，
-    // 其他經 voskOrError() 回清晰錯誤，唔好逐個 case 寫 if。
+    // API 19 熔斷：除 models（純檔案掃描，static，哪個 API 都得）之外，
+    // 其他經 voskOrError() 回清晰錯誤，不要逐個 case 寫 if。
     public HttpServer.ApiResponse voskModels() {
         StringBuilder sb = new StringBuilder("{\"ok\":true,\"models\":[");
         boolean first = true;
@@ -53,7 +53,7 @@ public final class VoskApi {
     private String downloadJsonInner() {
         if (vosk == null) return "null";
         try {
-            // downloadStatusJson 係 {"ok":true,...}，剝走 ok 層剩內文方便嵌。
+            // downloadStatusJson 是 {"ok":true,...}，去除 ok 層剩內文方便嵌。
             String full = vosk.downloadStatusJson();
             int i = full.indexOf("\"state\"");
             if (i < 0) return "null";
@@ -69,8 +69,8 @@ public final class VoskApi {
         String id = ApiValidator.require(query, "model");
         String err = vosk.loadModel(id);
         if (err != null) return HttpServer.ApiResponse.error(err);
-        // 直接打 model 鍵換咗 model 都一併轉埋配對語言（認唔到語言唔郁）。
-        // load 係背景做，呢度樂觀同步——同前端即刻轉掣行為一致。
+        // 直接打 model 鍵換了 model 都一併一併轉換配對語言（認不到語言不動）。
+        // load 是背景做，這裡樂觀同步——同前端即刻切換行為一致。
         String mapped = VoskController.langOfModelId(id);
         if (mapped != null) semanticCenter.setDialogueLang(mapped);
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"loading\":\""
@@ -94,9 +94,9 @@ public final class VoskApi {
     public HttpServer.ApiResponse voskStart() {
         HttpServer.ApiResponse need = voskOrError();
         if (need != null) return need;
-        // 後開者得 mic：小智開緊就成條 session 踢斷（斷線＋熄 mute 燈，同
+        // 後開者得 mic：小智正在開就整個 session 踢斷（斷線＋熄 mute 燈，同
         // "disconnect" case 同順序），先開 recorder (同 startXiaozhiMic
-        // 停 vosk 對稱；唔自動幫小智重開——對稱嗰邊都唔自動重開 vosk)。
+        // 停 vosk 對稱；不自動幫小智重開——對稱那邊都不自動重開 vosk)。
         xiaozhiBridge.yieldMicToVosk();
         String err = vosk.startListening();
         if (err != null) return HttpServer.ApiResponse.error(err);
@@ -118,9 +118,9 @@ public final class VoskApi {
     }
 
     // 模型下載＋自動 unzip（實驗 tab 下載卡用）。
-    // model＝目錄名（見 vosk/catalog，固定官方 URL allowlist，唔收任意 URL）。
-    // 背景落 zip 再自己 unzip 到 sdcard 頂層，完咗自動 load。進度經
-    // vosk_download event＋download_status 查，唔使輪詢 models。
+    // model＝目錄名（見 vosk/catalog，固定官方 URL allowlist，不收任意 URL）。
+    // 背景落 zip 再自己 unzip 到 sdcard 頂層，完了自動 load。進度經
+    // vosk_download event＋download_status 查，不用輪詢 models。
     public HttpServer.ApiResponse voskDownload(Map<String, String> query) {
         HttpServer.ApiResponse need = voskOrError();
         if (need != null) return need;
@@ -130,7 +130,7 @@ public final class VoskApi {
         }
         String err = vosk.startDownload(id);
         if (err != null) {
-            // 已經有 model 就唔當錯（前端問完先嚟，可能另一邊已落好）：回 ok+exists
+            // 已經有 model 就不當錯（前端問完先來，可能另一邊已落好）：回 ok+exists
             // 等前端直接 refresh。already downloading 都一樣回狀態等前端跟進度。
             if (err.startsWith("already exists") || err.startsWith("already downloading")) {
                 return HttpServer.ApiResponse.ok(vosk.downloadStatusJson());
@@ -155,8 +155,10 @@ public final class VoskApi {
     }
 
     // 全部可下載模型 catalog（id/lang/sizeMb/downloaded，
-    // 純檔案掃描 static，API 19 都用得，同 models 一樣唔經 voskOrError 熔斷）。
+    // 純檔案掃描 static，API 19 都用得，同 models 一樣不經 voskOrError 熔斷）。
     public HttpServer.ApiResponse voskCatalog() {
         return HttpServer.ApiResponse.ok(VoskController.catalogJson());
     }
 }
+
+

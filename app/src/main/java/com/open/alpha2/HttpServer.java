@@ -90,7 +90,7 @@ public class HttpServer implements Runnable {
             return ok(JsonUtil.okTrue());
         }
 
-        /** {"ok":<bool>} 快捷（okTrue 嘅動態版；之前 6 處各自砌字串）。 */
+        /** {"ok":<bool>} 快捷（okTrue 的動態版；之前 6 處各自砌字串）。 */
         public static ApiResponse okBool(boolean ok) {
             return ok("{\"ok\":" + ok + "}");
         }
@@ -108,12 +108,12 @@ public class HttpServer implements Runnable {
             return of(400, message);
         }
 
-        /** 面板 token 閘口用（見 PanelAuth）：未帶／帶錯 token 即 401，唔係 400/500。 */
+        /** 面板 token 閘口用（見 PanelAuth）：未帶／帶錯 token 即 401，不是 400/500。 */
         public static ApiResponse unauthorized(String message) {
             return of(401, message);
         }
 
-        /** 轉義單一實現見 JsonUtil（舊 comment 擔心嘅循環已唔存在：JsonUtil 零依賴）。 */
+        /** 轉義單一實現見 JsonUtil（舊 comment 擔心的循環已不存在：JsonUtil 零依賴）。 */
         private static String esc(String s) {
             return JsonUtil.esc(s);
         }
@@ -131,7 +131,7 @@ public class HttpServer implements Runnable {
 
     /**
      * TLS 已移除，只剩 plain HTTP。之前瀏覽器對自簽 cert 反覆拒絕，且 walkie-talkie
-     * mic 在 UI 已永久關閉，TLS 唔再需要。This is now the only constructor - plain HTTP only.
+     * mic 在 UI 已永久關閉，TLS 不再需要。This is now the only constructor - plain HTTP only.
      */
     public HttpServer(AssetManager assets, ApiHandler apiHandler, StreamHandler streamHandler,
             RawUploadHandler rawUploadHandler) {
@@ -327,7 +327,7 @@ public class HttpServer implements Runnable {
         String body = new String(rawBody, StandardCharsets.UTF_8);
 
         if (path.startsWith("/api/")) {
-            // response body 只 log 頭 200 字（ssid/uuid/vision token 唔入 logcat）。
+            // response body 只 log 頭 200 字（ssid/uuid/vision token 不入 logcat）。
             Log.i(TAG, "API request: " + method + " " + path + (queryString.isEmpty() ? "" : "?" + redactQuery(queryString)));
             ApiResponse resp;
             try {
@@ -354,7 +354,7 @@ public class HttpServer implements Runnable {
         if (path.equals("/") || path.isEmpty()) {
             path = "/index.html";
         }
-        // 擋 ..（AssetManager 會唔會 normalize 未驗證，唔搏）。
+        // 擋 ..（AssetManager 是否會 normalize 未驗證，不冒險）。
         if (path.contains("..")) {
             byte[] msg = "Not found".getBytes(StandardCharsets.UTF_8);
             writeResponse(out, 404, "text/plain; charset=utf-8", msg, keepAlive, true);
@@ -365,7 +365,7 @@ public class HttpServer implements Runnable {
             path = "/docs/index.html";
         }
         if (path.startsWith("/.well-known/")) {
-            // dotfiles 會被 aapt strip：先試 dot path，唔得即 fallback 無點版，一次 open 搞掂。
+            // dotfiles 會被 aapt strip：先試 dot path，不得即 fallback 無點版，一次 open 完成。
             String fallback = "web/well-known" + path.substring("/.well-known".length());
             try {
                 byte[] wellKnown = readAsset(fallback);
@@ -399,7 +399,7 @@ public class HttpServer implements Runnable {
         }
     }
 
-    /** assets 讀一次搞掂（唔存在回 null，唔拋，方便 fallback 鏈）。 */
+    /** assets 讀一次完成（不存在回 null，不拋，方便 fallback 鏈）。 */
     private byte[] readAsset(String assetPath) {
         InputStream is = null;
         try {
@@ -414,7 +414,7 @@ public class HttpServer implements Runnable {
         }
     }
 
-    /** body 讀取（含上限）：正常回 byte[]，header 爛／超限回 null＝閂線。 */
+    /** body 讀取（含上限）：正常回 byte[]，header 爛／超限回 null＝關線。 */
     private static byte[] readBody(InputStream rawIn, Map<String, String> headers, String path)
             throws IOException {
         String lenStr = headers.get("content-length");
@@ -429,8 +429,8 @@ public class HttpServer implements Runnable {
             return null;
         }
         // body 上限：len 來自客戶端 Content-Length，不設限會 OOM。正常 body
-        // 最大係 /upload/audio walkie-talkie PCM chunk (幾十 KB)，32MB 留有餘裕。
-        // 胸固件上載得 256KB，俾 1MB（/upload/chest 專用上限；
+        // 最大是 /upload/audio walkie-talkie PCM chunk (幾十 KB)，32MB 留有餘裕。
+        // 胸固件上載得 256KB，給 1MB（/upload/chest 專用上限；
         // handleChestUpload 自己都會再驗一次）。
         final int maxBody = path.startsWith("/upload/chest") ? (1024 * 1024) : (32 * 1024 * 1024);
         if (len < 0 || len > maxBody) {
@@ -529,7 +529,7 @@ public class HttpServer implements Runnable {
         return new String(lineBuf.toByteArray(), StandardCharsets.ISO_8859_1);
     }
 
-    /** log 用 query 脫敏：token/uuid/value(xiaozhi token・UUID 寫入) 等唔落 logcat。 */
+    /** log 用 query 脫敏：token/uuid/value(xiaozhi token・UUID 寫入) 等不落 logcat。 */
     private static String redactQuery(String qs) {
         if (qs == null || qs.isEmpty()) return qs;
         StringBuilder sb = new StringBuilder();
@@ -573,3 +573,5 @@ public class HttpServer implements Runnable {
         return map;
     }
 }
+
+

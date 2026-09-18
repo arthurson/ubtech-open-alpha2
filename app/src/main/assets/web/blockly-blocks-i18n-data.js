@@ -363,7 +363,7 @@ window.ALPHA_BLOCK_I18N = {
 
 // t(key, vars?) — 取回 key 對應的字串, 跟 window.getUiLanguage() 選語言,
 // 沒有對應語言就 fallback 做 zh, key 完全找不到就直接印回 key 出來 (方便一眼
-// 看到漏譯了哪個, 不會靜靜顯示 undefined)。支援 {placeholder} 簡單替換,
+// 看到漏譯了哪個, 不會悄悄顯示 undefined)。支援 {placeholder} 簡單替換,
 // 用在好像 action_category_tooltip 這種要插入分類名的字串。
 window.t = function (key, vars) {
   const entry = window.ALPHA_BLOCK_I18N[key];
@@ -378,3 +378,4 @@ window.t = function (key, vars) {
   }
   return text;
 };
+

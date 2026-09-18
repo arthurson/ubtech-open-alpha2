@@ -34,8 +34,8 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class AudioController {
     private static final String TAG = "AudioController";
-    // 16000：瀏覽器送 PCM 嗰個 sample rate 對齊用。注意：16000 嘅 bytes/sec 係
-    // 8000 嘅兩倍，若日後實測見聽聲越聽越慢／斷續，可懷疑 chunk decode 負擔，
+    // 16000：瀏覽器送 PCM 那個 sample rate 對齊用。注意：16000 的 bytes/sec 是
+    // 8000 的兩倍，若日後實測見聽聲越聽越慢／斷續，可懷疑 chunk decode 負擔，
     // 考慮縮短 CHUNK_MS 或者退回 8000。
     private static final int SAMPLE_RATE_HZ = 16000;
     private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO;
@@ -105,9 +105,9 @@ public class AudioController {
      * the main thread) until recording has either started or failed.
      */
     public StartResult start(long timeoutMs) {
-        // recording 已經 false、但 audioRecord 仲未 null 嘅窗口（release 要等
+        // recording 已經 false、但 audioRecord 還未 null 的窗口（release 要等
         // readLoop() blocking read 完成）：若只見 audioRecord != null 就當成功，
-        // 但實際上冇開新一輪 readLoop()；舊 readLoop() 好快發現 recording==false 自行結束、
+        // 但實際上沒有開新一輪 readLoop()；舊 readLoop() 好快發現 recording==false 自行結束、
         // release 掉 audioRecord。結果新的 HTTP client 雖然 subscribe() 了
         // listener, 但永遠沒有 onChunk() 被 call, handleMicStream() 那個
         // queue.take() 就會永久阻塞 - 前端表現為按了聽但完全靜音、都不會有任何
@@ -282,8 +282,8 @@ public class AudioController {
      * schedule, so one browser tab closing doesn't cut the stream out from under
      * another that's still listening.
      *
-     *  stopIfIdle() 唔等 readLoop() 真正 release 會重蹈 shutdown() 舊 bug：
-     *  readLoop() 喺 audioHandler background thread 跑 blocking read()（等下一個
+     *  stopIfIdle() 不等 readLoop() 真正 release 會重蹈 shutdown() 舊 bug：
+     *  readLoop() 在 audioHandler background thread 跑 blocking read()（等下一個
      *  audio buffer 才返回，看 CHUNK_MS）。recording=false 之後，readLoop() 要
      * 等那次 read() 完成才會發現、接著才 audioRecord.release()/audioRecord=null。
      *
@@ -315,7 +315,7 @@ public class AudioController {
     }
 
     public void shutdown() {
-        // 唔等 readLoop() 收尾就 quitSafely() 會撞舊 race：recording=false 之後, readLoop() 要多跑一個 loop iteration 才會發現、
+        // 不等 readLoop() 收尾就 quitSafely() 會撞舊 race：recording=false 之後, readLoop() 要多跑一個 loop iteration 才會發現、
         // 接著才做 audioRecord.release() —— 這個 release 本身是在 audioHandler
         // 那條 audio thread 上做的 posted Runnable 裡跑著, quitSafely() 不會
         // 中斷它, 但如果 shutdown() 之後很快又有人 start(), 新一輪
@@ -339,3 +339,4 @@ public class AudioController {
         }
     }
 }
+

@@ -1,7 +1,7 @@
 // Open Alpha2 — client logic (app-accel.js)
 // 內容: 加速度計/聲納圖表、頭部降噪、UUID 查詢。
-// 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
-// <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
+// 全部檔案共用 window/global scope (沒有用 ES module), 載入順序由 index.html 的
+// <script src="..."> 順序決定 - 詳見 index.html 頭那段 comment。
 
 // ---------------- Accelerometer: toggle + live X/Y/Z chart ----------------
 //
@@ -26,10 +26,10 @@ let sonarThresholdCm = 30; // mirrors the slider; kept as its own var since conf
                             // updates it eagerly on release, ahead of any server round-trip
 
 // Alpha2 PIR 感應器指示燈, 由 "alpha2_pir_state" WebSocket event 驅動 (見
-// RobotEventReceiver.java 嘅 CHEST_ACTION case)。淨係反映最新一個 broadcast 嘅
-// 狀態 (紅/綠燈), 唔理獨立嘅「警示反應」(LED+鈴聲) 開關而家開唔開 (見
-// MainActivity#alpha2SetPirAlertEnabled()), 等你就算警示反應閂咗都睇得到
-// broadcast 有冇到。
+// RobotEventReceiver.java 的 CHEST_ACTION case)。僅反映最新一個 broadcast 的
+// 狀態 (紅/綠燈), 不理獨立的「警示反應」(LED+鈴聲) 開關現在開不開 (見
+// MainActivity#alpha2SetPirAlertEnabled()), 等你就算警示反應關了都看得到
+// broadcast 有沒有到。
 function onAlpha2PirState(data) {
   const triggered = !!data.triggered;
   const indicator = document.getElementById("alpha2PirIndicator");
@@ -200,9 +200,9 @@ function drawAccelChart() {
 function requestUuid() {
   document.getElementById("uuidOut").innerHTML = t("uuid_querying_hint");
   // 後端 misc/request_uuid 經 chest cmd55 直讀, HTTP response
-  // 會順手帶埋 {"ok":true,"uuid":"..."} (見 MainActivity)。呢度兩個都接: HTTP 有 uuid 就即刻顯示 (唔使等 WS);
+  // 會順手附帶 {"ok":true,"uuid":"..."} (見 MainActivity)。這裡兩個都接: HTTP 有 uuid 就即刻顯示 (不用等 WS);
   // WS event 照舊經 appendLog() -> uuidUpdateCard() 更新一次 (同一個值, 冪等)。
-  // HTTP ok:false 就顯示錯誤, 唔再永久停喺「查詢中」。
+  // HTTP ok:false 就顯示錯誤, 不再永久停在「查詢中」。
   return Alpha2Api.miscRequestUuid().then(function (res) {
     if (res && res.uuid) {
       var clean = String(res.uuid).replace(/[^A-Za-z0-9\-_]/g, "").trim();
@@ -215,16 +215,16 @@ function requestUuid() {
     if (res && res.ok === false && res.error) {
       document.getElementById("uuidOut").textContent = "❌ " + res.error;
     }
-    // ok:true 但冇 uuid (舊版後端) / 仲等緊 WS event: 保持「查詢中」,
-    // WS event 到咗 appendLog 會更新。
+    // ok:true 但沒有 uuid (舊版後端) / 還正在等 WS event: 保持「查詢中」,
+    // WS event 到了 appendLog 會更新。
     return res;
   });
 }
 
 // ---------------- UUID card 開關 ---------------------------
-// 高風險操作 (直接寫 chest EEPROM), 預設收埋內容, 用戶要自己揭開先睇到/用到。
-// 冇用 localStorage 記住狀態 — 每次入返呢個 tab / 重新整頁都預設關閉, 避免
-// 手快快留咗開住冇為意。
+// 高風險操作 (直接寫 chest EEPROM), 預設收起內容, 用戶要自己揭開先看到/用到。
+// 沒有用 localStorage 記住狀態 — 每次進入這個 tab / 重新整頁都預設關閉, 避免
+// 手快快留了開著沒有為意。
 
 function uuidCardToggle() {
   const enabled = document.getElementById("uuidCardEnabled");
@@ -237,12 +237,12 @@ function uuidCardToggle() {
 
 // ---------------- UUID card -----------------------
 // 顯示 UUID + QR code (離線生成, app-qr.js) + 更改 ID (cmd54 寫入 chest EEPROM,
-// server 端 misc/set_uuid)。QR 內容就係 robotSeq=<ID>, 同官方 app 個 bind QR
+// server 端 misc/set_uuid)。QR 內容就是 robotSeq=<ID>, 同官方 app 個 bind QR
 // 一致。
 //
-// 輸入框常駐, 打字時 (oninput) 即時喺同一個 uuidQrCanvas 換上
-// 新 QR 做預覽 (未寫入 EEPROM); 撳「寫入 EEPROM」先真係落 cmd54。輸入框留空
-// 時, canvas 顯示返現有已知嘅 UUID (uuidCardLast)。
+// 輸入框常駐, 打字時 (oninput) 即時在同一個 uuidQrCanvas 換上
+// 新 QR 做預覽 (未寫入 EEPROM); 按「寫入 EEPROM」先真正發送cmd54。輸入框留空
+// 時, canvas 顯示現有已知的 UUID (uuidCardLast)。
 
 let uuidCardLast = null;
 
@@ -252,21 +252,21 @@ function uuidUpdateCard(uuid) {
   if (val) val.textContent = uuid || "-";
   const status = document.getElementById("uuidWriteStatus");
   if (status && uuid) status.textContent = t("uuid_write_done_prefix") + uuid;
-  // 輸入框有內容時代表用戶正打緊新 ID 做預覽 — 唔好用查詢返嚟嘅舊值蓋走個
-  // 預覽 QR; 輸入框空白先顯示返現有 UUID 個 QR。
+  // 輸入框有內容時代表用戶正正在打新 ID 做預覽 — 不要用查詢回來的舊值覆蓋個
+  // 預覽 QR; 輸入框空白先顯示現有 UUID 個 QR。
   const input = document.getElementById("uuidNewInput");
   if (!input || !input.value.trim()) {
     uuidDrawQr(uuid);
   }
 }
 
-// 純畫 QR, 唔改 uuidCardLast/status — 俾 uuidUpdateCard() 同
+// 純畫 QR, 不改 uuidCardLast/status — 給 uuidUpdateCard() 同
 // uuidOnInputChange() 共用。
 function uuidDrawQr(uuid) {
   const canvas = document.getElementById("uuidQrCanvas");
   if (canvas && uuid) {
     try {
-      // QR 內容係 robotSeq=<ID> 唔係淨 ID (用戶實測官方格式)。
+      // QR 內容是 robotSeq=<ID> 不是僅 ID (用戶實測官方格式)。
       qrDrawToCanvas(canvas, "robotSeq=" + uuid);
     } catch (e) {
       showError("QR", e);
@@ -274,7 +274,7 @@ function uuidDrawQr(uuid) {
   }
 }
 
-// 打新 ID 時即時喺同一個 uuidQrCanvas 預覽新 QR。純前端運算, 未寫入 EEPROM — 落 EEPROM 要另外撳
+// 打新 ID 時即時在同一個 uuidQrCanvas 預覽新 QR。純前端運算, 未寫入 EEPROM — 落 EEPROM 要另外按
 // 「寫入 EEPROM」(uuidWriteNew())。輸入清空返顯示現有 UUID。
 function uuidOnInputChange() {
   const input = document.getElementById("uuidNewInput");
@@ -326,8 +326,8 @@ function uuidWriteNew() {
     }
     if (status) status.textContent = t("uuid_write_wrote") + v +
         " — " + t("uuid_write_restart_hint");
-    // 寫入成功即刻將輸入框清空, 主顯示/QR 轉返做「已寫入嘅新值」— 等用戶睇到
-    // 個 flow 已經去到下一步 (reboot), 而唔係仲停喺「預覽緊」嘅狀態。
+    // 寫入成功即刻將輸入框清空, 主顯示/QR 轉回做「已寫入的新值」— 等用戶看到
+    // 個 flow 已經去到下一步 (reboot), 而不是還停在「正在預覽」的狀態。
     if (input) input.value = "";
     const hint = document.getElementById("uuidQrHint");
     if (hint) hint.setAttribute("data-i18n", "uuid_qr_hint"), hint.textContent = t("uuid_qr_hint");
@@ -335,8 +335,8 @@ function uuidWriteNew() {
     const val = document.getElementById("uuidCardValue");
     if (val) val.textContent = v;
     uuidDrawQr(v);
-    // 注意: alpha2services 會 cache 開機時讀到嘅 SN, 即刻 request_uuid 可能仲
-    // 顯示舊值 — 要重啟 alpha2services (或者重開機) 先會由 EEPROM 重新讀。
+    // 注意: alpha2services 會 cache 開機時讀到的 SN, 即刻 request_uuid 可能還
+    // 顯示舊值 — 要重啟 alpha2services (或者重開機) 才會由 EEPROM 重新讀。
   });
 }
 
@@ -374,3 +374,4 @@ function uuidCopyFallback(text, done) {
   }
   document.body.removeChild(ta);
 }
+

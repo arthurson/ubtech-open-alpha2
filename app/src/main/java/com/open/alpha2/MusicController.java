@@ -27,7 +27,7 @@ import java.util.List;
 public class MusicController {
     private static final String TAG = "MusicController";
 
-    /** 掃描呢幾個資料夾搵音樂檔, 由上至下, 全部合埋一齊列出。*/
+    /** 掃描這幾個資料夾找音樂檔, 由上至下, 全部合在一起列出。*/
     private static final String[] SCAN_DIRS = {
             "/sdcard/Music",
             "/sdcard/music",
@@ -299,3 +299,4 @@ public class MusicController {
         }
     }
 }
+

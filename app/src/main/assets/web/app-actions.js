@@ -1,7 +1,7 @@
 // Open Alpha2 — client logic (app-actions.js)
-// 內容: Alpha2 動作清單/分類/播放, 以及 Advanced tab 嘅 raw AIDL passthrough (未完全驗證嘅底層 method)。
-// 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
-// <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
+// 內容: Alpha2 動作清單/分類/播放, 以及 Advanced tab 的 raw AIDL passthrough (未完全驗證的底層 method)。
+// 全部檔案共用 window/global scope (沒有用 ES module), 載入順序由 index.html 的
+// <script src="..."> 順序決定 - 詳見 index.html 頭那段 comment。
 
 // ---------------- Actions ----------------
 
@@ -27,13 +27,13 @@ const ACTION_CATEGORY_MAP = {
 let allActions = [];
 let activeActionCategory = "basic";
 
-// 動作 ID -> {main, sub} 嘅子分類對照表, 由 action_classification.json 讀入 (見
-// action_classified.txt 嘅整理來源)。呢個 mapping 淨係喺 asset 檔案有出現嘅動作先會有
-// sub 分類 - 冇出現嘅動作仍然跟返 categoryOf() 嗰個大分類, 但喺嗰個大分類入面冇
-// 子分類 tab 可以揀 (即係直接混喺主列表, 冚方向上等於落咗嗰個大分類嘅"其他")。
-// 呢個表故意唔喺 code 度寫死: 下次要再分類就淨係改/換份 json, 唔使動 app-actions.js。
+// 動作 ID -> {main, sub} 的子分類對照表, 由 action_classification.json 讀入 (見
+// action_classified.txt 的整理來源)。這個 mapping 僅在 asset 檔案有出現的動作才會有
+// sub 分類 - 沒有出現的動作仍然遵循 categoryOf() 那個大分類, 但在那個大分類裡面沒有
+// 子分類 tab 可以選 (就是直接混在主列表, 冚方向上等於歸入那個大分類的"其他")。
+// 這個表故意不在 code 裡寫死: 下次要再分類就僅改/換份 json, 不用動 app-actions.js。
 let actionClassification = {}; // id -> {main, sub}
-let activeActionSubCategory = null; // null = 顯示嗰個大分類入面全部動作 (未揀子分類)
+let activeActionSubCategory = null; // null = 顯示那個大分類裡面全部動作 (未選子分類)
 
 function loadActionClassification() {
   return fetch("action_classification.json").then(function (r) {
@@ -42,7 +42,7 @@ function loadActionClassification() {
   }).then(function (json) {
     actionClassification = json || {};
   }).catch(function (e) {
-    // 冇呢個檔案或者讀取失敗都唔應該累到成個動作 tab 用唔到 - 淨係冇子分類 tab,
+    // 沒有這個檔案或者讀取失敗都不應該累到整個動作 tab 用不到 - 僅沒有子分類 tab,
     // 主分類(基本/跳舞/故事/瑜伽/其他)照舊運作。
     console.warn("action_classification.json 讀取失敗, 子分類 tab 將不會出現:", e);
     actionClassification = {};
@@ -53,14 +53,14 @@ function categoryOf(rawType) {
   return ACTION_CATEGORY_MAP[rawType] || "others";
 }
 
-/** 攞返一個動作嘅子分類名 (例如「移動類」), 冇對照到就 null。 */
+/** 取回一個動作的子分類名 (例如「移動類」), 沒有對照到就 null。 */
 function subCategoryOf(action) {
   const entry = actionClassification[action.id];
   return entry ? entry.sub : null;
 }
 
-/** 攞返一個動作應該顯示嘅名: 跟主 UI 語言 (uiLang), 但如果嗰個語言冇資料 (例如英文名同
- *  中文名一樣, 或者其中一邊係空), 就 fallback 去另一個, 唔會顯示空白 chip。 */
+/** 取回一個動作應該顯示的名: 跟主 UI 語言 (uiLang), 但如果那個語言沒有資料 (例如英文名同
+ *  中文名一樣, 或者其中一邊是空), 就 fallback 去另一個, 不會顯示空白 chip。 */
 function displayNameOf(action) {
   if (uiLang === "en") {
     return action.nameEn || action.nameCn;
@@ -96,7 +96,7 @@ function buildActionSubTabs() {
     btn.textContent = (uiLang === "en" ? c.labelEn : c.label) + " (" + count + ")";
     btn.onclick = function () {
       activeActionCategory = c.key;
-      activeActionSubCategory = null; // 轉咗大分類, 子分類篩選重置返做「全部」
+      activeActionSubCategory = null; // 轉了大分類, 子分類篩選重置為「全部」
       buildActionSubTabs();
       buildActionSubSubTabs();
       renderActionList();
@@ -138,8 +138,8 @@ const SUB_CATEGORY_LABELS_EN = {
   "西方寓言 / 故事":    "Western Fables / Stories",
 };
 
-/** 攞返一個子分類應該顯示嘅名: 跟主 UI 語言 (uiLang)。內部 filter 仍然用返 `sub`
- *  (中文) 呢個 key, 呢個 function 淨係用喺顯示層。冇對照到就照原文顯示, 唔會有
+/** 取回一個子分類應該顯示的名: 跟主 UI 語言 (uiLang)。內部 filter 仍然用回 `sub`
+ *  (中文) 這個 key, 這個 function 僅用在顯示層。沒有對照到就照原文顯示, 不會有
  *  空白 tab。 */
 function subCategoryDisplayName(sub) {
   if (uiLang === "en") {
@@ -148,19 +148,19 @@ function subCategoryDisplayName(sub) {
   return sub;
 }
 
-/** 建立第二層子分類 tab (例如 基本 之下嘅 移動類/手勢類/頭部類/...) 嘅邏輯, 抽出嚟
- *  做獨立 function 方便日後有第二個動作清單要建嗰陣唔使複製貼上一份幾乎一樣嘅
- *  code。淨係「邊個 bar element」、「邊個 action 陣列」、「邊個 main category」、
- *  「目前揀咗邊個子分類 (+點樣寫返去)」由 caller 決定。只有
- *  action_classification.json 對呢個大分類有出現嘅子分類先會出 tab - 冇資料就唔
- *  顯示呢層 tab bar, 直接顯示嗰個大分類入面成個 flat
+/** 建立第二層子分類 tab (例如 基本 之下的 移動類/手勢類/頭部類/...) 的邏輯, 抽出來
+ *  做獨立 function 方便日後有第二個動作清單要建當時不用複製貼上一份幾乎一樣的
+ *  code。僅「哪個 bar element」、「哪個 action 陣列」、「哪個 main category」、
+ *  「目前選了哪個子分類 (+如何寫回去)」由 caller 決定。只有
+ *  action_classification.json 對這個大分類有出現的子分類才會出 tab - 沒有資料就不
+ *  顯示這一層 tab bar, 直接顯示那個大分類裡面整個 flat
  *  清單。An always-present「全部」tab 清空子分類篩選。
- *  @param barElId       子分類 tab bar 容器嘅 id
+ *  @param barElId       子分類 tab bar 容器的 id
  *  @param actions       完整動作陣列 (allActions)
- *  @param mainCategory  目前揀咗嘅大分類 key (activeActionCategory)
- *  @param getActiveSub  () => 目前揀咗嘅子分類 (null = 全部)
- *  @param setActiveSub  (sub) => void, 寫返去嗰個 caller 自己嘅 activeXxxSubCategory 變數
- *  @param onChange      揀咗新子分類之後要做嘅嘢 (重畫 tab bar + 重畫動作清單)
+ *  @param mainCategory  目前選了的大分類 key (activeActionCategory)
+ *  @param getActiveSub  () => 目前選了的子分類 (null = 全部)
+ *  @param setActiveSub  (sub) => void, 寫回去那個 caller 自己的 activeXxxSubCategory 變數
+ *  @param onChange      選了新子分類之後要做的東西 (重畫 tab bar + 重畫動作清單)
  */
 function buildActionSubSubTabsShared(barElId, actions, mainCategory, getActiveSub, setActiveSub, onChange) {
   const bar = document.getElementById(barElId);
@@ -178,7 +178,7 @@ function buildActionSubSubTabsShared(barElId, actions, mainCategory, getActiveSu
 
   if (subsInOrder.length === 0) {
     setActiveSub(null);
-    return; // 呢個大分類冇任何子分類資料 - 唔顯示呢層 tab bar
+    return; // 這個大分類沒有任何子分類資料 - 不顯示這一層 tab bar
   }
 
   const allBtn = document.createElement("button");
@@ -224,12 +224,12 @@ function buildActionSubSubTabs() {
   );
 }
 
-/** 建立動作 chip 清單嘅邏輯, 抽出嚟做獨立 function 方便日後複用。
- *  @param listElId    action list 容器嘅 id
- *  @param filtered    已經篩選好嘅 action 陣列
+/** 建立動作 chip 清單的邏輯, 抽出來做獨立 function 方便日後複用。
+ *  @param listElId    action list 容器的 id
+ *  @param filtered    已經篩選好的 action 陣列
  *  @param nameFn      (action) => 顯示名
- *  @param onPick      (action) => void, 撳個 chip 之後要做嘅嘢 (填 input + 播放)
- *  @param emptyText   冇動作時顯示嘅文字
+ *  @param onPick      (action) => void, 按個 chip 之後要做的東西 (填 input + 播放)
+ *  @param emptyText   沒有動作時顯示的文字
  */
 function renderActionChips(listElId, filtered, nameFn, onPick, emptyText) {
   const listEl = document.getElementById(listElId);
@@ -275,4 +275,5 @@ function setActionSpeed() {
   const v = parseFloat(el.value);
   return Alpha2Api.ubxSpeed({ value: v });
 }
+
 

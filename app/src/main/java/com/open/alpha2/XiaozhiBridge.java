@@ -16,7 +16,7 @@ import java.util.Map;
  * mute 鍵開關＋連線指示燈。
  *
  * 擁有關係：
- * - MainActivity 只留：implements HostState（TTS 兩法＋sonar 四法，轉交正在
+ * - MainActivity 只留：implements HostState（TTS 兩法＋sonar 四法，正在轉交
  *   SpeechCenter／SonarCenter）、接線
  *   （onCreate 建構、onDestroy shutdown()、router 轉發、PIR/mute key 兩個硬件入口）。
  *   這裡 sonar state 不經 HostState——MCP sensors 4 tool
@@ -1186,14 +1186,14 @@ public final class XiaozhiBridge {
     }
 
     /** 小智常開開啟時, WebSocket 意外斷線 (見 XiaozhiClient.DisconnectListener)
-     *  就自動嘗試重連, 用戶不用自己發現開關已經名存實亡才手動關開一次。
+     *  就自動嘗試重連, 用戶不用自己發現開關已經名存實亡才手動重啟一次。
      *
      *  Exponential backoff (5s, 10s, 20s, 最多封頂 60s) 加最多 MAX_RECONNECT_ATTEMPTS
      *  次數上限, 而不是一見到斷線就立即狂重試: 如果斷線原因是伺服器端持續性問題
      *  (例如 token 失效、伺服器維護), 無限制地重試只會不斷再取得新 activation code
      *  (可能重新觸發配對流程) 和浪費電量/流量, 對用戶完全沒幫助; 加了上限之後,
      *  重試完都連不上就停止, 保留 xiaozhiActivationStatus 的 error 狀態讓用戶看到
-     *  發生了什麼事, 勝過默默不斷重試下去。用戶隨時可以手動關開開關重新嘗試,
+     *  發生了什麼事, 勝過默默不斷重試下去。用戶隨時可以手動切換開關重新嘗試,
      *  重新開始個 backoff (見 runXiaozhiActivationFlow() 連接成功會 reset
      *  xiaozhiReconnectAttempts)。 */
     private void xiaozhiScheduleReconnect(final String deviceId) {
@@ -1803,7 +1803,7 @@ public final class XiaozhiBridge {
                             // 那段 comment。vision/explain 後端行為和用哪個 model 無關。
                             String uuid = arguments.optString("uuid", "");
                             // LLM 有時帶佔位符字面值 (如 "placeholder") 而不是真 uuid，
-                            // 用寬鬆 UUID 格式檢查篩走，fallback 用 device 記低的 lastPendingPhotoUuid。
+                            // 用寬鬆 UUID 格式檢查篩走，fallback 用 device 記下的 lastPendingPhotoUuid。
                             if (!isLikelyUuid(uuid)) {
                                 uuid = lastPendingPhotoUuid;
                             }
@@ -1904,3 +1904,5 @@ public final class XiaozhiBridge {
     }
 
 }
+
+

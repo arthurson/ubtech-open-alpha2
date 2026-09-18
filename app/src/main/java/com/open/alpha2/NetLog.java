@@ -3,9 +3,9 @@ package com.open.alpha2;
 /**
  * 對外連接留痕：app 每次主動連出面網站（收音機搜尋／串流、小智雲 WS／vision／OTA、
  * 前端見 app-radio.js 同形）都經 EventBus publish 一行 {@code net_connect}
- *（{purpose, url}），等面板個 WebSocket event log 睇到部機連咗咩站；同時照印
- * logcat。記嘅係「連咗邊度」——token 全部行 header 唔入 URL，URL 原樣保留
- *（搜尋 query 睇到先有用）；過長截 512 字。
+ *（{purpose, url}），等面板個 WebSocket event log 看到部機連了什麼站；同時照印
+ * logcat。記的是「連了哪裡」——token 全部行 header 不入 URL，URL 原樣保留
+ *（搜尋 query 看到先有用）；過長截 512 字。
  *
  * Android framework + JDK only，無第三方。
  */
@@ -18,8 +18,8 @@ public final class NetLog {
     public static final String TYPE = "net_connect";
 
     /**
-     * 對外連一次即記一行。擺喺 openConnection／setDataSource／new Socket
-     * 之前——連唔連到都記，DNS 死一樣睇到「想連邊度」。
+     * 對外連一次即記一行。擺在 openConnection／setDataSource／new Socket
+     * 之前——連不連到都記，DNS 死一樣看到「想連哪裡」。
      */
     public static void out(String purpose, String url) {
         String u = url == null ? "?" : url;
@@ -30,3 +30,4 @@ public final class NetLog {
                         + ",\"url\":" + JsonUtil.quote(u) + "}");
     }
 }
+

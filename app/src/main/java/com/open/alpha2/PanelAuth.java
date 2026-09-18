@@ -10,30 +10,30 @@ import java.util.Map;
 /**
  * 實驗 tab 面板 token 認證（opt-in，預設關閉＝全開，保持舊行為）。
  *
- * 範圍（2026-09-15 起：成個面板上鎖，不再只閘實驗 tab 高危寫）：
+ * 範圍（2026-09-15 起：整個面板上鎖，不再只閘實驗 tab 高危寫）：
  * - 保護：全部 {@code /api/*}（alpha2／direct／system／xiaozhi——含讀操作、
- *   其他 tab、Blockly 用嗰啲 endpoint）同全部 {@code /upload/*}（chest／music／
+ *   其他 tab、Blockly 用那些 endpoint）同全部 {@code /upload/*}（chest／music／
  *   audio 上載）。全部經 {@link #isOpenApi}／handleUpload 由 MainActivity
  *   中央閘口統一檢查。
- * - 開放：{@code system/auth/*}（status／set／clear／verify，解鎖入口，唔係鎖咗
- *   無從解）、靜態頁（index.html／JS／CSS／spec——瀏覽器載入時帶唔到 token，
- *   閘咗連解鎖頁都開唔到）、{@code /ws}（事件推送）、{@code /stream/*}
+ * - 開放：{@code system/auth/*}（status／set／clear／verify，解鎖入口，不是鎖了
+ *   無從解）、靜態頁（index.html／JS／CSS／spec——瀏覽器載入時帶不到 token，
+ *   閘了連解鎖頁都開不到）、{@code /ws}（事件推送）、{@code /stream/*}
  *   （影音流）——同 README 警告一致。
  *
  * 儲存：同一個 {@code robotpanel} SharedPreferences（同 xiaozhi token override 同一做法），
  * key {@link #PREF_PANEL_TOKEN}，空字串＝未啟用。格式 {@code [A-Za-z0-9-_]{8,64}}（URL-safe，
- * 手打都得；前端「隨機」掣會產生 32 hex）。前端記喺 localStorage（同一個 browser＋
+ * 手打都得；前端「隨機」按鈕會產生 32 hex）。前端記在 localStorage（同一個 browser＋
  * 同一個面板地址跨 tab 共用，見 app-core.js panelTokenGet）。
  *
  * 傳遞：query {@code panel_token}（主，前端自動帶；同 xiaozhi ota {@code token} 撞名所以另起 key，
  * 見 app-core.js withPanelToken），受保護 endpoint 另收 {@code token} 別名方便 curl 手打。
- * 兩者都經 HttpServer.redactQuery 脫敏（panel_token 含 "token"，current 另有規則），唔入 logcat。
+ * 兩者都經 HttpServer.redactQuery 脫敏（panel_token 含 "token"，current 另有規則），不入 logcat。
  *
- * 改 token 防鎖死：啟用中再 set／clear 一律要 {@code current} 舊值，唔係同網段任何人都可以
- * 覆寫 token 踢走物主。verify/status 永遠開放（唔係無 token 解唔到鎖）。
+ * 改 token 防鎖死：啟用中再 set／clear 一律要 {@code current} 舊值，不是同網段任何人都可以
+ * 覆寫 token 踢走物主。verify/status 永遠開放（不是無 token 解不到鎖）。
  *
  * 零額外依賴（Android framework + JDK only）：比對用 MessageDigest.isEqual 常數時間，
- * 唔用任何第三方庫。
+ * 不用任何第三方庫。
  */
 public final class PanelAuth {
     private PanelAuth() {}
@@ -45,14 +45,14 @@ public final class PanelAuth {
     public static final String QUERY_KEY = "panel_token";
     /** 同上別名（curl 手打方便；受保護 endpoint＋auth/verify 先收）。 */
     public static final String QUERY_ALIAS = "token";
-    /** 改 token／清 token 時驗舊值用嘅 query key（log 脫敏見 HttpServer.redactQuery）。 */
+    /** 改 token／清 token 時驗舊值用的 query key（log 脫敏見 HttpServer.redactQuery）。 */
     public static final String QUERY_CURRENT = "current";
 
     private static SharedPreferences prefs(Context ctx) {
         return ctx.getApplicationContext().getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    /** 未啟用（未設 token）即全開，唔閘。 */
+    /** 未啟用（未設 token）即全開，不閘。 */
     public static boolean isEnabled(Context ctx) {
         try {
             String s = prefs(ctx).getString(PREF_PANEL_TOKEN, "");
@@ -63,11 +63,11 @@ public final class PanelAuth {
     }
 
     /**
-     * MainActivity.handle() 中央閘口用：path 係未剝 prefix 嗰個
+     * MainActivity.handle() 中央閘口用：path 是未剝 prefix 那個
      *（"alpha2/…"／"xiaozhi/…"／"system/…"；舊快取裸路徑 fallthrough 都認）。
      *
-     * 成個面板上鎖：淨係 auth/* 開放（解鎖入口），其餘 /api/* 一律要經
-     * requireAuth（未啟用即放行）。靜態頁／ws／stream 唔經 handle()，唔使列。
+     * 整個面板上鎖：僅 auth/* 開放（解鎖入口），其餘 /api/* 一律要經
+     * requireAuth（未啟用即放行）。靜態頁／ws／stream 不經 handle()，不用列。
      */
     public static boolean isOpenApi(String path) {
         return "system/auth/status".equals(path) || "auth/status".equals(path)
@@ -76,7 +76,7 @@ public final class PanelAuth {
                 || "system/auth/verify".equals(path) || "auth/verify".equals(path);
     }
 
-    /** 格式：8–64 字元 URL-safe（英數/-/_）。唔啱即拋 IllegalArgumentException → 400。 */
+    /** 格式：8–64 字元 URL-safe（英數/-/_）。不合即拋 IllegalArgumentException → 400。 */
     public static void checkFormat(String token) {
         ApiValidator.checkPanelTokenFormat(token);
     }
@@ -88,7 +88,7 @@ public final class PanelAuth {
         return MessageDigest.isEqual(ab, bb);
     }
 
-    /** query 帶嘅候選值（panel_token 主，token 別名；前後空白唔計）。 */
+    /** query 帶的候選值（panel_token 主，token 別名；前後空白不計）。 */
     static String candidateFromQuery(Map<String, String> query) {
         if (query == null) return null;
         String v = query.get(QUERY_KEY);
@@ -181,8 +181,8 @@ public final class PanelAuth {
     }
 
     /**
-     * 校驗候選值（前端「解鎖」掣用）：永遠回 200，結果喺 valid（唔用 401，
-     * 等前端唔使靠 parse error 字串分 success/fail）。
+     * 校驗候選值（前端「解鎖」按鈕用）：永遠回 200，結果在 valid（不用 401，
+     * 等前端不用靠 parse error 字串分 success/fail）。
      * 未啟用回 {"ok":true,"enabled":false,"valid":false}。
      */
     public static HttpServer.ApiResponse verify(Context ctx, Map<String, String> query) {
@@ -201,3 +201,4 @@ public final class PanelAuth {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + ",\"valid\":" + valid + "}");
     }
 }
+

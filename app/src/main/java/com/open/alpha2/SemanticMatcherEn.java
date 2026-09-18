@@ -46,10 +46,10 @@ import android.content.Context;
  * Zero-third-party-dependency: 只用 org.json (Android 內建, 經 base class), 沒額外
  * library。
  *
- * 命名備註: 2026-09 之前呢個 class 叫 IflytekSemanticMatcherEn - 個名純粹歷史原因
+ * 命名備註: 2026-09 之前這個 class 叫 IflytekSemanticMatcherEn - 個名純粹歷史原因
  * (中文版問法資料最初由 iFlytek APK 反編譯還原, 英文版跟同一套結構), 同機身已經
- * 永久唔再用嘅 Nuance/iFlytek binder TTS/ASR 引擎完全冇關係, 淨係個名容易誤導。
- * 改名做 SemanticMatcherEn 消除呢個誤導 (功能行為完全不變)。
+ * 永久不再用的 Nuance/iFlytek binder TTS/ASR 引擎完全沒有關係, 僅個名容易誤導。
+ * 改名為 SemanticMatcherEn 消除這個誤導 (功能行為完全不變)。
  */
 public class SemanticMatcherEn extends SemanticMatcherBase {
     private static final String TAG = "SemanticMatcherEn";
@@ -69,3 +69,4 @@ public class SemanticMatcherEn extends SemanticMatcherBase {
         super(context, TAG, ASSET_PATH, FALLBACK_QUESTIONS, DEFAULT_FALLBACK_ACTION_IDS);
     }
 }
+

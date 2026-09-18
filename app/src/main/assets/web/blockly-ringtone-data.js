@@ -2,16 +2,16 @@
 //
 // 資料來源: 實機 adb 執行 `content query --uri content://media/internal/audio/media
 // --projection _id:title:_data --where "is_ringtone=1" --sort "title"` (電話) 同
-// `--where "is_notification=1"` (通知) 抓出嚟嘅完整清單 (2026-08 抓取, 97 個電話鈴聲 +
+// `--where "is_notification=1"` (通知) 抓出來的完整清單 (2026-08 抓取, 97 個電話鈴聲 +
 // 73 個通知鈴聲)。
 //
-// ⚠️ 呢度淨係存 title (唔存 index/position/_id) —— 之前版本用 index (RingtoneManager
-// cursor 嘅 0-based position) 做靜態清單, 但 index 排序係咪真係穩定跨機一致從未驗證過
-// (content query 手動 --sort "title" 嘅次序, 唔保證同 RingtoneManager 內部 cursor 排序
-// 一樣)。App 本身相機分頁嘅快門聲/停止提示音 (playShutterCue/playStopCue) 一早就用緊
-// 「用 title 搵返 Uri 播」呢個做法 (見 MainActivity.findRingtoneByTitle()), 唔靠 index,
-// 已經驗證穩陣, 所以呢度跟返一致做法: 揀 title, 送去新增嘅 /api/audio/ringtones/play_by_title
-// (帶 type + title), 由 app 嗰邊自己用 findRingtoneByTitle() 查返 Uri, 完全唔使理 index。
+// ⚠️ 這裡僅存 title (不存 index/position/_id) —— 之前版本用 index (RingtoneManager
+// cursor 的 0-based position) 做靜態清單, 但 index 排序是否真正穩定跨機一致從未驗證過
+// (content query 手動 --sort "title" 的次序, 不保證同 RingtoneManager 內部 cursor 排序
+// 一樣)。App 本身相機分頁的快門聲/停止提示音 (playShutterCue/playStopCue) 一早就正在用
+// 「用 title 找回 Uri 播」這個做法 (見 MainActivity.findRingtoneByTitle()), 不靠 index,
+// 已經驗證穩陣, 所以這裡遵循一致做法: 選 title, 送去新增的 /api/audio/ringtones/play_by_title
+// (帶 type + title), 由 app 那邊自己用 findRingtoneByTitle() 查回 Uri, 完全不用理 index。
 
 (function () {
   window.ALPHA_RINGTONE_TITLES = {
@@ -191,3 +191,4 @@
     ],
   };
 })();
+

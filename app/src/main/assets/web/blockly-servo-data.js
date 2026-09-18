@@ -1,13 +1,13 @@
 // Open Alpha2 — Blockly 專用伺服馬達分組/校準資料。
 //
-// 呢份資料刻意同 app-core.js 嘅 SERVO_CALIBRATION / SERVO_NAMES / SERVO_GROUPS 保持
-// 完全一致 (見 app-core.js 「Servo calibration」段落嘅註解: min/max/home 值嚟自實機
-// 用「二代舵機校準軟件 1.0.0.4」量出嚟嘅硬件校準, 唔係 SDK 協定原生值, 換過機
-// 就要重新量)。獨立開一份而唔直接 include app-core.js, 係因為 blockly.html 唔想拉埋
-// 成個控制面板嘅 DOM/事件邏輯做依賴 —— 呢個分頁本身就設計成可以獨立開嚟用
+// 這份資料刻意同 app-core.js 的 SERVO_CALIBRATION / SERVO_NAMES / SERVO_GROUPS 保持
+// 完全一致 (見 app-core.js 「Servo calibration」段落的註解: min/max/home 值來自實機
+// 用「二代舵機校準軟件 1.0.0.4」量出來的硬件校準, 不是 SDK 協定原生值, 換過機
+// 就要重新量)。獨立開一份而不直接 include app-core.js, 是因為 blockly.html 不想拉埋
+// 整個控制面板的 DOM/事件邏輯做依賴 —— 這個分頁本身就設計成可以獨立開來用
 // (見 blockly-page.js 檔頭註解)。
 //
-// ⚠ 如果之後喺「伺服」分頁 (app-servo.js) 重新量過校準值, 呢度都要跟住手動同步一次。
+// ⚠ 如果之後在「伺服」分頁 (app-servo.js) 重新量過校準值, 這裡都要跟著手動同步一次。
 
 (function () {
   const SERVO_CALIBRATION = {
@@ -33,8 +33,8 @@
     20: { min: 105, max: 155, home: 120 },
   };
 
-  // 20 顆伺服馬達嘅顯示名, 中英對照直接跟 app-core.js 嘅 SERVO_NAMES (主控制面板
-  // 「伺服」分頁用緊嗰份) 保持一致, 唔重新譯一次, 避免兩邊用詞唔夾。
+  // 20 顆伺服馬達的顯示名, 中英對照直接跟 app-core.js 的 SERVO_NAMES (主控制面板
+  // 「伺服」分頁正在用那份) 保持一致, 不重新譯一次, 避免兩邊用詞不夾。
   const SERVO_NAMES = {
     1:  { zh: '右肩上下', en: 'R Shoulder Pitch' },
     2:  { zh: '右肩左右', en: 'R Shoulder Roll' },
@@ -57,10 +57,10 @@
     19: { zh: '頭左右',   en: 'Head Yaw' },
     20: { zh: '頭上下',   en: 'Head Pitch' },
   };
-  // 顯示用: 攞返當前語言嘅馬達名。t() call time 計值, 每次 call 都會跟住
-  // window.getUiLanguage() 攞返最新語言 (唔係 module-level 計死一次) ——
-  // 同 blockly-blocks.js 個 LED_COLOURS/LED_PRESETS_HEAD 之前中招嘅陷阱一樣,
-  // 呢個 helper 本身唔 cache 結果, 淨係喺實際攞名嗰一刻先讀字典。
+  // 顯示用: 取回當前語言的馬達名。t() call time 計值, 每次 call 都會跟著
+  // window.getUiLanguage() 取回最新語言 (不是 module-level 計死一次) ——
+  // 同 blockly-blocks.js 個 LED_COLOURS/LED_PRESETS_HEAD 之前中招的陷阱一樣,
+  // 這個 helper 本身不 cache 結果, 僅在實際拿名那一刻先讀字典。
   function servoDisplayName(id) {
     const entry = SERVO_NAMES[id];
     if (!entry) return (window.t ? window.t('servo_name_fallback', { id: id }) : ('Servo ' + id));
@@ -69,11 +69,11 @@
   }
 
   // 分組: 頭 / 右手 / 左手 / 右腳 / 左腳 (跟 app-core.js SERVO_GROUPS 一致), 每組一個
-  // 顏色, 令 Blockly 分類、以及個 block 本身嘅顏色都可以直接跟返呢個分組。
-  // ⚠ label 呢個 field 淨係內部參考用, 冇任何地方讀佢嚟做顯示 (搜索過成個
-  // blockly-*.js 確認) —— 顯示用嘅分組名由 blockly-blocks-i18n-data.js 嘅
-  // servo_group_head/right_arm/left_arm/right_leg/left_leg 呢幾個 key 提供
-  // (跟 t() 做 i18n), 唔係呢度嘅 label。保留 label 純粹方便睇 code 對得上邊組。
+  // 顏色, 令 Blockly 分類、以及個 block 本身的顏色都可以直接遵循這個分組。
+  // ⚠ label 這個 field 僅內部參考用, 沒有任何地方讀它來做顯示 (搜索過整個
+  // blockly-*.js 確認) —— 顯示用的分組名由 blockly-blocks-i18n-data.js 的
+  // servo_group_head/right_arm/left_arm/right_leg/left_leg 這幾個 key 提供
+  // (跟 t() 做 i18n), 不是這裡的 label。保留 label 純粹方便看 code 對得上邊組。
   const SERVO_GROUPS = [
     { key: 'head',      label: '頭',  icon: '🧠', ids: [19, 20],             colour: '#7c3aed' },
     { key: 'right-arm', label: '右手', icon: '💪', ids: [1, 2, 3, 17],       colour: '#2563eb' },
@@ -111,3 +111,4 @@
   window.ALPHA_SERVO_DROPDOWN_FOR_GROUP = servoDropdownForGroup;
   window.ALPHA_SERVO_CLAMP = clampServoAngle;
 })();
+

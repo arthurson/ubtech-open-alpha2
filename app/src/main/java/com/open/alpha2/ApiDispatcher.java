@@ -10,15 +10,15 @@ import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
 import java.util.Map;
 
 /**
- * /api/alpha2/* dispatcher：薄 delegate switch，body 喺各 center。
+ * /api/alpha2/* dispatcher：薄 delegate switch，body 在各 center。
  *
- * 跨域 core 經下面 Host 縫調返：
- * - speech/tts、speech/stop 由 SpeechCenter 直實現（MainActivity 唔再 implements Host）
+ * 跨域 core 經下面 Host 縫調回：
+ * - speech/tts、speech/stop 由 SpeechCenter 直實現（MainActivity 不再 implements Host）
  * （speech/set_mic、set_mic_keep_held 經下面 micCenter 直調。）
- * （speech/offline_auto_switch、get_default_grammar 經下面 grammarCenter 直調，Host 唔經手。）
- * （servo/sonar 經下面 sonarCenter 直調——discover 嘅
- * sensors 三值繼續經 sensorState 照讀，轉交緊同一個 SonarCenter。）
- * directChestReady/directHeaderReady 係內聯副本
+ * （speech/offline_auto_switch、get_default_grammar 經下面 grammarCenter 直調，Host 不經手。）
+ * （servo/sonar 經下面 sonarCenter 直調——discover 的
+ * sensors 三值繼續經 sensorState 照讀，正在轉交同一個 SonarCenter。）
+ * directChestReady/directHeaderReady 是內聯副本
  * （同 UbxApi/LedCenter/ChestQuery/XiaozhiBridge 一樣做法）。
  * walkie testtone/diagnose/play 經下面 micCenter 直調。
  * handleSystemApi（discover＋music/*，要 UbxPlayer pose＋MusicController＋deviceStatus.getWifiIp()）同
@@ -56,7 +56,7 @@ public final class ApiDispatcher {
     private final UbxPlayer ubxPlayer;
     private final MusicController musicController;
     private final LocalAlpha2Services localServices;
-    // servo/sonar 直調呢度 (放最尾，慣例)。
+    // servo/sonar 直調這裡 (放最尾，慣例)。
     private final SonarCenter sonarCenter;
 
     public ApiDispatcher(Context context, Host host, XiaozhiBridge.HostState sensorState,
@@ -91,7 +91,7 @@ public final class ApiDispatcher {
         this.sonarCenter = sonarCenter;
     }
 
-    // directChestReady() 內聯：經 appContext 唔使 Activity（各 center 自帶副本）。
+    // directChestReady() 內聯：經 appContext 不用 Activity（各 center 自帶副本）。
     private boolean directChestReady() {
         return directReady(true);
     }
@@ -101,7 +101,7 @@ public final class ApiDispatcher {
         return directReady(false);
     }
 
-    /** 胸／頭串口就緒二合一（實現見 {@link DirectProbes}，呢度淨留薄 delegate 保 call site 不變）。 */
+    /** 胸／頭串口就緒二合一（實現見 {@link DirectProbes}，這裡僅留薄 delegate 保 call site 不變）。 */
     private boolean directReady(boolean chest) {
         return chest ? DirectProbes.isChestReady(appContext) : DirectProbes.isHeadReady(appContext);
     }
@@ -132,7 +132,7 @@ public final class ApiDispatcher {
 
     public HttpServer.ApiResponse handleApi(String path, Map<String, String> query, String method, String body) {
         switch (path) {
-            // -- 健康狀態聚合 (body 喺 DeviceStatus；薄 delegate，唔好喺度加 logic) --
+            // -- 健康狀態聚合 (body 在 DeviceStatus；薄 delegate，不要在這裡加 logic) --
             case "status":
                 return deviceStatus.statusResponse();
 
@@ -168,7 +168,7 @@ public final class ApiDispatcher {
                 chestUpgrade.abort();
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"aborted\":true}");
             }
-            // -- 升級鏡像讀頁 (body 喺 ChestUpgrade；薄 delegate，唔好喺度加 logic) --
+            // -- 升級鏡像讀頁 (body 在 ChestUpgrade；薄 delegate，不要在這裡加 logic) --
             case "chest/page":
                 return chestUpgrade.chestPageResponse(query);
 
@@ -179,8 +179,8 @@ public final class ApiDispatcher {
             case "action/play":
                 return actionDirect.actionPlayDirect(ApiValidator.require(query, "name"));
             case "action/stop": {
-                // 用戶要求「停止」要連帶做返「蹲下站起」回位動作：与手势总停/MCP 共用
-                // stopActionWithRecovery()，回位播唔播到唔影響停止本身回 true。
+                // 用戶要求「停止」要連帶做「蹲下站起」回位動作：与手势总停/MCP 共用
+                // stopActionWithRecovery()，回位播不播到不影響停止本身回 true。
                 return MainActivity.codeResponse(actionDirect.stopActionWithRecovery());
             }
 
@@ -210,8 +210,8 @@ public final class ApiDispatcher {
             case "speech/stop":
                 return host.handleSpeechStop();
 
-            // Android TTS 語言揀擇 - engine 而家只有 android，lang 由 speech/tts_languages
-            // 提供嘅清單揀。ui_lang ("zh"/"en") 控制的是 displayName 用邊種語言顯示。
+            // Android TTS 語言選擇 - engine 現在只有 android，lang 由 speech/tts_languages
+            // 提供的清單選。ui_lang ("zh"/"en") 控制的是 displayName 用邊種語言顯示。
             case "speech/tts_languages":
                 return ttsCenter.ttsLanguages(query);
 
@@ -227,9 +227,9 @@ public final class ApiDispatcher {
             case "speech/cur_tts_engine":
                 return ttsCenter.curTtsEngine();
 
-            // TTS 卡語言選擇嘅後端 pref (BCP-47 tag，空=沿用引擎
+            // TTS 卡語言選擇的後端 pref (BCP-47 tag，空=沿用引擎
             // 目前語言)。前端 setAndroidTtsLang() 同步寫入；對話管線
-            // speakAndroidTts() 優先讀佢——一揀即時跟。
+            // speakAndroidTts() 優先讀它——一選即時跟。
             case "speech/set_tts_lang":
                 return ttsCenter.setTtsLang(query);
 
@@ -255,20 +255,20 @@ public final class ApiDispatcher {
                 return micCenter.setMicKeepHeld(query);
             // 已移除（死 binder）：speech/reset、speech/start_asr、speech/set_voice、
             // speech/set_language、speech/self_interrupt、speech/inject。舊 .xml
-            // 程式有用過呢幾粒的話，匯入嗰粒會 load 唔到，要手動刪咗佢。
-            // -- 語義模擬 (body 喺 SemanticCenter；薄 delegate，唔好喺度加 logic) --
+            // 程式有用過這幾粒的話，匯入那顆會 load 不到，要手動刪了它。
+            // -- 語義模擬 (body 在 SemanticCenter；薄 delegate，不要在這裡加 logic) --
             case "speech/semantic_simulate":
                 return semanticCenter.semanticSimulateResponse(query);
             // 已移除（死 binder）：speech/stop_inject。
             // 已移除（死 binder）：speech/init_grammar、speech/start_grammar、
             // speech/stop_grammar 三個 endpoint（機身已無 iFlytek 引擎，
             // 恒回 NOT_INIT）。內部 doInitGrammar/doStartGrammar/doStopGrammar
-            // 保留（離線自動切換內部流程仲用緊），get_default_grammar 照讀本地 asset。
+            // 保留（離線自動切換內部流程還正在用），get_default_grammar 照讀本地 asset。
             case "speech/get_default_grammar":
                 return grammarCenter.getDefaultGrammar();
             case "speech/offline_auto_switch":
                 return grammarCenter.offlineAutoSwitch(query);
-            // -- Vosk 離線 ASR (body 喺 VoskApi；薄 delegate，唔好喺度加 logic) --
+            // -- Vosk 離線 ASR (body 在 VoskApi；薄 delegate，不要在這裡加 logic) --
             case "vosk/models":
                 return voskApi.voskModels();
             case "vosk/load":
@@ -301,7 +301,7 @@ public final class ApiDispatcher {
                 return ubxApi.servoReadResponse(query);
             case "servo/read-all":
                 return ubxApi.servoReadAllResponse();
-            // 絕對角度實讀 (cmd 6，同 servo/one 同單位；read/read-all 嗰個係 trim/偏差)。
+            // 絕對角度實際讀取 (cmd 6，同 servo/one 同單位；read/read-all 那個是 trim/偏差)。
             case "servo/angle":
                 return ubxApi.servoAngleResponse(query);
             case "servo/angle-restore":
@@ -309,7 +309,7 @@ public final class ApiDispatcher {
             case "servo/angle-all":
                 return ubxApi.servoAngleAllResponse();
 
-            // -- PIR (body 喺 LedCenter；薄 delegate，唔好喺度加 logic) --
+            // -- PIR (body 在 LedCenter；薄 delegate，不要在這裡加 logic) --
             case "pir/set":
                 return ledCenter.pirSetResponse(query);
             case "pir/alert_enabled":
@@ -338,7 +338,7 @@ public final class ApiDispatcher {
                 boolean sent = HardwareDirectManager.get(appContext).head().setNoiseReduction(on);
                 return MainActivity.codeResponse(MainActivity.directCode(sent));
             }
-            // -- UUID (body 喺 ChestQuery；薄 delegate，唔好喺度加 logic) --
+            // -- UUID (body 在 ChestQuery；薄 delegate，不要在這裡加 logic) --
             case "misc/request_uuid":
                 return chestQuery.requestUuidResponse();
             case "misc/set_uuid":
@@ -374,7 +374,7 @@ public final class ApiDispatcher {
                 return cameraApi.resolution(query);
             case "camera/zoom":
                 return cameraApi.zoom(query);
-            // -- Walkie-talkie (body 喺 MicCenter；薄 delegate，唔好喺度加 logic) --
+            // -- Walkie-talkie (body 在 MicCenter；薄 delegate，不要在這裡加 logic) --
             case "audio/testtone":
                 return micCenter.testTone();
             case "audio/diagnose":
@@ -464,13 +464,13 @@ public final class ApiDispatcher {
             case "audio/radio/status":
                 return audioCenter.radioStatus();
 
-            // -- Media volume (body 喺 AudioCenter；薄 delegate，唔好喺度加 logic) --
+            // -- Media volume (body 在 AudioCenter；薄 delegate，不要在這裡加 logic) --
             case "audio/volume/get":
                 return audioCenter.systemVolumeGet();
             case "audio/volume/set":
                 return audioCenter.systemVolumeSet(query);
 
-            // -- Battery (body 喺 DeviceStatus；薄 delegate，唔好喺度加 logic) --
+            // -- Battery (body 在 DeviceStatus；薄 delegate，不要在這裡加 logic) --
             case "battery/status":
                 return deviceStatus.batteryStatus();
 
@@ -482,10 +482,10 @@ public final class ApiDispatcher {
 
             // -- Robot-service broadcasts with simple boolean extras. --------------------
             // 已移除（假活）：misc/power_save（見下）與 misc/charge_play ——
-            // 純粹發 broadcast 俾已不存在的 alpha2services, 回 ok:true 但實際
+            // 純粹發 broadcast 給已不存在的 alpha2services, 回 ok:true 但實際
             // 無效。
 
-            // -- Accelerometer (body 喺 DeviceStatus；薄 delegate，唔好喺度加 logic) --
+            // -- Accelerometer (body 在 DeviceStatus；薄 delegate，不要在這裡加 logic) --
             case "accelerometer/set":
                 return deviceStatus.accelerometerSet(query);
             case "accelerometer/get":
@@ -509,7 +509,7 @@ public final class ApiDispatcher {
      */
     public HttpServer.ApiResponse handleSystemApi(String path, Map<String, String> query, String method, String body) {
         switch (path) {
-            // 一野搜齊機器資料（lynx 年代 sys/* 七連發的 pure-direct 版，一個回包齊晒，
+            // 一次搜齊機器資料（lynx 年代 sys/* 七連發的 pure-direct 版，一個回包齊完，
             // 慢 query 各 1.5s 上限）。電池版本字串本機胸固件無此命令，如實缺席；
             // 電量/充電走 Android 系統廣播。
             case "discover": {
@@ -650,7 +650,7 @@ public final class ApiDispatcher {
                 int id = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
                 int angle = ApiValidator.requireIntRange(query, "angle", ApiValidator.SERVO_ANGLE_MIN, ApiValidator.SERVO_ANGLE_MAX);
                 int time = ApiValidator.optionalIntRange(query, "time", ApiValidator.SERVO_TIME_MIN_MS, ApiValidator.SERVO_TIME_MAX_MS, 500);
-                // cmd05 單發（官方 tuner 實測本機可郁），見 servoSendOneCode。
+                // cmd05 單發（官方 tuner 實測本機可動），見 servoSendOneCode。
                 return ubxApi.servoSendOne(id, angle, time);
             }
             case "servo/all": {
@@ -703,3 +703,6 @@ public final class ApiDispatcher {
     }
 
 }
+
+
+

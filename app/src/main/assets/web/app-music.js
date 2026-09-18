@@ -1,37 +1,37 @@
 // Open Alpha2 — client logic (app-music.js)
-// 本地音樂 tab: 對接 MainActivity.java 已有嘅 "audio/local_music/*" 呢一套
-// endpoint (本身俾小智語音/AI tool call 用, 而家加返一層瀏覽器 UI)。真正播放
-// (STREAM_MUSIC MediaPlayer)、隨機動作全部喺 server 端做, 呢個檔案
-// 純粹係 UI + 定時 poll 狀態嚟更新進度條, 冇任何音訊 byte 經過瀏覽器 (同
-// app-mic.js 嗰種即時串流完全唔同)。
-// 全部函數共用 window/global scope (冇用 ES module), load 順序見 index.html
-// 嘅 <script src="..."> 排列 - 要喺 app-core.js (api()/t() 呢啲 helper) 之後。
+// 本地音樂 tab: 對接 MainActivity.java 已有的 "audio/local_music/*" 這一套
+// endpoint (本身給小智語音/AI tool call 用, 現在加回一層瀏覽器 UI)。真正播放
+// (STREAM_MUSIC MediaPlayer)、隨機動作全部在 server 端做, 這個檔案
+// 純粹是 UI + 定時 poll 狀態來更新進度條, 沒有任何音訊 byte 經過瀏覽器 (同
+// app-mic.js 那種即時串流完全不同)。
+// 全部函數共用 window/global scope (沒有用 ES module), load 順序見 index.html
+// 的 <script src="..."> 排列 - 要在 app-core.js (api()/t() 這些 helper) 之後。
 
 // ---------------- state ----------------
 
-let musicTracks = [];            // 上次 musicRefreshList() 攞返嚟嘅清單
-let musicCurrentName = null;     // 目前揀選/播放緊嗰首歌嘅檔名
+let musicTracks = [];            // 上次 musicRefreshList() 取回來的清單
+let musicCurrentName = null;     // 目前揀選/正在播放那首歌的檔名
 let musicStatusPollTimer = null;
-let musicSeekDragging = false;   // 用戶拖緊進度條嗰陣, 唔好俾 poll 蓋走個位置
+let musicSeekDragging = false;   // 用戶正在拖進度條當時, 不要給 poll 覆蓋個位置
 let musicPlayAllMode = false;    // 「▶ 全部」模式 - 一首播完自動接落一首 (見
-                                 // musicPollStatusLoop() 嘅 hasTrack=false 分支)
-let musicLastPlayedName = null;  // 上次播過嘅歌名 - stop 嗰陣 musicCurrentName 會
-                                 // 清走, 但之後撳「▶」應該重播返啱先嗰首, 唔係
-                                 // 冇反應
-let musicHasLoadedTrack = false; // server 端 currentMusicPlayer 仲 load 緊嘢嗎 -
-                                 // 暫停緊都係 true; 全部停止/播完先變 false。
-                                 // 俾 musicTogglePlayPause() 分「resume」定
+                                 // musicPollStatusLoop() 的 hasTrack=false 分支)
+let musicLastPlayedName = null;  // 上次播過的歌名 - stop 當時 musicCurrentName 會
+                                 // 清除, 但之後按「▶」應該重播剛才那首, 不是
+                                 // 沒有反應
+let musicHasLoadedTrack = false; // server 端 currentMusicPlayer 還 正在load東西嗎 -
+                                 // 正在暫停都是 true; 全部停止/播完先變 false。
+                                 // 給 musicTogglePlayPause() 分「resume」還是
                                  // 「由頭 play」用
 let musicSpectrumTimer = null;   // spectrum 輪詢 timer (setTimeout 鏈)
 let musicSpectrumAnimTimer = null; // 平滑動畫 timer (~33ms 重畫)
-let musicSpectrumTargets = [];   // 最近一次 server 攞返嚟嘅目標值
-let musicSpectrumSmooth = [];    // 平滑化後用嚟畫嘅值
+let musicSpectrumTargets = [];   // 最近一次 server 取回來的目標值
+let musicSpectrumSmooth = [];    // 平滑化後用來畫的值
 let sharedActiveSource = null;   // "local" 或 "radio"，記錄最後一次播放來源，用於共用上一首/下一首/隨機分流
 
 // ---------------- audio spectrum ----------------
 // server 端 Visualizer FFT -> audio/local_music/spectrum 每條
-// band 一個 0-255 值。輪詢 100ms 更新目標值, 另外有條 ~33ms 嘅動畫 timer 用
-// 「快上慢落」(attack 即刻, release 指數衰減) 插值, bar 先會順滑唔會一跳一跳。
+// band 一個 0-255 值。輪詢 100ms 更新目標值, 另外有條 ~33ms 的動畫 timer 用
+// 「快上慢落」(attack 即刻, release 指數衰減) 插值, bar 才會順滑不會一跳一跳。
 
 function musicStartSpectrumLoop() {
   if (!musicSpectrumTimer) {
@@ -53,7 +53,7 @@ function musicStopSpectrumLoop() {
   }
   musicSpectrumTargets = [];
   musicSpectrumSmooth = [];
-  musicDrawSpectrum(null); // 收工畫返全平
+  musicDrawSpectrum(null); // 收工重畫全平
 }
 
 function musicSpectrumLoop() {
@@ -75,8 +75,8 @@ function musicRenderSpectrumFrame() {
   for (let i = 0; i < n; i++) {
     const target = musicSpectrumTargets[i] || 0;
     const prev = musicSpectrumSmooth[i];
-    // attack: 目標高過現值即刻跟上 (唔會滯後); release: 每幀衰減 18%,
-    // 跌落嚟順滑自然, 唔會彈吓彈吓。
+    // attack: 目標高過現值即刻跟上 (不會滯後); release: 每幀衰減 18%,
+    // 跌下來順滑自然, 不會彈吓彈吓。
     musicSpectrumSmooth[i] = target >= prev ? target : Math.max(target, prev * 0.82);
   }
   musicDrawSpectrum(musicSpectrumSmooth);
@@ -99,7 +99,7 @@ function musicDrawSpectrum(bands) {
     const barH = Math.max(2, Math.round(v / 255 * (h - 6)));
     const x = gap + i * (barW + gap);
     const y = h - 3 - barH;
-    // 由綠到紅嘅漸變 (低頻綠、高頻紅), 頂部加少少亮色。
+    // 由綠到紅的漸變 (低頻綠、高頻紅), 頂部加少少亮色。
     const hue = 120 - Math.round(120 * i / n);
     const grad = ctx.createLinearGradient(0, y, 0, h - 3);
     grad.addColorStop(0, "hsl(" + hue + ",95%,65%)");
@@ -139,7 +139,7 @@ function musicRefreshList() {
   container.textContent = t("music_list_loading");
   return Alpha2Api.audioLocalMusicList().then(function (res) {
     if (!res.ok) return;
-    // 清單直接嚟自 server 端 listLocalMusicFiles() 單一 LOCAL_MUSIC_DIR；呢度多一層去重 (跟檔名) 保險，唔應該實際命中。
+    // 清單直接來自 server 端 listLocalMusicFiles() 單一 LOCAL_MUSIC_DIR；這裡多一層去重 (跟檔名) 保險，不應該實際命中。
     const seen = new Set();
     musicTracks = (res.files || []).filter(function (f) {
       if (seen.has(f.name)) return false;
@@ -173,7 +173,7 @@ function musicRenderList() {
     sizeSpan.className = "music-track-size";
     sizeSpan.textContent = musicFormatSize(track.sizeBytes || 0);
 
-    // 成行 click 就播 (user-select:none + cursor:pointer 喺 style.css 度)。
+    // 成行 click 就播 (user-select:none + cursor:pointer 在 style.css 度)。
     row.onclick = function () { musicPlay(track.name); };
 
     row.appendChild(nameSpan);
@@ -201,9 +201,9 @@ function musicPlay(name) {
 }
 
 // ---------------- prev / next / random / play-all ----------------
-// 全部 client 端排歌 — server audio/local_music/* 冇 playlist 概念，淨「播呢個檔」。呢幾個 function 喺 musicTracks 計下一首，再 call musicPlay()。
+// 全部 client 端排歌 — server audio/local_music/* 沒有 playlist 概念，僅「播這個檔」。這幾個 function 在 musicTracks 計下一首，再 call musicPlay()。
 
-/** 目前播緊嗰首喺 musicTracks 入面嘅 index, 搵唔到 (清單變咗/冇播) 回 -1。 */
+/** 目前正在播那首在 musicTracks 裡面的 index, 找不到 (清單變了/沒有播) 回 -1。 */
 function musicCurrentIndex() {
   if (!musicCurrentName) return -1;
   for (let i = 0; i < musicTracks.length; i++) {
@@ -255,7 +255,7 @@ function musicPlayAll() {
   }
 }
 
-/** 「▶ 全部」模式底下搵下一首 - 由而家嗰首開始向後搵, 到咗最尾繞返頭。 */
+/** 「▶ 全部」模式底下找下一首 - 由現在那首開始向後找, 到了最尾繞回頭。 */
 function musicAdvancePlayAll() {
   if (!musicPlayAllMode || musicTracks.length === 0) return;
   const idx = musicCurrentIndex();
@@ -278,8 +278,8 @@ function musicTogglePlayPause() {
   if (isPlaying) {
     Alpha2Api.audioLocalMusicPause().then(musicRefreshStatus);
   } else if (musicCurrentName || musicLastPlayedName) {
-    // 有 track load 咗 (就算停咗機都未 release, 例如暫停緊/播完) → resume;
-    // 真係冇 → fallback 由頭播上次嗰首。
+    // 有 track load 了 (就算停了機都未 release, 例如正在暫停/播完) → resume;
+    // 真正沒有 → fallback 由頭播上次那首。
     const hasLoadedTrack = musicHasLoadedTrack;
     const name = musicCurrentName || musicLastPlayedName;
     if (hasLoadedTrack) {
@@ -288,7 +288,7 @@ function musicTogglePlayPause() {
           musicRefreshStatus();
           return;
         }
-        musicPlay(name); // resume 失敗 (例如已經被 stop 清走) - 由頭播過
+        musicPlay(name); // resume 失敗 (例如已經被 stop 清除) - 由頭播過
       });
     } else {
       musicPlay(name);
@@ -300,10 +300,10 @@ function musicTogglePlayPause() {
 
 /**
  * 音樂 tab「⏹ 全部停止」— 同語音 tab 總停鍵
- * (xiaozhiStopAll(), 見 app-xiaozhi.js) 睇齊: action/stop + speech/stop +
- * audio/local_music/stop + audio/radio/stop 四樣一齊停, 另加埋自己個
- * 「▶ 全部」自動接歌模式。直接重用 xiaozhiStopAll() 唔另寫一套, 保證兩邊
- * 行為永遠一致; 佢入面 Promise.all 已經包咗單一 endpoint 失敗唔影響其餘。
+ * (xiaozhiStopAll(), 見 app-xiaozhi.js) 看齊: action/stop + speech/stop +
+ * audio/local_music/stop + audio/radio/stop 四樣一齊停, 另加上自己個
+ * 「▶ 全部」自動接歌模式。直接重用 xiaozhiStopAll() 不另寫一套, 保證兩邊
+ * 行為永遠一致; 它裡面 Promise.all 已經包了單一 endpoint 失敗不影響其餘。
  */
 function musicStopAll() {
   musicPlayAllMode = false;
@@ -378,8 +378,8 @@ function refreshSharedVolume() {
 // ---------------- status polling ----------------
 //
 // 用 setTimeout 鏈 (同 xiaozhiPollActivationStatus() 一致), 保證上一次
-// request 攞到結果先至排下一次, 網絡慢嗰陣唔會越疊越多。淨係喺實際有嘢
-// 播緊 (hasTrack=true) 先繼續 poll。
+// request 拿到結果先至排下一次, 網絡慢當時不會越疊越多。僅在實際有東西
+// 正在播 (hasTrack=true) 先繼續 poll。
 function musicStartStatusPolling() {
   musicStopStatusPolling();
   musicPollStatusLoop();
@@ -406,7 +406,7 @@ function musicPollStatusLoop() {
       musicStatusPollTimer = setTimeout(musicPollStatusLoop, 1000);
     } else {
       musicPlayAllMode = false;
-      // 共用頻譜：本地停咗但電台仲播緊，保留頻譜
+      // 共用頻譜：本地停了但電台還正在播，保留頻譜
       if (!radioCurrentName) {
         musicStopSpectrumLoop();
       }
@@ -521,13 +521,13 @@ function musicOnDrop(evt) {
 
 function musicOnFileInputChange(files) {
   if (files && files.length > 0) musicUploadFiles(files);
-  // 清返 input 個 value, 等用戶下次揀返同一個檔名都會再 fire change 事件
+  // 清除 input 個 value, 等用戶下次選回同一個檔名都會再 fire change 事件
   document.getElementById("musicFileInput").value = "";
 }
 
-/** 逐個上載 (唔平行) - 每次上載都係一整條 HTTP POST body (成個檔案嘅內容),
- *  平行推多個大檔上載對呢部機 (RK3288, ARMv7, 1.1.7.3.20) 嘅記憶體/網絡都
- *  無謂咁大壓力, 逐個嚟簡單又夠用。*/
+/** 逐個上載 (不平行) - 每次上載都是一整條 HTTP POST body (整個檔案的內容),
+ *  平行推多個大檔上載對這部機 (RK3288, ARMv7, 1.1.7.3.20) 的記憶體/網絡都
+ *  無謂這麼大壓力, 逐個來簡單又夠用。*/
 function musicUploadFiles(fileList) {
   const files = Array.prototype.slice.call(fileList);
   const statusEl = document.getElementById("musicUploadStatus");
@@ -545,8 +545,8 @@ function musicUploadFiles(fileList) {
       statusEl.textContent = t("music_upload_uploading") + " (" + index + "/" + files.length + ") " + file.name;
     }
     clearError();
-    // 面板 token：啟用中 /upload/music 要驗 panel_token（見 PanelAuth，成個面板上鎖），
-    // 同 api() 系列一樣由 localStorage 拎（withPanelToken，全局，見 app-core.js）。
+    // 面板 token：啟用中 /upload/music 要驗 panel_token（見 PanelAuth，整個面板上鎖），
+    // 同 api() 系列一樣由 localStorage 拿（withPanelToken，全局，見 app-core.js）。
     const q = (typeof withPanelToken === "function") ? withPanelToken({ name: file.name }) : { name: file.name };
     fetch("/upload/music?" + new URLSearchParams(q).toString(), {
       method: "POST",
@@ -569,3 +569,4 @@ function musicUploadFiles(fileList) {
 
   uploadNext();
 }
+

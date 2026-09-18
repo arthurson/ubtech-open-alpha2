@@ -37,7 +37,7 @@ public class AudioPlaybackController {
     // Must match whatever sample rate the browser-side encoder uses when it sends PCM.
     // 16000：alpha2services 自家 TTS (IflytekTTS) 實測用 16000 開 AudioTrack 成功，相容確認。
     // （註：同樣 byte 數下 8kHz 代表雙倍播放時間、對 underrun headroom 大一半；
-    // 若再見 underrun/jitter 症狀，呢個係其中一個要留意嘅方向。）
+    // 若再見 underrun/jitter 症狀，這個是其中一個要留意的方向。）
     private static final int SAMPLE_RATE_HZ = 16000;
     private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_OUT_MONO;
     private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
@@ -416,7 +416,7 @@ public class AudioPlaybackController {
     }
 
     public void shutdown() {
-        // 同 AudioController.shutdown() 一樣嘅 race：playing=false 之後, writeLoop()
+        // 同 AudioController.shutdown() 一樣的 race：playing=false 之後, writeLoop()
         // 要多跑一個 loop iteration 才會發現、接著才做 finishAndReleaseTrack()
         // (audioTrack.stop()/release()) —— 這個 release 本身是在 playbackHandler
         // 那條 playback thread 裡做的, quitSafely() 不會中斷它, 但如果 shutdown()
@@ -600,3 +600,4 @@ public class AudioPlaybackController {
         return StartResult.ok();
     }
 }
+

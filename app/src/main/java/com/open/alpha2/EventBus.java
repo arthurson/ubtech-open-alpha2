@@ -81,9 +81,10 @@ public final class EventBus {
                 l.onEvent(line);
             } catch (Throwable t) {
                 // A single bad subscriber must not break the others (Error 都接，
-                // 唔係一個壞 listener 掟 Error 會斷後面成串）。
+                // 不是一個壞 listener 掟 Error 會斷後面成串）。
                 android.util.Log.d("EventBus", "bad listener", t);
             }
         }
     }
 }
+

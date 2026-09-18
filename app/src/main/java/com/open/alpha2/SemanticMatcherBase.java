@@ -14,30 +14,30 @@ import java.util.Random;
 
 /**
  * 中英文語意配對引擎的共用底層 - SemanticMatcherZh (中文) 和
- * SemanticMatcherEn (英文) 除咗 TAG、assets 檔名、fallback 問法/動作組
- * 之外，載入/比對/分類 random 呢幾層邏輯完全一致，2026-09 抽呢層共用 base
- * class，避免兩份逐字重複要同步改。子類只需要喺 constructor 提供三樣嘢：
+ * SemanticMatcherEn (英文) 除了 TAG、assets 檔名、fallback 問法/動作組
+ * 之外，載入/比對/分類 random 這幾層邏輯完全一致，2026-09 抽這一層共用 base
+ * class，避免兩份逐字重複要同步改。子類只需要在 constructor 提供三樣東西：
  * log tag、問法 json 的 assets 路徑、"聽不懂" fallback 組 (問法句 + 對應
  * action id, 長度要相等)。
  *
- * MatchResult/Entry 都搬呢度做共用型別 - 之前中英文各自的 nested MatchResult
+ * MatchResult/Entry 都搬這裡做共用型別 - 之前中英文各自的 nested MatchResult
  * 結構一樣但屬於不同 class, SemanticCenter 要用 toZhResult() 手動轉接; 現在
  * 兩個子類共用同一個 SemanticMatcherBase.MatchResult, 呼叫方不用再轉。
  *
  * 資料來源/分類 random 機制等背景見 SemanticMatcherZh 的 class javadoc,
  * 不在這裡重複。
  *
- * 命名備註: 呢三個 class (呢個 base + SemanticMatcherZh/En) 2026-09 之前叫
+ * 命名備註: 這三個 class (這個 base + SemanticMatcherZh/En) 2026-09 之前叫
  * IflytekSemanticMatcher(Base/En) - 個名純粹歷史原因 (問法資料最初由 iFlytek
- * APK 反編譯還原), 同機身已經永久唔再用嘅 Nuance/iFlytek binder TTS/ASR 引擎
- * 完全冇關係, 淨係個名容易誤導 (呢個功能本身係純本地 JSON 配對, 唔經任何外部
- * 引擎)。2026-09 改名做 SemanticMatcher* 消除呢個誤導。
+ * APK 反編譯還原), 同機身已經永久不再用的 Nuance/iFlytek binder TTS/ASR 引擎
+ * 完全沒有關係, 僅個名容易誤導 (這個功能本身是純本地 JSON 配對, 不經任何外部
+ * 引擎)。2026-09 改名為 SemanticMatcher* 消除這個誤導。
  */
 public abstract class SemanticMatcherBase {
     private static final String ASSET_PATH_CATEGORIES = "semantic/action_category_pools.json";
     private static final String RANDOM_CATEGORY_PREFIX = "__RANDOM_CATEGORY__";
 
-    /** 中英文共用嘅「聽不懂」fallback 動作組（5 個已驗證沒聲效動作；兩子類之前各自複製同一份）。 */
+    /** 中英文共用的「聽不懂」fallback 動作組（5 個已驗證沒聲效動作；兩子類之前各自複製同一份）。 */
     protected static final String[] DEFAULT_FALLBACK_ACTION_IDS = {
             "1464835936013", // 搖頭 / Shake head
             "1464835936026", // 思考 / Thinking
@@ -49,7 +49,7 @@ public abstract class SemanticMatcherBase {
     /** 配對結果。type 和 MainActivity 已有的 asr_result event 格式對齊,
      *  answer/actionId 可能是 null (例如 CHAT 類沒 actionId, 部分 FUNCTION 沒 answer)。
      *  matched＝真命中問法庫／false＝fallback 亂答（SemanticCenter 跨語言兜底用：
-     *  主 matcher 唔中先試另一個，兩個都唔中就用主嗰個 fallback）。 */
+     *  主 matcher 不中先試另一個，兩個都不中就用主那個 fallback）。 */
     public static final class MatchResult {
         public final String question;   // 命中的原始問法 (debug 用)
         public final String type;       // "ACTION" | "FUNCTION" | "CHAT"
@@ -71,9 +71,11 @@ public abstract class SemanticMatcherBase {
         }
     }
 
-    /** 內部記錄, 對應問法 json 裡面每一行。 */
+    /** 內部記錄, 對應問法 json 裡面每一行。normQ 是比對用正規化問法
+     *  (見 normalizeForMatch, 載入時一次算好, match() 不用每次重算)。 */
     private static final class Entry {
         String q;
+        String normQ;
         String[] answers;
         String type;
         String op;
@@ -114,30 +116,42 @@ public abstract class SemanticMatcherBase {
     }
 
     /** 由 assets 讀入 + parse 問法記錄。讀取/parse 失敗就回傳空 list (不會拋出),
-     *  和 loadXiaozhiActions() 一致的「不崩潰、log 一次」哲學。 */
+     *  和 loadXiaozhiActions() 一致的「不崩潰、log 一次」哲學。
+     *
+     *  支援兩種格式 (2026-09 v2 起):
+     *   v1 legacy - 頂層 JSONArray, 每個 object 是一條問法:
+     *     [{"q":"跳舞","a":[...],"type":"ACTION","op":"DANCE",...}, ...]
+     *   v2 grouped - 頂層 JSONObject, intents 陣列, 每個 intent 帶多條問法
+     *     (同 intent 共用同一組 a/type/op/slot/actionId, 免重複):
+     *     {"version":2,"lang":"zh","intents":[
+     *       {"id":"action.dance","type":"ACTION","op":"DANCE",
+     *        "actionId":"...","a":[...],"qs":["跳舞","跳個舞",...]}, ...]}
+     *  v2 的問法鍵接受 "qs" (array) / "q" (array 或 string) / "patterns" (array,
+     *  將來多語言共用一檔時的別名) - 三者都沒有就跳過該 intent。v1 檔案不需改動,
+     *  新語言一律用 v2。 */
     private synchronized List<Entry> load() {
         if (cache != null) return cache;
         List<Entry> result = new ArrayList<>();
         try {
-            JSONArray arr = new JSONArray(readAssetString(assetPath));
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject o = arr.getJSONObject(i);
-                Entry e = new Entry();
-                e.q = o.optString("q");
-                e.type = o.optString("type");
-                e.op = o.has("op") ? o.optString("op") : null;
-                e.slot = o.has("slot") ? o.optString("slot") : null;
-                e.actionId = o.has("actionId") ? o.optString("actionId") : null;
-                JSONArray aArr = o.optJSONArray("a");
-                if (aArr != null && aArr.length() > 0) {
-                    e.answers = new String[aArr.length()];
-                    for (int j = 0; j < aArr.length(); j++) {
-                        e.answers[j] = aArr.getString(j);
-                    }
-                } else {
-                    e.answers = null;
+            String raw = readAssetString(assetPath).trim();
+            if (raw.startsWith("[")) {
+                JSONArray arr = new JSONArray(raw);
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject o = arr.getJSONObject(i);
+                    Entry e = parseEntry(o, o.optString("q"));
+                    if (e != null) result.add(e);
                 }
-                result.add(e);
+            } else {
+                JSONObject root = new JSONObject(raw);
+                JSONArray intents = root.optJSONArray("intents");
+                if (intents == null) intents = new JSONArray();
+                for (int i = 0; i < intents.length(); i++) {
+                    JSONObject o = intents.getJSONObject(i);
+                    for (String q : parseQuestions(o)) {
+                        Entry e = parseEntry(o, q);
+                        if (e != null) result.add(e);
+                    }
+                }
             }
         } catch (Exception e) {
             Log.w(tag, "load: failed to load assets/" + assetPath + ": " + e);
@@ -146,51 +160,182 @@ public abstract class SemanticMatcherBase {
         return result;
     }
 
-    /** 將一句 ASR 辨識出來的文字, 對照問法庫, 找出最貼近的一條。「由緊至鬆」
-     *  三層做法, 有哪層命中就立刻用那層:
-     *   1. 完全相等 (去頭尾空白)
+    /** v2 intent object 抽出全部問法: "qs" array 優先, 其次 "q" (array 或 string),
+     *  再次 "patterns" array。全部沒有/全空就回傳空 list (呼叫方跳過)。 */
+    private static List<String> parseQuestions(JSONObject o) {
+        List<String> out = new ArrayList<>();
+        JSONArray qs = o.optJSONArray("qs");
+        if (qs == null) qs = o.optJSONArray("patterns");
+        if (qs != null) {
+            for (int i = 0; i < qs.length(); i++) {
+                String q = qs.optString(i, null);
+                if (q != null && !q.isEmpty()) out.add(q);
+            }
+            return out;
+        }
+        JSONArray qArr = o.optJSONArray("q");
+        if (qArr != null) {
+            for (int i = 0; i < qArr.length(); i++) {
+                String q = qArr.optString(i, null);
+                if (q != null && !q.isEmpty()) out.add(q);
+            }
+            return out;
+        }
+        String single = o.optString("q", null);
+        if (single != null && !single.isEmpty()) out.add(single);
+        return out;
+    }
+
+    /** 由一個問法 object + 一條問法字串建成 Entry。q 為空就回傳 null (跳過)。 */
+    private static Entry parseEntry(JSONObject o, String q) {
+        if (q == null || q.isEmpty()) return null;
+        Entry e = new Entry();
+        e.q = q;
+        e.normQ = normalizeForMatch(q);
+        e.type = o.optString("type");
+        e.op = o.has("op") ? o.optString("op") : null;
+        e.slot = o.has("slot") ? o.optString("slot") : null;
+        e.actionId = o.has("actionId") ? o.optString("actionId") : null;
+        JSONArray aArr = o.optJSONArray("a");
+        if (aArr != null && aArr.length() > 0) {
+            e.answers = new String[aArr.length()];
+            for (int j = 0; j < aArr.length(); j++) {
+                e.answers[j] = aArr.optString(j, null);
+            }
+        } else {
+            e.answers = null;
+        }
+        return e;
+    }
+
+    /** 將一句 ASR 辨識出來的文字, 對照問法庫, 找出最貼近的一條。「由嚴到寬」
+     *  四層做法, 有哪層命中就立刻用那層:
+     *   1. 完全相等 (正規化後)
      *   2. 命中問法完全包含在輸入裡面 (輸入夾雜其他字, 例如「阿爾法你好嗎」包含著
      *      問法「你好嗎」) - 選當中最長那條問法, 減少短問法誤中夾在長句裡面的情況
      *   3. 輸入完全包含在命中問法裡面 (ASR 漏了尾, 例如輸入「你好」、問法是
      *      「你好嗎」) - 都是選最長那條問法
-     *  三層都找不到就不再回傳 null - 隨機選一句 fallbackQuestions 做「聽不懂」
+     *   4. 模糊配對 (2026-09 新增, 專捉 ASR 同音錯別字/增減一字, 例如「跳武吧」
+     *      對「跳舞吧」) - OSA 編輯距離, 要求 d*2 < maxlen (嚴格過半相似),
+     *      過短 (maxlen<3) 不模糊以免誤中 (例如「跳樓」不會中「跳舞」)。
+     *      距離相同取檔案順序首條 (ACTION 意圖排先, 見 semantic_zh.json)。
+     *  四層都找不到就不再回傳 null - 隨機選一句 fallbackQuestions 做「聽不懂」
      *  的回應, 保證用戶說的話在問法庫裡面找不到都還有反應, 不會啞口。空白輸入
      *  (text 為 null 或者只有空白字元) 就真的沒東西好答, 依然回傳 null。
      *
-     *  輸入文字先經 SimplifiedToTraditional.toTraditional() normalize 做繁體再
-     *  比對 - ASR 引擎輸出簡體中文, 但兩份 database 全部是
-     *  書面繁體中文, 不 normalize 的話簡體輸入會完全 match 不中任何問法。這層
-     *  轉換只影響「用來比對」的 q, 不改動 MatchResult.question (依然是 e.q 的
-     *  原文) - answer/actionId 一律來自 database 本身。 */
+     *  輸入文字先經 SimplifiedToTraditional.toTraditional() normalize 做繁體,
+     *  再經 normalizeForMatch() 去標點/空白/拉丁大小階 (ASR/Vosk/打字輸入的
+     *  「TFBOYS!」「tfboys」「你好嗎?」不應因標點大小階而配對不中) 才比對 -
+     *  兩層轉換只影響「用來比對」的 q, 不改動 MatchResult.question (依然是 e.q
+     *  的原文) - answer/actionId 一律來自 database 本身。 */
     public MatchResult match(String text) {
         List<Entry> entries = load();
-        String q = text == null ? "" : SimplifiedToTraditional.toTraditional(text.trim());
-        if (q.isEmpty()) return null;
+        String raw = text == null ? "" : SimplifiedToTraditional.toTraditional(text.trim());
+        if (raw.isEmpty()) return null;
         if (entries.isEmpty()) return fallback();
+        String q = normalizeForMatch(raw);
+        if (q.isEmpty()) return fallback(); // 全是標點/空白 - 當聽不懂, 不靜音
 
         // 1) 完全相等
         for (Entry e : entries) {
-            if (q.equals(e.q)) return toResult(e);
+            if (q.equals(e.normQ)) return toResult(e);
         }
 
         // 2) 問法完全包含在輸入裡面 (選最長那條, 減少短問法誤中)
         Entry best = null;
         for (Entry e : entries) {
-            if (!e.q.isEmpty() && q.contains(e.q)) {
-                if (best == null || e.q.length() > best.q.length()) best = e;
+            if (!e.normQ.isEmpty() && q.contains(e.normQ)) {
+                if (best == null || e.normQ.length() > best.normQ.length()) best = e;
             }
         }
         if (best != null) return toResult(best);
 
         // 3) 輸入完全包含在問法裡面 (ASR 漏字/縮短, 選最長那條問法)
         for (Entry e : entries) {
-            if (!e.q.isEmpty() && e.q.contains(q)) {
-                if (best == null || e.q.length() > best.q.length()) best = e;
+            if (!e.normQ.isEmpty() && e.normQ.contains(q)) {
+                if (best == null || e.normQ.length() > best.normQ.length()) best = e;
+            }
+        }
+        if (best != null) return toResult(best);
+
+        // 4) 模糊配對: ASR 同音錯別字/增減一字/相鄰換位。距離最小者勝。
+        best = null;
+        int bestD = Integer.MAX_VALUE;
+        for (Entry e : entries) {
+            String nq = e.normQ;
+            if (nq == null || nq.isEmpty()) continue;
+            int ml = Math.max(q.length(), nq.length());
+            if (ml < 3) continue;
+            if (Math.abs(q.length() - nq.length()) > (ml - 1) / 2) continue;
+            int d = osaDistance(q, nq);
+            if (d * 2 < ml && d < bestD) {
+                best = e;
+                bestD = d;
             }
         }
         if (best != null) return toResult(best);
 
         return fallback();
+    }
+
+    /** 比對用正規化: 去頭尾空白、拉丁轉小寫、去掉所有標點/符號/空白
+     *  (Unicode P/S 類 + 空白, 含全形？。！，、；：「」『』《》…—)。
+     *  中英數字不受影響 (TFBOYS/OK/0.01公分照認)。null 回 ""。 */
+    static String normalizeForMatch(String s) {
+        if (s == null) return "";
+        String t = s.trim().toLowerCase(java.util.Locale.ROOT);
+        StringBuilder sb = new StringBuilder(t.length());
+        for (int i = 0; i < t.length(); i++) {
+            char c = t.charAt(i);
+            if (Character.isWhitespace(c) || Character.isSpaceChar(c)) continue;
+            int type = Character.getType(c);
+            if (type == Character.DASH_PUNCTUATION
+                    || type == Character.START_PUNCTUATION
+                    || type == Character.END_PUNCTUATION
+                    || type == Character.CONNECTOR_PUNCTUATION
+                    || type == Character.OTHER_PUNCTUATION
+                    || type == Character.INITIAL_QUOTE_PUNCTUATION
+                    || type == Character.FINAL_QUOTE_PUNCTUATION
+                    || type == Character.MATH_SYMBOL
+                    || type == Character.CURRENCY_SYMBOL
+                    || type == Character.MODIFIER_SYMBOL
+                    || type == Character.OTHER_SYMBOL
+                    || type == Character.SURROGATE
+                    || type == Character.CONTROL
+                    || type == Character.FORMAT) {
+                continue;
+            }
+            sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    /** Restricted OSA 編輯距離 (相鄰換位計 1, 其餘增刪改各計 1)。
+     *  問法最長十餘字, 全 DP 完全負擔得起 (只在首三層不中才呼叫)。 */
+    static int osaDistance(String a, String b) {
+        int la = a.length(), lb = b.length();
+        if (la == 0) return lb;
+        if (lb == 0) return la;
+        int[] prev2 = null;
+        int[] prev = new int[lb + 1];
+        for (int j = 0; j <= lb; j++) prev[j] = j;
+        for (int i = 1; i <= la; i++) {
+            int[] cur = new int[lb + 1];
+            cur[0] = i;
+            for (int j = 1; j <= lb; j++) {
+                int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+                int v = Math.min(prev[j - 1] + cost,
+                        Math.min(cur[j - 1] + 1, prev[j] + 1));
+                if (i > 1 && j > 1 && a.charAt(i - 1) == b.charAt(j - 2)
+                        && a.charAt(i - 2) == b.charAt(j - 1)) {
+                    v = Math.min(v, prev2[j - 2] + 1);
+                }
+                cur[j] = v;
+            }
+            prev2 = prev;
+            prev = cur;
+        }
+        return prev[lb];
     }
 
     /** 隨機選一句 fallbackQuestions/fallbackActionIds, 包裝做 MatchResult。
@@ -255,7 +400,7 @@ public abstract class SemanticMatcherBase {
         return result;
     }
 
-    /** 兩份 load 共用嘅 assets 讀檔（經 IOUtil，唔再各自寫 4k loop）。 */
+    /** 兩份 load 共用的 assets 讀檔（經 IOUtil，不再各自寫 4k loop）。 */
     private String readAssetString(String path) throws java.io.IOException {
         InputStream in = null;
         try {
@@ -290,3 +435,5 @@ public abstract class SemanticMatcherBase {
         return pool.get(random.nextInt(pool.size()));
     }
 }
+
+

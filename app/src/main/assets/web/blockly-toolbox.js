@@ -1,15 +1,15 @@
 // Open Alpha2 — Toolbox 定義 (Blockly JSON 格式)。
-// 分咗 12 個分類：控制流程放最頂 (最常用), 之後跟 API 分組, 最後係 Blockly 標準
+// 分了 12 個分類：控制流程放最頂 (最常用), 之後跟 API 分組, 最後是 Blockly 標準
 // 邏輯/迴圈/數學/文字/變數/自訂函式。
 //
-// 包做 function (而唔係一次性 object literal) 係俾語言切換用: 分類名/範例入面
-// 嘅文字都經 t() 讀緊 window.ALPHA_BLOCK_I18N, 但 t() 嘅結果喺呢個檔案 load
-// 嗰一刻就已經計死咗 (JS 冇 lazy evaluation) —— 如果淨係 assign 一次做靜態
-// object, 之後切語言就算 updateToolbox() 都係攞返嗰份舊語言嘅快照。改用
-// window.buildAlphaToolbox() 令 blockly-i18n.js 可以喺切換語言嗰陣重新 call
-// 一次, 攞到用返新語言嘅版本。window.ALPHA_TOOLBOX 保留做「最近一次 build
-// 出嚟嘅版本」, 等 initWorkspace() (blockly-page.js) 首次注入 workspace 嗰陣
-// 唔使改呼叫方式。
+// 包做 function (而不是一次性 object literal) 是給語言切換用: 分類名/範例裡面
+// 的文字都經 t() 正在讀 window.ALPHA_BLOCK_I18N, 但 t() 的結果在這個檔案 load
+// 那一刻就已經計死了 (JS 沒有 lazy evaluation) —— 如果僅 assign 一次做靜態
+// object, 之後切語言就算 updateToolbox() 都是取回那份舊語言的快照。改用
+// window.buildAlphaToolbox() 令 blockly-i18n.js 可以在切換語言當時重新 call
+// 一次, 拿到用回新語言的版本。window.ALPHA_TOOLBOX 保留做「最近一次 build
+// 出來的版本」, 等 initWorkspace() (blockly-page.js) 首次注入 workspace 當時
+// 不用改呼叫方式。
 window.buildAlphaToolbox = function () {
   return {
   kind: 'categoryToolbox',
@@ -46,10 +46,10 @@ window.buildAlphaToolbox = function () {
     },
     {
       // 2026-08 更新: 動作 block 由一粒 alpha_action_play_builtin (帶 CATEGORY
-      // dropdown) 拆咗做獨立 block (基本/跳舞/故事/瑜伽/其他), 跟返電話/通知
+      // dropdown) 拆了做獨立 block (基本/跳舞/故事/瑜伽/其他), 遵循電話/通知
       // 鈴聲個模式 (見 blockly-blocks.js makeActionCategoryBlock())。分類本身
-      // 依然一隻色 (colour: '20', 同 clr.action 一致), 一按就見晒所有動作
-      // block, 唔使逐層展開。
+      // 依然一隻色 (colour: '20', 同 clr.action 一致), 一按就見完所有動作
+      // block, 不用逐層展開。
       kind: 'category', name: t('toolbox_cat_action'), colour: '20',
       contents: [
         { kind: 'block', type: 'alpha_action_play_basic' },
@@ -77,10 +77,10 @@ window.buildAlphaToolbox = function () {
       ]
     },
     {
-      // 2026-08 更新: 伺服 block 由一粒 alpha_servo_one (帶 GROUP dropdown) 拆咗
-      // 做 5 粒獨立 block (頭/右手/左手/右腳/左腳), 跟返電話/通知鈴聲、動作分類
+      // 2026-08 更新: 伺服 block 由一粒 alpha_servo_one (帶 GROUP dropdown) 拆了
+      // 做 5 粒獨立 block (頭/右手/左手/右腳/左腳), 遵循電話/通知鈴聲、動作分類
       // 個模式 (見 blockly-blocks.js makeServoGroupBlock())。分類本身依然一隻色
-      // (colour: '230', 同 clr.servo 一致), 一按就見晒所有伺服 block, 唔使逐層
+      // (colour: '230', 同 clr.servo 一致), 一按就見完所有伺服 block, 不用逐層
       // 展開。
       kind: 'category', name: t('toolbox_cat_servo'), colour: '230',
       contents: [
@@ -104,9 +104,9 @@ window.buildAlphaToolbox = function () {
         { kind: 'block', type: 'alpha_led_mouth' },
       ]
     },
-    // 2026-08 更新: 「相機 / 音效」同「裝置資訊」呢兩個分類已經整個移除, block
-    // 定義同 interpreter case 都一齊刪咗, 唔再保留 (見 blockly-blocks.js /
-    // blockly-run.js)。感應器 (sonar/accel) 開關同事件維持喺上面「🔔 事件」
+    // 2026-08 更新: 「相機 / 音效」同「裝置資訊」這兩個分類已經整個移除, block
+    // 定義同 interpreter case 都一齊刪了, 不再保留 (見 blockly-blocks.js /
+    // blockly-run.js)。感應器 (sonar/accel) 開關同事件維持在上面「🔔 事件」
     // 分類。
     {
       kind: 'category', name: t('toolbox_cat_logic'), colour: '%{BKY_LOGIC_HUE}',
@@ -152,37 +152,37 @@ window.buildAlphaToolbox = function () {
       kind: 'category', name: t('toolbox_cat_procedures'), colour: '%{BKY_PROCEDURES_HUE}', custom: 'PROCEDURE'
     },
     {
-      // 2026-08 新增:「範例」分類, 放已經組合好嘅 block 組合, 用家由 toolbox
-      // 拖出嚟就已經係一串裝好晒嘅 next-chain (唔使自己逐粒拼), 可以即刻試跑或者
-      // 當起點再修改。用 toolbox JSON 嘅巢狀寫法: 第一粒 block 底下用
-      // "next": { "block": {...} } 一路掛落去, 對應 Blockly 內部 next-connection
-      // statement chain, 呢個係 toolbox 官方支援嘅寫法, 唔使自己額外寫 XML。
+      // 2026-08 新增:「範例」分類, 放已經組合好的 block 組合, 用家由 toolbox
+      // 拖出來就已經是一串裝好完的 next-chain (不用自己逐顆拼), 可以即刻試跑或者
+      // 當起點再修改。用 toolbox JSON 的巢狀寫法: 第一粒 block 底下用
+      // "next": { "block": {...} } 一路掛下去, 對應 Blockly 內部 next-connection
+      // statement chain, 這個是 toolbox 官方支援的寫法, 不用自己額外寫 XML。
       //
-      // 2026-08 更新: 原本呢度有 5 個手寫嘅簡短示範, 依家改做用家提供嘅 2 個
-      // 實機測試過嘅完整程式 (alpha2-program-2026-08-04-04-02-26.xml /
+      // 2026-08 更新: 原本這裡有 5 個手寫的簡短示範, 現在改做用家提供的 2 個
+      // 實機測試過的完整程式 (alpha2-program-2026-08-04-04-02-26.xml /
       // alpha2-program-2026-08-04-05-43-58.xml, 經 workspace 匯出), 轉做
-      // toolbox JSON 格式後直接放呢度。轉換時 <value><shadow>...</shadow></value>
+      // toolbox JSON 格式後直接放這裡。轉換時 <value><shadow>...</shadow></value>
       // 對應做 inputs.{NAME}.shadow, <next><block>...</block></next> 對應
-      // 巢狀 next.block, 淨係去咗 XML 專屬嘅 id/x/y 定位屬性 (toolbox flyout
-      // 唔需要呢啲, 拖出嚟落 workspace 會由 Blockly 自己重新分配)。
+      // 巢狀 next.block, 僅去了 XML 專屬的 id/x/y 定位屬性 (toolbox flyout
+      // 不需要這些, 拖出來到 workspace 會由 Blockly 自己重新分配)。
       //
-      // 注意: fields.SUBCATEGORY 呢個值 ('表情 / 互動類' 等) 一定要維持中文,
-      // 因為佢係 blockly-actions-data.js 真實子分類清單嘅其中一個 key (跟機身
-      // 韌體實測分類名, 唔係呢頁自己嘅顯示文字), 唔跟 uiLang 轉——換咗英文個
-      // dropdown 就搵唔返呢個分類。fields.TITLE (鈴聲名, 例如 'World'/'Antares'/
-      // 'On The Hunt') 同理: 對應 blockly-ringtone-data.js 嘅實際鈴聲標題, 係
-      // 資料值唔係顯示文字, 一樣要保持原文。
+      // 注意: fields.SUBCATEGORY 這個值 ('表情 / 互動類' 等) 一定要維持中文,
+      // 因為它是 blockly-actions-data.js 真實子分類清單的其中一個 key (跟機身
+      // 韌體實測分類名, 不是這頁自己的顯示文字), 不跟 uiLang 轉——換了英文個
+      // dropdown 就找不到這個分類。fields.TITLE (鈴聲名, 例如 'World'/'Antares'/
+      // 'On The Hunt') 同理: 對應 blockly-ringtone-data.js 的實際鈴聲標題, 是
+      // 資料值不是顯示文字, 一樣要保持原文。
       kind: 'category', name: t('toolbox_cat_examples'), colour: '15',
       contents: (function () {
-        // 例子 1 嘅 TTS engine：2026-09 一律 android——機身已無 alpha2services，
-        // nuance／iflytek 經 speech_startTTS 恒回 NOT_INIT 全程靜音，舊嗰套
+        // 例子 1 的 TTS engine：2026-09 一律 android——機身已無 alpha2services，
+        // nuance／iflytek 經 speech_startTTS 恒回 NOT_INIT 全程靜音，舊那套
         // 「中文用 iflytek、英文用 nuance」AIDL 語言配對已死。VOICE 只對
         // iflytek 有義，android 無視，例子留空。
         const ttsEngine = 'android';
         return [
-        // 例子 1: 來電效果 —— 電話鈴聲 → 打招呼 → 播動作 (唔等) → 再講嘢 →
-        // 等 7 秒 → 手動停止鈴聲。示範: 鈴聲 + 語音 + 動作點樣夾埋一齊玩,
-        // 「等待完成」揀 false 令個動作同後面嘅語音幾乎同一時間發生。
+        // 例子 1: 來電效果 —— 電話鈴聲 → 打招呼 → 播動作 (不等) → 再說話 →
+        // 等 7 秒 → 手動停止鈴聲。示範: 鈴聲 + 語音 + 動作如何夾在一起玩,
+        // 「等待完成」選 false 令個動作同後面的語音幾乎同一時間發生。
         {
           kind: 'block', type: 'alpha_speech_ringtone_phone',
           fields: { TITLE: 'World' },
@@ -211,7 +211,7 @@ window.buildAlphaToolbox = function () {
         },
         // 例子 2: 通知鈴聲 + 伺服擺位串連 —— 頭部轉動 → 通知鈴聲 → 右手三段
         // 擺位 → 通知鈴聲 → 左手三段擺位 → 通知鈴聲 → 播放收尾動作。示範:
-        // 多個伺服 block 同鈴聲 block 點樣夾埋做一個帶節奏感嘅擺動組合,
+        // 多個伺服 block 同鈴聲 block 如何組合做一個帶節奏感的擺動組合,
         // 每個動作之間用「等待」+ 鈴聲做節拍提示。
         {
           kind: 'block', type: 'alpha_speech_ringtone_notification',
@@ -296,8 +296,9 @@ window.buildAlphaToolbox = function () {
   };
 };
 
-// 首次 load 呢一刻先 build 一次, 俾 blockly-page.js 嘅 initWorkspace() 可以
-// 照舊直接讀 window.ALPHA_TOOLBOX 用 (唔使改嗰邊嘅呼叫方式)。之後語言切換
-// 由 blockly-i18n.js 負責重新 call window.buildAlphaToolbox() 再更新呢個
+// 首次 load 這一刻先 build 一次, 給 blockly-page.js 的 initWorkspace() 可以
+// 照舊直接讀 window.ALPHA_TOOLBOX 用 (不用改那邊的呼叫方式)。之後語言切換
+// 由 blockly-i18n.js 負責重新 call window.buildAlphaToolbox() 再更新這個
 // reference。
 window.ALPHA_TOOLBOX = window.buildAlphaToolbox();
+

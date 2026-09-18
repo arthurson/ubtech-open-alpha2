@@ -158,7 +158,7 @@ public class WebSocketServer {
 
                 // 2026-08 修正: 之前這兩個分支裡面的 in.read() 完全沒檢查 -1 (EOF) ——
                 // 如果連線剛好在讀 16-bit/64-bit length 的時候斷了, `-1 & 0xFF` 會
-                // 變成 255, 靜靜地拿到一個錯誤的 length 值而不是被發現是 EOF, 接著
+                // 變成 255, 悄悄地拿到一個錯誤的 length 值而不是被發現是 EOF, 接著
                 // 下去可能用著一個垃圾 length 去讀 payload, 有機會卡死或者讀入垃圾
                 // 資料。現在改用 readByteOrThrow(), 一旦撞到 EOF 就立刻拋
                 // IOException, 交回 handleUpgrade() 那一層現有的 catch (IOException e)
@@ -268,3 +268,4 @@ public class WebSocketServer {
         }
     }
 }
+

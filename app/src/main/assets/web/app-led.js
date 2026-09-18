@@ -1,7 +1,7 @@
 // Open Alpha2 — client logic (app-led.js)
 // 內容: 頭/眼/咀 LED 顏色揀選、preset (共用 ledPresetApply())。
-// 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
-// <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
+// 全部檔案共用 window/global scope (沒有用 ES module), 載入順序由 index.html 的
+// <script src="..."> 順序決定 - 詳見 index.html 頭那段 comment。
 
 
 // ---------------- LEDs ----------------
@@ -32,7 +32,7 @@ let lastHeadPreset = "long";
 let lastEyePreset = "long";
 
 function buildColorPicker(wrapId, getSelected, setSelected, onPick) {
-  // 揾唔到 element 就跳過呢個 picker，唔阻其他初始化。
+  // 找不到 element 就跳過這個 picker，不阻其他初始化。
   const wrap = document.getElementById(wrapId);
   if (!wrap) {
     console.error("buildColorPicker: element #" + wrapId + " not found, skipping");
@@ -70,11 +70,11 @@ function buildEyeColorPicker() {
 }
 
 /** headLedPreset()/eyeLedPreset() 共用邏輯 - 兩者結構完全一樣 (stop 直接送、
- *  其他 preset 夾埋 color+brightness), 淨係 api path/顏色/亮度嚟源唔同。
+ *  其他 preset 組合 color+brightness), 僅 api path/顏色/亮度來源不同。
  *  @param apiPath    "led/head/set" / "led/eye/set"
- *  @param preset     要送嘅 preset 字串
- *  @param color      當前揀咗嘅顏色 code
- *  @param brightnessElId 亮度滑桿嘅 id
+ *  @param preset     要送的 preset 字串
+ *  @param color      當前選了的顏色 code
+ *  @param brightnessElId 亮度滑桿的 id
  */
 function ledPresetApply(apiPath, preset, color, brightnessElId) {
   const brightness = document.getElementById(brightnessElId).value;
@@ -105,7 +105,7 @@ function eyeLedPreset(preset) {
 }
 
 // Mouth LED - breathing effect only (confirmed the one usable effect on this
-// hardware; see README "咀部 LED" section for what was tried and ruled out).
+// hardware; see README "嘴部 LED" section for what was tried and ruled out).
 function mouthLedApply() {
   const speed = document.getElementById("mouthSpeed").value;
   return Alpha2Api.ledMouthSet( { speed: speed }).then(function (json) {
@@ -122,3 +122,4 @@ function mouthLedOff() {
     return json;
   });
 }
+

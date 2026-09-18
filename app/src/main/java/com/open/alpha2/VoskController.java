@@ -636,7 +636,7 @@ public final class VoskController {
         if (state == State.LISTENING || model != null) {
             state = model != null ? State.READY : State.IDLE;
         }
-        // server 側停 (如讓咪給小智) 都要推 event，前端才會關燈。
+        // server 側停 (如讓 mic 給小智) 都要推 event，前端才會關燈。
         EventBus.get().publish("vosk_state",
                 "{\"state\":\"" + state.name().toLowerCase(java.util.Locale.US) + "\""
                         + ",\"model\":" + (modelId == null ? "null" : "\"" + escape(modelId) + "\"")
@@ -881,8 +881,8 @@ public final class VoskController {
                 root.mkdirs();
             } catch (Throwable ignore) {
             }
-            // 快照：之後新增的頂層目錄都是今次 unzip 落的，失敗／取消即清走，
-            // 免每次重試都在 sdcard 留低一份垃圾。
+            // 快照：之後新增的頂層目錄都是今次 unzip 落的，失敗／取消即清除，
+            // 免每次重試都在 sdcard 留下一份垃圾。
             beforeDl = listDirNames(root);
             // --- 下載 ---
             java.net.HttpURLConnection conn = null;
@@ -977,8 +977,8 @@ public final class VoskController {
             } catch (Throwable ignore) {
             }
             // 驗收：解完要有模型目錄才算數（標準 am/final.mdl 或官方扁平包
-            // 頂層 final.mdl，見 isModelDir）。唔收貨就連 zip 帶今次新增目錄
-            // 一齊清走——舊的 model 目錄（快照之前已存在）一律唔掂。
+            // 頂層 final.mdl，見 isModelDir）。不收貨就連 zip 帶今次新增目錄
+            // 一齊清除——舊的 model 目錄（快照之前已存在）一律不碰。
             if (findModelDir(modelId) == null) {
                 cleanupNewDirs(root, beforeDl);
                 try {
@@ -991,7 +991,7 @@ public final class VoskController {
             setDl("done", 100, null);
             Log.i(TAG, "model downloaded+unzipped: " + modelId);
             // 順手自動載入（省前端一 round trip；失敗不當下載失敗，狀態照 done）。
-            // 用家聽緊就讓路——loadModel 會停咪斷 session，等用家自己切過去。
+            // 用家正在聽就讓路——loadModel 會停 mic 斷 session，等用家自己切過去。
             boolean listeningNow;
             synchronized (this) {
                 listeningNow = state == State.LISTENING;
@@ -1018,7 +1018,7 @@ public final class VoskController {
             } catch (Throwable ignore) {
             }
             // 失敗／取消都清場：刪走今次 unzip 新增的目錄（zip 損壞／中途取消
-            // 留低的半包），快照之前已存在的目錄一律唔掂。
+            // 留下的半包），快照之前已存在的目錄一律不碰。
             cleanupNewDirs(root, beforeDl);
             if (cancelled || "cancelled".equalsIgnoreCase(msg)) {
                 setDl("cancelled", dlProgress, "cancelled");
@@ -1047,7 +1047,7 @@ public final class VoskController {
         return s;
     }
 
-    /** 刪走不在快照內的頂層目錄（今次 unzip 落的；用家舊檔一律唔掂）。 */
+    /** 刪走不在快照內的頂層目錄（今次 unzip 落的；用家舊檔一律不碰）。 */
     private static void cleanupNewDirs(File root, java.util.Set<String> before) {
         File[] fs;
         try {
@@ -1148,3 +1148,5 @@ public final class VoskController {
         }
     }
 }
+
+

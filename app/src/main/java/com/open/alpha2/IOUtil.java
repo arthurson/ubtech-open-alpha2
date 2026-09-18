@@ -9,8 +9,8 @@ import java.nio.charset.StandardCharsets;
  * Stream 讀取共用實現。
  *
  * 之前 {@link MainActivity#readFully}、{@code XiaozhiOtaClient.readFully}、
- * {@link HttpServer} 嘅靜態檔案讀取 loop 係同一個 4k/8k chunk 迴圈各自複製。
- * 收斂到呢度，行為不變。
+ * {@link HttpServer} 的靜態檔案讀取 loop 是同一個 4k/8k chunk 迴圈各自複製。
+ * 收斂到這裡，行為不變。
  */
 public final class IOUtil {
     private IOUtil() {}
@@ -43,7 +43,7 @@ public final class IOUtil {
         return buf.toByteArray();
     }
 
-    /** 讀足 len bytes（短咗就回實際讀到嘅，唔拋）。 */
+    /** 讀足 len bytes（短了就回實際讀到的，不拋）。 */
     public static byte[] readExactly(InputStream in, int len) throws IOException {
         byte[] out = new byte[len];
         int readTotal = 0;
@@ -56,3 +56,4 @@ public final class IOUtil {
         return out;
     }
 }
+

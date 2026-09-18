@@ -464,7 +464,7 @@ public class XiaozhiAudioController {
      *  overload。問題在 bytesToShorts() 用 "bytes.length / 2" 來決定輸出
      *  short[] 的長度 - 這假設了 opusData 長度一定是雙數, 但 Opus 是
      *  variable-length codec, 每個 encoded frame 的實際 byte 數會隨音頻內容/
-     *  bitrate 浮動, 完全可能是單數。單數長度的時候, 整數除法會靜靜地截斷最後
+     *  bitrate 浮動, 完全可能是單數。單數長度的時候, 整數除法會悄悄地截斷最後
      *  一個 byte, 讓 decoder 收到一個少了一個 byte、不完整的 compressed
      *  bitstream, 觸發 corrupted stream (Opus 用 range coder, 對 bitstream
      *  完整性很敏感, 少一個 byte 就足以讓整個 frame decode 失敗) - 這也解釋了
@@ -644,7 +644,7 @@ public class XiaozhiAudioController {
      *  這裡的轉換方向 (short[] -> byte[]) 長度一定是 shorts.length*2, 保證是
      *  雙數, 沒截斷風險 - 對稱的反方向 (byte[] -> short[], 曾經叫
      *  bytesToShorts()) 就不是這樣, 因為 Opus 是 variable-length codec, 收到的
-     *  壓縮 byte[] 長度可能是單數, "/2" 整數除法會靜靜地截斷最後一個 byte, 導致
+     *  壓縮 byte[] 長度可能是單數, "/2" 整數除法會悄悄地截斷最後一個 byte, 導致
      *  真機證實的 "corrupted stream" decode error (307 次一個 session) - 2026-08
      *  已經將 onIncomingOpusFrame() 改用 Opus class 本身提供、真正接受/回傳
      *  byte[] 的 decode(byte[], FrameSize) overload, 完全繞過這個轉換, 所以
@@ -659,3 +659,4 @@ public class XiaozhiAudioController {
         return bytes;
     }
 }
+

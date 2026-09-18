@@ -1,7 +1,7 @@
 // Open Alpha2 — client logic (app-servo.js)
 // 內容: 媒體音量、servo grid (共用 buildServoGridInto())、聲納。
-// 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
-// <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
+// 全部檔案共用 window/global scope (沒有用 ES module), 載入順序由 index.html 的
+// <script src="..."> 順序決定 - 詳見 index.html 頭那段 comment。
 
 // ---------------- Media volume (STREAM_MUSIC) ----------------
 //
@@ -61,14 +61,14 @@ function servoTime() {
   return document.getElementById("servoAllTime").value;
 }
 
-/** 建立 servo grid 嘅共用邏輯, 抽出嚟做獨立 function 方便日後有第二個 grid 要建
- *  嗰陣唔使複製貼上一份幾乎一樣嘅 code。
- *  @param wrapId       外層容器嘅 id ("servoGroups")
- *  @param sliderPrefix slider input 嘅 id prefix ("servoSlider_")
- *  @param valPrefix    數值顯示 span 嘅 id prefix ("servoSliderVal_")
- *  @param sendFn       (id, angle) => void, 拖完手之後實際送出去robot嘅call (servo/one)
- *  @param readPrefix   (可選) 「讀取所有角度」結果顯示 span 嘅 id prefix - 冇傳嘅話
- *                       (Alpha2 而家仲係咁) 唔會加呢欄, 版面同以前一樣。
+/** 建立 servo grid 的共用邏輯, 抽出來做獨立 function 方便日後有第二個 grid 要建
+ *  當時不用複製貼上一份幾乎一樣的 code。
+ *  @param wrapId       外層容器的 id ("servoGroups")
+ *  @param sliderPrefix slider input 的 id prefix ("servoSlider_")
+ *  @param valPrefix    數值顯示 span 的 id prefix ("servoSliderVal_")
+ *  @param sendFn       (id, angle) => void, 拖完手之後實際送出去robot的call (servo/one)
+ *  @param readPrefix   (可選) 「讀取所有角度」結果顯示 span 的 id prefix - 沒有傳的話
+ *                       (Alpha2 現在還是這樣) 不會加這欄, 版面同以前一樣。
  */
 function buildServoGridInto(wrapId, sliderPrefix, valPrefix, sendFn, readPrefix) {
   const wrap = document.getElementById(wrapId);
@@ -126,9 +126,9 @@ function buildServoGrid() {
   }, "servoAngleVal_");
 }
 
-/** 一次過讀全部 20 軸即時角度（servo/angle-all：後端逐粒讀即寫回，約 6 秒），
- *  填入每行右邊讀數格。讀不到嗰粒顯示 -。讀取時請固定好機械人。讀數中掣
- *  disable 防連撳。 */
+/** 一次過讀全部 20 軸即時角度（servo/angle-all：後端逐顆讀即寫回，約 6 秒），
+ *  填入每行右邊讀數格。讀不到那顆顯示 -。讀取時請固定好機械人。讀數中按鈕
+ *  disable 防連按。 */
 function servoReadAllAngles() {
   const rows = document.querySelectorAll("#tab-servo [onclick^='servoRead']");
   const status = document.getElementById("servoReadStatus");
@@ -166,10 +166,10 @@ function servoReadAllAngles() {
 }
 
 /** 「全部回到原位」直接寫入原廠角度 (servoAll)，sliders 顯示值歸 home；實際擺位以寫入為準，
- *  呢個 card 純手動微調，唔係位置 single source of truth。 */
+ *  這個 card 純手動微調，不是位置 single source of truth。 */
 // STOP_RECOVERY_ACTION_ID_HINT: 「蹲下站起」(id 1510818174706) - 同
-// MainActivity.java 嘅 STOP_RECOVERY_ACTION_ID 一致, 兩處各自維護一份常量
-// (前端 JS 同後端 Java 冇共用常量嘅機制), 改嗰陣要兩邊一齊改。
+// MainActivity.java 的 STOP_RECOVERY_ACTION_ID 一致, 兩處各自維護一份常量
+// (前端 JS 同後端 Java 沒有共用常量的機制), 改當時要兩邊一齊改。
 const SERVO_RESET_ACTION_ID = "1510818174706";
 
 function resetServoGrid() {
@@ -227,7 +227,7 @@ function toggleSonar() {
   return Alpha2Api.servoSonar( { distance: distance });
 }
 
-// 真機已確認 cmd=72 開關生效，PIR 觸發正常。撳 toggle 即送；結果睇 API response ok/error，indicator 等 "alpha2_pir_state" WS event 先轉燈色。
+// 真機已確認 cmd=72 開關生效，PIR 觸發正常。按 toggle 即送；結果看 API response ok/error，indicator 等 "alpha2_pir_state" WS event 先轉燈色。
 function alpha2SetPir() {
   const on = document.getElementById("alpha2Pir").checked;
   return Alpha2Api.pirSet({on: on});
@@ -285,13 +285,13 @@ function buildAdvTuner() {
   });
   grid.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   grid.addEventListener('selectstart', function(e){ e.preventDefault(); });
-  // init 格留 "-"（未知），唔填計出嚟嘅 0 — 填 0 會碌走出廠 trim。
+  // init 格留 "-"（未知），不填計出來的 0 — 填 0 會覆蓋掉出廠 trim。
   advTrimScanned = {};
-  // 版本標記：驗瀏覽器有無食舊 JS（見唔到呢行即係 cache 緊舊版，做 Ctrl+F5）。
+  // 版本標記：驗瀏覽器有無用舊 JS（見不到這行就是 正在cache舊版，做 Ctrl+F5）。
   const statusEl = document.getElementById("advTunerStatus");
   if (statusEl) statusEl.textContent = t("servo_tuner_ready", { v: "0906l" });
 }
-// 校准掣（官方「校准」同款）——將 20 格有效 trim 順序寫入 chest EEPROM（掉電保持）。格內無數／未掃描 skip 並報告；每粒附帶送本身角度（time=100，已喺位唔會郁）。
+// 校准按鈕（官方「校准」同款）——將 20 格有效 trim 順序寫入 chest EEPROM（掉電保持）。格內無數／未掃描 skip 並報告；每粒附帶送本身角度（time=100，已在位不會動）。
 function advCalibrateAll() {
   const statusEl = document.getElementById("advTunerStatus");
   const jobs = [];
@@ -332,8 +332,8 @@ function advCalibrateAll() {
   return next();
 }
 let advPrevAngle = {};
-// 本 session 掃描／還原過 trim 的 id：Enter 寫入只跟呢啲去存 EEPROM，
-// 唔會用新頁計出嚟嘅數覆蓋出廠 trim（官方工具連線即讀，永遠有 baseline）。
+// 本 session 掃描／還原過 trim 的 id：Enter 寫入只跟這些去存 EEPROM，
+// 不會用新頁計出來的數覆蓋出廠 trim（官方工具連線即讀，永遠有 baseline）。
 let advTrimScanned = {};
 function advTunerToggle(){
   const en = document.getElementById("advTunerEnabled").checked;
@@ -355,15 +355,15 @@ function advServoTime() {
   return 500;
 }
 // offset 雙來源（同官方 tuner 一致，角:偏 = 1:3）。
-// - 即時值：格內現值 + angle變化×3（掃返嚟嘅 trim 做底：-33 再 +1 即 -30）。
+// - 即時值：格內現值 + angle變化×3（掃回來的 trim 做底：-33 再 +1 即 -30）。
 //   格內無數（-/讀失敗）先至用 3×(angle−home) 起步。
-// - 實讀值：掃描經 cmd13 讀 chest 存住的 trim 原值。寫入（cmd05）唔改 chest
-//   trim，所以唔會自動變返存值，下次掃描先對。
+// - 實際讀取值：掃描經 cmd13 讀 chest 存住的 trim 原值。寫入（cmd05）不改 chest
+//   trim，所以不會自動變回存值，下次掃描先對。
 function advFmtOff(v) {
   return (v > 0 ? "+" + v : "" + v);
 }
 // 後端 servo 讀數錯誤字串中英對照（後端 Java 無 i18n，前端認住譯；
-// 認唔到就原文直出）。
+// 認不到就原文直出）。
 function advErrText(e) {
   if (!e) return "";
   if (String(e).indexOf("no feedback") >= 0) return t("servo_tuner_err_nofeedback");
@@ -373,7 +373,7 @@ function advErrSuffix(e) {
   const m = advErrText(e);
   return m ? ((typeof uiLang !== "undefined" && uiLang === "en" ? ": " : "：") + m) : "";
 }
-// 例外物件後綴（中英冒號；訊息本身係瀏覽器/系統英文，原樣跟）。
+// 例外物件後綴（中英冒號；訊息本身是瀏覽器/系統英文，原樣跟）。
 function advEx(e) {
   if (e === undefined || e === null || e === "") return "";
   const m = (e && e.message !== undefined) ? e.message : String(e);
@@ -399,7 +399,7 @@ function advNudgeOff(id, deltaAngle) {
   el.textContent = advFmtOff(cur + deltaAngle * 3) + t("servo_tuner_live_suffix");
 }
 function advTunerSend(id, timeMs) {
-  // 加減/輸入格 Enter 一律淨送角度 cmd05（Enter 500ms，加減 100ms）。trim 只經「校准」掣成組寫入，呢度唔掂 EEPROM。
+  // 加減/輸入格 Enter 一律僅送角度 cmd05（Enter 500ms，加減 100ms）。trim 只經「校准」按鈕成組寫入，這裡不碰 EEPROM。
   if (timeMs === undefined || timeMs === null) timeMs = advServoTime();
   const inp = document.getElementById("advServoVal_" + id);
   let v = parseInt(inp.value, 10);
@@ -455,7 +455,7 @@ function advTunerReadAll() {
   }).catch(function(e){ statusEl.textContent = t("servo_tuner_read_err", { e: e.message }); });
 }
 function advTunerReset() {
-  // 復位 = 成組返 home，鬱完自動重掃 trim（chest 存值唔受郁角度影響）。格設「…」等掃，唔填計出嚟嘅數；兼清 scanned 旗 — 填 0 會寫入 EEPROM 碌走出廠 trim。
+  // 復位 = 成組回home，動完自動重新掃描 trim（chest 存值不受動角度影響）。格設「…」等掃，不填計出來的數；兼清 scanned 旗 — 填 0 會寫入 EEPROM 覆蓋掉出廠 trim。
   const homes = [];
   for (let i = 1; i <= 20; i++) {
     const cal = SERVO_CALIBRATION[i];
@@ -480,7 +480,7 @@ function advTunerReset() {
   });
 }
 function _advPerformBackupNow() {
-  // 淨備份 offsets（角度格係即時目標，寫落 file 無用）。讀失敗記 null；有效性經 advTrimScanned 判。
+  // 僅備份 offsets（角度格是即時目標，寫下 file 無用）。讀失敗記 null；有效性經 advTrimScanned 判。
   const offsets = {};
   for (let i = 1; i <= 20; i++) {
     if (!advTrimScanned[i]) { offsets[i] = null; continue; }
@@ -508,14 +508,14 @@ function _advPerformBackupNow() {
 }
 function advBackup() {
   const statusEl = document.getElementById("advTunerStatus");
-  // 必須先掃一次 offset，否則交白卷：檢測仍顯示 "-" 的格子
+  // 必須先掃一次 offset，否則沒有結果：檢測仍顯示 "-" 的格子
   let needScan = false;
   let unscanned = 0;
   for (let i = 1; i <= 20; i++) {
     const offEl = document.getElementById("advServoOff_" + i);
     const txt = offEl ? offEl.textContent.trim() : "-";
     // "-"（新頁）/"…"（準備後等掃）先自動掃；數字（pending 或存值）同「讀失敗」
-    // 唔掃——唔好碌走用戶 tune 緊嘅數。
+    // 不掃——不要覆蓋掉用戶 正在tune的數。
     if (txt === "-" || txt === "" || txt === "…") { needScan = true; unscanned++; }
   }
   if (needScan) {
@@ -540,7 +540,7 @@ function advImport(input) {
   reader.onload = function(e) {
     try {
       const data = JSON.parse(e.target.result);
-      // 淨還原 offsets（舊檔有 angles 都唔理，角度格唔郁）。
+      // 僅還原 offsets（舊檔有 angles 都不理，角度格不動）。
       let offsets = null;
       if (data && typeof data === "object" && data.offsets) {
         offsets = data.offsets;
@@ -585,3 +585,4 @@ function advImport(input) {
   };
   reader.readAsText(file);
 }
+

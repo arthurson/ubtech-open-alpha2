@@ -1,7 +1,7 @@
 // Open Alpha2 — client logic (app-mic.js)
 // 內容: 聽機械人麥克風 (WAV chunk 串流播放)、相機全螢幕。
-// 全部檔案共用 window/global scope (冇用 ES module), 載入順序由 index.html 嘅
-// <script src="..."> 順序決定 - 詳見 index.html 頭嗰段 comment。
+// 全部檔案共用 window/global scope (沒有用 ES module), 載入順序由 index.html 的
+// <script src="..."> 順序決定 - 詳見 index.html 頭那段 comment。
 
 // ---------------- Mic: listen to the robot's microphone ----------------
 //
@@ -16,20 +16,20 @@
 //
 // 目標 WebView (RK3288/Android 5.1, Chromium 39) 無 AudioWorklet (Chrome 66 先有)，
 // AudioContext {sampleRate} option 亦無效 (Chromium 39 無視，用 native rate)，故 runtime 讀
-// ctx.sampleRate，將 16kHz 來源 PCM resample 做嗰個 rate 先入 buffer。
+// ctx.sampleRate，將 16kHz 來源 PCM resample 做那個 rate 先入 buffer。
 //
 // 最終方案: ScriptProcessorNode。雖然官方已經 deprecate (建議用
-// AudioWorklet), 但呢個 API 喺 Web Audio API 推出初期 (2011年) 已經存在,
-// Chromium 39 呢類老舊 WebView 廣泛支援 - 呢個project 嘅目標裝置係 Android 5.1
-// 定死咗嘅老 WebView, 冇得指望日後升級, 呢度嘅 "deprecated" 對呢部機嚟講唔
-// 適用。ScriptProcessorNode 行喺主 thread (冇 AudioWorklet 嗰種獨立 audio
-// thread 嘅實時保證), 但完全冇 decodeAudioData() 嗰種 async decode 步驟。
+// AudioWorklet), 但這個 API 在 Web Audio API 推出初期 (2011年) 已經存在,
+// Chromium 39 這類老舊 WebView 廣泛支援 - 這個project 的目標裝置是 Android 5.1
+// 固定了的老 WebView, 沒有得指望日後升級, 這裡的 "deprecated" 對這部機來講不
+// 適用。ScriptProcessorNode 行在主 thread (沒有 AudioWorklet 那種獨立 audio
+// thread 的實時保證), 但完全沒有 decodeAudioData() 那種 async decode 步驟。
 
 let micListening = false;
 let micAbortController = null;
 let micAudioContext = null;
 let micScriptNode = null;
-// micMuted 恆 false（mic-listen 永遠唔 mute）。
+// micMuted 恆 false（mic-listen 永遠不 mute）。
 let micMuted = false;
 
 // Ring buffer 本身 (Float32, 已經 resample 做 AudioContext 實際 sample rate),
@@ -38,41 +38,41 @@ let micRingBuffer = null;
 let micRingCapacity = 0;
 let micRingWriteIdx = 0;
 let micRingReadIdx = 0;
-let micRingAvailable = 0; // 幾多個未播放嘅 sample 喺 buffer 度
-// Resample 用嘅 fractional position - 由於來源 rate (16kHz) 同目標 rate (native,
-// 例如 44100) 通常唔係整數倍數, 用一個跨越多次 feedPcmToBuffer() call 都會保留
-// 落嚟嘅 fractional position, 令連續幾個 chunk 之間嘅 resample 唔會因為除唔盡而
+let micRingAvailable = 0; // 多少個未播放的 sample 在 buffer 裡
+// Resample 用的 fractional position - 由於來源 rate (16kHz) 同目標 rate (native,
+// 例如 44100) 通常不是整數倍數, 用一個跨越多次 feedPcmToBuffer() call 都會保留
+// 下來的 fractional position, 令連續幾個 chunk 之間的 resample 不會因為除不盡而
 // 產生 累積誤差/接口爆音。
 let micResampleFracPos = 0;
 
-// WAV header 固定 44 bytes (PCM, mono, 16-bit - 同 AudioController.java 送出嚟嘅
-// 格式一致), 用嚟由每個 chunk 度分開 header 同真正嘅 PCM data。
+// WAV header 固定 44 bytes (PCM, mono, 16-bit - 同 AudioController.java 送出來的
+// 格式一致), 用來由每個 chunk 裡分開 header 同真正的 PCM data。
 const WAV_HEADER_BYTES = 44;
 
-// Server 端 (AudioController.java) 送出嚟嘅 PCM 嘅實際 sample rate - 呢個係
-// "來源" rate, 唔係 AudioContext 實際運作嘅 rate (見上面成段 comment解釋點解
-// 兩者可能唔一樣)。要同 AudioController.SAMPLE_RATE_HZ 一致。
+// Server 端 (AudioController.java) 送出來的 PCM 的實際 sample rate - 這個是
+// "來源" rate, 不是 AudioContext 實際運作的 rate (見上面成段 comment解釋為什麼
+// 兩者可能不一樣)。要同 AudioController.SAMPLE_RATE_HZ 一致。
 const MIC_SOURCE_SAMPLE_RATE = 16000;
 
-// Ring buffer 容量上限 (samples, 以 AudioContext 實際 sample rate 計) - 呢個係
-// buffer array 本身嘅 array size (絕對唔可以俾 write 溢出), 用 2 秒咁大隻係為咗
-// 應付突發嘅 network burst, 唔代表想俾實際聽到嘅 delay 去到咁耐 - 見
-// MIC_MAX_LATENCY_SEC 先至係「想聽到幾耐延遲」嘅目標。
+// Ring buffer 容量上限 (samples, 以 AudioContext 實際 sample rate 計) - 這個是
+// buffer array 本身的 array size (絕對不可以給 write 溢出), 用 2 秒這麼大隻是為了
+// 應付突發的 network burst, 不代表想給實際聽到的 delay 去到這麼久 - 見
+// MIC_MAX_LATENCY_SEC 才是「想聽到多久延遲」的目標。
 const MIC_RING_BUFFER_SEC = 2;
 
-// 想聽到嘅最大延遲 - 每次寫入新 chunk 之後, 主動將 buffer 水位削返落嚟呢個
-// 目標之下 (dropping 最舊嘅 sample), 令實際聽到嘅 delay 長期都企喺呢個水平,
-// 唔會等到 MIC_RING_BUFFER_SEC (array size 上限) 先被動咁頂住。
+// 想聽到的最大延遲 - 每次寫入新 chunk 之後, 主動將 buffer 水位削下來這個
+// 目標之下 (dropping 最舊的 sample), 令實際聽到的 delay 長期都站在這個水平,
+// 不會等到 MIC_RING_BUFFER_SEC (array size 上限) 先被動地頂住。
 //
-// 呢個數值一定要大過單個 server chunk 嘅時長 (CHUNK_MS=500ms, 見
+// 這個數值一定要大過單個 server chunk 的時長 (CHUNK_MS=500ms, 見
 // AudioController.java) - 否則一個 chunk 正常噉一次過湧入 buffer 就已經令
 // 水位衝過閾值, 逢 chunk 到達都會誤觸發削減, 表現為斷斷續續 (實測驗證過:
-// 0.3 秒會逢 chunk 必削、每秒斷幾次)。用 1.2 秒 (CHUNK_MS 嘅 2.4 倍), 留返夠
-// 緩衝俾正常嘅 chunk-to-chunk 到達節奏波動, 代價係聽到嘅 delay 都跟住有
-// 1.2 秒左右 (加埋起始 mic 初始化嗰 ~0.7 秒一次性 delay, 總延遲大約 1.8-2.2
-// 秒) - 呢個係喺「唔斷」同「delay 短」之間嘅取捨, 實測證實過細嘅閾值會斷,
-// 如果想再減 delay, 需要諗過另一套機制 (例如喺消耗端而唔係寫入端 check 水位),
-// 唔應該淨係再細調呢個數值。
+// 0.3 秒會逢 chunk 必削、每秒斷幾次)。用 1.2 秒 (CHUNK_MS 的 2.4 倍), 保留夠
+// 緩衝給正常的 chunk-to-chunk 到達節奏波動, 代價是聽到的 delay 都跟著有
+// 1.2 秒左右 (加上起始 mic 初始化那 ~0.7 秒一次性 delay, 總延遲大約 1.8-2.2
+// 秒) - 這個是在「不斷」同「delay 短」之間的取捨, 實測證實過細的閾值會斷,
+// 如果想再減 delay, 需要想過另一套機制 (例如在消耗端而不是寫入端 check 水位),
+// 不應該僅再細調這個數值。
 const MIC_MAX_LATENCY_SEC = 1.2;
 
 function micElements() {
@@ -93,9 +93,9 @@ function startMicListen() {
   micListening = true;
   const btn = micElements().btn;
   if (btn) btn.classList.add("listening");
-  // 唔傳 {sampleRate: ...} option - 呢個 option 喺目標 WebView (Chromium 39)
-  // 完全冇效, 傳咗都只係徒添一個誤導人嘅假象。用返瀏覽器/裝置嘅 native sample
-  // rate, 落面 feedPcmToBuffer() 會自己 resample 去就佢。
+  // 不傳 {sampleRate: ...} option - 這個 option 在目標 WebView (Chromium 39)
+  // 完全沒有效, 傳了都只是徒添一個誤導人的假象。用回瀏覽器/裝置的 native sample
+  // rate, 下面 feedPcmToBuffer() 會自己 resample 遷就它。
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   micAudioContext = ctx;
 
@@ -107,20 +107,20 @@ function startMicListen() {
   micRingAvailable = 0;
   micResampleFracPos = 0;
 
-  // bufferSize 4096: 大到唔會令主 thread 太頻密咁被 onaudioprocess 中斷, 細到
-  // 唔會令延遲太明顯。0 個 input channel (純播放, 唔錄音), 1 個 output
-  // channel (mono, 同 AudioController.java 送出嚟嘅格式一致)。
+  // bufferSize 4096: 大到不會令主 thread 太頻密這麼被 onaudioprocess 中斷, 細到
+  // 不會令延遲太明顯。0 個 input channel (純播放, 不錄音), 1 個 output
+  // channel (mono, 同 AudioController.java 送出來的格式一致)。
   micScriptNode = ctx.createScriptProcessor(4096, 0, 1);
   micScriptNode.onaudioprocess = micAudioProcessCallback;
   micScriptNode.connect(ctx.destination);
 
   micAbortController = new AbortController();
   runMicStreamLoop(micAbortController.signal);
-  // 頭/眼 LED 綠燈長開改咗喺 server 端做 (見 MainActivity#handleMicStream/
-  // releaseMicForAudioIo 嘅 javadoc) - 一定要等機身自己 speech_SetMIC(true) 嘅
-  // 300ms release 流程完咗先送 LED 命令, 否則會同機身自己嘅 setWakeState 副作用
-  // (自動熄耳朵 LED 嘅 LED_ACTION 廣播) 有 race, 導致「有時著,有時唔著」。
-  // 如果喺呢度(前端)一開波就送, 個時序就同機身嗰個廣播返轉頭爭, 冧返轉個問題。
+  // 頭/眼 LED 綠燈長開改了在 server 端做 (見 MainActivity#handleMicStream/
+  // releaseMicForAudioIo 的 javadoc) - 一定要等機身自己 speech_SetMIC(true) 的
+  // 300ms release 流程完了先送 LED 命令, 否則會同機身自己的 setWakeState 副作用
+  // (自動熄耳朵 LED 的 LED_ACTION 廣播) 有 race, 導致「有時著,有時不著」。
+  // 如果在這裡(前端)一開始就送, 個時序就同機身那個廣播回頭爭, 重現個問題。
 }
 
 function stopMicListen() {
@@ -141,13 +141,13 @@ function stopMicListen() {
     micAudioContext = null;
   }
   micRingBuffer = null;
-  // 呢度冇 race 問題 (冇再觸發 setWakeState), 照舊由前端主動熄燈 - server 端
-  // handleMicStream() 嘅 finally 區塊都有一個保底 stop (應付連線中斷冇經呢個掣嘅情況)。
+  // 這裡沒有 race 問題 (沒有再觸發 setWakeState), 照舊由前端主動熄燈 - server 端
+  // handleMicStream() 的 finally 區塊都有一個保底 stop (應付連線中斷沒有經這個按鈕的情況)。
   setListenLed(false);
 }
 
 /** 聽機械人(🎧)完結時頭/眼 LED 熄返 - alpha2-only, 同 setRecordingLed()/tilt LED/
- *  flashCaptureLed() 一致嘅做法。開燈喺 server 端做 (見上面 comment)。 */
+ *  flashCaptureLed() 一致的做法。開燈在 server 端做 (見上面 comment)。 */
 function setListenLed(on) {
   if (currentBackend !== "alpha2") return;
   if (on) {
@@ -253,16 +253,16 @@ function feedPcmToBuffer(wavBytes) {
 
   const ctx = micAudioContext;
   if (!ctx) return;
-  const ratio = MIC_SOURCE_SAMPLE_RATE / ctx.sampleRate; // 幾多個來源 sample 相當於 1 個輸出 sample
-  // 用返上次跨 chunk 保留落嚟嘅 fractional position (見 micResampleFracPos 宣告
-  // 嗰段 comment), 由 -ratio 度開始, 保證第一個輸出 sample 都經過同一套邏輯計算,
-  // 唔使獨立寫一次「第一個 sample 點計」嘅特殊case。
+  const ratio = MIC_SOURCE_SAMPLE_RATE / ctx.sampleRate; // 多少個來源 sample 相當於 1 個輸出 sample
+  // 用回上次跨 chunk 保留下來的 fractional position (見 micResampleFracPos 宣告
+  // 那段 comment), 由 -ratio 裡開始, 保證第一個輸出 sample 都經過同一套邏輯計算,
+  // 不用獨立寫一次「第一個 sample 如何計算」的特殊case。
   let srcPos = micResampleFracPos;
   const outSamples = [];
   while (srcPos < sampleCount) {
     const idx = Math.floor(srcPos);
-    // Nearest-neighbor (取整數位置嗰個 sample, 唔做 linear interpolation) -
-    // 對語音嚟講已經夠用, 遠比 windowed-sinc resampler 少 code、少運算。
+    // Nearest-neighbor (取整數位置那個 sample, 不做 linear interpolation) -
+    // 對語音來講已經夠用, 遠比 windowed-sinc resampler 少 code、少運算。
     const clampedIdx = Math.min(idx, sampleCount - 1);
     const int16 = view.getInt16(clampedIdx * 2, true); // true = little-endian
     outSamples.push(int16 / 32768);
@@ -272,9 +272,9 @@ function feedPcmToBuffer(wavBytes) {
 
   for (let i = 0; i < outSamples.length; i++) {
     if (micRingAvailable >= micRingCapacity) {
-      // Ring buffer array 本身爆晒 (絕對唔應該發生 - 落面主動削減邏輯應該老早
-      // 已經頂住個水位, 呢度純粹係最後一度防線) - 犧牲最舊嗰個 sample, 保持
-      // array 唔會 index 溢出。
+      // Ring buffer array 本身爆完 (絕對不應該發生 - 下面主動削減邏輯應該老早
+      // 已經頂住個水位, 這裡純粹是最後一道防線) - 犧牲最舊那個 sample, 保持
+      // array 不會 index 溢出。
       micRingReadIdx = (micRingReadIdx + 1) % micRingCapacity;
       micRingAvailable--;
     }
@@ -283,11 +283,11 @@ function feedPcmToBuffer(wavBytes) {
     micRingAvailable++;
   }
 
-  // 主動削減 backlog: 如果水位已經超過 MIC_MAX_LATENCY_SEC 想要嘅目標, 即刻
-  // drop 最舊嗰批 sample 落返去目標水位, 而唔係等佢慢慢爬到 MIC_RING_BUFFER_SEC
-  // (array size 上限) 先俾動咁頂住。呢度先係真正決定用家實際聽到幾耐延遲嘅
-  // 機制 - 見 MIC_MAX_LATENCY_SEC 宣告嗰段解釋 (包括點解閾值一定要大過
-  // CHUNK_MS, 同呢個取捨嘅實測依據)。
+  // 主動削減 backlog: 如果水位已經超過 MIC_MAX_LATENCY_SEC 想要的目標, 即刻
+  // drop 最舊那批 sample 回到目標水位, 而不是等它慢慢爬到 MIC_RING_BUFFER_SEC
+  // (array size 上限) 先被動地頂住。這裡才是真正決定用家實際聽到多久延遲的
+  // 機制 - 見 MIC_MAX_LATENCY_SEC 宣告那段解釋 (包括為什麼閾值一定要大過
+  // CHUNK_MS, 同這個取捨的實測依據)。
   const maxLatencySamples = Math.floor(ctx.sampleRate * MIC_MAX_LATENCY_SEC);
   if (micRingAvailable > maxLatencySamples) {
     const toDrop = micRingAvailable - maxLatencySamples;
@@ -296,11 +296,11 @@ function feedPcmToBuffer(wavBytes) {
   }
 }
 
-/** ScriptProcessorNode 嘅 onaudioprocess callback - 由瀏覽器 audio graph 定時
+/** ScriptProcessorNode 的 onaudioprocess callback - 由瀏覽器 audio graph 定時
  *  觸發 (由 bufferSize 決定觸發頻率, 大約每 bufferSize/sampleRate 秒一次,
- *  例如 4096/44100 ≈ 93ms), 喺主 thread 執行。由 ring buffer 度攞夠數嘅
- *  sample 出嚟填 output, buffer 唔夠就輸出靜音 (underrun), 唔會好似
- *  decodeAudioData() 嗰套做法咁「跳前一截」。*/
+ *  例如 4096/44100 ≈ 93ms), 在主 thread 執行。由 ring buffer 裡拿夠數的
+ *  sample 出來填 output, buffer 不夠就輸出靜音 (underrun), 不會好似
+ *  decodeAudioData() 那套做法那樣「跳前一截」。*/
 function micAudioProcessCallback(event) {
   const output = event.outputBuffer.getChannelData(0); // mono, single channel
   for (let i = 0; i < output.length; i++) {
@@ -330,4 +330,5 @@ function toggleCameraFullscreen() {
     }
   }
 }
+
 

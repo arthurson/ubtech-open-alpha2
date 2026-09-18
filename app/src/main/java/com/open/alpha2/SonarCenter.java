@@ -106,7 +106,7 @@ public final class SonarCenter {
         // 不是只給 LLM 隨時查詢。這段一定要包在獨立 thread 裡才可以做
         // (xiaozhiSendDetectTextSafely() 裡面有 Thread.sleep + 阻塞式 WebSocket
         // send), 保持 onReceive() 本身
-        // 立刻返回, 不會阻住這個 broadcast dispatch。
+        // 立刻返回, 不會阻擋這個 broadcast dispatch。
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -138,10 +138,10 @@ public final class SonarCenter {
      *  the front-end chart can plot live triggered/clear state against the threshold
      *  line set via servo/sonar.
      *
-     *  結論：呢台機 sonar 讀數經獨立 broadcast "com.ubtechinc.sonar.distance"
-     *  (RobotWire.SONAR_DISTANCE_ACTION，extra 係 parse 好嘅 int "sonar_distance")，
-     *  唔經呢條 AIDL rcv 路。呢個方法留給其他機身/firmware 版本；
-     *  呢台機 cmd 恆等於 4 會提早 return，唔影響真正生效嗰條路。 */
+     *  結論：這台機 sonar 讀數經獨立 broadcast "com.ubtechinc.sonar.distance"
+     *  (RobotWire.SONAR_DISTANCE_ACTION，extra 是 parse 好的 int "sonar_distance")，
+     *  不經這條 AIDL rcv 路。這個方法留給其他機身/firmware 版本；
+     *  這台機 cmd 恆等於 4 會提早 return，不影響真正生效那條路。 */
     public void handleChestObstacleFrame(byte[] bytes, int len) {
         if (bytes == null || len < 2) {
             return;
@@ -170,8 +170,8 @@ public final class SonarCenter {
 
     // -- MCP tools (XiaozhiBridge callTool switch 轉調) --
 
-    /** MCP tool 共用回包：對應 XiaozhiBridge callTool switch 嗰兩個 local
-     *  (isError/resultText)，經下面 mcp*() 帶返出去。 */
+    /** MCP tool 共用回包：對應 XiaozhiBridge callTool switch 那兩個 local
+     *  (isError/resultText)，經下面 mcp*() 帶出去。 */
     public static final class McpResult {
         public final boolean isError;
         public final String resultText;
@@ -184,7 +184,7 @@ public final class SonarCenter {
         static McpResult missingArg(String name) { return err("missing required argument: " + name); }
     }
 
-    /** self.sensors.get_pir 本體 (XiaozhiBridge 轉調)。純讀，唔掂硬件。 */
+    /** self.sensors.get_pir 本體 (XiaozhiBridge 轉調)。純讀，不碰硬件。 */
     public McpResult mcpGetPir() {
         int state = getPirTriggeredState();
         String stateStr = state < 0 ? "unknown" : (state == 1 ? "triggered" : "clear");
@@ -206,7 +206,7 @@ public final class SonarCenter {
                 String.valueOf(code) + " (chestReady=" + ready + ")");
     }
 
-    /** self.sensors.get_sonar 本體 (XiaozhiBridge 轉調)。純讀，唔掂硬件。 */
+    /** self.sensors.get_sonar 本體 (XiaozhiBridge 轉調)。純讀，不碰硬件。 */
     public McpResult mcpGetSonar() {
         return McpResult.ok("{\"distance_cm\":" + getSonarDistanceCm()
                 + ",\"threshold_cm\":" + getSonarThreshold() + "}");
@@ -219,7 +219,7 @@ public final class SonarCenter {
             return McpResult.err("distance_cm is required");
         }
         int distanceCm = arguments.optInt("distance_cm");
-        // 同 servo/sonar HTTP 一套（0-100），唔啱即報錯。
+        // 同 servo/sonar HTTP 一套（0-100），不合即報錯。
         if (distanceCm < 0 || distanceCm > 100) {
             return McpResult.err("distance_cm must be between 0 and 100, got: " + distanceCm);
         }
@@ -232,3 +232,6 @@ public final class SonarCenter {
                 String.valueOf(code) + " (chestReady=" + ready + ")");
     }
 }
+
+
+

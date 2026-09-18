@@ -99,9 +99,9 @@ public class CameraController {
     private volatile Frame lastFrame;
     private final Set<FrameListener> listeners = new CopyOnWriteArraySet<>();
 
-    /** Thread.sleep 共用形（UbxPlayer.joinQuietly 同系）：瞇 ms；被 interrupt 就補返
+    /** Thread.sleep 共用形（UbxPlayer.joinQuietly 同系）：瞇 ms；被 interrupt 就補回
      *  interrupt flag 並回 false。caller 按自己回傳型別收尾（PhotoResult.fail／
-     *  return false／照行）。之前各處逐字一樣嘅 try/catch 收斂到呢度。 */
+     *  return false／照行）。之前各處逐字一樣的 try/catch 收斂到這裡。 */
     private static boolean sleepQuietly(long ms) {
         try {
             Thread.sleep(ms);
@@ -112,7 +112,7 @@ public class CameraController {
         return true;
     }
 
-    /** getSupported*Sync 三份共用：逐個 index 試開相機（之前三份逐字一樣）。開唔到回 null。 */
+    /** getSupported*Sync 三份共用：逐個 index 試開相機（之前三份逐字一樣）。開不到回 null。 */
     private static android.hardware.Camera openFallbackCamera() {
         for (int idx : CAMERA_INDEX_CANDIDATES) {
             try { return android.hardware.Camera.open(idx); } catch (Exception ignored) {}
@@ -120,15 +120,15 @@ public class CameraController {
         return null;
     }
 
-    /** getSupported*Sync 三份共用 finally：放掉臨時開嘅相機＋開閘（之前三份逐字一樣）。 */
+    /** getSupported*Sync 三份共用 finally：放掉臨時開的相機＋開閘（之前三份逐字一樣）。 */
     private static void releaseTmpAndCountDown(android.hardware.Camera tmp, CountDownLatch latch) {
         if (tmp != null) { try { tmp.release(); } catch (Exception ignored) {} }
         latch.countDown();
     }
 
     /** CountDownLatch.await 共用形（sleepQuietly 同系）：等 timeout；被 interrupt
-     *  就補返 interrupt flag 並回 false。注意：timeout 照回 true——舊碼三處都唔睇
-     *  await() 本身回值，淨係理 interrupt，呢度保留呢個語義。 */
+     *  就補回 interrupt flag 並回 false。注意：timeout 照回 true——舊碼三處都不看
+     *  await() 本身回值，僅理 interrupt，這裡保留這個語義。 */
     private static boolean awaitQuietly(CountDownLatch latch, long timeout, TimeUnit unit) {
         try {
             latch.await(timeout, unit);
@@ -518,7 +518,7 @@ public class CameraController {
         return out.toByteArray();
     }
 
-    /** preview／picture 共用嘅最近面積匹配（之前兩份除咗讀邊個 list 外逐字一樣）。 */
+    /** preview／picture 共用的最近面積匹配（之前兩份除了讀哪個 list 外逐字一樣）。 */
     private static Camera.Size closestSizeByArea(java.util.List<Camera.Size> sizes,
             int wantWidth, int wantHeight) {
         if (sizes == null || sizes.isEmpty()) {
@@ -576,9 +576,9 @@ public class CameraController {
         static PhotoResult fail(String error) { return new PhotoResult(null, error); }
     }
 
-    // 真正單張拍攝：唔用 preview frame（冇經過 HAL 完整單張 AE/AF/降噪 pipeline），
+    // 真正單張拍攝：不用 preview frame（沒有經過 HAL 完整單張 AE/AF/降噪 pipeline），
     // 用 Camera1 legacy API camera.takePicture(shutter, raw, jpeg) 拍一次；
-    // jpeg callback 嘅先係 driver 做完 AE/AF 收斂＋完整 ISP pipeline 嘅相。
+    // jpeg callback 的才是 driver 做完 AE/AF 收斂＋完整 ISP pipeline 的相。
     // （要求 start() 已成功；用現有 camera 實例。）
     //
     // Camera1 API 的 takePicture() 會讓 driver 自動 stopPreview() (拍完照不會自動
@@ -1067,3 +1067,4 @@ public class CameraController {
         }
     }
 }
+

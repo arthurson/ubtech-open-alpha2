@@ -358,8 +358,8 @@ public class XiaozhiClient {
      *  完事之後還會自動由 kDeviceStateSpeaking 轉回 kDeviceStateListening (若
      *  auto-continue), 這才是最貼近這台機「不用按鍵、開了那個 toggle 就可以持續
      *  對話」這個用戶體驗的正確 mode。
-     *  (manual mode 係設計給「按住鍵才錄、放手就立刻送 listen stop」用的，
-     *  無自動斷句，唔啱呢度。) */
+     *  (manual mode 是設計給「按住鍵才錄、放手就立刻送 listen stop」用的，
+     *  無自動斷句，不合這裡。) */
     public void sendListenStart() throws IOException {
         sendListenControl("start", "auto");
     }
@@ -380,11 +380,11 @@ public class XiaozhiClient {
      *  detector fires" with an example carrying free-form text ("Hi XiaoZhi").
      *
      *  長文字要帶 "source":"text" (非官方文檔欄位, 第三方實作有):
-     *  server 用佢分辨 wake-word 短句定打字完整句, 無就會套「應該好短」驗證
+     *  server 用它分辨 wake-word 短句定打字完整句, 無就會套「應該好短」驗證
      *  ("detect is only for wake words")。
      *
-     *  完整格式仲要帶 "session_id" (同 sendMcpEnvelope() pattern,
-     *  sessionId 由 hello 拿到): 無會被當匿名事件跌返預設驗證規則。 */
+     *  完整格式還要帶 "session_id" (同 sendMcpEnvelope() pattern,
+     *  sessionId 由 hello 拿到): 無會被當匿名事件跌回預設驗證規則。 */
     public void sendListenDetectText(String text) throws IOException {
         try {
             JSONObject msg = new JSONObject();
@@ -426,7 +426,7 @@ public class XiaozhiClient {
             hello.put("type", "hello");
             hello.put("version", PROTOCOL_VERSION);
             // "response_mode":"auto" (官方 websocket.md 無文檔, 但實測行得通的
-            // 第三方實作有帶；server 可能用佢判斷 device 是否支援文字輸入，
+            // 第三方實作有帶；server 可能用它判斷 device 是否支援文字輸入，
             // 無就 detect 文字訊息完全無回應)。
             hello.put("response_mode", "auto");
             JSONObject features = new JSONObject();
@@ -519,14 +519,14 @@ public class XiaozhiClient {
                     }
                     case 0x8: // close
                         // close frame payload 通常帶 2-byte close code (可選再加
-                        // UTF-8 reason, 見 RFC 6455 §5.5.1) - 盡量解讀出嚟幫診斷。
+                        // UTF-8 reason, 見 RFC 6455 §5.5.1) - 盡量解讀出來幫診斷。
                         Log.w(TAG, "Server sent WebSocket close frame" + describeCloseFrame(frame.payload));
                         // 收到 close 要回一個 close 完成雙向 handshake (RFC 6455),
-                        // 再用 labeled break 立刻跳出 read loop (唔係只跳 switch),
+                        // 再用 labeled break 立刻跳出 read loop (不是只跳 switch),
                         // 等 finally 可以立刻執行 (觸發重連)。
                         //
                         // 用獨立 serverClosed 旗標記「server 主動 close」，
-                        // 唔靠 open 共用旗標 (同用戶 disconnect 分辨)。
+                        // 不靠 open 共用旗標 (同用戶 disconnect 分辨)。
                         serverClosed[0] = true;
                         try {
                             sendFrame(out, (byte) 0x8, new byte[0]);
@@ -552,8 +552,8 @@ public class XiaozhiClient {
                 Log.i(TAG, "Read loop ended: " + e.getMessage());
             }
         } finally {
-            // "open 仲未被改過 (真正意外, 例如 IOException) 或者 serverClosed"
-            // 兩種都算意外斷線，觸發重連。用戶自己 disconnect() 唔經呢條路。
+            // "open 還未被改過 (真正意外, 例如 IOException) 或者 serverClosed"
+            // 兩種都算意外斷線，觸發重連。用戶自己 disconnect() 不經這條路。
             boolean wasUnexpected = open || serverClosed[0];
             open = false;
             closeQuietly();
@@ -621,7 +621,7 @@ public class XiaozhiClient {
 
         switch (type) {
             case "stt":
-                // 區分 server 完全沒收到 audio / 收到但辨識唔到 / 辨識到但 llm/tts 無跟上。
+                // 區分 server 完全沒收到 audio / 收到但辨識不到 / 辨識到但 llm/tts 無跟上。
                 Log.i(TAG, "STT result: " + msg.optString("text"));
                 EventBus.get().publish(EVT_STT, "{\"text\":\"" + jsonEscape(msg.optString("text")) + "\"}");
                 break;
@@ -693,7 +693,7 @@ public class XiaozhiClient {
                 case "initialize": {
                     // 官方 mcp-protocol.md: backend->device initialize 的
                     // params.capabilities.vision 帶 device POST 照片做 explain 的
-                    // url/token, 存落嚟俾 takePhotoAndExplain 用。
+                    // url/token, 存下來給 takePhotoAndExplain 用。
                     JSONObject initParams = payload.optJSONObject("params");
                     JSONObject initCapabilities = initParams != null
                             ? initParams.optJSONObject("capabilities") : null;
@@ -748,8 +748,8 @@ public class XiaozhiClient {
                     JSONObject arguments = params != null ? params.optJSONObject("arguments") : null;
                     if (arguments == null) arguments = new JSONObject();
                     // 耗時 tool (如 take_photo + vision round trip 可阻塞 1-2s)
-                    // 唔可以直接喺 readLoop thread 同步做，否則阻塞期間回唔到
-                    // ping/收唔到其他 message，底層 socket 會被判死
+                    // 不可以直接在 readLoop thread 同步做，否則阻塞期間回不到
+                    // ping/收不到其他 message，底層 socket 會被判死
                     // ("SSLProtocolException: bad write retry")。搬去獨立
                     // background thread，readLoop 繼續讀下一個 frame。
                     // sendMcpResult()/sendMcpError() 經 synchronized sendFrame()，
@@ -1033,3 +1033,5 @@ public class XiaozhiClient {
                 .replace("\n", "\\n").replace("\r", "\\r");
     }
 }
+
+
