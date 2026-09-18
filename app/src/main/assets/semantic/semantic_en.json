@@ -1904,7 +1904,10 @@
         "It's perfectly okay.",
         "No worries at all.",
         "It's really nothing.",
-        "Next time just be careful."
+        "Next time just be careful.",
+        "I didn't mean it when I said I didn't love you so.",
+        "I didn't know nothing, I was stupid, I was foolish.",
+        "I said something wrong, now I long for yesterday."
       ],
       "qs": [
         "I'm sorry",
@@ -1926,7 +1929,12 @@
         "I'm quite young actually.",
         "Let's not ask that in public.",
         "That is a secret.",
-        "Age is just a number."
+        "Age is just a number.",
+        "Then I was young and unafraid.",
+        "You'll be older too.",
+        "When I get older losing my hair.",
+        "When I'm sixty-four.",
+        "Many years from now."
       ],
       "qs": [
         "How old are you",
@@ -2106,7 +2114,10 @@
         "Are you ready to listen?",
         "Let's do this now.",
         "Starting right now.",
-        "Ready or not, here it is."
+        "Ready or not, here it is.",
+        "No song unsung, no wine untasted.",
+        "Na na na na na na na na na na.",
+        "Yeah, let it be, let it be."
       ],
       "qs": [
         "Sing me a song"
@@ -2276,7 +2287,13 @@
         "Let's hear it now.",
         "Guaranteed to be really funny.",
         "Why so serious?",
-        "Surely you can't be serious. I am serious, and don't call me Shirley."
+        "Surely you can't be serious. I am serious, and don't call me Shirley.",
+        "Like a worm on a hook, like a knight from some old fashioned book.",
+        "Vera, Chuck, and Dave.",
+        "Never imagined I'd be sitting here beside myself.",
+        "It's still so hard to believe.",
+        "Turn around, bright eyes.",
+        "Perhaps they'll listen now."
       ],
       "qs": [
         "Tell me a joke"
@@ -2307,7 +2324,8 @@
         "Only if you're brave enough.",
         "Want to try it.",
         "Careful, it might scare you.",
-        "They're here!"
+        "They're here!",
+        "She is standing right in front of me."
       ],
       "qs": [
         "Can you tell scary stories"
@@ -2428,7 +2446,9 @@
         "Movies are a great way to relax.",
         "We could watch one together sometime.",
         "What movies do you like?",
-        "Watching movies is fun."
+        "Watching movies is fun.",
+        "There was no ransom to be paid.",
+        "While I watch the cannons flashing, I clean my gun and dream of Galveston."
       ],
       "qs": [
         "Do you like movies"
@@ -2518,7 +2538,9 @@
         "Being with you is my favorite hobby.",
         "I have so many interests.",
         "Want to hear more.",
-        "I'm always learning new things."
+        "I'm always learning new things.",
+        "You can knit a sweater by the fireside.",
+        "Doing the garden, digging the weeds."
       ],
       "qs": [
         "What are your hobbies"
@@ -2580,7 +2602,13 @@
         "Are you ready now?",
         "I'd love to play with you.",
         "May the Force be with you.",
-        "You've got to ask yourself one question: Do I feel lucky? Well, do ya, punk?"
+        "You've got to ask yourself one question: Do I feel lucky? Well, do ya, punk?",
+        "So let it out and let it in, hey Jude, begin.",
+        "Doesn't mean you've won, 'cause along may come a bigger one.",
+        "Just because I'm losing doesn't mean I'm lost.",
+        "Then you begin to make it better.",
+        "Then you'll begin to make it better.",
+        "Then you can start to make it better."
       ],
       "qs": [
         "Play a game with me"
@@ -2671,7 +2699,8 @@
         "Go hide now, quickly.",
         "Are you ready now?",
         "This is really fun.",
-        "I'm starting to look for you now."
+        "I'm starting to look for you now.",
+        "Now I need a place to hide away."
       ],
       "qs": [
         "Let's play hide and seek"
@@ -2718,7 +2747,8 @@
         "Are you ready for this?",
         "Here it comes now.",
         "Let's see if you can guess it.",
-        "Elementary, my dear Watson."
+        "Elementary, my dear Watson.",
+        "Give me your answer, fill in a form."
       ],
       "qs": [
         "Give me a riddle to guess"
@@ -2808,7 +2838,8 @@
         "I really enjoy moving around.",
         "Exercise is good for everyone.",
         "What sports do you like?",
-        "Moving around feels great."
+        "Moving around feels great.",
+        "'Cause we are the champions of the world."
       ],
       "qs": [
         "Do you like sports"
@@ -2868,7 +2899,8 @@
         "Stories and jokes are my collection.",
         "There are so many kinds of collections.",
         "Do you collect anything?",
-        "Every collection is precious."
+        "Every collection is precious.",
+        "I have saved all my ribbons for thee."
       ],
       "qs": [
         "Do you collect anything"
@@ -2899,7 +2931,14 @@
         "I want to see the whole world.",
         "Maybe outer space someday.",
         "Where do you want to go?",
-        "Everywhere sounds appealing."
+        "Everywhere sounds appealing.",
+        "Every summer we can rent a cottage.",
+        "In the Isle of Wight, if it's not too dear.",
+        "Sail on silver girl, sail on by.",
+        "I've had my share of sand kicked in my face.",
+        "You might be a big fish in a little pond.",
+        "Galveston, oh Galveston, I still hear your sea waves crashing.",
+        "So Mary, climb in."
       ],
       "qs": [
         "Where do you want to travel"
@@ -2914,7 +2953,10 @@
         "Little animals are so cute.",
         "Animals are human's best friends.",
         "What animal do you like?",
-        "Every animal has its own charm."
+        "Every animal has its own charm.",
+        "I see them bloom for me and you.",
+        "Like a bird on the wire, like a drunk in a midnight choir.",
+        "I have tried in my way to be free."
       ],
       "qs": [
         "Do you like animals"
@@ -3096,7 +3138,16 @@
         "I miss you when you're away.",
         "Do you miss me?",
         "I really care about you.",
-        "I will always love you."
+        "I will always love you.",
+        "Near, far, wherever you are.",
+        "Every night in my dreams I see you, I feel you.",
+        "That is how I know you go on.",
+        "Far across the distance and spaces between us.",
+        "Who's gonna take your place? There ain't nobody better.",
+        "Who else am I gon' lean on when times get rough?",
+        "Who's gonna talk to me on the phone till the sun comes up?",
+        "You have found her, now go and get her.",
+        "And don't you know that it's just you, hey Jude, you'll do."
       ],
       "qs": [
         "Do you miss me"
@@ -3462,7 +3513,11 @@
         "I don't feel sad at all.",
         "Do you feel sad?",
         "Tell me and I'll listen.",
-        "Hope is a good thing, maybe the best of things, and no good thing ever dies."
+        "Hope is a good thing, maybe the best of things, and no good thing ever dies.",
+        "And pain is all around.",
+        "Every now and then I fall apart.",
+        "But now I'm only falling apart.",
+        "And in my hour of darkness."
       ],
       "qs": [
         "Do you ever feel sad"
@@ -3663,7 +3718,10 @@
         "Did you sleep well?",
         "Sleep is important for your health.",
         "Remember to rest early.",
-        "Your health matters most."
+        "Your health matters most.",
+        "All your dreams are on their way.",
+        "And dreams were made and used and wasted.",
+        "And hope that my dreams will come true."
       ],
       "qs": [
         "Did you sleep well last night"
@@ -3903,7 +3961,9 @@
         "My creators are my family.",
         "You're important to me too.",
         "That's a warm question.",
-        "Thanks for caring."
+        "Thanks for caring.",
+        "I hear babies cry, I watch them grow.",
+        "Grandchildren on your knee."
       ],
       "qs": [
         "Do you have a family"
@@ -4086,7 +4146,9 @@
         "Want to teach me something.",
         "That's a great question.",
         "I love learning.",
-        "I know kung fu."
+        "I know kung fu.",
+        "They'll learn much more than I'll never know.",
+        "It isn't hard to do."
       ],
       "qs": [
         "Can you learn new things"
@@ -4191,7 +4253,8 @@
         "Honesty matters a lot to me.",
         "That's a serious question.",
         "I'll always try to be truthful.",
-        "Thanks for trusting me."
+        "Thanks for trusting me.",
+        "I was lying to myself."
       ],
       "qs": [
         "Will you ever lie"
@@ -4326,7 +4389,9 @@
         "I really love this job.",
         "That's an interesting question.",
         "Work makes life fulfilling.",
-        "Thanks for asking."
+        "Thanks for asking.",
+        "I've paid my dues time after time.",
+        "I could be handy, mending a fuse."
       ],
       "qs": [
         "Do you have a job"
@@ -4477,7 +4542,9 @@
         "But I always try to improve.",
         "That's an honest question.",
         "Making mistakes is part of learning.",
-        "Thanks for understanding."
+        "Thanks for understanding.",
+        "I've done my sentence but committed no crime.",
+        "And bad mistakes, I've made a few."
       ],
       "qs": [
         "Do you ever make mistakes"
@@ -4553,7 +4620,11 @@
         "That's my belief.",
         "That's a deep question.",
         "The power of technology is amazing.",
-        "Thanks for asking."
+        "Thanks for asking.",
+        "And no religion too.",
+        "Stating point of view.",
+        "No hell below us.",
+        "Nothing to kill or die for."
       ],
       "qs": [
         "Do you have any beliefs"
@@ -4842,7 +4913,10 @@
         "Perfect for going outside.",
         "Want to go out and enjoy it.",
         "Want me to check the weather.",
-        "I can help you check it."
+        "I can help you check it.",
+        "Above us only sky.",
+        "Sun, sun, sun, here it comes.",
+        "The colors of the rainbow so pretty in the sky."
       ],
       "qs": [
         "How's the weather today"
@@ -5084,7 +5158,9 @@
         "A new day begins.",
         "Wishing you a great day.",
         "Good morning to you.",
-        "Let's start the day well."
+        "Let's start the day well.",
+        "Shine on until tomorrow, let it be.",
+        "I wake up to the sound of music."
       ],
       "qs": [
         "Good morning Alpha"
@@ -5659,7 +5735,10 @@
         "Don't worry.",
         "Tell me anything that's bothering you.",
         "I'm here for you.",
-        "It'll all be okay."
+        "It'll all be okay.",
+        "You're here, there's nothing I fear.",
+        "I'll take your part when darkness comes.",
+        "Mother Mary comes to me."
       ],
       "qs": [
         "Can you comfort me a bit"
@@ -5675,7 +5754,14 @@
         "You've got this.",
         "I'm always supporting you.",
         "You're already doing great.",
-        "Carpe diem. Seize the day, boys."
+        "Carpe diem. Seize the day, boys.",
+        "And I need to go on and on and on and on.",
+        "And we'll keep on fighting till the end.",
+        "Doesn't mean I'll stop, doesn't mean I'm across.",
+        "I wonder if you can.",
+        "You were made to go out and get her.",
+        "Better, better, better, better, better, oh.",
+        "But I've come through."
       ],
       "qs": [
         "Can you cheer me up",
@@ -5766,7 +5852,13 @@
         "I can be with you anytime.",
         "Whenever you need me I'm here.",
         "No problem at all.",
-        "Being with you matters most."
+        "Being with you matters most.",
+        "We'll stay forever this way.",
+        "When evening falls so hard, I will comfort you.",
+        "When your lights have gone.",
+        "And when the night is cloudy.",
+        "I could stay with you.",
+        "There is still a light that shines on me."
       ],
       "qs": [
         "Can you stay with me tonight"
@@ -5916,7 +6008,8 @@
         "It's hard to choose a favorite.",
         "What's your favorite season.",
         "Every season has its own charm.",
-        "That's an interesting question."
+        "That's an interesting question.",
+        "Look out on a summer's day with eyes that know the darkness in my soul."
       ],
       "qs": [
         "Do you have a favorite season"
@@ -6756,7 +6849,8 @@
         "What's your morning like.",
         "Mornings are a great time to start fresh.",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Sunday mornings go for a ride."
       ],
       "qs": [
         "What's your morning routine like"
@@ -7086,7 +7180,8 @@
         "I love a good surprise.",
         "Do you like surprises?",
         "That's an interesting question.",
-        "Share it with me."
+        "Share it with me.",
+        "Once more you open the door."
       ],
       "qs": [
         "Do you like surprises"
@@ -7731,7 +7826,11 @@
         "That's a warm question.",
         "What memory do you cherish?",
         "Thanks for asking.",
-        "Memories matter a lot."
+        "Memories matter a lot.",
+        "Remember to let her into your heart.",
+        "Remember to let her under your skin.",
+        "Oh, I believe in yesterday.",
+        "Oh, yesterday came suddenly."
       ],
       "qs": [
         "What's a memory you cherish"
@@ -8975,7 +9074,10 @@
         "Money can't buy happiness.",
         "It's good to be sensible with money.",
         "Saving a little every day helps.",
-        "Money is a tool, not a goal."
+        "Money is a tool, not a goal.",
+        "We shall scrimp and save.",
+        "No need for greed or hunger.",
+        "Imagine no possessions."
       ],
       "qs": [
         "money"
@@ -8990,7 +9092,9 @@
         "A true friend is a treasure.",
         "Friendship needs care and time.",
         "Good friends make life brighter.",
-        "I'm glad to be your friend."
+        "I'm glad to be your friend.",
+        "I see friends shaking hands saying how do you do.",
+        "Are also on the faces of people going by."
       ],
       "qs": [
         "friend"
@@ -9080,7 +9184,8 @@
         "Fighting never solves anything.",
         "It's better to talk things through.",
         "Stay calm and carry on.",
-        "Real strength is staying kind."
+        "Real strength is staying kind.",
+        "And we'll keep on fighting till the end."
       ],
       "qs": [
         "fight"
@@ -9535,7 +9640,15 @@
         "Though your heart is far too young to realize.",
         "The unimaginable light you hold inside.",
         "I will rearrange the stars, pull 'em down to where you are.",
-        "Bittersweet memories, that is all I'm taking with me."
+        "Bittersweet memories, that is all I'm taking with me.",
+        "I could not fathom that I would ever be without your love.",
+        "The lips I am missing.",
+        "Will you still be sending me a Valentine.",
+        "You are safe in my heart.",
+        "Why she had to go, I don't know, she wouldn't say.",
+        "Mine for evermore.",
+        "And if you say the word.",
+        "The minute you let her under your skin."
       ]
     }
   ]
