@@ -137,8 +137,16 @@ public final class VoskController {
     private volatile long lastFinalAtMs = 0;
     private static final long DEDUP_WINDOW_MS = 4000;
 
+    /** final 平均 word conf 低過呢個就當底噪幻聽掉咗佢 (唔發佈、
+     *  唔入配對；logcat 照留 "low-conf final dropped" 供校準)。
+     *  -1＝未知 (舊 lib／無 result 陣列) 照放行，不誤殺。
+     *  校準史：0.70 攔到法色級幻聽但 margin 太薄，用戶要求回落 0.45
+     *  （只擋明顯垃圾如夫/假/法 0.36~0.40，真人說話優先唔誤殺；
+     *  幻聽主要靠去重＋前端閘＋文法擋）。 */
+    private static final double MIN_FINAL_CONF = 0.45;
+
     /** TTS pause 序號 - onTtsStarted() 加一, onTtsFinished() 延遲 resume 當時
-     *  對不上就不 resume (新一句 TTS 已經正在開始, 即 resume 會當場製造迴音)。 */
+     *  對唔上就唔 resume (新一句 TTS 已經開始緊, 即 resume 會當場製造迴音)。 */
     private volatile int ttsPauseSeq = 0;
     /** TTS 播完多少 ms 先 resume decode - 等房間殘響散去, 否則自己句尾誤認
      *  轉頭造成自言自語迴圈。 */
@@ -555,6 +563,13 @@ public final class VoskController {
             } else {
                 rec = new Recognizer(model, SAMPLE_RATE);
             }
+            // word 置信度：final JSON 先有 result/conf 陣列，先做到噪音閘
+            // (見 onVoskFinal；底噪幻聽通常低分，真人說話高分)。舊版 lib 無
+            // 呢個 method 就當無事 (fail-open，下面 avgWordConf 回 -1 照放行)。
+            try {
+                rec.setWords(true);
+            } catch (Throwable ignore) {
+            }
             // endpointer 調校已移除：Recognizer 一律用 library 預設（之前跟 persist 偏好）。
             service = new SpeechService(rec, SAMPLE_RATE);
             service.startListening(new RecognitionListener() {
@@ -620,12 +635,20 @@ public final class VoskController {
 
     /** 成句結果：沿用舊管線（氣泡＋語意配對＋TTS）。
      *  跑在 SpeechService listener thread（main）。絕不 throw。
-     *  去重：同一全文 4 秒內再派就吞掉 (Vosk onResult/onFinalResult 會將
-     *  同一句派兩次；靜音環境重複噪音 final 亦擋一次，不會連珠炮自言自語)。 */
+     *  兩重閘：
+     *   1) 認可度閘 - 平均 word conf 低過 MIN_FINAL_CONF 即當底噪幻聽掉咗
+     *      (唔發佈唔配對；未知 conf 回 -1 照放行，不誤殺真人說話)。
+     *   2) 去重 - 同一全文 4 秒內再派就吞掉 (Vosk onResult/onFinalResult
+     *      會將同一句派兩次；靜音環境重複噪音 final 亦擋一次)。 */
     private void onVoskFinal(String hypothesis) {
         try {
             String text = transcript(hypothesis, "text");
             if (text == null || text.isEmpty()) return;
+            double conf = avgWordConf(hypothesis);
+            if (conf >= 0 && conf < MIN_FINAL_CONF) {
+                Log.i(TAG, "low-conf final dropped (" + conf + "): " + text);
+                return;
+            }
             long now = System.currentTimeMillis();
             if (text.equals(lastFinalText) && now - lastFinalAtMs < DEDUP_WINDOW_MS) {
                 Log.i(TAG, "dup final skipped: " + text);
@@ -633,12 +656,37 @@ public final class VoskController {
             }
             lastFinalText = text;
             lastFinalAtMs = now;
-            // 斷症用：log 下認到什麼（EventBus 只帶去前端，logcat 看不到內容）。
-            Log.i(TAG, "final: " + text);
+            // 斷症用：log 下認到什麼＋幾多分（EventBus 只帶去前端，logcat 看不到內容）。
+            Log.i(TAG, "final: " + text + " conf="
+                    + (conf < 0 ? "?" : String.format("%.2f", conf)));
             EventBus.get().publish("asr_result",
                     "{\"text\":\"" + escape(text) + "\"}");
         } catch (Throwable e) {
             Log.w(TAG, "onVoskFinal failed", e);
+        }
+    }
+
+    /** final JSON result 陣列平均 word conf；無 result 陣列／解析失敗
+     *  回 -1 (未知，呼叫方照放行)。 */
+    private static double avgWordConf(String json) {
+        if (json == null) return -1;
+        try {
+            JSONArray arr = new JSONObject(json).optJSONArray("result");
+            if (arr == null || arr.length() == 0) return -1;
+            double sum = 0;
+            int n = 0;
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject w = arr.optJSONObject(i);
+                if (w == null) continue;
+                double c = w.optDouble("conf", -1);
+                if (c >= 0) {
+                    sum += c;
+                    n++;
+                }
+            }
+            return n == 0 ? -1 : sum / n;
+        } catch (Exception e) {
+            return -1;
         }
     }
 
@@ -726,15 +774,20 @@ public final class VoskController {
         state = State.IDLE;
     }
 
-    /** optText＋中文 char 文法空格清理（stripSpaces 開時）＋[unk] 過濾。
-     *  [unk]（大小寫不拘）代表 Vosk 認不到——不發佈，否則會觸發語意配對亂答
-     *  （fallback 隨機答案＋可能隨機動作）。partial 同 final 共用。 */
+    /** optText＋中文 char 文法空格清理（stripSpaces 開時）＋[unk] 碎片清理。
+     *  [unk]（大小寫不拘）代表 Vosk 嗰截認唔到——成段係 [unk] 就唔發佈，
+     *  否則會觸發語意配對亂答（fallback 隨機答案＋可能隨機動作）；
+     *  夾雜嘅 [unk] 碎片（例如「你好[unk]」）就剪走，唔好污染之後嘅
+     *  包含／模糊配對（unk 三個字母會嘥咗編輯距離）。partial 同 final 共用。 */
     private String transcript(String json, String key) {
         String s = optText(json, key);
-        if (s != null && stripSpaces) {
-            s = s.replace(" ", "").replace("\t", "").trim();
+        if (s != null) {
+            s = s.replaceAll("(?i)\\[unk\\]", "").trim();
+            if (stripSpaces) {
+                s = s.replace(" ", "").replace("\t", "").trim();
+            }
         }
-        if (s == null || s.isEmpty() || "[unk]".equalsIgnoreCase(s)) return null;
+        if (s == null || s.isEmpty()) return null;
         return s;
     }
 
