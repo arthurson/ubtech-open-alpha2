@@ -1,0 +1,2895 @@
+{
+  "version": 2,
+  "lang": "es",
+  "intents": [
+    {
+      "id": "es.action.applaud",
+      "type": "ACTION",
+      "op": "APPLAUD",
+      "actionId": "1509000232878",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Dame un aplauso",
+        "Aplaude",
+        "Aplaudir",
+        "Palmas",
+        "Un aplauso",
+        "Palmas para mí"
+      ]
+    },
+    {
+      "id": "es.action.applaud.2",
+      "type": "ACTION",
+      "op": "APPLAUD",
+      "actionId": "1509000232878",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Aplausos"
+      ]
+    },
+    {
+      "id": "es.action.applaud.3",
+      "type": "ACTION",
+      "op": "APPLAUD",
+      "actionId": "1509000232878",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Aplauso"
+      ]
+    },
+    {
+      "id": "es.action.beck",
+      "type": "ACTION",
+      "op": "BECK",
+      "actionId": "1464835936017",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Saluda con la mano derecha",
+        "Saluda a la derecha",
+        "Di hola a la derecha"
+      ]
+    },
+    {
+      "id": "es.action.beck.2",
+      "type": "ACTION",
+      "op": "BECK",
+      "actionId": "1464835936018",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Saluda con la mano izquierda",
+        "Saluda a la izquierda",
+        "Di hola a la izquierda"
+      ]
+    },
+    {
+      "id": "es.action.crouch",
+      "type": "ACTION",
+      "op": "CROUCH",
+      "actionId": "1464835936160",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Agáchate",
+        "Ponte en cuclillas",
+        "Agacharse"
+      ]
+    },
+    {
+      "id": "es.action.dance",
+      "type": "ACTION",
+      "op": "DANCE",
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Baila para mí",
+        "¿Sabes bailar?",
+        "Muéstrame un baile",
+        "Baila un poco",
+        "Quiero verte bailar",
+        "Haz un baile",
+        "A bailar",
+        "Baila ahora",
+        "Enséñame tus pasos"
+      ]
+    },
+    {
+      "id": "es.action.dance_any",
+      "type": "ACTION",
+      "op": "DANCE_ANY",
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Baila algo especial para mí",
+        "Algo especial",
+        "Baile especial"
+      ]
+    },
+    {
+      "id": "es.action.dance_any.2",
+      "type": "ACTION",
+      "op": "DANCE_ANY",
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Baile"
+      ]
+    },
+    {
+      "id": "es.action.dance_any.3",
+      "type": "ACTION",
+      "op": "DANCE_ANY",
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Bailando"
+      ]
+    },
+    {
+      "id": "es.action.dance_brand",
+      "type": "ACTION",
+      "op": "DANCE_BRAND",
+      "actionId": "__RANDOM_CATEGORY__DANCE_BRAND",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Baila algo único",
+        "Único",
+        "Baile único"
+      ]
+    },
+    {
+      "id": "es.action.dance_kids",
+      "type": "ACTION",
+      "op": "DANCE_KIDS",
+      "actionId": "__RANDOM_CATEGORY__DANCE_KIDS",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Baila una canción infantil",
+        "Infantil",
+        "Canción infantil",
+        "Baile de niños"
+      ]
+    },
+    {
+      "id": "es.action.dance_pop",
+      "type": "ACTION",
+      "op": "DANCE_POP",
+      "actionId": "__RANDOM_CATEGORY__DANCE_POP",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Baila una canción pop",
+        "Pop",
+        "Canción pop"
+      ]
+    },
+    {
+      "id": "es.action.express",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1509000313549",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Sé tierno",
+        "Hazte el lindo",
+        "Sé lindo",
+        "Tierno"
+      ]
+    },
+    {
+      "id": "es.action.express.wink",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1464835936043",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Guiña un ojo",
+        "Guiño",
+        "Guiñar"
+      ],
+      "slot": "wink"
+    },
+    {
+      "id": "es.action.express.deny",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1464835936013",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Qué tontería",
+        "Tontería",
+        "Eso es una tontería"
+      ],
+      "slot": "deny"
+    },
+    {
+      "id": "es.action.express.happy",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1509000284732",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "¿Estás contento?",
+        "Contento",
+        "Ponte contento"
+      ],
+      "slot": "happy"
+    },
+    {
+      "id": "es.action.express.sad",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1509000338636",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Ya no me caes bien",
+        "No me caes bien"
+      ],
+      "slot": "sad"
+    },
+    {
+      "id": "es.action.express.thinking",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1464835936026",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "¿En qué piensas?",
+        "Piensa",
+        "Pensando"
+      ],
+      "slot": "thinking"
+    },
+    {
+      "id": "es.action.express.boring",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1509000360914",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Estoy aburrido",
+        "Aburrido",
+        "Qué aburrimiento"
+      ],
+      "slot": "boring"
+    },
+    {
+      "id": "es.action.express.agree",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1464835936042",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "¿Estás de acuerdo?",
+        "De acuerdo",
+        "Estoy de acuerdo"
+      ],
+      "slot": "agree"
+    },
+    {
+      "id": "es.action.expression_any",
+      "type": "ACTION",
+      "op": "EXPRESSION_ANY",
+      "actionId": "__RANDOM_CATEGORY__EXPRESSION_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Pon una cara",
+        "Haz un gesto",
+        "Caras",
+        "Gestos"
+      ]
+    },
+    {
+      "id": "es.action.gesture_any",
+      "type": "ACTION",
+      "op": "GESTURE_ANY",
+      "actionId": "__RANDOM_CATEGORY__GESTURE_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Haz un gesto con las manos",
+        "Gestos con las manos",
+        "Gesticula"
+      ]
+    },
+    {
+      "id": "es.action.grievance",
+      "type": "ACTION",
+      "op": "GRIEVANCE",
+      "actionId": "1487404045426",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Qué injusto",
+        "Injusto",
+        "No es justo"
+      ]
+    },
+    {
+      "id": "es.action.handsraise",
+      "type": "ACTION",
+      "op": "HANDSRAISE",
+      "actionId": "1464835936028",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Levanta el brazo izquierdo",
+        "Brazo izquierdo arriba"
+      ]
+    },
+    {
+      "id": "es.action.handsraise.2",
+      "type": "ACTION",
+      "op": "HANDSRAISE",
+      "actionId": "1464835936027",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Levanta el brazo derecho",
+        "Brazo derecho arriba"
+      ]
+    },
+    {
+      "id": "es.action.handsup",
+      "type": "ACTION",
+      "op": "HANDSUP",
+      "actionId": "1510818386847",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Levanta la mano izquierda",
+        "Mano izquierda arriba"
+      ]
+    },
+    {
+      "id": "es.action.handsup.2",
+      "type": "ACTION",
+      "op": "HANDSUP",
+      "actionId": "1510818336833",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Levanta la mano derecha",
+        "Mano derecha arriba"
+      ]
+    },
+    {
+      "id": "es.action.handsup.3",
+      "type": "ACTION",
+      "op": "HANDSUP",
+      "actionId": "1508999975370",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Manos arriba",
+        "Levanta las manos"
+      ]
+    },
+    {
+      "id": "es.action.happynewyear",
+      "type": "ACTION",
+      "op": "HAPPYNEWYEAR",
+      "actionId": "1509000284732",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Feliz año nuevo",
+        "Año nuevo",
+        "Próspero año nuevo"
+      ]
+    },
+    {
+      "id": "es.action.headdrop",
+      "type": "ACTION",
+      "op": "HEADDROP",
+      "actionId": "1464835936012",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Baja la cabeza",
+        "Agacha la cabeza",
+        "Cabeza abajo"
+      ]
+    },
+    {
+      "id": "es.action.headup",
+      "type": "ACTION",
+      "op": "HEADUP",
+      "actionId": "1464835936092",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Mira arriba a la izquierda",
+        "Arriba a la izquierda"
+      ]
+    },
+    {
+      "id": "es.action.headup.2",
+      "type": "ACTION",
+      "op": "HEADUP",
+      "actionId": "1464835936090",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Mira arriba a la derecha",
+        "Arriba a la derecha"
+      ]
+    },
+    {
+      "id": "es.action.head_any",
+      "type": "ACTION",
+      "op": "HEAD_ANY",
+      "actionId": "__RANDOM_CATEGORY__HEAD_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Mueve la cabeza",
+        "Cabeza",
+        "Mover la cabeza"
+      ]
+    },
+    {
+      "id": "es.action.hearttired",
+      "type": "ACTION",
+      "op": "HEARTTIRED",
+      "actionId": "1509000360914",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Estoy agotado",
+        "Agotado",
+        "Qué cansancio"
+      ]
+    },
+    {
+      "id": "es.action.hum",
+      "type": "ACTION",
+      "op": "HUM",
+      "actionId": "1464835936042",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Tararea algo",
+        "Tararea",
+        "Tararear"
+      ]
+    },
+    {
+      "id": "es.action.kick",
+      "type": "ACTION",
+      "op": "KICK",
+      "actionId": "1508999590337",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Patada con la pierna izquierda",
+        "Patea a la izquierda"
+      ]
+    },
+    {
+      "id": "es.action.kick.2",
+      "type": "ACTION",
+      "op": "KICK",
+      "actionId": "1508999831918",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Patada con la pierna derecha",
+        "Patea a la derecha"
+      ]
+    },
+    {
+      "id": "es.action.kunfu",
+      "type": "ACTION",
+      "op": "KUNFU",
+      "actionId": "1509000200961",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Haz kung fu",
+        "Kung fu",
+        "Muéstrame kung fu"
+      ]
+    },
+    {
+      "id": "es.action.laugh",
+      "type": "ACTION",
+      "op": "LAUGH",
+      "actionId": "1509000383562",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Ríe para mí",
+        "Ríete",
+        "Una carcajada",
+        "Ríe"
+      ]
+    },
+    {
+      "id": "es.action.leglifts",
+      "type": "ACTION",
+      "op": "LEGLIFTS",
+      "actionId": "1464835936093",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Levanta la pierna izquierda",
+        "Pierna izquierda arriba"
+      ]
+    },
+    {
+      "id": "es.action.leglifts.2",
+      "type": "ACTION",
+      "op": "LEGLIFTS",
+      "actionId": "1464835936091",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Levanta la pierna derecha",
+        "Pierna derecha arriba"
+      ]
+    },
+    {
+      "id": "es.action.look",
+      "type": "ACTION",
+      "op": "LOOK",
+      "actionId": "1464835936029",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Mira al frente",
+        "Al frente",
+        "Mira adelante"
+      ]
+    },
+    {
+      "id": "es.action.look.2",
+      "type": "ACTION",
+      "op": "LOOK",
+      "actionId": "1464835936032",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Mira a la derecha",
+        "A la derecha"
+      ]
+    },
+    {
+      "id": "es.action.look.3",
+      "type": "ACTION",
+      "op": "LOOK",
+      "actionId": "1464835936034",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Mira a la izquierda",
+        "A la izquierda"
+      ]
+    },
+    {
+      "id": "es.action.lookup",
+      "type": "ACTION",
+      "op": "LOOKUP",
+      "actionId": "1464835936088",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Mira arriba",
+        "Arriba",
+        "Mirar arriba"
+      ]
+    },
+    {
+      "id": "es.action.misc_any",
+      "type": "ACTION",
+      "op": "MISC_ANY",
+      "actionId": "__RANDOM_CATEGORY__MISC_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Haz algo para mí",
+        "Haz lo que sea",
+        "Improvisa"
+      ]
+    },
+    {
+      "id": "es.action.move_any",
+      "type": "ACTION",
+      "op": "MOVE_ANY",
+      "actionId": "__RANDOM_CATEGORY__MOVE_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Da unos pasos",
+        "Camina un poco",
+        "Muévete un poco"
+      ]
+    },
+    {
+      "id": "es.action.nod",
+      "type": "ACTION",
+      "op": "NOD",
+      "actionId": "1464835936087",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Asiente con la cabeza",
+        "Asiente",
+        "Di que sí con la cabeza"
+      ]
+    },
+    {
+      "id": "es.action.nod.2",
+      "type": "ACTION",
+      "op": "NOD",
+      "actionId": "1464835936087",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Asentir"
+      ]
+    },
+    {
+      "id": "es.action.perfect",
+      "type": "ACTION",
+      "op": "PERFECT",
+      "actionId": "1464835936042",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Perfecto",
+        "Qué perfecto",
+        "Eso es perfecto"
+      ]
+    },
+    {
+      "id": "es.action.punch",
+      "type": "ACTION",
+      "op": "PUNCH",
+      "actionId": "1510818054178",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Puñetazo a la izquierda",
+        "Golpea a la izquierda"
+      ]
+    },
+    {
+      "id": "es.action.punch.2",
+      "type": "ACTION",
+      "op": "PUNCH",
+      "actionId": "1509007823124",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Puñetazo a la derecha",
+        "Golpea a la derecha"
+      ]
+    },
+    {
+      "id": "es.action.rock",
+      "type": "ACTION",
+      "op": "ROCK",
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Rock and roll",
+        "Rock",
+        "A mover el esqueleto"
+      ]
+    },
+    {
+      "id": "es.action.rock.2",
+      "type": "ACTION",
+      "op": "ROCK",
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Rocanrol"
+      ]
+    },
+    {
+      "id": "es.action.shake",
+      "type": "ACTION",
+      "op": "SHAKE",
+      "actionId": "1464835936013",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Niega con la cabeza",
+        "Di que no con la cabeza",
+        "Negar"
+      ]
+    },
+    {
+      "id": "es.action.shakehands",
+      "type": "ACTION",
+      "op": "SHAKEHANDS",
+      "actionId": "1509000433134",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Dame la mano",
+        "Estrecha mi mano",
+        "Un apretón de manos"
+      ]
+    },
+    {
+      "id": "es.action.shakehands.2",
+      "type": "ACTION",
+      "op": "SHAKEHANDS",
+      "actionId": "1509000433134",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Apretón"
+      ]
+    },
+    {
+      "id": "es.action.sharp",
+      "type": "ACTION",
+      "op": "SHARP",
+      "actionId": "1509000284732",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Eres increíble",
+        "Increíble",
+        "Qué increíble eres"
+      ]
+    },
+    {
+      "id": "es.action.standup",
+      "type": "ACTION",
+      "op": "STANDUP",
+      "actionId": "1510818174706",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Ponte de pie",
+        "De pie",
+        "Levántate"
+      ]
+    },
+    {
+      "id": "es.action.standup.2",
+      "type": "ACTION",
+      "op": "STANDUP",
+      "actionId": "1510818174706",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "En pie"
+      ]
+    },
+    {
+      "id": "es.action.stoop",
+      "type": "ACTION",
+      "op": "STOOP",
+      "actionId": "1509005411859",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Haz una reverencia",
+        "Reverencia",
+        "Inclínate"
+      ]
+    },
+    {
+      "id": "es.action.story_any",
+      "type": "ACTION",
+      "op": "STORY_ANY",
+      "actionId": "__RANDOM_CATEGORY__STORY_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Cuéntame un cuento",
+        "Cuéntame algo",
+        "Un cuento",
+        "Cuento"
+      ]
+    },
+    {
+      "id": "es.action.story_any.2",
+      "type": "ACTION",
+      "op": "STORY_ANY",
+      "actionId": "__RANDOM_CATEGORY__STORY_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Cuentos"
+      ]
+    },
+    {
+      "id": "es.action.story_chinese",
+      "type": "ACTION",
+      "op": "STORY_CHINESE",
+      "actionId": "__RANDOM_CATEGORY__STORY_CHINESE",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Cuéntame un cuento chino",
+        "Cuento chino",
+        "Chino"
+      ]
+    },
+    {
+      "id": "es.action.story_western",
+      "type": "ACTION",
+      "op": "STORY_WESTERN",
+      "actionId": "__RANDOM_CATEGORY__STORY_WESTERN",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Cuéntame un cuento occidental",
+        "Cuento occidental",
+        "Occidental"
+      ]
+    },
+    {
+      "id": "es.action.tfboy",
+      "type": "ACTION",
+      "op": "TFBOY",
+      "actionId": "__RANDOM__",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Haz algo",
+        "Muévete",
+        "Haz algo divertido",
+        "Anímate"
+      ]
+    },
+    {
+      "id": "es.action.turn",
+      "type": "ACTION",
+      "op": "TURN",
+      "actionId": "1464835936047",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Gira a la izquierda",
+        "Date la vuelta a la izquierda"
+      ]
+    },
+    {
+      "id": "es.action.turn.2",
+      "type": "ACTION",
+      "op": "TURN",
+      "actionId": "1464835936041",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Gira a la derecha",
+        "Date la vuelta a la derecha"
+      ]
+    },
+    {
+      "id": "es.action.turn.3",
+      "type": "ACTION",
+      "op": "TURN",
+      "actionId": "1464835936047",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Izquierda"
+      ]
+    },
+    {
+      "id": "es.action.walk",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1510818256622",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Camina hacia atrás",
+        "Hacia atrás",
+        "Retrocede"
+      ]
+    },
+    {
+      "id": "es.action.walk.2",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1508999860568",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Camina hacia adelante",
+        "Hacia adelante",
+        "Avanza"
+      ]
+    },
+    {
+      "id": "es.action.walk.3",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1508999547240",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Camina a la izquierda",
+        "Caminar a la izquierda"
+      ]
+    },
+    {
+      "id": "es.action.walk.4",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1508999801028",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Camina a la derecha",
+        "Caminar a la derecha"
+      ]
+    },
+    {
+      "id": "es.action.walk.5",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1508999860568",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Adelante"
+      ]
+    },
+    {
+      "id": "es.action.walk.6",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1510818256622",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Atrás"
+      ]
+    },
+    {
+      "id": "es.action.walk.7",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1510818256622",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Para atrás"
+      ]
+    },
+    {
+      "id": "es.action.walk.8",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1508999860568",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Caminar"
+      ]
+    },
+    {
+      "id": "es.action.welcome",
+      "type": "ACTION",
+      "op": "WELCOME",
+      "actionId": "1509000256376",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Da la bienvenida",
+        "Bienvenido",
+        "Bienvenida"
+      ]
+    },
+    {
+      "id": "es.action.welcome.2",
+      "type": "ACTION",
+      "op": "WELCOME",
+      "actionId": "1509000256376",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Bienvenidos"
+      ]
+    },
+    {
+      "id": "es.action.yoga_any",
+      "type": "ACTION",
+      "op": "YOGA_ANY",
+      "actionId": "__RANDOM_CATEGORY__YOGA_ANY",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Haz yoga",
+        "Yoga",
+        "Una postura de yoga"
+      ]
+    },
+    {
+      "id": "es.action.yoga_horse",
+      "type": "ACTION",
+      "op": "YOGA_HORSE",
+      "actionId": "__RANDOM_CATEGORY__YOGA_HORSE",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Postura del caballo",
+        "Caballo"
+      ]
+    },
+    {
+      "id": "es.action.yoga_kick",
+      "type": "ACTION",
+      "op": "YOGA_KICK",
+      "actionId": "__RANDOM_CATEGORY__YOGA_KICK",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Patada de yoga",
+        "Patada yogui"
+      ]
+    },
+    {
+      "id": "es.action.yoga_standing",
+      "type": "ACTION",
+      "op": "YOGA_STANDING",
+      "actionId": "__RANDOM_CATEGORY__YOGA_STANDING",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Postura de yoga de pie",
+        "Yoga de pie"
+      ]
+    },
+    {
+      "id": "es.action.yoga_stretch",
+      "type": "ACTION",
+      "op": "YOGA_STRETCH",
+      "actionId": "__RANDOM_CATEGORY__YOGA_STRETCH",
+      "a": [
+        "¡Vamos allá!",
+        "¡Mira esto!",
+        "Ahora mismo.",
+        "¡Marchando!",
+        "Con gusto."
+      ],
+      "qs": [
+        "Estiramiento",
+        "Estírate",
+        "A estirar"
+      ]
+    },
+    {
+      "id": "es.001",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "¡Hola! ¿Cómo estás?",
+        "¡Buenas! Me alegra verte.",
+        "¡Hola! ¿Qué tal tu día?"
+      ],
+      "qs": [
+        "Hola",
+        "Buenos días",
+        "Buenas tardes",
+        "¿Qué tal?",
+        "Hola, ¿qué tal?"
+      ]
+    },
+    {
+      "id": "es.002",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "¡Adiós! Cuídate mucho.",
+        "¡Hasta pronto!",
+        "Nos vemos. ¡Que te vaya bien!"
+      ],
+      "qs": [
+        "Adiós",
+        "Hasta luego",
+        "Nos vemos",
+        "Hasta pronto"
+      ]
+    },
+    {
+      "id": "es.003",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "¡De nada!",
+        "Con gusto.",
+        "¡Para eso estoy!"
+      ],
+      "qs": [
+        "Gracias",
+        "Muchas gracias"
+      ]
+    },
+    {
+      "id": "es.004",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Me llamo Alpha.",
+        "Soy Alpha, tu amigo robot.",
+        "Soy un pequeño robot."
+      ],
+      "qs": [
+        "¿Cómo te llamas?",
+        "Tu nombre",
+        "¿Quién eres?",
+        "Dime tu nombre"
+      ]
+    },
+    {
+      "id": "es.005",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Estoy muy bien, gracias.",
+        "¡Genial! ¿Y tú?",
+        "¡De maravilla!"
+      ],
+      "qs": [
+        "¿Cómo estás?",
+        "¿Cómo te va?",
+        "¿Qué tal estás?"
+      ]
+    },
+    {
+      "id": "es.006",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "La vida no es lo que uno vivió, sino la que uno recuerda para contarla.",
+        "A veces la verdad es tan increíble que la mentira suena más convincente.",
+        "No hay nada más peligroso que un hombre sin nada que perder.",
+        "El miedo te mantiene vivo, pero la valentía te hace libre.",
+        "Todos tenemos un precio, solo hay que saber cuál es.",
+        "Un secreto deja de serlo cuando dos personas lo saben.",
+        "La justicia no siempre es justa.",
+        "El destino es una excusa para los que no tienen agallas.",
+        "A veces hay que romper las reglas para hacer lo correcto.",
+        "El pasado siempre encuentra la forma de volver.",
+        "El dolor es inevitable, pero el sufrimiento es opcional.",
+        "No confíes en nadie que no tenga nada que ocultar.",
+        "Las mejores decisiones se toman con el corazón caliente y la cabeza fría.",
+        "El tiempo cura todo, menos la verdad.",
+        "Para sobrevivir aquí, tienes que aprender a no sentir nada.",
+        "A veces el monstruo no está debajo de la cama, está dentro de ti.",
+        "La lealtad no se compra, se demuestra.",
+        "Hay errores que se pagan toda la vida.",
+        "La libertad cuesta más de lo que cualquiera está dispuesto a pagar.",
+        "No somos lo que decimos, somos lo que hacemos."
+      ],
+      "qs": [
+        "Dime algo filosófico",
+        "Una frase para pensar",
+        "Filosofía de cine"
+      ]
+    },
+    {
+      "id": "es.007",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Te amé desde el primer instante en que te vi.",
+        "No me pidas que te olvide cuando eres lo único que recuerdo.",
+        "El amor verdadero no busca un final feliz, porque no tiene fin.",
+        "Prefiero un día contigo que mil años sin ti.",
+        "Si me olvides, no te culpo; si me recuerdas, te lo agradeceré.",
+        "Tú eres mi principio y mi fin.",
+        "No hay distancia capaz de apagar este fuego.",
+        "Me enamoré de tu sombra antes de conocer tu luz.",
+        "El amor es una locura de la que nadie quiere curarse.",
+        "Te seguiré hasta el fin del mundo si me lo pides.",
+        "Eres el único error que volvería a cometer mil veces.",
+        "A veces amarse no es suficiente.",
+        "Mi corazón dejó de ser mío el día que te conocí.",
+        "No te quiero por lo que eres, sino por lo que soy cuando estoy contigo.",
+        "Prométeme que nunca olvidarás este momento.",
+        "El dolor de perderte es el precio de haberte amado.",
+        "Siento que te he buscado durante varias vidas.",
+        "Tú me enseñaste a sentir cosas que ni sabía que existían.",
+        "El amor no se entiende, se vive.",
+        "Quédate conmigo, aunque todo el mundo se oponga."
+      ],
+      "qs": [
+        "Háblame de amor",
+        "Algo romántico",
+        "Amor de película",
+        "Frases de amor"
+      ]
+    },
+    {
+      "id": "es.008",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Baja el arma o esto va a terminar muy mal.",
+        "No vine a negociar, vine a cobrar.",
+        "Si das un paso más, será el último.",
+        "¿Vas a disparar o vas a seguir hablando?",
+        "No sabes con quién te estás metiendo.",
+        "Esto no se acaba hasta que yo lo diga.",
+        "Me quitas algo y te quitaré todo.",
+        "El tiempo se te está acabando.",
+        "La venganza es el único idioma que entiendes.",
+        "Nunca olvides quién manda aquí.",
+        "Hazlo rápido o lo haré yo por ti.",
+        "Todo el mundo tiene un punto débil.",
+        "No me amenaces si no estás dispuesto a cumplirlo.",
+        "Te dije que este día llegaría.",
+        "No hay escapatoria para lo que hiciste.",
+        "Si quieres la paz, prepárate para la guerra.",
+        "Nadie sale de aquí sin pagar su deuda.",
+        "Tus palabras no me asustan, tus actos me divierten.",
+        "Solo uno de nosotros saldrá caminando de aquí.",
+        "Se te acabó la suerte."
+      ],
+      "qs": [
+        "Algo intenso",
+        "Frase de acción",
+        "Acción"
+      ]
+    },
+    {
+      "id": "es.009",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Nada ocurre por casualidad en este negocio.",
+        "El crimen perfecto no existe, solo los investigadores mediocres.",
+        "Si quieres encontrar la verdad, sigue el dinero.",
+        "Todos son culpables hasta que se demuestre lo contrario.",
+        "La sombra más oscura es la que proyecta la luz más brillante.",
+        "Una mentira bien contada se convierte en historia.",
+        "No hay huellas cuando la mente es la que mata.",
+        "El asesino siempre vuelve al lugar del crimen.",
+        "La codicia cegó a hombres más inteligentes que tú.",
+        "Cree solo en la mitad de lo que veas y en nada de lo que oigas.",
+        "Detrás de cada gran fortuna hay un gran delito.",
+        "A veces la mejor escondite es a la vista de todos.",
+        "No hay nada más peligroso que un aliado desesperado.",
+        "Tu silencio es la prueba que estaba buscando.",
+        "En este juego, la piedad se paga con la muerte.",
+        "Cuidado con lo que deseas, podrías conseguirlo.",
+        "Hay una línea muy fina entre la obsesión y la locura.",
+        "El pasado te persigue sin importar cuán rápido corras.",
+        "Todo inocente tiene un lado oscuro.",
+        "La sospecha es una semilla que nunca deja de crecer."
+      ],
+      "qs": [
+        "Misterio",
+        "Suspense",
+        "Detectives",
+        "Caso misterioso"
+      ]
+    },
+    {
+      "id": "es.010",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Nos convertimos en las personas que juramos nunca ser.",
+        "La soledad es el precio de la libertad.",
+        "El orgullo destruye más vidas que la peste.",
+        "A veces la única forma de salvarse es perderlo todo.",
+        "Aprende a renunciar a lo que no puedes cambiar.",
+        "El perdón no cambia el pasado, pero abre el futuro.",
+        "La ignorancia es una bendición para el que no quiere ver.",
+        "No hay mayor prisión que la mente de uno mismo.",
+        "Nos pasamos la vida esperando el momento perfecto, y la vida se va.",
+        "La verdad nos hará libres, pero primero nos destruirá.",
+        "No juzgues una historia si no conoces todo el libro.",
+        "El alma que se vende una vez no se vuelve a recuperar.",
+        "Las cicatrices son los mapas de nuestras batallas.",
+        "El poder no cambia a las personas, solo las desnuda.",
+        "Hay cosas que el dinero no puede comprar, como una conciencia limpia.",
+        "El tiempo nos vuelve sabios o nos vuelve amargados.",
+        "La esperanza es lo último que se pierde, pero a veces es lo que más duele.",
+        "Nadie conoce a nadie realmente.",
+        "Somos el resultado de nuestras propias decisiones.",
+        "Al final, solo nos queda lo que dimos a los demás."
+      ],
+      "qs": [
+        "Algo profundo",
+        "Para reflexionar",
+        "Verdades de la vida"
+      ]
+    },
+    {
+      "id": "es.011",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Es ahora o nunca.",
+        "No te rindas tan fácilmente.",
+        "Confía en mí, sé lo que hago.",
+        "Todo va a salir bien, te lo prometo.",
+        "Olvídalo, no vale la pena.",
+        "No me falles esta vez.",
+        "Estamos juntos en esto.",
+        "Sigue adelante sin mirar atrás.",
+        "Es el mejor día de mi vida.",
+        "Nunca es tarde para empezar de nuevo.",
+        "Vale la pena intentar una vez más.",
+        "No hay mal que dure cien años.",
+        "Siempre hay una primera vez.",
+        "Mantén la cabeza en alto.",
+        "A veces hay que perder para ganar.",
+        "No dejes que el miedo decida por ti.",
+        "El espectáculo debe continuar.",
+        "El coraje es saber a qué no hay que tenerle miedo.",
+        "Ponerse las pilas.",
+        "Estar al tiro."
+      ],
+      "qs": [
+        "Dame ánimo",
+        "Anímame",
+        "Necesito fuerza",
+        "Fuerza"
+      ]
+    },
+    {
+      "id": "es.012",
+      "type": "CHAT",
+      "actionId": "1464835936087",
+      "a": [
+        "Déjame en paz de una vez por todas.",
+        "Eso no te incumbe a ti.",
+        "No tengo nada más que decirte.",
+        "Te lo dije y no me escuchaste.",
+        "No te metas donde no te llaman.",
+        "No tienes la menor idea.",
+        "No me juzgues sin conocerme.",
+        "Quédate con la duda si quieres.",
+        "Me decepcionaste cuando más te necesitaba.",
+        "Mantén a tus amigos cerca, pero a tus enemigos más cerca.",
+        "Si no me ayudas, estás en mi contra.",
+        "Llegas tarde como siempre.",
+        "Siento haber dudado de ti.",
+        "Me estás ocultando algo.",
+        "El mundo no gira a tu alrededor.",
+        "No me pidas imposibles.",
+        "No me des explicaciones, dame resultados.",
+        "No escuches lo que dicen los demás.",
+        "Nadie te obligó a hacer esto.",
+        "No me mires así."
+      ],
+      "qs": [
+        "La gente",
+        "Los demás",
+        "Relaciones",
+        "Gente"
+      ]
+    },
+    {
+      "id": "es.013",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Haz lo que tengas que hacer.",
+        "A veces el camino más difícil es el correcto.",
+        "No puedo prometerte nada.",
+        "Es más complicado de lo que piensas.",
+        "Esa es una decisión que debes tomar tú.",
+        "La decisión está tomada.",
+        "Ese no es el camino correcto.",
+        "Mis intenciones eran buenas.",
+        "No nos queda otra opción.",
+        "No pongas excusas.",
+        "Si vas a hacerlo, hazlo bien.",
+        "Es cuestión de perspectiva.",
+        "No me arrepiento de nada.",
+        "Dar papaya.",
+        "Sé el cambio que deseas ver en el mundo.",
+        "Estar bien parote.",
+        "Ir al grano.",
+        "¿Qué harías tú en mi lugar?",
+        "El cambio empieza cuando decides tomar el control.",
+        "Echar un centro."
+      ],
+      "qs": [
+        "¿Qué hago?",
+        "Un consejo",
+        "Decidir",
+        "Aconséjame"
+      ]
+    },
+    {
+      "id": "es.014",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "¿De qué estás hablando?",
+        "Eso es imposible de creer.",
+        "Ten cuidado con lo que dices.",
+        "El silencio a veces dice más que las palabras.",
+        "Las cosas no siempre son lo que parecen.",
+        "Tu secreto está a salvo conmigo.",
+        "Todo tiene una explicación.",
+        "Eso suena demasiado bueno para ser verdad.",
+        "La verdad siempre sale a la luz.",
+        "Afronta la realidad de una vez.",
+        "Esa historia ya me la conozco.",
+        "El silencio fue su mejor respuesta.",
+        "No puedo cambiar quien soy.",
+        "Todo tiene un límite.",
+        "Es el principio del fin.",
+        "No me pidas que cambie mi forma de pensar.",
+        "Esa es la diferencia entre tú y yo.",
+        "Posta.",
+        "Tener la posta.",
+        "Saltar la ficha."
+      ],
+      "qs": [
+        "La verdad",
+        "Dime la verdad",
+        "Verdad"
+      ]
+    },
+    {
+      "id": "es.015",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "No hay tiempo para lamentaciones.",
+        "Acepta las cosas como son.",
+        "No hay nada que podamos hacer al respecto.",
+        "Nada cambia si tú no cambias.",
+        "Lo hecho, hecho está.",
+        "Ese es el menor de nuestros problemas.",
+        "Nadie puede cambiar el pasado.",
+        "Nada de esto tendría que haber pasado.",
+        "Estar a dos velas.",
+        "Liarla parda.",
+        "No me hagas perder el tiempo.",
+        "El único límite a nuestros logros es nuestra propia mente.",
+        "Hoy se sale a la calle a celebrar el amor y la libertad.",
+        "Brindemos por la vida y las buenas amistades.",
+        "No hay barreras para el amor verdadero.",
+        "Estar cañón.",
+        "Andar con todo.",
+        "Estar en modo avión."
+      ],
+      "qs": [
+        "La vida",
+        "Vivir",
+        "Frases cortas",
+        "Vida"
+      ]
+    },
+    {
+      "id": "es.016",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Despacito, quiero respirar tu cuello despacito.",
+        "Pasito a pasito, suave suavecito, nos vamos pegando poquito a poquito.",
+        "Bailando, bailando, tu cuerpo con el mío llenando el vacío.",
+        "Vivir mi vida, lalalala, voy a reír, voy a gozar, vivir mi vida, lalalala.",
+        "La vida es un carnaval, y las penas se van cantando.",
+        "Dale a tu cuerpo alegría Macarena, que tu cuerpo es pa' darle alegría y cosa buena.",
+        "A ella le gusta la gasolina, dame más gasolina.",
+        "Esta noche es de fiesta y el cuerpo lo sabe.",
+        "Que la música no pare, que la noche es larga.",
+        "Sigue moviendo el cuerpo al ritmo de la noche.",
+        "Para bailar la Bamba se necesita una poca de gracia.",
+        "Siente el fuego en la pista de baile.",
+        "Suéltate el pelo y ponte a bailar.",
+        "El ritmo te lleva, no lo intentes frenar.",
+        "Suben la música y la noche se enciende.",
+        "La fiesta no acaba hasta que salga el sol.",
+        "Mueve las caderas al ritmo del tambor.",
+        "Todos juntos cantando bajo las estrellas.",
+        "Irse de marcha.",
+        "Marchuki."
+      ],
+      "qs": [
+        "Fiesta",
+        "De fiesta",
+        "Para bailar",
+        "Vamos de fiesta"
+      ]
+    },
+    {
+      "id": "es.017",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Bésame, bésame mucho, como si fuera esta noche la última vez.",
+        "Eres el amor de mi vida, el aire que respiro.",
+        "Contigo aprendí que existen nuevas y mejores emociones.",
+        "Tu sonrisa es la luz que ilumina mi camino oscuro.",
+        "Solamente tú haces que mi mundo gire con sentido.",
+        "Si no te tuviera, no sabría cómo vivir.",
+        "Te quiero no por quien eres, sino por como me haces sentir.",
+        "Cada segundo a tu lado es un regalo del cielo.",
+        "Estar contigo es tocar el cielo con las manos.",
+        "Quiero perderme en tu mirada toda la noche.",
+        "Tu voz es la melodía que calma mi mente.",
+        "A tu lado me siento invencible.",
+        "Eres mi sueño hecho realidad.",
+        "No necesito nada más si te tengo a ti.",
+        "Tus besos son el dulce veneno que me domina.",
+        "Amor del bueno, del que nunca se acaba.",
+        "Mi lugar favorito en el mundo es a tu lado.",
+        "Pintaste de colores mi vida gris.",
+        "En tus brazos encontré la paz que tanto buscaba.",
+        "Amo cada detalle de tu persona."
+      ],
+      "qs": [
+        "Canción de amor",
+        "Amor bonito",
+        "Dulce amor"
+      ]
+    },
+    {
+      "id": "es.018",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "¿Quién me va a curar el corazón partío?",
+        "Como la flor, con tanto amor, me diste tú, se marchitó.",
+        "Fue un placer conocerte, aunque me haya dolido el final.",
+        "Hoy me faltan las palabras para explicar tanto dolor.",
+        "Prefiero estar solo que estar mal acompañado.",
+        "Te fuiste sin decir adiós y me dejaste en ruinas.",
+        "El tiempo no borra los recuerdos de lo que fuimos.",
+        "Duele saber que ya no piensas en mí.",
+        "Prometiste estar conmigo y me abandonaste.",
+        "Trato de olvidarte pero te encuentro en todas partes.",
+        "Lágrimas que caen en la soledad de mi habitación.",
+        "Mi corazón se congeló el día que te alejaste.",
+        "Aprendí a vivir con tu ausencia, pero no a dejar de extrañarte.",
+        "No me quedan lágrimas para llorar por ti.",
+        "Eras mi todo y ahora eres solo un desconocido.",
+        "El silencio de esta casa me hace recordar tu voz.",
+        "Guardé todas tus cartas pero quemé las promesas.",
+        "Nada vuelve a ser igual después de una traición.",
+        "Te entregué mi vida y solo me dejaste cicatrices.",
+        "Estar agüitado."
+      ],
+      "qs": [
+        "Corazón roto",
+        "Tristeza",
+        "Desamor",
+        "Estoy triste"
+      ]
+    },
+    {
+      "id": "es.019",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Volveremos a vernos, te lo aseguro.",
+        "Saber que se puede, querer que se pueda, quitarse los miedos, sacarlos afuera.",
+        "Color esperanza, pintarse la cara color esperanza.",
+        "Hoy es un buen día para empezar de nuevo.",
+        "Canta y no llores, porque cantando se alegran los corazones.",
+        "Caminante, no hay camino, se hace camino al andar.",
+        "Gracias a la vida que me ha dado tanto.",
+        "Siempre hay una luz al final del túnel.",
+        "No te rindas nunca, la victoria está cerca.",
+        "Las heridas sanan pero las lecciones se quedan.",
+        "Sigue tus sueños sin importar lo que digan.",
+        "Cada día es una nueva oportunidad para ser feliz.",
+        "La fe mueve montañas y cambia destinos.",
+        "Aprende a caer para saber cómo levantarte.",
+        "La verdadera riqueza está en el alma y no en el bolsillo.",
+        "Sé la luz que ilumine la oscuridad de otros.",
+        "El tiempo vuela, aprovecha cada segundo.",
+        "Lucha por lo que amas sin mirar atrás.",
+        "La sonrisa es la mejor respuesta ante la adversidad.",
+        "Tus palabras me llenan de esperanza."
+      ],
+      "qs": [
+        "Esperanza",
+        "Optimismo",
+        "Dame esperanza"
+      ]
+    },
+    {
+      "id": "es.020",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "México lindo y querido, si muero lejos de ti...",
+        "Tierra de mis amores, donde nacieron mis recuerdos.",
+        "Orgullo de mis raíces y mi gente.",
+        "Llevo el ritmo de mi pueblo en la sangre.",
+        "Bajo el sol de mi tierra encuentro la libertad.",
+        "Cantándole a la luna y a las estrellas del mar.",
+        "Mi hogar es donde está mi corazón.",
+        "Añoro el aroma de la lluvia en mi pueblo natal.",
+        "Hispano de corazón, cantando al mundo mi verdad.",
+        "Las guitarras suenan y el alma se despierta.",
+        "Hacer un asado.",
+        "El mundo necesita más amor y menos odio.",
+        "Siembra amor y cosecharás paz interior."
+      ],
+      "qs": [
+        "Tu tierra",
+        "Nostalgia",
+        "Hogar",
+        "Mi tierra"
+      ]
+    },
+    {
+      "id": "es.021",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Quiero ser el refugio donde te sientas seguro.",
+        "Tu amor es el faro que me guía en la tormenta.",
+        "Tu calor combate mi frío invierno.",
+        "No hay nada de malo en querer un poco más.",
+        "A veces la distancia nos enseña a valorar.",
+        "El fuego de la pasión nunca se apaga.",
+        "El silencio entre nosotros lo dice todo.",
+        "No hay sombra que opaque tu brillo.",
+        "Con un abrazo tuyo el mundo se detiene.",
+        "No hay dolor que dure para siempre.",
+        "Estar a tu lado es mi refugio perfecto.",
+        "No dejes que la rutina apague nuestra llama.",
+        "Caminemos juntos por el camino de la vida.",
+        "Nadie nos enseñó a amar, aprendimos juntos.",
+        "Eres mi refugio en los días grises.",
+        "Un abrazo tuyo cura cualquier dolor.",
+        "La vida es un suspiro, disfrútalo al máximo.",
+        "Siempre estaré para ti cuando me necesites.",
+        "Tu amor es el tesoro más grande que poseo.",
+        "Tus abrazos son mi lugar seguro."
+      ],
+      "qs": [
+        "Amor",
+        "Romántico",
+        "Pop romántico"
+      ]
+    },
+    {
+      "id": "es.022",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "No tenemos toda la noche.",
+        "Que el ritmo te envuelva de la cabeza a los pies.",
+        "Todo el mundo bailando en la misma frecuencia.",
+        "No me importa el mañana, solo disfruto el hoy.",
+        "Siente el bajo retumbar en el pecho.",
+        "Dame una razón más para no soltarte.",
+        "Bailamos bajo la luz de la luna llena.",
+        "Déjate llevar por el ritmo de la salsa.",
+        "El amanecer nos encontrará juntos bailando.",
+        "Nuestra historia de amor está escrita en las estrellas.",
+        "Aprender a soltar es también una forma de amar.",
+        "No necesito riquezas, solo tu compañía.",
+        "Bailar es la manera más pura de expresar el alma.",
+        "No hay noche tan oscura que impida el amanecer.",
+        "Suéltate y déjate amar.",
+        "La pasión se siente en cada fibra del cuerpo.",
+        "Que los problemas se solucionen con una sonrisa.",
+        "Siento que toque las estrellas cuando te besé.",
+        "Bajo la lluvia bailamos sin importar el frío.",
+        "Dar lora."
+      ],
+      "qs": [
+        "Bailar",
+        "Ritmo",
+        "Noche de fiesta",
+        "Baila"
+      ]
+    },
+    {
+      "id": "es.023",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "No hay tiempo para rodeos, dímelo ya.",
+        "Con un par de copas la vida sabe mejor.",
+        "Caminando a la orilla del mar de la mano.",
+        "Se acabaron las mentiras, hoy empieza la verdad.",
+        "A pesar del tiempo, sigo esperándote.",
+        "Gritemos al mundo lo que sentimos.",
+        "El destino nos unió por una razón.",
+        "Vive hoy como si fuera el último día.",
+        "El arte de amar sin pedir nada a cambio.",
+        "Nada se compara con la sensación de ser libre.",
+        "Sé la mejor versión de ti mismo hoy.",
+        "Tu sonrisa vale más que todo el oro del mundo.",
+        "Aprende a valorar las pequeñas cosas de la vida.",
+        "La belleza interior es la que nunca se marchita.",
+        "El destino decide quién entra en tu vida, tú decides quién se queda.",
+        "Estar de pelos.",
+        "Estar en pedo.",
+        "El conocimiento no ocupa lugar pero abre infinitas puertas.",
+        "La vida es corta, haz que valga la pena."
+      ],
+      "qs": [
+        "Vivir la vida",
+        "Canciones de la vida"
+      ]
+    },
+    {
+      "id": "es.024",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "La luna es testigo de este amor secreto.",
+        "Un beso bajo la lluvia que nunca olvidaré.",
+        "Te llevo tatuado en el pensamiento.",
+        "Nada de lo que vivimos fue en vano.",
+        "Tu recuerdo me persigue en cada rincón.",
+        "Hoy brindo por los que ya no están.",
+        "Tu nombre está grabado en mi memoria.",
+        "El recuerdo de tu voz me da fuerzas.",
+        "Tu perfume quedó grabado en mi almohada.",
+        "Que la alegría invada cada rincón de tu casa.",
+        "Hoy bailo por los que ya no están aquí.",
+        "Me suena bastante.",
+        "Luces de la ciudad encendidas para los dos.",
+        "El tiempo pasa volando cuando estoy contigo.",
+        "El tiempo que pasamos juntos nunca es perdido.",
+        "Una lágrima de felicidad al volver a verte.",
+        "Un suspiro tuyo vale más que mil palabras.",
+        "Estar de un fino.",
+        "Boleto.",
+        "Y se marchó, y a su barco le llamó Libertad."
+      ],
+      "qs": [
+        "Recuerdos",
+        "Memoria",
+        "Me acuerdo"
+      ]
+    },
+    {
+      "id": "es.025",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "No me prometas el cielo, solo dame tu presencia.",
+        "Cierra los ojos y siente la magia.",
+        "Tus besos me transportan a otro universo.",
+        "Abre las alas y vuela tan alto como puedas.",
+        "El amor no tiene edad ni fronteras.",
+        "Que el amor sea nuestro único lenguaje.",
+        "Eres mi estrella fugaz, la que pide mis deseos.",
+        "No hay nada imposible si estamos unificados.",
+        "Un amor como el nuestro superará cualquier prueba.",
+        "Que tus sueños sean más grandes que tus miedos.",
+        "Sigue la luz que llevas dentro.",
+        "Siento que el futuro es nuestro.",
+        "Nadie me va a detener.",
+        "El amor es la respuesta a casi todas las preguntas.",
+        "El amor propio es el comienzo de un romance de por vida.",
+        "Un mundo mejor es posible si lo construimos juntos.",
+        "A Dios le pido que si me muero sea de amor y si me enamoro sea de ti.",
+        "Tus pensamientos crean tu realidad.",
+        "Todo lo que puedes imaginar es real.",
+        "Mi amor por ti es más profundo que el océano."
+      ],
+      "qs": [
+        "Sueños",
+        "Soñar",
+        "Mis sueños"
+      ]
+    },
+    {
+      "id": "es.026",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Que la música sea la medicina de tu alma.",
+        "Somos dos almas conectadas por la música.",
+        "Sigue la melodía de tu propio corazón.",
+        "Voy a cantar mi historia sin importar la opinión.",
+        "Escribí una canción para decirte lo que siento.",
+        "Cada acorde despierta un sentimiento guardado.",
+        "El viento se lleva mis penas al cantar.",
+        "En cada nota musical pongo un pedazo de mi corazón.",
+        "Eres la razón por la que canto cada mañana.",
+        "Sigue cantando aun cuando la tormenta golpee.",
+        "La música unifica a los pueblos y rompe fronteras.",
+        "Un poema cantado directo al corazón.",
+        "Canta sin parar hasta que el cuerpo agante.",
+        "La música no tiene fronteras, habla directamente al alma.",
+        "La creatividad es la inteligencia divirtiéndose."
+      ],
+      "qs": [
+        "Canta algo",
+        "Otra canción",
+        "Canta"
+      ]
+    },
+    {
+      "id": "es.027",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "El arte es la mentira que nos permite comprender la verdad.",
+        "Aprende las reglas como un profesional para poder romperlas como un artista.",
+        "Pinto autorretratos porque estoy mucho tiempo sola, porque soy la persona que mejor conozco.",
+        "Pies, para qué los quiero si tengo alas pa' volar.",
+        "En la vida no hay premios ni castigos, sino consecuencias.",
+        "Que no sepas que estás en la gloria, no significa que no estés en ella.",
+        "La libertad, Sancho, es uno de los más preciosos dones que a los hombres dieron los cielos.",
+        "El que lee mucho y anda mucho, ve mucho y sabe mucho.",
+        "No hay libro tan malo que no tenga algo bueno.",
+        "Uno es dueño de lo que calla y esclavo de lo que habla.",
+        "Hay que sentir la vida, no comprenderla.",
+        "El amor es una emoción que te enloquece y luego te devuelve la cordura.",
+        "La memoria del corazón elimina los malos recuerdos y magnifica los buenos.",
+        "Ninguna persona merece tus lágrimas, y quien la merezca no te hará llorar.",
+        "La vida no es la que uno vivió, sino la que uno recuerda.",
+        "Para hacer el bien, hay que conocerlo primero.",
+        "Siempre imaginé que el Paraíso sería algún tipo de biblioteca.",
+        "La duda es uno de los nombres de la inteligencia.",
+        "Estar fresa.",
+        "Ser naco."
+      ],
+      "qs": [
+        "Arte",
+        "Artistas",
+        "Literatura",
+        "Frase de artista"
+      ]
+    },
+    {
+      "id": "es.028",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Si no crees en ti mismo, nadie más lo hará.",
+        "El éxito es aprender a ir de fracaso en fracaso sin perder el entusiasmo.",
+        "Tienes que luchar para alcanzar tus sueños, hay que sacrificarse.",
+        "Prefiero ser buena persona a ser el mejor jugador del mundo.",
+        "Tu amor me hace fuerte, tu odio me hace imparable.",
+        "No quiero ser igual a los demás, quiero ser único.",
+        "El trabajo duro supera al talento cuando el talento no trabaja duro.",
+        "La velocidad no sirve de nada si no sabes hacia dónde vas.",
+        "El entrenamiento duro hace que las competencias sean fáciles.",
+        "Nunca dejes que nadie te diga que no puedes hacer algo.",
+        "Estar como un roble.",
+        "No importa cuán lento vayas mientras no te detengas.",
+        "Supera tus miedos para descubrir tu verdadero potencial.",
+        "La perseverancia es la clave que abre todas las puertas.",
+        "Sigue tus ideales sin importar las dificultades.",
+        "Cree en el proceso y confía en tu intuición.",
+        "La valentía no es la ausencia de miedo, sino el triunfo sobre él.",
+        "Lucha por tus principios sin importar las consecuencias.",
+        "Nunca renuncies a lo que realmente deseas.",
+        "Traer la camiseta puesta."
+      ],
+      "qs": [
+        "Deporte",
+        "Motivación",
+        "Deportistas"
+      ]
+    },
+    {
+      "id": "es.029",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "No dejes para mañana lo que puedes hacer hoy.",
+        "Tu vida está a punto de cambiar.",
+        "Volver a empezar desde cero con la frente en alto.",
+        "El fracaso no es el fin, es solo el comienzo de algo mejor.",
+        "Si puedes soñarlo, puedes lograrlo con trabajo y disciplina.",
+        "La disciplina es el puente entre las metas y los logros.",
+        "El secreto de avanzar es comenzar.",
+        "Lo único imposible es aquello que no intentas.",
+        "El momento perfecto es hoy, no esperes al mañana.",
+        "No esperes oportunidades, créalas tú mismo.",
+        "Nunca es tarde para ser lo que podrías haber sido.",
+        "Siembra buena semilla hoy para cosechar buenos frutos mañana.",
+        "El camino más largo empieza con un solo paso.",
+        "Cada error superado es un paso más cerca de la meta.",
+        "La sabiduría empieza en la reflexión.",
+        "El pasado ya se fue, el futuro no ha llegado, vive el presente.",
+        "Cada amanecer trae una nueva esperanza.",
+        "Siembra pensamientos positivos y cosecharás éxito.",
+        "Vive el presente con plenitud y alegría.",
+        "Aprende a transformar los problemas en oportunidades de aprendizaje."
+      ],
+      "qs": [
+        "Empezar",
+        "Disciplina",
+        "Hoy",
+        "Empieza hoy"
+      ]
+    },
+    {
+      "id": "es.030",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "El éxito no es el final, el fracaso no es fatal: es el valor para continuar lo que cuenta.",
+        "La mayor gloria no es no caer nunca, sino levantarse siempre.",
+        "Lo que no nos mata nos hace más fuertes.",
+        "Cada obstáculo es una oportunidad disfrazada.",
+        "Sé constante y verás los resultados a su debido tiempo.",
+        "No hay barrera que pueda contener la determinación humana.",
+        "El camino a la grandeza requiere sacrificio.",
+        "No hay atajos para los lugares a los que vale la pena ir.",
+        "Tu actitud determina tu altitud.",
+        "Supera tus límites día a día.",
+        "Sigue tus pasiones y el universo abrirá puertas donde solo había muros.",
+        "Sé constante en tus esfuerzos y paciente con tus resultados.",
+        "Afronta las adversidades con valentía y optimismo.",
+        "La fe mueve fronteras y rompe barreras.",
+        "Sé un ejemplo positivo para las futuras generaciones.",
+        "La perseverancia convierte lo imposible en realidad.",
+        "Sé promotor de paz allá donde vayas.",
+        "Supera el miedo al fracaso y alcanzarás la gloria.",
+        "La fuerza de voluntad es el motor del alma.",
+        "La vida es una constante aventura de aprendizaje."
+      ],
+      "qs": [
+        "No rendirse",
+        "Seguir adelante",
+        "Perseverar",
+        "Sigue"
+      ]
+    },
+    {
+      "id": "es.031",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "No hay nada imposible, solo hay cosas más difíciles que otras.",
+        "Sé la versión original de ti mismo, no una copia.",
+        "La actitud es una pequeña cosa que hace una gran diferencia.",
+        "Las grandes mentes discuten ideas, las mentes promedio discuten eventos.",
+        "A veces hay que perderse para encontrarse a uno mismo.",
+        "La mente abierta es la puerta al crecimiento personal.",
+        "No dejes que el ruido exterior apague tu voz interior.",
+        "Quien busca la perfección termina no haciendo nada.",
+        "No vivas para complacer a los demás, vive para ser auténtico.",
+        "Mantén tus ideales firmes ante las tempestades.",
+        "El carácter de una persona se demuestra en momentos difíciles.",
+        "Quien tiene paz interior lo tiene todo.",
+        "El verdadero valor reside en decir la verdad.",
+        "Aprende de todos, no te creas superior a nadie.",
+        "El cambio es inevitable, el crecimiento es opcional.",
+        "Desarrolla una mente fuerte para enfrentar los desafíos.",
+        "Sé fiel a tus valores en todo momento.",
+        "La mente es como un paracaídas: solo funciona si se abre.",
+        "No dejes que las opiniones ajenas definan tu valor.",
+        "Sé libre de prejuicios y abierto al mundo."
+      ],
+      "qs": [
+        "La mente",
+        "Actitud",
+        "Pensar",
+        "Mente"
+      ]
+    },
+    {
+      "id": "es.032",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Acepta quien eres y conviértelo en tu mayor fortaleza.",
+        "Aprende a amar tus imperfecciones, son las que te hacen único.",
+        "El perdón no cambia el pasado, pero expande el futuro.",
+        "La verdadera felicidad viene de servir a los demás.",
+        "La gratitud transforma lo que tenemos en suficiente.",
+        "Aprende a sonreír incluso en medio de la tormenta.",
+        "No prometas cuando estés feliz, no respondas cuando estés enojado.",
+        "La vida es un espejo: te sonríe si la miras sonriendo.",
+        "La felicidad depende de nosotros mismos.",
+        "La vida es un regalo, vívela al máximo.",
+        "Un día sin sonreír es un día perdido.",
+        "El alma se alimenta de bellos momentos.",
+        "Un corazón agradecido atrae cosas buenas.",
+        "Aprende a perdonarte a ti mismo antes que a los demás.",
+        "La sinceridad es un regalo caro, no la esperes de gente barata.",
+        "No dejes que las circunstancias dicten tu felicidad.",
+        "Aprecia las bendiciones diarias que recibes.",
+        "La verdad nos fortalece ante las tormentas.",
+        "Estar re contento.",
+        "No cuentes los días, haz que los días cuenten."
+      ],
+      "qs": [
+        "Felicidad",
+        "Ser feliz",
+        "Feliz"
+      ]
+    },
+    {
+      "id": "es.033",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "El tiempo lo dirá.",
+        "No juegues con mi paciencia.",
+        "Tu tiempo es limitado, no lo malgastes viviendo la vida de otro.",
+        "Vive con propósito y muere sin arrepentimientos.",
+        "La generosidad no consiste en dar mucho, sino en dar a tiempo.",
+        "La paciencia es la virtud de los fuertes.",
+        "La paciencia es amarga, pero sus frutos son dulces.",
+        "El tiempo es el único recurso que jamás se recupera.",
+        "No mires atrás a menos que sea para aprender del pasado.",
+        "La paciencia y el tiempo hacen más que la fuerza.",
+        "El respeto es la base de la convivencia pacífica.",
+        "Sé generoso con tu tiempo y con tus palabras de aliento.",
+        "El tiempo libre es la mejor fortuna para el sabio.",
+        "El futuro pertenece a quienes creen en la belleza de sus sueños.",
+        "El amor verdadero trasciende el espacio y el tiempo.",
+        "Al final, el amor es lo único que prevalece.",
+        "La noche promete sorpresas e inolvidables momentos.",
+        "Estar un toque ocupado.",
+        "El esfuerzo de hoy es la recompensa del mañana.",
+        "Estar en sincronía."
+      ],
+      "qs": [
+        "El tiempo",
+        "Aprovechar el día",
+        "Tiempo"
+      ]
+    },
+    {
+      "id": "es.034",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Aprende de tus errores.",
+        "Tienes que aprender a escuchar.",
+        "El conocimiento es poder, pero la sabiduría es libertad.",
+        "Haz de tu vida una obra de arte.",
+        "Un hombre sabio habla porque tiene algo que decir; un necio porque tiene que decir algo.",
+        "Aprende del dolor para convertirlo en sabiduría.",
+        "El aprendizaje es un tesoro que seguirá a su dueño a todas partes.",
+        "La verdad es el camino más directo hacia la libertad.",
+        "La verdadera belleza es invisible a los ojos.",
+        "Aprender a escuchar es tan importante como aprender a hablar.",
+        "Las acciones hablan más fuerte que las palabras.",
+        "La verdad nos da la libertad de ser nosotros mismos.",
+        "La libertad consiste en ser dueño de la propia vida.",
+        "El arte de amar es también el arte de respetar.",
+        "La verdad florece tarde o temprano.",
+        "No hay nada de malo en admitir un error.",
+        "Aprende a adaptarte a los cambios de la vida.",
+        "La sinceridad conduce a relaciones verdaderas y duraderas.",
+        "La verdadera elegancia está en la sencillez y la educación.",
+        "Quien tiene un porqué para vivir puede soportar casi cualquier cómo."
+      ],
+      "qs": [
+        "Sabiduría",
+        "Aprender",
+        "Sabios"
+      ]
+    },
+    {
+      "id": "es.035",
+      "type": "CHAT",
+      "actionId": "1464835936087",
+      "a": [
+        "El perdón libera más al que perdona que al perdonado.",
+        "El respeto se gana, no se pide ni se exige.",
+        "La humildad debe ser siempre tu mayor virtud.",
+        "Crea tu propio camino y deja una huella.",
+        "El alma noble siempre encuentra el camino hacia el bien.",
+        "El respeto mutuo es el fundamento de toda relación.",
+        "Haz el bien sin mirar a quién.",
+        "Sé tú mismo, los demás puestos ya están ocupados.",
+        "Al final de todo, solo cuenta el amor que diste y recibiste.",
+        "La empatía es la clave para conectar con los demás.",
+        "Sé amable con todos los que encuentres en tu camino.",
+        "La humildad nos hace grandes ante los demás.",
+        "Sé la luz en medio de la oscuridad de alguien.",
+        "Haz lo correcto aunque nadie te esté mirando.",
+        "Acepta las críticas constructivas con humildad.",
+        "No busques la aprobación de los demás, busca la tuya propia.",
+        "La bondad siempre deja una huella imborrable.",
+        "El trabajo en equipo divide las tareas y multiplica el éxito.",
+        "Aprende a desconectar para poder reconectar contigo mismo.",
+        "Tu fe debe ser más grande que tus temores."
+      ],
+      "qs": [
+        "Bondad",
+        "Ser bueno",
+        "Ayuda"
+      ]
+    },
+    {
+      "id": "es.036",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "No sabes cuánto me costó llegar hasta aquí.",
+        "Es el precio que hay que pagar por el éxito.",
+        "La pasión es el único motor del éxito a largo plazo.",
+        "No le temas al cambio, témele a la monotonía.",
+        "Haz todo con pasión o no lo hagas.",
+        "No te conformes con menos de lo que mereces.",
+        "Ama lo que haces y el éxito te seguirá de forma natural.",
+        "El éxito no es cuestión de suerte, es cuestión de elección.",
+        "El destino no es una cuestión de casualidad, sino de elección.",
+        "No dejes que los pequeños detalles arruinen tus grandes planes.",
+        "No midas tu éxito por el dinero, sino por la paz mental.",
+        "Acepta los cambios con los brazos abiertos.",
+        "No hay caminante sin camino, ni historia sin destino.",
+        "Nada grande se ha conseguido sin entusiasmo.",
+        "Aprende a decir no cuando sea necesario.",
+        "Tu destino está en tus propias manos.",
+        "La perseverancia vence lo que la dicha no alcanza.",
+        "No hay triunfo sin esfuerzo previo.",
+        "El éxito dura un instante, el aprendizaje toda la vida.",
+        "Donde hay voluntad, hay un camino."
+      ],
+      "qs": [
+        "Éxito",
+        "Destino",
+        "Logros"
+      ]
+    },
+    {
+      "id": "es.037",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "¿Estás loco o qué te pasa?",
+        "Estar como una cabra.",
+        "¡Qué fuerte!",
+        "Ser un fantasma.",
+        "Ser la leche.",
+        "Tomar el pelo.",
+        "Montar un pollo.",
+        "Estar hecho un lío.",
+        "Ser un cero a la izquierda.",
+        "Hablar por los codos.",
+        "Pelotudo.",
+        "Ni en pedo.",
+        "Hacerse el desentendido.",
+        "Ser un careta.",
+        "Estar re loco.",
+        "Quilombo.",
+        "Ser un vende humo.",
+        "Estar del coco.",
+        "Estar flopeando.",
+        "Hacer un meme."
+      ],
+      "qs": [
+        "Hazme reír",
+        "Gracioso",
+        "Risa",
+        "Qué risa"
+      ]
+    },
+    {
+      "id": "es.038",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "No juegues conmigo.",
+        "No me comas la cabeza.",
+        "Tener mala leche.",
+        "Dar la lata.",
+        "Tener un cacao en la cabeza.",
+        "Ser un pesado.",
+        "Estar de mala leche.",
+        "Buscar las cosquillas.",
+        "Cantar las 40.",
+        "¡Qué gacho!",
+        "Estar de la chingada.",
+        "Estar hasta la madre.",
+        "Traer bronca.",
+        "No te rajes.",
+        "Estar como agua para chocolate.",
+        "Caer de a madre.",
+        "Armar un pancho.",
+        "Caer gordo.",
+        "Estar picado.",
+        "Estar al horno."
+      ],
+      "qs": [
+        "Enfadado",
+        "Rabia",
+        "Estoy harto",
+        "Qué rabia"
+      ]
+    },
+    {
+      "id": "es.039",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "¿Qué pasa, tío?",
+        "¿Qué onda?",
+        "Chavo.",
+        "Carnal.",
+        "Hazme el paro.",
+        "Un parote.",
+        "Sacar de onda.",
+        "Hacer un paro.",
+        "Parce.",
+        "Parchar.",
+        "Chamo.",
+        "Pelao.",
+        "A la orden.",
+        "Armar un parche.",
+        "¡Che!",
+        "Boludo.",
+        "Pibe.",
+        "Bancar.",
+        "Tener buena vibra.",
+        "Totalmente de acuerdo."
+      ],
+      "qs": [
+        "Amigos",
+        "Colegas",
+        "Amistad"
+      ]
+    },
+    {
+      "id": "es.040",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "El dinero no compra la felicidad, pero ayuda bastante.",
+        "Haz lo que amas y nunca trabajarás un solo día de tu vida.",
+        "El trabajo honesto siempre rinde frutos.",
+        "Ser un rata.",
+        "Currar.",
+        "Pasta.",
+        "Pagar a escote.",
+        "Hacer una chapuza.",
+        "Estar apurado.",
+        "Ser un enchufado.",
+        "Chambear.",
+        "La lana.",
+        "Ir en friega.",
+        "Estar en la jugada.",
+        "Hacer un mandado.",
+        "Ponerse la 10.",
+        "Estar en la olla.",
+        "Hacer un cruce.",
+        "Laburar.",
+        "Guita."
+      ],
+      "qs": [
+        "Trabajo",
+        "Dinero",
+        "Curro",
+        "Pasta"
+      ]
+    },
+    {
+      "id": "es.041",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "No te dejes llevar por la ira.",
+        "Hay cosas que prefiero no saber.",
+        "La paz mental no tiene precio.",
+        "La tranquilidad es el bien más preciado.",
+        "Estar en la parra.",
+        "Estar de buen rollo.",
+        "Estar petado.",
+        "Quedarse frito.",
+        "Estar chupado.",
+        "Dormir a pierna suelta.",
+        "Dar el chatazo.",
+        "Estar de guayabo.",
+        "Estar mamado.",
+        "Cogerlo con suave.",
+        "Tener fiaca.",
+        "Ir a tomar un mate.",
+        "Modo ahorro de energía.",
+        "Cero drama.",
+        "Estar en la zona de confort.",
+        "Pisar el freno."
+      ],
+      "qs": [
+        "Tranquilo",
+        "Relax",
+        "Calma"
+      ]
+    },
+    {
+      "id": "es.042",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "¡Mola mucho!",
+        "Es una pasada.",
+        "¡Ostras!",
+        "¡Jolín!",
+        "¡Qué padre!",
+        "¡Qué chido!",
+        "No mames.",
+        "¡Órale!",
+        "¡Andale!",
+        "Cinchado.",
+        "Estar chiquito pero picoso.",
+        "¡Qué bacán!",
+        "¡Qué bacano!",
+        "¡Qué chévere!",
+        "Poderoso.",
+        "¡Qué copado!",
+        "Champán y chinchulín.",
+        "De una.",
+        "Es un 10 de 10.",
+        "Estar en tu prime."
+      ],
+      "qs": [
+        "Vaya",
+        "Sorpresa",
+        "No me digas"
+      ]
+    },
+    {
+      "id": "es.043",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Pillar cacho.",
+        "Estar como un tren.",
+        "Poner los cuernos.",
+        "Tirarle el rollo.",
+        "Estar clavado.",
+        "Echar los perros.",
+        "Mina.",
+        "Ghostear.",
+        "Estar obsesionado.",
+        "Hacer match.",
+        "Tener una bandera roja (Red flag).",
+        "Mami, tú sabes que me gustas demasiado.",
+        "Ella camina con estilo y todos la miran pasar.",
+        "Una mirada tuya basta para volverme loco.",
+        "Esta noche somos tú y yo contra el mundo.",
+        "Tú y yo nacimos para estar juntos.",
+        "Siento que vuelo cuando rozas mi piel.",
+        "Me pierdo en la profundidad de tus ojos negros.",
+        "No hay distancia que enfríe este amor.",
+        "El verdadero amor aguanta el paso del tiempo."
+      ],
+      "qs": [
+        "Citas",
+        "Amor moderno",
+        "Ligar"
+      ]
+    },
+    {
+      "id": "es.044",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Hacer spoiler.",
+        "Ser un hater.",
+        "Stalkear.",
+        "Tener hype.",
+        "Estar cancelado.",
+        "Mandar mensaje directo (DM).",
+        "Hacer un live.",
+        "Literal.",
+        "NPC.",
+        "Main character.",
+        "Fin del comunicado.",
+        "Estar viral.",
+        "Ser tendencia.",
+        "Tener flow.",
+        "Servir look.",
+        "Glow up.",
+        "Tener vibes de...",
+        "¡Pilas!",
+        "Dar cringe."
+      ],
+      "qs": [
+        "Internet",
+        "Redes sociales",
+        "Móvil"
+      ]
+    },
+    {
+      "id": "es.045",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Estar morro.",
+        "Vaina.",
+        "Estar corchado.",
+        "Estar cansado de la misma vaina.",
+        "A huevo.",
+        "Ponerse buzo.",
+        "No le crea tanto.",
+        "Esa es tu opinión, no la realidad.",
+        "Todo fue una trampa desde el principio.",
+        "Todo tiene su momento y su lugar.",
+        "No hay motivo para alarmarse.",
+        "Te debo una muy grande.",
+        "Ser bien chismoso.",
+        "Estar en el chisme.",
+        "Gente bien.",
+        "Tener buena onda.",
+        "Ponerse la del Puebla.",
+        "Hacer una pachanga.",
+        "Chela.",
+        "Guaro."
+      ],
+      "qs": [
+        "Expresiones",
+        "Da igual",
+        "Frases hechas"
+      ]
+    },
+    {
+      "id": "es.046",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "En fin, la hipocresía.",
+        "Irse por la tangente.",
+        "A otra cosa, mariposa.",
+        "No pegarla ni con cola.",
+        "Me importa un pimiento.",
+        "Ni al caso.",
+        "Sabelo.",
+        "Sin palabras.",
+        "Dar el avió.",
+        "Las palabras se las lleva el viento.",
+        "De perdidos al río.",
+        "Saber un buen.",
+        "Chorizo.",
+        "Mandar fruta.",
+        "Morderse la lengua.",
+        "Tirar la casa por la ventana.",
+        "Estar fuera de lugar.",
+        "Te lo mereces por todo lo que hiciste.",
+        "No hay bronca."
+      ],
+      "qs": [
+        "Dichos",
+        "Refranes",
+        "Dime un dicho",
+        "Un refrán"
+      ]
+    }
+  ]
+}

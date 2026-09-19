@@ -49,7 +49,10 @@ public abstract class SemanticMatcherBase {
     /** 配對結果。type 和 MainActivity 已有的 asr_result event 格式對齊,
      *  answer/actionId 可能是 null (例如 CHAT 類沒 actionId, 部分 FUNCTION 沒 answer)。
      *  matched＝真命中問法庫／false＝fallback 亂答（SemanticCenter 跨語言兜底用：
-     *  主 matcher 不中先試另一個，兩個都不中就用主那個 fallback）。 */
+     *  主 matcher 不中先試另一個，兩個都不中就用主那個 fallback）。
+     *  matchLayer＝命中邊一層（0 精確／1 包含／2 反包含／3 模糊／4 fallback）——
+     *  SemanticCenter 三語鏈用嚟排先後：強匹配（精確/包含/反包含）贏過別家嘅
+     *  模糊（例如西文 "Aplaude" 精確中西文組，唔畀英文 "applaud" 模糊搶走）。 */
     public static final class MatchResult {
         public final String question;   // 命中的原始問法 (debug 用)
         public final String type;       // "ACTION" | "FUNCTION" | "CHAT"
@@ -58,9 +61,10 @@ public abstract class SemanticMatcherBase {
         public final String answer;     // 隨機選一句的回覆句, 沒答案句就是 null
         public final String actionId;   // 202動作清單裡面的 action id, 沒動作就是 null
         public final boolean matched;   // 真命中／fallback
+        public final int matchLayer;    // 0 精確／1 包含／2 反包含／3 模糊／4 fallback
 
         public MatchResult(String question, String type, String operation, String slot,
-                    String answer, String actionId, boolean matched) {
+                    String answer, String actionId, boolean matched, int matchLayer) {
             this.question = question;
             this.type = type;
             this.operation = operation;
@@ -68,6 +72,7 @@ public abstract class SemanticMatcherBase {
             this.answer = answer;
             this.actionId = actionId;
             this.matched = matched;
+            this.matchLayer = matchLayer;
         }
     }
 
@@ -238,7 +243,7 @@ public abstract class SemanticMatcherBase {
 
         // 1) 完全相等
         for (Entry e : entries) {
-            if (q.equals(e.normQ)) return toResult(e);
+            if (q.equals(e.normQ)) return toResult(e, 0);
         }
 
         // 2) 問法完全包含在輸入裡面 (選最長那條, 減少短問法誤中)
@@ -248,7 +253,7 @@ public abstract class SemanticMatcherBase {
                 if (best == null || e.normQ.length() > best.normQ.length()) best = e;
             }
         }
-        if (best != null) return toResult(best);
+        if (best != null) return toResult(best, 1);
 
         // 3) 輸入完全包含在問法裡面 (ASR 漏字/縮短, 選最長那條問法)
         for (Entry e : entries) {
@@ -256,7 +261,7 @@ public abstract class SemanticMatcherBase {
                 if (best == null || e.normQ.length() > best.normQ.length()) best = e;
             }
         }
-        if (best != null) return toResult(best);
+        if (best != null) return toResult(best, 2);
 
         // 4) 模糊配對: ASR 同音錯別字/增減一字/相鄰換位。距離最小者勝。
         best = null;
@@ -273,17 +278,22 @@ public abstract class SemanticMatcherBase {
                 bestD = d;
             }
         }
-        if (best != null) return toResult(best);
+        if (best != null) return toResult(best, 3);
 
         return fallback();
     }
 
-    /** 比對用正規化: 去頭尾空白、拉丁轉小寫、去掉所有標點/符號/空白
+    /** 比對用正規化: 去頭尾空白、拉丁轉小寫、拉丁重音拆掉 (NFD 去 Mn, 例如
+     *  í→i、ñ→n - Vosk 西文輸出同打字成日唔帶重音, 兩邊一齊拆先對得上;
+     *  中英文件本身冇重音字, 對佢哋零影響)、去掉所有標點/符號/空白
      *  (Unicode P/S 類 + 空白, 含全形？。！，、；：「」『』《》…—)。
      *  中英數字不受影響 (TFBOYS/OK/0.01公分照認)。null 回 ""。 */
     static String normalizeForMatch(String s) {
         if (s == null) return "";
         String t = s.trim().toLowerCase(java.util.Locale.ROOT);
+        // NFD 拆重音 (e + ́), Mn 類即掉 - 只影響拉丁字母, CJK 照過。
+        t = java.text.Normalizer.normalize(t, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{Mn}", "");
         StringBuilder sb = new StringBuilder(t.length());
         for (int i = 0; i < t.length(); i++) {
             char c = t.charAt(i);
@@ -343,10 +353,10 @@ public abstract class SemanticMatcherBase {
     private MatchResult fallback() {
         int i = random.nextInt(fallbackQuestions.length);
         return new MatchResult(fallbackQuestions[i], "CHAT", null, null,
-                fallbackQuestions[i], fallbackActionIds[i], false);
+                fallbackQuestions[i], fallbackActionIds[i], false, 4);
     }
 
-    private MatchResult toResult(Entry e) {
+    private MatchResult toResult(Entry e, int layer) {
         String answer = null;
         if (e.answers != null && e.answers.length > 0) {
             answer = e.answers[random.nextInt(e.answers.length)];
@@ -358,7 +368,7 @@ public abstract class SemanticMatcherBase {
             // 有 loadXiaozhiActions(), 這個 class 不重複讀多一次 202 動作清單),
             // 這裡回傳 "__RANDOM__" 標記給呼叫方識別。
         }
-        return new MatchResult(e.q, e.type, e.op, e.slot, answer, actionId, true);
+        return new MatchResult(e.q, e.type, e.op, e.slot, answer, actionId, true, layer);
     }
 
     /** debug/量度用: 已載入多少條記錄。 */

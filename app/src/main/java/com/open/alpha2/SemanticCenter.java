@@ -20,26 +20,28 @@ public final class SemanticCenter {
 
     private final SemanticMatcherZh semanticMatcherZh;
     private final SemanticMatcherEn semanticMatcherEn;
+    private final SemanticMatcherEs semanticMatcherEs;
     private final ActionDirect actionDirect;
     private final TtsCenter ttsCenter;
 
-    /** 對話語言（zh/en；null＝未設）：vosk/load 換 model 當時經 setDialogueLang()
+    /** 對話語言（zh/en/es；null＝未設）：vosk/load 換 model 當時經 setDialogueLang()
      *  傳入。vosk 什麼話就對什麼 matcher；沒有對認 matcher 的語言一律行英文（下面
      *  "zh".equals 就是這條規則——將來加的語言未有 matcher 之前都是這樣）。 */
     private volatile String dialogueLang;
 
-    /** 對話語言設定（VoskApi 經 vosk/load 換 model 當時傳入；僅收 zh/en）。
+    /** 對話語言設定（VoskApi 經 vosk/load 換 model 當時傳入；僅收 zh/en/es）。
      *  TTS 不綁這個——用什麼 TTS 全由用家決定，這裡僅決定用哪個 matcher，
      *  答案讀什麼 locale 跟命中那邊（見 handleSemanticMatch）。 */
     public void setDialogueLang(String lang) {
-        if ("zh".equals(lang) || "en".equals(lang)) dialogueLang = lang;
+        if ("zh".equals(lang) || "en".equals(lang) || "es".equals(lang)) dialogueLang = lang;
     }
 
     public SemanticCenter(SemanticMatcherZh semanticMatcherZh,
-            SemanticMatcherEn semanticMatcherEn,
+            SemanticMatcherEn semanticMatcherEn, SemanticMatcherEs semanticMatcherEs,
             ActionDirect actionDirect, TtsCenter ttsCenter) {
         this.semanticMatcherZh = semanticMatcherZh;
         this.semanticMatcherEn = semanticMatcherEn;
+        this.semanticMatcherEs = semanticMatcherEs;
         this.actionDirect = actionDirect;
         this.ttsCenter = ttsCenter;
     }
@@ -66,11 +68,11 @@ public final class SemanticCenter {
      *  那 1000 條裡面是很正常的事, 悄悄地不回應好過亂回一個不相關的回覆), 回傳 null。
      *
      *  用哪個 matcher：有設對話語言就跟設定（vosk 什麼話就對什麼 matcher；
-     *  SemanticMatcherZh/En 結構一致、資料獨立, 不會互相影響），主那個不中
-     *  先試另一個（兜底直接打 model 鍵換了 model、或者混合輸入那些 case）；
-     *  兩個都不中就用主那個 fallback（同以前單試一個效果一樣，不會播兩次）。
+     *  SemanticMatcherZh/En/Es 結構一致、資料獨立, 不會互相影響），主那個不中
+     *  先試另外兩個（兜底直接打 model 鍵換了 model、或者混合輸入那些 case）；
+     *  三個都不中就用主那個 fallback（同以前單試一個效果一樣，不會播兩次）。
      *  未設就沿用 looksChinese()（有漢字行中文 semantic_zh.json，
-     *  沒有就行英文 semantic_en.json）。
+     *  沒有就行英文 semantic_en.json；西文一定要經設定先入到）。
      *
      *  TTS locale 跟命中那邊（不是跟輸入文字），嘴 LED 同動作流程不變。
      *
@@ -84,17 +86,57 @@ public final class SemanticCenter {
     public SemanticMatcherZh.MatchResult handleSemanticMatch(final String text,
                                                                          final boolean publishEvent) {
         final boolean textChinese = looksChinese(text);
-        final boolean primaryChinese = dialogueLang != null ? "zh".equals(dialogueLang) : textChinese;
-        final SemanticMatcherBase primary = primaryChinese ? semanticMatcherZh : semanticMatcherEn;
-        final SemanticMatcherBase secondary = primaryChinese ? semanticMatcherEn : semanticMatcherZh;
+        // 主語言：有設跟設定（zh/en/es），未設就沿用 looksChinese（有漢字中文、冇就英文；
+        // 西班牙文一定要經設定先入到——冇漢字嘅西文靠下面三個試晒先中）。
+        final String lang;
+        if (dialogueLang != null) {
+            lang = dialogueLang;
+        } else {
+            lang = textChinese ? "zh" : "en";
+        }
+        final SemanticMatcherBase mZh = semanticMatcherZh;
+        final SemanticMatcherBase mEn = semanticMatcherEn;
+        final SemanticMatcherBase mEs = semanticMatcherEs;
+        final String[] order;
+        final SemanticMatcherBase[] chain;
+        if ("es".equals(lang)) {
+            order = new String[]{"es", "zh", "en"};
+            chain = new SemanticMatcherBase[]{mEs, mZh, mEn};
+        } else if ("en".equals(lang)) {
+            order = new String[]{"en", "zh", "es"};
+            chain = new SemanticMatcherBase[]{mEn, mZh, mEs};
+        } else {
+            order = new String[]{"zh", "en", "es"};
+            chain = new SemanticMatcherBase[]{mZh, mEn, mEs};
+        }
 
-        SemanticMatcherBase.MatchResult result = primary != null ? primary.match(text) : null;
-        boolean chinese = primaryChinese;
-        if ((result == null || !result.matched) && secondary != null && secondary != primary) {
-            SemanticMatcherBase.MatchResult second = secondary.match(text);
-            if (second != null && second.matched) {
-                result = second;
-                chinese = !primaryChinese;
+        SemanticMatcherBase.MatchResult result = chain[0] != null ? chain[0].match(text) : null;
+        String hitLang = order[0];
+        if (result != null && result.matched && result.matchLayer > 2) {
+            // 主 matcher 只係模糊撞中（例如無設語言、拉丁輸入英文行先，
+            // 西文 "Aplaude" 會畀英文 "applaud" 模糊搶走）——先睇埋另外兩個
+            // 有冇強匹配（精確/包含/反包含），有就用佢，冇先用主嗰個模糊。
+            for (int k = 1; k < chain.length; k++) {
+                if (chain[k] == null || chain[k] == chain[0]) continue;
+                SemanticMatcherBase.MatchResult r = chain[k].match(text);
+                if (r != null && r.matched && r.matchLayer <= 2) {
+                    result = r;
+                    hitLang = order[k];
+                    break;
+                }
+            }
+        }
+        if (result != null && !result.matched) {
+            // 主 matcher 聽唔明，先試埋另外兩個（中就用佢；都唔中就用主嗰個 fallback，
+            // 同以前中英互試效果一致，只係加多一關）。
+            for (int k = 1; k < chain.length; k++) {
+                if (chain[k] == null || chain[k] == chain[0]) continue;
+                SemanticMatcherBase.MatchResult r = chain[k].match(text);
+                if (r != null && r.matched) {
+                    result = r;
+                    hitLang = order[k];
+                    break;
+                }
             }
         }
         if (result == null) {
@@ -103,7 +145,7 @@ public final class SemanticCenter {
         // 裡面條 thread 捉不到 reassigned 過的 result，用 final 影子。
         final SemanticMatcherBase.MatchResult finalResult = result;
         // 命中那邊（主／兜底）：TTS locale＋分類隨機都跟它（final 下來給下面條 thread 用）。
-        final boolean hitChinese = chinese;
+        final String hitLangFinal = hitLang;
         if (publishEvent) {
             EventBus.get().publish("semantic_match",
                     "{\"question\":\"" + MainActivity.jsonSafe(result.question) + "\","
@@ -119,8 +161,15 @@ public final class SemanticCenter {
         // 語言選 locale。嘴 LED 熄燈靠 Android TTS 個 UtteranceProgressListener
         // (見 TtsCenter.initAndroidTts), 不用自動熄滅。
         final String ttsAnswer = finalResult.answer;
-        final java.util.Locale ttsLocale =
-                hitChinese ? java.util.Locale.SIMPLIFIED_CHINESE : java.util.Locale.ENGLISH;
+        // TTS locale 跟命中那邊的語言（西文答案用西班牙文讀，否則口音會好怪）。
+        final java.util.Locale ttsLocale;
+        if ("es".equals(hitLangFinal)) {
+            ttsLocale = new java.util.Locale("es");
+        } else if ("en".equals(hitLangFinal)) {
+            ttsLocale = java.util.Locale.ENGLISH;
+        } else {
+            ttsLocale = java.util.Locale.SIMPLIFIED_CHINESE;
+        }
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -134,9 +183,16 @@ public final class SemanticCenter {
                     // (完全不限分類, 202 個隨便選) 不同, 這是分類限定的隨機。中英文
                     // matcher 共用同一份 action_category_pools.json, 哪個 instance
                     // 呼叫結果都一樣, 只是依命中那邊選對應的 instance。
-                    actionId = hitChinese
-                            ? semanticMatcherZh.resolveCategoryRandomActionId(actionId)
-                            : semanticMatcherEn.resolveCategoryRandomActionId(actionId);
+                    final SemanticMatcherBase hitMatcher;
+                    if ("es".equals(hitLangFinal)) {
+                        hitMatcher = semanticMatcherEs;
+                    } else if ("en".equals(hitLangFinal)) {
+                        hitMatcher = semanticMatcherEn;
+                    } else {
+                        hitMatcher = semanticMatcherZh;
+                    }
+                    actionId = hitMatcher != null
+                            ? hitMatcher.resolveCategoryRandomActionId(actionId) : null;
                 } else if ("__RANDOM__".equals(actionId)) {
                     // TFBOY 這類 operation 在原廠問法裡沒有固定動作 - 沿用
                     // triggerRandomFillerAction() 已有的隨機動作池 (202 個動作裡

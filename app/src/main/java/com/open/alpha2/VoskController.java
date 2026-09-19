@@ -72,8 +72,10 @@ public final class VoskController {
 
     private final Context appContext;
     private final SemanticMatcherZh matcherZh;
+
     private final SemanticMatcherEn matcherEn;
 
+    private final SemanticMatcherEs matcherEs;
     private volatile State state = State.IDLE;
     private volatile String modelId;
     private volatile String lastError;
@@ -153,10 +155,11 @@ public final class VoskController {
     private static final long RESUME_AFTER_TTS_MS = 800;
 
     public VoskController(Context context, SemanticMatcherZh zh,
-            SemanticMatcherEn en) {
+            SemanticMatcherEn en, SemanticMatcherEs es) {
         this.appContext = context.getApplicationContext();
         this.matcherZh = zh;
         this.matcherEn = en;
+        this.matcherEs = es;
         try {
             LibVosk.setLogLevel(LogLevel.WARNINGS);
         } catch (Throwable ignore) {
@@ -415,22 +418,27 @@ public final class VoskController {
         return null;
     }
 
-    /** model id → 對話語言（zh/en；認不到回 null）。同 buildGrammar 之前內聯
-     *  那串 contains 逐字一樣，抽出來等 vosk/load 同步配對語言都用同一套。 */
+    /** model id → 對話語言（zh/en/es；認不到回 null）。同 buildGrammar 之前內聯
+     *  那串 contains 逐字一樣，抽出來等 vosk/load 同步配對語言都用同一套。
+     *  注意 "es" 本身太易撞（test/best 都有 es），一定要加邊界先認
+     *  （spanish/español/-es-/es- 開頭/-es 結尾/成個就係 es）。 */
     static String langOfModelId(String id) {
         if (id == null) return null;
         String lower = id.toLowerCase(java.util.Locale.US);
         if (lower.contains("cn") || lower.contains("zh") || lower.contains("mandarin")) return "zh";
+        if (lower.contains("spanish") || lower.contains("espa")) return "es";
+        if (lower.contains("-es-") || lower.startsWith("es-") || lower.endsWith("-es")
+                || lower.endsWith("_es") || lower.equals("es")) return "es";
         if (lower.contains("en")) return "en";
         return null;
     }
 
-    /** 目前對話語言（zh/en）：上次 load 記下的；未記過就由目前 model 推斷（都沒有就 zh）。
+    /** 目前對話語言（zh/en/es）：上次 load 記下的；未記過就由目前 model 推斷（都沒有就 zh）。
      *  語言跟 model 行——模型鍵就是語言鍵，不用用家另外選。 */
     public String getDialogueLang() {
         try {
             String v = prefs().getString(PREF_DIALOGUE_LANG, null);
-            if ("zh".equals(v) || "en".equals(v)) return v;
+            if ("zh".equals(v) || "en".equals(v) || "es".equals(v)) return v;
             String m = langOfModelId(modelId);
             if (m != null) return m;
         } catch (Throwable ignore) {}
@@ -454,6 +462,10 @@ public final class VoskController {
                 stripSpaces = true;
             } else if ("en".equals(lang)) {
                 phrases = matcherEn.questions();
+                stripSpaces = false;
+            } else if ("es".equals(lang)) {
+                // 西文同英文一樣 word 級（唔使逐字空格），將來有 es model 先用得。
+                phrases = matcherEs.questions();
                 stripSpaces = false;
             } else {
                 stripSpaces = false;
@@ -827,7 +839,7 @@ public final class VoskController {
     }
 
     /** 實驗 tab 下載卡用：全部可下載＋已下載旗＋對話旗。
-     *  dialogue＝有對認 matcher、可對話（現在中英；同 SemanticCenter 規則一致，
+     *  dialogue＝有對認 matcher、可對話（中英西；同 SemanticCenter 規則一致，
      *  未有 matcher 的語言一律 false）。純檔案 IO＋常數判斷，哪條 thread call 都得。 */
     public static String catalogJson() {
         StringBuilder sb = new StringBuilder("{\"ok\":true,\"catalog\":[");
@@ -842,7 +854,7 @@ public final class VoskController {
             sb.append(",\"langEn\":\"").append(escape(guessLangEn(id))).append('"');
             sb.append(",\"sizeMb\":").append(e[1]);
             sb.append(",\"downloaded\":").append(findModelDir(id) != null);
-            sb.append(",\"dialogue\":").append("zh".equals(ml) || "en".equals(ml));
+            sb.append(",\"dialogue\":").append("zh".equals(ml) || "en".equals(ml) || "es".equals(ml));
             sb.append('}');
         }
         return sb.append("]}").toString();
