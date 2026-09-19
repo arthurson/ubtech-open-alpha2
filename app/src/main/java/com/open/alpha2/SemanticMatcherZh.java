@@ -13,6 +13,9 @@ import android.content.Context;
  * {"version":2,"lang":"zh","intents":[{"id","type","op","slot","actionId",
  * "a":答案句,"qs":問法陣列}]}, 同 intent 共用同一組答案/動作, 免重複 -
  * 詳見該 JSON 檔頭註解/對話 history, 載入邏輯見 SemanticMatcherBase.load())。
+ *  2026-09 追加 ZH+157 CHAT (zh.mix.001-157: 電影／名言／歌／潮語打散混合
+ *  785 句，每組書面語問法＋5 個繁體原生答案，來自 cn800.txt，已存在
+ *  11 句剔除＋湊整 4 句；問法全部係 toTraditional 定點，簡繁輸入都中)。
  * 每個 intent 內:
  *   q      - 用戶問法 (例如 "跳舞", "你好嗎")
  *   a      - 候選答案句 (0~3句, 隨機選一句做 TTS; 部分 FUNCTION 類沒答案句)

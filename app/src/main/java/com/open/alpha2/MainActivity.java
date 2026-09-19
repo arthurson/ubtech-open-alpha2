@@ -106,6 +106,18 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
      *  (見 handleSemanticMatch), 靠內容判斷更可靠。 */
     private SemanticMatcherEs semanticMatcherEs;
 
+    /** 法文語意配對引擎實例, 和其他語言版同一套機制、獨立資料
+     *  (semantic_fr.json, 見 SemanticMatcherFr, 第一版係空庫骨架)。
+     *  哪句用哪個 matcher 由 SemanticCenter 根據對話語言／輸入文字決定
+     *  (見 handleSemanticMatch), 靠內容判斷更可靠。 */
+    private SemanticMatcherFr semanticMatcherFr;
+
+    /** 日文語意配對引擎實例, 和其他語言版同一套機制、獨立資料
+     *  (semantic_ja.json, 見 SemanticMatcherJa: 85 ACTION＋200 日常 CHAT)。
+     *  哪句用哪個 matcher 由 SemanticCenter 根據對話語言／輸入文字決定
+     *  (見 handleSemanticMatch), 靠內容判斷更可靠。 */
+    private SemanticMatcherJa semanticMatcherJa;
+
     /** Vosk 離線 ASR controller (語音 tab)。單例，onCreate 起，
      *  onDestroy 停。Model 放 sdcard 自動偵測，見 VoskController。 */
     private VoskController vosk;
@@ -217,12 +229,14 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         semanticMatcherZh = new SemanticMatcherZh(this);
         semanticMatcherEn = new SemanticMatcherEn(this);
         semanticMatcherEs = new SemanticMatcherEs(this);
+        semanticMatcherFr = new SemanticMatcherFr(this);
+        semanticMatcherJa = new SemanticMatcherJa(this);
         // Vosk 熔斷 —— vosk-android minSdk 21，API 19 機（這個 APK 要
         // 裝到 4.4）絕對不可以碰 org.vosk.*（native/JNA 即崩潰）。19 機 vosk
         // 維持 null，所有 vosk/* endpoint 經 VoskApi.voskOrError() 回清晰錯誤。
         if (android.os.Build.VERSION.SDK_INT >= 21) {
             try {
-                vosk = new VoskController(this, semanticMatcherZh, semanticMatcherEn, semanticMatcherEs);
+                vosk = new VoskController(this, semanticMatcherZh, semanticMatcherEn, semanticMatcherEs, semanticMatcherFr, semanticMatcherJa);
             } catch (Throwable e) {
                 Log.w(TAG, "VoskController init failed", e);
             }
@@ -234,7 +248,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // vosk pause/resume)。null = 用機身目前預設引擎。
         ttsCenter = new TtsCenter(this, vosk);
         ttsCenter.initAndroidTts(null);
-        semanticCenter = new SemanticCenter(semanticMatcherZh, semanticMatcherEn, semanticMatcherEs, actionDirect, ttsCenter);
+        semanticCenter = new SemanticCenter(semanticMatcherZh, semanticMatcherEn, semanticMatcherEs, semanticMatcherFr, semanticMatcherJa, actionDirect, ttsCenter);
         deviceStatus = new DeviceStatus(this, mainHandler, actionDirect, ubxPlayer, ttsCenter);
         // sticky broadcast 註冊時機不敏感。
         deviceStatus.registerBatteryReceiver();

@@ -1,0 +1,4219 @@
+{
+  "version": 2,
+  "lang": "fr",
+  "_comment": "v2 grouped格式, 同中英西版同一個schema (見 SemanticMatcherBase.load)。85 ACTION（通用法文答案5句，同西版同op/actionId）＋160 CHAT（電影對白/歌詞/名人名言/潮語各40組，每組日常問法＋5個原生法文答案，800句來自france800.txt；id: fr.mov/fr.son/fr.cit/fr.arg）。",
+  "intents": [
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000232878",
+      "id": "fr.action.applaud",
+      "op": "APPLAUD",
+      "qs": [
+        "Applaudis pour moi",
+        "Applaudis",
+        "Applaudir",
+        "Bravo",
+        "Un applaudissement",
+        "Des applaudissements pour moi"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000232878",
+      "id": "fr.action.applaud.2",
+      "op": "APPLAUD",
+      "qs": [
+        "Applaudissements"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000232878",
+      "id": "fr.action.applaud.3",
+      "op": "APPLAUD",
+      "qs": [
+        "Applaudissement"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936017",
+      "id": "fr.action.beck",
+      "op": "BECK",
+      "qs": [
+        "Fais coucou avec la main droite",
+        "Salue à droite",
+        "Dis bonjour à droite"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936018",
+      "id": "fr.action.beck.2",
+      "op": "BECK",
+      "qs": [
+        "Fais coucou avec la main gauche",
+        "Salue à gauche",
+        "Dis bonjour à gauche"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936160",
+      "id": "fr.action.crouch",
+      "op": "CROUCH",
+      "qs": [
+        "Accroupis-toi",
+        "Mets-toi accroupi",
+        "S'accroupir"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "id": "fr.action.dance",
+      "op": "DANCE",
+      "qs": [
+        "Danse pour moi",
+        "Tu sais danser ?",
+        "Montre-moi une danse",
+        "Danse un peu",
+        "Je veux te voir danser",
+        "Fais une danse",
+        "Allez danse",
+        "Danse maintenant",
+        "Montre-moi tes pas"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "id": "fr.action.dance_any",
+      "op": "DANCE_ANY",
+      "qs": [
+        "Danse quelque chose de spécial pour moi",
+        "Quelque chose de spécial",
+        "Danse spéciale"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "id": "fr.action.dance_any.2",
+      "op": "DANCE_ANY",
+      "qs": [
+        "Danse"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "id": "fr.action.dance_any.3",
+      "op": "DANCE_ANY",
+      "qs": [
+        "Danser"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__DANCE_BRAND",
+      "id": "fr.action.dance_brand",
+      "op": "DANCE_BRAND",
+      "qs": [
+        "Danse quelque chose d'unique",
+        "Unique",
+        "Danse unique"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__DANCE_KIDS",
+      "id": "fr.action.dance_kids",
+      "op": "DANCE_KIDS",
+      "qs": [
+        "Danse une chanson pour enfants",
+        "Enfantin",
+        "Chanson pour enfants",
+        "Danse d'enfants"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__DANCE_POP",
+      "id": "fr.action.dance_pop",
+      "op": "DANCE_POP",
+      "qs": [
+        "Danse une chanson pop",
+        "Pop",
+        "Chanson pop"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000313549",
+      "id": "fr.action.express",
+      "op": "EXPRESS",
+      "qs": [
+        "Sois mignon",
+        "Fais le mignon",
+        "Fais ton mignon",
+        "Mignon"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936043",
+      "id": "fr.action.express.wink",
+      "op": "EXPRESS",
+      "qs": [
+        "Fais un clin d'œil",
+        "Clin d'œil",
+        "Cligner de l'œil"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936013",
+      "id": "fr.action.express.deny",
+      "op": "EXPRESS",
+      "qs": [
+        "Quelle bêtise",
+        "Bêtise",
+        "C'est une bêtise"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000284732",
+      "id": "fr.action.express.happy",
+      "op": "EXPRESS",
+      "qs": [
+        "Tu es content ?",
+        "Content",
+        "Sois content"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000338636",
+      "id": "fr.action.express.sad",
+      "op": "EXPRESS",
+      "qs": [
+        "Je ne t'aime plus",
+        "Tu ne me plais plus"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936026",
+      "id": "fr.action.express.thinking",
+      "op": "EXPRESS",
+      "qs": [
+        "À quoi penses-tu ?",
+        "Réfléchis",
+        "En réflexion"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000360914",
+      "id": "fr.action.express.boring",
+      "op": "EXPRESS",
+      "qs": [
+        "Je m'ennuie",
+        "Ennuyeux",
+        "Quel ennui"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936042",
+      "id": "fr.action.express.agree",
+      "op": "EXPRESS",
+      "qs": [
+        "Tu es d'accord ?",
+        "D'accord",
+        "Je suis d'accord"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__EXPRESSION_ANY",
+      "id": "fr.action.expression_any",
+      "op": "EXPRESSION_ANY",
+      "qs": [
+        "Fais une grimace",
+        "Fais un geste du visage",
+        "Grimaces",
+        "Gestes"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__GESTURE_ANY",
+      "id": "fr.action.gesture_any",
+      "op": "GESTURE_ANY",
+      "qs": [
+        "Fais un geste des mains",
+        "Gestes des mains",
+        "Gesticule"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1487404045426",
+      "id": "fr.action.grievance",
+      "op": "GRIEVANCE",
+      "qs": [
+        "C'est injuste",
+        "Injuste",
+        "Ce n'est pas juste"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936028",
+      "id": "fr.action.handsraise",
+      "op": "HANDSRAISE",
+      "qs": [
+        "Lève le bras gauche",
+        "Bras gauche en l'air"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936027",
+      "id": "fr.action.handsraise.2",
+      "op": "HANDSRAISE",
+      "qs": [
+        "Lève le bras droit",
+        "Bras droit en l'air"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1510818386847",
+      "id": "fr.action.handsup",
+      "op": "HANDSUP",
+      "qs": [
+        "Lève la main gauche",
+        "Main gauche en l'air"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1510818336833",
+      "id": "fr.action.handsup.2",
+      "op": "HANDSUP",
+      "qs": [
+        "Lève la main droite",
+        "Main droite en l'air"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1508999975370",
+      "id": "fr.action.handsup.3",
+      "op": "HANDSUP",
+      "qs": [
+        "Mains en l'air",
+        "Lève les mains"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000284732",
+      "id": "fr.action.happynewyear",
+      "op": "HAPPYNEWYEAR",
+      "qs": [
+        "Bonne année",
+        "Nouvel an",
+        "Bonne et heureuse année"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936012",
+      "id": "fr.action.headdrop",
+      "op": "HEADDROP",
+      "qs": [
+        "Baisse la tête",
+        "Penche la tête",
+        "Tête baissée"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936092",
+      "id": "fr.action.headup",
+      "op": "HEADUP",
+      "qs": [
+        "Regarde en haut à gauche",
+        "En haut à gauche"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936090",
+      "id": "fr.action.headup.2",
+      "op": "HEADUP",
+      "qs": [
+        "Regarde en haut à droite",
+        "En haut à droite"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__HEAD_ANY",
+      "id": "fr.action.head_any",
+      "op": "HEAD_ANY",
+      "qs": [
+        "Bouge la tête",
+        "Tête",
+        "Bouger la tête"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000360914",
+      "id": "fr.action.hearttired",
+      "op": "HEARTTIRED",
+      "qs": [
+        "Je suis épuisé",
+        "Épuisé",
+        "Quelle fatigue"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936042",
+      "id": "fr.action.hum",
+      "op": "HUM",
+      "qs": [
+        "Fredonne quelque chose",
+        "Fredonne",
+        "Fredonner"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1508999590337",
+      "id": "fr.action.kick",
+      "op": "KICK",
+      "qs": [
+        "Coup de pied avec la jambe gauche",
+        "Donne un coup de pied à gauche"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1508999831918",
+      "id": "fr.action.kick.2",
+      "op": "KICK",
+      "qs": [
+        "Coup de pied avec la jambe droite",
+        "Donne un coup de pied à droite"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000200961",
+      "id": "fr.action.kunfu",
+      "op": "KUNFU",
+      "qs": [
+        "Fais du kung-fu",
+        "Kung-fu",
+        "Montre-moi du kung-fu"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000383562",
+      "id": "fr.action.laugh",
+      "op": "LAUGH",
+      "qs": [
+        "Ris pour moi",
+        "Ris un peu",
+        "Un éclat de rire",
+        "Ris"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936093",
+      "id": "fr.action.leglifts",
+      "op": "LEGLIFTS",
+      "qs": [
+        "Lève la jambe gauche",
+        "Jambe gauche en l'air"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936091",
+      "id": "fr.action.leglifts.2",
+      "op": "LEGLIFTS",
+      "qs": [
+        "Lève la jambe droite",
+        "Jambe droite en l'air"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936029",
+      "id": "fr.action.look",
+      "op": "LOOK",
+      "qs": [
+        "Regarde devant toi",
+        "Devant",
+        "Regarde droit devant"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936032",
+      "id": "fr.action.look.2",
+      "op": "LOOK",
+      "qs": [
+        "Regarde à droite",
+        "À droite"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936034",
+      "id": "fr.action.look.3",
+      "op": "LOOK",
+      "qs": [
+        "Regarde à gauche",
+        "À gauche"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936088",
+      "id": "fr.action.lookup",
+      "op": "LOOKUP",
+      "qs": [
+        "Regarde en haut",
+        "En haut",
+        "Regarder en haut"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__MISC_ANY",
+      "id": "fr.action.misc_any",
+      "op": "MISC_ANY",
+      "qs": [
+        "Fais quelque chose pour moi",
+        "Fais ce que tu veux",
+        "Improvise"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__MOVE_ANY",
+      "id": "fr.action.move_any",
+      "op": "MOVE_ANY",
+      "qs": [
+        "Fais quelques pas",
+        "Marche un peu",
+        "Bouge un peu"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936087",
+      "id": "fr.action.nod",
+      "op": "NOD",
+      "qs": [
+        "Hoche la tête",
+        "Hoche",
+        "Dis oui de la tête"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936087",
+      "id": "fr.action.nod.2",
+      "op": "NOD",
+      "qs": [
+        "Hocher la tête"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936042",
+      "id": "fr.action.perfect",
+      "op": "PERFECT",
+      "qs": [
+        "Parfait",
+        "Quel parfait",
+        "C'est parfait"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1510818054178",
+      "id": "fr.action.punch",
+      "op": "PUNCH",
+      "qs": [
+        "Coup de poing à gauche",
+        "Donne un coup de poing à gauche"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509007823124",
+      "id": "fr.action.punch.2",
+      "op": "PUNCH",
+      "qs": [
+        "Coup de poing à droite",
+        "Donne un coup de poing à droite"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "id": "fr.action.rock",
+      "op": "ROCK",
+      "qs": [
+        "Rock and roll",
+        "Rock",
+        "Bouge ton corps"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "id": "fr.action.rock.2",
+      "op": "ROCK",
+      "qs": [
+        "Roc"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936013",
+      "id": "fr.action.shake",
+      "op": "SHAKE",
+      "qs": [
+        "Fais non de la tête",
+        "Dis non de la tête",
+        "Nier"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000433134",
+      "id": "fr.action.shakehands",
+      "op": "SHAKEHANDS",
+      "qs": [
+        "Serre-moi la main",
+        "Serre ma main",
+        "Une poignée de main"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000433134",
+      "id": "fr.action.shakehands.2",
+      "op": "SHAKEHANDS",
+      "qs": [
+        "Poignée de main"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000284732",
+      "id": "fr.action.sharp",
+      "op": "SHARP",
+      "qs": [
+        "Tu es incroyable",
+        "Incroyable",
+        "Comme tu es incroyable"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1510818174706",
+      "id": "fr.action.standup",
+      "op": "STANDUP",
+      "qs": [
+        "Lève-toi",
+        "Debout",
+        "Mets-toi debout"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1510818174706",
+      "id": "fr.action.standup.2",
+      "op": "STANDUP",
+      "qs": [
+        "Redresse-toi"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509005411859",
+      "id": "fr.action.stoop",
+      "op": "STOOP",
+      "qs": [
+        "Fais une révérence",
+        "Révérence",
+        "Incline-toi"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__STORY_ANY",
+      "id": "fr.action.story_any",
+      "op": "STORY_ANY",
+      "qs": [
+        "Raconte-moi une histoire",
+        "Raconte-moi quelque chose",
+        "Une histoire",
+        "Histoire"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__STORY_ANY",
+      "id": "fr.action.story_any.2",
+      "op": "STORY_ANY",
+      "qs": [
+        "Histoires"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__STORY_CHINESE",
+      "id": "fr.action.story_chinese",
+      "op": "STORY_CHINESE",
+      "qs": [
+        "Raconte-moi une histoire chinoise",
+        "Histoire chinoise",
+        "Chinois"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__STORY_WESTERN",
+      "id": "fr.action.story_western",
+      "op": "STORY_WESTERN",
+      "qs": [
+        "Raconte-moi un conte occidental",
+        "Conte occidental",
+        "Occidental"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM__",
+      "id": "fr.action.tfboy",
+      "op": "TFBOY",
+      "qs": [
+        "Fais quelque chose",
+        "Bouge",
+        "Fais quelque chose de drôle",
+        "Anime-toi"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936047",
+      "id": "fr.action.turn",
+      "op": "TURN",
+      "qs": [
+        "Tourne à gauche",
+        "Retourne-toi à gauche"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936041",
+      "id": "fr.action.turn.2",
+      "op": "TURN",
+      "qs": [
+        "Tourne à droite",
+        "Retourne-toi à droite"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1464835936047",
+      "id": "fr.action.turn.3",
+      "op": "TURN",
+      "qs": [
+        "Gauche"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1510818256622",
+      "id": "fr.action.walk",
+      "op": "WALK",
+      "qs": [
+        "Marche en arrière",
+        "En arrière",
+        "Recule"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1508999860568",
+      "id": "fr.action.walk.2",
+      "op": "WALK",
+      "qs": [
+        "Marche en avant",
+        "En avant",
+        "Avance"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1508999547240",
+      "id": "fr.action.walk.3",
+      "op": "WALK",
+      "qs": [
+        "Marche à gauche",
+        "Marcher à gauche"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1508999801028",
+      "id": "fr.action.walk.4",
+      "op": "WALK",
+      "qs": [
+        "Marche à droite",
+        "Marcher à droite"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1508999860568",
+      "id": "fr.action.walk.5",
+      "op": "WALK",
+      "qs": [
+        "Avant"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1510818256622",
+      "id": "fr.action.walk.6",
+      "op": "WALK",
+      "qs": [
+        "Arrière"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1510818256622",
+      "id": "fr.action.walk.7",
+      "op": "WALK",
+      "qs": [
+        "Vers l'arrière"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1508999860568",
+      "id": "fr.action.walk.8",
+      "op": "WALK",
+      "qs": [
+        "Marcher"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000256376",
+      "id": "fr.action.welcome",
+      "op": "WELCOME",
+      "qs": [
+        "Souhaite la bienvenue",
+        "Bienvenue",
+        "Bienvenu"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "1509000256376",
+      "id": "fr.action.welcome.2",
+      "op": "WELCOME",
+      "qs": [
+        "Bienvenus"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__YOGA_ANY",
+      "id": "fr.action.yoga_any",
+      "op": "YOGA_ANY",
+      "qs": [
+        "Fais du yoga",
+        "Yoga",
+        "Une posture de yoga"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__YOGA_HORSE",
+      "id": "fr.action.yoga_horse",
+      "op": "YOGA_HORSE",
+      "qs": [
+        "Posture du cheval",
+        "Cheval"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__YOGA_KICK",
+      "id": "fr.action.yoga_kick",
+      "op": "YOGA_KICK",
+      "qs": [
+        "Coup de pied de yoga",
+        "Coup de pied yogi"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__YOGA_STANDING",
+      "id": "fr.action.yoga_standing",
+      "op": "YOGA_STANDING",
+      "qs": [
+        "Posture de yoga debout",
+        "Yoga debout"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Allons-y !",
+        "Regarde ça !",
+        "Tout de suite.",
+        "C'est parti !",
+        "Avec plaisir."
+      ],
+      "actionId": "__RANDOM_CATEGORY__YOGA_STRETCH",
+      "id": "fr.action.yoga_stretch",
+      "op": "YOGA_STRETCH",
+      "qs": [
+        "Étirement",
+        "Étire-toi",
+        "On s'étire"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "id": "fr.mov.01",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "J'ai de la chance, la vie est belle.",
+        "Sans toi, les émotions d'aujourd'hui ne seraient que la peau morte des émotions d'autrefois.",
+        "Vous ne serez jamais un légume, même les légumes ont du cœur.",
+        "Pas de bras, pas de chocolat !",
+        "C'est pas parce qu'il est handicapé qu'il doit pas être poli !"
+      ],
+      "qs": [
+        "T'as vu Amélie ?",
+        "Tu connais le Fabuleux Destin d'Amélie Poulain ?",
+        "On regarde un film français ce soir ?"
+      ]
+    },
+    {
+      "id": "fr.mov.02",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "L'important c'est pas la chute, c'est l'atterrissage.",
+        "Jusqu'ici tout va bien...",
+        "On ne choisit pas sa famille, mais on choisit ses amis.",
+        "Ne dis jamais jamais, il y a toujours quelque chose à tenter.",
+        "L'amour, c'est comme le feu, ça réchauffe ou ça brûle."
+      ],
+      "qs": [
+        "Tu crois au destin ?",
+        "C'est quoi ton film préféré ?",
+        "Parle-moi d'un film qui t'a marqué"
+      ]
+    },
+    {
+      "id": "fr.mov.03",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "J'ai de l'empathie, mais je n'ai pas de compassion.",
+        "La vie n'est pas un film. La vie est bien plus difficile.",
+        "Tu es mon histoire d'amour préférée.",
+        "Qu'est-ce que je peux faire ? Je sais pas quoi faire.",
+        "Je t'aime parce que tu es toi."
+      ],
+      "qs": [
+        "Dis-moi une réplique culte",
+        "Tu connais une réplique de film ?",
+        "C'est quoi une réplique culte pour toi ?"
+      ]
+    },
+    {
+      "id": "fr.mov.04",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Le ciel est blanc, la terre est blanche, la vie est belle.",
+        "Aimer, c'est agir.",
+        "Tant qu'il y aura un homme dans la misère, le monde ne sera pas libre.",
+        "On n'est pas des pigeons.",
+        "Comment tu fais pour vivre là-haut ? C'est tellement mieux en bas."
+      ],
+      "qs": [
+        "T'as vu Intouchables ?",
+        "Tu aimes les comédies françaises ?",
+        "C'est quoi le dernier film que t'as vu ?"
+      ]
+    },
+    {
+      "id": "fr.mov.05",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Il y a des moments où tout s'arrête, où le temps ne compte plus.",
+        "C'est une belle journée pour mourir, ou pour vivre.",
+        "La vie, c'est comme une boîte de chocolats...",
+        "On ne voit bien qu'avec le cœur. L'essentiel est invisible pour les yeux.",
+        "C'est le temps que tu as perdu pour ta rose qui rend ta rose si importante."
+      ],
+      "qs": [
+        "Tu connais La Haine ?",
+        "T'aimes les films en noir et blanc ?",
+        "Un film qui fait réfléchir ?"
+      ]
+    },
+    {
+      "id": "fr.mov.06",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Je vous aime. Je ne sais pas comment, ni quand, ni d'où.",
+        "Le bonheur, c'est d'avoir quelqu'un à aimer, quelque chose à faire et un espoir.",
+        "Nous voulons tout, et nous le voulons maintenant.",
+        "Tu es la seule personne qui me fasse me sentir vivante.",
+        "Si tu ne m'aimes pas, je t'aime. Et si je t'aime, prends garde à toi !"
+      ],
+      "qs": [
+        "Tu préfères quel genre de film ?",
+        "Un film à voir en famille ?",
+        "T'as déjà vu Les Choristes ?"
+      ]
+    },
+    {
+      "id": "fr.mov.07",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Rien n'est jamais vraiment perdu tant qu'on s'en souvient.",
+        "Je me souviens de chaque seconde passée avec toi.",
+        "Tu ne peux pas changer le passé, mais tu peux gâcher le présent.",
+        "Paris est toujours une bonne idée.",
+        "Dans la vie, il n'y a pas de regrets, seulement des leçons."
+      ],
+      "qs": [
+        "Tu crois en l'amour au cinéma ?",
+        "Un film d'amour à me conseiller ?",
+        "C'est quoi pour toi un grand film d'amour ?"
+      ]
+    },
+    {
+      "id": "fr.mov.08",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Le véritable amour n'a pas de fin.",
+        "Je t'aimerai jusqu'à la fin des temps.",
+        "Fais de ta vie un rêve, et d'un rêve, une réalité.",
+        "Quand on aime, on ne compte pas.",
+        "Tout ce dont nous avons besoin, c'est d'un peu d'amour et de beaucoup d'espoir."
+      ],
+      "qs": [
+        "Le cinéma, ça te parle ?",
+        "Un film qui t'a fait pleurer ?",
+        "Tu vas souvent au ciné ?"
+      ]
+    },
+    {
+      "id": "fr.mov.09",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Il n'y a pas de hasard, il n'y a que des rendez-vous.",
+        "La beauté est dans les yeux de celui qui regarde.",
+        "Je suis le maître de mon destin, je suis le capitaine de mon âme.",
+        "Le cœur a ses raisons que la raison ne connaît point.",
+        "On ne choisit pas de qui on tombe amoureux."
+      ],
+      "qs": [
+        "Tu es romantique ?",
+        "C'est quoi ta plus belle histoire d'amour au ciné ?",
+        "Godard, tu connais ?"
+      ]
+    },
+    {
+      "id": "fr.mov.10",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Regarde les étoiles. Elles brillent pour toi.",
+        "Certaines personnes valent la peine qu'on fonde pour elles.",
+        "Chaque jour est un nouveau départ.",
+        "Aimer, c'est savoir dire pardon.",
+        "Demain est un autre jour."
+      ],
+      "qs": [
+        "Tu aimes les vieux films français ?",
+        "Un film dont tu te souviens toujours ?",
+        "Dis-moi un truc beau sur l'amour"
+      ]
+    },
+    {
+      "id": "fr.mov.11",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "La chance, c’est comme le Tour de France : on l’attend longtemps et ça passe vite.",
+        "On a tous une chance, il faut juste savoir la saisir.",
+        "C’est pas parce qu’on n’a rien à dire qu’il faut fermer sa gueule !",
+        "Pour moi, le luxe, c’est de vivre comme on veut.",
+        "Le temps passe, mais le souvenir reste."
+      ],
+      "qs": [
+        "Tu te sens chanceux aujourd'hui ?",
+        "C'est quoi la chance pour toi ?",
+        "Un film qui parle de chance ?"
+      ]
+    },
+    {
+      "id": "fr.mov.12",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Un homme sans passé n’a pas d’avenir.",
+        "Il n’y a pas de problème, il n’y a que des solutions.",
+        "Ce n’est pas le monde qui doit changer, c’est nous.",
+        "La mort n’est rien, mais vivre vaincu et sans gloire, c’est mourir tous les jours.",
+        "La peur est le plus grand ennemi de l’homme."
+      ],
+      "qs": [
+        "Tu tentes ta chance parfois ?",
+        "C'est quoi le luxe pour toi ?",
+        "Une phrase qui motive ?"
+      ]
+    },
+    {
+      "id": "fr.mov.13",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Chaque choix qu’on fait détermine qui on devient.",
+        "Si on ne tente rien, on n’a rien.",
+        "On passe sa vie à attendre le bon moment, mais le bon moment, c’est maintenant.",
+        "Le destin est une question de choix, pas de chance.",
+        "Rien ne se perd, rien ne se crée, tout se transforme."
+      ],
+      "qs": [
+        "T'as bonne mémoire ?",
+        "Tu connais Taxi, le film ?",
+        "Un souvenir de ciné à raconter ?"
+      ]
+    },
+    {
+      "id": "fr.mov.14",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Il faut toujours croire en ses rêves, même les plus fous.",
+        "La liberté, c’est de ne rien avoir à perdre.",
+        "La vie n’est pas parfaite, mais elle contient des moments parfaits.",
+        "Le plus grand risque dans la vie, c’est de ne pas en prendre.",
+        "C’est dans le besoin qu’on reconnaît ses vrais amis."
+      ],
+      "qs": [
+        "T'as peur de quoi ?",
+        "Un choix difficile à faire ?",
+        "Tu crois qu'on choisit qui on devient ?"
+      ]
+    },
+    {
+      "id": "fr.mov.15",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Un pour tous, tous pour un !",
+        "La vérité est souvent bien plus étrange que la fiction.",
+        "On ne peut pas contrôler le vent, mais on peut ajuster ses voiles.",
+        "Les souvenirs sont les seules choses qu’on emporte avec soi.",
+        "Chaque fin est le début d’autre chose."
+      ],
+      "qs": [
+        "Faut tenter sa chance, non ?",
+        "Le destin, t'y crois ?",
+        "Tout se transforme, tu trouves pas ?"
+      ]
+    },
+    {
+      "id": "fr.mov.16",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Attention, ça va couper !",
+        "Mais vous savez, moi je ne crois pas qu’il y ait de bonne ou de mauvaise situation.",
+        "C’est la piquette, Jack ! Tu sais pas ce que tu perds !",
+        "Si je connaissais le con qui a fait sauter le pont !",
+        "C’est étourdissant, c’est fantastique, c’est renversant !"
+      ],
+      "qs": [
+        "Tu rêves de quoi en ce moment ?",
+        "C'est quoi la liberté pour toi ?",
+        "Tu prends des risques parfois ?"
+      ]
+    },
+    {
+      "id": "fr.mov.17",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Il est fou, ce Romain !",
+        "C’est pas mon problème.",
+        "Dis-moi que tu m’aimes, même si c’est un mensonge.",
+        "Tu as de beaux yeux, tu sais.",
+        "Embrasse-moi, embrasse-moi vite !"
+      ],
+      "qs": [
+        "C'est qui ton meilleur pote ?",
+        "Un pour tous, tous pour un, ça te parle ?",
+        "La vérité ou la fiction ?"
+      ]
+    },
+    {
+      "id": "fr.mov.18",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Atchoum ! — À vos souhaits.",
+        "On ne fait pas d’omelette sans casser des œufs.",
+        "Je suis trop vieux pour ces conneries.",
+        "C’est magnifique, mais ce n’est pas la guerre.",
+        "Qui m’aime me suive !"
+      ],
+      "qs": [
+        "On peut contrôler le vent ?",
+        "C'est quoi ton plus beau souvenir ?",
+        "Chaque fin est un début, t'es d'accord ?"
+      ]
+    },
+    {
+      "id": "fr.mov.19",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Le sourire est la plus belle chose qu’on puisse porter.",
+        "Je ne regrette rien.",
+        "La vie en rose, c’est quand je te vois.",
+        "Rien n’est impossible, seules les limites existent dans notre esprit.",
+        "L’amour est la seule chose qui transcende le temps et l’espace."
+      ],
+      "qs": [
+        "T'aimes Astérix ?",
+        "Y a de bonnes ou de mauvaises situations ?",
+        "On se fait une soirée comédie ?"
+      ]
+    },
+    {
+      "id": "fr.mov.20",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Il n’y a pas de monstres, seulement des gens incompris.",
+        "Je ne suis pas fou, ma réalité est juste différente de la tienne.",
+        "Le courage, ce n’est pas l’absence de peur, mais la capacité de la surmonter.",
+        "Ne laisse personne te dire ce que tu es capable de faire.",
+        "L’avenir appartient à ceux qui croient à la beauté de leurs rêves."
+      ],
+      "qs": [
+        "Tu connais les vieux films comiques ?",
+        "Il est fou, non ?",
+        "Un truc fantastique à me raconter ?"
+      ]
+    },
+    {
+      "id": "fr.mov.21",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Que la Force soit avec toi.",
+        "Un grand pouvoir implique de grandes responsabilités.",
+        "Hasta la vista, baby.",
+        "On ne naît pas femme, on le devient.",
+        "Il faut beaucoup de courage pour affronter ses ennemis, mais encore plus pour affronter ses amis."
+      ],
+      "qs": [
+        "C'est pas mon problème, hein ?",
+        "Tu préfères un beau mensonge ou la vérité ?",
+        "Dis-moi quelque chose de gentil"
+      ]
+    },
+    {
+      "id": "fr.mov.22",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Après tout, demain est un autre jour.",
+        "La seule façon d'échapper à la tentation, c'est d'y céder.",
+        "Mon précieux...",
+        "Pourquoi cet air si sérieux ?",
+        "Houston, nous avons un problème."
+      ],
+      "qs": [
+        "Ça va, t'es enrhumé ?",
+        "On cuisine quoi ce soir ?",
+        "T'es fatigué en ce moment ?"
+      ]
+    },
+    {
+      "id": "fr.mov.23",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Je suis le roi du monde !",
+        "Éléments, mon cher Watson.",
+        "Carpe diem. Profitez du jour présent.",
+        "Ô Capitaine ! Mon Capitaine !",
+        "Ce n'est pas notre aptitude qui détermine notre destin, c'est nos choix."
+      ],
+      "qs": [
+        "Tu souris pourquoi ?",
+        "Tu regrettes quelque chose ?",
+        "La vie en rose, ça te dit ?"
+      ]
+    },
+    {
+      "id": "fr.mov.24",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Pour toujours et à jamais.",
+        "C'est une offre qu'il ne pourra pas refuser.",
+        "Garde tes amis près de toi, et tes ennemis encore plus près.",
+        "La première règle du Fight Club est : il est interdit de parler du Fight Club.",
+        "Je vais lui faire une proposition qu'il ne refusera pas."
+      ],
+      "qs": [
+        "Rien n'est impossible, tu crois ?",
+        "L'amour transcende tout ?",
+        "Y a des monstres, selon toi ?"
+      ]
+    },
+    {
+      "id": "fr.mov.25",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "T'as un regard qui me donne envie de faire des bêtises.",
+        "On s'est aimés, on s'est quittés, on s'est retrouvés.",
+        "Si tu sautes, je saute, n'est-ce pas ?",
+        "Aime-moi si tu l'oses.",
+        "Cap ou pas cap ?"
+      ],
+      "qs": [
+        "T'es fou ?",
+        "Ta réalité, elle ressemble à quoi ?",
+        "C'est quoi le courage ?"
+      ]
+    },
+    {
+      "id": "fr.mov.26",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "J'ai passé toute ma vie à avoir peur. Aujourd'hui, je n'ai plus peur.",
+        "Les rêves sont les réponses d'aujourd'hui aux questions de demain.",
+        "Tu es une étincelle dans la nuit.",
+        "Il vaut mieux regretter ce qu'on a fait que ce qu'on n'a pas fait.",
+        "La seule façon d'affronter le monde est de le rire au nez."
+      ],
+      "qs": [
+        "On te dit quoi faire ?",
+        "Tu crois en tes rêves ?",
+        "L'avenir appartient à qui ?"
+      ]
+    },
+    {
+      "id": "fr.mov.27",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "On ne guérit jamais vraiment d'un premier amour.",
+        "Le temps efface tout, sauf les mauvais souvenirs.",
+        "Le temps détruit tout.",
+        "C'est la vie, mon ami.",
+        "La vérité vous rendra libres."
+      ],
+      "qs": [
+        "T'es en forme ?",
+        "C'est quoi ta responsabilité ?",
+        "On se revoit quand ?"
+      ]
+    },
+    {
+      "id": "fr.mov.28",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Chaque seconde est une seconde chance.",
+        "Je ne suis pas seul, j'ai mes souvenirs.",
+        "Un baiser est une gourmandise qui ne fait pas grossir.",
+        "Rien ne sert de courir, il faut partir à point.",
+        "C'est toujours dans les yeux qu'on voit si une personne est vraie."
+      ],
+      "qs": [
+        "On le devient, non ?",
+        "T'as du courage ?",
+        "C'est qui tes vrais amis ?"
+      ]
+    },
+    {
+      "id": "fr.mov.29",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Il n'y a pas d'amour, il n'y a que des preuves d'amour.",
+        "La folie, c'est de faire toujours la même chose et d'attendre un résultat différent.",
+        "Je t'aime plus que hier, moins que demain.",
+        "Dans un monde plein de haine, il faut oser aimer.",
+        "Le soleil se lève toujours après la nuit la plus noire."
+      ],
+      "qs": [
+        "Demain est un autre jour, tu crois ?",
+        "Tu résistes aux tentations ?",
+        "C'est quoi ton trésor ?"
+      ]
+    },
+    {
+      "id": "fr.mov.30",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Il faut apprendre à danser sous la pluie.",
+        "On n'oublie jamais, on apprend juste à vivre avec.",
+        "Sois toi-même, tous les autres sont déjà pris.",
+        "La vie est trop courte pour la passer à regretter.",
+        "Un ami, c'est quelqu'un qui connaît ta chanson et te la chante quand tu as oublié les paroles."
+      ],
+      "qs": [
+        "Pourquoi cet air sérieux ?",
+        "Houston, on a un problème ?",
+        "T'es le roi du monde ?"
+      ]
+    },
+    {
+      "id": "fr.mov.31",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "C'est dans tes yeux que je vois mon avenir.",
+        "Je n'ai pas peur de la mort, j'ai peur de te perdre.",
+        "Tu es la réponse à toutes mes prières.",
+        "Mon cœur ne bat que pour toi.",
+        "Sans toi, la vie n'est qu'un décor vide."
+      ],
+      "qs": [
+        "T'as mené l'enquête ?",
+        "Tu vis au jour le jour ?",
+        "C'est qui ton capitaine ?"
+      ]
+    },
+    {
+      "id": "fr.mov.32",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Quand je te regarde, je suis chez moi.",
+        "Il n'y a pas de distance trop grande pour deux cœurs qui s'aiment.",
+        "C'est la chose la plus folle que j'aie jamais faite, mais je ne la regrette pas.",
+        "Je veux passer le reste de ma vie à te rendre heureuse.",
+        "Le vrai bonheur est dans le partage."
+      ],
+      "qs": [
+        "T'as fait ton choix ?",
+        "C'est pour toujours ?",
+        "On négocie ?"
+      ]
+    },
+    {
+      "id": "fr.mov.33",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Chaque regard de toi est une promesse.",
+        "Si c'est un rêve, ne me réveille jamais.",
+        "On ne contrôle pas les sentiments.",
+        "Je suis venu te dire que je t'aime.",
+        "Tu m'as appris ce que voulait dire aimer."
+      ],
+      "qs": [
+        "Tes amis sont proches ?",
+        "Première règle : on n'en parle pas, ok ?",
+        "Fais-moi une proposition"
+      ]
+    },
+    {
+      "id": "fr.mov.34",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Rien ne peut séparer deux âmes sœurs.",
+        "Je préfère mourir demain que vivre un siècle sans te connaître.",
+        "Dans mon esprit, tu es toujours là.",
+        "La vie sans passion n'a aucun sens.",
+        "Quand on aime quelqu'un, on ne l'abandonne jamais."
+      ],
+      "qs": [
+        "T'as un regard coquin ?",
+        "On s'est aimés, non ?",
+        "Si tu sautes, je saute ?"
+      ]
+    },
+    {
+      "id": "fr.mov.35",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Ohana signifie famille, et famille signifie que personne ne doit être abandonné ni oublié.",
+        "L'amour nous rend plus forts, mais aussi plus vulnérables.",
+        "Je te chercherai dans chaque vie.",
+        "Tu es mon plus beau secret.",
+        "Ne m'oublie pas, s'il te plaît."
+      ],
+      "qs": [
+        "Cap ou pas cap ?",
+        "T'as passé ta vie à avoir peur ?",
+        "Les rêves répondent aux questions ?"
+      ]
+    },
+    {
+      "id": "fr.mov.36",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Je t'aimais hier, je t'aime aujourd'hui, et je t'aimerai toujours.",
+        "La seule façon d'apprendre est de faire des erreurs.",
+        "Il n'y a rien de plus fort que la volonté humaine.",
+        "Le plus grand voyage est celui qu'on fait à l'intérieur de soi.",
+        "Tu es mon soleil dans la nuit."
+      ],
+      "qs": [
+        "T'es une étincelle ?",
+        "Tu regrettes quoi ?",
+        "On rit au nez du monde ?"
+      ]
+    },
+    {
+      "id": "fr.mov.37",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "La confiance se gagne en gouttes et se perd en litres.",
+        "Dans le jeu de la vie, il n'y a pas de rejouer.",
+        "Aie le courage de suivre ton cœur.",
+        "La vie n'attend personne.",
+        "N'aie pas peur de briller."
+      ],
+      "qs": [
+        "Ton premier amour, c'était qui ?",
+        "Le temps efface tout ?",
+        "C'est la vie, non ?"
+      ]
+    },
+    {
+      "id": "fr.mov.38",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Parfois, la bonne route n'est pas la plus facile.",
+        "Le passé peut faire mal, mais on peut soit le fuir, soit en apprendre.",
+        "N'oublie jamais qui tu es.",
+        "Hakuna Matata ! Quel chant fantastique !",
+        "Le monde est à nous."
+      ],
+      "qs": [
+        "La vérité rend libre ?",
+        "Chaque seconde compte ?",
+        "T'es jamais seul avec tes souvenirs ?"
+      ]
+    },
+    {
+      "id": "fr.mov.39",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Si tu veux changer le monde, commence par toi-même.",
+        "L'amour ne meurt jamais.",
+        "Tu es la seule raison pour laquelle je respire.",
+        "La liberté a un prix, et je suis prêt à le payer.",
+        "Tout arrive pour une raison."
+      ],
+      "qs": [
+        "Un baiser, ça fait grossir ?",
+        "Faut courir ou partir à point ?",
+        "On voit quoi dans les yeux ?"
+      ]
+    },
+    {
+      "id": "fr.mov.40",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Tu es mon histoire sans fin.",
+        "Rien ne nous séparera jamais.",
+        "L'avenir est un livre qu'on écrit soi-même.",
+        "La vie est une aventure audacieuse ou elle n'est rien du tout.",
+        "Fin."
+      ],
+      "qs": [
+        "Notre histoire n'a pas de fin ?",
+        "Rien ne nous séparera ?",
+        "T'écris ton avenir comment ?"
+      ]
+    },
+    {
+      "id": "fr.son.01",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Quand il me prend dans ses bras, il me parle tout bas, je vois la vie en rose.",
+        "Non, je ne regrette rien, ni le bien qu'on m'a fait, ni le mal.",
+        "L'amour est un oiseau rebelle que nul ne peut apprivoiser.",
+        "Ne me quitte pas, il faut oublier, tout peut s'oublier.",
+        "Moi, je t'offrirai des perles de pluie venues de pays où il ne pleut pas."
+      ],
+      "qs": [
+        "La vie en rose ?",
+        "Tu regrettes rien ?",
+        "Ne me quitte pas ?"
+      ]
+    },
+    {
+      "id": "fr.son.02",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Emmenez-moi au bout de la terre, emmenez-moi au pays des merveilles.",
+        "Hier encore, j'avais vingt ans, je caressais le temps.",
+        "La bohème, la bohème, ça voulait dire on est heureux.",
+        "Et si tu n'existais pas, dis-moi pourquoi j'existerais ?",
+        "Aux Champs-Élysées, au soleil, sous la pluie, à midi ou à minuit, il y a tout ce que vous voulez."
+      ],
+      "qs": [
+        "Emmenez-moi ?",
+        "Hier encore ?",
+        "Les Champs-Élysées ?"
+      ]
+    },
+    {
+      "id": "fr.son.03",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Savoir aimer, sans rien attendre en retour.",
+        "Ma liberté de penser.",
+        "Je l'aime à mourir.",
+        "C'était l'hiver, ton cœur s'est fermé.",
+        "Je viens du sud et par tous mes chemins, j'y reviens."
+      ],
+      "qs": [
+        "Savoir aimer ?",
+        "Je l'aime à mourir ?",
+        "Tu viens du sud ?"
+      ]
+    },
+    {
+      "id": "fr.son.04",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Pour que tu m'aimes encore.",
+        "J'irai chercher ton cœur si tu l'emportes ailleurs.",
+        "On ne change pas, on met juste des costumes.",
+        "Belle, c'est un mot qu'on dirait inventé pour elle.",
+        "Il est venu le temps des cathédrales."
+      ],
+      "qs": [
+        "Pour que tu m'aimes encore ?",
+        "On ne change pas ?",
+        "Belle ?"
+      ]
+    },
+    {
+      "id": "fr.son.05",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Le monde est stone.",
+        "J'ai cherché un sens à mon existence.",
+        "C'est la chenille qui redémarre !",
+        "Aimer, c'est ce qu'il y a de plus beau.",
+        "Les rois du monde vivent au sommet."
+      ],
+      "qs": [
+        "Le monde est stone ?",
+        "T'as cherché un sens ?",
+        "Aimer, c'est quoi ?"
+      ]
+    },
+    {
+      "id": "fr.son.06",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Si j'avais le temps, je rattraperais le temps perdu.",
+        "Il est où le bonheur, il est où ?",
+        "Comme d'habitude, toute la journée je vais jouer à faire semblant.",
+        "Alexandrie, Alexandra, ce soir je danse dans tes bras.",
+        "Savoir dire non quand tout le monde dit oui."
+      ],
+      "qs": [
+        "Il est où le bonheur ?",
+        "Comme d'habitude ?",
+        "Alexandra ?"
+      ]
+    },
+    {
+      "id": "fr.son.07",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Je ne suis pas un héros.",
+        "Tous les cris les SOS partent dans l'air.",
+        "Mistral gagnant, le temps est un voleur.",
+        "Te raconter un peu comment j'étais minot.",
+        "La corrida, faut-il en rire ou en pleurer ?"
+      ],
+      "qs": [
+        "T'es un héros ?",
+        "Tous les cris, les SOS ?",
+        "Mistral gagnant ?"
+      ]
+    },
+    {
+      "id": "fr.son.08",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Sensualité, je veux donner du sens à mes pensées.",
+        "Désenchantée, tout est chaos à côté.",
+        "C'est une belle journée, je vais me coucher.",
+        "Les mots bleus, ceux qu'on dit avec les yeux.",
+        "Aline, pour qu'elle revienne, j'ai crié, j'ai crié."
+      ],
+      "qs": [
+        "Sensualité ?",
+        "Désenchantée ?",
+        "Les mots bleus ?"
+      ]
+    },
+    {
+      "id": "fr.son.09",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Je te donne mes notes, je te donne mes armes.",
+        "Quand la musique est bonne, elle donne tout ce qu'elle a.",
+        "Envole-moi, loin de cette fatalité.",
+        "Pas toi, mais pas n'importe qui.",
+        "Respire, c'est juste un mauvais moment à passer."
+      ],
+      "qs": [
+        "Je te donne ?",
+        "Quand la musique est bonne ?",
+        "Respire ?"
+      ]
+    },
+    {
+      "id": "fr.son.10",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "La tribu de Dana, dans la vallée.",
+        "Belle-Île-en-Mer, Marie-Galante.",
+        "Le pouvoir des fleurs, changer les âmes.",
+        "J'ai demandé à la lune si tu voulais encore de moi.",
+        "L'aventurier, contre tout guerrier."
+      ],
+      "qs": [
+        "La tribu de Dana ?",
+        "J'ai demandé à la lune ?",
+        "L'aventurier ?"
+      ]
+    },
+    {
+      "id": "fr.son.11",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Alors on danse, pour oublier le stress.",
+        "Papaoutai, où t'es papa où t'es ?",
+        "Tous les mêmes, et y en a marre.",
+        "Formidable, tu étais formidable, j'étais formidable.",
+        "La thune, ça rend pas heureux mais ça aide."
+      ],
+      "qs": [
+        "Alors on danse ?",
+        "Papaoutai ?",
+        "Tous les mêmes ?"
+      ]
+    },
+    {
+      "id": "fr.son.12",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Tout oublier, il suffit d'y croire.",
+        "Balance ton quoi, un jour ça changera.",
+        "Oui ou non, faut se décider.",
+        "Djadja, y a pas moyen Djadja.",
+        "Pookie, fermer la porte, il y a les pookie."
+      ],
+      "qs": [
+        "Tout oublier ?",
+        "Oui ou non ?",
+        "Djadja ?"
+      ]
+    },
+    {
+      "id": "fr.son.13",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Coplas, Copines, c'est mes copines.",
+        "Dernière danse, je remue le ciel, le jour, la nuit.",
+        "Tourner dans le vide, il me fait tourner.",
+        "Ego, ego, entre mon ombre et la lumière.",
+        "Je vole, je ne pars pas, je vole."
+      ],
+      "qs": [
+        "C'est tes copines ?",
+        "Dernière danse ?",
+        "Je vole, tu viens ?"
+      ]
+    },
+    {
+      "id": "fr.son.14",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Jour 1, amour débutant.",
+        "Secret, je garde mon secret pour toi.",
+        "Je veux de l'amour, de la joie, de la bonne humeur.",
+        "On ira, où tu voudras, quand tu voudras.",
+        "Éblouie par la nuit, à coups de lumière."
+      ],
+      "qs": [
+        "Jour 1 ?",
+        "Je garde mon secret ?",
+        "Je veux de l'amour ?"
+      ]
+    },
+    {
+      "id": "fr.son.15",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Andalouse, tu es ma reine.",
+        "Bella, quand elle danse elle me rend fou.",
+        "Changer, j'ai essayé de tout changer.",
+        "Sapés comme jamais.",
+        "J'me tire, me demande pas pourquoi."
+      ],
+      "qs": [
+        "Andalouse ?",
+        "Bella danse bien ?",
+        "Sapé comme jamais ?"
+      ]
+    },
+    {
+      "id": "fr.son.16",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Est-ce que tu m'aimes ? Je ne sais pas.",
+        "Sur ma route, il y a eu du feu.",
+        "Andalouse, viens avec moi.",
+        "Yeux disent ce que le cœur cache.",
+        "Trop beau, pour être vrai."
+      ],
+      "qs": [
+        "Est-ce que tu m'aimes ?",
+        "Sur ta route ?",
+        "Trop beau pour être vrai ?"
+      ]
+    },
+    {
+      "id": "fr.son.17",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Dommage, il aurait dû le faire.",
+        "Demain c'est loin, mais demain c'est déjà là.",
+        "Papa, tu m'as tout appris.",
+        "Comme d'hab, on fait semblant.",
+        "Basique, simple, vous n'avez pas les bases."
+      ],
+      "qs": [
+        "Dommage, non ?",
+        "Demain c'est loin ?",
+        "Basique ?"
+      ]
+    },
+    {
+      "id": "fr.son.18",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "La quête, j'ai traversé le monde.",
+        "San, efface tout et recommence.",
+        "Au dd, on est venus pour tout prendre.",
+        "Deux frères, contre le reste du monde.",
+        "A l'ammoniaque, mon cœur s'éteint."
+      ],
+      "qs": [
+        "La quête ?",
+        "On efface tout ?",
+        "Deux frères ?"
+      ]
+    },
+    {
+      "id": "fr.son.19",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Réseaux, elle m'a capté sur le réseau.",
+        "Médusa, regarde-moi dans les yeux.",
+        "Bande organisée, personne peut nous arrêter.",
+        "J'oublie tout, ce soir je m'évade.",
+        "Sous les sunlights des tropiques."
+      ],
+      "qs": [
+        "Sur les réseaux ?",
+        "Bande organisée ?",
+        "J'oublie tout ce soir ?"
+      ]
+    },
+    {
+      "id": "fr.son.20",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Besoin de rien, envie de toi.",
+        "Femme libérée, tu sais ce que tu veux.",
+        "Nuit de folie, danser jusqu'au matin.",
+        "Voyage, voyage, plus loin que la nuit et le jour.",
+        "On va s'aimer, sur une étoile."
+      ],
+      "qs": [
+        "Besoin de rien ?",
+        "Femme libérée ?",
+        "Nuit de folie ?"
+      ]
+    },
+    {
+      "id": "fr.son.21",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Dis-lui que je l'aime encore.",
+        "Seul sur le sable, les yeux dans l'eau.",
+        "Ta fête, il est temps de célébrer.",
+        "Santé, à ceux qui n'en ont pas.",
+        "L'enfer, j'ai parfois eu des pensées suicidaires."
+      ],
+      "qs": [
+        "Dis-lui que je l'aime encore ?",
+        "Seul sur le sable ?",
+        "C'est ta fête ?"
+      ]
+    },
+    {
+      "id": "fr.son.22",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Sur le fil, je marche sans tomber.",
+        "Tombé pour elle, perdu dans ses yeux.",
+        "L'envie d'avoir envie.",
+        "Que je t'aime, que je t'aime !",
+        "Allumer le feu, et voir grandir la flamme."
+      ],
+      "qs": [
+        "Tu marches sur le fil ?",
+        "T'as envie d'avoir envie ?",
+        "Allumer le feu ?"
+      ]
+    },
+    {
+      "id": "fr.son.23",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Marie, si tu savais tout le mal que l'on me fait.",
+        "Diego, libre dans sa tête.",
+        "Ella, elle l'a, ce je-ne-sais-quoi.",
+        "Résiste, prouve que tu existes.",
+        "Il jouait du piano debout."
+      ],
+      "qs": [
+        "Marie, si tu savais ?",
+        "Diego, libre dans sa tête ?",
+        "Ella, elle l'a ?"
+      ]
+    },
+    {
+      "id": "fr.son.24",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Si maman si, si maman si.",
+        "Quelque chose de Tennessee.",
+        "Un autre monde, où la vie serait plus douce.",
+        "Cendrillon pour ses vingt ans.",
+        "Ça c'est vraiment toi !"
+      ],
+      "qs": [
+        "Si maman voyait ça ?",
+        "Un autre monde ?",
+        "Cendrillon ?"
+      ]
+    },
+    {
+      "id": "fr.son.25",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "La bombe humaine, c'est toi, c'est moi.",
+        "New York avec toi, n'importe où.",
+        "Si seulement je pouvais lui dire.",
+        "Un jour au mauvais endroit.",
+        "En apesanteur, je vole au-dessus du sol."
+      ],
+      "qs": [
+        "La bombe humaine ?",
+        "New York avec toi ?",
+        "En apesanteur ?"
+      ]
+    },
+    {
+      "id": "fr.son.26",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Face à la mer, j'ai juré d'avancer.",
+        "1999, souvenirs d'une autre époque.",
+        "Around the world, le monde tourne.",
+        "One more time, on va danser toute la nuit.",
+        "Get lucky, on est là pour faire la fête."
+      ],
+      "qs": [
+        "Face à la mer ?",
+        "1999, t'étais où ?",
+        "One more time ?"
+      ]
+    },
+    {
+      "id": "fr.son.27",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Music sounds better with you.",
+        "Lady, hear me tonight.",
+        "Le vent nous portera, la vie s'en chargera.",
+        "Un jour en France, on oublie tout.",
+        "L'homme pressé, toujours en retard."
+      ],
+      "qs": [
+        "La musique est meilleure avec toi ?",
+        "Lady, tu m'entends ?",
+        "Le vent nous portera ?"
+      ]
+    },
+    {
+      "id": "fr.son.28",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Je n'veux pas travailler, je ne veux pas déjeuner.",
+        "J'ai deux amours, mon pays et Paris.",
+        "La mer au reflet argenté.",
+        "Douce France, cher pays de mon enfance.",
+        "Y'a d'la joie, la tour Eiffel s'envole."
+      ],
+      "qs": [
+        "Tu veux pas travailler ?",
+        "T'as deux amours ?",
+        "Douce France ?"
+      ]
+    },
+    {
+      "id": "fr.son.29",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "C'est si bon, de se tenir par la main.",
+        "Les feuilles mortes se ramassent à la pelle.",
+        "Syracuse, j'aimerais tant voir Syracuse.",
+        "Jardin d'hiver, sous le soleil couchant.",
+        "Le lion est mort ce soir, dans la jungle."
+      ],
+      "qs": [
+        "C'est si bon ?",
+        "Les feuilles mortes ?",
+        "Syracuse ?"
+      ]
+    },
+    {
+      "id": "fr.son.30",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Foule sentimentale, on nous fait croire des choses.",
+        "Sous les jupes des filles, un vent de liberté.",
+        "J'ai dix ans, je fais ce qui me plaît.",
+        "La ballade de Jim, sur la route.",
+        "Quand j'serai K.O., tu me ramasseras."
+      ],
+      "qs": [
+        "Foule sentimentale ?",
+        "T'as dix ans dans ta tête ?",
+        "La ballade de Jim ?"
+      ]
+    },
+    {
+      "id": "fr.son.31",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Je t'aime moi non plus, dit la chanson.",
+        "La javanaise, nous nous aimions le temps d'une chanson.",
+        "Bonnie and Clyde, nous traversons la vie ensemble.",
+        "Le poinçonneur des Lilas, toujours le même geste.",
+        "Initials B.B., gravées dans mon cœur."
+      ],
+      "qs": [
+        "Je t'aime, moi non plus ?",
+        "La Javanaise ?",
+        "Bonnie and Clyde ?"
+      ]
+    },
+    {
+      "id": "fr.son.32",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Couleur café, que j'aime ta couleur.",
+        "Comic strip, des bulles et des sons.",
+        "Chanson sur ma drôle de vie.",
+        "Besoin de personne, je trace ma route.",
+        "Rien que de l'eau, pour me rafraîchir."
+      ],
+      "qs": [
+        "Couleur café ?",
+        "Ta drôle de vie ?",
+        "Besoin de personne ?"
+      ]
+    },
+    {
+      "id": "fr.son.33",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Quelqu'un m'a dit que tu m'aimais encore.",
+        "Raphaël, il a l'air d'un ange.",
+        "Le temps de l'amour, le temps des copains.",
+        "Tous les garçons et les filles de mon âge.",
+        "Comment te dire adieu, sans verser de larmes."
+      ],
+      "qs": [
+        "Quelqu'un m'a dit quoi ?",
+        "Le temps de l'amour ?",
+        "Tous les garçons et les filles ?"
+      ]
+    },
+    {
+      "id": "fr.son.34",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Mon amie la rose, ce matin était belle.",
+        "Message personnel, je te l'envoie.",
+        "La maladie d'amour, ça court dans les cœurs.",
+        "Les lacs du Connemara, sous le vent.",
+        "Être une femme, libérée et forte."
+      ],
+      "qs": [
+        "Mon amie la rose ?",
+        "La maladie d'amour ?",
+        "Les lacs du Connemara ?"
+      ]
+    },
+    {
+      "id": "fr.son.35",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Je vais t'aimer, comme personne ne t'a jamais aimée.",
+        "Le rire du sergent, une vieille histoire.",
+        "Un homme heureux, c'est tout ce que je veux.",
+        "Carnet de bal, des souvenirs oubliés.",
+        "Fais-moi une place, au fond de ton cœur."
+      ],
+      "qs": [
+        "Je vais t'aimer ?",
+        "Un homme heureux ?",
+        "Fais-moi une place ?"
+      ]
+    },
+    {
+      "id": "fr.son.36",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Ma préférence, c'est toi.",
+        "Mélance, petite sœur de mon âme.",
+        "Femmes, je vous aime.",
+        "Cœur de rocker, sous la veste en cuir.",
+        "Andy, dis-moi que tu m'aimes."
+      ],
+      "qs": [
+        "Ta préférence, c'est qui ?",
+        "Femmes, je vous aime ?",
+        "Cœur de rocker ?"
+      ]
+    },
+    {
+      "id": "fr.son.37",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Marcia Baïla, elle danse la vie.",
+        "Les histoires d'A., finissent mal en général.",
+        "C'est comme ça, on n'y peut rien.",
+        "Ding Ding Dong, le son de la fête.",
+        "Voyageur, sans bagage sur le chemin."
+      ],
+      "qs": [
+        "Marcia Baïla ?",
+        "Les histoires d'amour finissent mal ?",
+        "C'est comme ça ?"
+      ]
+    },
+    {
+      "id": "fr.son.38",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Tombé pour la France, souvenirs de guerre.",
+        "Week-end à Rome, tous les deux.",
+        "Le grand sommeil, s'endormir apaisé.",
+        "Epaule tattoo, marquée pour la vie.",
+        "Bleu comme toi, la couleur de mes rêves."
+      ],
+      "qs": [
+        "Tombé pour la France ?",
+        "Week-end à Rome ?",
+        "Bleu comme toi ?"
+      ]
+    },
+    {
+      "id": "fr.son.39",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Sur mon épaule, tu peux poser ta tête.",
+        "L'Amérique pleure, sur ses erreurs.",
+        "Marine, j'ai écrit cette chanson pour toi.",
+        "La boulette, génération désenchantée.",
+        "Je jeune et con, comme tant d'autres."
+      ],
+      "qs": [
+        "Sur mon épaule ?",
+        "L'Amérique pleure ?",
+        "La boulette ?"
+      ]
+    },
+    {
+      "id": "fr.son.40",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Sauver l'amour, avant qu'il ne soit trop tard.",
+        "L'aziza, ta couleur est une richesse.",
+        "Mon fils ma bataille, je me battrai pour toi.",
+        "La vie ne m'apprend rien.",
+        "Chanter, pour ceux qui sont loin de chez eux."
+      ],
+      "qs": [
+        "Sauver l'amour ?",
+        "L'Aziza ?",
+        "On chante pour ceux qui sont loin ?"
+      ]
+    },
+    {
+      "id": "fr.cit.01",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Je pense, donc je suis.",
+        "Le cœur a ses raisons que la raison ne connaît point.",
+        "L'homme est né libre, et partout il est dans les fers.",
+        "L'enfer, c'est les autres.",
+        "On ne naît pas femme, on le devient."
+      ],
+      "qs": [
+        "Je pense, donc je suis ?",
+        "Le cœur a ses raisons ?",
+        "L'homme est né libre ?"
+      ]
+    },
+    {
+      "id": "fr.cit.02",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Le seul moyen de se délivrer d'une tentation, c'est y céder.",
+        "La vie est un sommeil, l'amour en est le rêve.",
+        "Il n'y a qu'un bonheur dans la vie, c'est d'aimer et d'être aimé.",
+        "Le secret de la liberté, c'est l'éducation.",
+        "L'ignorance est la mère de tous les maux."
+      ],
+      "qs": [
+        "La tentation ?",
+        "La vie est un sommeil ?",
+        "Le bonheur, c'est quoi ?"
+      ]
+    },
+    {
+      "id": "fr.cit.03",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Rien ne se perd, rien ne se crée, tout se transforme.",
+        "Le savoir est la seule matière qui s'accroît quand on la partage.",
+        "La simplicité est la sophistication suprême.",
+        "Vivre, c'est obstinément continuer d'espérer.",
+        "Il faut imaginer Sisyphe heureux."
+      ],
+      "qs": [
+        "Rien ne se perd ?",
+        "Le savoir partagé ?",
+        "La simplicité ?"
+      ]
+    },
+    {
+      "id": "fr.cit.04",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "L'absurde naît de cette confrontation entre l'appel humain et le silence déraisonnable du monde.",
+        "Au milieu de l'hiver, j'ai découvert en moi un été invincible.",
+        "L'existence précède l'essence.",
+        "Nous sommes nos choix.",
+        "L'homme est condamné à être libre."
+      ],
+      "qs": [
+        "L'absurde ?",
+        "Un été invincible ?",
+        "L'existence précède l'essence ?"
+      ]
+    },
+    {
+      "id": "fr.cit.05",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "La parole a été donnée à l'homme pour déguiser sa pensée.",
+        "La plus grande gloire n'est pas de ne jamais tomber, mais de se relever à chaque chute.",
+        "La patience est amère, mais son fruit est doux.",
+        "L'homme qui ne lit pas n'a aucun avantage sur celui qui ne sait pas lire.",
+        "Savoir, c'est pouvoir."
+      ],
+      "qs": [
+        "La parole déguise la pensée ?",
+        "Se relever à chaque chute ?",
+        "La patience ?"
+      ]
+    },
+    {
+      "id": "fr.cit.06",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Les vrais miracles font peu de bruit.",
+        "Le secret pour avancer, c'est de commencer.",
+        "Rien de grand ne s'est accompli dans le monde sans passion.",
+        "Chaque homme est le constructeur de son propre temple.",
+        "La mesure de l'amour, c'est d'aimer sans mesure."
+      ],
+      "qs": [
+        "Les vrais miracles ?",
+        "Le secret pour avancer ?",
+        "Aimer sans mesure ?"
+      ]
+    },
+    {
+      "id": "fr.cit.07",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Il est grand temps de rallumer les étoiles.",
+        "Ce n'est pas parce que les choses sont difficiles que nous n'osons pas, c'est parce que nous n'osons pas qu'elles sont difficiles.",
+        "La vie n'est pas d'attendre que les orages passent, c'est d'apprendre à danser sous la pluie.",
+        "La vraie générosité envers l'avenir consiste à tout donner au présent.",
+        "N'attends pas le moment parfait, prends le moment et rends-le parfait."
+      ],
+      "qs": [
+        "Rallumer les étoiles ?",
+        "Danser sous la pluie ?",
+        "Tout donner au présent ?"
+      ]
+    },
+    {
+      "id": "fr.cit.08",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "La vie est courte, mais l'art est long.",
+        "L'expérience est le nom que chacun donne à ses erreurs.",
+        "Un problème sans solution est un problème mal posé.",
+        "Le plus grand risque est de ne prendre aucun risque.",
+        "La beauté est dans l'œil de celui qui regarde."
+      ],
+      "qs": [
+        "L'art est long ?",
+        "L'expérience ?",
+        "Le plus grand risque ?"
+      ]
+    },
+    {
+      "id": "fr.cit.09",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Il n'y a pas de réussite facile ni de échecs définitifs.",
+        "On n'apprend rien quand on parle.",
+        "La liberté commence où l'ignorance finit.",
+        "Ce qui ne me tue pas me rend plus fort.",
+        "Le courage, c'est de chercher la vérité et de la dire."
+      ],
+      "qs": [
+        "La beauté est dans l'œil ?",
+        "On n'apprend rien quand on parle ?",
+        "Ce qui ne me tue pas ?"
+      ]
+    },
+    {
+      "id": "fr.cit.10",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "N'aie pas peur de l'échec, aie peur de ne pas essayer.",
+        "L'esprit est comme un parachute, il ne fonctionne que s'il est ouvert.",
+        "La plus grande sagesse est de connaître ses propres limites.",
+        "Le monde appartient à ceux qui se lèvent tôt.",
+        "On ne voit bien qu'avec le cœur. L'essentiel est invisible pour les yeux."
+      ],
+      "qs": [
+        "L'esprit est un parachute ?",
+        "Le monde appartient à qui ?",
+        "Voir avec le cœur ?"
+      ]
+    },
+    {
+      "id": "fr.cit.11",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Tous les grands personages ont d'abord été des enfants, mais peu d'entre eux s'en souviennent.",
+        "C'est le temps que tu as perdu pour ta rose qui rend ta rose si importante.",
+        "Tu es responsable pour toujours de ce que tu as apprivoisé.",
+        "Fais de ta vie un rêve, et d'un rêve, une réalité.",
+        "Dormir, c'est s'éveiller à une autre vie."
+      ],
+      "qs": [
+        "Les grands ont été enfants ?",
+        "Ta rose est importante ?",
+        "Dormir, c'est quoi ?"
+      ]
+    },
+    {
+      "id": "fr.cit.12",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Aimer, c'est savoir dire je t'aime sans parler.",
+        "Un poète est un monde enfermé dans un homme.",
+        "La musique c'est du bruit qui pense.",
+        "Mettre tout en équilibre, c'est bien ; mettre tout en harmonie, c'est mieux.",
+        "La mélancolie, c'est le bonheur d'être triste."
+      ],
+      "qs": [
+        "Dire je t'aime sans parler ?",
+        "Un poète, c'est quoi ?",
+        "La musique qui pense ?"
+      ]
+    },
+    {
+      "id": "fr.cit.13",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Changer la vie.",
+        "Je est un autre.",
+        "Il faut être absolument moderne.",
+        "La vie est ailleurs.",
+        "Tu m'as donné ta boue et j'en ai fait de l'or."
+      ],
+      "qs": [
+        "Changer la vie ?",
+        "Je est un autre ?",
+        "La boue en or ?"
+      ]
+    },
+    {
+      "id": "fr.cit.14",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Le beau est toujours bizarre.",
+        "Sois sage, ô ma Douleur, et tiens-toi plus tranquille.",
+        "Longtemps, je me suis couché de bonne heure.",
+        "Le véritable voyage de découverte ne consiste pas à chercher de nouveaux paysages, mais à avoir de nouveaux yeux.",
+        "La mémoire du cœur efface les mauvais souvenirs et embellit les bons."
+      ],
+      "qs": [
+        "Le beau est bizarre ?",
+        "Tu t'es couché de bonne heure ?",
+        "Avoir de nouveaux yeux ?"
+      ]
+    },
+    {
+      "id": "fr.cit.15",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Il n'y a pas de chef-d'œuvre sans passion.",
+        "La parole est à moitié à celui qui parle, moitié à celui qui l'écoute.",
+        "Le style, c'est l'homme même.",
+        "Les mots sont des pistolets chargés.",
+        "Écrire, c'est une façon de parler sans être interrompu."
+      ],
+      "qs": [
+        "Un chef-d'œuvre sans passion ?",
+        "La parole est à moitié à qui ?",
+        "Écrire sans être interrompu ?"
+      ]
+    },
+    {
+      "id": "fr.cit.16",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Un livre doit être la hache qui brise la mer gelée en nous.",
+        "Créer, c'est vivre deux fois.",
+        "L'art est un mensonge qui nous fait comprendre la vérité.",
+        "L'art ne reproduit pas le visible ; il rend visible.",
+        "Il n'y a rien de plus artistique que d'aimer les gens."
+      ],
+      "qs": [
+        "Un livre comme une hache ?",
+        "Créer, c'est vivre deux fois ?",
+        "L'art est un mensonge ?"
+      ]
+    },
+    {
+      "id": "fr.cit.17",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Si vous entendez une voix en vous qui dit \"tu ne peux pas peindre\", alors peignez et cette voix se taira.",
+        "J'ai mis toute ma vie à savoir dessiner comme un enfant.",
+        "La couleur est le clavier, les yeux sont les marteaux, l'âme est le piano.",
+        "La photographie est une brève complicité entre la prévoyance et le hasard.",
+        "Filmer, c'est consigner la vie."
+      ],
+      "qs": [
+        "Dessiner comme un enfant ?",
+        "La couleur est un clavier ?",
+        "Filmer, c'est quoi ?"
+      ]
+    },
+    {
+      "id": "fr.cit.18",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Le cinéma, c'est la vérité 24 fois par seconde.",
+        "Il n'y a pas d'amour, il n'y a que des preuves d'amour.",
+        "L'amour est un tyran qui n'épargne personne.",
+        "C'est cela l'amour, tout donner, tout sacrifier sans espoir de retour.",
+        "Aimer, ce n'est pas se regarder l'un l'autre, c'est regarder ensemble dans la même direction."
+      ],
+      "qs": [
+        "Le cinéma, c'est la vérité ?",
+        "Y a de l'amour ou des preuves ?",
+        "Regarder dans la même direction ?"
+      ]
+    },
+    {
+      "id": "fr.cit.19",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "La poésie est cette musique que tout homme porte en soi.",
+        "Les grands livres ne révèlent pas la vérité, ils posent des questions.",
+        "La vie est une comédie pour ceux qui pensent, une tragédie pour ceux qui sentent.",
+        "Rien n'est plus dangereux qu'une idée quand on n'en a qu'une.",
+        "Le doute est le commencement de la sagesse."
+      ],
+      "qs": [
+        "La poésie en toi ?",
+        "Les grands livres posent des questions ?",
+        "Le doute ?"
+      ]
+    },
+    {
+      "id": "fr.cit.20",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "La culture, c'est ce qui reste quand on a tout oublié.",
+        "Rien ne résiste à l'insistance.",
+        "L'imagination gouverne le monde.",
+        "L'encre la plus pâle vaut mieux que la mémoire la plus fidèle.",
+        "On ne fait rien de grand sans grands hommes, et ils le sont pour l'avoir voulu."
+      ],
+      "qs": [
+        "La culture, c'est quoi ?",
+        "L'imagination gouverne le monde ?",
+        "On ne fait rien de grand sans... ?"
+      ]
+    },
+    {
+      "id": "fr.cit.21",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Impossible n'est pas français.",
+        "Du haut de ces pyramides, quarante siècles vous contemplent.",
+        "Quand la Chine s'éveillera, le monde tremblera.",
+        "On ne peut pas gouverner un pays qui a 246 variétés de fromage.",
+        "Paris outrage ! Paris brisé ! Paris martyrisé ! Mais Paris libéré !"
+      ],
+      "qs": [
+        "Impossible n'est pas français ?",
+        "Quarante siècles vous contemplent ?",
+        "246 fromages ?"
+      ]
+    },
+    {
+      "id": "fr.cit.22",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "La France a perdu une bataille ! Mais la France n'a pas perdu la guerre !",
+        "L'État, c'est moi.",
+        "Après moi, le déluge.",
+        "Liberté, Égalité, Fraternité.",
+        "S'ils n'ont pas de pain, qu'ils mangent de la brioche."
+      ],
+      "qs": [
+        "La France a perdu une bataille ?",
+        "L'État, c'est qui ?",
+        "Liberté, égalité, fraternité ?"
+      ]
+    },
+    {
+      "id": "fr.cit.23",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Je ne suis pas d'accord avec ce que vous dites, mais je me battrai jusqu'à la mort pour que vous puissiez le dire.",
+        "Pour être grand, il faut avoir été petit.",
+        "Veni, vidi, vici.",
+        "Un peuple qui oublie son passé se condamne à le revivre.",
+        "Le courage n'est pas l'absence de peur, mais la capacité de la vaincre."
+      ],
+      "qs": [
+        "Te battre pour que je parle ?",
+        "Veni, vidi, vici ?",
+        "Le courage ?"
+      ]
+    },
+    {
+      "id": "fr.cit.24",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Soyez le changement que vous voulez voir dans le monde.",
+        "La politique est l'art du possible.",
+        "Un droit n'est jamais donné, il est conquis.",
+        "La justice sans la force est impuissante ; la force sans la justice est tyrannique.",
+        "Quand les hommes ne peuvent changer les choses, ils changent les mots."
+      ],
+      "qs": [
+        "Sois le changement ?",
+        "La politique, c'est quoi ?",
+        "La justice sans force ?"
+      ]
+    },
+    {
+      "id": "fr.cit.25",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Ne demandez pas ce que votre pays peut faire pour vous, demandez ce que vous pouvez faire pour votre pays.",
+        "La démocratie est le pire des systèmes, à l'exception de tous les autres.",
+        "Rien ne se construit dans la haine.",
+        "Le destin n'est pas une question de chance, c'est une question de choix.",
+        "La guerre est une chose trop grave pour la confier à des militaires."
+      ],
+      "qs": [
+        "Ton pays peut quoi pour toi ?",
+        "La démocratie ?",
+        "La guerre, trop grave ?"
+      ]
+    },
+    {
+      "id": "fr.cit.26",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Pour triompher, le mal n'a besoin que de l'inaction des hommes de bien.",
+        "Les gagnants trouvent des moyens, les perdants trouvent des excuses.",
+        "La paix n'est pas l'absence de guerre, c'est une vertu.",
+        "Il faut toujours viser la lune, car même en cas d'échec, on atterrit dans les étoiles.",
+        "On ne résout pas un problème avec le mode de pensée qui l'a créé."
+      ],
+      "qs": [
+        "Le mal triomphe comment ?",
+        "La paix, c'est quoi ?",
+        "Viser la lune ?"
+      ]
+    },
+    {
+      "id": "fr.cit.27",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Rien de grand ne s'est fait sans enthousiasme.",
+        "Le futur appartient à ceux qui croient à la beauté de leurs rêves.",
+        "Le patriotisme, c'est l'amour des siens ; le nationalisme, c'est la haine des autres.",
+        "L'histoire est écrite par les vainqueurs.",
+        "La liberté des uns s'arrête là où commence celle des autres."
+      ],
+      "qs": [
+        "Sans enthousiasme ?",
+        "Le futur appartient à qui ?",
+        "Ta liberté s'arrête où ?"
+      ]
+    },
+    {
+      "id": "fr.cit.28",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Tout passe, tout casse, tout lasse.",
+        "L'avenir dépend de ce que vous faites aujourd'hui.",
+        "Rien n'est permanent sauf le changement.",
+        "Les paroles volent, les écrits restent.",
+        "Aux grands hommes, la patrie reconnaissante."
+      ],
+      "qs": [
+        "Tout passe ?",
+        "L'avenir dépend de quoi ?",
+        "Les paroles volent ?"
+      ]
+    },
+    {
+      "id": "fr.cit.29",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "L'unité fait la force.",
+        "Seul on va plus vite, ensemble on va plus loin.",
+        "Vouloir, c'est pouvoir.",
+        "Aide-toi, le ciel t'aidera.",
+        "Petit à petit, l'oiseau fait son nid."
+      ],
+      "qs": [
+        "L'unité fait la force ?",
+        "Vouloir, c'est pouvoir ?",
+        "Aide-toi ?"
+      ]
+    },
+    {
+      "id": "fr.cit.30",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Il n'y a pas de fumée sans feu.",
+        "Chacun voit midi à sa porte.",
+        "Après la pluie, le beau temps.",
+        "Goutte à goutte, eau creuse la pierre.",
+        "C'est en forgeant qu'on devient forgeron."
+      ],
+      "qs": [
+        "Y a pas de fumée sans feu ?",
+        "Après la pluie ?",
+        "C'est en forgeant ?"
+      ]
+    },
+    {
+      "id": "fr.cit.31",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "La mode passe, le style reste.",
+        "La simplicité est la clé de toute élégance véritable.",
+        "Une femme sans parfum est une femme sans avenir.",
+        "Pour être irremplaçable, il faut toujours être différent.",
+        "Le meilleur accessoire d'une femme, c'est son assurance."
+      ],
+      "qs": [
+        "La mode passe ?",
+        "Une femme sans parfum ?",
+        "Irrremplaçable ?"
+      ]
+    },
+    {
+      "id": "fr.cit.32",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Les vêtements ne changent pas le monde, les femmes qui les portent le font.",
+        "L'élégance n'est pas de se faire remarquer, c'est de se faire remarquer sans le vouloir.",
+        "Les plus belles choses de la vie ne sont pas des choses.",
+        "La cuisine, c'est de l'amour rendu visible.",
+        "Trouver un bon vin, c'est trouver une bonne compagnie."
+      ],
+      "qs": [
+        "Les vêtements changent le monde ?",
+        "L'élégance ?",
+        "La cuisine, c'est de l'amour ?"
+      ]
+    },
+    {
+      "id": "fr.cit.33",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "La vie est trop courte pour boire du mauvais vin.",
+        "Le vin est la poésie en bouteille.",
+        "Dans une bouteille de vin, il y a plus de philosophie que dans tous les livres.",
+        "Rien ne se crée sans passion et sans travail.",
+        "Le hasard ne favorise que les esprits préparés."
+      ],
+      "qs": [
+        "Du mauvais vin ?",
+        "Le vin est une poésie ?",
+        "Le hasard favorise qui ?"
+      ]
+    },
+    {
+      "id": "fr.cit.34",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Dans la vie, rien n'est à craindre, tout est à comprendre.",
+        "Soyez moins curieux des personnes et plus curieux des idées.",
+        "Un scientifique dans son laboratoire n'est pas seulement un technicien : c'est aussi un enfant placé en face de phénomènes naturels qui l'impressionnent comme des contes de fées.",
+        "La science n'a pas de patrie, parce que le savoir est le patrimoine de l'humanité.",
+        "La vérité sort de la bouche des enfants."
+      ],
+      "qs": [
+        "Rien à craindre ?",
+        "Curieux des idées ?",
+        "La vérité sort d'où ?"
+      ]
+    },
+    {
+      "id": "fr.cit.35",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Paris est toujours une bonne idée.",
+        "Si vous avez la chance d'avoir vécu à Paris jeune, alors où que vous alliez pour le reste de votre vie, cela ne vous quitte pas, car Paris est une fête.",
+        "À Paris, la beauté est à chaque coin de rue.",
+        "Savoir vivre, c'est savoir apprécier chaque instant.",
+        "Le bonheur est un parfum que l'on ne peut répandre sur les autres sans en faire tomber quelques gouttes sur soi-même."
+      ],
+      "qs": [
+        "Paris est toujours une bonne idée ?",
+        "Paris est une fête ?",
+        "Le bonheur est un parfum ?"
+      ]
+    },
+    {
+      "id": "fr.cit.36",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Rire est le meilleur remède.",
+        "La joie de vivre est la meilleure cosmétique.",
+        "Prends le temps d'aimer, c'est le secret de la jeunesse éternelle.",
+        "L'amour commence par soi-même.",
+        "Vivre sans aimer n'est pas proprement vivre."
+      ],
+      "qs": [
+        "Rire, c'est le remède ?",
+        "La joie de vivre ?",
+        "Vivre sans aimer ?"
+      ]
+    },
+    {
+      "id": "fr.cit.37",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "La parole est d'argent, mais le silence est d'or.",
+        "On n'est jamais si heureux ni si malheureux qu'on se l'imagine.",
+        "L'amour-propre est le plus grand de tous les flatteurs.",
+        "Si l'on n'avait point de défauts, on ne prendrait pas tant de plaisir à en remarquer dans les autres.",
+        "Nous avons tous assez de force pour supporter les maux d'autrui."
+      ],
+      "qs": [
+        "Le silence est d'or ?",
+        "Heureux comme tu l'imagines ?",
+        "L'amour-propre ?"
+      ]
+    },
+    {
+      "id": "fr.cit.38",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Le rire est la distance la plus courte entre deux personnes.",
+        "Ce qui compte, ce ne sont pas les années qu'il y a eu dans votre vie, c'est la vie qu'il y a eu dans vos années.",
+        "L'avenir appartient à ceux qui préparent aujourd'hui.",
+        "Rien ne sert de courir ; il faut partir à point.",
+        "La raison du plus fort est toujours la meilleure."
+      ],
+      "qs": [
+        "Le rire rapproche ?",
+        "Les années ou la vie ?",
+        "Rien ne sert de courir ?"
+      ]
+    },
+    {
+      "id": "fr.cit.39",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "On a souvent besoin d'un plus petit que soi.",
+        "En toute chose il faut considérer la fin.",
+        "Garde tes amis près de toi, et tes ennemis encore plus près.",
+        "La vie n'est pas un problème à résoudre, mais une réalité à expérimenter.",
+        "Crois en tes rêves et ils se réaliseront peut-être. Crois en toi et ils se réaliseront sûrement."
+      ],
+      "qs": [
+        "Besoin d'un plus petit ?",
+        "Garde tes amis près de toi ?",
+        "La vie est un problème ?"
+      ]
+    },
+    {
+      "id": "fr.cit.40",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Il n'y a pas de vent favorable pour celui qui ne sait pas où il va.",
+        "Chaque jour est une nouvelle chance.",
+        "Aime la vie et la vie t'aimera.",
+        "La vie est faite de petits bonheurs.",
+        "L'essentiel est de profiter de chaque instant."
+      ],
+      "qs": [
+        "Pas de vent favorable ?",
+        "Chaque jour est une chance ?",
+        "La vie est faite de quoi ?"
+      ]
+    },
+    {
+      "id": "fr.arg.01",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Main character",
+        "C'est un PN",
+        "Red flag",
+        "Green flag",
+        "C'est un NPC** / **Un PNJ"
+      ],
+      "qs": [
+        "Main character ?",
+        "C'est un PN ?",
+        "Red flag ou green flag ?"
+      ]
+    },
+    {
+      "id": "fr.arg.02",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Masterclass",
+        "Ratio",
+        "Les bails",
+        "C'est quoi les bails ?",
+        "Pick me"
+      ],
+      "qs": [
+        "Masterclass ?",
+        "C'est quoi les bails ?",
+        "Pick me ?"
+      ]
+    },
+    {
+      "id": "fr.arg.03",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Rentre dans le moule",
+        "C'est du propre",
+        "Vibe check",
+        "Flex",
+        "Soft launch"
+      ],
+      "qs": [
+        "C'est du propre ?",
+        "Vibe check ?",
+        "Tu flex ?"
+      ]
+    },
+    {
+      "id": "fr.arg.04",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Hard launch",
+        "C'est un banger",
+        "Flop",
+        "Un flop monumentale",
+        "C'est cringe"
+      ],
+      "qs": [
+        "C'est un banger ?",
+        "Flop ?",
+        "C'est cringe ?"
+      ]
+    },
+    {
+      "id": "fr.arg.05",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Le cringe absolu",
+        "Gatekeep",
+        "Glow up",
+        "Bro-code",
+        "Sisterhood"
+      ],
+      "qs": [
+        "Tu gatekeep ?",
+        "Glow up ?",
+        "Y a du drama ?"
+      ]
+    },
+    {
+      "id": "fr.arg.06",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Drama",
+        "Chercher le drama",
+        "Vendre du rêve",
+        "C'est la Hess",
+        "C'est un GoAT"
+      ],
+      "qs": [
+        "Tu cherches le drama ?",
+        "C'est la hess ?",
+        "No cap ?"
+      ]
+    },
+    {
+      "id": "fr.arg.07",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "No cap",
+        "It boy / It girl",
+        "Shitpost",
+        "Mood du jour",
+        "Pov**（Point of view）"
+      ],
+      "qs": [
+        "It boy ?",
+        "Ton mood du jour ?",
+        "Pov ?"
+      ]
+    },
+    {
+      "id": "fr.arg.08",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Out of context",
+        "Zero effort",
+        "C'est valide",
+        "In Real Life**（IRL）",
+        "Based"
+      ],
+      "qs": [
+        "Out of context ?",
+        "Zero effort ?",
+        "C'est validé ?"
+      ]
+    },
+    {
+      "id": "fr.arg.09",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Mdr**（Mort de rire）",
+        "Ptdr**（Pété de rire）",
+        "Xptdr**（Extrêmement pété de rire）",
+        "Jpp**（J'en peux plus）",
+        "Stp**（S'il te plaît）"
+      ],
+      "qs": [
+        "Mdr, quoi ?",
+        "Ptdr !",
+        "Jpp, sérieux ?"
+      ]
+    },
+    {
+      "id": "fr.arg.10",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Svp**（S'il vous plaît）",
+        "Tqt**（T'inquiète）",
+        "Slt**（Salut）",
+        "Bjr**（Bonjour）",
+        "Bsr**（Bonsoir）"
+      ],
+      "qs": [
+        "Stp ?",
+        "Tqt ?",
+        "Slt, ça va ?"
+      ]
+    },
+    {
+      "id": "fr.arg.11",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Cc**（Coucou）",
+        "Mrc**（Merci）",
+        "C'est dr**（De rien）",
+        "Tkt mêm pas**（T'inquiète même pas）",
+        "Jsp**（Je sais pas）"
+      ],
+      "qs": [
+        "Cc, tu vas bien ?",
+        "Mrc ?",
+        "Jsp ?"
+      ]
+    },
+    {
+      "id": "fr.arg.12",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Jtnf**（Je t'aime de ouf）",
+        "Otm**（On se tient au courant）",
+        "Cmt**（Comment）",
+        "Pq** / **Pk**（Pourquoi）",
+        "Pck**（Parce que）"
+      ],
+      "qs": [
+        "Jtnf ?",
+        "On se tient au jus ?",
+        "Pq tu dis ça ?"
+      ]
+    },
+    {
+      "id": "fr.arg.13",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Cad**（C'est-à-dire）",
+        "Mtg**（Ferme ta gueule）",
+        "Osef**（On s'en fout）",
+        "Bcp**（Beaucoup）",
+        "Tkt frérot"
+      ],
+      "qs": [
+        "Cad ?",
+        "Osef ?",
+        "Bcp ?"
+      ]
+    },
+    {
+      "id": "fr.arg.14",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Amdt**（À mon avis）",
+        "Att**（Attend）",
+        "Svp reponds",
+        "Jtm**（Je t'aime）",
+        "Mdrrr"
+      ],
+      "qs": [
+        "À mon avis ?",
+        "Attends ?",
+        "Jtm ?"
+      ]
+    },
+    {
+      "id": "fr.arg.15",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "A2m**（À demain）",
+        "A+**（À plus tard）",
+        "Re**（ De retour）",
+        "Aaf**（À au revoir）",
+        "Tmtc**（Toi-même tu sais）"
+      ],
+      "qs": [
+        "À demain ?",
+        "À plus tard ?",
+        "Re, t'es là ?"
+      ]
+    },
+    {
+      "id": "fr.arg.16",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Aussi**（Aussi）",
+        "Jpp de toi",
+        "Thx",
+        "Nsp**（Ne sait pas）",
+        "Oklm**（Au calme）"
+      ],
+      "qs": [
+        "Jpp de toi ?",
+        "Thx ?",
+        "Oklm ?"
+      ]
+    },
+    {
+      "id": "fr.arg.17",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Ghoster",
+        "Stalker",
+        "Breadcrumbing",
+        "Benching",
+        "Gaslighter"
+      ],
+      "qs": [
+        "Il t'a ghosté ?",
+        "Stalker ?",
+        "Friendzone ?"
+      ]
+    },
+    {
+      "id": "fr.arg.18",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Friendzone",
+        "Un Crush",
+        "Un BAE",
+        "Un simpeur",
+        "Simper"
+      ],
+      "qs": [
+        "Ton crush ?",
+        "C'est ton BAE ?",
+        "Tu simpes ?"
+      ]
+    },
+    {
+      "id": "fr.arg.19",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Faire un ship",
+        "Un DM",
+        "Slide dans les DMs",
+        "Un match",
+        "Un superlike"
+      ],
+      "qs": [
+        "Faire un ship ?",
+        "Slide dans les DM ?",
+        "Un match ?"
+      ]
+    },
+    {
+      "id": "fr.arg.20",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Un date",
+        "Passer au vert",
+        "Liker à mort",
+        "La Story privée",
+        "Faire un flop amoureux"
+      ],
+      "qs": [
+        "Un date ce soir ?",
+        "Passer au vert ?",
+        "Story privée ?"
+      ]
+    },
+    {
+      "id": "fr.arg.21",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Demander un Insta",
+        "Un faux compte** / **Un burner",
+        "Supprimer la convo",
+        "Bloquer direct",
+        "Mettre en sourdine"
+      ],
+      "qs": [
+        "Demander son Insta ?",
+        "Un faux compte ?",
+        "Bloquer direct ?"
+      ]
+    },
+    {
+      "id": "fr.arg.22",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Un fan account",
+        "Déswiper",
+        "Un plan cul",
+        "Un plan d'un soir",
+        "Être pris"
+      ],
+      "qs": [
+        "Fan account ?",
+        "Un plan cul ?",
+        "T'es pris ?"
+      ]
+    },
+    {
+      "id": "fr.arg.23",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Être célibat",
+        "Casser le game",
+        "Faire le beau",
+        "Grave amoureux",
+        "Attrapper une veste"
+      ],
+      "qs": [
+        "Célibat ?",
+        "Faire le beau ?",
+        "Grave amoureux ?"
+      ]
+    },
+    {
+      "id": "fr.arg.24",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Laisse tomber",
+        "C'est mort",
+        "Un faux ami",
+        "Changer de disques",
+        "T'es trop chou"
+      ],
+      "qs": [
+        "Attraper une veste ?",
+        "C'est mort ?",
+        "T'es trop chou ?"
+      ]
+    },
+    {
+      "id": "fr.arg.25",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "C'est une pépite",
+        "C'est du grand art",
+        "Je suis cuit",
+        "Je suis par terre",
+        "Je décède"
+      ],
+      "qs": [
+        "C'est une pépite ?",
+        "Je suis cuit ?",
+        "Je suis par terre ?"
+      ]
+    },
+    {
+      "id": "fr.arg.26",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Je suis au sol",
+        "Trop de scroll",
+        "Inonder le fil",
+        "C'est pas sorcier",
+        "Un pnj total"
+      ],
+      "qs": [
+        "Trop de scroll ?",
+        "C'est pas sorcier ?",
+        "Un PNJ total ?"
+      ]
+    },
+    {
+      "id": "fr.arg.27",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Trop de bluff",
+        "Faire sa star",
+        "Sans vergogne",
+        "C'est la base",
+        "Niveau zéro"
+      ],
+      "qs": [
+        "Tu bluffes ?",
+        "Faire sa star ?",
+        "C'est la base ?"
+      ]
+    },
+    {
+      "id": "fr.arg.28",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Un monstre",
+        "T'es un champion",
+        "C'est bon là",
+        "Arrête tes salades",
+        "T'abuse de fou"
+      ],
+      "qs": [
+        "T'es un monstre ?",
+        "T'es un champion ?",
+        "Arrête tes salades ?"
+      ]
+    },
+    {
+      "id": "fr.arg.29",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "C'est du lourd",
+        "Totalement faux",
+        "Trop de sauce",
+        "Mettre la sauce",
+        "C'est du génie"
+      ],
+      "qs": [
+        "C'est du lourd ?",
+        "Trop de sauce ?",
+        "C'est du génie ?"
+      ]
+    },
+    {
+      "id": "fr.arg.30",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "J'ai pas la réf",
+        "J'ai la réf",
+        "Donne la réf",
+        "Poteau sponsorisé",
+        "Un placement de produit"
+      ],
+      "qs": [
+        "T'as pas la réf ?",
+        "J'ai la réf ?",
+        "Poste sponsorisé ?"
+      ]
+    },
+    {
+      "id": "fr.arg.31",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "C'est du pipo",
+        "Tu me fatigues",
+        "C'est tendu",
+        "Garde ton calme",
+        "Un algorithme d'enfer"
+      ],
+      "qs": [
+        "C'est du pipo ?",
+        "Je te fatigue ?",
+        "C'est tendu ?"
+      ]
+    },
+    {
+      "id": "fr.arg.32",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Passer en TT**（Trend Topic）",
+        "Percer sur TikTok",
+        "Faire des vues",
+        "Un piège à clics",
+        "C'est viral"
+      ],
+      "qs": [
+        "Passer en TT ?",
+        "Faire des vues ?",
+        "C'est viral ?"
+      ]
+    },
+    {
+      "id": "fr.arg.33",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Mood",
+        "Vibe",
+        "Au bout de ma vie",
+        "J'ai trop le seum",
+        "Flemme olympique"
+      ],
+      "qs": [
+        "Ton mood ?",
+        "La vibe ?",
+        "Au bout de ta vie ?"
+      ]
+    },
+    {
+      "id": "fr.arg.34",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "En dépression totale",
+        "Mode avion",
+        "Mode fantôme",
+        "Zero pression",
+        "C'est chill"
+      ],
+      "qs": [
+        "En dépression ?",
+        "Mode avion ?",
+        "Zero pression ?"
+      ]
+    },
+    {
+      "id": "fr.arg.35",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Full énergie",
+        "Pété de thunes",
+        "À sec",
+        "En galère",
+        "C'est la crise"
+      ],
+      "qs": [
+        "Full énergie ?",
+        "Pété de thunes ?",
+        "À sec ?"
+      ]
+    },
+    {
+      "id": "fr.arg.36",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Pas le temps de niaiser",
+        "All-in",
+        "Rien à péter",
+        "En roue libre",
+        "Lâcher一prout"
+      ],
+      "qs": [
+        "Pas le temps de niaiser ?",
+        "All-in ?",
+        "En roue libre ?"
+      ]
+    },
+    {
+      "id": "fr.arg.37",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Sans prise de tête",
+        "Ça me saoule",
+        "Je craque",
+        "J'en ai marre",
+        "C'est insupportable"
+      ],
+      "qs": [
+        "Sans prise de tête ?",
+        "Ça me saoule ?",
+        "Je craque ?"
+      ]
+    },
+    {
+      "id": "fr.arg.38",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Je pète les plombs",
+        "J'suis choque de ouf",
+        "Grave chaud",
+        "Grave pas chaud",
+        "Je démissionne"
+      ],
+      "qs": [
+        "Je pète les plombs ?",
+        "Choqué ?",
+        "Grave chaud ?"
+      ]
+    },
+    {
+      "id": "fr.arg.39",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Mode guerrier",
+        "C'est gratifiant",
+        "C'est du bonus",
+        "On valide à 100%",
+        "Faire dodo"
+      ],
+      "qs": [
+        "Mode guerrier ?",
+        "C'est gratifiant ?",
+        "On valide ?"
+      ]
+    },
+    {
+      "id": "fr.arg.40",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Prendre l'air",
+        "Tranquille Émile",
+        "Ça fait plaisir",
+        "On se tiend au jus",
+        "À plus dans le bus"
+      ],
+      "qs": [
+        "Faire dodo ?",
+        "Prendre l'air ?",
+        "Tranquille Émile ?"
+      ]
+    }
+  ]
+}

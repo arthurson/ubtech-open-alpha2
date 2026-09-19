@@ -13,8 +13,9 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * 中英文語意配對引擎的共用底層 - SemanticMatcherZh (中文) 和
- * SemanticMatcherEn (英文) 除了 TAG、assets 檔名、fallback 問法/動作組
+ * 中英西法日語意配對引擎的共用底層 - SemanticMatcherZh (中文)、
+ * SemanticMatcherEn (英文)、SemanticMatcherEs (西文)、SemanticMatcherFr (法文)、
+ * SemanticMatcherJa (日文) 除了 TAG、assets 檔名、fallback 問法/動作組
  * 之外，載入/比對/分類 random 這幾層邏輯完全一致，2026-09 抽這一層共用 base
  * class，避免兩份逐字重複要同步改。子類只需要在 constructor 提供三樣東西：
  * log tag、問法 json 的 assets 路徑、"聽不懂" fallback 組 (問法句 + 對應
@@ -27,7 +28,7 @@ import java.util.Random;
  * 資料來源/分類 random 機制等背景見 SemanticMatcherZh 的 class javadoc,
  * 不在這裡重複。
  *
- * 命名備註: 這三個 class (這個 base + SemanticMatcherZh/En) 2026-09 之前叫
+ *  命名備註: 這幾個 class (這個 base + SemanticMatcherZh/En/Es/Fr/Ja) 2026-09 之前叫
  * IflytekSemanticMatcher(Base/En) - 個名純粹歷史原因 (問法資料最初由 iFlytek
  * APK 反編譯還原), 同機身已經永久不再用的 Nuance/iFlytek binder TTS/ASR 引擎
  * 完全沒有關係, 僅個名容易誤導 (這個功能本身是純本地 JSON 配對, 不經任何外部
@@ -37,7 +38,7 @@ public abstract class SemanticMatcherBase {
     private static final String ASSET_PATH_CATEGORIES = "semantic/action_category_pools.json";
     private static final String RANDOM_CATEGORY_PREFIX = "__RANDOM_CATEGORY__";
 
-    /** 中英文共用的「聽不懂」fallback 動作組（5 個已驗證沒聲效動作；兩子類之前各自複製同一份）。 */
+    /** 五語共用的「聽不懂」fallback 動作組（5 個已驗證沒聲效動作；各子類之前各自複製同一份）。 */
     protected static final String[] DEFAULT_FALLBACK_ACTION_IDS = {
             "1464835936013", // 搖頭 / Shake head
             "1464835936026", // 思考 / Thinking
@@ -51,7 +52,7 @@ public abstract class SemanticMatcherBase {
      *  matched＝真命中問法庫／false＝fallback 亂答（SemanticCenter 跨語言兜底用：
      *  主 matcher 不中先試另一個，兩個都不中就用主那個 fallback）。
      *  matchLayer＝命中邊一層（0 精確／1 包含／2 反包含／3 模糊／4 fallback）——
-     *  SemanticCenter 三語鏈用嚟排先後：強匹配（精確/包含/反包含）贏過別家嘅
+     *  SemanticCenter 五語鏈用嚟排先後：強匹配（精確/包含/反包含）贏過別家嘅
      *  模糊（例如西文 "Aplaude" 精確中西文組，唔畀英文 "applaud" 模糊搶走）。 */
     public static final class MatchResult {
         public final String question;   // 命中的原始問法 (debug 用)

@@ -1508,7 +1508,9 @@
       "a": [
         "¡Hola! ¿Cómo estás?",
         "¡Buenas! Me alegra verte.",
-        "¡Hola! ¿Qué tal tu día?"
+        "¡Hola! ¿Qué tal tu día?",
+        "¡Hola! ¡Qué alegría verte.",
+        "¡Buenas! ¿Qué tal todo?"
       ],
       "qs": [
         "Hola",
@@ -1525,7 +1527,9 @@
       "a": [
         "¡Adiós! Cuídate mucho.",
         "¡Hasta pronto!",
-        "Nos vemos. ¡Que te vaya bien!"
+        "Nos vemos. ¡Que te vaya bien!",
+        "¡Hasta la vista!",
+        "Cuídate, nos vemos pronto."
       ],
       "qs": [
         "Adiós",
@@ -1541,7 +1545,9 @@
       "a": [
         "¡De nada!",
         "Con gusto.",
-        "¡Para eso estoy!"
+        "¡Para eso estoy!",
+        "No hay de qué.",
+        "¡Un placer ayudarte!"
       ],
       "qs": [
         "Gracias",
@@ -1555,7 +1561,9 @@
       "a": [
         "Me llamo Alpha.",
         "Soy Alpha, tu amigo robot.",
-        "Soy un pequeño robot."
+        "Soy un pequeño robot.",
+        "Soy Alpha.",
+        "Me llamo Alpha, ¿y tú?"
       ],
       "qs": [
         "¿Cómo te llamas?",
@@ -1571,7 +1579,9 @@
       "a": [
         "Estoy muy bien, gracias.",
         "¡Genial! ¿Y tú?",
-        "¡De maravilla!"
+        "¡De maravilla!",
+        "Muy bien, ¿y tú qué tal?",
+        "¡Fenomenal, gracias!"
       ],
       "qs": [
         "¿Cómo estás?",
@@ -1580,7 +1590,7 @@
       ]
     },
     {
-      "id": "es.006",
+      "id": "es.t.001",
       "type": "CHAT",
       "actionId": "1464835936042",
       "a": [
@@ -1588,17 +1598,53 @@
         "A veces la verdad es tan increíble que la mentira suena más convincente.",
         "No hay nada más peligroso que un hombre sin nada que perder.",
         "El miedo te mantiene vivo, pero la valentía te hace libre.",
-        "Todos tenemos un precio, solo hay que saber cuál es.",
+        "Todos tenemos un precio, solo hay que saber cuál es."
+      ],
+      "qs": [
+        "Dime algo para pensar",
+        "Una frase profunda",
+        "Algo que me haga pensar"
+      ]
+    },
+    {
+      "id": "es.t.002",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "Un secreto deja de serlo cuando dos personas lo saben.",
         "La justicia no siempre es justa.",
         "El destino es una excusa para los que no tienen agallas.",
         "A veces hay que romper las reglas para hacer lo correcto.",
-        "El pasado siempre encuentra la forma de volver.",
+        "El pasado siempre encuentra la forma de volver."
+      ],
+      "qs": [
+        "Cuéntame un secreto del cine",
+        "Frases de película",
+        "Cine y filosofía"
+      ]
+    },
+    {
+      "id": "es.t.003",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "El dolor es inevitable, pero el sufrimiento es opcional.",
         "No confíes en nadie que no tenga nada que ocultar.",
         "Las mejores decisiones se toman con el corazón caliente y la cabeza fría.",
         "El tiempo cura todo, menos la verdad.",
-        "Para sobrevivir aquí, tienes que aprender a no sentir nada.",
+        "Para sobrevivir aquí, tienes que aprender a no sentir nada."
+      ],
+      "qs": [
+        "Necesito un consejo de vida",
+        "Dame sabiduría",
+        "Palabras para aguantar"
+      ]
+    },
+    {
+      "id": "es.t.004",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "A veces el monstruo no está debajo de la cama, está dentro de ti.",
         "La lealtad no se compra, se demuestra.",
         "Hay errores que se pagan toda la vida.",
@@ -1606,13 +1652,13 @@
         "No somos lo que decimos, somos lo que hacemos."
       ],
       "qs": [
-        "Dime algo filosófico",
-        "Una frase para pensar",
-        "Filosofía de cine"
+        "La lealtad existe",
+        "De qué está hecha la libertad",
+        "Háblame de valores"
       ]
     },
     {
-      "id": "es.007",
+      "id": "es.t.005",
       "type": "CHAT",
       "actionId": "1509000313549",
       "a": [
@@ -1620,17 +1666,53 @@
         "No me pidas que te olvide cuando eres lo único que recuerdo.",
         "El amor verdadero no busca un final feliz, porque no tiene fin.",
         "Prefiero un día contigo que mil años sin ti.",
-        "Si me olvides, no te culpo; si me recuerdas, te lo agradeceré.",
+        "Si me olvides, no te culpo; si me recuerdas, te lo agradeceré."
+      ],
+      "qs": [
+        "Háblame de amor",
+        "Estoy enamorado",
+        "Cosas del corazón"
+      ]
+    },
+    {
+      "id": "es.t.006",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
         "Tú eres mi principio y mi fin.",
         "No hay distancia capaz de apagar este fuego.",
         "Me enamoré de tu sombra antes de conocer tu luz.",
         "El amor es una locura de la que nadie quiere curarse.",
-        "Te seguiré hasta el fin del mundo si me lo pides.",
+        "Te seguiré hasta el fin del mundo si me lo pides."
+      ],
+      "qs": [
+        "El amor verdadero existe",
+        "Amor a distancia",
+        "Locuras de amor"
+      ]
+    },
+    {
+      "id": "es.t.007",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
         "Eres el único error que volvería a cometer mil veces.",
         "A veces amarse no es suficiente.",
         "Mi corazón dejó de ser mío el día que te conocí.",
         "No te quiero por lo que eres, sino por lo que soy cuando estoy contigo.",
-        "Prométeme que nunca olvidarás este momento.",
+        "Prométeme que nunca olvidarás este momento."
+      ],
+      "qs": [
+        "Me rompieron el corazón",
+        "Amar no basta",
+        "Promesas de amor"
+      ]
+    },
+    {
+      "id": "es.t.008",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
         "El dolor de perderte es el precio de haberte amado.",
         "Siento que te he buscado durante varias vidas.",
         "Tú me enseñaste a sentir cosas que ni sabía que existían.",
@@ -1638,14 +1720,13 @@
         "Quédate conmigo, aunque todo el mundo se oponga."
       ],
       "qs": [
-        "Háblame de amor",
-        "Algo romántico",
-        "Amor de película",
-        "Frases de amor"
+        "Aguantar por amor",
+        "Almas gemelas",
+        "Vivir el amor"
       ]
     },
     {
-      "id": "es.008",
+      "id": "es.t.009",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -1653,17 +1734,53 @@
         "No vine a negociar, vine a cobrar.",
         "Si das un paso más, será el último.",
         "¿Vas a disparar o vas a seguir hablando?",
-        "No sabes con quién te estás metiendo.",
+        "No sabes con quién te estás metiendo."
+      ],
+      "qs": [
+        "Necesito adrenalina",
+        "Modo acción",
+        "Sin miedo"
+      ]
+    },
+    {
+      "id": "es.t.010",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Esto no se acaba hasta que yo lo diga.",
         "Me quitas algo y te quitaré todo.",
         "El tiempo se te está acabando.",
         "La venganza es el único idioma que entiendes.",
-        "Nunca olvides quién manda aquí.",
+        "Nunca olvides quién manda aquí."
+      ],
+      "qs": [
+        "Quién manda aquí",
+        "Venganza",
+        "No te metas conmigo"
+      ]
+    },
+    {
+      "id": "es.t.011",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Hazlo rápido o lo haré yo por ti.",
         "Todo el mundo tiene un punto débil.",
         "No me amenaces si no estás dispuesto a cumplirlo.",
         "Te dije que este día llegaría.",
-        "No hay escapatoria para lo que hiciste.",
+        "No hay escapatoria para lo que hiciste."
+      ],
+      "qs": [
+        "Ponerse serio",
+        "A lo hecho, pecho",
+        "Sin amenazas"
+      ]
+    },
+    {
+      "id": "es.t.012",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Si quieres la paz, prepárate para la guerra.",
         "Nadie sale de aquí sin pagar su deuda.",
         "Tus palabras no me asustan, tus actos me divierten.",
@@ -1671,13 +1788,13 @@
         "Se te acabó la suerte."
       ],
       "qs": [
-        "Algo intenso",
-        "Frase de acción",
-        "Acción"
+        "Paz o guerra",
+        "Pagar deudas",
+        "Se acabó la suerte"
       ]
     },
     {
-      "id": "es.009",
+      "id": "es.t.013",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -1685,17 +1802,53 @@
         "El crimen perfecto no existe, solo los investigadores mediocres.",
         "Si quieres encontrar la verdad, sigue el dinero.",
         "Todos son culpables hasta que se demuestre lo contrario.",
-        "La sombra más oscura es la que proyecta la luz más brillante.",
+        "La sombra más oscura es la que proyecta la luz más brillante."
+      ],
+      "qs": [
+        "Cuéntame un misterio",
+        "Nada es casualidad",
+        "Sigue el dinero"
+      ]
+    },
+    {
+      "id": "es.t.014",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Una mentira bien contada se convierte en historia.",
         "No hay huellas cuando la mente es la que mata.",
         "El asesino siempre vuelve al lugar del crimen.",
         "La codicia cegó a hombres más inteligentes que tú.",
-        "Cree solo en la mitad de lo que veas y en nada de lo que oigas.",
+        "Cree solo en la mitad de lo que veas y en nada de lo que oigas."
+      ],
+      "qs": [
+        "Crimen perfecto",
+        "Mentiras que parecen verdad",
+        "No te fíes de nadie"
+      ]
+    },
+    {
+      "id": "es.t.015",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Detrás de cada gran fortuna hay un gran delito.",
         "A veces la mejor escondite es a la vista de todos.",
         "No hay nada más peligroso que un aliado desesperado.",
         "Tu silencio es la prueba que estaba buscando.",
-        "En este juego, la piedad se paga con la muerte.",
+        "En este juego, la piedad se paga con la muerte."
+      ],
+      "qs": [
+        "Detrás del dinero",
+        "Aliados peligrosos",
+        "El silencio acusa"
+      ]
+    },
+    {
+      "id": "es.t.016",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Cuidado con lo que deseas, podrías conseguirlo.",
         "Hay una línea muy fina entre la obsesión y la locura.",
         "El pasado te persigue sin importar cuán rápido corras.",
@@ -1703,14 +1856,13 @@
         "La sospecha es una semilla que nunca deja de crecer."
       ],
       "qs": [
-        "Misterio",
-        "Suspense",
-        "Detectives",
-        "Caso misterioso"
+        "Cuidado con lo que deseas",
+        "El pasado persigue",
+        "Todos ocultan algo"
       ]
     },
     {
-      "id": "es.010",
+      "id": "es.t.017",
       "type": "CHAT",
       "actionId": "1464835936042",
       "a": [
@@ -1718,17 +1870,53 @@
         "La soledad es el precio de la libertad.",
         "El orgullo destruye más vidas que la peste.",
         "A veces la única forma de salvarse es perderlo todo.",
-        "Aprende a renunciar a lo que no puedes cambiar.",
+        "Aprende a renunciar a lo que no puedes cambiar."
+      ],
+      "qs": [
+        "Quién soy realmente",
+        "Soledad y libertad",
+        "Perderlo todo"
+      ]
+    },
+    {
+      "id": "es.t.018",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "El perdón no cambia el pasado, pero abre el futuro.",
         "La ignorancia es una bendición para el que no quiere ver.",
         "No hay mayor prisión que la mente de uno mismo.",
         "Nos pasamos la vida esperando el momento perfecto, y la vida se va.",
-        "La verdad nos hará libres, pero primero nos destruirá.",
+        "La verdad nos hará libres, pero primero nos destruirá."
+      ],
+      "qs": [
+        "Perdonar el pasado",
+        "La mente es una cárcel",
+        "La verdad duele"
+      ]
+    },
+    {
+      "id": "es.t.019",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "No juzgues una historia si no conoces todo el libro.",
         "El alma que se vende una vez no se vuelve a recuperar.",
         "Las cicatrices son los mapas de nuestras batallas.",
         "El poder no cambia a las personas, solo las desnuda.",
-        "Hay cosas que el dinero no puede comprar, como una conciencia limpia.",
+        "Hay cosas que el dinero no puede comprar, como una conciencia limpia."
+      ],
+      "qs": [
+        "No juzgues sin saber",
+        "Cicatrices de guerra",
+        "El poder desnuda"
+      ]
+    },
+    {
+      "id": "es.t.020",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "El tiempo nos vuelve sabios o nos vuelve amargados.",
         "La esperanza es lo último que se pierde, pero a veces es lo que más duele.",
         "Nadie conoce a nadie realmente.",
@@ -1736,13 +1924,13 @@
         "Al final, solo nos queda lo que dimos a los demás."
       ],
       "qs": [
-        "Algo profundo",
-        "Para reflexionar",
-        "Verdades de la vida"
+        "El tiempo nos cambia",
+        "Lo que damos queda",
+        "Decisiones propias"
       ]
     },
     {
-      "id": "es.011",
+      "id": "es.t.021",
       "type": "CHAT",
       "actionId": "1509000284732",
       "a": [
@@ -1750,17 +1938,53 @@
         "No te rindas tan fácilmente.",
         "Confía en mí, sé lo que hago.",
         "Todo va a salir bien, te lo prometo.",
-        "Olvídalo, no vale la pena.",
+        "Olvídalo, no vale la pena."
+      ],
+      "qs": [
+        "Anímame",
+        "Ahora o nunca",
+        "Todo saldrá bien"
+      ]
+    },
+    {
+      "id": "es.t.022",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "No me falles esta vez.",
         "Estamos juntos en esto.",
         "Sigue adelante sin mirar atrás.",
         "Es el mejor día de mi vida.",
-        "Nunca es tarde para empezar de nuevo.",
+        "Nunca es tarde para empezar de nuevo."
+      ],
+      "qs": [
+        "No me falles",
+        "Juntos en esto",
+        "Empezar de nuevo"
+      ]
+    },
+    {
+      "id": "es.t.023",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Vale la pena intentar una vez más.",
         "No hay mal que dure cien años.",
         "Siempre hay una primera vez.",
         "Mantén la cabeza en alto.",
-        "A veces hay que perder para ganar.",
+        "A veces hay que perder para ganar."
+      ],
+      "qs": [
+        "Una vez más",
+        "Cabeza en alto",
+        "Perder para ganar"
+      ]
+    },
+    {
+      "id": "es.t.024",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "No dejes que el miedo decida por ti.",
         "El espectáculo debe continuar.",
         "El coraje es saber a qué no hay que tenerle miedo.",
@@ -1768,14 +1992,13 @@
         "Estar al tiro."
       ],
       "qs": [
-        "Dame ánimo",
-        "Anímame",
-        "Necesito fuerza",
-        "Fuerza"
+        "Que no decida el miedo",
+        "Ponte las pilas",
+        "El show continúa"
       ]
     },
     {
-      "id": "es.012",
+      "id": "es.t.025",
       "type": "CHAT",
       "actionId": "1464835936087",
       "a": [
@@ -1783,17 +2006,53 @@
         "Eso no te incumbe a ti.",
         "No tengo nada más que decirte.",
         "Te lo dije y no me escuchaste.",
-        "No te metas donde no te llaman.",
+        "No te metas donde no te llaman."
+      ],
+      "qs": [
+        "Déjame en paz",
+        "No te metas",
+        "Ya te lo dije"
+      ]
+    },
+    {
+      "id": "es.t.026",
+      "type": "CHAT",
+      "actionId": "1464835936087",
+      "a": [
         "No tienes la menor idea.",
         "No me juzgues sin conocerme.",
         "Quédate con la duda si quieres.",
         "Me decepcionaste cuando más te necesitaba.",
-        "Mantén a tus amigos cerca, pero a tus enemigos más cerca.",
+        "Mantén a tus amigos cerca, pero a tus enemigos más cerca."
+      ],
+      "qs": [
+        "No me juzgues",
+        "Me decepcionaste",
+        "Amigos y enemigos"
+      ]
+    },
+    {
+      "id": "es.t.027",
+      "type": "CHAT",
+      "actionId": "1464835936087",
+      "a": [
         "Si no me ayudas, estás en mi contra.",
         "Llegas tarde como siempre.",
         "Siento haber dudado de ti.",
         "Me estás ocultando algo.",
-        "El mundo no gira a tu alrededor.",
+        "El mundo no gira a tu alrededor."
+      ],
+      "qs": [
+        "Conmigo o contra mí",
+        "Siempre llegas tarde",
+        "Me ocultas algo"
+      ]
+    },
+    {
+      "id": "es.t.028",
+      "type": "CHAT",
+      "actionId": "1464835936087",
+      "a": [
         "No me pidas imposibles.",
         "No me des explicaciones, dame resultados.",
         "No escuches lo que dicen los demás.",
@@ -1801,14 +2060,13 @@
         "No me mires así."
       ],
       "qs": [
-        "La gente",
-        "Los demás",
-        "Relaciones",
-        "Gente"
+        "Basta de excusas",
+        "Dame resultados",
+        "No me mires así"
       ]
     },
     {
-      "id": "es.013",
+      "id": "es.t.029",
       "type": "CHAT",
       "actionId": "1464835936042",
       "a": [
@@ -1816,17 +2074,53 @@
         "A veces el camino más difícil es el correcto.",
         "No puedo prometerte nada.",
         "Es más complicado de lo que piensas.",
-        "Esa es una decisión que debes tomar tú.",
+        "Esa es una decisión que debes tomar tú."
+      ],
+      "qs": [
+        "Aconséjame",
+        "Camino correcto",
+        "Decisiones difíciles"
+      ]
+    },
+    {
+      "id": "es.t.030",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "La decisión está tomada.",
         "Ese no es el camino correcto.",
         "Mis intenciones eran buenas.",
         "No nos queda otra opción.",
-        "No pongas excusas.",
+        "No pongas excusas."
+      ],
+      "qs": [
+        "Ya está decidido",
+        "Sin excusas",
+        "Buenas intenciones"
+      ]
+    },
+    {
+      "id": "es.t.031",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "Si vas a hacerlo, hazlo bien.",
         "Es cuestión de perspectiva.",
         "No me arrepiento de nada.",
         "Dar papaya.",
-        "Sé el cambio que deseas ver en el mundo.",
+        "Sé el cambio que deseas ver en el mundo."
+      ],
+      "qs": [
+        "Hazlo bien o no lo hagas",
+        "Cambia tu perspectiva",
+        "Sin arrepentimientos"
+      ]
+    },
+    {
+      "id": "es.t.032",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "Estar bien parote.",
         "Ir al grano.",
         "¿Qué harías tú en mi lugar?",
@@ -1834,14 +2128,13 @@
         "Echar un centro."
       ],
       "qs": [
-        "¿Qué hago?",
-        "Un consejo",
-        "Decidir",
-        "Aconséjame"
+        "Ve al grano",
+        "Ponte en mi lugar",
+        "Empieza a cambiar"
       ]
     },
     {
-      "id": "es.014",
+      "id": "es.t.033",
       "type": "CHAT",
       "actionId": "1464835936042",
       "a": [
@@ -1849,17 +2142,53 @@
         "Eso es imposible de creer.",
         "Ten cuidado con lo que dices.",
         "El silencio a veces dice más que las palabras.",
-        "Las cosas no siempre son lo que parecen.",
+        "Las cosas no siempre son lo que parecen."
+      ],
+      "qs": [
+        "De qué me hablas",
+        "Cuidado con lo que dices",
+        "Las cosas no son lo que parecen"
+      ]
+    },
+    {
+      "id": "es.t.034",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "Tu secreto está a salvo conmigo.",
         "Todo tiene una explicación.",
         "Eso suena demasiado bueno para ser verdad.",
         "La verdad siempre sale a la luz.",
-        "Afronta la realidad de una vez.",
+        "Afronta la realidad de una vez."
+      ],
+      "qs": [
+        "Guárdame el secreto",
+        "La verdad sale a la luz",
+        "Afronta la realidad"
+      ]
+    },
+    {
+      "id": "es.t.035",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "Esa historia ya me la conozco.",
         "El silencio fue su mejor respuesta.",
         "No puedo cambiar quien soy.",
         "Todo tiene un límite.",
-        "Es el principio del fin.",
+        "Es el principio del fin."
+      ],
+      "qs": [
+        "Esa historia me la sé",
+        "Todo tiene un límite",
+        "Principio del fin"
+      ]
+    },
+    {
+      "id": "es.t.036",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "No me pidas que cambie mi forma de pensar.",
         "Esa es la diferencia entre tú y yo.",
         "Posta.",
@@ -1867,13 +2196,13 @@
         "Saltar la ficha."
       ],
       "qs": [
-        "La verdad",
-        "Dime la verdad",
-        "Verdad"
+        "No me pidas que cambie",
+        "Posta, decime la verdad",
+        "Cayó la ficha"
       ]
     },
     {
-      "id": "es.015",
+      "id": "es.t.037",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -1881,30 +2210,50 @@
         "Acepta las cosas como son.",
         "No hay nada que podamos hacer al respecto.",
         "Nada cambia si tú no cambias.",
-        "Lo hecho, hecho está.",
+        "Lo hecho, hecho está."
+      ],
+      "qs": [
+        "Sin lamentaciones",
+        "Acepta lo que hay",
+        "Lo hecho, hecho está"
+      ]
+    },
+    {
+      "id": "es.t.038",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Ese es el menor de nuestros problemas.",
         "Nadie puede cambiar el pasado.",
         "Nada de esto tendría que haber pasado.",
         "Estar a dos velas.",
-        "Liarla parda.",
+        "Liarla parda."
+      ],
+      "qs": [
+        "El pasado no se cambia",
+        "No me hagas perder el tiempo",
+        "La mente no tiene límites"
+      ]
+    },
+    {
+      "id": "es.t.039",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "No me hagas perder el tiempo.",
         "El único límite a nuestros logros es nuestra propia mente.",
         "Hoy se sale a la calle a celebrar el amor y la libertad.",
         "Brindemos por la vida y las buenas amistades.",
-        "No hay barreras para el amor verdadero.",
-        "Estar cañón.",
-        "Andar con todo.",
-        "Estar en modo avión."
+        "No hay barreras para el amor verdadero."
       ],
       "qs": [
-        "La vida",
-        "Vivir",
-        "Frases cortas",
-        "Vida"
+        "Brindemos por la vida",
+        "Hoy se celebra",
+        "Amor sin barreras"
       ]
     },
     {
-      "id": "es.016",
+      "id": "es.t.040",
       "type": "CHAT",
       "actionId": "1509000284732",
       "a": [
@@ -1912,17 +2261,53 @@
         "Pasito a pasito, suave suavecito, nos vamos pegando poquito a poquito.",
         "Bailando, bailando, tu cuerpo con el mío llenando el vacío.",
         "Vivir mi vida, lalalala, voy a reír, voy a gozar, vivir mi vida, lalalala.",
-        "La vida es un carnaval, y las penas se van cantando.",
+        "La vida es un carnaval, y las penas se van cantando."
+      ],
+      "qs": [
+        "Despacito, bailamos",
+        "Vivir la vida",
+        "La vida es carnaval"
+      ]
+    },
+    {
+      "id": "es.t.041",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Dale a tu cuerpo alegría Macarena, que tu cuerpo es pa' darle alegría y cosa buena.",
         "A ella le gusta la gasolina, dame más gasolina.",
         "Esta noche es de fiesta y el cuerpo lo sabe.",
         "Que la música no pare, que la noche es larga.",
-        "Sigue moviendo el cuerpo al ritmo de la noche.",
+        "Sigue moviendo el cuerpo al ritmo de la noche."
+      ],
+      "qs": [
+        "Dale alegría",
+        "Dame más gasolina",
+        "Que no pare la música"
+      ]
+    },
+    {
+      "id": "es.t.042",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Para bailar la Bamba se necesita una poca de gracia.",
         "Siente el fuego en la pista de baile.",
         "Suéltate el pelo y ponte a bailar.",
         "El ritmo te lleva, no lo intentes frenar.",
-        "Suben la música y la noche se enciende.",
+        "Suben la música y la noche se enciende."
+      ],
+      "qs": [
+        "Siente el fuego",
+        "Suéltate el pelo",
+        "Sube el volumen"
+      ]
+    },
+    {
+      "id": "es.t.043",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "La fiesta no acaba hasta que salga el sol.",
         "Mueve las caderas al ritmo del tambor.",
         "Todos juntos cantando bajo las estrellas.",
@@ -1930,14 +2315,13 @@
         "Marchuki."
       ],
       "qs": [
-        "Fiesta",
-        "De fiesta",
-        "Para bailar",
-        "Vamos de fiesta"
+        "Hasta que salga el sol",
+        "Bajo las estrellas",
+        "Vámonos de marcha"
       ]
     },
     {
-      "id": "es.017",
+      "id": "es.t.044",
       "type": "CHAT",
       "actionId": "1509000313549",
       "a": [
@@ -1945,17 +2329,53 @@
         "Eres el amor de mi vida, el aire que respiro.",
         "Contigo aprendí que existen nuevas y mejores emociones.",
         "Tu sonrisa es la luz que ilumina mi camino oscuro.",
-        "Solamente tú haces que mi mundo gire con sentido.",
+        "Solamente tú haces que mi mundo gire con sentido."
+      ],
+      "qs": [
+        "Bésame mucho",
+        "Eres mi vida",
+        "Contigo aprendí"
+      ]
+    },
+    {
+      "id": "es.t.045",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
         "Si no te tuviera, no sabría cómo vivir.",
         "Te quiero no por quien eres, sino por como me haces sentir.",
         "Cada segundo a tu lado es un regalo del cielo.",
         "Estar contigo es tocar el cielo con las manos.",
-        "Quiero perderme en tu mirada toda la noche.",
+        "Quiero perderme en tu mirada toda la noche."
+      ],
+      "qs": [
+        "Sin ti no sé vivir",
+        "Cada segundo contigo",
+        "Piérdete en mi mirada"
+      ]
+    },
+    {
+      "id": "es.t.046",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
         "Tu voz es la melodía que calma mi mente.",
         "A tu lado me siento invencible.",
         "Eres mi sueño hecho realidad.",
         "No necesito nada más si te tengo a ti.",
-        "Tus besos son el dulce veneno que me domina.",
+        "Tus besos son el dulce veneno que me domina."
+      ],
+      "qs": [
+        "Tu voz me calma",
+        "Sueño hecho realidad",
+        "Tus besos"
+      ]
+    },
+    {
+      "id": "es.t.047",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
         "Amor del bueno, del que nunca se acaba.",
         "Mi lugar favorito en el mundo es a tu lado.",
         "Pintaste de colores mi vida gris.",
@@ -1963,13 +2383,13 @@
         "Amo cada detalle de tu persona."
       ],
       "qs": [
-        "Canción de amor",
-        "Amor bonito",
-        "Dulce amor"
+        "Amor del bueno",
+        "A tu lado",
+        "Cada detalle tuyo"
       ]
     },
     {
-      "id": "es.018",
+      "id": "es.t.048",
       "type": "CHAT",
       "actionId": "1509000338636",
       "a": [
@@ -1977,17 +2397,53 @@
         "Como la flor, con tanto amor, me diste tú, se marchitó.",
         "Fue un placer conocerte, aunque me haya dolido el final.",
         "Hoy me faltan las palabras para explicar tanto dolor.",
-        "Prefiero estar solo que estar mal acompañado.",
+        "Prefiero estar solo que estar mal acompañado."
+      ],
+      "qs": [
+        "Quién me cura",
+        "Se marchitó la flor",
+        "Mejor solo"
+      ]
+    },
+    {
+      "id": "es.t.049",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
         "Te fuiste sin decir adiós y me dejaste en ruinas.",
         "El tiempo no borra los recuerdos de lo que fuimos.",
         "Duele saber que ya no piensas en mí.",
         "Prometiste estar conmigo y me abandonaste.",
-        "Trato de olvidarte pero te encuentro en todas partes.",
+        "Trato de olvidarte pero te encuentro en todas partes."
+      ],
+      "qs": [
+        "Me dejaste en ruinas",
+        "Duele saberlo",
+        "Intento olvidarte"
+      ]
+    },
+    {
+      "id": "es.t.050",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
         "Lágrimas que caen en la soledad de mi habitación.",
         "Mi corazón se congeló el día que te alejaste.",
         "Aprendí a vivir con tu ausencia, pero no a dejar de extrañarte.",
         "No me quedan lágrimas para llorar por ti.",
-        "Eras mi todo y ahora eres solo un desconocido.",
+        "Eras mi todo y ahora eres solo un desconocido."
+      ],
+      "qs": [
+        "Lágrimas en soledad",
+        "Corazón congelado",
+        "Ya eres un desconocido"
+      ]
+    },
+    {
+      "id": "es.t.051",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
         "El silencio de esta casa me hace recordar tu voz.",
         "Guardé todas tus cartas pero quemé las promesas.",
         "Nada vuelve a ser igual después de una traición.",
@@ -1995,14 +2451,13 @@
         "Estar agüitado."
       ],
       "qs": [
-        "Corazón roto",
-        "Tristeza",
-        "Desamor",
-        "Estoy triste"
+        "Cartas quemadas",
+        "Nada es igual",
+        "Estoy agüitado"
       ]
     },
     {
-      "id": "es.019",
+      "id": "es.t.052",
       "type": "CHAT",
       "actionId": "1509000284732",
       "a": [
@@ -2010,17 +2465,53 @@
         "Saber que se puede, querer que se pueda, quitarse los miedos, sacarlos afuera.",
         "Color esperanza, pintarse la cara color esperanza.",
         "Hoy es un buen día para empezar de nuevo.",
-        "Canta y no llores, porque cantando se alegran los corazones.",
+        "Canta y no llores, porque cantando se alegran los corazones."
+      ],
+      "qs": [
+        "Volveremos a vernos",
+        "Hoy empiezo de nuevo",
+        "Canta y no llores"
+      ]
+    },
+    {
+      "id": "es.t.053",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Caminante, no hay camino, se hace camino al andar.",
         "Gracias a la vida que me ha dado tanto.",
         "Siempre hay una luz al final del túnel.",
         "No te rindas nunca, la victoria está cerca.",
-        "Las heridas sanan pero las lecciones se quedan.",
+        "Las heridas sanan pero las lecciones se quedan."
+      ],
+      "qs": [
+        "Se hace camino al andar",
+        "Luz al final",
+        "No te rindas"
+      ]
+    },
+    {
+      "id": "es.t.054",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Sigue tus sueños sin importar lo que digan.",
         "Cada día es una nueva oportunidad para ser feliz.",
         "La fe mueve montañas y cambia destinos.",
         "Aprende a caer para saber cómo levantarte.",
-        "La verdadera riqueza está en el alma y no en el bolsillo.",
+        "La verdadera riqueza está en el alma y no en el bolsillo."
+      ],
+      "qs": [
+        "Sigue tus sueños",
+        "Cada día es nuevo",
+        "La fe mueve montañas"
+      ]
+    },
+    {
+      "id": "es.t.055",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Sé la luz que ilumine la oscuridad de otros.",
         "El tiempo vuela, aprovecha cada segundo.",
         "Lucha por lo que amas sin mirar atrás.",
@@ -2028,13 +2519,13 @@
         "Tus palabras me llenan de esperanza."
       ],
       "qs": [
-        "Esperanza",
-        "Optimismo",
-        "Dame esperanza"
+        "Aprovecha el tiempo",
+        "Lucha por lo que amas",
+        "Sonríe ante todo"
       ]
     },
     {
-      "id": "es.020",
+      "id": "es.t.056",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -2042,25 +2533,33 @@
         "Tierra de mis amores, donde nacieron mis recuerdos.",
         "Orgullo de mis raíces y mi gente.",
         "Llevo el ritmo de mi pueblo en la sangre.",
-        "Bajo el sol de mi tierra encuentro la libertad.",
+        "Bajo el sol de mi tierra encuentro la libertad."
+      ],
+      "qs": [
+        "México lindo",
+        "Orgullo de mis raíces",
+        "Tierra de mis amores"
+      ]
+    },
+    {
+      "id": "es.t.057",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Cantándole a la luna y a las estrellas del mar.",
         "Mi hogar es donde está mi corazón.",
         "Añoro el aroma de la lluvia en mi pueblo natal.",
         "Hispano de corazón, cantando al mundo mi verdad.",
-        "Las guitarras suenan y el alma se despierta.",
-        "Hacer un asado.",
-        "El mundo necesita más amor y menos odio.",
-        "Siembra amor y cosecharás paz interior."
+        "Las guitarras suenan y el alma se despierta."
       ],
       "qs": [
-        "Tu tierra",
-        "Nostalgia",
-        "Hogar",
-        "Mi tierra"
+        "Mi hogar es mi gente",
+        "Añoro mi pueblo",
+        "Que suenen las guitarras"
       ]
     },
     {
-      "id": "es.021",
+      "id": "es.t.058",
       "type": "CHAT",
       "actionId": "1509000313549",
       "a": [
@@ -2068,17 +2567,53 @@
         "Tu amor es el faro que me guía en la tormenta.",
         "Tu calor combate mi frío invierno.",
         "No hay nada de malo en querer un poco más.",
-        "A veces la distancia nos enseña a valorar.",
+        "A veces la distancia nos enseña a valorar."
+      ],
+      "qs": [
+        "Sé mi refugio",
+        "Faro en la tormenta",
+        "La distancia enseña"
+      ]
+    },
+    {
+      "id": "es.t.059",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
         "El fuego de la pasión nunca se apaga.",
         "El silencio entre nosotros lo dice todo.",
         "No hay sombra que opaque tu brillo.",
         "Con un abrazo tuyo el mundo se detiene.",
-        "No hay dolor que dure para siempre.",
+        "No hay dolor que dure para siempre."
+      ],
+      "qs": [
+        "El silencio lo dice todo",
+        "Un abrazo tuyo",
+        "Ningún dolor es eterno"
+      ]
+    },
+    {
+      "id": "es.t.060",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
         "Estar a tu lado es mi refugio perfecto.",
         "No dejes que la rutina apague nuestra llama.",
         "Caminemos juntos por el camino de la vida.",
         "Nadie nos enseñó a amar, aprendimos juntos.",
-        "Eres mi refugio en los días grises.",
+        "Eres mi refugio en los días grises."
+      ],
+      "qs": [
+        "Siempre a tu lado",
+        "Sin rutina",
+        "Caminemos juntos"
+      ]
+    },
+    {
+      "id": "es.t.061",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
         "Un abrazo tuyo cura cualquier dolor.",
         "La vida es un suspiro, disfrútalo al máximo.",
         "Siempre estaré para ti cuando me necesites.",
@@ -2086,13 +2621,13 @@
         "Tus abrazos son mi lugar seguro."
       ],
       "qs": [
-        "Amor",
-        "Romántico",
-        "Pop romántico"
+        "Abrázame fuerte",
+        "Siempre estaré",
+        "Tu amor es mi tesoro"
       ]
     },
     {
-      "id": "es.022",
+      "id": "es.t.062",
       "type": "CHAT",
       "actionId": "1509000284732",
       "a": [
@@ -2100,17 +2635,53 @@
         "Que el ritmo te envuelva de la cabeza a los pies.",
         "Todo el mundo bailando en la misma frecuencia.",
         "No me importa el mañana, solo disfruto el hoy.",
-        "Siente el bajo retumbar en el pecho.",
+        "Siente el bajo retumbar en el pecho."
+      ],
+      "qs": [
+        "No tenemos la noche entera",
+        "Todos al mismo ritmo",
+        "Solo importa hoy"
+      ]
+    },
+    {
+      "id": "es.t.063",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Dame una razón más para no soltarte.",
         "Bailamos bajo la luz de la luna llena.",
         "Déjate llevar por el ritmo de la salsa.",
         "El amanecer nos encontrará juntos bailando.",
-        "Nuestra historia de amor está escrita en las estrellas.",
+        "Nuestra historia de amor está escrita en las estrellas."
+      ],
+      "qs": [
+        "Bailamos a la luna",
+        "Déjate llevar",
+        "Escrito en las estrellas"
+      ]
+    },
+    {
+      "id": "es.t.064",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Aprender a soltar es también una forma de amar.",
         "No necesito riquezas, solo tu compañía.",
         "Bailar es la manera más pura de expresar el alma.",
         "No hay noche tan oscura que impida el amanecer.",
-        "Suéltate y déjate amar.",
+        "Suéltate y déjate amar."
+      ],
+      "qs": [
+        "Aprende a soltar",
+        "Bailar es el alma",
+        "Suéltate ya"
+      ]
+    },
+    {
+      "id": "es.t.065",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "La pasión se siente en cada fibra del cuerpo.",
         "Que los problemas se solucionen con una sonrisa.",
         "Siento que toque las estrellas cuando te besé.",
@@ -2118,14 +2689,13 @@
         "Dar lora."
       ],
       "qs": [
-        "Bailar",
-        "Ritmo",
-        "Noche de fiesta",
-        "Baila"
+        "Pura pasión",
+        "Bajo la lluvia",
+        "Problemas con sonrisa"
       ]
     },
     {
-      "id": "es.023",
+      "id": "es.t.066",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -2133,29 +2703,50 @@
         "Con un par de copas la vida sabe mejor.",
         "Caminando a la orilla del mar de la mano.",
         "Se acabaron las mentiras, hoy empieza la verdad.",
-        "A pesar del tiempo, sigo esperándote.",
+        "A pesar del tiempo, sigo esperándote."
+      ],
+      "qs": [
+        "Sin rodeos, dime",
+        "De la mano en la orilla",
+        "Aún te espero"
+      ]
+    },
+    {
+      "id": "es.t.067",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Gritemos al mundo lo que sentimos.",
         "El destino nos unió por una razón.",
         "Vive hoy como si fuera el último día.",
         "El arte de amar sin pedir nada a cambio.",
-        "Nada se compara con la sensación de ser libre.",
+        "Nada se compara con la sensación de ser libre."
+      ],
+      "qs": [
+        "Gritemos lo que sentimos",
+        "Vive hoy al máximo",
+        "Nací para ser libre"
+      ]
+    },
+    {
+      "id": "es.t.068",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Sé la mejor versión de ti mismo hoy.",
         "Tu sonrisa vale más que todo el oro del mundo.",
         "Aprende a valorar las pequeñas cosas de la vida.",
         "La belleza interior es la que nunca se marchita.",
-        "El destino decide quién entra en tu vida, tú decides quién se queda.",
-        "Estar de pelos.",
-        "Estar en pedo.",
-        "El conocimiento no ocupa lugar pero abre infinitas puertas.",
-        "La vida es corta, haz que valga la pena."
+        "El destino decide quién entra en tu vida, tú decides quién se queda."
       ],
       "qs": [
-        "Vivir la vida",
-        "Canciones de la vida"
+        "Mi mejor versión",
+        "Pequeñas cosas",
+        "Tú decides quién se queda"
       ]
     },
     {
-      "id": "es.024",
+      "id": "es.t.069",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -2163,17 +2754,53 @@
         "Un beso bajo la lluvia que nunca olvidaré.",
         "Te llevo tatuado en el pensamiento.",
         "Nada de lo que vivimos fue en vano.",
-        "Tu recuerdo me persigue en cada rincón.",
+        "Tu recuerdo me persigue en cada rincón."
+      ],
+      "qs": [
+        "Testigo la luna",
+        "Beso inolvidable",
+        "Te llevo tatuado"
+      ]
+    },
+    {
+      "id": "es.t.070",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Hoy brindo por los que ya no están.",
         "Tu nombre está grabado en mi memoria.",
         "El recuerdo de tu voz me da fuerzas.",
         "Tu perfume quedó grabado en mi almohada.",
-        "Que la alegría invada cada rincón de tu casa.",
+        "Que la alegría invada cada rincón de tu casa."
+      ],
+      "qs": [
+        "Brindo por los ausentes",
+        "Tu nombre en mi memoria",
+        "Tu voz me da fuerzas"
+      ]
+    },
+    {
+      "id": "es.t.071",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Hoy bailo por los que ya no están aquí.",
         "Me suena bastante.",
         "Luces de la ciudad encendidas para los dos.",
         "El tiempo pasa volando cuando estoy contigo.",
-        "El tiempo que pasamos juntos nunca es perdido.",
+        "El tiempo que pasamos juntos nunca es perdido."
+      ],
+      "qs": [
+        "Bailo por los que faltan",
+        "El tiempo vuela contigo",
+        "Nada fue tiempo perdido"
+      ]
+    },
+    {
+      "id": "es.t.072",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Una lágrima de felicidad al volver a verte.",
         "Un suspiro tuyo vale más que mil palabras.",
         "Estar de un fino.",
@@ -2181,13 +2808,13 @@
         "Y se marchó, y a su barco le llamó Libertad."
       ],
       "qs": [
-        "Recuerdos",
-        "Memoria",
-        "Me acuerdo"
+        "Lágrima feliz",
+        "Un suspiro tuyo",
+        "Rumbo a la libertad"
       ]
     },
     {
-      "id": "es.025",
+      "id": "es.t.073",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -2195,17 +2822,53 @@
         "Cierra los ojos y siente la magia.",
         "Tus besos me transportan a otro universo.",
         "Abre las alas y vuela tan alto como puedas.",
-        "El amor no tiene edad ni fronteras.",
+        "El amor no tiene edad ni fronteras."
+      ],
+      "qs": [
+        "No me prometas el cielo",
+        "Cierra los ojos",
+        "Vuela alto"
+      ]
+    },
+    {
+      "id": "es.t.074",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Que el amor sea nuestro único lenguaje.",
         "Eres mi estrella fugaz, la que pide mis deseos.",
         "No hay nada imposible si estamos unificados.",
         "Un amor como el nuestro superará cualquier prueba.",
-        "Que tus sueños sean más grandes que tus miedos.",
+        "Que tus sueños sean más grandes que tus miedos."
+      ],
+      "qs": [
+        "Nuestro único idioma",
+        "Estrella fugaz",
+        "Sueños más grandes"
+      ]
+    },
+    {
+      "id": "es.t.075",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Sigue la luz que llevas dentro.",
         "Siento que el futuro es nuestro.",
         "Nadie me va a detener.",
         "El amor es la respuesta a casi todas las preguntas.",
-        "El amor propio es el comienzo de un romance de por vida.",
+        "El amor propio es el comienzo de un romance de por vida."
+      ],
+      "qs": [
+        "Sigue tu luz",
+        "El futuro es nuestro",
+        "Amor propio primero"
+      ]
+    },
+    {
+      "id": "es.t.076",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Un mundo mejor es posible si lo construimos juntos.",
         "A Dios le pido que si me muero sea de amor y si me enamoro sea de ti.",
         "Tus pensamientos crean tu realidad.",
@@ -2213,13 +2876,13 @@
         "Mi amor por ti es más profundo que el océano."
       ],
       "qs": [
-        "Sueños",
-        "Soñar",
-        "Mis sueños"
+        "Un mundo mejor",
+        "Pídele a Dios",
+        "Mi amor es un océano"
       ]
     },
     {
-      "id": "es.026",
+      "id": "es.t.077",
       "type": "CHAT",
       "actionId": "1509000284732",
       "a": [
@@ -2227,12 +2890,36 @@
         "Somos dos almas conectadas por la música.",
         "Sigue la melodía de tu propio corazón.",
         "Voy a cantar mi historia sin importar la opinión.",
-        "Escribí una canción para decirte lo que siento.",
+        "Escribí una canción para decirte lo que siento."
+      ],
+      "qs": [
+        "Música para el alma",
+        "Almas conectadas",
+        "Te escribí una canción"
+      ]
+    },
+    {
+      "id": "es.t.078",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Cada acorde despierta un sentimiento guardado.",
         "El viento se lleva mis penas al cantar.",
         "En cada nota musical pongo un pedazo de mi corazón.",
         "Eres la razón por la que canto cada mañana.",
-        "Sigue cantando aun cuando la tormenta golpee.",
+        "Sigue cantando aun cuando la tormenta golpee."
+      ],
+      "qs": [
+        "Cada acorde despierta",
+        "El viento se lleva penas",
+        "Canto cada mañana"
+      ]
+    },
+    {
+      "id": "es.t.079",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "La música unifica a los pueblos y rompe fronteras.",
         "Un poema cantado directo al corazón.",
         "Canta sin parar hasta que el cuerpo agante.",
@@ -2240,13 +2927,13 @@
         "La creatividad es la inteligencia divirtiéndose."
       ],
       "qs": [
-        "Canta algo",
-        "Otra canción",
-        "Canta"
+        "La música no tiene fronteras",
+        "Canta sin parar",
+        "Poema al corazón"
       ]
     },
     {
-      "id": "es.027",
+      "id": "es.t.080",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -2254,17 +2941,53 @@
         "Aprende las reglas como un profesional para poder romperlas como un artista.",
         "Pinto autorretratos porque estoy mucho tiempo sola, porque soy la persona que mejor conozco.",
         "Pies, para qué los quiero si tengo alas pa' volar.",
-        "En la vida no hay premios ni castigos, sino consecuencias.",
+        "En la vida no hay premios ni castigos, sino consecuencias."
+      ],
+      "qs": [
+        "Mentira que explica",
+        "Rompe las reglas",
+        "Pies, para qué los quiero"
+      ]
+    },
+    {
+      "id": "es.t.081",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Que no sepas que estás en la gloria, no significa que no estés en ella.",
         "La libertad, Sancho, es uno de los más preciosos dones que a los hombres dieron los cielos.",
         "El que lee mucho y anda mucho, ve mucho y sabe mucho.",
         "No hay libro tan malo que no tenga algo bueno.",
-        "Uno es dueño de lo que calla y esclavo de lo que habla.",
+        "Uno es dueño de lo que calla y esclavo de lo que habla."
+      ],
+      "qs": [
+        "Vivir en la gloria",
+        "Lee mucho, anda mucho",
+        "Dueño de lo que callas"
+      ]
+    },
+    {
+      "id": "es.t.082",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Hay que sentir la vida, no comprenderla.",
         "El amor es una emoción que te enloquece y luego te devuelve la cordura.",
         "La memoria del corazón elimina los malos recuerdos y magnifica los buenos.",
         "Ninguna persona merece tus lágrimas, y quien la merezca no te hará llorar.",
-        "La vida no es la que uno vivió, sino la que uno recuerda.",
+        "La vida no es la que uno vivió, sino la que uno recuerda."
+      ],
+      "qs": [
+        "Siente la vida",
+        "El amor enloquece",
+        "La vida que recuerdas"
+      ]
+    },
+    {
+      "id": "es.t.083",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Para hacer el bien, hay que conocerlo primero.",
         "Siempre imaginé que el Paraíso sería algún tipo de biblioteca.",
         "La duda es uno de los nombres de la inteligencia.",
@@ -2272,14 +2995,13 @@
         "Ser naco."
       ],
       "qs": [
-        "Arte",
-        "Artistas",
-        "Literatura",
-        "Frase de artista"
+        "Hacer el bien",
+        "El paraíso es biblioteca",
+        "La duda es inteligencia"
       ]
     },
     {
-      "id": "es.028",
+      "id": "es.t.084",
       "type": "CHAT",
       "actionId": "1509000284732",
       "a": [
@@ -2287,17 +3009,53 @@
         "El éxito es aprender a ir de fracaso en fracaso sin perder el entusiasmo.",
         "Tienes que luchar para alcanzar tus sueños, hay que sacrificarse.",
         "Prefiero ser buena persona a ser el mejor jugador del mundo.",
-        "Tu amor me hace fuerte, tu odio me hace imparable.",
+        "Tu amor me hace fuerte, tu odio me hace imparable."
+      ],
+      "qs": [
+        "Cree en ti",
+        "Lucha por tus sueños",
+        "Buena persona primero"
+      ]
+    },
+    {
+      "id": "es.t.085",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "No quiero ser igual a los demás, quiero ser único.",
         "El trabajo duro supera al talento cuando el talento no trabaja duro.",
         "La velocidad no sirve de nada si no sabes hacia dónde vas.",
         "El entrenamiento duro hace que las competencias sean fáciles.",
-        "Nunca dejes que nadie te diga que no puedes hacer algo.",
+        "Nunca dejes que nadie te diga que no puedes hacer algo."
+      ],
+      "qs": [
+        "Sé único",
+        "El talento sin trabajo",
+        "Nadie te diga que no"
+      ]
+    },
+    {
+      "id": "es.t.086",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Estar como un roble.",
         "No importa cuán lento vayas mientras no te detengas.",
         "Supera tus miedos para descubrir tu verdadero potencial.",
         "La perseverancia es la clave que abre todas las puertas.",
-        "Sigue tus ideales sin importar las dificultades.",
+        "Sigue tus ideales sin importar las dificultades."
+      ],
+      "qs": [
+        "Fuerte como un roble",
+        "Sin prisa pero sin pausa",
+        "Supera tus miedos"
+      ]
+    },
+    {
+      "id": "es.t.087",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Cree en el proceso y confía en tu intuición.",
         "La valentía no es la ausencia de miedo, sino el triunfo sobre él.",
         "Lucha por tus principios sin importar las consecuencias.",
@@ -2305,13 +3063,13 @@
         "Traer la camiseta puesta."
       ],
       "qs": [
-        "Deporte",
-        "Motivación",
-        "Deportistas"
+        "Confía en el proceso",
+        "Valentía ante el miedo",
+        "Ponte la camiseta"
       ]
     },
     {
-      "id": "es.029",
+      "id": "es.t.088",
       "type": "CHAT",
       "actionId": "1509000284732",
       "a": [
@@ -2319,17 +3077,53 @@
         "Tu vida está a punto de cambiar.",
         "Volver a empezar desde cero con la frente en alto.",
         "El fracaso no es el fin, es solo el comienzo de algo mejor.",
-        "Si puedes soñarlo, puedes lograrlo con trabajo y disciplina.",
+        "Si puedes soñarlo, puedes lograrlo con trabajo y disciplina."
+      ],
+      "qs": [
+        "No lo dejes para mañana",
+        "Empieza desde cero",
+        "Si puedes soñarlo"
+      ]
+    },
+    {
+      "id": "es.t.089",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "La disciplina es el puente entre las metas y los logros.",
         "El secreto de avanzar es comenzar.",
         "Lo único imposible es aquello que no intentas.",
         "El momento perfecto es hoy, no esperes al mañana.",
-        "No esperes oportunidades, créalas tú mismo.",
+        "No esperes oportunidades, créalas tú mismo."
+      ],
+      "qs": [
+        "Cruza el puente",
+        "El secreto es comenzar",
+        "Crea tus oportunidades"
+      ]
+    },
+    {
+      "id": "es.t.090",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Nunca es tarde para ser lo que podrías haber sido.",
         "Siembra buena semilla hoy para cosechar buenos frutos mañana.",
         "El camino más largo empieza con un solo paso.",
         "Cada error superado es un paso más cerca de la meta.",
-        "La sabiduría empieza en la reflexión.",
+        "La sabiduría empieza en la reflexión."
+      ],
+      "qs": [
+        "Nunca es tarde",
+        "Un solo paso",
+        "Cada error enseña"
+      ]
+    },
+    {
+      "id": "es.t.091",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "El pasado ya se fue, el futuro no ha llegado, vive el presente.",
         "Cada amanecer trae una nueva esperanza.",
         "Siembra pensamientos positivos y cosecharás éxito.",
@@ -2337,14 +3131,13 @@
         "Aprende a transformar los problemas en oportunidades de aprendizaje."
       ],
       "qs": [
-        "Empezar",
-        "Disciplina",
-        "Hoy",
-        "Empieza hoy"
+        "El pasado ya fue",
+        "Cada amanecer",
+        "Vive el presente"
       ]
     },
     {
-      "id": "es.030",
+      "id": "es.t.092",
       "type": "CHAT",
       "actionId": "1509000284732",
       "a": [
@@ -2352,17 +3145,53 @@
         "La mayor gloria no es no caer nunca, sino levantarse siempre.",
         "Lo que no nos mata nos hace más fuertes.",
         "Cada obstáculo es una oportunidad disfrazada.",
-        "Sé constante y verás los resultados a su debido tiempo.",
+        "Sé constante y verás los resultados a su debido tiempo."
+      ],
+      "qs": [
+        "El final no es el fin",
+        "Cae siete, levántate ocho",
+        "Obstáculo disfrazado"
+      ]
+    },
+    {
+      "id": "es.t.093",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "No hay barrera que pueda contener la determinación humana.",
         "El camino a la grandeza requiere sacrificio.",
         "No hay atajos para los lugares a los que vale la pena ir.",
         "Tu actitud determina tu altitud.",
-        "Supera tus límites día a día.",
+        "Supera tus límites día a día."
+      ],
+      "qs": [
+        "Sin barreras",
+        "Tu actitud manda",
+        "Supera tus límites"
+      ]
+    },
+    {
+      "id": "es.t.094",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Sigue tus pasiones y el universo abrirá puertas donde solo había muros.",
         "Sé constante en tus esfuerzos y paciente con tus resultados.",
         "Afronta las adversidades con valentía y optimismo.",
         "La fe mueve fronteras y rompe barreras.",
-        "Sé un ejemplo positivo para las futuras generaciones.",
+        "Sé un ejemplo positivo para las futuras generaciones."
+      ],
+      "qs": [
+        "Sigue tus pasiones",
+        "Constancia y paciencia",
+        "Con fe y valentía"
+      ]
+    },
+    {
+      "id": "es.t.095",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "La perseverancia convierte lo imposible en realidad.",
         "Sé promotor de paz allá donde vayas.",
         "Supera el miedo al fracaso y alcanzarás la gloria.",
@@ -2370,14 +3199,13 @@
         "La vida es una constante aventura de aprendizaje."
       ],
       "qs": [
-        "No rendirse",
-        "Seguir adelante",
-        "Perseverar",
-        "Sigue"
+        "Lo imposible se logra",
+        "Paz para el mundo",
+        "La vida es aventura"
       ]
     },
     {
-      "id": "es.031",
+      "id": "es.t.096",
       "type": "CHAT",
       "actionId": "1464835936042",
       "a": [
@@ -2385,17 +3213,53 @@
         "Sé la versión original de ti mismo, no una copia.",
         "La actitud es una pequeña cosa que hace una gran diferencia.",
         "Las grandes mentes discuten ideas, las mentes promedio discuten eventos.",
-        "A veces hay que perderse para encontrarse a uno mismo.",
+        "A veces hay que perderse para encontrarse a uno mismo."
+      ],
+      "qs": [
+        "Nada es imposible",
+        "Sé original",
+        "Piérdete para encontrarte"
+      ]
+    },
+    {
+      "id": "es.t.097",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "La mente abierta es la puerta al crecimiento personal.",
         "No dejes que el ruido exterior apague tu voz interior.",
         "Quien busca la perfección termina no haciendo nada.",
         "No vivas para complacer a los demás, vive para ser auténtico.",
-        "Mantén tus ideales firmes ante las tempestades.",
+        "Mantén tus ideales firmes ante las tempestades."
+      ],
+      "qs": [
+        "Mente abierta",
+        "Tu voz interior",
+        "Sé auténtico"
+      ]
+    },
+    {
+      "id": "es.t.098",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "El carácter de una persona se demuestra en momentos difíciles.",
         "Quien tiene paz interior lo tiene todo.",
         "El verdadero valor reside en decir la verdad.",
         "Aprende de todos, no te creas superior a nadie.",
-        "El cambio es inevitable, el crecimiento es opcional.",
+        "El cambio es inevitable, el crecimiento es opcional."
+      ],
+      "qs": [
+        "El carácter se prueba",
+        "Paz interior",
+        "El cambio es ley"
+      ]
+    },
+    {
+      "id": "es.t.099",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "Desarrolla una mente fuerte para enfrentar los desafíos.",
         "Sé fiel a tus valores en todo momento.",
         "La mente es como un paracaídas: solo funciona si se abre.",
@@ -2403,14 +3267,13 @@
         "Sé libre de prejuicios y abierto al mundo."
       ],
       "qs": [
-        "La mente",
-        "Actitud",
-        "Pensar",
-        "Mente"
+        "Mente fuerte",
+        "Fiel a tus valores",
+        "Abre el paracaídas"
       ]
     },
     {
-      "id": "es.032",
+      "id": "es.t.100",
       "type": "CHAT",
       "actionId": "1509000284732",
       "a": [
@@ -2418,17 +3281,53 @@
         "Aprende a amar tus imperfecciones, son las que te hacen único.",
         "El perdón no cambia el pasado, pero expande el futuro.",
         "La verdadera felicidad viene de servir a los demás.",
-        "La gratitud transforma lo que tenemos en suficiente.",
+        "La gratitud transforma lo que tenemos en suficiente."
+      ],
+      "qs": [
+        "Acéptate como eres",
+        "Ama tus imperfecciones",
+        "Sirve a los demás"
+      ]
+    },
+    {
+      "id": "es.t.101",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Aprende a sonreír incluso en medio de la tormenta.",
         "No prometas cuando estés feliz, no respondas cuando estés enojado.",
         "La vida es un espejo: te sonríe si la miras sonriendo.",
         "La felicidad depende de nosotros mismos.",
-        "La vida es un regalo, vívela al máximo.",
+        "La vida es un regalo, vívela al máximo."
+      ],
+      "qs": [
+        "Sonríe en la tormenta",
+        "La vida es espejo",
+        "La vida es regalo"
+      ]
+    },
+    {
+      "id": "es.t.102",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Un día sin sonreír es un día perdido.",
         "El alma se alimenta de bellos momentos.",
         "Un corazón agradecido atrae cosas buenas.",
         "Aprende a perdonarte a ti mismo antes que a los demás.",
-        "La sinceridad es un regalo caro, no la esperes de gente barata.",
+        "La sinceridad es un regalo caro, no la esperes de gente barata."
+      ],
+      "qs": [
+        "Un día sin sonreír",
+        "Corazón agradecido",
+        "Perdónate primero"
+      ]
+    },
+    {
+      "id": "es.t.103",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "No dejes que las circunstancias dicten tu felicidad.",
         "Aprecia las bendiciones diarias que recibes.",
         "La verdad nos fortalece ante las tormentas.",
@@ -2436,13 +3335,13 @@
         "No cuentes los días, haz que los días cuenten."
       ],
       "qs": [
-        "Felicidad",
-        "Ser feliz",
-        "Feliz"
+        "Tus circunstancias no mandan",
+        "Cuenta tus bendiciones",
+        "Haz que los días cuenten"
       ]
     },
     {
-      "id": "es.033",
+      "id": "es.t.104",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -2450,17 +3349,53 @@
         "No juegues con mi paciencia.",
         "Tu tiempo es limitado, no lo malgastes viviendo la vida de otro.",
         "Vive con propósito y muere sin arrepentimientos.",
-        "La generosidad no consiste en dar mucho, sino en dar a tiempo.",
+        "La generosidad no consiste en dar mucho, sino en dar a tiempo."
+      ],
+      "qs": [
+        "El tiempo lo dirá",
+        "No juegues con mi paciencia",
+        "Vive con propósito"
+      ]
+    },
+    {
+      "id": "es.t.105",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "La paciencia es la virtud de los fuertes.",
         "La paciencia es amarga, pero sus frutos son dulces.",
         "El tiempo es el único recurso que jamás se recupera.",
         "No mires atrás a menos que sea para aprender del pasado.",
-        "La paciencia y el tiempo hacen más que la fuerza.",
+        "La paciencia y el tiempo hacen más que la fuerza."
+      ],
+      "qs": [
+        "La paciencia es virtud",
+        "El tiempo no vuelve",
+        "Más que la fuerza"
+      ]
+    },
+    {
+      "id": "es.t.106",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "El respeto es la base de la convivencia pacífica.",
         "Sé generoso con tu tiempo y con tus palabras de aliento.",
         "El tiempo libre es la mejor fortuna para el sabio.",
         "El futuro pertenece a quienes creen en la belleza de sus sueños.",
-        "El amor verdadero trasciende el espacio y el tiempo.",
+        "El amor verdadero trasciende el espacio y el tiempo."
+      ],
+      "qs": [
+        "Respeta para convivir",
+        "Tiempo libre de sabio",
+        "El amor trasciende"
+      ]
+    },
+    {
+      "id": "es.t.107",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Al final, el amor es lo único que prevalece.",
         "La noche promete sorpresas e inolvidables momentos.",
         "Estar un toque ocupado.",
@@ -2468,13 +3403,13 @@
         "Estar en sincronía."
       ],
       "qs": [
-        "El tiempo",
-        "Aprovechar el día",
-        "Tiempo"
+        "Al final queda el amor",
+        "Noche de sorpresas",
+        "Hoy es la recompensa"
       ]
     },
     {
-      "id": "es.034",
+      "id": "es.t.108",
       "type": "CHAT",
       "actionId": "1464835936042",
       "a": [
@@ -2482,17 +3417,53 @@
         "Tienes que aprender a escuchar.",
         "El conocimiento es poder, pero la sabiduría es libertad.",
         "Haz de tu vida una obra de arte.",
-        "Un hombre sabio habla porque tiene algo que decir; un necio porque tiene que decir algo.",
+        "Un hombre sabio habla porque tiene algo que decir; un necio porque tiene que decir algo."
+      ],
+      "qs": [
+        "Aprende de tus errores",
+        "Aprende a escuchar",
+        "Haz arte tu vida"
+      ]
+    },
+    {
+      "id": "es.t.109",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "Aprende del dolor para convertirlo en sabiduría.",
         "El aprendizaje es un tesoro que seguirá a su dueño a todas partes.",
         "La verdad es el camino más directo hacia la libertad.",
         "La verdadera belleza es invisible a los ojos.",
-        "Aprender a escuchar es tan importante como aprender a hablar.",
+        "Aprender a escuchar es tan importante como aprender a hablar."
+      ],
+      "qs": [
+        "Del dolor a la sabiduría",
+        "La verdad libera",
+        "Hablar y escuchar"
+      ]
+    },
+    {
+      "id": "es.t.110",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "Las acciones hablan más fuerte que las palabras.",
         "La verdad nos da la libertad de ser nosotros mismos.",
         "La libertad consiste en ser dueño de la propia vida.",
         "El arte de amar es también el arte de respetar.",
-        "La verdad florece tarde o temprano.",
+        "La verdad florece tarde o temprano."
+      ],
+      "qs": [
+        "Hechos, no palabras",
+        "Dueño de tu vida",
+        "Amar es respetar"
+      ]
+    },
+    {
+      "id": "es.t.111",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
         "No hay nada de malo en admitir un error.",
         "Aprende a adaptarte a los cambios de la vida.",
         "La sinceridad conduce a relaciones verdaderas y duraderas.",
@@ -2500,13 +3471,13 @@
         "Quien tiene un porqué para vivir puede soportar casi cualquier cómo."
       ],
       "qs": [
-        "Sabiduría",
-        "Aprender",
-        "Sabios"
+        "Admite tus errores",
+        "Adáptate al cambio",
+        "Elegancia simple"
       ]
     },
     {
-      "id": "es.035",
+      "id": "es.t.112",
       "type": "CHAT",
       "actionId": "1464835936087",
       "a": [
@@ -2514,17 +3485,53 @@
         "El respeto se gana, no se pide ni se exige.",
         "La humildad debe ser siempre tu mayor virtud.",
         "Crea tu propio camino y deja una huella.",
-        "El alma noble siempre encuentra el camino hacia el bien.",
+        "El alma noble siempre encuentra el camino hacia el bien."
+      ],
+      "qs": [
+        "Perdona de verdad",
+        "El respeto se gana",
+        "Sé humilde"
+      ]
+    },
+    {
+      "id": "es.t.113",
+      "type": "CHAT",
+      "actionId": "1464835936087",
+      "a": [
         "El respeto mutuo es el fundamento de toda relación.",
         "Haz el bien sin mirar a quién.",
         "Sé tú mismo, los demás puestos ya están ocupados.",
         "Al final de todo, solo cuenta el amor que diste y recibiste.",
-        "La empatía es la clave para conectar con los demás.",
+        "La empatía es la clave para conectar con los demás."
+      ],
+      "qs": [
+        "Haz el bien",
+        "Sé tú mismo",
+        "Ponte en su lugar"
+      ]
+    },
+    {
+      "id": "es.t.114",
+      "type": "CHAT",
+      "actionId": "1464835936087",
+      "a": [
         "Sé amable con todos los que encuentres en tu camino.",
         "La humildad nos hace grandes ante los demás.",
         "Sé la luz en medio de la oscuridad de alguien.",
         "Haz lo correcto aunque nadie te esté mirando.",
-        "Acepta las críticas constructivas con humildad.",
+        "Acepta las críticas constructivas con humildad."
+      ],
+      "qs": [
+        "Sé amable siempre",
+        "Sé luz ajena",
+        "Acepta críticas"
+      ]
+    },
+    {
+      "id": "es.t.115",
+      "type": "CHAT",
+      "actionId": "1464835936087",
+      "a": [
         "No busques la aprobación de los demás, busca la tuya propia.",
         "La bondad siempre deja una huella imborrable.",
         "El trabajo en equipo divide las tareas y multiplica el éxito.",
@@ -2532,13 +3539,13 @@
         "Tu fe debe ser más grande que tus temores."
       ],
       "qs": [
-        "Bondad",
-        "Ser bueno",
-        "Ayuda"
+        "Busca tu aprobación",
+        "La bondad deja huella",
+        "Desconecta para ti"
       ]
     },
     {
-      "id": "es.036",
+      "id": "es.t.116",
       "type": "CHAT",
       "actionId": "1509000284732",
       "a": [
@@ -2546,17 +3553,53 @@
         "Es el precio que hay que pagar por el éxito.",
         "La pasión es el único motor del éxito a largo plazo.",
         "No le temas al cambio, témele a la monotonía.",
-        "Haz todo con pasión o no lo hagas.",
+        "Haz todo con pasión o no lo hagas."
+      ],
+      "qs": [
+        "Cuánto me costó",
+        "Todo con pasión",
+        "Miedo a la monotonía"
+      ]
+    },
+    {
+      "id": "es.t.117",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "No te conformes con menos de lo que mereces.",
         "Ama lo que haces y el éxito te seguirá de forma natural.",
         "El éxito no es cuestión de suerte, es cuestión de elección.",
         "El destino no es una cuestión de casualidad, sino de elección.",
-        "No dejes que los pequeños detalles arruinen tus grandes planes.",
+        "No dejes que los pequeños detalles arruinen tus grandes planes."
+      ],
+      "qs": [
+        "Mereces más",
+        "Ama lo que haces",
+        "Elige tu destino"
+      ]
+    },
+    {
+      "id": "es.t.118",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "No midas tu éxito por el dinero, sino por la paz mental.",
         "Acepta los cambios con los brazos abiertos.",
         "No hay caminante sin camino, ni historia sin destino.",
         "Nada grande se ha conseguido sin entusiasmo.",
-        "Aprende a decir no cuando sea necesario.",
+        "Aprende a decir no cuando sea necesario."
+      ],
+      "qs": [
+        "Paz mental, no dinero",
+        "Acepta el cambio",
+        "Di que no"
+      ]
+    },
+    {
+      "id": "es.t.119",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Tu destino está en tus propias manos.",
         "La perseverancia vence lo que la dicha no alcanza.",
         "No hay triunfo sin esfuerzo previo.",
@@ -2564,13 +3607,13 @@
         "Donde hay voluntad, hay un camino."
       ],
       "qs": [
-        "Éxito",
-        "Destino",
-        "Logros"
+        "Destino en tus manos",
+        "Sin esfuerzo no hay triunfo",
+        "Donde hay voluntad"
       ]
     },
     {
-      "id": "es.037",
+      "id": "es.t.120",
       "type": "CHAT",
       "actionId": "1509000284732",
       "a": [
@@ -2578,17 +3621,53 @@
         "Estar como una cabra.",
         "¡Qué fuerte!",
         "Ser un fantasma.",
-        "Ser la leche.",
+        "Ser la leche."
+      ],
+      "qs": [
+        "Estás loco",
+        "Qué fuerte lo tuyo",
+        "Eres la leche"
+      ]
+    },
+    {
+      "id": "es.t.121",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Tomar el pelo.",
         "Montar un pollo.",
         "Estar hecho un lío.",
         "Ser un cero a la izquierda.",
-        "Hablar por los codos.",
+        "Hablar por los codos."
+      ],
+      "qs": [
+        "No me tomes el pelo",
+        "Menudo lío",
+        "Hablas por los codos"
+      ]
+    },
+    {
+      "id": "es.t.122",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Pelotudo.",
         "Ni en pedo.",
         "Hacerse el desentendido.",
         "Ser un careta.",
-        "Estar re loco.",
+        "Estar re loco."
+      ],
+      "qs": [
+        "Ni en pedo",
+        "Estás re loco",
+        "No te hagas el tonto"
+      ]
+    },
+    {
+      "id": "es.t.123",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Quilombo.",
         "Ser un vende humo.",
         "Estar del coco.",
@@ -2596,14 +3675,13 @@
         "Hacer un meme."
       ],
       "qs": [
-        "Hazme reír",
-        "Gracioso",
-        "Risa",
-        "Qué risa"
+        "Qué quilombo",
+        "Vende humo",
+        "Haz un meme"
       ]
     },
     {
-      "id": "es.038",
+      "id": "es.t.124",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -2611,17 +3689,53 @@
         "No me comas la cabeza.",
         "Tener mala leche.",
         "Dar la lata.",
-        "Tener un cacao en la cabeza.",
+        "Tener un cacao en la cabeza."
+      ],
+      "qs": [
+        "No juegues conmigo",
+        "No me comas la cabeza",
+        "Qué mala leche"
+      ]
+    },
+    {
+      "id": "es.t.125",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Ser un pesado.",
         "Estar de mala leche.",
         "Buscar las cosquillas.",
         "Cantar las 40.",
-        "¡Qué gacho!",
+        "¡Qué gacho!"
+      ],
+      "qs": [
+        "Eres un pesado",
+        "De mal humor",
+        "Qué gacho estuvo"
+      ]
+    },
+    {
+      "id": "es.t.126",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Estar de la chingada.",
         "Estar hasta la madre.",
         "Traer bronca.",
         "No te rajes.",
-        "Estar como agua para chocolate.",
+        "Estar como agua para chocolate."
+      ],
+      "qs": [
+        "Estoy hasta la madre",
+        "No te rajes",
+        "Traigo bronca"
+      ]
+    },
+    {
+      "id": "es.t.127",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Caer de a madre.",
         "Armar un pancho.",
         "Caer gordo.",
@@ -2629,14 +3743,13 @@
         "Estar al horno."
       ],
       "qs": [
-        "Enfadado",
-        "Rabia",
-        "Estoy harto",
-        "Qué rabia"
+        "Me cae gordo",
+        "Estoy picado",
+        "Se armó el pancho"
       ]
     },
     {
-      "id": "es.039",
+      "id": "es.t.128",
       "type": "CHAT",
       "actionId": "1509000284732",
       "a": [
@@ -2644,17 +3757,53 @@
         "¿Qué onda?",
         "Chavo.",
         "Carnal.",
-        "Hazme el paro.",
+        "Hazme el paro."
+      ],
+      "qs": [
+        "Qué pasa, tío",
+        "Qué onda contigo",
+        "Échame la mano"
+      ]
+    },
+    {
+      "id": "es.t.129",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Un parote.",
         "Sacar de onda.",
         "Hacer un paro.",
         "Parce.",
-        "Parchar.",
+        "Parchar."
+      ],
+      "qs": [
+        "Sácame de onda",
+        "Hazme un paro",
+        "Qué hubo, parce"
+      ]
+    },
+    {
+      "id": "es.t.130",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Chamo.",
         "Pelao.",
         "A la orden.",
         "Armar un parche.",
-        "¡Che!",
+        "¡Che!"
+      ],
+      "qs": [
+        "Qué más, chamo",
+        "A la orden",
+        "Che, contame"
+      ]
+    },
+    {
+      "id": "es.t.131",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Boludo.",
         "Pibe.",
         "Bancar.",
@@ -2662,13 +3811,13 @@
         "Totalmente de acuerdo."
       ],
       "qs": [
-        "Amigos",
-        "Colegas",
-        "Amistad"
+        "Che, boludo",
+        "Todo bien, pibe",
+        "Buena vibra"
       ]
     },
     {
-      "id": "es.040",
+      "id": "es.t.132",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -2676,17 +3825,53 @@
         "Haz lo que amas y nunca trabajarás un solo día de tu vida.",
         "El trabajo honesto siempre rinde frutos.",
         "Ser un rata.",
-        "Currar.",
+        "Currar."
+      ],
+      "qs": [
+        "El dinero no compra todo",
+        "Ama tu trabajo",
+        "A currar se ha dicho"
+      ]
+    },
+    {
+      "id": "es.t.133",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Pasta.",
         "Pagar a escote.",
         "Hacer una chapuza.",
         "Estar apurado.",
-        "Ser un enchufado.",
+        "Ser un enchufado."
+      ],
+      "qs": [
+        "Hablando de pasta",
+        "Pagamos a escote",
+        "Menuda chapuza"
+      ]
+    },
+    {
+      "id": "es.t.134",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Chambear.",
         "La lana.",
         "Ir en friega.",
         "Estar en la jugada.",
-        "Hacer un mandado.",
+        "Hacer un mandado."
+      ],
+      "qs": [
+        "Hablando de lana",
+        "Hazme un mandado",
+        "Estar en la jugada"
+      ]
+    },
+    {
+      "id": "es.t.135",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Ponerse la 10.",
         "Estar en la olla.",
         "Hacer un cruce.",
@@ -2694,14 +3879,13 @@
         "Guita."
       ],
       "qs": [
-        "Trabajo",
-        "Dinero",
-        "Curro",
-        "Pasta"
+        "Ponte la 10",
+        "Estamos en la olla",
+        "A laburar"
       ]
     },
     {
-      "id": "es.041",
+      "id": "es.t.136",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -2709,17 +3893,53 @@
         "Hay cosas que prefiero no saber.",
         "La paz mental no tiene precio.",
         "La tranquilidad es el bien más preciado.",
-        "Estar en la parra.",
+        "Estar en la parra."
+      ],
+      "qs": [
+        "No te enojes",
+        "Prefiero no saber",
+        "Paz mental"
+      ]
+    },
+    {
+      "id": "es.t.137",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Estar de buen rollo.",
         "Estar petado.",
         "Quedarse frito.",
         "Estar chupado.",
-        "Dormir a pierna suelta.",
+        "Dormir a pierna suelta."
+      ],
+      "qs": [
+        "Buen rollo",
+        "Estoy petado",
+        "Dormir del tirón"
+      ]
+    },
+    {
+      "id": "es.t.138",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Dar el chatazo.",
         "Estar de guayabo.",
         "Estar mamado.",
         "Cogerlo con suave.",
-        "Tener fiaca.",
+        "Tener fiaca."
+      ],
+      "qs": [
+        "Menudo chatazo",
+        "Tengo guayabo",
+        "Tómala con suave"
+      ]
+    },
+    {
+      "id": "es.t.139",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Ir a tomar un mate.",
         "Modo ahorro de energía.",
         "Cero drama.",
@@ -2727,13 +3947,13 @@
         "Pisar el freno."
       ],
       "qs": [
-        "Tranquilo",
-        "Relax",
-        "Calma"
+        "Vamos por un mate",
+        "Cero drama",
+        "Pisa el freno"
       ]
     },
     {
-      "id": "es.042",
+      "id": "es.t.140",
       "type": "CHAT",
       "actionId": "1509000284732",
       "a": [
@@ -2741,17 +3961,53 @@
         "Es una pasada.",
         "¡Ostras!",
         "¡Jolín!",
-        "¡Qué padre!",
+        "¡Qué padre!"
+      ],
+      "qs": [
+        "Mola mucho",
+        "Es una pasada",
+        "Qué padre estuvo"
+      ]
+    },
+    {
+      "id": "es.t.141",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "¡Qué chido!",
         "No mames.",
         "¡Órale!",
         "¡Andale!",
-        "Cinchado.",
+        "Cinchado."
+      ],
+      "qs": [
+        "Qué chido",
+        "No mames, en serio",
+        "Órale, vamos"
+      ]
+    },
+    {
+      "id": "es.t.142",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "Estar chiquito pero picoso.",
         "¡Qué bacán!",
         "¡Qué bacano!",
         "¡Qué chévere!",
-        "Poderoso.",
+        "Poderoso."
+      ],
+      "qs": [
+        "Chiquito pero picoso",
+        "Qué bacán",
+        "Qué chévere"
+      ]
+    },
+    {
+      "id": "es.t.143",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
         "¡Qué copado!",
         "Champán y chinchulín.",
         "De una.",
@@ -2759,13 +4015,13 @@
         "Estar en tu prime."
       ],
       "qs": [
-        "Vaya",
-        "Sorpresa",
-        "No me digas"
+        "Qué copado",
+        "De una",
+        "En tu prime"
       ]
     },
     {
-      "id": "es.043",
+      "id": "es.t.144",
       "type": "CHAT",
       "actionId": "1509000313549",
       "a": [
@@ -2773,17 +4029,53 @@
         "Estar como un tren.",
         "Poner los cuernos.",
         "Tirarle el rollo.",
-        "Estar clavado.",
+        "Estar clavado."
+      ],
+      "qs": [
+        "Pillar cacho",
+        "Estás como un tren",
+        "Te tiro el rollo"
+      ]
+    },
+    {
+      "id": "es.t.145",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
         "Echar los perros.",
         "Mina.",
         "Ghostear.",
         "Estar obsesionado.",
-        "Hacer match.",
+        "Hacer match."
+      ],
+      "qs": [
+        "Echar los perros",
+        "Estás obsesionado",
+        "Hicimos match"
+      ]
+    },
+    {
+      "id": "es.t.146",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
         "Tener una bandera roja (Red flag).",
         "Mami, tú sabes que me gustas demasiado.",
         "Ella camina con estilo y todos la miran pasar.",
         "Una mirada tuya basta para volverme loco.",
-        "Esta noche somos tú y yo contra el mundo.",
+        "Esta noche somos tú y yo contra el mundo."
+      ],
+      "qs": [
+        "Bandera roja",
+        "Ella camina con estilo",
+        "Tú y yo esta noche"
+      ]
+    },
+    {
+      "id": "es.t.147",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
         "Tú y yo nacimos para estar juntos.",
         "Siento que vuelo cuando rozas mi piel.",
         "Me pierdo en la profundidad de tus ojos negros.",
@@ -2791,13 +4083,13 @@
         "El verdadero amor aguanta el paso del tiempo."
       ],
       "qs": [
-        "Citas",
-        "Amor moderno",
-        "Ligar"
+        "Nacimos para esto",
+        "Vuelo cuando te veo",
+        "Amor verdadero"
       ]
     },
     {
-      "id": "es.044",
+      "id": "es.t.148",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -2805,30 +4097,50 @@
         "Ser un hater.",
         "Stalkear.",
         "Tener hype.",
-        "Estar cancelado.",
+        "Estar cancelado."
+      ],
+      "qs": [
+        "Sin spoilers",
+        "Qué hater",
+        "Tienes hype"
+      ]
+    },
+    {
+      "id": "es.t.149",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Mandar mensaje directo (DM).",
         "Hacer un live.",
         "Literal.",
         "NPC.",
-        "Main character.",
+        "Main character."
+      ],
+      "qs": [
+        "Mándame un DM",
+        "Haz un live",
+        "Literalmente yo"
+      ]
+    },
+    {
+      "id": "es.t.150",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Fin del comunicado.",
         "Estar viral.",
         "Ser tendencia.",
         "Tener flow.",
-        "Servir look.",
-        "Glow up.",
-        "Tener vibes de...",
-        "¡Pilas!",
-        "Dar cringe."
+        "Servir look."
       ],
       "qs": [
-        "Internet",
-        "Redes sociales",
-        "Móvil"
+        "Fin del comunicado",
+        "Se hizo viral",
+        "Tienes flow"
       ]
     },
     {
-      "id": "es.045",
+      "id": "es.t.151",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -2836,17 +4148,53 @@
         "Vaina.",
         "Estar corchado.",
         "Estar cansado de la misma vaina.",
-        "A huevo.",
+        "A huevo."
+      ],
+      "qs": [
+        "Qué morro tienes",
+        "Qué vaina",
+        "A huevo que sí"
+      ]
+    },
+    {
+      "id": "es.t.152",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Ponerse buzo.",
         "No le crea tanto.",
         "Esa es tu opinión, no la realidad.",
         "Todo fue una trampa desde el principio.",
-        "Todo tiene su momento y su lugar.",
+        "Todo tiene su momento y su lugar."
+      ],
+      "qs": [
+        "Ponte buzo",
+        "Esa es tu opinión",
+        "Todo a su momento"
+      ]
+    },
+    {
+      "id": "es.t.153",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "No hay motivo para alarmarse.",
         "Te debo una muy grande.",
         "Ser bien chismoso.",
         "Estar en el chisme.",
-        "Gente bien.",
+        "Gente bien."
+      ],
+      "qs": [
+        "Sin alarma",
+        "Te debo una",
+        "Puro chisme"
+      ]
+    },
+    {
+      "id": "es.t.154",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Tener buena onda.",
         "Ponerse la del Puebla.",
         "Hacer una pachanga.",
@@ -2854,13 +4202,13 @@
         "Guaro."
       ],
       "qs": [
-        "Expresiones",
-        "Da igual",
-        "Frases hechas"
+        "Buena onda",
+        "Arma la pachanga",
+        "Unas chelas"
       ]
     },
     {
-      "id": "es.046",
+      "id": "es.t.155",
       "type": "CHAT",
       "actionId": "1464835936026",
       "a": [
@@ -2868,27 +4216,97 @@
         "Irse por la tangente.",
         "A otra cosa, mariposa.",
         "No pegarla ni con cola.",
-        "Me importa un pimiento.",
+        "Me importa un pimiento."
+      ],
+      "qs": [
+        "En fin",
+        "Vete por la tangente",
+        "Me importa un pimiento"
+      ]
+    },
+    {
+      "id": "es.t.156",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "Ni al caso.",
         "Sabelo.",
         "Sin palabras.",
         "Dar el avió.",
-        "Las palabras se las lleva el viento.",
+        "Las palabras se las lleva el viento."
+      ],
+      "qs": [
+        "Ni al caso",
+        "Sin palabras",
+        "Se lo llevó el viento"
+      ]
+    },
+    {
+      "id": "es.t.157",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
         "De perdidos al río.",
         "Saber un buen.",
         "Chorizo.",
         "Mandar fruta.",
-        "Morderse la lengua.",
-        "Tirar la casa por la ventana.",
-        "Estar fuera de lugar.",
-        "Te lo mereces por todo lo que hiciste.",
-        "No hay bronca."
+        "Morderse la lengua."
       ],
       "qs": [
-        "Dichos",
-        "Refranes",
-        "Dime un dicho",
-        "Un refrán"
+        "De perdidos al río",
+        "Mándame fruta",
+        "Muérdete la lengua"
+      ]
+    },
+    {
+      "id": "es.t.158",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Estar cañón.",
+        "Andar con todo.",
+        "Estar en modo avión.",
+        "Hacer un asado.",
+        "El mundo necesita más amor y menos odio."
+      ],
+      "qs": [
+        "Estás cañón",
+        "Con todo",
+        "Hagamos un asado"
+      ]
+    },
+    {
+      "id": "es.t.159",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Siembra amor y cosecharás paz interior.",
+        "Estar de pelos.",
+        "Estar en pedo.",
+        "El conocimiento no ocupa lugar pero abre infinitas puertas.",
+        "La vida es corta, haz que valga la pena."
+      ],
+      "qs": [
+        "Siembra amor",
+        "Estás de pelos",
+        "La vida es corta"
+      ]
+    },
+    {
+      "id": "es.t.160",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Glow up.",
+        "Tener vibes de...",
+        "¡Pilas!",
+        "Dar cringe.",
+        "Tirar la casa por la ventana."
+      ],
+      "qs": [
+        "Tienes glow up",
+        "Buenas vibes",
+        "Tira la casa por la ventana"
       ]
     }
   ]

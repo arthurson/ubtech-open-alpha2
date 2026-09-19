@@ -7,9 +7,9 @@ import android.content.Context;
  * (英文版) 同一套語意配對機制, 專門處理西班牙文。
  *
  * 資料來源: assets/semantic/semantic_es.json (v2 grouped 格式, 同中英文版同一個
- * schema - 見 SemanticMatcherBase.load())。46 個 intent：5 組基礎寒暄＋電影對白
- * 200／歌詞 200／名人格言 200／俚語 200 散入主題組（最大組 20 句，同中英文一致
- * 「唔要 1 問配 100 答」原則）。每個 intent 內:
+ * schema - 見 SemanticMatcherBase.load())。165 個 CHAT intent：5 組基礎寒暄
+ * (每組 5 答) ＋ 160 組主題重組 (es.t.001-160，每組日常問法＋5 答案，
+ * 由舊 41 主題組答案切開重組，湊整掉 3 句)。每個 intent 內:
  *   qs       - 用戶問法 (例如 "Hola", "Fiesta", "Háblame de amor")
  *   a        - 候選答案句 (隨機選一句做 TTS)
  *   type     - 全部 CHAT（第一版唔接動作，全部用已驗證 silent filler action id）

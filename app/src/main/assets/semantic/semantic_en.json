@@ -1,7 +1,7 @@
 {
   "version": 2,
   "lang": "en",
-  "_comment": "v2 grouped format, same schema as semantic_zh.json. Rebuilt 2026-09: ~2900 machine-templated filler groups ([word]! Got it / You said [word]? Noted) dropped; every surviving group has an action; answers are formal English, punctuated; ACTION families share performance sets; quote pools (famous/movie lines, song hooks, love lines) from user-supplied 200 famous quotes (normalized quotes, fragments excluded).",
+  "_comment": "v2 grouped format, same schema as semantic_zh.json. Rebuilt 2026-09: ~2900 machine-templated filler groups ([word]! Got it / You said [word]? Noted) dropped; every surviving group has an action; answers are formal English, punctuated; ACTION families share performance sets; quote pools (famous/movie lines, song hooks, love lines) from user-supplied 200 famous quotes (normalized quotes, fragments excluded). | 2026-09 EN+146: en.mov/en.son/en.cit/en.arg (movie27/song39/quote40/slang40, everyday qs + 5 txt answers each, existing answers excluded).",
   "intents": [
     {
       "id": "action.applaud",
@@ -9619,6 +9619,2488 @@
         "secret"
       ],
       "actionId": "1464835936026"
+    },
+    {
+      "id": "en.mov.01",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Toto, I've a feeling we're not in Kansas anymore.",
+        "Carpe diem. Seize the day, boys. Make your lives extraordinary.",
+        "Mama always said life was like a box of chocolates. You never know what you're gonna get.",
+        "Here's Johnny!",
+        "Shaken, not stirred."
+      ],
+      "qs": [
+        "Got a classic line for me",
+        "Talk old Hollywood to me",
+        "What's the most quoted movie ever"
+      ]
+    },
+    {
+      "id": "en.mov.02",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "To me, you are perfect.",
+        "I wish I knew how to quit you.",
+        "I'm also just a girl, standing in front of a boy, asking him to love her.",
+        "It doesn't matter who you are on the outside, the main thing is who you are on the inside.",
+        "The greatest thing you'll ever learn is just to love and be loved in return."
+      ],
+      "qs": [
+        "Say something swoony",
+        "Love, but make it cinema",
+        "Give me butterflies"
+      ]
+    },
+    {
+      "id": "en.mov.03",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "You should be kissed and often, and by someone who knows how.",
+        "If you love someone, you say it, you say it right then, out loud.",
+        "I want all of you, forever, you and me, every day.",
+        "So how do you drop a quick four grand?",
+        "Our love is like the wind, I can't see it, but I can feel it."
+      ],
+      "qs": [
+        "How do I tell them I love them",
+        "Advice for a hopeless romantic",
+        "Be my rom-com narrator"
+      ]
+    },
+    {
+      "id": "en.mov.04",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Death cannot stop true love. All it can do is delay it for a while.",
+        "You make me want to be a better man.",
+        "I would rather spend one lifetime with you, than face all the Ages of this world alone.",
+        "They say when you meet the love of your life, time stops, and that's true.",
+        "I love you. I knew it the minute I met you."
+      ],
+      "qs": [
+        "Do you believe in soulmates",
+        "Melt my heart, go",
+        "Love at first sight, real or not"
+      ]
+    },
+    {
+      "id": "en.mov.05",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "We accept the love we think we deserve.",
+        "No matter what happens to us, every day with you is the best day of my life.",
+        "I think I'd miss you even if we'd never met.",
+        "In my opinion, the best thing you can do is find a person who loves you for exactly what you are.",
+        "I would have preferred one breath of her hair, one kiss of her mouth, one touch of her hand, than eternity without it."
+      ],
+      "qs": [
+        "Do I deserve to be loved",
+        "Ever miss someone you never met",
+        "What does your heart want"
+      ]
+    },
+    {
+      "id": "en.mov.06",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Some people are worth melting for.",
+        "You will never age for me, nor fade, nor die.",
+        "Life is not the amount of breaths you take, it's the moments that take your breath away.",
+        "Don't let anyone ever make you feel like you don't deserve what you want.",
+        "Great men are not born great, they grow great."
+      ],
+      "qs": [
+        "What makes someone great",
+        "Take my breath away",
+        "Worth melting for, huh"
+      ]
+    },
+    {
+      "id": "en.mov.07",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "All we have to decide is what to do with the time that is given us.",
+        "Oh yes, the past can hurt. But from the way I see it, you can either run from it, or learn from it.",
+        "Do, or do not. There is no try.",
+        "Why do we fall, Bruce? So we can learn to pick ourselves up.",
+        "It is not our abilities that show what we truly are… it is our choices."
+      ],
+      "qs": [
+        "Should I look back or move on",
+        "Do or do not, huh",
+        "What really defines us"
+      ]
+    },
+    {
+      "id": "en.mov.08",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Don't ever let somebody tell you you can't do something, not even me.",
+        "If you want something, go get it. Period.",
+        "The flower that blooms in adversity is the most rare and beautiful of all.",
+        "Yesterday is history, tomorrow is a mystery, but today is a gift. That is why it is called the present.",
+        "Real loss is only possible when you love something more than you love yourself."
+      ],
+      "qs": [
+        "Convince me to chase it",
+        "Bloom where planted",
+        "Today is a gift, yeah"
+      ]
+    },
+    {
+      "id": "en.mov.09",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "I am Iron Man.",
+        "Avengers, assemble!",
+        "I can do this all day.",
+        "Welcome to the Real World.",
+        "I love you 3000."
+      ],
+      "qs": [
+        "Which Avenger are you",
+        "Assemble the squad",
+        "Love you how many"
+      ]
+    },
+    {
+      "id": "en.mov.10",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "I am Groot.",
+        "Wakanda Forever!",
+        "I'm not bad. I'm just drawn that way.",
+        "Welcome to Jurassic Park.",
+        "Life finds a way."
+      ],
+      "qs": [
+        "Talk like Groot",
+        "Welcome to the park, huh",
+        "Life finds a way, doesn't it"
+      ]
+    },
+    {
+      "id": "en.mov.11",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "My name is Maximus Decimus Meridius... and I will have my vengeance, in this life or the next.",
+        "Gentlemen, you can't fight in here! This is the War Room!",
+        "I have full confidence in your abilities.",
+        "Roads? Where we're going, we don't need roads.",
+        "In space, no one can hear you scream."
+      ],
+      "qs": [
+        "Vengeance or justice",
+        "Where we're going, roads",
+        "Can anyone hear me"
+      ]
+    },
+    {
+      "id": "en.mov.12",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Game over, man! Game over!",
+        "The needs of the many outweigh the needs of the few.",
+        "Live long and prosper.",
+        "I am your density.",
+        "This is the way."
+      ],
+      "qs": [
+        "Is it game over",
+        "Live long and prosper, huh",
+        "Show me the way"
+      ]
+    },
+    {
+      "id": "en.mov.13",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Houston, we've had a problem here.",
+        "Good morning, aviators, this is your captain speaking.",
+        "It's not the plane, it's the pilot.",
+        "That'll do, pig. That'll do.",
+        "I am the danger!"
+      ],
+      "qs": [
+        "Houston, got a problem",
+        "Talk to me, captain",
+        "Are you the danger here"
+      ]
+    },
+    {
+      "id": "en.mov.14",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "I'm not trapped in here with you. You're trapped in here with me!",
+        "Whatever doesn't kill you, simply makes you stranger.",
+        "If you're good at something, never do it for free.",
+        "I'm a survivor!",
+        "\"I'm gonna have to science the s"
+      ],
+      "qs": [
+        "Stuck here with me",
+        "What makes you stronger",
+        "Science your way out"
+      ]
+    },
+    {
+      "id": "en.mov.15",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Do not go gentle into that good night.",
+        "Love is the one thing that transcends time and space.",
+        "The first rule of Fight Club is: You do not talk about Fight Club.",
+        "You're a wizard, Harry.",
+        "There's a shortage of perfect breasts in this world. It would be a pity to damaged yours."
+      ],
+      "qs": [
+        "Rage against the dying light",
+        "What's the first rule",
+        "Prove you're a wizard"
+      ]
+    },
+    {
+      "id": "en.mov.16",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "I am serious... and don't call me Shirley.",
+        "Gentlemen, you had my curiosity. But now you have my attention.",
+        "Greed, for lack of a better word, is good.",
+        "Sell me this pen.",
+        "Fun fact: I'm a billionaire."
+      ],
+      "qs": [
+        "Surely you can't be serious",
+        "You have my full attention",
+        "Sell me that pen"
+      ]
+    },
+    {
+      "id": "en.mov.17",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "I'm not crazy, my mother had me tested.",
+        "On Wednesdays we wear pink.",
+        "That's so fetch!",
+        "You can't sit with us!",
+        "I'm not a regular mom, I'm a cool mom."
+      ],
+      "qs": [
+        "Prove you're not crazy",
+        "Why do we wear pink",
+        "How cool is your mom"
+      ]
+    },
+    {
+      "id": "en.mov.18",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Hold onto your butts.",
+        "Look at me. I'm the captain now.",
+        "Bye, Felicia.",
+        "Inconceivable!",
+        "You keep using that word. I do not think it means what you think it means."
+      ],
+      "qs": [
+        "Hold on tight",
+        "Who's captain now",
+        "That word doesn't mean that"
+      ]
+    },
+    {
+      "id": "en.mov.19",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "That escalated quickly.",
+        "I'm kind of a big deal.",
+        "Schwing!",
+        "Party on, Wayne!",
+        "So you're telling me there's a chance?"
+      ],
+      "qs": [
+        "Things escalated fast, huh",
+        "How big a deal are you",
+        "Give me one good chance"
+      ]
+    },
+    {
+      "id": "en.mov.20",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Alright, alright, alright.",
+        "I'm a peacock, you gotta let me fly!",
+        "Did we just become best friends?",
+        "I'm in a glass cage of emotion!",
+        "Show me."
+      ],
+      "qs": [
+        "Alright alright alright",
+        "Are we best friends now",
+        "Show me what you got"
+      ]
+    },
+    {
+      "id": "en.mov.21",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Nobody's perfect.",
+        "Fasten your seatbelts, it's going to be a bumpy ride.",
+        "One does not simply walk into Mordor.",
+        "You shall not pass!",
+        "What's in the box?!"
+      ],
+      "qs": [
+        "Nobody's perfect, agreed",
+        "Buckle up, buttercup",
+        "One does not simply what"
+      ]
+    },
+    {
+      "id": "en.mov.22",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "To infinity... and beyond!",
+        "Just keep swimming.",
+        "Adventure is out there!",
+        "Not everyone can become a great artist, but a great artist can come from anywhere.",
+        "The only thing predictable about life is its unpredictability."
+      ],
+      "qs": [
+        "To infinity, huh",
+        "Keep on swimming",
+        "Adventure calls, answer"
+      ]
+    },
+    {
+      "id": "en.mov.23",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Let it go, let it go!",
+        "Remember me though I have to say goodbye.",
+        "The real death is that no one in the world remembers you.",
+        "When life gets you down, you know what you gotta do? Just keep swimming.",
+        "Anyone can cook."
+      ],
+      "qs": [
+        "Help me let it go",
+        "Will you remember me",
+        "Anyone can cook, even me"
+      ]
+    },
+    {
+      "id": "en.mov.24",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "I don't want to survive. I want to live.",
+        "I am the master of my fate, I am the captain of my soul.",
+        "Every man dies, not every man really lives.",
+        "Death is just another path, one that we all must take.",
+        "I will find you, and I will kill you."
+      ],
+      "qs": [
+        "Surviving or living",
+        "Master of your own fate",
+        "What would Maximus do"
+      ]
+    },
+    {
+      "id": "en.mov.25",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "I have a very particular set of skills.",
+        "Whatever you are, be a good one.",
+        "Manners maketh man.",
+        "There is no poisonous snakes, only poisonous thoughts.",
+        "Your story may not have such a happy beginning, but that doesn't make you who you are."
+      ],
+      "qs": [
+        "What are your special skills",
+        "Manners matter, no",
+        "Tell me who you are"
+      ]
+    },
+    {
+      "id": "en.mov.26",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "It's the rest of your story. Who do you choose to be?",
+        "To die would be an awfully big adventure.",
+        "Sometimes the right path is not the easiest one.",
+        "Venture outside your comfort zone. The rewards are worth it.",
+        "Believe you can and you're halfway there."
+      ],
+      "qs": [
+        "Which path will you take",
+        "Leave the comfort zone",
+        "Halfway there already"
+      ]
+    },
+    {
+      "id": "en.mov.27",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "You controls your destiny—you don't need magic to do it.",
+        "The only limits for tomorrow are the doubts we have today.",
+        "Keep moving forward.",
+        "Always.",
+        "After all this time? Always."
+      ],
+      "qs": [
+        "Who writes your destiny",
+        "Move it forward",
+        "Still you after all this time"
+      ]
+    },
+    {
+      "id": "en.son.01",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "I will survive.",
+        "Don't stop believin'.",
+        "What doesn't kill you makes you stronger.",
+        "It's my life, it's now or never.",
+        "I'm on the right track, baby, I was born this way."
+      ],
+      "qs": [
+        "Need a survival anthem",
+        "Pump-up song, go",
+        "Born to stand out"
+      ]
+    },
+    {
+      "id": "en.son.02",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Work it, make it, do it, makes us harder, better, faster, stronger.",
+        "Show must go on.",
+        "The sun will come out tomorrow.",
+        "You can't always get what you want, but if you try sometimes, you find you get what you need.",
+        "You're beautiful, no matter what they say."
+      ],
+      "qs": [
+        "Work it harder",
+        "The show goes on",
+        "Beautiful despite everything"
+      ]
+    },
+    {
+      "id": "en.son.03",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "I am the master of my sea.",
+        "Even the darkest night will end and the sun will rise.",
+        "Life is what happens when you're busy making other plans.",
+        "I won't give up, no I won't give in.",
+        "Shine bright like a diamond."
+      ],
+      "qs": [
+        "Captain of your own sea",
+        "Refuse to give in",
+        "Shine like you mean it"
+      ]
+    },
+    {
+      "id": "en.son.04",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Who runs the world? Girls.",
+        "I can see clearly now, the rain is gone.",
+        "Nothing is impossible, the word itself says 'I'm possible'!",
+        "Step by step, day by day.",
+        "I got the eye of the tiger, a fighter."
+      ],
+      "qs": [
+        "Who runs the world, really",
+        "See clearly now",
+        "One step at a time, okay"
+      ]
+    },
+    {
+      "id": "en.son.05",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Freedom's just another word for nothing left to lose.",
+        "I came in like a wrecking ball.",
+        "The sky's the limit.",
+        "Turn your magic on.",
+        "Look up at the stars, look how they shine for you."
+      ],
+      "qs": [
+        "What does freedom taste like",
+        "No limit above you",
+        "Stars shining for you"
+      ]
+    },
+    {
+      "id": "en.son.06",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "I'm still standing, better than I ever was.",
+        "You raise me up, so I can stand on mountains.",
+        "I believe I can fly, I believe I can touch the sky.",
+        "Don't worry, be happy.",
+        "High hopes, high hopes."
+      ],
+      "qs": [
+        "Still standing tall",
+        "Lift me higher",
+        "Worries can wait"
+      ]
+    },
+    {
+      "id": "en.son.07",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "There's a light that never goes out.",
+        "Life is a highway, I wanna ride it all night long.",
+        "Keep your head up, keep your heart strong.",
+        "Live for today, plan for tomorrow, party tonight.",
+        "Every little thing is gonna be alright."
+      ],
+      "qs": [
+        "Light that never dies",
+        "Hit the highway",
+        "Head up, heart strong"
+      ]
+    },
+    {
+      "id": "en.son.08",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "I'm walking on sunshine.",
+        "You only get one shot, do not miss your chance to blow.",
+        "Pick yourself up, dust yourself off, start all over again.",
+        "Break free from the chains that bind you.",
+        "All of me loves all of you."
+      ],
+      "qs": [
+        "Walking on actual sunshine",
+        "One shot, don't blow it",
+        "Give it all of you"
+      ]
+    },
+    {
+      "id": "en.son.09",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Just the way you are.",
+        "Every breath you take, I'll be watching you.",
+        "You are the best thing that's ever been mine.",
+        "Can't help falling in love with you.",
+        "God gave me you for the ups and downs."
+      ],
+      "qs": [
+        "Love you just as you are",
+        "Falling, can't help it",
+        "Best thing that's ever been yours"
+      ]
+    },
+    {
+      "id": "en.son.10",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "You're the one that I want.",
+        "I can't live without you.",
+        "Take my hand, take my whole life too.",
+        "Cause baby, you're a firework.",
+        "Love is all you need."
+      ],
+      "qs": [
+        "The one you want",
+        "Can't live without what",
+        "Light up like fireworks"
+      ]
+    },
+    {
+      "id": "en.son.11",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "You're the first, my last, my everything.",
+        "I don't wanna miss a thing.",
+        "I have loved you for a thousand years.",
+        "You make me feel like a natural woman.",
+        "Endless love."
+      ],
+      "qs": [
+        "First and last, always",
+        "Love you a thousand years",
+        "Love without end"
+      ]
+    },
+    {
+      "id": "en.son.12",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Thinking out loud.",
+        "Love me like you do.",
+        "My heart will go on.",
+        "You belong with me.",
+        "Unbreak my heart."
+      ],
+      "qs": [
+        "Thinking out loud here",
+        "Hearts go on",
+        "Don't you break it"
+      ]
+    },
+    {
+      "id": "en.son.13",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "I knew I loved you before I met you.",
+        "Whenever I'm alone with you, you make me feel like I am home again.",
+        "I just called to say I love you.",
+        "You are my sunshine, my only sunshine.",
+        "Heaven is a place on earth with you."
+      ],
+      "qs": [
+        "Loved you before meeting",
+        "Home is a person",
+        "You are actual sunshine"
+      ]
+    },
+    {
+      "id": "en.son.14",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "I will wait for you.",
+        "Hold my hand and don't let go.",
+        "Crazy in love.",
+        "You make my dreams come true.",
+        "When I look into your eyes, I see a light."
+      ],
+      "qs": [
+        "Wait for me, will you",
+        "Don't let go of my hand",
+        "Crazy, but make it love"
+      ]
+    },
+    {
+      "id": "en.son.15",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Love story.",
+        "In your eyes, I see the future.",
+        "Sweet disposition.",
+        "Bleeding love.",
+        "Say you won't let go."
+      ],
+      "qs": [
+        "Our own love story",
+        "Bleeding but loving",
+        "Promise not to let go"
+      ]
+    },
+    {
+      "id": "en.son.16",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Your love is my drug.",
+        "Perfect.",
+        "Hello from the other side.",
+        "Someone like you.",
+        "Tears in heaven."
+      ],
+      "qs": [
+        "Addicted to your love",
+        "Flawless, honestly",
+        "Hello from the outside"
+      ]
+    },
+    {
+      "id": "en.son.17",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Hurt.",
+        "Nothing compares 2 U.",
+        "Careless whisper.",
+        "When the party's over.",
+        "Dry your eyes."
+      ],
+      "qs": [
+        "What hurts the most",
+        "Nothing compares, huh",
+        "Party's over, now what"
+      ]
+    },
+    {
+      "id": "en.son.18",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Fix you.",
+        "The scientist.",
+        "Sound of silence.",
+        "Goodbye yellow brick road.",
+        "Losing my religion."
+      ],
+      "qs": [
+        "Try to fix me",
+        "Sounds of silence",
+        "Losing your religion, huh"
+      ]
+    },
+    {
+      "id": "en.son.19",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Everyday it rains.",
+        "We don't talk anymore.",
+        "Drivers license.",
+        "Creep.",
+        "Behind blue eyes."
+      ],
+      "qs": [
+        "We stopped talking, huh",
+        "Creep or cool",
+        "Behind those blue eyes"
+      ]
+    },
+    {
+      "id": "en.son.20",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Wish you were here.",
+        "Boulevard of broken dreams.",
+        "Lucid dreams.",
+        "Stitches.",
+        "Bad day."
+      ],
+      "qs": [
+        "Wish you were here",
+        "Walk that lonely boulevard",
+        "Just a rough day"
+      ]
+    },
+    {
+      "id": "en.son.21",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Back to black.",
+        "All by myself.",
+        "Sorry seems to be the hardest word.",
+        "Smells like teen spirit.",
+        "Everybody hurts."
+      ],
+      "qs": [
+        "Back to the dark side",
+        "All by myself tonight",
+        "Sorry is the hardest word"
+      ]
+    },
+    {
+      "id": "en.son.22",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Break my heart.",
+        "Let her go.",
+        "Say something, I'm giving up on you.",
+        "Skinny love.",
+        "Chandelier."
+      ],
+      "qs": [
+        "Go on, break it",
+        "Let it go, let them go",
+        "Say anything at all"
+      ]
+    },
+    {
+      "id": "en.son.23",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Fast car.",
+        "I leave a light on.",
+        "Torn.",
+        "Shadow of the day.",
+        "In the end, it doesn't even matter."
+      ],
+      "qs": [
+        "Need a fast car",
+        "Leave the porch light on",
+        "Torn in two"
+      ]
+    },
+    {
+      "id": "en.son.24",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "When you're gone.",
+        "Don't stop the music.",
+        "Uptown funk you up.",
+        "Dance monkey.",
+        "Party rock is in the house tonight."
+      ],
+      "qs": [
+        "Miss me when I'm gone",
+        "Never stop the music",
+        "Dance, monkey, dance"
+      ]
+    },
+    {
+      "id": "en.son.25",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Can't stop the feeling!",
+        "Raise your glass.",
+        "We will rock you.",
+        "Wild thoughts.",
+        "Blinding lights."
+      ],
+      "qs": [
+        "Can't shake this feeling",
+        "Raise a glass with me",
+        "Blinded by the lights"
+      ]
+    },
+    {
+      "id": "en.son.26",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Levitating.",
+        "Shape of you.",
+        "Shut up and dance.",
+        "Cheap thrills.",
+        "Shake it off."
+      ],
+      "qs": [
+        "Floating above it all",
+        "Shut up and move",
+        "Shake the haters off"
+      ]
+    },
+    {
+      "id": "en.son.27",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Starboy.",
+        "Despacito.",
+        "Good 4 u.",
+        "As it was.",
+        "Stay."
+      ],
+      "qs": [
+        "Feeling like a starboy",
+        "Slow down a little",
+        "Stay a while longer"
+      ]
+    },
+    {
+      "id": "en.son.28",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Dynamite.",
+        "Radioactive.",
+        "Counting stars.",
+        "Sugar.",
+        "Happy."
+      ],
+      "qs": [
+        "Light up like dynamite",
+        "Count every star",
+        "Happy for real"
+      ]
+    },
+    {
+      "id": "en.son.29",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Wake me up when September ends.",
+        "Youth.",
+        "Smells like freedom.",
+        "Take me home, country roads.",
+        "Sweet child o' mine."
+      ],
+      "qs": [
+        "Wake me up later",
+        "Forever young at heart",
+        "Take the country road home"
+      ]
+    },
+    {
+      "id": "en.son.30",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Born to run.",
+        "Hotel California.",
+        "Like a rolling stone.",
+        "Stairway to heaven.",
+        "Bohemian rhapsody."
+      ],
+      "qs": [
+        "Born to keep running",
+        "Check into Hotel California",
+        "Is this real life"
+      ]
+    },
+    {
+      "id": "en.son.31",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Wonderwall.",
+        "Sweet caroline.",
+        "Livin' on a prayer.",
+        "Dancing queen.",
+        "Thriller."
+      ],
+      "qs": [
+        "Stop crying your heart out",
+        "Sweet Caroline, sing it",
+        "Thriller night chills"
+      ]
+    },
+    {
+      "id": "en.son.32",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Smooth criminal.",
+        "Let it be.",
+        "Blowin' in the wind.",
+        "What a wonderful world.",
+        "Man in the mirror."
+      ],
+      "qs": [
+        "How smooth, criminal",
+        "Let it be, let it be",
+        "Mirror mirror, change me"
+      ]
+    },
+    {
+      "id": "en.son.33",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Heal the world, make it a better place.",
+        "Where is the love?",
+        "Another brick in the wall.",
+        "Earth song.",
+        "Change the world."
+      ],
+      "qs": [
+        "Heal something today",
+        "Where did the love go",
+        "Change one small thing"
+      ]
+    },
+    {
+      "id": "en.son.34",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "We are the world.",
+        "Time after time.",
+        "Space oddity.",
+        "Heroes.",
+        "Bridge over troubled water."
+      ],
+      "qs": [
+        "We are the people",
+        "Time after time again",
+        "Be somebody's hero"
+      ]
+    },
+    {
+      "id": "en.son.35",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Stand by me.",
+        "Lean on me.",
+        "Ain't no mountain high enough.",
+        "R-E-S-P-E-C-T.",
+        "Superstition."
+      ],
+      "qs": [
+        "Stand beside me",
+        "Lean on someone",
+        "Show some respect"
+      ]
+    },
+    {
+      "id": "en.son.36",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Fast car, slow life.",
+        "Redemption song.",
+        "Karma police.",
+        "Zombie.",
+        "Mad world."
+      ],
+      "qs": [
+        "Slow life, fast car",
+        "Redemption arc",
+        "What a mad world"
+      ]
+    },
+    {
+      "id": "en.son.37",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Comfortably numb.",
+        "Losing my mind.",
+        "Fly me to the moon.",
+        "My way.",
+        "Unforgettable."
+      ],
+      "qs": [
+        "Comfortably numb today",
+        "Fly me somewhere",
+        "Do it your way"
+      ]
+    },
+    {
+      "id": "en.son.38",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Feeling good.",
+        "Dream a little dream of me.",
+        "At last.",
+        "Georgia on my mind.",
+        "Hallelujah."
+      ],
+      "qs": [
+        "Feeling genuinely good",
+        "At long last",
+        "Hallelujah indeed"
+      ]
+    },
+    {
+      "id": "en.son.39",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Over the rainbow.",
+        "Singing in the rain.",
+        "What a difference a day made.",
+        "To the moon and back.",
+        "End of the road."
+      ],
+      "qs": [
+        "Somewhere past the rainbow",
+        "Dancing through the rain",
+        "To the moon and back, deal"
+      ]
+    },
+    {
+      "id": "en.cit.01",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "The only true wisdom is in knowing you know nothing.",
+        "An unexamined life is not worth living.",
+        "Happiness depends upon ourselves.",
+        "We are what we repeatedly do. Excellence, then, is not an act, but a habit.",
+        "He who has a why to live can bear almost any how."
+      ],
+      "qs": [
+        "How wise are you really",
+        "Examine this life",
+        "Where does happiness live"
+      ]
+    },
+    {
+      "id": "en.cit.02",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "That which does not kill us makes us stronger.",
+        "I think, therefore I am.",
+        "Life must be understood backward. But it must be lived forward.",
+        "The only thing I know is that I know nothing.",
+        "Be the change that you wish to see in the world."
+      ],
+      "qs": [
+        "Stronger than yesterday",
+        "Think, therefore what",
+        "Change something today"
+      ]
+    },
+    {
+      "id": "en.cit.03",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Live as if you were to die tomorrow. Learn as if you were to live forever.",
+        "An eye for an eye only ends up making the whole world blind.",
+        "In three words I can sum up everything I've learned about life: it goes on.",
+        "Life is what happens when you're busy making other plans.",
+        "Turn your wounds into wisdom."
+      ],
+      "qs": [
+        "Live it like it's last",
+        "Life goes on, so",
+        "Turn pain into wisdom"
+      ]
+    },
+    {
+      "id": "en.cit.04",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "The purpose of our lives is to be happy.",
+        "Life is 10% what happens to you and 90% how you react to it.",
+        "Get busy living or get busy dying.",
+        "You only live once, but if you do it right, once is enough.",
+        "In the end, it's not the years in your life that count. It's the life in your years."
+      ],
+      "qs": [
+        "What's the point of it all",
+        "React better than this",
+        "One life, use it well"
+      ]
+    },
+    {
+      "id": "en.cit.05",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "The unexamined life is not worth living.",
+        "Do not go where the path may lead, go instead where there is no path and leave a trail.",
+        "To be yourself in a world that is constantly trying to make you something else is the greatest accomplishment.",
+        "It is during our darkest moments that we must focus to see the light.",
+        "The mind is everything. What you think you become."
+      ],
+      "qs": [
+        "Blaze your own trail",
+        "Stay weird, stay you",
+        "Master your own mind"
+      ]
+    },
+    {
+      "id": "en.cit.06",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Peace comes from within. Do not seek it without.",
+        "Knowledge speaks, but wisdom listens.",
+        "Everything has beauty, but not everyone sees it.",
+        "It does not matter how slowly you go as long as you do not stop.",
+        "Life is really simple, but we insist on making it complicated."
+      ],
+      "qs": [
+        "Find peace inside",
+        "Listen more than talk",
+        "Slow progress counts"
+      ]
+    },
+    {
+      "id": "en.cit.07",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Simplicity is the ultimate sophistication.",
+        "Learning never exhausts the mind.",
+        "Where there is love there is life.",
+        "The only limit to our realization of tomorrow will be our doubts of today.",
+        "Never let the fear of striking out keep you from playing the game."
+      ],
+      "qs": [
+        "Keep it simple, genius",
+        "Love is a place",
+        "Swing and miss, so what"
+      ]
+    },
+    {
+      "id": "en.cit.08",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Money and success don't change people; they merely amplify what is already there.",
+        "Not all those who wander are lost.",
+        "It is never too late to be what you might have been.",
+        "There is no charm equal to tenderness of heart.",
+        "To love oneself is the beginning of a lifelong romance."
+      ],
+      "qs": [
+        "Amplify the good stuff",
+        "Wander without getting lost",
+        "Romance yourself first"
+      ]
+    },
+    {
+      "id": "en.cit.09",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Imagination is more important than knowledge.",
+        "Life is like riding a bicycle. To keep your balance, you must keep moving.",
+        "Try not to become a man of success, but rather try to become a man of value.",
+        "Two things are infinite: the universe and human stupidity; and I'm not sure about the universe.",
+        "If I have seen further it is by standing on the shoulders of Giants."
+      ],
+      "qs": [
+        "Imagine bigger",
+        "Whose shoulders next",
+        "Stupid or infinite"
+      ]
+    },
+    {
+      "id": "en.cit.10",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Nothing in life is to be feared, it is only to be understood.",
+        "Be less curious about people and more curious about ideas.",
+        "Intelligence is the ability to adapt to change.",
+        "Look up at the stars and not down at your feet.",
+        "However difficult life may seem, there is always something you can do and succeed at."
+      ],
+      "qs": [
+        "Understand, don't fear",
+        "Eyes on the stars",
+        "Adapt or rust"
+      ]
+    },
+    {
+      "id": "en.cit.11",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Science is a way of thinking much more than it is a body of knowledge.",
+        "Somewhere, something incredible is waiting to be known.",
+        "The good thing about science is that it's true whether or not you believe in it.",
+        "Genius is one percent inspiration and ninety-nine percent perspiration.",
+        "I have not failed. I've just found 10,000 ways that won't work."
+      ],
+      "qs": [
+        "Something incredible waits",
+        "Sweat over spark",
+        "Ten thousand tries"
+      ]
+    },
+    {
+      "id": "en.cit.12",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "The present is theirs; the future, for which I really worked, is mine.",
+        "If you want to find the secrets of the universe, think in terms of energy, frequency and vibration.",
+        "Innovation distinguishes between a leader and a follower.",
+        "Stay hungry, stay foolish.",
+        "Your time is limited, so don't waste it living someone else's life."
+      ],
+      "qs": [
+        "Vibrate higher",
+        "Hungry and foolish, always",
+        "Whose life are you living"
+      ]
+    },
+    {
+      "id": "en.cit.13",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "The people who are crazy enough to think they can change the world are the ones who do.",
+        "When something is important enough, you do it even if the odds are not in your favor.",
+        "Persistence is very important. You should not give up unless you are forced to give up.",
+        "Move fast and break things. Unless you are breaking stuff, you are not moving fast enough.",
+        "The biggest risk is not taking any risk."
+      ],
+      "qs": [
+        "Crazy enough to try",
+        "Persist through ugly",
+        "Risk it or regret it"
+      ]
+    },
+    {
+      "id": "en.cit.14",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "If you double the number of experiments you do per year you're going to double your inventiveness.",
+        "Your brand is what other people say about you when you're not in the room.",
+        "It's fine to celebrate success, but it is more important to heed the lessons of failure.",
+        "Content is king.",
+        "Technology is just a tool. In terms of getting the kids working together and motivating them, the teacher is the most important."
+      ],
+      "qs": [
+        "What do they say about you",
+        "Learn from the flop",
+        "Content over noise"
+      ]
+    },
+    {
+      "id": "en.cit.15",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "The computer was born to solve problems that did not exist before.",
+        "The measure of intelligence is the ability to change.",
+        "Logic will get you from A to Z; imagination will get you everywhere.",
+        "An investment in knowledge pays the best interest.",
+        "Tell me and I forget. Teach me and I remember. Involve me and I learn."
+      ],
+      "qs": [
+        "Solve a problem today",
+        "Ride logic, fly imagination",
+        "Get your hands dirty learning"
+      ]
+    },
+    {
+      "id": "en.cit.16",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "By failing to prepare, you are preparing to fail.",
+        "Equipped with his five senses, man explores the universe around him and calls the adventure Science.",
+        "Astronomy compels the soul to look upwards and leads us from this world to another.",
+        "We build too many walls and not enough bridges.",
+        "Simplicity is the prerequisite for reliability."
+      ],
+      "qs": [
+        "Fail to plan, plan",
+        "Build bridges, burn walls",
+        "Simple scales"
+      ]
+    },
+    {
+      "id": "en.cit.17",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Success is not final, failure is not fatal: it is the courage to continue that counts.",
+        "If you're going through hell, keep going.",
+        "Attitude is a little thing that makes a big difference.",
+        "The price of greatness is responsibility.",
+        "Never, never, never give up."
+      ],
+      "qs": [
+        "Courage to continue",
+        "Walk through hell",
+        "Sweat the small attitude"
+      ]
+    },
+    {
+      "id": "en.cit.18",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "In the middle of difficulty lies opportunity.",
+        "It always seems impossible until it's done.",
+        "The greatest glory in living lies not in never falling, but in rising every time we fall.",
+        "Education is the most powerful weapon which you can use to change the world.",
+        "Do one thing every day that scares you."
+      ],
+      "qs": [
+        "Impossible is temporary",
+        "Fall seven, rise eight",
+        "Scare yourself daily"
+      ]
+    },
+    {
+      "id": "en.cit.19",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "No one can make you feel inferior without your consent.",
+        "The future belongs to those who believe in the beauty of their dreams.",
+        "Ask not what your country can do for you — ask what you can do for your country.",
+        "Change is the law of life. And those who look only to the past or present are certain to miss the future.",
+        "I have a dream."
+      ],
+      "qs": [
+        "Inferior to no one",
+        "Dream out loud",
+        "Ask what you give"
+      ]
+    },
+    {
+      "id": "en.cit.20",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Darkness cannot drive out darkness; only light can do that. Hate cannot drive out hate; only love can do that.",
+        "The time is always right to do what is right.",
+        "Our lives begin to end the day we become silent about things that matter.",
+        "Believe you can and you're halfway there.",
+        "Do what you can, with what you have, where you are."
+      ],
+      "qs": [
+        "Answer hate with light",
+        "Halfway by believing",
+        "Use what you have now"
+      ]
+    },
+    {
+      "id": "en.cit.21",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Keep your eyes on the stars, and your feet on the ground.",
+        "Courage is grace under pressure.",
+        "A man can be destroyed but not defeated.",
+        "The way to get started is to quit talking and begin doing.",
+        "All our dreams can come true, if we have the courage to pursue them."
+      ],
+      "qs": [
+        "Stars above, feet below",
+        "Destroyed, never defeated",
+        "Less chat, more do"
+      ]
+    },
+    {
+      "id": "en.cit.22",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "If you can dream it, you can do it.",
+        "I power through challenges because I focus on my goals.",
+        "I've failed over and over and over again in my life. And that is why I succeed.",
+        "Some people want it to happen, some wish it would happen, others make it happen.",
+        "The secret of getting ahead is getting started."
+      ],
+      "qs": [
+        "If you can dream it",
+        "Fail your way up",
+        "Start before ready"
+      ]
+    },
+    {
+      "id": "en.cit.23",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Twenty years from now you will be more disappointed by the things that you didn't do than by the ones you did do.",
+        "Courage is resistance to fear, mastery of fear — not absence of fear.",
+        "Action is the foundational key to all success.",
+        "Everything you can imagine is real.",
+        "Opportunity is missed by most people because it is dressed in overalls and looks like work."
+      ],
+      "qs": [
+        "Regret the undone",
+        "Imagine it real",
+        "Opportunity in overalls"
+      ]
+    },
+    {
+      "id": "en.cit.24",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Don't watch the clock; do what it does. Keep going.",
+        "Hardships often prepare ordinary people for an extraordinary destiny.",
+        "You are never too old to set another goal or to dream a new dream.",
+        "A leader is one who knows the way, goes the way, and shows the way.",
+        "Great minds discuss ideas; average minds discuss events; small minds discuss people."
+      ],
+      "qs": [
+        "Ignore the clock",
+        "New dreams at any age",
+        "Discuss ideas, not people"
+      ]
+    },
+    {
+      "id": "en.cit.25",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "To be, or not to be, that is the question.",
+        "All the world's a stage, and all the men and women merely players.",
+        "Love all, trust a few, do wrong to none.",
+        "The course of true love never did run smooth.",
+        "We are such stuff as dreams are made on."
+      ],
+      "qs": [
+        "To be, honestly",
+        "Exit stage left",
+        "Smooth course or true love"
+      ]
+    },
+    {
+      "id": "en.cit.26",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "There is no friend as loyal as a book.",
+        "If you tell the truth, you don't have to remember anything.",
+        "The banker is a fellow who lends you his umbrella when the sun is shining, but wants it back the minute it begins to rain.",
+        "Always forgive your enemies; nothing annoys them so much.",
+        "We are all in the gutter, but some of us are looking at the stars."
+      ],
+      "qs": [
+        "Loyal like a book",
+        "Forgive to annoy them",
+        "Gutter feet, starry eyes"
+      ]
+    },
+    {
+      "id": "en.cit.27",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Be yourself; everyone else is already taken.",
+        "A joke is a very serious thing.",
+        "You can never get a cup of tea large enough or a book long enough to suit me.",
+        "Words are, in my not-so-humble opinion, our most inexhaustible source of magic.",
+        "It is our choices, Harry, that show what we truly are, far more than our abilities."
+      ],
+      "qs": [
+        "Taken already, be you",
+        "Books over everything",
+        "Choose, don't coast"
+      ]
+    },
+    {
+      "id": "en.cit.28",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Rock bottom became the solid foundation on which I rebuilt my life.",
+        "Until I feared I would lose it, I never loved to read. One does not love breathing.",
+        "Real courage is when you know you're licked before you begin, but you begin anyway and see it through no matter what.",
+        "I words cannot express how much I love you.",
+        "There is no agony like bearing an untold story inside you."
+      ],
+      "qs": [
+        "Rebuild on rock bottom",
+        "Brave before the start",
+        "Stories stuck inside"
+      ]
+    },
+    {
+      "id": "en.cit.29",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "I've learned that people will forget what you said, people will forget what you did, but people will never forget how you made them feel.",
+        "You can't use up creativity. The more you use, the more you have.",
+        "Art is the lie that enables us to realize the truth.",
+        "Every child is an artist. The problem is how to remain an artist once he grows up.",
+        "I dream my painting and I paint my dream."
+      ],
+      "qs": [
+        "Creativity multiplies",
+        "Stay childlike, stay artist",
+        "Paint the dream literal"
+      ]
+    },
+    {
+      "id": "en.cit.30",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "If you hear a voice within you say 'you cannot paint,' then by all means paint, and that voice will be silenced.",
+        "Great things are done by a series of small things brought together.",
+        "The purpose of art is washing the dust of daily life off our souls.",
+        "Music can change the world because it can change people.",
+        "Without music, life would be a mistake."
+      ],
+      "qs": [
+        "Paint through the voices",
+        "Dust off that soul",
+        "No music, no life"
+      ]
+    },
+    {
+      "id": "en.cit.31",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "To create is to live twice.",
+        "In the midst of winter, I found there was, within me, an invincible summer.",
+        "Freedom is nothing but a chance to be better.",
+        "Doubt is the origin of wisdom.",
+        "The place to improve the world is first and foremost in one's own heart and head and hands."
+      ],
+      "qs": [
+        "Live it twice",
+        "Doubt everything once",
+        "Fix your own heart first"
+      ]
+    },
+    {
+      "id": "en.cit.32",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Beauty is in the eye of the beholder.",
+        "Brevity is the soul of wit.",
+        "A room without books is like a body without a soul.",
+        "Gratitude is not only the greatest of virtues, but the parent of all others.",
+        "Silence is one of the great arts of conversation."
+      ],
+      "qs": [
+        "Beauty is whose call",
+        "Witty and brief",
+        "A room with no books"
+      ]
+    },
+    {
+      "id": "en.cit.33",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Risk comes from not knowing what you're doing.",
+        "Rule No. 1: Never lose money. Rule No. 2: Never forget rule No. 1.",
+        "It takes 20 years to build a reputation and five minutes to ruin it.",
+        "Price is what you pay. Value is what you get.",
+        "Be fearful when others are greedy and greedy when others are fearful."
+      ],
+      "qs": [
+        "Know what you're doing",
+        "Rule one of money",
+        "Twenty years to build"
+      ]
+    },
+    {
+      "id": "en.cit.34",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "In the business world, the rearview mirror is always clearer than the windshield.",
+        "The most important investment you can make is in yourself.",
+        "If you don't find a way to make money while you sleep, you will work until you die.",
+        "Do not save what is left after spending, but spend what is left after saving.",
+        "Success is getting what you want, happiness is wanting what you get."
+      ],
+      "qs": [
+        "Invest in the mirror",
+        "Want versus have",
+        "Earn while asleep"
+      ]
+    },
+    {
+      "id": "en.cit.35",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Spread love everywhere you go. Let no one ever come to you without leaving happier.",
+        "If you judge people, you have no time to love them.",
+        "Peace begins with a smile.",
+        "Not all of us can do great things. But we can do small things with great love.",
+        "Yesterday is gone. Tomorrow has not yet come. We have only today. Let us begin."
+      ],
+      "qs": [
+        "Leave people happier",
+        "Judge less, love more",
+        "Start with a smile"
+      ]
+    },
+    {
+      "id": "en.cit.36",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Real power is not about control, but about impact.",
+        "When they go low, we go high.",
+        "There is no limit to what we, as women, can accomplish.",
+        "Yes we can.",
+        "The future rewards those who press on. I don't have time to feel sorry for myself."
+      ],
+      "qs": [
+        "When they dip, rise",
+        "Yes, you can",
+        "No self compromise"
+      ]
+    },
+    {
+      "id": "en.cit.37",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "If you're walking down the right path and you're willing to keep walking, eventually you'll make progress.",
+        "Don't compromise yourself. You're all you've got.",
+        "A person who never made a mistake never tried anything new.",
+        "I am not afraid of storms, for I am learning how to sail my ship.",
+        "Life shrinks or expands in proportion to one's courage."
+      ],
+      "qs": [
+        "Keep walking that path",
+        "New mistakes only",
+        "Sail your own storm"
+      ]
+    },
+    {
+      "id": "en.cit.38",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Happiness is not something ready made. It comes from your own actions.",
+        "If you think you are too small to make a difference, try sleeping with a mosquito.",
+        "Choose a job you love, and you will never have to work a day in your life.",
+        "Success usually comes to those who are too busy to be looking for it.",
+        "Go confidently in the direction of your dreams! Live the life you've imagined."
+      ],
+      "qs": [
+        "Happiness is action",
+        "Small but mighty",
+        "Love the job, skip the work"
+      ]
+    },
+    {
+      "id": "en.cit.39",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Things do not change; we change.",
+        "To be great is to be misunderstood.",
+        "Whatever you do, do it well.",
+        "If you want to lift yourself up, lift up someone else.",
+        "I attribute my success to this: I never gave or took any excuse."
+      ],
+      "qs": [
+        "Change or stay same",
+        "Do it properly",
+        "Zero excuses given"
+      ]
+    },
+    {
+      "id": "en.cit.40",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "You miss 100% of the shots you don't take.",
+        "Defeat is not bitter unless you swallow it.",
+        "Failure is the opportunity to begin again more intelligently.",
+        "Whether you think you can, or you think you can't — you're right.",
+        "Quality means doing it right when no one is looking."
+      ],
+      "qs": [
+        "Take the shot",
+        "Swallow defeat, never",
+        "Think you can, prove it"
+      ]
+    },
+    {
+      "id": "en.arg.01",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "No cap.",
+        "That's so bussin'.",
+        "She has immaculate vibes.",
+        "He's got unspoken Rizz.",
+        "Main character energy."
+      ],
+      "qs": [
+        "No cap, for real",
+        "Main character today",
+        "Bussin, literally"
+      ]
+    },
+    {
+      "id": "en.arg.02",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Spill the tea.",
+        "It's giving vintage.",
+        "Left no crumbs.",
+        "Periodt.",
+        "Living rent-free in my head."
+      ],
+      "qs": [
+        "Spill it already",
+        "Left zero crumbs",
+        "Stuck in my head, help"
+      ]
+    },
+    {
+      "id": "en.arg.03",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "I'm dead.",
+        "That's a major red flag.",
+        "Green flag behavior.",
+        "Caught in 4K.",
+        "Flexing on the 'Gram."
+      ],
+      "qs": [
+        "Actually deceased",
+        "Red flag parade",
+        "Caught red-handed, huh"
+      ]
+    },
+    {
+      "id": "en.arg.04",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Side eye.",
+        "Glow up.",
+        "Era.",
+        "Ghosting someone.",
+        "Soft launch."
+      ],
+      "qs": [
+        "Judging you softly",
+        "Glowing lately",
+        "New era, who dis"
+      ]
+    },
+    {
+      "id": "en.arg.05",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Hard launch.",
+        "Situationship.",
+        "Breadcrumbing.",
+        "I'm weak.",
+        "Touch grass."
+      ],
+      "qs": [
+        "Make it official",
+        "Define the relationship",
+        "Go touch grass"
+      ]
+    },
+    {
+      "id": "en.arg.06",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "It's a flex.",
+        "Don't be a hater.",
+        "Drip check.",
+        "High key.",
+        "Low key."
+      ],
+      "qs": [
+        "Flex, but politely",
+        "Haters gonna hate",
+        "High energy or low battery"
+      ]
+    },
+    {
+      "id": "en.arg.07",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Slay all day.",
+        "Slaps.",
+        "Clout chasing.",
+        "Understood the assignment.",
+        "Aesthetic on point."
+      ],
+      "qs": [
+        "Slayed beyond repair",
+        "This absolutely slaps",
+        "Nailed the brief"
+      ]
+    },
+    {
+      "id": "en.arg.08",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Cancel culture.",
+        "Vibe check.",
+        "Doomscrolling.",
+        "Chronically online.",
+        "Big W."
+      ],
+      "qs": [
+        "Canceled or forgiven",
+        "Check this vibe",
+        "Take the W"
+      ]
+    },
+    {
+      "id": "en.arg.09",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Bet.",
+        "Say less.",
+        "For real though.",
+        "I can't even.",
+        "Big yikes."
+      ],
+      "qs": [
+        "Bet, locked in",
+        "Say no more",
+        "Yikes forever"
+      ]
+    },
+    {
+      "id": "en.arg.10",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "It hits different.",
+        "Salty much?",
+        "Savage!",
+        "That's sus.",
+        "Don't be basic."
+      ],
+      "qs": [
+        "Hits too close",
+        "Feeling salty today",
+        "Kinda sus, no"
+      ]
+    },
+    {
+      "id": "en.arg.11",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Felt that.",
+        "Mood.",
+        "Valid.",
+        "It is what it is.",
+        "Real ones know."
+      ],
+      "qs": [
+        "Felt that in my bones",
+        "Certified mood",
+        "Real ones get it"
+      ]
+    },
+    {
+      "id": "en.arg.12",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "No flex, but...",
+        "I'm down.",
+        "I'm out.",
+        "Keep it 100.",
+        "My bad."
+      ],
+      "qs": [
+        "Count me in",
+        "Hundred percent real",
+        "Totally my bad"
+      ]
+    },
+    {
+      "id": "en.arg.13",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "No worries.",
+        "Same difference.",
+        "Deadass?",
+        "Don't sleep on this.",
+        "Straight facts."
+      ],
+      "qs": [
+        "Zero worries here",
+        "Same thing, basically",
+        "Deadass serious"
+      ]
+    },
+    {
+      "id": "en.arg.14",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "I'm shook.",
+        "Hits the spot.",
+        "Bummer!",
+        "Not gonna lie (NGL).",
+        "To be fair (TBF)."
+      ],
+      "qs": [
+        "Shook to the core",
+        "Exactly what I needed",
+        "Not gonna lie here"
+      ]
+    },
+    {
+      "id": "en.arg.15",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "I'm screaming.",
+        "Cringe.",
+        "Fingers crossed.",
+        "Catch feelings.",
+        "Good call."
+      ],
+      "qs": [
+        "Screaming internally",
+        "Cringe overload",
+        "Solid call, honestly"
+      ]
+    },
+    {
+      "id": "en.arg.16",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Out of pocket.",
+        "Living my best life.",
+        "Bite the bullet.",
+        "Ghost mode.",
+        "Chef's kiss."
+      ],
+      "qs": [
+        "Way out of pocket",
+        "Best life loading",
+        "Mwah, chef's kiss"
+      ]
+    },
+    {
+      "id": "en.arg.17",
+      "type": "CHAT",
+      "actionId": "1509000256376",
+      "a": [
+        "Quiet quitting.",
+        "Hustle culture.",
+        "Side hustle.",
+        "Work-life balance.",
+        "Brain dump."
+      ],
+      "qs": [
+        "Quietly quitting today",
+        "Side hustle ideas",
+        "Dump it all out"
+      ]
+    },
+    {
+      "id": "en.arg.18",
+      "type": "CHAT",
+      "actionId": "1509000338636",
+      "a": [
+        "Burnout is real.",
+        "Circle back later.",
+        "Take it offline.",
+        "Touch base.",
+        "Game changer."
+      ],
+      "qs": [
+        "Running on empty",
+        "Circle back never",
+        "Take this offline"
+      ]
+    },
+    {
+      "id": "en.arg.19",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Work hard, play hard.",
+        "Think outside the box.",
+        "On the same page.",
+        "Low-hanging fruit.",
+        "Pivoting."
+      ],
+      "qs": [
+        "Hustle and brunch",
+        "Think sideways",
+        "Grab the low fruit first"
+      ]
+    },
+    {
+      "id": "en.arg.20",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Bite-sized information.",
+        "Soft skills matter.",
+        "Proactive mindset.",
+        "Bandwidth.",
+        "Level up."
+      ],
+      "qs": [
+        "Small bites only",
+        "Soft skills flex",
+        "No bandwidth left"
+      ]
+    },
+    {
+      "id": "en.arg.21",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Deep work.",
+        "Digital nomad.",
+        "Multitasking mode.",
+        "Hit the ground running.",
+        "Set boundaries."
+      ],
+      "qs": [
+        "Deep work cave",
+        "Work from anywhere",
+        "Draw the line here"
+      ]
+    },
+    {
+      "id": "en.arg.22",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Work smart, not hard.",
+        "Self-care day.",
+        "Mental health break.",
+        "Out of the loop.",
+        "In the loop."
+      ],
+      "qs": [
+        "Work smarter today",
+        "Mental health first",
+        "Keep me posted"
+      ]
+    },
+    {
+      "id": "en.arg.23",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Empower yourself.",
+        "Win-win situation.",
+        "Fast-track.",
+        "Break the ice.",
+        "Keep momentum."
+      ],
+      "qs": [
+        "Power to the people",
+        "Everybody wins",
+        "Break that ice"
+      ]
+    },
+    {
+      "id": "en.arg.24",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Zero to one.",
+        "Feedback loop.",
+        "Core memory unlocked.",
+        "Reality check.",
+        "Stay in your lane."
+      ],
+      "qs": [
+        "From zero to something",
+        "Reality stings",
+        "Mind your own lane"
+      ]
+    },
+    {
+      "id": "en.arg.25",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "It's lit!",
+        "Turn up!",
+        "Vibe tribe.",
+        "Party animal.",
+        "FOMO (Fear Of Missing Out)."
+      ],
+      "qs": [
+        "Absolutely lit tonight",
+        "Turn it all the way up",
+        "FOMO hitting hard"
+      ]
+    },
+    {
+      "id": "en.arg.26",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "JOMO (Joy Of Missing Out).",
+        "Snacked.",
+        "Serving looks.",
+        "Dressed to impress.",
+        "Fit check."
+      ],
+      "qs": [
+        "Joyfully missing out",
+        "Look at you, serving",
+        "Fit goes hard"
+      ]
+    },
+    {
+      "id": "en.arg.27",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Binge-watching.",
+        "Sip and paint.",
+        "Main stage vibes.",
+        "Good vibes only.",
+        "Night owl."
+      ],
+      "qs": [
+        "One more episode, promise",
+        "Only good vibes",
+        "Certified night owl"
+      ]
+    },
+    {
+      "id": "en.arg.28",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Early bird.",
+        "Squad goals.",
+        "Glow in the dark.",
+        "Mic drop.",
+        "Pop off!"
+      ],
+      "qs": [
+        "Up with the birds",
+        "Squad up for real",
+        "Drop the mic already"
+      ]
+    },
+    {
+      "id": "en.arg.29",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Go hard or go home.",
+        "Unwind and relax.",
+        "Road trip ready.",
+        "Bucket list item.",
+        "Wanderlust."
+      ],
+      "qs": [
+        "All in or nothing",
+        "Unwind o'clock",
+        "Wander often, wonder always"
+      ]
+    },
+    {
+      "id": "en.arg.30",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Chill vibes.",
+        "All-nighter.",
+        "Pre-game.",
+        "After-party.",
+        "Throwback."
+      ],
+      "qs": [
+        "Chill mode activated",
+        "Pulling an all-nighter",
+        "Throwback energy"
+      ]
+    },
+    {
+      "id": "en.arg.31",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Flashback Friday.",
+        "Photo dump.",
+        "Behind the scenes.",
+        "Sneak peek.",
+        "Trendsetter."
+      ],
+      "qs": [
+        "Friday flashbacks",
+        "Dump the whole camera roll",
+        "Set the trend, don't chase it"
+      ]
+    },
+    {
+      "id": "en.arg.32",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Influencer status.",
+        "Viral hit.",
+        "One-hit wonder.",
+        "Chart-topper.",
+        "Cult classic."
+      ],
+      "qs": [
+        "Influence, but make it good",
+        "Viral for the wrong reasons",
+        "Cult favorite energy"
+      ]
+    },
+    {
+      "id": "en.arg.33",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Manifesting it.",
+        "Protect your peace.",
+        "Trust the process.",
+        "Everything happens for a reason.",
+        "Embrace the chaos."
+      ],
+      "qs": [
+        "Manifesting hard",
+        "Peace over drama",
+        "Hug the chaos"
+      ]
+    },
+    {
+      "id": "en.arg.34",
+      "type": "CHAT",
+      "actionId": "1509000313549",
+      "a": [
+        "Self-love first.",
+        "Grounded and focused.",
+        "Mindfulness moment.",
+        "Energy vampires.",
+        "Unapologetically me."
+      ],
+      "qs": [
+        "Me first, unapologetic",
+        "Drain-proof your energy",
+        "Grounded, not boring"
+      ]
+    },
+    {
+      "id": "en.arg.35",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Growth mindset.",
+        "Overthinking mode.",
+        "Imposter syndrome.",
+        "Comfort zone.",
+        "Break boundaries."
+      ],
+      "qs": [
+        "Grow through it",
+        "Brain won't shut up",
+        "Comfy is a trap"
+      ]
+    },
+    {
+      "id": "en.arg.36",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Inner peace.",
+        "Positive reinforcement.",
+        "Emotional maturity.",
+        "Let go of expectations.",
+        "Be present."
+      ],
+      "qs": [
+        "Peace looks good on you",
+        "Expect nothing, enjoy all",
+        "Here, now, present"
+      ]
+    },
+    {
+      "id": "en.arg.37",
+      "type": "CHAT",
+      "actionId": "1509000284732",
+      "a": [
+        "Radiate positivity.",
+        "Stay humble, hustle hard.",
+        "Find your spark.",
+        "Choose joy.",
+        "Kindness is free."
+      ],
+      "qs": [
+        "Glow from inside",
+        "Humble with receipts",
+        "Spark joy deliberately"
+      ]
+    },
+    {
+      "id": "en.arg.38",
+      "type": "CHAT",
+      "actionId": "1464835936026",
+      "a": [
+        "Quality over quantity.",
+        "Less is more.",
+        "Stay true to yourself.",
+        "New day, new energy.",
+        "Silver lining."
+      ],
+      "qs": [
+        "Fewer, but better",
+        "Less stuff, more life",
+        "Find that silver lining"
+      ]
+    },
+    {
+      "id": "en.arg.39",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Blessing in disguise.",
+        "Count your blessings.",
+        "Day one or day ninety-nine.",
+        "Keep moving forward.",
+        "Make it count."
+      ],
+      "qs": [
+        "Count the good stuff",
+        "Forward only",
+        "Make today count double"
+      ]
+    },
+    {
+      "id": "en.arg.40",
+      "type": "CHAT",
+      "actionId": "1464835936042",
+      "a": [
+        "Own your story.",
+        "Unstoppable force.",
+        "Breathe in, breathe out.",
+        "Hope fuels action.",
+        "The best is yet to come."
+      ],
+      "qs": [
+        "Own every chapter",
+        "Literally unstoppable",
+        "Best chapter next"
+      ]
     }
   ]
 }
