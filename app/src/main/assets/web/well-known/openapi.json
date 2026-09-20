@@ -550,6 +550,115 @@
         "operationId": "actionStop_post"
       }
     },
+    "/api/action/pack/download": {
+      "get": {
+        "tags": [
+          "action"
+        ],
+        "summary": "下載動作包並自動替換 /sdcard/actions（舊改名 actions-backup）",
+        "description": "固定 URL（https://github.com/arthurson/ubtech-open-alpha2/releases/download/beta/actions.zip），後端直落 zip＋自動 unzip 到 sdcard，舊 /sdcard/actions 改名 /sdcard/actions-backup。進度經 actions_pack event / action/pack/status 查。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "已開始下載（進度經 actions_pack event / action/pack/status 查）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "actionPackDownload_get"
+      }
+    },
+    "/api/action/pack/status": {
+      "get": {
+        "tags": [
+          "action"
+        ],
+        "summary": "動作包下載進度（state/progress/bytes/total）",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "下載狀態",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "actionPackStatus_get"
+      }
+    },
+    "/api/action/pack/cancel": {
+      "get": {
+        "tags": [
+          "action"
+        ],
+        "summary": "取消進行中的動作包下載",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "已取消",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "actionPackCancel_get"
+      }
+    },
     "/api/direct/ubx/list": {
       "get": {
         "tags": [

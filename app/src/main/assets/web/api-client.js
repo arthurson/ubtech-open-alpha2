@@ -22,6 +22,21 @@ const Alpha2Api = (function() {
     return api('action/list', params);
   }
 
+  function actionPackCancel(params) {
+    // 取消進行中的動作包下載
+    return api('action/pack/cancel', params);
+  }
+
+  function actionPackDownload(params) {
+    // 下載動作包並自動替換 /sdcard/actions（舊改名 actions-backup）
+    return api('action/pack/download', params);
+  }
+
+  function actionPackStatus(params) {
+    // 動作包下載進度（state/progress/bytes/total）
+    return api('action/pack/status', params);
+  }
+
   function actionPlay(params) {
     // 按 fileId/中英文名播內建動作（搶佔式；有同目錄 mp3 會同步播配樂）
     return api('action/play', params);
@@ -803,6 +818,9 @@ const Alpha2Api = (function() {
 
   return {
     actionList,
+    actionPackCancel,
+    actionPackDownload,
+    actionPackStatus,
     actionPlay,
     actionStop,
     audioDiagnose,

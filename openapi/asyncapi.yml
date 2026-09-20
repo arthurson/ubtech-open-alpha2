@@ -58,6 +58,7 @@ components:
               # 齊)，加埋十幾個代碼一直有 publish 但呢度冇列嘅 event。
               - accel
               - action_stop
+              - actions_pack
               - alpha2_pir_state
               - asr_partial
               - asr_result

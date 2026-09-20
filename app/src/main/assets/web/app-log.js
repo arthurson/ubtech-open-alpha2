@@ -184,6 +184,15 @@ function appendLog(msg) {
       voskPollDownload();
     }
   }
+  // 動作包下載進度（後端 ActionsPackController.publishPack 主動推，同 vosk_download 一致）。
+  if (msg.type === "actions_pack" && msg.data) {
+    if (typeof actionsPackRenderStatus === "function") actionsPackRenderStatus(msg.data);
+    if (msg.data.state === "done" || msg.data.state === "error" || msg.data.state === "cancelled") {
+      if (typeof actionsPackPollDownloadOnce === "function") actionsPackPollDownloadOnce();
+    } else if (typeof actionsPackPollDownload === "function") {
+      actionsPackPollDownload();
+    }
+  }
   if (msg.type === "sonar_obstacle" && msg.data) {
     sonarThresholdCm = msg.data.thresholdCm;
     sonarHistory.push({ triggered: !!msg.data.triggered });

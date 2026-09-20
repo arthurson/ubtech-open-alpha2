@@ -173,6 +173,19 @@ const I18N = {
   vosk_download_done:      { zh: "✅ 下載＋解壓完成，已自動載入", en: "✅ Downloaded + extracted, auto-loaded" },
   vosk_download_fail_prefix: { zh: "❌ 下載失敗：", en: "❌ Download failed: " },
   vosk_download_cancelled: { zh: "已取消下載", en: "Download cancelled" },
+  // -- 實驗 tab 動作包下載卡（見 ActionsPackController，固定 actions.zip） --
+  actions_pack_heading:   { zh: "⬇ 動作包下載", en: "⬇ Actions Pack Download" },
+  actions_pack_disabled_hint: { zh: "開啟後才會顯示動作包下載", en: "Turn on to show actions pack download" },
+  actions_pack_hint:      { zh: "下載官方動作包並自動解壓到 sdcard（舊 /sdcard/actions 會改名 /sdcard/actions-backup）。完成後去動作頁重新載入列表。",
+                             en: "Download the official actions pack and auto-extract it to sdcard (old /sdcard/actions is renamed to /sdcard/actions-backup). Reload the action list in the Actions tab when done." },
+  actions_pack_url_hint:  { zh: "來源：github release actions.zip（固定連結，後端直落）", en: "Source: github release actions.zip (fixed URL, downloaded by the robot)" },
+  actions_pack_download_btn: { zh: "⬇ 下載 actions.zip", en: "⬇ Download actions.zip" },
+  actions_pack_cancel_btn: { zh: "取消下載", en: "Cancel download" },
+  actions_pack_downloading_prefix: { zh: "下載中", en: "Downloading" },
+  actions_pack_unzipping_hint: { zh: "解壓＋安裝中…", en: "Extracting + installing…" },
+  actions_pack_done:      { zh: "✅ 下載＋解壓完成，舊動作已備份去 actions-backup（去動作頁重新載入列表）", en: "✅ Downloaded + extracted, old actions backed up to actions-backup (reload the list in the Actions tab)" },
+  actions_pack_fail_prefix: { zh: "❌ 下載失敗：", en: "❌ Download failed: " },
+  actions_pack_cancelled: { zh: "已取消下載", en: "Download cancelled" },
   // 語音頁幻聽過濾測試開關面板 (見 index.html voskHalluBox＋app-vosk.js)。
   vosk_hallu_heading:    { zh: "🧪 幻聽過濾測試開關", en: "🧪 Hallucination filter test switches" },
   vosk_hallu_hint:       { zh: "逐個開關做 AB 測試。grammar 切換聽緊會停完重開；前端兩項只存本瀏覽器。",
@@ -486,6 +499,10 @@ function setUiLanguage(lang) {
   // Vosk 模型鍵＋下載鍵＋兩條狀態行都是動態起（名跟 uiLang），重畫一次就一併轉換語言。
   try {
     if (typeof voskApplyUiLanguage === "function") voskApplyUiLanguage();
+  } catch(e) {}
+  // 動作包狀態行一樣動態起，重畫一次就轉語言（不用再問後端）。
+  try {
+    if (typeof actionsPackApplyUiLanguage === "function") actionsPackApplyUiLanguage();
   } catch(e) {}
 }
 

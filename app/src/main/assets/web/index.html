@@ -785,6 +785,31 @@
       </div>
     </section>
 
+    <!-- 動作包下載卡：開關揭開先顯示，固定 actions.zip，後端直落＋自動 unzip
+         到 sdcard 頂層，舊 /sdcard/actions 改名 /sdcard/actions-backup。
+         後端見 ActionsPackController＋action/pack/download|status|cancel。 -->
+    <section class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0" data-i18n="actions_pack_heading">⬇ 動作包下載</h2>
+        <label class="switch-label">
+          <span class="toggle-switch">
+            <input type="checkbox" id="actionsPackCardEnabled" onchange="actionsPackCardToggle()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
+      <p id="actionsPackCardDisabledHint" class="hint" data-i18n="actions_pack_disabled_hint">開啟後才會顯示動作包下載</p>
+      <div id="actionsPackCardBody" style="display:none">
+        <p class="hint" data-i18n="actions_pack_hint">下載官方動作包並自動解壓到 sdcard（舊 /sdcard/actions 會改名 /sdcard/actions-backup）。完成後去動作頁重新載入列表。</p>
+        <p class="hint"><code>https://github.com/arthurson/ubtech-open-alpha2/releases/download/beta/actions.zip</code><br><span data-i18n="actions_pack_url_hint">來源：github release actions.zip（固定連結，後端直落）</span></p>
+        <div class="row" style="margin-top:6px">
+          <button id="actionsPackDlBtn" onclick="actionsPackDownload()" data-i18n="actions_pack_download_btn">⬇ 下載 actions.zip</button>
+          <button class="secondary" id="actionsPackCancelBtn" onclick="actionsPackCancel()" data-i18n="actions_pack_cancel_btn" style="display:none">取消下載</button>
+        </div>
+        <p class="hint" style="margin-top:6px" id="actionsPackStatusOut">—</p>
+      </div>
+    </section>
+
     <section class="card" oncontextmenu="return false" style="-webkit-touch-callout:none;-webkit-user-select:none;user-select:none">
       <div class="row" style="justify-content:space-between;align-items:center">
         <h2 style="margin:0" data-i18n="servo_tuner_heading">🔧 Servo Angle Tuner (20ch)</h2>
@@ -923,6 +948,7 @@
 <script src="app-accel.js"></script>
 <script src="app-qr.js"></script>
 <script src="app-chest.js"></script>
+<script src="app-actions-pack.js"></script>
 <script src="app-log.js"></script>
 
 <!-- ============================================================

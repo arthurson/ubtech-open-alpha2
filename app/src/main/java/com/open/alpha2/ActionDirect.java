@@ -52,6 +52,11 @@ public final class ActionDirect {
         lastPlayedFile = f;
     }
 
+    /** 清 actionInfo.txt 緩存（動作包替換後調用，下次 list 即讀新檔）。 */
+    public synchronized void invalidateCache() {
+        actionInfoCache = null;
+    }
+
     private synchronized List<String[]> loadActionInfo() {
         if (actionInfoCache != null) return actionInfoCache;
         List<String[]> out = new ArrayList<>();

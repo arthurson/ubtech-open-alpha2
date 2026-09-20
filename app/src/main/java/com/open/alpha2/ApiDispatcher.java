@@ -58,6 +58,7 @@ public final class ApiDispatcher {
     private final LocalAlpha2Services localServices;
     // servo/sonar 直調這裡 (放最尾，慣例)。
     private final SonarCenter sonarCenter;
+    private final ActionsPackController actionsPackController;
 
     public ApiDispatcher(Context context, Host host, XiaozhiBridge.HostState sensorState,
             ActionDirect actionDirect, UbxApi ubxApi, ChestQuery chestQuery,
@@ -66,7 +67,8 @@ public final class ApiDispatcher {
             CameraApi cameraApi, AudioCenter audioCenter, RingtoneCenter ringtoneCenter,
             MicCenter micCenter, RobotStub robot,
             GrammarCenter grammarCenter, UbxPlayer ubxPlayer, MusicController musicController,
-            LocalAlpha2Services localServices, SonarCenter sonarCenter) {
+            LocalAlpha2Services localServices, SonarCenter sonarCenter,
+            ActionsPackController actionsPackController) {
         this.appContext = context.getApplicationContext();
         this.host = host;
         this.sensorState = sensorState;
@@ -89,6 +91,7 @@ public final class ApiDispatcher {
         this.musicController = musicController;
         this.localServices = localServices;
         this.sonarCenter = sonarCenter;
+        this.actionsPackController = actionsPackController;
     }
 
     // directChestReady() 內聯：經 appContext 不用 Activity（各 center 自帶副本）。
@@ -182,6 +185,38 @@ public final class ApiDispatcher {
                 // 用戶要求「停止」要連帶做「蹲下站起」回位動作：与手势总停/MCP 共用
                 // stopActionWithRecovery()，回位播不播到不影響停止本身回 true。
                 return MainActivity.codeResponse(actionDirect.stopActionWithRecovery());
+            }
+            // -- 動作包下載＋替換（實驗 tab 動作包卡用；body 在 ActionsPackController，
+            // 薄 delegate，不要在這裡加 logic）--
+            // 固定 URL（見 ActionsPackController.PACK_URL），後端直落 zip＋自動
+            // unzip 到 sdcard，舊 /sdcard/actions 改名 /sdcard/actions-backup。
+            case "action/pack/download": {
+                if (actionsPackController == null) {
+                    return HttpServer.ApiResponse.error("actions pack not initialised");
+                }
+                String err = actionsPackController.startDownload();
+                if (err != null) {
+                    // 正在下載中都回現狀等前端跟進度（同 vosk/download 一致）。
+                    if (err.startsWith("already downloading")) {
+                        return HttpServer.ApiResponse.ok(actionsPackController.statusJson());
+                    }
+                    return HttpServer.ApiResponse.error(err);
+                }
+                return HttpServer.ApiResponse.ok(actionsPackController.statusJson());
+            }
+            case "action/pack/status": {
+                if (actionsPackController == null) {
+                    return HttpServer.ApiResponse.error("actions pack not initialised");
+                }
+                return HttpServer.ApiResponse.ok(actionsPackController.statusJson());
+            }
+            case "action/pack/cancel": {
+                if (actionsPackController == null) {
+                    return HttpServer.ApiResponse.error("actions pack not initialised");
+                }
+                String err = actionsPackController.cancelDownload();
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok(actionsPackController.statusJson());
             }
 
             // -- Ubx 直播（供前端动作 tab：api() 只发 /api/alpha2/*，故在此挂一份；
