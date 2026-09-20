@@ -118,6 +118,15 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
      *  (見 handleSemanticMatch), 靠內容判斷更可靠。 */
     private SemanticMatcherJa semanticMatcherJa;
 
+    /** 德文／意大利文／葡萄牙文／韓文／俄文語意配對引擎實例, 和其他語言版
+     *  同一套機制、獨立資料 (semantic_de/it/pt/ko/ru.json, 見對應 Matcher:
+     *  目前係空庫骨架，內容後加)。接線同其他五語一樣，免內容到咗再改接線。 */
+    private SemanticMatcherDe semanticMatcherDe;
+    private SemanticMatcherIt semanticMatcherIt;
+    private SemanticMatcherPt semanticMatcherPt;
+    private SemanticMatcherKo semanticMatcherKo;
+    private SemanticMatcherRu semanticMatcherRu;
+
     /** Vosk 離線 ASR controller (語音 tab)。單例，onCreate 起，
      *  onDestroy 停。Model 放 sdcard 自動偵測，見 VoskController。 */
     private VoskController vosk;
@@ -231,12 +240,18 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         semanticMatcherEs = new SemanticMatcherEs(this);
         semanticMatcherFr = new SemanticMatcherFr(this);
         semanticMatcherJa = new SemanticMatcherJa(this);
+        semanticMatcherDe = new SemanticMatcherDe(this);
+        semanticMatcherIt = new SemanticMatcherIt(this);
+        semanticMatcherPt = new SemanticMatcherPt(this);
+        semanticMatcherKo = new SemanticMatcherKo(this);
+        semanticMatcherRu = new SemanticMatcherRu(this);
         // Vosk 熔斷 —— vosk-android minSdk 21，API 19 機（這個 APK 要
         // 裝到 4.4）絕對不可以碰 org.vosk.*（native/JNA 即崩潰）。19 機 vosk
         // 維持 null，所有 vosk/* endpoint 經 VoskApi.voskOrError() 回清晰錯誤。
         if (android.os.Build.VERSION.SDK_INT >= 21) {
             try {
-                vosk = new VoskController(this, semanticMatcherZh, semanticMatcherEn, semanticMatcherEs, semanticMatcherFr, semanticMatcherJa);
+                vosk = new VoskController(this, semanticMatcherZh, semanticMatcherEn, semanticMatcherEs, semanticMatcherFr, semanticMatcherJa,
+                        semanticMatcherDe, semanticMatcherIt, semanticMatcherPt, semanticMatcherKo, semanticMatcherRu);
             } catch (Throwable e) {
                 Log.w(TAG, "VoskController init failed", e);
             }
@@ -248,7 +263,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // vosk pause/resume)。null = 用機身目前預設引擎。
         ttsCenter = new TtsCenter(this, vosk);
         ttsCenter.initAndroidTts(null);
-        semanticCenter = new SemanticCenter(semanticMatcherZh, semanticMatcherEn, semanticMatcherEs, semanticMatcherFr, semanticMatcherJa, actionDirect, ttsCenter);
+        semanticCenter = new SemanticCenter(semanticMatcherZh, semanticMatcherEn, semanticMatcherEs, semanticMatcherFr, semanticMatcherJa,
+                semanticMatcherDe, semanticMatcherIt, semanticMatcherPt, semanticMatcherKo, semanticMatcherRu, actionDirect, ttsCenter);
         deviceStatus = new DeviceStatus(this, mainHandler, actionDirect, ubxPlayer, ttsCenter);
         // sticky broadcast 註冊時機不敏感。
         deviceStatus.registerBatteryReceiver();

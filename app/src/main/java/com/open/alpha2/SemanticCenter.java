@@ -23,30 +23,44 @@ public final class SemanticCenter {
     private final SemanticMatcherEs semanticMatcherEs;
     private final SemanticMatcherFr semanticMatcherFr;
     private final SemanticMatcherJa semanticMatcherJa;
+    private final SemanticMatcherDe semanticMatcherDe;
+    private final SemanticMatcherIt semanticMatcherIt;
+    private final SemanticMatcherPt semanticMatcherPt;
+    private final SemanticMatcherKo semanticMatcherKo;
+    private final SemanticMatcherRu semanticMatcherRu;
     private final ActionDirect actionDirect;
     private final TtsCenter ttsCenter;
 
-    /** 對話語言（zh/en/es/fr/ja；null＝未設）：vosk/load 換 model 當時經 setDialogueLang()
-     *  傳入。vosk 什麼話就對什麼 matcher；沒有對認 matcher 的語言一律行英文（下面
-     *  "zh".equals 就是這條規則——將來加的語言未有 matcher 之前都是這樣）。 */
+    /** 對話語言（zh/en/es/fr/ja/de/it/pt/ko/ru；null＝未設）：vosk/load 換 model 當時經 setDialogueLang()
+     *  傳入。vosk 什麼話就對什麼 matcher；十個以外（setDialogueLang 唔收，
+     *  入唔到 dialogueLang）一律行英文兜底（下面 "zh".equals 以外就係呢條規則）。 */
     private volatile String dialogueLang;
 
-    /** 對話語言設定（VoskApi 經 vosk/load 換 model 當時傳入；僅收 zh/en/es/fr/ja）。
+    /** 對話語言設定（VoskApi 經 vosk/load 換 model 當時傳入；僅收 zh/en/es/fr/ja/de/it/pt/ko/ru）。
      *  TTS 不綁這個——用什麼 TTS 全由用家決定，這裡僅決定用哪個 matcher，
      *  答案讀什麼 locale 跟命中那邊（見 handleSemanticMatch）。 */
     public void setDialogueLang(String lang) {
-        if ("zh".equals(lang) || "en".equals(lang) || "es".equals(lang) || "fr".equals(lang) || "ja".equals(lang)) dialogueLang = lang;
+        if ("zh".equals(lang) || "en".equals(lang) || "es".equals(lang) || "fr".equals(lang) || "ja".equals(lang)
+                || "de".equals(lang) || "it".equals(lang) || "pt".equals(lang) || "ko".equals(lang) || "ru".equals(lang)) dialogueLang = lang;
     }
 
     public SemanticCenter(SemanticMatcherZh semanticMatcherZh,
             SemanticMatcherEn semanticMatcherEn, SemanticMatcherEs semanticMatcherEs,
             SemanticMatcherFr semanticMatcherFr, SemanticMatcherJa semanticMatcherJa,
+            SemanticMatcherDe semanticMatcherDe, SemanticMatcherIt semanticMatcherIt,
+            SemanticMatcherPt semanticMatcherPt, SemanticMatcherKo semanticMatcherKo,
+            SemanticMatcherRu semanticMatcherRu,
             ActionDirect actionDirect, TtsCenter ttsCenter) {
         this.semanticMatcherZh = semanticMatcherZh;
         this.semanticMatcherEn = semanticMatcherEn;
         this.semanticMatcherEs = semanticMatcherEs;
         this.semanticMatcherFr = semanticMatcherFr;
         this.semanticMatcherJa = semanticMatcherJa;
+        this.semanticMatcherDe = semanticMatcherDe;
+        this.semanticMatcherIt = semanticMatcherIt;
+        this.semanticMatcherPt = semanticMatcherPt;
+        this.semanticMatcherKo = semanticMatcherKo;
+        this.semanticMatcherRu = semanticMatcherRu;
         this.actionDirect = actionDirect;
         this.ttsCenter = ttsCenter;
     }
@@ -73,11 +87,14 @@ public final class SemanticCenter {
      *  那 1000 條裡面是很正常的事, 悄悄地不回應好過亂回一個不相關的回覆), 回傳 null。
      *
      *  用哪個 matcher：有設對話語言就跟設定（vosk 什麼話就對什麼 matcher；
-     *  SemanticMatcherZh/En/Es/Fr/Ja 結構一致、資料獨立, 不會互相影響），主那個不中
-     *  先試另外四個（兜底直接打 model 鍵換了 model、或者混合輸入那些 case）；
-     *  五個都不中就用主那個 fallback（同以前單試一個效果一樣，不會播兩次）。
+     *  SemanticMatcherZh/En/Es/Fr/Ja/De/It/Pt/Ko/Ru 結構一致、資料獨立, 不會互相影響），主那個不中
+     *  先試另外九個（兜底直接打 model 鍵換了 model、或者混合輸入那些 case）；
+     *  十個都不中就用主那個 fallback（同以前單試一個效果一樣，不會播兩次）。
      *  未設就沿用 looksChinese()（有漢字行中文 semantic_zh.json，
-     *  沒有就行英文 semantic_en.json；西文／法文／日文一定要經設定先入到）。
+     *  沒有就行英文 semantic_en.json；西文／法文／日文／德文／意大利文／葡萄牙文／韓文／俄文一定要經設定先入到）。
+     *
+     *  骨架語言（問法庫／fallback 空）match() 回 null：主 matcher 係骨架就全程靜音，
+     *  唔會用別家 fallback 亂答；別家鏈試到骨架嗰關會跳過（null-safe）。
      *
      *  TTS locale 跟命中那邊（不是跟輸入文字），嘴 LED 同動作流程不變。
      *
@@ -91,8 +108,8 @@ public final class SemanticCenter {
     public SemanticMatcherZh.MatchResult handleSemanticMatch(final String text,
                                                                          final boolean publishEvent) {
         final boolean textChinese = looksChinese(text);
-        // 主語言：有設跟設定（zh/en/es/fr/ja），未設就沿用 looksChinese（有漢字中文、冇就英文；
-        // 西文／法文／日文一定要經設定先入到——冇漢字嘅拉丁輸入靠下面五個試晒先中）。
+        // 主語言：有設跟設定（zh/en/es/fr/ja/de/it/pt/ko/ru），未設就沿用 looksChinese（有漢字中文、冇就英文；
+        // 西文／法文／日文／德文／意大利文／葡萄牙文／韓文／俄文一定要經設定先入到——冇漢字嘅拉丁輸入靠下面十個試晒先中）。
         final String lang;
         if (dialogueLang != null) {
             lang = dialogueLang;
@@ -104,23 +121,43 @@ public final class SemanticCenter {
         final SemanticMatcherBase mEs = semanticMatcherEs;
         final SemanticMatcherBase mFr = semanticMatcherFr;
         final SemanticMatcherBase mJa = semanticMatcherJa;
+        final SemanticMatcherBase mDe = semanticMatcherDe;
+        final SemanticMatcherBase mIt = semanticMatcherIt;
+        final SemanticMatcherBase mPt = semanticMatcherPt;
+        final SemanticMatcherBase mKo = semanticMatcherKo;
+        final SemanticMatcherBase mRu = semanticMatcherRu;
         final String[] order;
         final SemanticMatcherBase[] chain;
-        if ("ja".equals(lang)) {
-            order = new String[]{"ja", "zh", "en", "es", "fr"};
-            chain = new SemanticMatcherBase[]{mJa, mZh, mEn, mEs, mFr};
+        if ("ru".equals(lang)) {
+            order = new String[]{"ru", "zh", "en", "es", "fr", "ja", "de", "it", "pt", "ko"};
+            chain = new SemanticMatcherBase[]{mRu, mZh, mEn, mEs, mFr, mJa, mDe, mIt, mPt, mKo};
+        } else if ("ko".equals(lang)) {
+            order = new String[]{"ko", "zh", "en", "es", "fr", "ja", "de", "it", "pt", "ru"};
+            chain = new SemanticMatcherBase[]{mKo, mZh, mEn, mEs, mFr, mJa, mDe, mIt, mPt, mRu};
+        } else if ("pt".equals(lang)) {
+            order = new String[]{"pt", "zh", "en", "es", "fr", "ja", "de", "it", "ko", "ru"};
+            chain = new SemanticMatcherBase[]{mPt, mZh, mEn, mEs, mFr, mJa, mDe, mIt, mKo, mRu};
+        } else if ("it".equals(lang)) {
+            order = new String[]{"it", "zh", "en", "es", "fr", "ja", "de", "pt", "ko", "ru"};
+            chain = new SemanticMatcherBase[]{mIt, mZh, mEn, mEs, mFr, mJa, mDe, mPt, mKo, mRu};
+        } else if ("de".equals(lang)) {
+            order = new String[]{"de", "zh", "en", "es", "fr", "ja", "it", "pt", "ko", "ru"};
+            chain = new SemanticMatcherBase[]{mDe, mZh, mEn, mEs, mFr, mJa, mIt, mPt, mKo, mRu};
+        } else if ("ja".equals(lang)) {
+            order = new String[]{"ja", "zh", "en", "es", "fr", "de", "it", "pt", "ko", "ru"};
+            chain = new SemanticMatcherBase[]{mJa, mZh, mEn, mEs, mFr, mDe, mIt, mPt, mKo, mRu};
         } else if ("fr".equals(lang)) {
-            order = new String[]{"fr", "zh", "en", "es", "ja"};
-            chain = new SemanticMatcherBase[]{mFr, mZh, mEn, mEs, mJa};
+            order = new String[]{"fr", "zh", "en", "es", "ja", "de", "it", "pt", "ko", "ru"};
+            chain = new SemanticMatcherBase[]{mFr, mZh, mEn, mEs, mJa, mDe, mIt, mPt, mKo, mRu};
         } else if ("es".equals(lang)) {
-            order = new String[]{"es", "zh", "en", "fr", "ja"};
-            chain = new SemanticMatcherBase[]{mEs, mZh, mEn, mFr, mJa};
+            order = new String[]{"es", "zh", "en", "fr", "ja", "de", "it", "pt", "ko", "ru"};
+            chain = new SemanticMatcherBase[]{mEs, mZh, mEn, mFr, mJa, mDe, mIt, mPt, mKo, mRu};
         } else if ("en".equals(lang)) {
-            order = new String[]{"en", "zh", "es", "fr", "ja"};
-            chain = new SemanticMatcherBase[]{mEn, mZh, mEs, mFr, mJa};
+            order = new String[]{"en", "zh", "es", "fr", "ja", "de", "it", "pt", "ko", "ru"};
+            chain = new SemanticMatcherBase[]{mEn, mZh, mEs, mFr, mJa, mDe, mIt, mPt, mKo, mRu};
         } else {
-            order = new String[]{"zh", "en", "es", "fr", "ja"};
-            chain = new SemanticMatcherBase[]{mZh, mEn, mEs, mFr, mJa};
+            order = new String[]{"zh", "en", "es", "fr", "ja", "de", "it", "pt", "ko", "ru"};
+            chain = new SemanticMatcherBase[]{mZh, mEn, mEs, mFr, mJa, mDe, mIt, mPt, mKo, mRu};
         }
 
         SemanticMatcherBase.MatchResult result = chain[0] != null ? chain[0].match(text) : null;
@@ -140,8 +177,8 @@ public final class SemanticCenter {
             }
         }
         if (result != null && !result.matched) {
-            // 主 matcher 聽唔明，先試埋另外四個（中就用佢；都唔中就用主嗰個 fallback，
-            // 同以前中英互試效果一致，只係加多三關）。
+            // 主 matcher 聽唔明，先試埋另外九個（中就用佢；都唔中就用主嗰個 fallback，
+            // 同以前中英互試效果一致，只係加多八關）。
             for (int k = 1; k < chain.length; k++) {
                 if (chain[k] == null || chain[k] == chain[0]) continue;
                 SemanticMatcherBase.MatchResult r = chain[k].match(text);
@@ -174,9 +211,19 @@ public final class SemanticCenter {
         // 語言選 locale。嘴 LED 熄燈靠 Android TTS 個 UtteranceProgressListener
         // (見 TtsCenter.initAndroidTts), 不用自動熄滅。
         final String ttsAnswer = finalResult.answer;
-        // TTS locale 跟命中那邊的語言（西文／法文／日文答案用對應語言讀，否則口音會好怪）。
+        // TTS locale 跟命中那邊的語言（西文／法文／日文／德文／意大利文／葡萄牙文／韓文／俄文答案用對應語言讀，否則口音會好怪）。
         final java.util.Locale ttsLocale;
-        if ("ja".equals(hitLangFinal)) {
+        if ("ru".equals(hitLangFinal)) {
+            ttsLocale = new java.util.Locale("ru");
+        } else if ("ko".equals(hitLangFinal)) {
+            ttsLocale = new java.util.Locale("ko");
+        } else if ("pt".equals(hitLangFinal)) {
+            ttsLocale = new java.util.Locale("pt");
+        } else if ("it".equals(hitLangFinal)) {
+            ttsLocale = new java.util.Locale("it");
+        } else if ("de".equals(hitLangFinal)) {
+            ttsLocale = new java.util.Locale("de");
+        } else if ("ja".equals(hitLangFinal)) {
             ttsLocale = new java.util.Locale("ja");
         } else if ("fr".equals(hitLangFinal)) {
             ttsLocale = new java.util.Locale("fr");
@@ -201,7 +248,17 @@ public final class SemanticCenter {
                     // matcher 共用同一份 action_category_pools.json, 哪個 instance
                     // 呼叫結果都一樣, 只是依命中那邊選對應的 instance。
                     final SemanticMatcherBase hitMatcher;
-                    if ("ja".equals(hitLangFinal)) {
+                    if ("ru".equals(hitLangFinal)) {
+                        hitMatcher = semanticMatcherRu;
+                    } else if ("ko".equals(hitLangFinal)) {
+                        hitMatcher = semanticMatcherKo;
+                    } else if ("pt".equals(hitLangFinal)) {
+                        hitMatcher = semanticMatcherPt;
+                    } else if ("it".equals(hitLangFinal)) {
+                        hitMatcher = semanticMatcherIt;
+                    } else if ("de".equals(hitLangFinal)) {
+                        hitMatcher = semanticMatcherDe;
+                    } else if ("ja".equals(hitLangFinal)) {
                         hitMatcher = semanticMatcherJa;
                     } else if ("fr".equals(hitLangFinal)) {
                         hitMatcher = semanticMatcherFr;
@@ -235,7 +292,7 @@ public final class SemanticCenter {
                     }
                 }
                 if (actionId == null) {
-                    return; // CHAT 類或部分 FUNCTION 類沒有對應動作, TTS 完就結束
+                    return; // resolve 唔到動作（隨機池空）或部分 FUNCTION 類沒動作，TTS 完就結束
                 }
                 try {
                     Thread.sleep(SEMANTIC_TTS_TO_ACTION_DELAY_MS);
@@ -251,7 +308,7 @@ public final class SemanticCenter {
 
     // "打字當作自己說了這句" - 直接把輸入文字當成語音引擎
     // 已經辨識完的結果, 送去 handleSemanticMatch() 做問法庫
-    // 問法配對 (中英西法日五份, 有設對話語言就跟設定，沒有就依輸入文字
+    // 問法配對 (十份, 有設對話語言就跟設定，沒有就依輸入文字
     // 有沒有漢字自動判斷用哪份 - 見 handleSemanticMatch), 命中就立即執行
     // 悠聊原本的「TTS200ms動作」流程。
     // 和 speech/inject 不同: 這裡不經任何機身 AIDL (不靠

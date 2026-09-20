@@ -49,7 +49,7 @@ public final class VoskController {
     public static final float SAMPLE_RATE = 16000.0f;
     private static final String PREFS_NAME = "robotpanel";
     private static final String PREF_MODEL_ID = "vosk_model_id";
-    /** 對話語言（zh/en/es/fr/ja）：loadModel 成功時記下，開機還原＋status 顯示用。 */
+    /** 對話語言（zh/en/es/fr/ja/de/it/pt/ko/ru）：loadModel 成功時記下，開機還原＋status 顯示用。 */
     private static final String PREF_DIALOGUE_LANG = "vosk_dialogue_lang";
 
     /** 掃描到的一個可用 model（langHint＝中文名，langEn＝英文名，前端跟 UI 語言選顯示）。 */
@@ -80,6 +80,16 @@ public final class VoskController {
     private final SemanticMatcherFr matcherFr;
 
     private final SemanticMatcherJa matcherJa;
+
+    private final SemanticMatcherDe matcherDe;
+
+    private final SemanticMatcherIt matcherIt;
+
+    private final SemanticMatcherPt matcherPt;
+
+    private final SemanticMatcherKo matcherKo;
+
+    private final SemanticMatcherRu matcherRu;
     private volatile State state = State.IDLE;
     private volatile String modelId;
     private volatile String lastError;
@@ -179,13 +189,20 @@ public final class VoskController {
     private volatile boolean halluResumeDelay = true;
 
     public VoskController(Context context, SemanticMatcherZh zh,
-            SemanticMatcherEn en, SemanticMatcherEs es, SemanticMatcherFr fr, SemanticMatcherJa ja) {
+            SemanticMatcherEn en, SemanticMatcherEs es, SemanticMatcherFr fr, SemanticMatcherJa ja,
+            SemanticMatcherDe de, SemanticMatcherIt it, SemanticMatcherPt pt,
+            SemanticMatcherKo ko, SemanticMatcherRu ru) {
         this.appContext = context.getApplicationContext();
         this.matcherZh = zh;
         this.matcherEn = en;
         this.matcherEs = es;
         this.matcherFr = fr;
         this.matcherJa = ja;
+        this.matcherDe = de;
+        this.matcherIt = it;
+        this.matcherPt = pt;
+        this.matcherKo = ko;
+        this.matcherRu = ru;
         try {
             android.content.SharedPreferences p = prefs();
             halluConfGate = p.getBoolean(PREF_HALLU_CONF_GATE, true);
@@ -455,12 +472,14 @@ public final class VoskController {
         return null;
     }
 
-    /** model id → 對話語言（zh/en/es/fr/ja；認不到回 null）。同 buildGrammar 之前內聯
+    /** model id → 對話語言（zh/en/es/fr/ja/de/it/pt/ko/ru；認不到回 null）。同 buildGrammar 之前內聯
      *  那串 contains 逐字一樣，抽出來等 vosk/load 同步配對語言都用同一套。
      *  注意 "es" 本身太易撞（test/best 都有 es），一定要加邊界先認
      *  （spanish/español/-es-/es- 開頭/-es 結尾/成個就係 es）。
      *  "fr" 一樣太易撞（from 都有 fr），同樣要加邊界先認。
-     *  "ja" 都要加邊界先認（major/january 都有 ja）。 */
+     *  "ja" 都要加邊界先認（major/january 都有 ja）。
+     *  新五語一樣：de 易撞（model/made 都有 de）、it 易撞（with/city 都有 it）、
+     *  pt 易撞（empty 都有 pt）、ko/ru 都要加邊界，先認全名再認邊界 code。 */
     static String langOfModelId(String id) {
         if (id == null) return null;
         String lower = id.toLowerCase(java.util.Locale.US);
@@ -474,16 +493,32 @@ public final class VoskController {
         if (lower.contains("japanese") || lower.contains("japan")) return "ja";
         if (lower.contains("-ja-") || lower.startsWith("ja-") || lower.endsWith("-ja")
                 || lower.endsWith("_ja") || lower.equals("ja")) return "ja";
+        if (lower.contains("german") || lower.contains("deutsch")) return "de";
+        if (lower.contains("-de-") || lower.startsWith("de-") || lower.endsWith("-de")
+                || lower.endsWith("_de") || lower.equals("de")) return "de";
+        if (lower.contains("italian") || lower.contains("italiano")) return "it";
+        if (lower.contains("-it-") || lower.startsWith("it-") || lower.endsWith("-it")
+                || lower.endsWith("_it") || lower.equals("it")) return "it";
+        if (lower.contains("portuguese") || lower.contains("portugues")) return "pt";
+        if (lower.contains("-pt-") || lower.startsWith("pt-") || lower.endsWith("-pt")
+                || lower.endsWith("_pt") || lower.equals("pt")) return "pt";
+        if (lower.contains("korean") || lower.contains("korea")) return "ko";
+        if (lower.contains("-ko-") || lower.startsWith("ko-") || lower.endsWith("-ko")
+                || lower.endsWith("_ko") || lower.equals("ko")) return "ko";
+        if (lower.contains("russian")) return "ru";
+        if (lower.contains("-ru-") || lower.startsWith("ru-") || lower.endsWith("-ru")
+                || lower.endsWith("_ru") || lower.equals("ru")) return "ru";
         if (lower.contains("en")) return "en";
         return null;
     }
 
-    /** 目前對話語言（zh/en/es/fr/ja）：上次 load 記下的；未記過就由目前 model 推斷（都沒有就 zh）。
+    /** 目前對話語言（zh/en/es/fr/ja/de/it/pt/ko/ru）：上次 load 記下的；未記過就由目前 model 推斷（都沒有就 zh）。
      *  語言跟 model 行——模型鍵就是語言鍵，不用用家另外選。 */
     public String getDialogueLang() {
         try {
             String v = prefs().getString(PREF_DIALOGUE_LANG, null);
-            if ("zh".equals(v) || "en".equals(v) || "es".equals(v) || "fr".equals(v) || "ja".equals(v)) return v;
+            if ("zh".equals(v) || "en".equals(v) || "es".equals(v) || "fr".equals(v) || "ja".equals(v)
+                    || "de".equals(v) || "it".equals(v) || "pt".equals(v) || "ko".equals(v) || "ru".equals(v)) return v;
             String m = langOfModelId(modelId);
             if (m != null) return m;
         } catch (Throwable ignore) {}
@@ -605,6 +640,23 @@ public final class VoskController {
                 // 日文同英文一樣 word 級（唔使逐字空格）。空庫骨架當時 questions()
                 // 係空，下面照回 null 行開放式辨識，唔死。
                 phrases = matcherJa.questions();
+                stripSpaces = false;
+            } else if ("de".equals(lang)) {
+                // 德文／意大利文／葡萄牙文／韓文／俄文同英文一樣 word 級。
+                // 骨架空庫 questions() 係空，下面照回 null 行開放式辨識，唔死。
+                phrases = matcherDe.questions();
+                stripSpaces = false;
+            } else if ("it".equals(lang)) {
+                phrases = matcherIt.questions();
+                stripSpaces = false;
+            } else if ("pt".equals(lang)) {
+                phrases = matcherPt.questions();
+                stripSpaces = false;
+            } else if ("ko".equals(lang)) {
+                phrases = matcherKo.questions();
+                stripSpaces = false;
+            } else if ("ru".equals(lang)) {
+                phrases = matcherRu.questions();
                 stripSpaces = false;
             } else {
                 stripSpaces = false;
@@ -995,7 +1047,7 @@ public final class VoskController {
     }
 
     /** 實驗 tab 下載卡用：全部可下載＋已下載旗＋對話旗。
-     *  dialogue＝有對認 matcher、可對話（中英西法日；同 SemanticCenter 規則一致，
+     *  dialogue＝有對認 matcher、可對話（十語；同 SemanticCenter 規則一致，
      *  未有 matcher 的語言一律 false）。純檔案 IO＋常數判斷，哪條 thread call 都得。 */
     public static String catalogJson() {
         StringBuilder sb = new StringBuilder("{\"ok\":true,\"catalog\":[");
@@ -1010,7 +1062,8 @@ public final class VoskController {
             sb.append(",\"langEn\":\"").append(escape(guessLangEn(id))).append('"');
             sb.append(",\"sizeMb\":").append(e[1]);
             sb.append(",\"downloaded\":").append(findModelDir(id) != null);
-            sb.append(",\"dialogue\":").append("zh".equals(ml) || "en".equals(ml) || "es".equals(ml) || "fr".equals(ml) || "ja".equals(ml));
+            sb.append(",\"dialogue\":").append("zh".equals(ml) || "en".equals(ml) || "es".equals(ml) || "fr".equals(ml) || "ja".equals(ml)
+                    || "de".equals(ml) || "it".equals(ml) || "pt".equals(ml) || "ko".equals(ml) || "ru".equals(ml));
             sb.append('}');
         }
         return sb.append("]}").toString();

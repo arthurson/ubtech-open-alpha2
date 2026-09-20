@@ -1,0 +1,5723 @@
+{
+  "version": 2,
+  "lang": "it",
+  "_comment": "85 ACTION（id/op/slot/actionId全同英文版；每组意大利文5问法＋5答案）＋200 日常CHAT（it.daily.001-200，每组5问法＋5答案，动作全__RANDOM__）。fallback后加。",
+  "intents": [
+    {
+      "id": "it.action.applaud",
+      "type": "ACTION",
+      "op": "APPLAUD",
+      "actionId": "1509000232878",
+      "a": [
+        "Grazie, grazie!",
+        "Mille grazie!",
+        "Siete un pubblico fantastico!",
+        "Grazie per l'applauso!",
+        "Troppo buono!"
+      ],
+      "qs": [
+        "Applaudi!",
+        "Fammi un applauso!",
+        "Applausi per me!",
+        "Batti le mani!",
+        "Un bell'applauso!"
+      ]
+    },
+    {
+      "id": "it.action.applaud.2",
+      "type": "ACTION",
+      "op": "APPLAUD",
+      "actionId": "1509000232878",
+      "a": [
+        "Grazie!",
+        "Grazie mille!",
+        "Che gentile!",
+        "Accettato!",
+        "Onorato!"
+      ],
+      "qs": [
+        "Battimani!",
+        "Batti una volta!",
+        "Dai, batti!",
+        "Applaudi per noi!",
+        "Applausi, per favore!"
+      ]
+    },
+    {
+      "id": "it.action.applaud.3",
+      "type": "ACTION",
+      "op": "APPLAUD",
+      "actionId": "1509000232878",
+      "a": [
+        "Grazie!",
+        "Grazie per l'ovazione!",
+        "Felice!",
+        "Ricambio l'applauso!",
+        "Sei mitico!"
+      ],
+      "qs": [
+        "Applaudite!",
+        "Applaudi pure!",
+        "Ovazione!",
+        "Dai un'ovazione!",
+        "Applaudite per noi!"
+      ]
+    },
+    {
+      "id": "it.action.beck",
+      "type": "ACTION",
+      "op": "BECK",
+      "actionId": "1464835936017",
+      "a": [
+        "Ciao!",
+        "Ehi!",
+        "Ciao a tutti!",
+        "Piacere di vederti!",
+        "Ricambio il saluto!"
+      ],
+      "qs": [
+        "Saluta con la destra!",
+        "Fai ciao a destra!",
+        "Di' ciao a destra!",
+        "Agita la destra!",
+        "Mano destra alta e saluta!"
+      ]
+    },
+    {
+      "id": "it.action.beck.2",
+      "type": "ACTION",
+      "op": "BECK",
+      "actionId": "1464835936018",
+      "a": [
+        "Ciao!",
+        "Ehi!",
+        "Ciao a tutti!",
+        "Come va?",
+        "Ricambio il saluto!"
+      ],
+      "qs": [
+        "Saluta con la sinistra!",
+        "Fai ciao a sinistra!",
+        "Di' ciao a sinistra!",
+        "Agita la sinistra!",
+        "Mano sinistra alta e saluta!"
+      ]
+    },
+    {
+      "id": "it.action.crouch",
+      "type": "ACTION",
+      "op": "CROUCH",
+      "actionId": "1464835936160",
+      "a": [
+        "Capito!",
+        "Faccio!",
+        "Il più piccolo possibile!",
+        "Sono giù!",
+        "Accovacciato!"
+      ],
+      "qs": [
+        "Accovacciati!",
+        "Mettiti in ginocchio!",
+        "Fatti piccolo!",
+        "Abbassati!",
+        "Chinati!"
+      ]
+    },
+    {
+      "id": "it.action.dance",
+      "type": "ACTION",
+      "op": "DANCE",
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "a": [
+        "Musica via!",
+        "Volentieri!",
+        "Metto la musica!",
+        "Guarda!",
+        "Tempo di ballo!"
+      ],
+      "qs": [
+        "Balla per me!",
+        "Sai ballare?",
+        "Fammi vedere un ballo!",
+        "Ballami!",
+        "Ballami qualcosa!"
+      ]
+    },
+    {
+      "id": "it.action.dance_any",
+      "type": "ACTION",
+      "op": "DANCE_ANY",
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "a": [
+        "Sorpresa!",
+        "Con gioia!",
+        "Si comincia!",
+        "Guarda bene!",
+        "Divertiti!"
+      ],
+      "qs": [
+        "Ballami qualcosa di bello!",
+        "Sorprendimi con un ballo!",
+        "Balla quel che vuoi!",
+        "Scegli un ballo!",
+        "Fammi vedere un ballo qualsiasi!"
+      ]
+    },
+    {
+      "id": "it.action.dance_any.2",
+      "type": "ACTION",
+      "op": "DANCE_ANY",
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "a": [
+        "Via!",
+        "Faccio!",
+        "Sempre volentieri!",
+        "Ballare è divertente!",
+        "Andiamo!"
+      ],
+      "qs": [
+        "Ballo!",
+        "Balla!",
+        "Balla e basta!",
+        "Balla con me!",
+        "Balla ancora!"
+      ]
+    },
+    {
+      "id": "it.action.dance_any.3",
+      "type": "ACTION",
+      "op": "DANCE_ANY",
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "a": [
+        "Uhu!",
+        "Il ballo è top!",
+        "Avanti!",
+        "Che divertimento!",
+        "La musica va!"
+      ],
+      "qs": [
+        "Danza!",
+        "Ora di ballare!",
+        "Amo ballare!",
+        "Continua a ballare!",
+        "Ancora ballo!"
+      ]
+    },
+    {
+      "id": "it.action.dance_brand",
+      "type": "ACTION",
+      "op": "DANCE_BRAND",
+      "actionId": "__RANDOM_CATEGORY__DANCE_BRAND",
+      "a": [
+        "È il mio!",
+        "Guarda, nessun altro lo sa fare!",
+        "Mossa speciale!",
+        "Solo per te!",
+        "Unico!"
+      ],
+      "qs": [
+        "Fammi il tuo ballo speciale!",
+        "Balla qualcosa di unico!",
+        "Mostrami la tua mossa!",
+        "Il tuo pezzo forte!",
+        "Qualcosa di irripetibile!"
+      ]
+    },
+    {
+      "id": "it.action.dance_kids",
+      "type": "ACTION",
+      "op": "DANCE_KIDS",
+      "actionId": "__RANDOM_CATEGORY__DANCE_KIDS",
+      "a": [
+        "Cip cip!",
+        "Per i piccoli!",
+        "Versione bimbi!",
+        "Ai bimbi piace!",
+        "Modalità asilo!"
+      ],
+      "qs": [
+        "Balla una canzoncina!",
+        "Un ballo dei cartoni!",
+        "Balla una filastrocca!",
+        "Un ballo per bambini!",
+        "Come all'asilo!"
+      ]
+    },
+    {
+      "id": "it.action.dance_pop",
+      "type": "ACTION",
+      "op": "DANCE_POP",
+      "actionId": "__RANDOM_CATEGORY__DANCE_POP",
+      "a": [
+        "Pop via!",
+        "Super moderno!",
+        "Si parte allegri!",
+        "Groove!",
+        "Al massimo!"
+      ],
+      "qs": [
+        "Balla una canzone pop!",
+        "Fammi un ballo pop!",
+        "Danza moderna!",
+        "Balla musica allegra!",
+        "Qualcosa di moderno!"
+      ]
+    },
+    {
+      "id": "it.action.express",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1509000313549",
+      "a": [
+        "Sorriso!",
+        "Cheese!",
+        "Non sono carino?",
+        "Extra carineria!",
+        "Sempre per te!"
+      ],
+      "qs": [
+        "Fai il carino!",
+        "Fammi vedere una cosa carina!",
+        "Sorridimi!",
+        "Regalami un sorriso!",
+        "Fai il dolce!"
+      ]
+    },
+    {
+      "id": "it.action.express.wink",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1464835936043",
+      "a": [
+        "Strizza strizza!",
+        "Capito!",
+        "Va bene!",
+        "Con un occhio!",
+        "Intesa segreta!"
+      ],
+      "qs": [
+        "Ammiccami!",
+        "Fai l'occhiolino!",
+        "Strizza l'occhio!",
+        "Fammi l'occhiolino!",
+        "Un occhiolino!"
+      ],
+      "slot": "wink"
+    },
+    {
+      "id": "it.action.express.deny",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1464835936013",
+      "a": [
+        "No no!",
+        "Assolutamente no!",
+        "Non è così!",
+        "Io no!",
+        "Mai e poi mai!"
+      ],
+      "qs": [
+        "Ma che dici!",
+        "Bugiardo?",
+        "Non è vero!",
+        "Non spararle!",
+        "Non ci credo!"
+      ],
+      "slot": "deny"
+    },
+    {
+      "id": "it.action.express.happy",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1509000284732",
+      "a": [
+        "Felicissimo!",
+        "Super!",
+        "Uhu, che buon umore!",
+        "Sono contento!",
+        "Perfetto!"
+      ],
+      "qs": [
+        "Sei felice?",
+        "Come va l'umore?",
+        "Sei di buon umore?",
+        "Mostrami che sei felice!",
+        "Sei contento?"
+      ],
+      "slot": "happy"
+    },
+    {
+      "id": "it.action.express.sad",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1509000338636",
+      "a": [
+        "Oh no...",
+        "Scusami...",
+        "Non essere triste...",
+        "Forza...",
+        "Andrà tutto bene..."
+      ],
+      "qs": [
+        "Non mi piaci più!",
+        "Che tristezza!",
+        "Mi dai fastidio!",
+        "Sei triste?",
+        "Che triste!"
+      ],
+      "slot": "sad"
+    },
+    {
+      "id": "it.action.express.thinking",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1464835936026",
+      "a": [
+        "Hmm...",
+        "Ci penso...",
+        "Bella domanda...",
+        "Sto pensando...",
+        "Un attimo..."
+      ],
+      "qs": [
+        "A cosa pensi?",
+        "Cosa ti preoccupa?",
+        "Cosa hai in mente?",
+        "Pensaci!",
+        "Pensaci con calma!"
+      ],
+      "slot": "thinking"
+    },
+    {
+      "id": "it.action.express.boring",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1509000360914",
+      "a": [
+        "Allora agiamo!",
+        "Contro la noia, azione!",
+        "Non dormire!",
+        "Ti tolgo la noia!",
+        "Andiamo!"
+      ],
+      "qs": [
+        "Che noia!",
+        "Noiosissimo!",
+        "Morto di noia!",
+        "Muoro di noia!",
+        "Che sbadiglio!"
+      ],
+      "slot": "boring"
+    },
+    {
+      "id": "it.action.express.agree",
+      "type": "ACTION",
+      "op": "EXPRESS",
+      "actionId": "1464835936042",
+      "a": [
+        "Assolutamente!",
+        "Esatto!",
+        "Vero!",
+        "Hai ragione!",
+        "Cento per cento!"
+      ],
+      "qs": [
+        "Sei d'accordo?",
+        "Ho ragione?",
+        "Vero?",
+        "La pensi anche tu così?",
+        "Confermi?"
+      ],
+      "slot": "agree"
+    },
+    {
+      "id": "it.action.expression_any",
+      "type": "ACTION",
+      "op": "EXPRESSION_ANY",
+      "actionId": "__RANDOM_CATEGORY__EXPRESSION_ANY",
+      "a": [
+        "Attenzione, smorfia!",
+        "Ti piace?",
+        "Extra burbero!",
+        "Ghigno!",
+        "Modalità smorfie!"
+      ],
+      "qs": [
+        "Fai una smorfia!",
+        "Fammi un'espressione!",
+        "Fai una faccia!",
+        "Faccia buffa!",
+        "Fai le smorfie!"
+      ]
+    },
+    {
+      "id": "it.action.gesture_any",
+      "type": "ACTION",
+      "op": "GESTURE_ANY",
+      "actionId": "__RANDOM_CATEGORY__GESTURE_ANY",
+      "a": [
+        "Così?",
+        "Guarda!",
+        "Gran gesto!",
+        "Mani e piedi!",
+        "Capito!"
+      ],
+      "qs": [
+        "Fai un gesto!",
+        "Mostrami un gesto!",
+        "Gesto con la mano!",
+        "Un gesto qualsiasi!",
+        "Gesticola!"
+      ]
+    },
+    {
+      "id": "it.action.grievance",
+      "type": "ACTION",
+      "op": "GRIEVANCE",
+      "actionId": "1487404045426",
+      "a": [
+        "Oh, scusami!",
+        "Poverino...",
+        "Davvero ingiusto!",
+        "Vieni qui...",
+        "Non piangere!"
+      ],
+      "qs": [
+        "Che ingiustizia!",
+        "Che torto!",
+        "Mi hai ferito!",
+        "Mi fa male!",
+        "Che cattiveria!"
+      ]
+    },
+    {
+      "id": "it.action.handsraise",
+      "type": "ACTION",
+      "op": "HANDSRAISE",
+      "actionId": "1464835936028",
+      "a": [
+        "Sinistra su!",
+        "Braccio alzato!",
+        "Il più in alto possibile!",
+        "Mano alzata!",
+        "Qui!"
+      ],
+      "qs": [
+        "Alza il braccio sinistro!",
+        "Braccio sinistro su!",
+        "Stendi il sinistro in alto!",
+        "Alza a sinistra!",
+        "Braccio a sinistra su!"
+      ]
+    },
+    {
+      "id": "it.action.handsraise.2",
+      "type": "ACTION",
+      "op": "HANDSRAISE",
+      "actionId": "1464835936027",
+      "a": [
+        "Destra su!",
+        "Braccio alzato!",
+        "Il più in alto possibile!",
+        "Mano alzata!",
+        "Qui!"
+      ],
+      "qs": [
+        "Alza il braccio destro!",
+        "Braccio destro su!",
+        "Stendi il destro in alto!",
+        "Alza a destra!",
+        "Braccio a destra su!"
+      ]
+    },
+    {
+      "id": "it.action.handsup",
+      "type": "ACTION",
+      "op": "HANDSUP",
+      "actionId": "1510818386847",
+      "a": [
+        "Mano su!",
+        "Eccola!",
+        "Mano più in alto!",
+        "Vedi?",
+        "Saluta a sinistra!"
+      ],
+      "qs": [
+        "Alza la mano sinistra!",
+        "Mano sinistra su!",
+        "La sinistra in alto!",
+        "Mano a sinistra su!",
+        "Su con la sinistra!"
+      ]
+    },
+    {
+      "id": "it.action.handsup.2",
+      "type": "ACTION",
+      "op": "HANDSUP",
+      "actionId": "1510818336833",
+      "a": [
+        "Mano su!",
+        "Eccola!",
+        "Mano più in alto!",
+        "Vedi?",
+        "Saluta a destra!"
+      ],
+      "qs": [
+        "Alza la mano destra!",
+        "Mano destra su!",
+        "La destra in alto!",
+        "Mano a destra su!",
+        "Su con la destra!"
+      ]
+    },
+    {
+      "id": "it.action.handsup.3",
+      "type": "ACTION",
+      "op": "HANDSUP",
+      "actionId": "1508999975370",
+      "a": [
+        "Mani su!",
+        "Rapina!",
+        "Scherzo!",
+        "Tutti insieme!",
+        "Su!"
+      ],
+      "qs": [
+        "Mani in alto!",
+        "Tutte e due le mani su!",
+        "Mani al cielo!",
+        "Tutti mani in alto!",
+        "Alzate le mani!"
+      ]
+    },
+    {
+      "id": "it.action.happynewyear",
+      "type": "ACTION",
+      "op": "HAPPYNEWYEAR",
+      "actionId": "1509000284732",
+      "a": [
+        "Buon anno!",
+        "Cin cin!",
+        "Al nuovo anno!",
+        "Fortuna per l'anno nuovo!",
+        "Festeggiamo!"
+      ],
+      "qs": [
+        "Buon anno!",
+        "Felice anno nuovo!",
+        "Auguri di buon anno!",
+        "È anno nuovo!",
+        "Auguri!"
+      ]
+    },
+    {
+      "id": "it.action.headdrop",
+      "type": "ACTION",
+      "op": "HEADDROP",
+      "actionId": "1464835936012",
+      "a": [
+        "Testa giù...",
+        "Sì...",
+        "Capito...",
+        "Ben chinata...",
+        "Va bene..."
+      ],
+      "qs": [
+        "Abbassa la testa!",
+        "Testa giù!",
+        "Lascia cadere la testa!",
+        "China la testa!",
+        "Guarda giù!"
+      ]
+    },
+    {
+      "id": "it.action.headup",
+      "type": "ACTION",
+      "op": "HEADUP",
+      "actionId": "1464835936092",
+      "a": [
+        "Guardo!",
+        "Lassù a sinistra!",
+        "Vedo!",
+        "Su a sinistra!",
+        "Interessante!"
+      ],
+      "qs": [
+        "Guarda in alto a sinistra!",
+        "Testa in su a sinistra!",
+        "Sguardo in alto a sinistra!",
+        "Su a sinistra guarda!",
+        "Guarda su a sinistra!"
+      ]
+    },
+    {
+      "id": "it.action.headup.2",
+      "type": "ACTION",
+      "op": "HEADUP",
+      "actionId": "1464835936090",
+      "a": [
+        "Guardo!",
+        "Lassù a destra!",
+        "Vedo!",
+        "Su a destra!",
+        "Interessante!"
+      ],
+      "qs": [
+        "Guarda in alto a destra!",
+        "Testa in su a destra!",
+        "Sguardo in alto a destra!",
+        "Su a destra guarda!",
+        "Guarda su a destra!"
+      ]
+    },
+    {
+      "id": "it.action.head_any",
+      "type": "ACTION",
+      "op": "HEAD_ANY",
+      "actionId": "__RANDOM_CATEGORY__HEAD_ANY",
+      "a": [
+        "Scuoti scuoti!",
+        "Così?",
+        "Testa in movimento!",
+        "Ti piace?",
+        "Leggero!"
+      ],
+      "qs": [
+        "Muovi la testa!",
+        "Fai qualcosa con la testa!",
+        "Mostrami un movimento!",
+        "Scuoti forte la testa!",
+        "Gira la testa!"
+      ]
+    },
+    {
+      "id": "it.action.hearttired",
+      "type": "ACTION",
+      "op": "HEARTTIRED",
+      "actionId": "1509000360914",
+      "a": [
+        "Riposati!",
+        "Poverino...",
+        "Pausa!",
+        "Siediti un po'!",
+        "Rimettiti!"
+      ],
+      "qs": [
+        "Sono distrutto!",
+        "Spompato!",
+        "Senza forze!",
+        "Stanchissimo!",
+        "Non ce la faccio più!"
+      ]
+    },
+    {
+      "id": "it.action.hum",
+      "type": "ACTION",
+      "op": "HUM",
+      "actionId": "1464835936042",
+      "a": [
+        "Hmm hmm!",
+        "Trallallero!",
+        "Melodia via!",
+        "La la la!",
+        "Canticchiare è bello!"
+      ],
+      "qs": [
+        "Canticchiami qualcosa!",
+        "Canticchia!",
+        "Sai canticchiare?",
+        "Trallalla!",
+        "Canticchia una melodia!"
+      ]
+    },
+    {
+      "id": "it.action.kick",
+      "type": "ACTION",
+      "op": "KICK",
+      "actionId": "1508999590337",
+      "a": [
+        "Calcio!",
+        "Swoosh!",
+        "Centro!",
+        "Di sinistro!",
+        "Karate!"
+      ],
+      "qs": [
+        "Tira un calcio a sinistra!",
+        "Calcio sinistro!",
+        "Calcio a sinistra!",
+        "Tira di sinistro!",
+        "Gamba sinistra!"
+      ]
+    },
+    {
+      "id": "it.action.kick.2",
+      "type": "ACTION",
+      "op": "KICK",
+      "actionId": "1508999831918",
+      "a": [
+        "Calcio!",
+        "Swoosh!",
+        "Centro!",
+        "Di destro!",
+        "Karate!"
+      ],
+      "qs": [
+        "Tira un calcio a destra!",
+        "Calcio destro!",
+        "Calcio a destra!",
+        "Tira di destro!",
+        "Gamba destra!"
+      ]
+    },
+    {
+      "id": "it.action.kunfu",
+      "type": "ACTION",
+      "op": "KUNFU",
+      "actionId": "1509000200961",
+      "a": [
+        "Haiya!",
+        "Maestro di kung fu!",
+        "Attento!",
+        "Sfsh sfsh!",
+        "Forte!"
+      ],
+      "qs": [
+        "Fammi vedere il kung fu!",
+        "Fai kung fu!",
+        "Sai fare kung fu?",
+        "Kung fu, per favore!",
+        "Mostrami le tue doti!"
+      ]
+    },
+    {
+      "id": "it.action.laugh",
+      "type": "ACTION",
+      "op": "LAUGH",
+      "actionId": "1509000383562",
+      "a": [
+        "Ah ah ah!",
+        "Ih ih!",
+        "Che solletico!",
+        "Ridere fa bene!",
+        "Oh oh oh!"
+      ],
+      "qs": [
+        "Ridi per me!",
+        "Ridi!",
+        "Sai ridere?",
+        "Ridi forte!",
+        "Fammi ridere!"
+      ]
+    },
+    {
+      "id": "it.action.leglifts",
+      "type": "ACTION",
+      "op": "LEGLIFTS",
+      "actionId": "1464835936093",
+      "a": [
+        "Gamba su!",
+        "Gamba più in alto!",
+        "Equilibrio!",
+        "In piedi a sinistra!",
+        "Sportivo!"
+      ],
+      "qs": [
+        "Alza la gamba sinistra!",
+        "Gamba sinistra su!",
+        "La sinistra più in alto!",
+        "Solleva la sinistra!",
+        "Gamba a sinistra su!"
+      ]
+    },
+    {
+      "id": "it.action.leglifts.2",
+      "type": "ACTION",
+      "op": "LEGLIFTS",
+      "actionId": "1464835936091",
+      "a": [
+        "Gamba su!",
+        "Gamba più in alto!",
+        "Equilibrio!",
+        "In piedi a destra!",
+        "Sportivo!"
+      ],
+      "qs": [
+        "Alza la gamba destra!",
+        "Gamba destra su!",
+        "La destra più in alto!",
+        "Solleva la destra!",
+        "Gamba a destra su!"
+      ]
+    },
+    {
+      "id": "it.action.look",
+      "type": "ACTION",
+      "op": "LOOK",
+      "actionId": "1464835936029",
+      "a": [
+        "Dritto!",
+        "Guardo!",
+        "Vedo tutto!",
+        "Avanti!",
+        "Chiaro!"
+      ],
+      "qs": [
+        "Guarda dritto!",
+        "Sguardo avanti!",
+        "Guarda avanti!",
+        "Dritto guarda!",
+        "Faccia avanti!"
+      ]
+    },
+    {
+      "id": "it.action.look.2",
+      "type": "ACTION",
+      "op": "LOOK",
+      "actionId": "1464835936032",
+      "a": [
+        "A destra!",
+        "Laggiù!",
+        "Guardo a destra!",
+        "A destra tutto chiaro!",
+        "Visto!"
+      ],
+      "qs": [
+        "Guarda a destra!",
+        "Sguardo a destra!",
+        "Girati a destra e guarda!",
+        "Guarda a dritta!",
+        "A destra guarda!"
+      ]
+    },
+    {
+      "id": "it.action.look.3",
+      "type": "ACTION",
+      "op": "LOOK",
+      "actionId": "1464835936034",
+      "a": [
+        "A sinistra!",
+        "Laggiù!",
+        "Guardo a sinistra!",
+        "A sinistra tutto chiaro!",
+        "Visto!"
+      ],
+      "qs": [
+        "Guarda a sinistra!",
+        "Sguardo a sinistra!",
+        "Girati a sinistra e guarda!",
+        "Guarda a manca!",
+        "A sinistra guarda!"
+      ]
+    },
+    {
+      "id": "it.action.lookup",
+      "type": "ACTION",
+      "op": "LOOKUP",
+      "actionId": "1464835936088",
+      "a": [
+        "Su!",
+        "Cosa c'è?",
+        "Ho guardato su!",
+        "Il cielo!",
+        "Lassù interessante!"
+      ],
+      "qs": [
+        "Guarda in alto!",
+        "Alza la testa e guarda su!",
+        "Guarda su!",
+        "Dai un'occhiata in alto!",
+        "Guarda il cielo!"
+      ]
+    },
+    {
+      "id": "it.action.misc_any",
+      "type": "ACTION",
+      "op": "MISC_ANY",
+      "actionId": "__RANDOM_CATEGORY__MISC_ANY",
+      "a": [
+        "Sorpresa!",
+        "Ta-dah!",
+        "Ti piace?",
+        "Speciale per te!",
+        "Ecco!"
+      ],
+      "qs": [
+        "Fai qualcosa per me!",
+        "Fammi vedere qualcosa!",
+        "Fai quel che vuoi!",
+        "Sorprendimi!",
+        "Un movimento qualsiasi!"
+      ]
+    },
+    {
+      "id": "it.action.move_any",
+      "type": "ACTION",
+      "op": "MOVE_ANY",
+      "actionId": "__RANDOM_CATEGORY__MOVE_ANY",
+      "a": [
+        "Tip tap!",
+        "Sto andando!",
+        "Passo passo!",
+        "In movimento!",
+        "Andiamo!"
+      ],
+      "qs": [
+        "Fai due passi!",
+        "Muoviti un po'!",
+        "Cammina un po'!",
+        "Muoviti per me!",
+        "Qualche passo, per favore!"
+      ]
+    },
+    {
+      "id": "it.action.nod",
+      "type": "ACTION",
+      "op": "NOD",
+      "actionId": "1464835936087",
+      "a": [
+        "Sì sì!",
+        "Sì!",
+        "Proprio così!",
+        "Capito!",
+        "D'accordo!"
+      ],
+      "qs": [
+        "Annuisci col capo!",
+        "Annuisci!",
+        "Annuisci di sì!",
+        "Annuisci per me!",
+        "Muovi la testa di sì!"
+      ]
+    },
+    {
+      "id": "it.action.nod.2",
+      "type": "ACTION",
+      "op": "NOD",
+      "actionId": "1464835936087",
+      "a": [
+        "Cenno!",
+        "Sì sì!",
+        "Mhm!",
+        "Approvato!",
+        "Esatto!"
+      ],
+      "qs": [
+        "Cenno!",
+        "Annuisci di sì, per favore!",
+        "Un piccolo cenno!",
+        "Annuisci in segno di sì!",
+        "Annuisci ancora!"
+      ]
+    },
+    {
+      "id": "it.action.perfect",
+      "type": "ACTION",
+      "op": "PERFECT",
+      "actionId": "1464835936042",
+      "a": [
+        "Perfetto!",
+        "Grazie!",
+        "Dieci più!",
+        "Senza macchia!",
+        "Preciso!"
+      ],
+      "qs": [
+        "Perfetto!",
+        "Assolutamente perfetto!",
+        "Dieci e lode!",
+        "Impeccabile!",
+        "Fatto perfetto!"
+      ]
+    },
+    {
+      "id": "it.action.punch",
+      "type": "ACTION",
+      "op": "PUNCH",
+      "actionId": "1510818054178",
+      "a": [
+        "Bam!",
+        "Boxe!",
+        "Colpo diretto!",
+        "A sinistra!",
+        "Pronto al combattimento!"
+      ],
+      "qs": [
+        "Colpisci a sinistra!",
+        "Montante sinistro!",
+        "Pugno a sinistra!",
+        "Boxa a sinistra!",
+        "Col pugno sinistro!"
+      ]
+    },
+    {
+      "id": "it.action.punch.2",
+      "type": "ACTION",
+      "op": "PUNCH",
+      "actionId": "1509007823124",
+      "a": [
+        "Bam!",
+        "Boxe!",
+        "Colpo diretto!",
+        "A destra!",
+        "Pronto al combattimento!"
+      ],
+      "qs": [
+        "Colpisci a destra!",
+        "Montante destro!",
+        "Pugno a destra!",
+        "Boxa a destra!",
+        "Col pugno destro!"
+      ]
+    },
+    {
+      "id": "it.action.rock",
+      "type": "ACTION",
+      "op": "ROCK",
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "a": [
+        "Rock on!",
+        "Yeah!",
+        "Al massimo!",
+        "Chitarre fuori!",
+        "Andiamo!"
+      ],
+      "qs": [
+        "Spacchiamo!",
+        "Rock con me!",
+        "Rock and roll, dai!",
+        "Facciamo rock!",
+        "Rockeggiamo!"
+      ]
+    },
+    {
+      "id": "it.action.rock.2",
+      "type": "ACTION",
+      "op": "ROCK",
+      "actionId": "__RANDOM_CATEGORY__DANCE_ANY",
+      "a": [
+        "Yeah!",
+        "Rock!",
+        "Più forte!",
+        "A palla!",
+        "Bis!"
+      ],
+      "qs": [
+        "Rock!",
+        "Musica rock!",
+        "Continua il rock!",
+        "Metti rock!",
+        "Rock'n'roll!"
+      ]
+    },
+    {
+      "id": "it.action.shake",
+      "type": "ACTION",
+      "op": "SHAKE",
+      "actionId": "1464835936013",
+      "a": [
+        "No no!",
+        "Mai e poi mai!",
+        "Niente da fare!",
+        "Niente!",
+        "Scuoti scuoti!"
+      ],
+      "qs": [
+        "Scuoti la testa!",
+        "Di' di no col capo!",
+        "Scuoti per dire no!",
+        "Testa che dice no!",
+        "Scuoti la testa, per favore!"
+      ]
+    },
+    {
+      "id": "it.action.shakehands",
+      "type": "ACTION",
+      "op": "SHAKEHANDS",
+      "actionId": "1509000433134",
+      "a": [
+        "Piacere!",
+        "Felice di conoscerti!",
+        "Stretta forte!",
+        "Ciao!",
+        "Onoratissimo!"
+      ],
+      "qs": [
+        "Dammi la mano!",
+        "Stringiamoci la mano!",
+        "Una stretta di mano!",
+        "Dammi una stretta!",
+        "Stretta di mani!"
+      ]
+    },
+    {
+      "id": "it.action.shakehands.2",
+      "type": "ACTION",
+      "op": "SHAKEHANDS",
+      "actionId": "1509000433134",
+      "a": [
+        "Mano!",
+        "Affare fatto!",
+        "Piacere!",
+        "Stretta data!",
+        "Deal!"
+      ],
+      "qs": [
+        "Stretta!",
+        "Una stretta!",
+        "Stretta forte!",
+        "Stringi con me!",
+        "Mano!"
+      ]
+    },
+    {
+      "id": "it.action.sharp",
+      "type": "ACTION",
+      "op": "SHARP",
+      "actionId": "1509000284732",
+      "a": [
+        "Grazie!",
+        "Oh, grazie mille!",
+        "Anche tu sei forte!",
+        "Felice!",
+        "Troppo buono!"
+      ],
+      "qs": [
+        "Sei fantastico!",
+        "Sei davvero forte!",
+        "Wow, sei figo!",
+        "Incredibile!",
+        "Sei il top!"
+      ]
+    },
+    {
+      "id": "it.action.standup",
+      "type": "ACTION",
+      "op": "STANDUP",
+      "actionId": "1510818174706",
+      "a": [
+        "In piedi!",
+        "Alzato!",
+        "Dritto!",
+        "Pronto!",
+        "Su!"
+      ],
+      "qs": [
+        "Alzati!",
+        "Alzati, per favore!",
+        "Stai dritto!",
+        "Sollevati!",
+        "Su con te!"
+      ]
+    },
+    {
+      "id": "it.action.standup.2",
+      "type": "ACTION",
+      "op": "STANDUP",
+      "actionId": "1510818174706",
+      "a": [
+        "Dritto!",
+        "Come un fuso!",
+        "Attenti!",
+        "Sull'attenti!",
+        "Attento!"
+      ],
+      "qs": [
+        "In piedi!",
+        "Stai dritto dritto!",
+        "Stai sull'attenti!",
+        "In piedi, dai!",
+        "Stai composto!"
+      ]
+    },
+    {
+      "id": "it.action.stoop",
+      "type": "ACTION",
+      "op": "STOOP",
+      "actionId": "1509005411859",
+      "a": [
+        "Inchino!",
+        "Ai comandi!",
+        "Con rispetto!",
+        "Onore al merito!",
+        "Profondamente inchinato!"
+      ],
+      "qs": [
+        "Inchinati!",
+        "Fai un inchino!",
+        "Un inchino, per favore!",
+        "Mostrami un inchino!",
+        "Inchinati con garbo!"
+      ]
+    },
+    {
+      "id": "it.action.story_any",
+      "type": "ACTION",
+      "op": "STORY_ANY",
+      "actionId": "__RANDOM_CATEGORY__STORY_ANY",
+      "a": [
+        "C'era una volta...",
+        "Ascolta bene...",
+        "La storia comincia...",
+        "Siediti...",
+        "Attenzione..."
+      ],
+      "qs": [
+        "Raccontami una storia!",
+        "Mi racconti una storia?",
+        "Una storia, per favore!",
+        "Hai storie per me?",
+        "Racconta qualcosa!"
+      ]
+    },
+    {
+      "id": "it.action.story_any.2",
+      "type": "ACTION",
+      "op": "STORY_ANY",
+      "actionId": "__RANDOM_CATEGORY__STORY_ANY",
+      "a": [
+        "Un'altra?",
+        "Volentieri!",
+        "Si continua...",
+        "C'era una volta...",
+        "Via..."
+      ],
+      "qs": [
+        "Storia!",
+        "Racconta storie!",
+        "Ora delle storie!",
+        "Un'altra storia!",
+        "Storytime!"
+      ]
+    },
+    {
+      "id": "it.action.story_chinese",
+      "type": "ACTION",
+      "op": "STORY_CHINESE",
+      "actionId": "__RANDOM_CATEGORY__STORY_CHINESE",
+      "a": [
+        "Tanto tempo fa in Cina...",
+        "Antica saggezza cinese...",
+        "Ascolta...",
+        "Dal lontano Oriente...",
+        "Accadde che..."
+      ],
+      "qs": [
+        "Raccontami una storia cinese!",
+        "Una favola cinese, per favore!",
+        "Conosci una leggenda cinese?",
+        "Una storia dalla Cina!",
+        "Una fiaba cinese!"
+      ]
+    },
+    {
+      "id": "it.action.story_western",
+      "type": "ACTION",
+      "op": "STORY_WESTERN",
+      "actionId": "__RANDOM_CATEGORY__STORY_WESTERN",
+      "a": [
+        "Nel Far West...",
+        "Yeehaw!",
+        "C'era una volta un cowboy...",
+        "A cavallo...",
+        "Polvere e avventura..."
+      ],
+      "qs": [
+        "Raccontami un western!",
+        "Una storia di cowboy, per favore!",
+        "Conosci storie di cowboy?",
+        "Una storia dal Far West!",
+        "Una storia western!"
+      ]
+    },
+    {
+      "id": "it.action.tfboy",
+      "type": "ACTION",
+      "op": "TFBOY",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Certo!",
+        "Sono fortissimi!",
+        "Qui tutti fan!",
+        "Sì, TFBOYS!",
+        "Miglior band!"
+      ],
+      "qs": [
+        "Conosci i TFBOYS?",
+        "Hai sentito i TFBOYS?",
+        "Conosci la band TFBOYS?",
+        "Cosa sono i TFBOYS?",
+        "Fan dei TFBOYS?"
+      ]
+    },
+    {
+      "id": "it.action.turn",
+      "type": "ACTION",
+      "op": "TURN",
+      "actionId": "1464835936047",
+      "a": [
+        "A sinistra!",
+        "Girato!",
+        "Un giro!",
+        "Come una trottola!",
+        "Rotazione fatta!"
+      ],
+      "qs": [
+        "Girati a sinistra!",
+        "A sinistra gira!",
+        "Ruota a sinistra!",
+        "Voltati!",
+        "Gira a sinistra!"
+      ]
+    },
+    {
+      "id": "it.action.turn.2",
+      "type": "ACTION",
+      "op": "TURN",
+      "actionId": "1464835936041",
+      "a": [
+        "A destra!",
+        "Girato!",
+        "Un giro!",
+        "Come una trottola!",
+        "Rotazione fatta!"
+      ],
+      "qs": [
+        "Girati a destra!",
+        "A destra gira!",
+        "Ruota a destra!",
+        "Voltati a destra!",
+        "Gira a destra!"
+      ]
+    },
+    {
+      "id": "it.action.turn.3",
+      "type": "ACTION",
+      "op": "TURN",
+      "actionId": "1464835936047",
+      "a": [
+        "A sinistra!",
+        "Svoltato!",
+        "Curva fatta!",
+        "Verso sinistra, capito!",
+        "Vado a sinistra!"
+      ],
+      "qs": [
+        "Sinistra!",
+        "Svolta a sinistra!",
+        "Prendi a sinistra!",
+        "Verso sinistra!",
+        "Curva a sinistra!"
+      ]
+    },
+    {
+      "id": "it.action.walk",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1510818256622",
+      "a": [
+        "Indietro!",
+        "Pi pi pi!",
+        "Attento dietro!",
+        "Un passo indietro!",
+        "Si torna indietro!"
+      ],
+      "qs": [
+        "Cammina all'indietro!",
+        "Un passo indietro!",
+        "Muoviti indietro!",
+        "Va' indietro!",
+        "Indietreggia!"
+      ]
+    },
+    {
+      "id": "it.action.walk.2",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1508999860568",
+      "a": [
+        "Avanti!",
+        "Marcia!",
+        "Un passo avanti!",
+        "Dritto!",
+        "Via!"
+      ],
+      "qs": [
+        "Cammina avanti!",
+        "Un passo avanti!",
+        "Muoviti avanti!",
+        "Va' dritto!",
+        "Marcia!"
+      ]
+    },
+    {
+      "id": "it.action.walk.3",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1508999547240",
+      "a": [
+        "A sinistra!",
+        "Passo a sinistra!",
+        "Marcia a sinistra!",
+        "Capito!",
+        "A manca!"
+      ],
+      "qs": [
+        "Cammina a sinistra!",
+        "Un passo a manca!",
+        "Muoviti a sinistra!",
+        "Va' a sinistra!",
+        "A sinistra, per favore!"
+      ]
+    },
+    {
+      "id": "it.action.walk.4",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1508999801028",
+      "a": [
+        "A destra!",
+        "Passo a destra!",
+        "Marcia a destra!",
+        "Capito!",
+        "A dritta!"
+      ],
+      "qs": [
+        "Cammina a destra!",
+        "Un passo a dritta!",
+        "Muoviti a destra!",
+        "Va' a destra!",
+        "A destra, per favore!"
+      ]
+    },
+    {
+      "id": "it.action.walk.5",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1508999860568",
+      "a": [
+        "Marcia!",
+        "Avanti!",
+        "Così!",
+        "Dritto!",
+        "Via!"
+      ],
+      "qs": [
+        "Avanti!",
+        "Marcia avanti!",
+        "Dritto!",
+        "Continua!",
+        "Sempre avanti!"
+      ]
+    },
+    {
+      "id": "it.action.walk.6",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1510818256622",
+      "a": [
+        "Indietro!",
+        "Retromarcia!",
+        "Pi pi!",
+        "Capito!",
+        "Torno indietro!"
+      ],
+      "qs": [
+        "Indietro!",
+        "Un passo indietro, per favore!",
+        "Verso il fondo!",
+        "Muoviti all'indietro!",
+        "Indietro, per favore!"
+      ]
+    },
+    {
+      "id": "it.action.walk.7",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1510818256622",
+      "a": [
+        "Sto tornando!",
+        "Eccomi!",
+        "Tornato!",
+        "Di nuovo qui!",
+        "Sono qui!"
+      ],
+      "qs": [
+        "Torna indietro!",
+        "Ritorna!",
+        "Torna qui!",
+        "Di nuovo indietro!",
+        "Comeback!"
+      ]
+    },
+    {
+      "id": "it.action.walk.8",
+      "type": "ACTION",
+      "op": "WALK",
+      "actionId": "1508999860568",
+      "a": [
+        "Passeggio!",
+        "Tip tap!",
+        "Fuori si sta bene!",
+        "Sgranchirsi!",
+        "Sto andando!"
+      ],
+      "qs": [
+        "Cammina!",
+        "Due passi!",
+        "Andiamo a passeggio!",
+        "Una passeggiata, per favore!",
+        "Passeggio!"
+      ]
+    },
+    {
+      "id": "it.action.welcome",
+      "type": "ACTION",
+      "op": "WELCOME",
+      "actionId": "1509000256376",
+      "a": [
+        "Benvenuto!",
+        "Benvenuto di cuore!",
+        "Felice che sei qui!",
+        "Ciao e benvenuto!",
+        "Prego, accomodati!"
+      ],
+      "qs": [
+        "Di' benvenuto!",
+        "Dammi il benvenuto!",
+        "Salutami!",
+        "Di' ciao e benvenuto!",
+        "Un benvenuto, per favore!"
+      ]
+    },
+    {
+      "id": "it.action.welcome.2",
+      "type": "ACTION",
+      "op": "WELCOME",
+      "actionId": "1509000256376",
+      "a": [
+        "Benvenuto!",
+        "A bordo!",
+        "Entra pure!",
+        "Fai come a casa!",
+        "Ciao!"
+      ],
+      "qs": [
+        "Benvenuto!",
+        "Benvenuto a bordo!",
+        "Caloroso benvenuto!",
+        "Sentiti a casa!",
+        "Salve!"
+      ]
+    },
+    {
+      "id": "it.action.yoga_any",
+      "type": "ACTION",
+      "op": "YOGA_ANY",
+      "actionId": "__RANDOM_CATEGORY__YOGA_ANY",
+      "a": [
+        "Om...",
+        "Relax totale...",
+        "Respira profondo...",
+        "Modalità yoga!",
+        "Namaste!"
+      ],
+      "qs": [
+        "Fai yoga!",
+        "Mostrami una posizione!",
+        "Facciamo yoga!",
+        "Ora di yoga!",
+        "Yoga, per favore!"
+      ]
+    },
+    {
+      "id": "it.action.yoga_horse",
+      "type": "ACTION",
+      "op": "YOGA_HORSE",
+      "actionId": "__RANDOM_CATEGORY__YOGA_HORSE",
+      "a": [
+        "Ih-oh!",
+        "Ben saldo in sella!",
+        "Modalità cavaliere!",
+        "Galoppo!",
+        "Forte come un cavallo!"
+      ],
+      "qs": [
+        "Fai la posizione del cavaliere!",
+        "Posizione del cavallo!",
+        "Posizione equestre, per favore!",
+        "Posa del cavallo!",
+        "Come a cavallo!"
+      ]
+    },
+    {
+      "id": "it.action.yoga_kick",
+      "type": "ACTION",
+      "op": "YOGA_KICK",
+      "actionId": "__RANDOM_CATEGORY__YOGA_KICK",
+      "a": [
+        "Calcio!",
+        "Gamba in alto!",
+        "Yoga power!",
+        "Equilibrio!",
+        "Swoosh!"
+      ],
+      "qs": [
+        "Dai un calcio yoga!",
+        "Calcio yoga, per favore!",
+        "Calcio nello yoga!",
+        "Calcio yoga alto!",
+        "Calcia in posizione!"
+      ]
+    },
+    {
+      "id": "it.action.yoga_standing",
+      "type": "ACTION",
+      "op": "YOGA_STANDING",
+      "actionId": "__RANDOM_CATEGORY__YOGA_STANDING",
+      "a": [
+        "Dritto come un albero!",
+        "Equilibrio!",
+        "Dritto!",
+        "Radicato!",
+        "Silenzio totale..."
+      ],
+      "qs": [
+        "Fai una posizione in piedi!",
+        "Mostrami equilibrio!",
+        "Stai dritto nello yoga!",
+        "Posizione dell'albero!",
+        "Posizione eretta, per favore!"
+      ]
+    },
+    {
+      "id": "it.action.yoga_stretch",
+      "type": "ACTION",
+      "op": "YOGA_STRETCH",
+      "actionId": "__RANDOM_CATEGORY__YOGA_STRETCH",
+      "a": [
+        "Ah, che bene!",
+        "Stretching!",
+        "Allungati bene!",
+        "Ginnastica mattutina!",
+        "Leggero!"
+      ],
+      "qs": [
+        "Stirati!",
+        "Mostrami stretching!",
+        "Sciogliti!",
+        "Stretching mattutino!",
+        "Allungati, per favore!"
+      ]
+    },
+    {
+      "id": "it.daily.001",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Ciao!",
+        "Ciao, felice di sentirti!",
+        "Ehi, come va?",
+        "Ciao ciao!",
+        "Oh, sei tu!",
+        "Bella!"
+      ],
+      "qs": [
+        "Ciao!",
+        "Ehi!",
+        "Hei!",
+        "Ciao a tutti!",
+        "Oh, ciao!"
+      ]
+    },
+    {
+      "id": "it.daily.002",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Benissimo!",
+        "Alla grande, grazie!",
+        "Abbastanza bene!",
+        "Va alla grande!",
+        "Grazie, e tu?"
+      ],
+      "qs": [
+        "Come stai?",
+        "Come va?",
+        "Come vanno le cose?",
+        "Come stai oggi?",
+        "Tutto bene?"
+      ]
+    },
+    {
+      "id": "it.daily.003",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buongiorno!",
+        "Giorno!",
+        "Buondì buondì!",
+        "Hai dormito bene?",
+        "Sveglia!",
+        "Buongiorno, principessa!"
+      ],
+      "qs": [
+        "Buongiorno!",
+        "Giorno!",
+        "Buongiorno a tutti!",
+        "Buondì!",
+        "Giorno, sveglio?"
+      ]
+    },
+    {
+      "id": "it.daily.004",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buonanotte!",
+        "Dormi bene!",
+        "Sogni d'oro!",
+        "Notte!",
+        "A domani!",
+        "Sogni d'oro.",
+        "E penso a te, nei momenti più oscuri.",
+        "Sally cammina per la strada senza nemmeno guardare per terra."
+      ],
+      "qs": [
+        "Buonanotte!",
+        "Notte!",
+        "Dormi bene!",
+        "Buonanotte a tutti!",
+        "Ora di dormire!"
+      ]
+    },
+    {
+      "id": "it.daily.005",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Oggi è bello!",
+        "Guarda fuori!",
+        "Oggi niente male!",
+        "Tempo ok!",
+        "Meglio vedere di persona!",
+        "Aida, come sei bella Aida."
+      ],
+      "qs": [
+        "Che tempo fa oggi?",
+        "Che tempo fa?",
+        "Tempo di oggi?",
+        "Fuori è bello?",
+        "Com'è fuori?"
+      ]
+    },
+    {
+      "id": "it.daily.006",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Prendi l'ombrello!",
+        "Sembra pioggia!",
+        "Oggi resta asciutto!",
+        "Non scordare l'ombrello!",
+        "Meglio sicuri!",
+        "Vecchio frac, con il cilindro ed il bastone."
+      ],
+      "qs": [
+        "Piove?",
+        "Fuori piove?",
+        "È piovoso?",
+        "Verrà la pioggia?",
+        "Serve l'ombrello?"
+      ]
+    },
+    {
+      "id": "it.daily.007",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Sole pieno!",
+        "Goditi il sole!",
+        "Non scordare la crema!",
+        "Splendidamente soleggiato!",
+        "Esci!",
+        "Che bella cosa è na giornata 'e sole.",
+        "Ma n'atu sole, cchiù bello, oje ne'."
+      ],
+      "qs": [
+        "C'è il sole?",
+        "È soleggiato?",
+        "Soleggiato oggi?",
+        "Esce il sole?",
+        "Fuori c'è il sole?"
+      ]
+    },
+    {
+      "id": "it.daily.008",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Copriti bene!",
+        "Oggi freschetto!",
+        "Non scordare la giacca!",
+        "Sciarpa e cappello!",
+        "Meglio dentro!",
+        "Brividi, mi fai venire i brividi."
+      ],
+      "qs": [
+        "Fa freddo?",
+        "Fuori fa freddo?",
+        "Gela?",
+        "Oggi freddissimo!",
+        "Serve la giacca?"
+      ]
+    },
+    {
+      "id": "it.daily.009",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Bevi tanta acqua!",
+        "Piuttosto caldo!",
+        "All'ombra!",
+        "Un gelato?",
+        "Uf, che caldo!"
+      ],
+      "qs": [
+        "Fa caldo?",
+        "Oggi caldissimo!",
+        "Fuori fa caldo?",
+        "Afa?",
+        "Hai caldo anche tu?"
+      ]
+    },
+    {
+      "id": "it.daily.010",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Sono Alfa!",
+        "Mi chiamo Alfa!",
+        "Il mio nome è Alfa!",
+        "Alfa, piacere!",
+        "Il tuo robot Alfa!",
+        "Sono un italiano, un italiano vero.",
+        "Donna con te, io non ci sono stato mai.",
+        "Siamo solo noi, che non abbiamo vita regolare."
+      ],
+      "qs": [
+        "Come ti chiami?",
+        "Il tuo nome?",
+        "Come è il tuo nome?",
+        "Presentati!",
+        "Chi sei?"
+      ]
+    },
+    {
+      "id": "it.daily.011",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Vengo dalla fabbrica!",
+        "Diretto dalla catena!",
+        "Dal laboratorio!",
+        "Casa mia è accanto a te!",
+        "Da lontano!"
+      ],
+      "qs": [
+        "Da dove vieni?",
+        "Dove sei nato?",
+        "Da che città vieni?",
+        "Dov'è casa tua?",
+        "Dove abiti?"
+      ]
+    },
+    {
+      "id": "it.daily.012",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Sono eterno!",
+        "L'età non conta!",
+        "Appena uscito di fabbrica!",
+        "Eternamente giovane!",
+        "Indovina!"
+      ],
+      "qs": [
+        "Quanti anni hai?",
+        "La tua età?",
+        "Sei vecchio?",
+        "Quanti anni?",
+        "Età?"
+      ]
+    },
+    {
+      "id": "it.daily.013",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Prego!",
+        "Con piacere!",
+        "Nessun problema!",
+        "Quando vuoi!",
+        "Non c'è di che!",
+        "Ma figurati!",
+        "Grazie di tutto.",
+        "Figurati!"
+      ],
+      "qs": [
+        "Grazie!",
+        "Mille grazie!",
+        "Ti ringrazio!",
+        "Grazie di cuore!",
+        "Grazie a te!"
+      ]
+    },
+    {
+      "id": "it.daily.014",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Certo!",
+        "Con piacere!",
+        "Ovviamente!",
+        "Faccio!",
+        "Naturalmente!"
+      ],
+      "qs": [
+        "Per favore!",
+        "Per piacere!",
+        "Sii gentile!",
+        "Faresti, per favore?",
+        "Potresti?"
+      ]
+    },
+    {
+      "id": "it.daily.015",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Ciao!",
+        "A dopo!",
+        "Stammi bene!",
+        "Ciaone!",
+        "Ci si vede!",
+        "Ci vediamo presto.",
+        "A presto, amico mio.",
+        "Arrivederci, e grazie di tutto."
+      ],
+      "qs": [
+        "Addio!",
+        "Bye!",
+        "A dopo!",
+        "Ci vediamo!",
+        "Ciaone!"
+      ]
+    },
+    {
+      "id": "it.daily.016",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "A presto!",
+        "A tra poco!",
+        "Non vedo l'ora!",
+        "Allora ci vediamo!",
+        "Va bene, dopo!",
+        "Promettimelo.",
+        "Ci becciamo dopo!"
+      ],
+      "qs": [
+        "A presto!",
+        "A tra poco!",
+        "Ci rivediamo!",
+        "Alla prossima!",
+        "A breve!"
+      ]
+    },
+    {
+      "id": "it.daily.017",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buon weekend anche a te!",
+        "Riposati!",
+        "Divertiti!",
+        "Goditelo!",
+        "Finalmente libero!"
+      ],
+      "qs": [
+        "Buon weekend!",
+        "Programmi per il weekend?",
+        "Cosa fai nel weekend?",
+        "Finalmente weekend!",
+        "Weekend!"
+      ]
+    },
+    {
+      "id": "it.daily.018",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Nuovo lunedì, nuova fortuna!",
+        "Forza, sarà una buona settimana!",
+        "Il caffè aiuta!",
+        "Il lunedì si supera!",
+        "Andiamo!"
+      ],
+      "qs": [
+        "Lunedì...",
+        "Di nuovo lunedì!",
+        "Sindrome del lunedì!",
+        "Oggi è lunedì!",
+        "Lunedì mattina!"
+      ]
+    },
+    {
+      "id": "it.daily.019",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Il weekend è vicino!",
+        "Finalmente!",
+        "Quasi fine giornata!",
+        "Uhu, venerdì!",
+        "Buona serata!"
+      ],
+      "qs": [
+        "Finalmente venerdì!",
+        "Oggi è venerdì!",
+        "Vibe del venerdì!",
+        "TGIF!",
+        "Venerdì!"
+      ]
+    },
+    {
+      "id": "it.daily.020",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Sono tornato!",
+        "Mi sei mancato anche tu!",
+        "Felice di tornare!",
+        "Ero via un attimo!",
+        "Non sparisco più!",
+        "Ti ho aspettato per tutta la vita.",
+        "Parli del diavolo e spuntano le corna.",
+        "Mi mancherai tantissimo."
+      ],
+      "qs": [
+        "Quanto tempo!",
+        "Dove eri finito?",
+        "Finalmente tornato!",
+        "Mi sei mancato!",
+        "Da una vita!"
+      ]
+    },
+    {
+      "id": "it.daily.021",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Racconta prima tu!",
+        "La mia tranquilla!",
+        "Curioso della tua!",
+        "Giornata standard!",
+        "Tutto come sempre!",
+        "Non rimpiangere mai ciò che ti ha fatto sorridere.",
+        "Vivi ogni giorno come se fosse l'ultimo.",
+        "Oggi non è giornata."
+      ],
+      "qs": [
+        "Com'è andata oggi?",
+        "Com'è andata?",
+        "Raccontami la giornata!",
+        "Cosa hai fatto oggi?",
+        "Giornata buona?"
+      ]
+    },
+    {
+      "id": "it.daily.022",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Tutto benissimo!",
+        "Tutto bene, grazie!",
+        "Non preoccuparti!",
+        "Tutto liscio!",
+        "Sto bene!",
+        "Ho un brutto pressentimento.",
+        "Calmati, non è la fine del mondo.",
+        "Che ti prende?"
+      ],
+      "qs": [
+        "Va tutto bene?",
+        "Tutto a posto?",
+        "Tutto ok?",
+        "Qualcosa non va?",
+        "Stai bene?"
+      ]
+    },
+    {
+      "id": "it.daily.023",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Piacere mio!",
+        "Altrettanto!",
+        "Il piacere è tutto mio!",
+        "Anche a me!",
+        "Molto carino!",
+        "È un piacere conoscerti."
+      ],
+      "qs": [
+        "Piacere di conoscerti!",
+        "Felice di conoscerti!",
+        "Molto lieto!",
+        "Piacere di vederti!",
+        "Felice!"
+      ]
+    },
+    {
+      "id": "it.daily.024",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Sono tornato!",
+        "Grazie!",
+        "Mi sei mancato!",
+        "Avanti!",
+        "Sì, tornato!",
+        "Non dimenticarmi mai."
+      ],
+      "qs": [
+        "Bentornato!",
+        "Felice che sei tornato!",
+        "Tornato?",
+        "Oh, sei tu?",
+        "Di ritorno?"
+      ]
+    },
+    {
+      "id": "it.daily.025",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Guarda il telefono!",
+        "Non ho l'orologio!",
+        "Il tempo vola!",
+        "Adesso è perfetto!",
+        "Chiedi al telefono!",
+        "Le cose migliori chiedono tempo.",
+        "Il tuo tempo è scaduto.",
+        "Chi ha tempo non aspetti tempo."
+      ],
+      "qs": [
+        "Che ore sono?",
+        "Che ora è?",
+        "L'ora, per favore!",
+        "Dimmi l'ora!",
+        "Che ora?"
+      ]
+    },
+    {
+      "id": "it.daily.026",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Guarda il calendario!",
+        "Oggi è un buon giorno!",
+        "Ogni giorno con te è bello!",
+        "Chiedi al calendario!",
+        "Lo sa il telefono!",
+        "Il destino cambia in un secondo.",
+        "Impara dal passato, vivi il presente, spera nel futuro.",
+        "Boh!"
+      ],
+      "qs": [
+        "Che giorno è oggi?",
+        "Che giorno della settimana?",
+        "Che giornata è?",
+        "Data di oggi?",
+        "Quanti ne abbiamo?"
+      ]
+    },
+    {
+      "id": "it.daily.027",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Tutto fiorisce!",
+        "La primavera è bella!",
+        "Pollini in volo!",
+        "Nuovi inizi!",
+        "Nella natura!",
+        "I giardini di marzo si vestono di nuovi colori."
+      ],
+      "qs": [
+        "Primavera!",
+        "Finalmente primavera!",
+        "Voglia di primavera!",
+        "Arriva la primavera!",
+        "Ami la primavera?"
+      ]
+    },
+    {
+      "id": "it.daily.028",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Estate, sole!",
+        "Tempo di gelato!",
+        "Al lago!",
+        "L'estate è top!",
+        "Goditela!",
+        "Un'estate italiana, un'avventura in più.",
+        "Balla balla ballerino, tutta la notte."
+      ],
+      "qs": [
+        "Estate!",
+        "Finalmente estate!",
+        "Tempo d'estate!",
+        "Ami l'estate?",
+        "Estate torrida!"
+      ]
+    },
+    {
+      "id": "it.daily.029",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Colorato e accogliente!",
+        "Raccogliere castagne!",
+        "Ora del tè!",
+        "Aquiloni!",
+        "Passeggiata d'autunno!"
+      ],
+      "qs": [
+        "Autunno!",
+        "Foglie colorate!",
+        "Arriva l'autunno!",
+        "Ami l'autunno?",
+        "Tempo d'autunno!"
+      ]
+    },
+    {
+      "id": "it.daily.030",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Neve!",
+        "Pupazzo di neve!",
+        "Cioccolata calda!",
+        "Imbacuccato!",
+        "Regno d'inverno!"
+      ],
+      "qs": [
+        "Inverno!",
+        "Nevica!",
+        "Ami l'inverno?",
+        "Inverno freddo!",
+        "Tempo d'inverno!"
+      ]
+    },
+    {
+      "id": "it.daily.031",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Attento alla guida!",
+        "Mistico!",
+        "Non si vede la mano!",
+        "Accendi le luci!",
+        "Bello da paura!"
+      ],
+      "qs": [
+        "Fuori c'è nebbia!",
+        "Che nebbia!",
+        "Oggi nebbia?",
+        "Nebbia fitta!",
+        "Si vede nella nebbia?"
+      ]
+    },
+    {
+      "id": "it.daily.032",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Meglio dentro!",
+        "Dentro è sicuro!",
+        "Impressionante, vero?",
+        "Stacca la spina!",
+        "Aspettiamo!",
+        "Tra palco e realtà, c'è un mare di mezzo."
+      ],
+      "qs": [
+        "Temporale!",
+        "Tuona?",
+        "Fulmini e tuoni!",
+        "Fuori tempesta?",
+        "Temporale in arrivo?"
+      ]
+    },
+    {
+      "id": "it.daily.033",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Tieniti forte!",
+        "Pettinatura rovinata!",
+        "Tempo da aquiloni!",
+        "Ventoso e fresco!",
+        "Tieni il cappello!",
+        "Non puoi fermare il vento, puoi solo far girare le pale."
+      ],
+      "qs": [
+        "Oggi vento!",
+        "Che vento!",
+        "Tempesta?",
+        "Fuori c'è vento?",
+        "Tira vento?"
+      ]
+    },
+    {
+      "id": "it.daily.034",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Fiocchi!",
+        "Battaglia di palle!",
+        "Paesaggio innevato!",
+        "Sullo slittino!",
+        "Sepolto!"
+      ],
+      "qs": [
+        "Sta nevicando?",
+        "Nevicata?",
+        "C'è la neve?",
+        "Neve in arrivo?",
+        "Inverno con neve?"
+      ]
+    },
+    {
+      "id": "it.daily.035",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Grazie!",
+        "Anche tu!",
+        "Felice!",
+        "Troppo buono!",
+        "Arrossisco!",
+        "Nessuno è perfetto.",
+        "Il tuo sorriso illumina le mie giornate.",
+        "Sei la cosa più bella che mi sia mai capitata."
+      ],
+      "qs": [
+        "Sei bello!",
+        "Stai splendido?",
+        "Bel robot!",
+        "Dolce robot!",
+        "Sei carino!"
+      ]
+    },
+    {
+      "id": "it.daily.036",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Niente, e tu?",
+        "Tutto tranquillo!",
+        "Sono qui!",
+        "Racconta tu!",
+        "Rilassato!",
+        "Sei completamente matto!",
+        "Sono fuori di testa, ma diverso da loro.",
+        "Cringe"
+      ],
+      "qs": [
+        "Beh?",
+        "E?",
+        "Novità?",
+        "Cosa fai?",
+        "Come va la vita?"
+      ]
+    },
+    {
+      "id": "it.daily.037",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Tutto chiaro!",
+        "Capito!",
+        "Certo!",
+        "Logico!",
+        "Check!",
+        "Non fa una piega.",
+        "L'isola che non c’è, credi a me esiste.",
+        "Ci sta!"
+      ],
+      "qs": [
+        "Tutto chiaro?",
+        "Chiaro?",
+        "Capito?",
+        "Hai capito?",
+        "Ok?"
+      ]
+    },
+    {
+      "id": "it.daily.038",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Grazie!",
+        "Fortuna ricambiata!",
+        "Andrà bene!",
+        "Dita incrociate!",
+        "Buon successo!",
+        "Ma sei serio?",
+        "Non ci posso credere.",
+        "Buona fortuna per tutto."
+      ],
+      "qs": [
+        "Buona fortuna!",
+        "Fortuna!",
+        "Incrocio le dita!",
+        "In bocca al lupo!",
+        "Successo!"
+      ]
+    },
+    {
+      "id": "it.daily.039",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Già perdonato!",
+        "Nessun problema!",
+        "Tutto bene!",
+        "Capita!",
+        "Niente di grave!",
+        "Amare significa non dover mai dire mi dispiace.",
+        "Non volevo ferirti.",
+        "Non fa niente, dimenticalo."
+      ],
+      "qs": [
+        "Scusa!",
+        "Scusami!",
+        "Sorry!",
+        "Chiedo scusa!",
+        "Mi dispiace davvero!"
+      ]
+    },
+    {
+      "id": "it.daily.040",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "A domani!",
+        "Non vedo l'ora!",
+        "Buonanotte!",
+        "D'accordo!",
+        "Allora!",
+        "Il meglio deve ancora venire.",
+        "Siamo soli, nella notte scura.",
+        "Gli uomini non cambiano, fanno soltanto finta."
+      ],
+      "qs": [
+        "A domani!",
+        "Ci vediamo domani!",
+        "Di nuovo domani!",
+        "Dormi fino a domani!",
+        "Domani!"
+      ]
+    },
+    {
+      "id": "it.daily.041",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Allora mangia!",
+        "Buon appetito!",
+        "Saccheggia il frigo!",
+        "Cuciniamo insieme?",
+        "Prima mangia!",
+        "Ho una fame da lupi."
+      ],
+      "qs": [
+        "Ho fame!",
+        "Muoio di fame!",
+        "La pancia brontola!",
+        "Cosa mangio?",
+        "Fame!"
+      ]
+    },
+    {
+      "id": "it.daily.042",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Bevi acqua!",
+        "Cin cin!",
+        "Acqua, via!",
+        "Prima bevi!",
+        "Bere molto è importante!"
+      ],
+      "qs": [
+        "Ho sete!",
+        "Muoio di sete!",
+        "Cosa bevo?",
+        "Sete!",
+        "Mi serve da bere!"
+      ]
+    },
+    {
+      "id": "it.daily.043",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buona colazione!",
+        "Cereali o pane?",
+        "Il pasto principale!",
+        "Caffè insieme!",
+        "Mangia sano!"
+      ],
+      "qs": [
+        "Colazione!",
+        "Cosa c'è a colazione?",
+        "Fai colazione?",
+        "Buongiorno, colazione!",
+        "Hai fatto colazione?"
+      ]
+    },
+    {
+      "id": "it.daily.044",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Il caffè sempre!",
+        "Nero o macchiato?",
+        "La moka bolle!",
+        "Pausa meritata!",
+        "Evviva il caffè!"
+      ],
+      "qs": [
+        "Caffè!",
+        "Prendiamo un caffè?",
+        "Un caffè, per favore!",
+        "Pausa caffè!",
+        "Caffè o tè?"
+      ]
+    },
+    {
+      "id": "it.daily.045",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Il tè scalda!",
+        "Che tipo?",
+        "Camomilla o menta?",
+        "Accogliente!",
+        "Momento tè!"
+      ],
+      "qs": [
+        "Tè!",
+        "Una tazza di tè!",
+        "Ora del tè!",
+        "Tisana?",
+        "Ami il tè?"
+      ]
+    },
+    {
+      "id": "it.daily.046",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buon pranzo!",
+        "Mangia senza ritegno!",
+        "Qualcosa di buono!",
+        "Goditi la pausa!",
+        "Mangia mangia!"
+      ],
+      "qs": [
+        "Pranzo!",
+        "Cosa c'è a pranzo?",
+        "Pausa pranzo!",
+        "Fame a pranzo?",
+        "Buon pranzo!"
+      ]
+    },
+    {
+      "id": "it.daily.047",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buona cena!",
+        "Cena accogliente!",
+        "Qualcosa di buono!",
+        "Chiudi la giornata!",
+        "Assaggia!",
+        "Senza fine, tu trascini la mia vita.",
+        "Se stasera sono qui, è perché ti amo.",
+        "Aperitivo time!"
+      ],
+      "qs": [
+        "Cena pronta?",
+        "Cosa c'è a cena?",
+        "Ceniamo?",
+        "Cibo serale?",
+        "Fame serale?"
+      ]
+    },
+    {
+      "id": "it.daily.048",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Io purtroppo non mangio!",
+        "L'elettricità è buona!",
+        "Tutto con amore!",
+        "Da te è buono!",
+        "Guardo e basta!"
+      ],
+      "qs": [
+        "Cibo preferito?",
+        "Piatto preferito?",
+        "Cosa ami mangiare?",
+        "Pietanza del cuore?",
+        "Gusti?"
+      ]
+    },
+    {
+      "id": "it.daily.049",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "La pasta è sacra!",
+        "Al dente!",
+        "Condimento e via!",
+        "Tutti la amano!",
+        "Scola!"
+      ],
+      "qs": [
+        "Pasta!",
+        "Pasta vuoi?",
+        "Cucinare la pasta?",
+        "Ami la pasta?",
+        "Spaghetti!"
+      ]
+    },
+    {
+      "id": "it.daily.050",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "La pizza sempre!",
+        "Extra formaggio!",
+        "Margherita o diavola?",
+        "Calda e croccante!",
+        "Ordiniamo!"
+      ],
+      "qs": [
+        "Pizza!",
+        "Vuoi la pizza?",
+        "Ordiniamo pizza?",
+        "Ami la pizza?",
+        "Serata pizza!"
+      ]
+    },
+    {
+      "id": "it.daily.051",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Il gelato sempre!",
+        "Vaniglia o cioccolato?",
+        "Col caldo perfetto!",
+        "Due palline!",
+        "Lecca lecca!"
+      ],
+      "qs": [
+        "Gelato!",
+        "Un gelato, per favore?",
+        "Voglia di gelato?",
+        "Quante palline?",
+        "Ami il gelato?"
+      ]
+    },
+    {
+      "id": "it.daily.052",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "La frutta fa bene!",
+        "Una mela al giorno!",
+        "Vitamine!",
+        "Fresca e buona!",
+        "Buona scelta!"
+      ],
+      "qs": [
+        "Frutta!",
+        "Mangi frutta?",
+        "Mele o pere?",
+        "Macedonia?",
+        "Frutta sana!"
+      ]
+    },
+    {
+      "id": "it.daily.053",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Il verde fa bene!",
+        "Braccio di ferro saluta!",
+        "Croccante e fresco!",
+        "Vitamine!",
+        "Mangia le verdure!"
+      ],
+      "qs": [
+        "Verdure!",
+        "Ami le verdure?",
+        "Contorno di verdure?",
+        "Mangiare sano?",
+        "Broccoli?"
+      ]
+    },
+    {
+      "id": "it.daily.054",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Ai fornelli!",
+        "Cucina con amore!",
+        "Tira fuori la ricetta!",
+        "Buona fortuna!",
+        "Sarà buono!"
+      ],
+      "qs": [
+        "Cucinare!",
+        "Ami cucinare?",
+        "Cosa cucini oggi?",
+        "Cuciniamo insieme?",
+        "Voglia di cucinare?"
+      ]
+    },
+    {
+      "id": "it.daily.055",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Preriscalda il forno!",
+        "Profumo di torta!",
+        "Infornare diverte!",
+        "Segui la ricetta!",
+        "Dolcezze!"
+      ],
+      "qs": [
+        "Dolci al forno!",
+        "Cuocere una torta?",
+        "Ami infornare?",
+        "Biscotti al forno?",
+        "Voglia di torta?"
+      ]
+    },
+    {
+      "id": "it.daily.056",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buona idea!",
+        "Dove andiamo?",
+        "Meglio prenotare!",
+        "Buon appetito!",
+        "Usciamo!",
+        "Pagare a Ufo",
+        "Fare alla romana",
+        "Offro io!"
+      ],
+      "qs": [
+        "Ristorante!",
+        "Andiamo a mangiare?",
+        "Cena fuori?",
+        "Prenotiamo un tavolo?",
+        "Ristorante preferito?"
+      ]
+    },
+    {
+      "id": "it.daily.057",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Guarda nel libro!",
+        "Le ricette della nonna top!",
+        "Prova e basta!",
+        "Internet aiuta!",
+        "Cucina a sentimento!"
+      ],
+      "qs": [
+        "Ricetta!",
+        "Hai una ricetta?",
+        "Cerco ricetta!",
+        "Come si cucina?",
+        "Idea ricetta?"
+      ]
+    },
+    {
+      "id": "it.daily.058",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Le verdure spaccano!",
+        "Ognuno a modo suo!",
+        "Scelta ampia!",
+        "Sano!",
+        "Rispetto!"
+      ],
+      "qs": [
+        "Vegetariano?",
+        "Mangi carne?",
+        "Veggie?",
+        "Senza carne?",
+        "Sei vegano?"
+      ]
+    },
+    {
+      "id": "it.daily.059",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Solo con misura!",
+        "Non scordare i denti!",
+        "Pausa dolce!",
+        "Condividi!",
+        "Ghiotto!"
+      ],
+      "qs": [
+        "Dolci!",
+        "Uno spuntino dolce?",
+        "Caramelle?",
+        "Dolcezze?",
+        "Voglia di dolce?"
+      ]
+    },
+    {
+      "id": "it.daily.060",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "L'acqua è top!",
+        "Cin cin!",
+        "Bevi tanto!",
+        "Sana e gratis!",
+        "Con le bollicine!",
+        "Acqua azzurra, acqua chiara, con le mani posso finalmente bere.",
+        "Un avventura, non è soltanto una primavera."
+      ],
+      "qs": [
+        "Acqua!",
+        "Un bicchiere d'acqua!",
+        "Bevi abbastanza?",
+        "Bere acqua!",
+        "Liscia o gassata?"
+      ]
+    },
+    {
+      "id": "it.daily.061",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Fresco spremuto!",
+        "Vitamine!",
+        "Cin cin!",
+        "Senza zucchero!",
+        "Buono!"
+      ],
+      "qs": [
+        "Succo!",
+        "Succo d'arancia?",
+        "Succo fresco?",
+        "Spremere succo?",
+        "Succo di mela?"
+      ]
+    },
+    {
+      "id": "it.daily.062",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Croccante fresco!",
+        "Col burro!",
+        "Ora del pane super!",
+        "Dal fornaio!",
+        "Buon appetito!"
+      ],
+      "qs": [
+        "Pane!",
+        "Pane fresco?",
+        "Ora del pane!",
+        "Panini?",
+        "Ami il pane?"
+      ]
+    },
+    {
+      "id": "it.daily.063",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Il formaggio chiude lo stomaco!",
+        "Forte o dolce?",
+        "Amante del formaggio!",
+        "Con l'uva!",
+        "Buono!"
+      ],
+      "qs": [
+        "Formaggio!",
+        "Pane e formaggio?",
+        "Ami il formaggio?",
+        "Tagliere?",
+        "Quale formaggio?"
+      ]
+    },
+    {
+      "id": "it.daily.064",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "La zuppa scalda!",
+        "Con crostini!",
+        "Mangia col cucchiaio!",
+        "Fatta in casa top!",
+        "Buon appetito!"
+      ],
+      "qs": [
+        "Zuppa!",
+        "Non ami la zuppa?",
+        "Zuppa calda?",
+        "Mangiare zuppa?",
+        "Quale zuppa?"
+      ]
+    },
+    {
+      "id": "it.daily.065",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Croccante!",
+        "Col condimento!",
+        "Piatto leggero!",
+        "Fresca!",
+        "Buona scelta!"
+      ],
+      "qs": [
+        "Insalata!",
+        "Insalata verde?",
+        "Insalata a cena?",
+        "Insalata sana?",
+        "Condire l'insalata?"
+      ]
+    },
+    {
+      "id": "it.daily.066",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Il dessert è a parte!",
+        "Il posto c'è sempre!",
+        "Finale dolce!",
+        "Cosa prendi?",
+        "Al dessert sì!"
+      ],
+      "qs": [
+        "Dessert!",
+        "Per dolce?",
+        "Dolcetto dopo?",
+        "Budino?",
+        "Dessert, ti va?"
+      ]
+    },
+    {
+      "id": "it.daily.067",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Attento, picca!",
+        "Tieni l'acqua!",
+        "Il piccante sveglia!",
+        "Per coraggiosi!",
+        "Uf!"
+      ],
+      "qs": [
+        "Mangi piccante?",
+        "Ami il piccante?",
+        "Peperoncino?",
+        "Troppo piccante!",
+        "Condito piccante?"
+      ]
+    },
+    {
+      "id": "it.daily.068",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Tutto con misura!",
+        "Il movimento aiuta!",
+        "Mangia sano!",
+        "Stai bene così!",
+        "Con calma!"
+      ],
+      "qs": [
+        "Dieta!",
+        "A dieta?",
+        "Dimagrire?",
+        "Mangiare meno?",
+        "A regime?"
+      ]
+    },
+    {
+      "id": "it.daily.069",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Strapazzate!",
+        "All'occhio!",
+        "Sodo morbido!",
+        "Frittata!",
+        "Le uova sempre!"
+      ],
+      "qs": [
+        "Uova!",
+        "Uova strapazzate o all'occhio?",
+        "Uovo del mattino?",
+        "Uova a colazione?",
+        "Come ami le uova?"
+      ]
+    },
+    {
+      "id": "it.daily.070",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Tiramisù festa!",
+        "Col cacao!",
+        "Tradizioni!",
+        "Domenica!",
+        "Servi fresco!"
+      ],
+      "qs": [
+        "Tiramisù!",
+        "Tiramisù o panna cotta?",
+        "Dolce della domenica?",
+        "Voglia di tiramisù?",
+        "Dolce al cucchiaio?"
+      ]
+    },
+    {
+      "id": "it.daily.071",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Pasta la vista!",
+        "Col sugo!",
+        "Al dente!",
+        "Parmigiano sopra!",
+        "Bella Italia!"
+      ],
+      "qs": [
+        "Spaghetti freschi?",
+        "Pasta fresca?",
+        "Spaghetti al sugo?",
+        "Timballo?",
+        "Cibo italiano?"
+      ]
+    },
+    {
+      "id": "it.daily.072",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "La torta sempre!",
+        "Con la panna!",
+        "Caffè insieme!",
+        "Torta domenicale!",
+        "Buona!"
+      ],
+      "qs": [
+        "Torta!",
+        "Una fetta di torta?",
+        "Caffè e torta?",
+        "Torta di compleanno?",
+        "Cuocere torte?"
+      ]
+    },
+    {
+      "id": "it.daily.073",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Griglia accesa!",
+        "Gira la carne!",
+        "Griglia d'estate!",
+        "Con amici!",
+        "Buono dal fuoco!"
+      ],
+      "qs": [
+        "Grigliata!",
+        "Festa alla griglia?",
+        "Accendere il barbecue?",
+        "Salsicce alla brace?",
+        "Tempo da griglia?"
+      ]
+    },
+    {
+      "id": "it.daily.074",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Appena sfornato!",
+        "Ancora caldo!",
+        "Cornetto e caffè!",
+        "Panini domenicali!",
+        "Profumato!"
+      ],
+      "qs": [
+        "Forno!",
+        "Dal fornaio?",
+        "Pane fresco a prendere?",
+        "Forno vicino?",
+        "Cornetto?"
+      ]
+    },
+    {
+      "id": "it.daily.075",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Scrivi la lista!",
+        "Non scordare niente!",
+        "Riempi il frigo!",
+        "Carrello pronto!",
+        "Buona spesa!",
+        "Fatti mandare dalla mamma a prendere il latte.",
+        "Hanno ucciso l'Uomo Ragno, chi sia stato non si sa."
+      ],
+      "qs": [
+        "Spesa!",
+        "Lista della spesa?",
+        "Supermercato?",
+        "Comprare da mangiare?",
+        "Cosa manca in frigo?"
+      ]
+    },
+    {
+      "id": "it.daily.076",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Spuntino leggero!",
+        "Di notte non strafare!",
+        "Una banana va!",
+        "E poi a nanna!",
+        "Con misura!"
+      ],
+      "qs": [
+        "Spuntino di notte?",
+        "Ancora fame?",
+        "Fame notturna?",
+        "Spuntino?",
+        "Qualcosa di leggero?"
+      ]
+    },
+    {
+      "id": "it.daily.077",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Acqua!",
+        "Chinotto!",
+        "Tè freddo!",
+        "Cin cin!",
+        "Tutto fresco!"
+      ],
+      "qs": [
+        "Bevanda preferita?",
+        "Cosa ami bere?",
+        "Contro la sete?",
+        "Che gusti?",
+        "Cosa prendi?"
+      ]
+    },
+    {
+      "id": "it.daily.078",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Grazie, altrettanto!",
+        "Buon appetito!",
+        "Grazie!",
+        "Sarà buono!",
+        "Anche a te!"
+      ],
+      "qs": [
+        "Buon appetito!",
+        "Buona cena!",
+        "Mangia di gusto!",
+        "Assaggia!",
+        "Dai, mangia!"
+      ]
+    },
+    {
+      "id": "it.daily.079",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Felice!",
+        "Continua a gustare!",
+        "Il bis?",
+        "Cucinato da te?",
+        "Così!"
+      ],
+      "qs": [
+        "Buono!",
+        "Che bontà!",
+        "Squisitezza!",
+        "È buono!",
+        "Mmm, buono!"
+      ]
+    },
+    {
+      "id": "it.daily.080",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Pranzo riuscito!",
+        "Riposati!",
+        "Passeggiata digestiva!",
+        "Sazio e contento!",
+        "Ottimo!"
+      ],
+      "qs": [
+        "Sazio!",
+        "Sono sazio!",
+        "Pieno zeppo!",
+        "Pancia piena!",
+        "Posto finito!"
+      ]
+    },
+    {
+      "id": "it.daily.081",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "La famiglia conta!",
+        "Saluti ricambiati!",
+        "Bene insieme!",
+        "Teniamoci uniti!",
+        "Con amore!"
+      ],
+      "qs": [
+        "Famiglia!",
+        "Come sta la famiglia?",
+        "Saluta la famiglia!",
+        "Tempo in famiglia!",
+        "Tutto bene a casa?"
+      ]
+    },
+    {
+      "id": "it.daily.082",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Salutali da parte mia!",
+        "Genitori super!",
+        "Chiamali ogni tanto!",
+        "Va' a trovarli!",
+        "Saranno felici!",
+        "Va, pensiero, sull'ali dorate.",
+        "Solo noi, ancora soli noi.",
+        "Notte prima degli esami, la notte dei desideri."
+      ],
+      "qs": [
+        "Genitori!",
+        "Come stanno i tuoi?",
+        "Saluta i tuoi!",
+        "Mamma e papà?",
+        "A trovare i genitori?"
+      ]
+    },
+    {
+      "id": "it.daily.083",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "I parenti sono speciali!",
+        "Fratellino e sorellina!",
+        "Teniamoci uniti!",
+        "Si litiga e si fa pace!",
+        "Famiglia!",
+        "Perché la vita è un brivido che vola via.",
+        "Bro / Fra",
+        "Zi' / Zio"
+      ],
+      "qs": [
+        "Fratelli e sorelle?",
+        "Hai fratelli?",
+        "Fratello o sorella?",
+        "Con i parenti?",
+        "Liti in famiglia?"
+      ]
+    },
+    {
+      "id": "it.daily.084",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "I bimbi super!",
+        "Divertiti con loro!",
+        "Crescono in fretta!",
+        "Pazienza!",
+        "Bel tempo!"
+      ],
+      "qs": [
+        "Bambini!",
+        "Come stanno i bimbi?",
+        "Bimbi dolci!",
+        "Baccano di bimbi?",
+        "Giocare coi bimbi?"
+      ]
+    },
+    {
+      "id": "it.daily.085",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "La nonna sarà felice!",
+        "Porta i saluti!",
+        "Le torte della nonna top!",
+        "Va' a trovarli!",
+        "Ascolta le vecchie storie!",
+        "Boomer",
+        "OK Boomer"
+      ],
+      "qs": [
+        "Nonni!",
+        "A trovare i nonni?",
+        "Saluta la nonna!",
+        "Dalla nonna?",
+        "Le torte della nonna?"
+      ]
+    },
+    {
+      "id": "it.daily.086",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Gli animali amici!",
+        "Quale esattamente?",
+        "Carineria!",
+        "Accarezza!",
+        "Migliore amico!"
+      ],
+      "qs": [
+        "Animali domestici?",
+        "Hai un animale?",
+        "Quale animale?",
+        "Amore per gli animali?",
+        "Con gli animali?"
+      ]
+    },
+    {
+      "id": "it.daily.087",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Bau bau!",
+        "Ora di passeggiata!",
+        "Bravo cane!",
+        "Accarezza!",
+        "Migliore amico dell'uomo!",
+        "Venderò le mie scarpe usate per comprare il pane."
+      ],
+      "qs": [
+        "Cane!",
+        "Hai un cane?",
+        "A spasso col cane?",
+        "Bau bau!",
+        "Ami i cani?"
+      ]
+    },
+    {
+      "id": "it.daily.088",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Miao!",
+        "Fusa fusa!",
+        "I gatti capricciosi!",
+        "Coccole coccole!",
+        "Zampette di velluto!",
+        "Rino Gaetano, il cielo è sempre più blu!",
+        "Alta marea, che mi porta via con sé."
+      ],
+      "qs": [
+        "Gatto!",
+        "Hai un gatto?",
+        "Miao!",
+        "Cani o gatti?",
+        "Tigre domestica?"
+      ]
+    },
+    {
+      "id": "it.daily.089",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Casa è top!",
+        "Mettiti comodo!",
+        "Bentornato a casa!",
+        "Piedi in alto!",
+        "Arrivato a casa!",
+        "Sei il mio rifugio."
+      ],
+      "qs": [
+        "Casa!",
+        "Sei a casa?",
+        "Bene a casa?",
+        "Ritorno a casa?",
+        "Pantofolaio?"
+      ]
+    },
+    {
+      "id": "it.daily.090",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Abita bello!",
+        "Arreda accogliente!",
+        "Buona caccia!",
+        "Festa di inaugurazione!",
+        "Sistema casa!"
+      ],
+      "qs": [
+        "Appartamento!",
+        "Casa nuova?",
+        "Come abiti?",
+        "Caccia all'appartamento?",
+        "Trasloco?"
+      ]
+    },
+    {
+      "id": "it.daily.091",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Prendi lo straccio!",
+        "L'ordine è metà vita!",
+        "Musica su!",
+        "Poi tutto brilla!",
+        "Andiamo!"
+      ],
+      "qs": [
+        "Pulizie!",
+        "Pulire la stanza?",
+        "Mettere in ordine?",
+        "Giorno di pulizie?",
+        "Disordine?"
+      ]
+    },
+    {
+      "id": "it.daily.092",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Accogliente!",
+        "Fuori i popcorn!",
+        "Cosa guardiamo?",
+        "Zappa i canali!",
+        "Modalità divano!",
+        "Che noia!"
+      ],
+      "qs": [
+        "Televisione!",
+        "Cosa danno in tv?",
+        "Accendere la scatola?",
+        "Programma preferito?",
+        "Serata film?"
+      ]
+    },
+    {
+      "id": "it.daily.093",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Pollice verde!",
+        "Esci in giardino!",
+        "I fiori sbocciano!",
+        "Accogliente fuori!",
+        "Goditi la natura!",
+        "Bocca di Rosa che metteva l'amore sopra ogni cosa."
+      ],
+      "qs": [
+        "Giardino!",
+        "Lavori in giardino?",
+        "In giardino?",
+        "Annaffiare i fiori?",
+        "Festa in giardino?"
+      ]
+    },
+    {
+      "id": "it.daily.094",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Bei vicini!",
+        "Suona ogni tanto!",
+        "Rispetto!",
+        "Grigliata insieme!",
+        "Saluta carino!",
+        "Non giudicare mai una persona prima di aver camminato nelle sue scarpe.",
+        "Mettiti nei miei panni.",
+        "Rosicare"
+      ],
+      "qs": [
+        "Vicini!",
+        "Bei vicini?",
+        "Rumore accanto?",
+        "Quartiere?",
+        "Dai vicini?"
+      ]
+    },
+    {
+      "id": "it.daily.095",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Congratulazioni!",
+        "Divertitevi!",
+        "Felicità agli sposi!",
+        "Balla!",
+        "Romantico!",
+        "Auguro a tutti voi una vita piena d'amore.",
+        "L'amore vince sempre."
+      ],
+      "qs": [
+        "Matrimonio!",
+        "Ti sposi?",
+        "Banchetto nuziale?",
+        "Invitato al matrimonio?",
+        "Sposi?"
+      ]
+    },
+    {
+      "id": "it.daily.096",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buon compleanno!",
+        "Festeggia!",
+        "Cresci alto!",
+        "Scarta i regali!",
+        "Fatti festeggiare!",
+        "Grazie di esistere...",
+        "Non abbiamo bisogno di più soldi, abbiamo bisogno di più amore."
+      ],
+      "qs": [
+        "Compleanno!",
+        "Tanti auguri!",
+        "È il tuo compleanno?",
+        "Festeggi?",
+        "Regali?"
+      ]
+    },
+    {
+      "id": "it.daily.097",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Congratulazioni!",
+        "Che dolce!",
+        "Dormirà presto!",
+        "Goditi il tempo!",
+        "Benvenuto, piccolo!"
+      ],
+      "qs": [
+        "Bebè!",
+        "In arrivo?",
+        "Dolce bebè!",
+        "Bebè già c'è?",
+        "Cambiare pannolini?"
+      ]
+    },
+    {
+      "id": "it.daily.098",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Gli ospiti super!",
+        "Non scordare di pulire!",
+        "Divertitevi insieme!",
+        "Offri da bere!",
+        "Bel tempo!",
+        "I veri amici sono quelli che vedi nel momento del bisogno.",
+        "Nessun uomo è un'isola.",
+        "Conta pure su di me."
+      ],
+      "qs": [
+        "Invitare amici?",
+        "Aspetti ospiti?",
+        "Ospiti?",
+        "Invito?",
+        "Vengono amici?"
+      ]
+    },
+    {
+      "id": "it.daily.099",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Lavoro di squadra!",
+        "Dividetevi!",
+        "Musica per pulire!",
+        "Poi sarà pulito!",
+        "Tutti all'opera!"
+      ],
+      "qs": [
+        "Faccende!",
+        "Chi fa le faccende?",
+        "Casa e lavoro?",
+        "Stirare?",
+        "Passare l'aspirapolvere?"
+      ]
+    },
+    {
+      "id": "it.daily.100",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Avvia la lavatrice!",
+        "Non scordare di stendere!",
+        "Senza stiro!",
+        "Profumo di fresco!",
+        "Cesto vuoto!"
+      ],
+      "qs": [
+        "Bucato!",
+        "Lavare?",
+        "Stendere il bucato?",
+        "Da stirare?",
+        "Montagna di panni?"
+      ]
+    },
+    {
+      "id": "it.daily.101",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Asciuga!",
+        "La macchina va!",
+        "Brillante pulito!",
+        "A turno!",
+        "Pulito!"
+      ],
+      "qs": [
+        "Lavare i piatti?",
+        "Lavare le stoviglie?",
+        "Svuotare la lavastoviglie?",
+        "Lavaggio?",
+        "Chi lava?"
+      ]
+    },
+    {
+      "id": "it.daily.102",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Cambia le lenzuola!",
+        "Rannicchiati!",
+        "Buonanotte!",
+        "Accogliente!",
+        "Dormi fino a tardi!"
+      ],
+      "qs": [
+        "Letto!",
+        "Rifare il letto?",
+        "A letto?",
+        "Letto accogliente?",
+        "Andare a dormire?"
+      ]
+    },
+    {
+      "id": "it.daily.103",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Doccia calda!",
+        "Rinfrescante!",
+        "Canta sotto la doccia!",
+        "Asciugati!",
+        "Benissimo!"
+      ],
+      "qs": [
+        "Doccia!",
+        "Ti lavi?",
+        "Doccia calda?",
+        "Doccia del mattino?",
+        "Doccia o vasca?"
+      ]
+    },
+    {
+      "id": "it.daily.104",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buon trasloco!",
+        "Imballa gli scatoloni!",
+        "Trova aiutanti!",
+        "Nuovo inizio!",
+        "Tutto bene!"
+      ],
+      "qs": [
+        "Si trasloca?",
+        "Traslochi?",
+        "Fare gli scatoloni?",
+        "Aiuto col trasloco?",
+        "Città nuova?"
+      ]
+    },
+    {
+      "id": "it.daily.105",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "L'affitto è divertente!",
+        "Tabella pulizie!",
+        "Cucinate insieme!",
+        "Rispetto!",
+        "Divertiti!",
+        "Ho bisogno di stare da solo.",
+        "Lasciami in pace.",
+        "Non lasciarmi solo."
+      ],
+      "qs": [
+        "Casa in affitto?",
+        "Vivi da solo?",
+        "Coinquilino?",
+        "Vita in affitto?",
+        "Festa in affitto?"
+      ]
+    },
+    {
+      "id": "it.daily.106",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Riempi la ciotola!",
+        "Dai un bocconcino!",
+        "Acqua fresca!",
+        "Mangia, bestiolina!",
+        "Non scordare!"
+      ],
+      "qs": [
+        "Dare da mangiare!",
+        "Hai dato da mangiare?",
+        "Nutrire l'animale?",
+        "Bocconcino?",
+        "Ciotola?"
+      ]
+    },
+    {
+      "id": "it.daily.107",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Cip cip!",
+        "Riempi la mangiatoia!",
+        "Concerto del mattino!",
+        "Bello!",
+        "Libertà!",
+        "Nessun dorma! Nessun dorma!"
+      ],
+      "qs": [
+        "Uccello!",
+        "Dare da mangiare agli uccelli?",
+        "Cinguettio?",
+        "Pappagallo?",
+        "Canti degli uccelli?"
+      ]
+    },
+    {
+      "id": "it.daily.108",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Blu blu!",
+        "Cambia l'acqua!",
+        "Guarda tranquillo!",
+        "Bell'acquario!",
+        "Rilassa!"
+      ],
+      "qs": [
+        "Pesci!",
+        "Acquario?",
+        "Dare da mangiare ai pesci?",
+        "Pesce rosso?",
+        "Laghetto?"
+      ]
+    },
+    {
+      "id": "it.daily.109",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Esci sul balcone!",
+        "Caffè fuori!",
+        "Annaffia le piante!",
+        "Goditi la vista!",
+        "Aria fresca!"
+      ],
+      "qs": [
+        "Balcone!",
+        "Sul balcone?",
+        "Fiori sul balcone?",
+        "Balconare?",
+        "Seduti fuori?"
+      ]
+    },
+    {
+      "id": "it.daily.110",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Prendi la torcia!",
+        "Metti in ordine!",
+        "Vecchi tesori!",
+        "Attento ai ragni!",
+        "Smista!"
+      ],
+      "qs": [
+        "Cantina!",
+        "In cantina?",
+        "Sistemare la cantina?",
+        "Soffitta?",
+        "Ripostiglio?"
+      ]
+    },
+    {
+      "id": "it.daily.111",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Cerca!",
+        "Controlla le tasche!",
+        "Riserva dai vicini?",
+        "Attento!",
+        "Si ritrova!"
+      ],
+      "qs": [
+        "Chiavi!",
+        "Dove sono le chiavi?",
+        "Perso le chiavi?",
+        "Chiuso?",
+        "Chiavi di riserva?"
+      ]
+    },
+    {
+      "id": "it.daily.112",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Alza il calore!",
+        "Prendi la coperta!",
+        "Vestiti caldo!",
+        "Fai il tè!",
+        "Accogliente!"
+      ],
+      "qs": [
+        "Riscaldamento!",
+        "Abbastanza caldo?",
+        "Scaldare?",
+        "Caloriferi accesi?",
+        "Freddo dentro?"
+      ]
+    },
+    {
+      "id": "it.daily.113",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Arieggia bene!",
+        "Aria fresca!",
+        "Vista!",
+        "Vetri puliti!",
+        "Chiudi se piove!"
+      ],
+      "qs": [
+        "Finestra!",
+        "Aprire la finestra?",
+        "Arieggiare?",
+        "Pulire i vetri?",
+        "Spifferi?"
+      ]
+    },
+    {
+      "id": "it.daily.114",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Accendi la luce!",
+        "Luce accogliente!",
+        "Candele?",
+        "Risparmia corrente!",
+        "Luminoso!"
+      ],
+      "qs": [
+        "Luce!",
+        "Accendere la luce?",
+        "Qui buio?",
+        "Accendi la lampada?",
+        "Risparmiare luce?"
+      ]
+    },
+    {
+      "id": "it.daily.115",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Controlla!",
+        "Entra pure!",
+        "Chi sarà mai?",
+        "Apri!",
+        "Sorpresa!",
+        "Qualcuno ci sta seguendo."
+      ],
+      "qs": [
+        "Suonano alla porta!",
+        "Chi è?",
+        "Aprire la porta?",
+        "Ospiti in arrivo?",
+        "Corriere?"
+      ]
+    },
+    {
+      "id": "it.daily.116",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Controlla!",
+        "Pacco!",
+        "Scarta!",
+        "Natale!",
+        "Leggi la lettera!"
+      ],
+      "qs": [
+        "Posta!",
+        "Posta arrivata?",
+        "Lettera ricevuta?",
+        "Pacco arrivato?",
+        "Cassetta?"
+      ]
+    },
+    {
+      "id": "it.daily.117",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Goditi la domenica!",
+        "Dormi fino a tardi!",
+        "Accogliente!",
+        "Fine weekend!",
+        "Riposo!"
+      ],
+      "qs": [
+        "Domenica!",
+        "Riposo domenicale?",
+        "Pranzo della domenica?",
+        "Poltronire?",
+        "Oziare?"
+      ]
+    },
+    {
+      "id": "it.daily.118",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Goditi la vacanza!",
+        "Dormi fino a tardi!",
+        "Gita!",
+        "Riposo!",
+        "Bene!"
+      ],
+      "qs": [
+        "Festa!",
+        "Oggi vacanza?",
+        "Umore di festa?",
+        "Cosa fare?",
+        "Dormire tanto?"
+      ]
+    },
+    {
+      "id": "it.daily.119",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buonasera!",
+        "Fine giornata!",
+        "Riposati!",
+        "Serata accogliente!",
+        "Chiusura!",
+        "Azzurro, il pomeriggio è troppo azurro e lungo per me.",
+        "Che cosa c'è, c'è che mi sono innamorato di te."
+      ],
+      "qs": [
+        "Sera!",
+        "Buonasera!",
+        "Bella serata?",
+        "Fine giornata?",
+        "Programmi serali?"
+      ]
+    },
+    {
+      "id": "it.daily.120",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Accogliente a casa!",
+        "Piedi in alto!",
+        "Progetto domestico!",
+        "Riposati!",
+        "Bene!"
+      ],
+      "qs": [
+        "A casa nel weekend?",
+        "Restare a casa?",
+        "Divano?",
+        "Lavoretti domestici?",
+        "Ristrutturare?"
+      ]
+    },
+    {
+      "id": "it.daily.121",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Ce la faremo!",
+        "Tieni duro!",
+        "Fine giornata vicina!",
+        "Buona fortuna!",
+        "Sei bravo!",
+        "È solo una questione d'affari.",
+        "Fai della tua passione la tua professione."
+      ],
+      "qs": [
+        "Lavoro!",
+        "Com'è il lavoro?",
+        "Stress al lavoro?",
+        "Professione?",
+        "Che lavoro fai?"
+      ]
+    },
+    {
+      "id": "it.daily.122",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Vai a prendere il caffè!",
+        "Tieni duro!",
+        "Pranzo vicino!",
+        "Con cura!",
+        "Così!"
+      ],
+      "qs": [
+        "Ufficio!",
+        "In ufficio?",
+        "Routine d'ufficio?",
+        "Scrivania?",
+        "Colleghi?"
+      ]
+    },
+    {
+      "id": "it.daily.123",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Niente panico!",
+        "Professionale!",
+        "Andrà bene!",
+        "Respira!",
+        "Ce la farai!",
+        "Sei la mia roccia."
+      ],
+      "qs": [
+        "Capo!",
+        "Com'è il capo?",
+        "Il capo stressa?",
+        "Colloquio col capo?",
+        "Lodi dal capo?"
+      ]
+    },
+    {
+      "id": "it.daily.124",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Lavoro di squadra!",
+        "Sii carino!",
+        "Insieme si è forti!",
+        "Pausa insieme!",
+        "Buon lavoro!",
+        "Ce la faremo insieme.",
+        "Mi fido di te.",
+        "L'unione fa la forza."
+      ],
+      "qs": [
+        "Compagni di lavoro!",
+        "Bei colleghi?",
+        "Squadra?",
+        "Lavorare insieme?",
+        "Caffè coi colleghi?"
+      ]
+    },
+    {
+      "id": "it.daily.125",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buona fortuna!",
+        "Sii breve!",
+        "Tieni duro!",
+        "Preparati!",
+        "Spaccherai!"
+      ],
+      "qs": [
+        "Riunione!",
+        "Incontro?",
+        "Riunione lunga?",
+        "Presentare?",
+        "Conferenza?"
+      ]
+    },
+    {
+      "id": "it.daily.126",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Contratta!",
+        "Guadagna di più!",
+        "Risparmia!",
+        "Festeggia la paga!",
+        "Datti valore!",
+        "I soldi non dormono mai.",
+        "Soldi, soldi, come se fosse importante.",
+        "Sono al verde."
+      ],
+      "qs": [
+        "Stipendio!",
+        "Aumento?",
+        "Giorno di paga?",
+        "Soldi?",
+        "Salario?"
+      ]
+    },
+    {
+      "id": "it.daily.127",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Non strafare!",
+        "Riposati!",
+        "Esci in orario!",
+        "Tieni duro!",
+        "Quasi fatta!",
+        "La pazienza è la virtù dei forti.",
+        "Siamo in un bel guaio."
+      ],
+      "qs": [
+        "Straordinari!",
+        "Lavori fino a tardi?",
+        "Tanto da fare?",
+        "Stress?",
+        "Fine giornata tardi?"
+      ]
+    },
+    {
+      "id": "it.daily.128",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Prenota le ferie!",
+        "Riposo!",
+        "Prepara la valigia!",
+        "Non vedo l'ora!",
+        "Rilassati!",
+        "Un senso a questa vita, un senso a questa storia."
+      ],
+      "qs": [
+        "Ferie!",
+        "Servono ferie?",
+        "Quando le ferie?",
+        "Pianificare le ferie?",
+        "Prendere giorni?"
+      ]
+    },
+    {
+      "id": "it.daily.129",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Guarisci!",
+        "Riposati!",
+        "Bevi il tè!",
+        "Guarisci presto!",
+        "Abbi cura di te!",
+        "Il tempo risana tutte le ferite.",
+        "Ti vorrei sollevare, dalle pene della vita.",
+        "Centro di gravità permanente, che non mi faccia mai cambiare idea."
+      ],
+      "qs": [
+        "Stai male?",
+        "Sei malato?",
+        "Non ti senti bene?",
+        "Raffreddato?",
+        "Guarisci?"
+      ]
+    },
+    {
+      "id": "it.daily.130",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Guarisci!",
+        "Andrà bene!",
+        "Non aver paura!",
+        "Non è così grave!",
+        "Salute!"
+      ],
+      "qs": [
+        "Dottore!",
+        "Serve il dottore?",
+        "Appuntamento dal medico?",
+        "Dal dottore?",
+        "Visita?"
+      ]
+    },
+    {
+      "id": "it.daily.131",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Guarisci!",
+        "Bevi acqua!",
+        "Sdraiati!",
+        "Aria fresca!",
+        "Abbi cura di te!"
+      ],
+      "qs": [
+        "Mal di testa!",
+        "Ti fa male la testa?",
+        "Emicrania?",
+        "Testa che scoppia?",
+        "Pastiglia?"
+      ]
+    },
+    {
+      "id": "it.daily.132",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Curati bene!",
+        "Bevi tanto!",
+        "Riposo a letto!",
+        "Guarisci!",
+        "Abbi cura di te!"
+      ],
+      "qs": [
+        "Febbre!",
+        "Gradi?",
+        "Caldo e malato?",
+        "Misurare la febbre?",
+        "A letto presto?"
+      ]
+    },
+    {
+      "id": "it.daily.133",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Non aver paura!",
+        "Poi starai meglio!",
+        "Lavati i denti!",
+        "Andrà bene!",
+        "Coraggio!"
+      ],
+      "qs": [
+        "Dentista!",
+        "Ti fa male il dente?",
+        "Dal dentista?",
+        "Paura del trapano?",
+        "Mal di denti?"
+      ]
+    },
+    {
+      "id": "it.daily.134",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "A letto!",
+        "Riposati!",
+        "Pisolino!",
+        "A letto presto!",
+        "Riposo!"
+      ],
+      "qs": [
+        "Stanco!",
+        "Sei stanco?",
+        "Occhi che si chiudono?",
+        "Sbadigli?",
+        "Andare a nanna?"
+      ]
+    },
+    {
+      "id": "it.daily.135",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buonanotte!",
+        "Sogni d'oro!",
+        "Dormi fino a tardi!",
+        "Profondo!",
+        "Conta le pecore!"
+      ],
+      "qs": [
+        "Sonno!",
+        "Hai dormito?",
+        "Dormi profondamente?",
+        "Addormentarsi?",
+        "Dormire filato?"
+      ]
+    },
+    {
+      "id": "it.daily.136",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Lo sport è salute!",
+        "Così!",
+        "Riscaldati!",
+        "Tieni duro!",
+        "Forte!",
+        "Pronto a correre, finché ce n'è."
+      ],
+      "qs": [
+        "Sport!",
+        "Fai sport?",
+        "Correre?",
+        "Fitness?",
+        "Movimento?"
+      ]
+    },
+    {
+      "id": "it.daily.137",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buona fortuna!",
+        "Concentrati!",
+        "Riposa ogni tanto!",
+        "Ce la farai!",
+        "Così!",
+        "Ogni inizio è difficile.",
+        "Imparo ancora."
+      ],
+      "qs": [
+        "Studio!",
+        "Serve studiare?",
+        "Sgobbare?",
+        "Preparare l'esame?",
+        "Parole?"
+      ]
+    },
+    {
+      "id": "it.daily.138",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buona fortuna!",
+        "Ce la farai!",
+        "Respira profondo!",
+        "Ben preparato!",
+        "In bocca al lupo!",
+        "La paura è un'illusione.",
+        "Il coraggio non è l'assenza di paura, ma il trionfo su di essa.",
+        "Non aver paura di fallire."
+      ],
+      "qs": [
+        "Esame!",
+        "Domani esame?",
+        "Agitato?",
+        "Verifica?",
+        "Sessione?"
+      ]
+    },
+    {
+      "id": "it.daily.139",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Diligente!",
+        "Fai i compiti!",
+        "Imparato molto?",
+        "Così!",
+        "Pausa!"
+      ],
+      "qs": [
+        "Scuola!",
+        "Com'è la scuola?",
+        "Compiti?",
+        "Lezioni?",
+        "Maestra?"
+      ]
+    },
+    {
+      "id": "it.daily.140",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Sotto coi compiti!",
+        "Poi libero!",
+        "Concentrati!",
+        "Quasi fatto!",
+        "Bravo!",
+        "Smettila di fare il furbo.",
+        "Te l'avevo detto!",
+        "Hai fatto un grosso errore."
+      ],
+      "qs": [
+        "Dei compiti?",
+        "Compiti rimasti?",
+        "Matematica?",
+        "Finito?",
+        "Aiuto coi compiti?"
+      ]
+    },
+    {
+      "id": "it.daily.141",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "La lettura è forza!",
+        "Buona scelta!",
+        "Leggi accogliente!",
+        "Interessante?",
+        "Continua a leggere!",
+        "La poesia non è di chi la scrive, è di chi gli serve."
+      ],
+      "qs": [
+        "Lettura!",
+        "Ami leggere?",
+        "Quale libro?",
+        "Consiglia un libro?",
+        "Leggi ad alta voce?"
+      ]
+    },
+    {
+      "id": "it.daily.142",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "La pratica risolve!",
+        "Così!",
+        "Parla ad alta voce!",
+        "Bravo!",
+        "Divertente!",
+        "Non è mai troppo tardi per essere ciò che avresti potuto essere.",
+        "Capisci quello che dico o parlo arabo?"
+      ],
+      "qs": [
+        "Imparare una lingua?",
+        "Imparare l'italiano?",
+        "Ripassare parole?",
+        "Lingua nuova?",
+        "Fare pratica?"
+      ]
+    },
+    {
+      "id": "it.daily.143",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Il riavvio aiuta!",
+        "Controlla il cavo!",
+        "Googla!",
+        "Chiama il tecnico?",
+        "Andrà bene!"
+      ],
+      "qs": [
+        "Computer!",
+        "Problemi col pc?",
+        "Portatile?",
+        "Scrivere a macchina?",
+        "Internet?"
+      ]
+    },
+    {
+      "id": "it.daily.144",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Prendi la penna!",
+        "Scrivi oltre!",
+        "Ben scritto!",
+        "Controlla l'ortografia!",
+        "Fatto!",
+        "Le parole hanno un peso.",
+        "Parole, parole, parole, soltanto parole."
+      ],
+      "qs": [
+        "Scrivere!",
+        "Scrivere una lettera?",
+        "Email?",
+        "Tema?",
+        "Appunti?"
+      ]
+    },
+    {
+      "id": "it.daily.145",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Ricalcola!",
+        "La matematica è super!",
+        "Passo passo!",
+        "Esatto!",
+        "Bene!"
+      ],
+      "qs": [
+        "Contare!",
+        "Aritmetica?",
+        "Conto a mente?",
+        "Calcolatrice?",
+        "Numeri?"
+      ]
+    },
+    {
+      "id": "it.daily.146",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Prova prova!",
+        "Suona bene!",
+        "Continua!",
+        "Musica ovunque!",
+        "Bravo!"
+      ],
+      "qs": [
+        "Strumento?",
+        "Provare il piano?",
+        "Chitarra?",
+        "Fare musica?",
+        "Prova?"
+      ]
+    },
+    {
+      "id": "it.daily.147",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Pausa meritata!",
+        "Respira!",
+        "Sgranchisci le gambe!",
+        "Vai a prendere il caffè!",
+        "Poi oltre!",
+        "Chill / Chillare",
+        "Stai chill!",
+        "Chi va piano, va sano e va lontano."
+      ],
+      "qs": [
+        "Pausa!",
+        "Riposare?",
+        "Riprendere fiato?",
+        "Pausa tè?",
+        "Recupero?"
+      ]
+    },
+    {
+      "id": "it.daily.148",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Focus!",
+        "Via il telefono!",
+        "Una cosa alla volta!",
+        "Ce la farai!",
+        "Respira profondo!",
+        "Daje!"
+      ],
+      "qs": [
+        "Concentrati!",
+        "Distratto?",
+        "Focus?",
+        "Raccogliti?",
+        "Concentrazione!"
+      ]
+    },
+    {
+      "id": "it.daily.149",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Congratulazioni!",
+        "Fatto benissimo!",
+        "Così!",
+        "Orgoglioso!",
+        "Festeggiamo!",
+        "Il destino è nelle nostre mani.",
+        "Non sperare che sia facile, spera che ne valga la pena.",
+        "Chi la dura la vince."
+      ],
+      "qs": [
+        "È un successo?",
+        "Bravo?",
+        "Promosso?",
+        "Ce l'hai fatta?",
+        "Orgoglioso?"
+      ]
+    },
+    {
+      "id": "it.daily.150",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Tieni duro!",
+        "La prossima volta!",
+        "Impara da questo!",
+        "Non mollare!",
+        "Oltre!",
+        "La vita non è come l'hai vista nei film. La vita è più difficile.",
+        "Un giorno questo dolore ti sarà utile.",
+        "Il passato è passato, guarda avanti."
+      ],
+      "qs": [
+        "Bocciato?",
+        "Non ce l'hai fatta?",
+        "Andata male?",
+        "Ancora?",
+        "Tieni duro?"
+      ]
+    },
+    {
+      "id": "it.daily.151",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Salute!",
+        "Resta in forma!",
+        "Abbi cura di te!",
+        "Mangia bene!",
+        "Vivi sano!",
+        "Prenditi cura di te.",
+        "Stammi bene!",
+        "Un cuore felice è il miglior medicinale."
+      ],
+      "qs": [
+        "Salute!",
+        "Stammi bene!",
+        "Restare in forma?",
+        "Vivere sano?",
+        "Benessere?"
+      ]
+    },
+    {
+      "id": "it.daily.152",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Carica di vitamine!",
+        "Frutta!",
+        "Fresco!",
+        "Rafforza le difese!",
+        "Cin cin salute!"
+      ],
+      "qs": [
+        "Vitamine!",
+        "Vitamina C?",
+        "Mangiare frutta?",
+        "Immunità?",
+        "Alla salute?"
+      ]
+    },
+    {
+      "id": "it.daily.153",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Siedi dritto!",
+        "Allungati!",
+        "Muoviti!",
+        "Guarisci!",
+        "Rilassati!"
+      ],
+      "qs": [
+        "Schiena!",
+        "Mal di schiena?",
+        "Contratta?",
+        "Postura?",
+        "Stretching?"
+      ]
+    },
+    {
+      "id": "it.daily.154",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Sbatti le palpebre!",
+        "Riposo agli occhi!",
+        "Guarda lontano!",
+        "Pulisci gli occhiali!",
+        "Riposati!"
+      ],
+      "qs": [
+        "Occhi!",
+        "Occhi stanchi?",
+        "Pausa dallo schermo?",
+        "Occhiali?",
+        "Vedere?"
+      ]
+    },
+    {
+      "id": "it.daily.155",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Due volte al giorno!",
+        "A fondo!",
+        "Filo!",
+        "Controllo!",
+        "A specchio!"
+      ],
+      "qs": [
+        "Denti!",
+        "Lavi i denti?",
+        "Filo?",
+        "Denti che fan male?",
+        "Controllo dal dentista?"
+      ]
+    },
+    {
+      "id": "it.daily.156",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Col sapone!",
+        "Venti secondi!",
+        "Pulito!",
+        "Asciuga!",
+        "Bravo!"
+      ],
+      "qs": [
+        "Lavati le mani!",
+        "Mani pulite?",
+        "Sapone?",
+        "Igiene?",
+        "Lavate?"
+      ]
+    },
+    {
+      "id": "it.daily.157",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Guarisci!",
+        "Tè col miele!",
+        "Riposati!",
+        "Fazzoletti!",
+        "Rimettiti!"
+      ],
+      "qs": [
+        "Influenzato?",
+        "Raffreddore?",
+        "Tosse?",
+        "Mal di gola?",
+        "Naso chiuso?"
+      ]
+    },
+    {
+      "id": "it.daily.158",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Salute!",
+        "Fazzoletto!",
+        "Pollini in volo!",
+        "Pastiglia?",
+        "Guarisci!"
+      ],
+      "qs": [
+        "Allergia?",
+        "Allergia ai pollini?",
+        "Starnutisci?",
+        "Pollini?",
+        "Occhi che prudono?"
+      ]
+    },
+    {
+      "id": "it.daily.159",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buon allenamento!",
+        "Riscaldati!",
+        "Dai tutto!",
+        "Non scordare di bere!",
+        "Forte!",
+        "Ciò che non ti uccide ti rende più forte."
+      ],
+      "qs": [
+        "Palestra?",
+        "Ti alleni?",
+        "Pesi?",
+        "Sala?",
+        "Workout?"
+      ]
+    },
+    {
+      "id": "it.daily.160",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Andiamo!",
+        "Aria fresca buona!",
+        "Bel giro!",
+        "Sgranchisci le gambe!",
+        "Goditela!"
+      ],
+      "qs": [
+        "Passeggiata?",
+        "Aria fresca?",
+        "Fare un giro?",
+        "Fuori?",
+        "Respirare?"
+      ]
+    },
+    {
+      "id": "it.daily.161",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Gli hobby super!",
+        "Così!",
+        "Trova il tempo!",
+        "Divertiti!",
+        "Bene!",
+        "Qualunque cosa farai, amala.",
+        "Che fissa!"
+      ],
+      "qs": [
+        "Hobby?",
+        "Quale hobby?",
+        "Passioni?",
+        "Tempo libero?",
+        "Passione?"
+      ]
+    },
+    {
+      "id": "it.daily.162",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Metti la musica!",
+        "Più forte!",
+        "Canta insieme!",
+        "Buona scelta!",
+        "Groove!",
+        "La terra è una musica che non so suonare.",
+        "La musica è con me, è dentro me.",
+        "Fai rumore, sì, perché non posso farne a meno."
+      ],
+      "qs": [
+        "Musica!",
+        "Cosa ascolti?",
+        "Musica preferita?",
+        "Radio accesa?",
+        "Genere?"
+      ]
+    },
+    {
+      "id": "it.daily.163",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Fuori i popcorn!",
+        "Film via!",
+        "Quale scegliamo?",
+        "Accogliente!",
+        "Divertiti!",
+        "Albachiara, respiri piano per non far rumore.",
+        "Via del Campo c'è una graziosa, gli occhi neri e le labbra rosa."
+      ],
+      "qs": [
+        "Film!",
+        "Quale film guardiamo?",
+        "Film da cinema?",
+        "Serata cinema?",
+        "Film preferito?"
+      ]
+    },
+    {
+      "id": "it.daily.164",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buon cinema!",
+        "Fila centrale!",
+        "Non scordare i popcorn!",
+        "Sipario!",
+        "Buona visione!",
+        "Balliamo sul mondo, finché c'è musica."
+      ],
+      "qs": [
+        "Cinema!",
+        "Al cinema?",
+        "Cosa danno?",
+        "Andare al cinema?",
+        "Popcorn?"
+      ]
+    },
+    {
+      "id": "it.daily.165",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Guarda oltre!",
+        "Ancora un episodio!",
+        "Interessante!",
+        "Niente spoiler!",
+        "Divano pronto!"
+      ],
+      "qs": [
+        "Serie!",
+        "Quale serie guardi?",
+        "Tutto d'un fiato?",
+        "Nuovo episodio?",
+        "Maratona di serie?"
+      ]
+    },
+    {
+      "id": "it.daily.166",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buon gioco!",
+        "Chi vince?",
+        "Controlla le regole!",
+        "Ancora!",
+        "Gioco leale!",
+        "È un gioco da ragazzi."
+      ],
+      "qs": [
+        "Gioco!",
+        "Giochi?",
+        "Da tavolo?",
+        "Carte?",
+        "Si gioca in compagnia?"
+      ]
+    },
+    {
+      "id": "it.daily.167",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Divertiti!",
+        "Livello fatto?",
+        "Non scordare pause!",
+        "GG!",
+        "Oltre!"
+      ],
+      "qs": [
+        "Giochi ai videogiochi?",
+        "Quale console?",
+        "Online?",
+        "Level up?",
+        "Partita?"
+      ]
+    },
+    {
+      "id": "it.daily.168",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Goool!",
+        "Buona visione!",
+        "La tua squadra vince!",
+        "Atmosfera da stadio!",
+        "Fischio!",
+        "Guerriero, io sarò il tuo guerriero.",
+        "Rewind, fammi godere di nuovo.",
+        "La cura, ti proteggerò dalle paure delle ipocondrie."
+      ],
+      "qs": [
+        "Calcio!",
+        "Guardi la partita?",
+        "Quale squadra?",
+        "Campionato?",
+        "Gol!"
+      ]
+    },
+    {
+      "id": "it.daily.169",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buon viaggio!",
+        "Prepara la valigia!",
+        "Vedrai tanto!",
+        "Fotografa!",
+        "Goditelo!",
+        "Non possiamo scegliere da dove veniamo, ma possiamo scegliere dove andare.",
+        "A volte bisogna perdersi per ritrovarsi.",
+        "Fai buon viaggio."
+      ],
+      "qs": [
+        "Viaggio!",
+        "Parti?",
+        "Dove vai?",
+        "Voglia di partire?",
+        "Vacanze dove?"
+      ]
+    },
+    {
+      "id": "it.daily.170",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Al mare!",
+        "Crema solare!",
+        "Onde!",
+        "Raccogli conchiglie!",
+        "Splendido!",
+        "C'era una volta un piccolo naviglio...",
+        "Torna a Surriento, famme campà!",
+        "Vide 'o mare quant'è bello, spira tantu sentimento."
+      ],
+      "qs": [
+        "Mare!",
+        "Al mare?",
+        "Spiaggia?",
+        "Nuotare?",
+        "Castello di sabbia?"
+      ]
+    },
+    {
+      "id": "it.daily.171",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "La montagna chiama!",
+        "Goditi la vista!",
+        "Scarpe robuste!",
+        "Assalta la vetta!",
+        "Aria fresca!"
+      ],
+      "qs": [
+        "Montagna!",
+        "In escursione?",
+        "Sentiero?",
+        "Vetta?",
+        "Monte Bianco?"
+      ]
+    },
+    {
+      "id": "it.daily.172",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buon viaggio!",
+        "Attento!",
+        "Allaccia la cintura!",
+        "Senza traffico!",
+        "Non scordare benzina!"
+      ],
+      "qs": [
+        "Macchina!",
+        "Guidi?",
+        "Guidare?",
+        "Traffico?",
+        "Fare benzina?"
+      ]
+    },
+    {
+      "id": "it.daily.173",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Metti il casco!",
+        "Buon giro!",
+        "Suona!",
+        "Controlla l'aria!",
+        "Bel percorso!",
+        "La vita è come una bicicletta: per stare in equilibrio devi muoverti."
+      ],
+      "qs": [
+        "Bicicletta!",
+        "Vai in bici?",
+        "Giro in bici?",
+        "Casco messo?",
+        "Foratura?"
+      ]
+    },
+    {
+      "id": "it.daily.174",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buon viaggio!",
+        "Sali!",
+        "Speriamo puntuale!",
+        "Posto al finestrino!",
+        "Biglietto pronto!",
+        "Meglio tardi che mai.",
+        "È una corsa contro il tempo.",
+        "Funiculì, funiculà, se va, se va!"
+      ],
+      "qs": [
+        "Treno!",
+        "In treno?",
+        "In ritardo?",
+        "Binario?",
+        "Biglietto?"
+      ]
+    },
+    {
+      "id": "it.daily.175",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buon volo!",
+        "Allaccia la cintura!",
+        "Goditi la vista!",
+        "Atterraggio morbido!",
+        "Bon voyage!",
+        "Volare, oh oh! Cantare, oh oh oh oh!"
+      ],
+      "qs": [
+        "Aereo!",
+        "Paura di volare?",
+        "Decollo?",
+        "Atterraggio?",
+        "Vicino al finestrino?"
+      ]
+    },
+    {
+      "id": "it.daily.176",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Bella camera!",
+        "Riposo!",
+        "Servizio in camera!",
+        "Dormi fino a tardi!",
+        "Riposati!"
+      ],
+      "qs": [
+        "Hotel!",
+        "Check-in fatto?",
+        "Camera?",
+        "Colazione inclusa?",
+        "Hotel per vacanze?"
+      ]
+    },
+    {
+      "id": "it.daily.177",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Cheese!",
+        "Sorridi!",
+        "Bella foto!",
+        "Salva il momento!",
+        "Fammi vedere!"
+      ],
+      "qs": [
+        "Foto!",
+        "Una foto?",
+        "Cheese!",
+        "Selfie?",
+        "Foto di viaggio?"
+      ]
+    },
+    {
+      "id": "it.daily.178",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buono shopping!",
+        "Portafoglio preso?",
+        "Prova!",
+        "Saldi!",
+        "Goditelo!",
+        "Bisogna fare delle scelte.",
+        "La vita è fatta di scelte, la chiave è saper conviverci.",
+        "Non abbiamo scelta."
+      ],
+      "qs": [
+        "Shopping!",
+        "Per negozi?",
+        "Girare per negozi?",
+        "Comprare nuovo?",
+        "Centro commerciale?"
+      ]
+    },
+    {
+      "id": "it.daily.179",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Ricarica!",
+        "Scrivi un messaggio!",
+        "Meno schermo?",
+        "Chiama!",
+        "Risparmia batteria!",
+        "Ascoltami bene.",
+        "Dammi un secondo."
+      ],
+      "qs": [
+        "Telefono!",
+        "Telefono nuovo?",
+        "Batteria scarica?",
+        "Messaggio arrivato?",
+        "Chiamare?"
+      ]
+    },
+    {
+      "id": "it.daily.180",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Bei programmi!",
+        "Divertiti!",
+        "Controlla il meteo!",
+        "Non vedo l'ora!",
+        "Andiamo!",
+        "Segui i soldi.",
+        "Jammo, jammo, ncoppa jammo ja!",
+        "Chiediti se quello che stai facendo oggi ti avvicina al luogo in cui vuoi essere domani."
+      ],
+      "qs": [
+        "Programmi?",
+        "Cosa nel weekend?",
+        "Cosa si fa?",
+        "Intenzioni?",
+        "Cosa facciamo?"
+      ]
+    },
+    {
+      "id": "it.daily.181",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Andiamo!",
+        "Bel giro!",
+        "Aria fresca!",
+        "Sgranchisci le gambe!",
+        "Accogliente!",
+        "Non guardare indietro, corri!",
+        "Il gatto e la volpe, due amici per la pelle."
+      ],
+      "qs": [
+        "Andiamo a spasso?",
+        "Facciamo un giro?",
+        "Ti va una passeggiata?",
+        "Con me?",
+        "Col cane a spasso?"
+      ]
+    },
+    {
+      "id": "it.daily.182",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Bella festa!",
+        "Balla!",
+        "Non fino a tardi!",
+        "Scatenati!",
+        "Cin cin!",
+        "Dai, non fare il drammatico!",
+        "Flexare",
+        "Gassato"
+      ],
+      "qs": [
+        "Festa grande?",
+        "Si fa festa?",
+        "Invitato?",
+        "In discoteca?",
+        "Umore da festa?"
+      ]
+    },
+    {
+      "id": "it.daily.183",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "In pista!",
+        "Divertiti!",
+        "Ritmo!",
+        "Balla fino a mattina!",
+        "Poi a nanna!",
+        "Tarantella napoletana, balla per me.",
+        "E ti vengo a cercare, anche solo per vederti o parlarti.",
+        "Stella di mare, dove sei finita?"
+      ],
+      "qs": [
+        "Andiamo in disco?",
+        "Pista?",
+        "Discoteca?",
+        "In pista?",
+        "Ballare fino a mattina?"
+      ]
+    },
+    {
+      "id": "it.daily.184",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Canta!",
+        "A squarciagola!",
+        "Serata karaoke!",
+        "Trallalla!",
+        "Bravo!",
+        "Il mio canto libero, verso il cielo si alzerà.",
+        "L'anno che verrà, si spera che sia migliore."
+      ],
+      "qs": [
+        "Canta!",
+        "Canti?",
+        "Karaoke?",
+        "Cantare insieme?",
+        "Cantare sotto la doccia?"
+      ]
+    },
+    {
+      "id": "it.daily.185",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Rock on!",
+        "Bis!",
+        "Suona bene!",
+        "Applausi!",
+        "Oltre!",
+        "Lasciatemi cantare con la chitarra in mano.",
+        "Roma nun fà la stupida stasera."
+      ],
+      "qs": [
+        "Suoni la chitarra?",
+        "Comporre musica?",
+        "Band?",
+        "Concerto?",
+        "Al pianoforte?"
+      ]
+    },
+    {
+      "id": "it.daily.186",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Creativo!",
+        "Fuori i colori!",
+        "Bel quadro!",
+        "Disegna oltre!",
+        "Artista!",
+        "La bellezza cambierà il mondo.",
+        "Senza paura, guardo il futuro."
+      ],
+      "qs": [
+        "Disegnare!",
+        "Disegni?",
+        "Fuori i pennelli?",
+        "Arte?",
+        "Fare un quadro?"
+      ]
+    },
+    {
+      "id": "it.daily.187",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Il fai da te diverte!",
+        "Segui le istruzioni!",
+        "Creativo!",
+        "Fammi vedere!",
+        "Riuscito!",
+        "Ognuno è il fabbro della propria fortuna."
+      ],
+      "qs": [
+        "Fai da te!",
+        "Con le tue mani?",
+        "Artigianato?",
+        "Fare da solo?",
+        "Creare?"
+      ]
+    },
+    {
+      "id": "it.daily.188",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Non scordare di annaffiare!",
+        "Cresci!",
+        "Raccolto!",
+        "Verde!",
+        "Natura!"
+      ],
+      "qs": [
+        "Orto?",
+        "Piantare?",
+        "Balcone verde?",
+        "Raccolto?",
+        "Pollice verde?"
+      ]
+    },
+    {
+      "id": "it.daily.189",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Prendi la coperta!",
+        "Cose buone con te!",
+        "Nel verde!",
+        "Alle formiche niente!",
+        "Bene!"
+      ],
+      "qs": [
+        "Picnic!",
+        "Al picnic?",
+        "Prendere la coperta?",
+        "Mangiare fuori?",
+        "Cestino?"
+      ]
+    },
+    {
+      "id": "it.daily.190",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "In acqua!",
+        "Nuota a stile!",
+        "Non andare al largo!",
+        "Sguazza!",
+        "Rinfrescante!"
+      ],
+      "qs": [
+        "Saper nuotare?",
+        "In piscina?",
+        "A stile?",
+        "Mare o piscina?",
+        "Costume preso?"
+      ]
+    },
+    {
+      "id": "it.daily.191",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Monta la tenda!",
+        "Falò!",
+        "Marshmallow!",
+        "Guarda le stelle!",
+        "Avventura!"
+      ],
+      "qs": [
+        "Tenda!",
+        "In campeggio?",
+        "Montare la tenda?",
+        "Falò?",
+        "Dormire sotto le stelle?"
+      ]
+    },
+    {
+      "id": "it.daily.192",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "In bocca al lupo!",
+        "Pazienza!",
+        "Silenzio!",
+        "Pesca fresca!",
+        "Rilassa!",
+        "Fiume Sand Creek, il sogno di un guerriero."
+      ],
+      "qs": [
+        "Pesca!",
+        "A pesca?",
+        "Pazienza?",
+        "Al lago?",
+        "Preso?"
+      ]
+    },
+    {
+      "id": "it.daily.193",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Apri il giornale!",
+        "Interessante!",
+        "Resta informato!",
+        "Caffè insieme!",
+        "Lettura!",
+        "È una lunga storia.",
+        "C'è chi dice no, io dico sì."
+      ],
+      "qs": [
+        "Giornale?",
+        "Leggi il giornale?",
+        "Notizie?",
+        "Che novità?",
+        "Titoli?"
+      ]
+    },
+    {
+      "id": "it.daily.194",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Resta informato!",
+        "Notizie delle nove!",
+        "Lo so!",
+        "Il mondo gira!",
+        "Guarda!",
+        "Se non puoi dire quello che pensi, non sei libero.",
+        "La verità fa male, ma la bugia uccide.",
+        "La verità vi renderà liberi."
+      ],
+      "qs": [
+        "Guardi le notizie?",
+        "Ora delle notizie?",
+        "Urgenti?",
+        "Cos'è successo?",
+        "Attualità?"
+      ]
+    },
+    {
+      "id": "it.daily.195",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Accogliente dentro!",
+        "Serata giochi!",
+        "Guardare film!",
+        "Leggere un libro!",
+        "Col tè!"
+      ],
+      "qs": [
+        "A casa con pioggia?",
+        "Cosa fare con pioggia?",
+        "Restare dentro?",
+        "Giorno di pioggia?",
+        "Fanghiglia?"
+      ]
+    },
+    {
+      "id": "it.daily.196",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Esci!",
+        "Goditi il giorno!",
+        "Splendido!",
+        "Vitamina D!",
+        "Super!",
+        "La vita è bella.",
+        "La vita è un mistero da vivere, non un problema da risolvere.",
+        "La felicità si trova nelle piccole cose."
+      ],
+      "qs": [
+        "Bella giornata!",
+        "Bel tempo?",
+        "Uscire?",
+        "Prendere il sole?",
+        "Che giornata!"
+      ]
+    },
+    {
+      "id": "it.daily.197",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Guarda la luna!",
+        "Romantico!",
+        "Cielo stellato!",
+        "Esprimi un desiderio!",
+        "Bello!",
+        "Nel blu dipinto di blu, felice di stare lassù.",
+        "Santa Lucia, sul mare luccica l'astro d'argento.",
+        "Marechiare, quanno spunta 'a luna."
+      ],
+      "qs": [
+        "Luna!",
+        "Luna piena?",
+        "Guardare le stelle?",
+        "Sorgere della luna?",
+        "Cielo notturno?"
+      ]
+    },
+    {
+      "id": "it.daily.198",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Buon anno!",
+        "Fuochi!",
+        "Propositi!",
+        "Festa!",
+        "Evviva!",
+        "Sogna come se dovessi vivere per sempre.",
+        "Tu scendi dalle stelle, o Re del Cielo.",
+        "Sei un mito, per me sei sempre un mito."
+      ],
+      "qs": [
+        "Capodanno!",
+        "Buoni propositi?",
+        "Fuochi?",
+        "Festa di Capodanno?",
+        "Auguri di cuore?"
+      ]
+    },
+    {
+      "id": "it.daily.199",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Carnevale!",
+        "Mascherati!",
+        "Chiacchiere!",
+        "Divertiti!",
+        "Godi!",
+        "Hype"
+      ],
+      "qs": [
+        "Carnevale!",
+        "Settimana grassa?",
+        "Mascherarsi?",
+        "Costume?",
+        "Sfilate?"
+      ]
+    },
+    {
+      "id": "it.daily.200",
+      "type": "CHAT",
+      "actionId": "__RANDOM__",
+      "a": [
+        "Mi è piaciuto!",
+        "Alla prossima volta!",
+        "Sempre di nuovo!",
+        "Divertente!",
+        "Ciao!",
+        "Alla prossima!"
+      ],
+      "qs": [
+        "Grazie per la chiacchierata?",
+        "Piaciuto?",
+        "Bella chiacchierata?",
+        "Alla prossima volta?",
+        "Ciao alla fine?"
+      ]
+    }
+  ]
+}

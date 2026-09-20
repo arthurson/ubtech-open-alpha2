@@ -179,7 +179,7 @@ function voskDlButton(c) {
   return btn;
 }
 
-// 有對話區：有 matcher、可對答（中英西法日）。落了 ✓ 顯示（去語音頁點擊使用，
+// 有對話區：有 matcher、可對答（十語：中英西法日德意葡韓俄，後五語骨架等內容）。落了 ✓ 顯示（去語音頁點擊使用，
 // 這裡僅顯示不操作）；未落就出下載按鈕。
 function voskRenderCatalogSupported() {
   const box = document.getElementById("voskCatalogSupported");
