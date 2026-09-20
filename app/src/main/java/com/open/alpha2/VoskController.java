@@ -1095,6 +1095,10 @@ public final class VoskController {
         if ("downloading".equals(dlState) || "unzipping".equals(dlState)) {
             return "already downloading (" + dlModel + " " + dlProgress + "%)";
         }
+        // 單通道：動作包下載緊就唔開得（見 DownloadGate，實驗 tab 資源下載卡）。
+        if (!DownloadGate.tryAcquire("vosk", modelId)) {
+            return "another download in progress (" + DownloadGate.describe() + ")";
+        }
         final String url = target[1];
         // 已有就不要重落（scan 同 loadModel 共用判定：見 isModelDir）。
         // 狀態順手撥 done——之前失敗殘留的 error 訊息不用再留。
@@ -1317,6 +1321,7 @@ public final class VoskController {
                         + " (need am/final.mdl or top-level final.mdl)");
             }
             setDl("done", 100, null);
+            DownloadGate.release("vosk");
             Log.i(TAG, "model downloaded+unzipped: " + modelId);
             // 順手自動載入（省前端一 round trip；失敗不當下載失敗，狀態照 done）。
             // 用家正在聽就讓路——loadModel 會停 mic 斷 session，等用家自己切過去。
@@ -1348,6 +1353,7 @@ public final class VoskController {
             // 失敗／取消都清場：刪走今次 unzip 新增的目錄（zip 損壞／中途取消
             // 留下的半包），快照之前已存在的目錄一律不碰。
             cleanupNewDirs(root, beforeDl);
+            DownloadGate.release("vosk");
             if (cancelled || "cancelled".equalsIgnoreCase(msg)) {
                 setDl("cancelled", dlProgress, "cancelled");
             } else {

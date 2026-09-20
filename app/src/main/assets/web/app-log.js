@@ -193,6 +193,15 @@ function appendLog(msg) {
       actionsPackPollDownload();
     }
   }
+  // APK 下載進度（後端 ApkDownloadController.publishApk 主動推，同上）。
+  if (msg.type === "apk" && msg.data) {
+    if (typeof apkRenderStatus === "function") apkRenderStatus(msg.data);
+    if (msg.data.state === "done" || msg.data.state === "error" || msg.data.state === "cancelled") {
+      if (typeof apkPollDownloadOnce === "function") apkPollDownloadOnce();
+    } else if (typeof apkPollDownload === "function") {
+      apkPollDownload();
+    }
+  }
   if (msg.type === "sonar_obstacle" && msg.data) {
     sonarThresholdCm = msg.data.thresholdCm;
     sonarHistory.push({ triggered: !!msg.data.triggered });

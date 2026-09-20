@@ -63,6 +63,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     // 三個共用上面同一個 ubxPlayer 實例 (servo 讀寫還在這裡直接用)。
     private ActionDirect actionDirect;
     private ActionsPackController actionsPackController;
+    private ApkDownloadController apkDownloadController;
     private UbxApi ubxApi;
     private HttpServer httpServer;
     private RobotEventReceiver dynamicReceiver;
@@ -305,7 +306,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         apiDispatcher = new ApiDispatcher(this, speechCenter, this, actionDirect, ubxApi, chestQuery,
                 chestUpgrade, ttsCenter, voskApi, ledCenter, semanticCenter, deviceStatus,
                 cameraApi, audioCenter, ringtoneCenter, micCenter, robot, grammarCenter,
-                ubxPlayer, musicController, localServices, sonarCenter, actionsPackController);
+                ubxPlayer, musicController, localServices, sonarCenter, actionsPackController,
+                apkDownloadController);
 
         // Plain HTTP only. TLS/HTTPS was tried (self-signed cert) to make getUserMedia()
         // available for the walkie-talkie mic feature, but browsers on this device
@@ -543,6 +545,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         chestQuery = new ChestQuery(this, robot);
         actionDirect = new ActionDirect(this, ubxPlayer);
         actionsPackController = new ActionsPackController(this, actionDirect);
+        apkDownloadController = new ApkDownloadController(this);
         ubxApi = new UbxApi(this, ubxPlayer, actionDirect, chestQuery);
         chestUpgrade = new ChestUpgrade(this, chestQuery);
         // (ringtoneCenter/ledCenter 已在 onCreate 頭段建好，見上面。)
@@ -736,6 +739,12 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         if (actionsPackController != null) {
             try {
                 actionsPackController.shutdown();
+            } catch (Throwable ignore) {
+            }
+        }
+        if (apkDownloadController != null) {
+            try {
+                apkDownloadController.shutdown();
             } catch (Throwable ignore) {
             }
         }

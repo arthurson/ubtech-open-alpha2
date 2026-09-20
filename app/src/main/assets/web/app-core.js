@@ -186,6 +186,20 @@ const I18N = {
   actions_pack_done:      { zh: "✅ 下載＋解壓完成，舊動作已備份去 actions-backup（去動作頁重新載入列表）", en: "✅ Downloaded + extracted, old actions backed up to actions-backup (reload the list in the Actions tab)" },
   actions_pack_fail_prefix: { zh: "❌ 下載失敗：", en: "❌ Download failed: " },
   actions_pack_cancelled: { zh: "已取消下載", en: "Download cancelled" },
+  // -- 實驗 tab 資源下載卡（二合一：Vosk＋動作包，見 DownloadGate 單通道） --
+  res_dl_heading: { zh: "📦 資源下載", en: "📦 Resource Download" },
+  res_dl_disabled_hint: { zh: "開啟後才會顯示可下載資源", en: "Turn on to show downloadable resources" },
+  res_dl_hint: { zh: "一次只可下載一樣（Vosk 模型同動作包共用通道）。Vosk 落完自動載入，語音頁即多一個按鍵；動作包落完去動作頁重新載入列表。",
+                  en: "One download at a time (Vosk models and the actions pack share one slot). Vosk auto-loads when done, a new button appears in the Speech tab; reload the list in the Actions tab for the pack." },
+  res_dl_show_unsupported: { zh: "顯示只聽寫模型 ▸", en: "Show transcribe-only models ▸" },
+  res_dl_hide_unsupported: { zh: "▾ 收起只聽寫模型", en: "▾ Hide transcribe-only models" },
+  // -- 資源下載卡 Google TTS 區（見 ApkDownloadController，淨下載去 sdcard） --
+  apk_dl_heading: { zh: "📱 Google TTS 下載", en: "📱 Google TTS Download" },
+  apk_dl_hint: { zh: "下載指定版本 Google TTS 去 sdcard，落完每部機人手 adb install 一次。同卡其他下載共用通道，一次一樣。",
+                  en: "Download the pinned Google TTS to sdcard, then install once per robot via adb install. Shares the one download slot." },
+  apk_dl_download_btn: { zh: "⬇ 下載 Google TTS", en: "⬇ Download Google TTS" },
+  apk_dl_done: { zh: "✅ 已下載去 sdcard（adb install 裝一次）", en: "✅ Downloaded to sdcard (install once via adb install)" },
+  apk_dl_fail_prefix: { zh: "❌ 失敗：", en: "❌ Failed: " },
   // 語音頁幻聽過濾測試開關面板 (見 index.html voskHalluBox＋app-vosk.js)。
   vosk_hallu_heading:    { zh: "🧪 幻聽過濾測試開關", en: "🧪 Hallucination filter test switches" },
   vosk_hallu_hint:       { zh: "逐個開關做 AB 測試。grammar 切換聽緊會停完重開；前端兩項只存本瀏覽器。",
@@ -245,6 +259,13 @@ const I18N = {
   tts_android_voice_name: { zh: "語音", en: "Voice" },
   tts_android_voice_keep_option: { zh: "（預設聲）", en: "(Default voice)" },
   tts_android_voice_loading: { zh: "載入聲音中…", en: "Loading voices…" },
+  // TTS 跟隨 Vosk（語音 tab 手動掣：開＝手動選擇，關＝自動跟隨，見 TtsCenter 跟隨開關）。
+  tts_follow_vosk_label: { zh: "✋ 手動選擇", en: "✋ Manual selection" },
+  tts_follow_vosk_hint: { zh: "開＝手動選擇語言／聲音；關＝自動跟 Vosk 語言包走",
+                           en: "On = pick language/voice manually; off = auto-follow the Vosk pack" },
+  tts_follow_vosk_following: { zh: "自動跟隨中：", en: "Auto-following: " },
+  tts_follow_vosk_no_match: { zh: "已開啟跟隨，但引擎無對應語言聲，暫沿用手動選擇",
+                               en: "Follow is on but the engine has no matching voice — using manual selection for now" },
 
   // reboot_confirm/rebooting/
   // reboot_ok/reboot_failed_prefix/suffix 保留 (app-accel.js UUID 卡個獨立
@@ -503,6 +524,14 @@ function setUiLanguage(lang) {
   // 動作包狀態行一樣動態起，重畫一次就轉語言（不用再問後端）。
   try {
     if (typeof actionsPackApplyUiLanguage === "function") actionsPackApplyUiLanguage();
+  } catch(e) {}
+  // TTS 跟隨狀態行一樣動態起，重畫一次就轉語言（不用再問後端）。
+  try {
+    if (typeof ttsFollowApplyUiLanguage === "function") ttsFollowApplyUiLanguage();
+  } catch(e) {}
+  // APK 狀態行一樣動態起，重畫一次就轉語言（不用再問後端）。
+  try {
+    if (typeof apkApplyUiLanguage === "function") apkApplyUiLanguage();
   } catch(e) {}
 }
 

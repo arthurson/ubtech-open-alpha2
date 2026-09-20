@@ -50,11 +50,8 @@ public abstract class SemanticMatcherBase {
 
     /** 配對結果。type 和 MainActivity 已有的 asr_result event 格式對齊,
      *  answer/actionId 可能是 null (例如 CHAT 類沒 actionId, 部分 FUNCTION 沒 answer)。
-     *  matched＝真命中問法庫／false＝fallback 亂答（SemanticCenter 跨語言兜底用：
-     *  主 matcher 不中先試另一個，兩個都不中就用主那個 fallback）。
-     *  matchLayer＝命中邊一層（0 精確／1 包含／2 反包含／3 模糊／4 fallback）——
-     *  SemanticCenter 十語鏈用嚟排先後：強匹配（精確/包含/反包含）贏過別家嘅
-     *  模糊（例如西文 "Aplaude" 精確中西文組，唔畀英文 "applaud" 模糊搶走）。 */
+     *  matched＝真命中問法庫／false＝fallback 亂答（主 matcher 聽唔明就用主嗰個 fallback）。
+     *  matchLayer＝命中邊一層（0 精確／1 包含／2 反包含／3 模糊／4 fallback）。 */
     public static final class MatchResult {
         public final String question;   // 命中的原始問法 (debug 用)
         public final String type;       // "ACTION" | "FUNCTION" | "CHAT"

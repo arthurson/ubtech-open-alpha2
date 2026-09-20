@@ -44,6 +44,10 @@ function voskRefreshModels() {
     if (st && st.ok && st.apiLevel && st.apiLevel < 21) {
       const card = document.getElementById("voskCard");
       if (card) card.style.display = "none";
+      // 無 Vosk 就無跟隨對象，TTS 卡個跟隨行一齊收起。
+      try {
+        if (typeof ttsFollowVoskSyncVisibility === "function") ttsFollowVoskSyncVisibility();
+      } catch (e) {}
       return st;
     }
     return Alpha2Api.voskModels();
@@ -110,15 +114,67 @@ function voskSyncModelBtns() {
   }
 }
 
-// 實驗 tab 下載卡開關（同 panelAuthCardToggle 一致寫法）：預設收起，不記狀態。
-function voskDlCardToggle() {
-  const enabled = document.getElementById("voskDlCardEnabled");
-  const body = document.getElementById("voskDlCardBody");
-  const hint = document.getElementById("voskDlCardDisabledHint");
+// 實驗 tab 資源下載卡開關（同 panelAuthCardToggle 一致寫法）：預設收起，不記狀態。
+// 開嗰陣三邊一齊 refresh（Vosk catalog＋動作包 status＋APK status；轉頁撞正郁緊會跟進度）。
+function resDlCardToggle() {
+  const enabled = document.getElementById("resDlCardEnabled");
+  const body = document.getElementById("resDlCardBody");
+  const hint = document.getElementById("resDlCardDisabledHint");
   const on = !!(enabled && enabled.checked);
   if (body) body.style.display = on ? "block" : "none";
   if (hint) hint.style.display = on ? "none" : "block";
-  if (on) voskRefreshCatalog();
+  if (on) {
+    voskRefreshCatalog();
+    if (typeof actionsPackRefreshStatus === "function") actionsPackRefreshStatus();
+    if (typeof apkRefreshStatus === "function") apkRefreshStatus();
+  }
+}
+
+// 無對話（只聽寫）區摺疊鍵：撳先展開，預設收起。
+function voskUnsupportedToggle() {
+  const wrap = document.getElementById("voskUnsupportedWrap");
+  if (!wrap) return;
+  wrap.style.display = (wrap.style.display === "none" || !wrap.style.display) ? "block" : "none";
+  voskSyncUnsupportedBtn();
+}
+
+function voskSyncUnsupportedBtn() {
+  const btn = document.getElementById("voskUnsupportedToggleBtn");
+  const wrap = document.getElementById("voskUnsupportedWrap");
+  if (!btn) return;
+  // wrap 初值 style="display:none"：block 先算展開。
+  const isOpen = !!(wrap && wrap.style.display === "block");
+  btn.textContent = t(isOpen ? "res_dl_hide_unsupported" : "res_dl_show_unsupported");
+}
+
+// 資源下載通道忙碌中（Vosk 落緊／解緊）：動作包嗰邊撳鍵要一齊鎖（後端閘先係真擋）。
+function voskDownloadActive() {
+  const st = voskLastDownload && voskLastDownload.state;
+  return st === "downloading" || st === "unzipping";
+}
+
+// 兩邊下載按鈕跨鎖：邊一邊郁緊，另一邊撳鍵都鎖埋（各 cancel 鍵照各自 render 話事）。
+function syncResourceDownloadButtons() {
+  let busy = false;
+  try {
+    if (typeof voskDownloadActive === "function" && voskDownloadActive()) busy = true;
+  } catch (e) {}
+  try {
+    if (typeof actionsPackActive === "function" && actionsPackActive()) busy = true;
+  } catch (e) {}
+  try {
+    if (typeof apkActive === "function" && apkActive()) busy = true;
+  } catch (e) {}
+  ["voskCatalogList", "voskCatalogSupported"].forEach(function (boxId) {
+    const list = document.getElementById(boxId);
+    if (!list) return;
+    const btns = list.querySelectorAll("button");
+    for (let i = 0; i < btns.length; i++) btns[i].disabled = busy;
+  });
+  const packBtn = document.getElementById("actionsPackDlBtn");
+  if (packBtn) packBtn.disabled = busy;
+  const apkBtn = document.getElementById("apkDlBtn");
+  if (apkBtn) apkBtn.disabled = busy;
 }
 
 // 實驗 tab 下載卡：列出全部可下載（已下載不顯示），一粒一粒按即下載。
@@ -163,6 +219,7 @@ function voskRenderCatalogBtns() {
     list.appendChild(hint);
   }
   voskRenderCatalogSupported();
+  voskSyncUnsupportedBtn();
   // 正在下載鎖住（voskRenderDownload 都會再鎖，這裡補語言切換重畫當時）。
   if (voskLastDownload) voskRenderDownload(voskLastDownload);
 }
@@ -292,6 +349,7 @@ function voskRenderDownload(res) {
   }
   // 正在下載僅鎖兩區下載按鈕（後端一次僅落一粒）；語音頁模型鍵照用——
   // 下載不碰聽東西，解完 refresh 會加回新鍵。
+  // 跨鎖動作包撳鍵（單通道，見 syncResourceDownloadButtons＋DownloadGate）。
   ["voskCatalogList", "voskCatalogSupported"].forEach(function (boxId) {
     const list = document.getElementById(boxId);
     if (!list) return;
@@ -302,6 +360,7 @@ function voskRenderDownload(res) {
   if (cancelBtn) cancelBtn.style.display = active ? "" : "none";
   // 語音頁模型鍵同步鎖／解（voskSyncModelBtns 懂得看 voskLastDownload）。
   voskSyncModelBtns();
+  syncResourceDownloadButtons();
 }
 
 // 一按即用：正在聽那顆再按即停（變灰）；不同粒就先停舊再載入＋ready 自動開聽。
@@ -435,6 +494,10 @@ function voskRenderStatus(res) {
   }
   // 模型鍵高亮經 voskSyncModelBtns 統一：僅正在聽那顆藍（再按即停），其餘灰。
   voskSyncModelBtns();
+  // TTS 跟隨 Vosk 開嗰陣，模型轉咗要 refresh 跟隨顯示（未開就淨係記低唔問後端）。
+  try {
+    if (typeof ttsFollowVoskOnModelChange === "function") ttsFollowVoskOnModelChange(res.model || null);
+  } catch (e) {}
 }
 
 // ---------------- 幻聽過濾測試開關 (voskHalluBox) ----------------

@@ -91,6 +91,7 @@ function setTtsEngine(engine) {
   currentTtsEngine = "android";
   loadAndroidTtsEngines();
   loadAndroidTtsLanguages();
+  loadTtsFollowVosk();
 }
 
 /** 選 Android TTS 引擎 (speech/tts engine=android 分支實際說話用那個系統
@@ -112,6 +113,7 @@ function setAndroidTtsEngine() {
     setTimeout(function () {
       loadCurAndroidTtsEngine();
       loadAndroidTtsLanguages();
+      loadTtsFollowVosk();
     }, 800);
   });
 }
@@ -210,6 +212,11 @@ function loadAndroidTtsVoices() {
   const row = document.getElementById("ttsAndroidVoiceRow");
   const select = document.getElementById("ttsAndroidVoiceSelect");
   if (!row || !select) return;
+  // 自動跟隨開：聲音行收起，唔載入（免同 ttsFollowSyncRows 鬥顯示）。
+  if (currentTtsFollowVosk) {
+    row.style.display = "none";
+    return;
+  }
   if (!currentAndroidTtsLang) {
     hideAndroidTtsVoiceRow();
     return;
@@ -298,18 +305,114 @@ function setAndroidTtsVoice() {
   Alpha2Api.speechSetTtsVoice( { voice: currentAndroidTtsVoice });
 }
 
+// ---------------- TTS 手動掣（手動／自動選擇） ----------------
+//
+// 掣喺引擎／語言／聲音三行上面：開＝手動選擇（三行出現，現況不變，預設）；
+// 關＝自動跟當前 Vosk 模型走（後端喺引擎現有聲裡面揀最啱嗰個，
+// 見 TtsCenter.resolveFollowLocale；三行直情收起）。
+// 後端 pref 存嘅係 enabled（自動跟隨；持久化，預設 false 即掣開＝手動），
+// 前端掣係反相：checked＝手動。
+let currentTtsFollowVosk = false;
+// 上次見到嘅 vosk model（ttsFollowVoskOnModelChange 比對用，變先問後端，唔洗版）。
+let ttsFollowLastVoskModel = null;
+// 最近一次跟隨現狀（語言切換當時重畫狀態行用，唔使再問後端）。
+let ttsFollowLastStatus = null;
+
+function loadTtsFollowVosk() {
+  ttsFollowVoskSyncVisibility();
+  return Alpha2Api.speechCurTtsFollowVosk().then(function (res) {
+    if (!res || !res.ok) return res;
+    currentTtsFollowVosk = !!res.enabled;
+    // 掣反相：checked＝手動（enabled＝自動跟隨）。
+    const toggle = document.getElementById("ttsFollowVoskToggle");
+    if (toggle) toggle.checked = !currentTtsFollowVosk;
+    ttsFollowRenderStatus(res);
+    return res;
+  });
+}
+
+function setTtsFollowVosk() {
+  const toggle = document.getElementById("ttsFollowVoskToggle");
+  // 掣反相：checked＝手動，後端 enabled＝自動跟隨。
+  const manual = !!(toggle && toggle.checked);
+  return Alpha2Api.speechSetTtsFollowVosk({ enabled: !manual }).then(function (res) {
+    return loadTtsFollowVosk();
+  });
+}
+
+function ttsFollowRenderStatus(res) {
+  if (!res) return;
+  ttsFollowLastStatus = res;
+  const on = !!res.enabled;
+  // 自動跟隨開：引擎／語言／聲音三行直情收起（唔係淨鎖住）；轉返手動先出現。
+  ttsFollowSyncRows(on);
+  const out = document.getElementById("ttsFollowVoskStatus");
+  if (out) {
+    if (on && res.effectiveLang) {
+      out.textContent = t("tts_follow_vosk_following") + res.effectiveLang;
+    } else if (on) {
+      out.textContent = t("tts_follow_vosk_no_match");
+    } else {
+      out.textContent = "";
+    }
+  }
+}
+
+// 全局語言切換（setUiLanguage）當時重畫跟隨狀態行，唔使再問後端。
+function ttsFollowApplyUiLanguage() {
+  if (ttsFollowLastStatus) ttsFollowRenderStatus(ttsFollowLastStatus);
+}
+
+// Vosk 模型轉咗先 refresh（app-vosk.js voskRenderStatus 經呢度入；
+// 未開跟隨就淨係記低，唔問後端）。開機自動載入／下載自動載入一樣經
+// vosk_state event 入嚟，唔會漏。
+function ttsFollowVoskOnModelChange(model) {
+  const m = model || null;
+  if (m === ttsFollowLastVoskModel) return;
+  ttsFollowLastVoskModel = m;
+  if (!currentTtsFollowVosk) return;
+  loadTtsFollowVosk();
+}
+
+// 舊機（API 19，無 Vosk）跟隨無意義，成行收起。voskCard 隱藏即代表無 Vosk。
+function ttsFollowVoskSyncVisibility() {
+  const card = document.getElementById("voskCard");
+  const row = document.getElementById("ttsFollowVoskRow");
+  if (!row) return;
+  row.style.display = (card && card.style.display === "none") ? "none" : "";
+}
+
+// 自動／手動切換三行顯示：自動就引擎／語言／聲音成行收起；手動就引擎＋語言
+// 出現，聲音行跟返本來邏輯（有具體語言先顯示，見 loadAndroidTtsVoices）。
+function ttsFollowSyncRows(on) {
+  const engineRow = document.getElementById("ttsAndroidEngineRow");
+  const langRow = document.getElementById("ttsAndroidLangRow");
+  const voiceRow = document.getElementById("ttsAndroidVoiceRow");
+  if (on) {
+    if (engineRow) engineRow.style.display = "none";
+    if (langRow) langRow.style.display = "none";
+    if (voiceRow) voiceRow.style.display = "none";
+  } else {
+    if (engineRow) engineRow.style.display = "";
+    if (langRow) langRow.style.display = "";
+    if (voiceRow) voiceRow.style.display = currentAndroidTtsLang ? "" : "none";
+  }
+}
+
 function speakTts() {
   const text = document.getElementById("ttsText").value.trim();
   if (!text) { showError("語音", t("speech_test_enter_text_alert")); return; }
-  // 恆行 Android TTS。lang 有選先帶 (空=沿用引擎目前語言)。
+  // 恆行 Android TTS。手動先帶 lang/voice；自動跟隨開就唔帶（後端跟當前 Vosk 解）。
   const params = { text: text, engine: "android" };
-  // 空字串=沿用引擎目前語言 (見後端 speech/tts 個 android 分支 comment)。
-  if (currentAndroidTtsLang) {
-    params.lang = currentAndroidTtsLang;
-  }
-  // 有選具體聲先帶 (空=該語言預設聲；後端找不到會跌回 lang 路)。
-  if (currentAndroidTtsVoice) {
-    params.voice = currentAndroidTtsVoice;
+  if (!currentTtsFollowVosk) {
+    // 空字串=沿用引擎目前語言 (見後端 speech/tts 個 android 分支 comment)。
+    if (currentAndroidTtsLang) {
+      params.lang = currentAndroidTtsLang;
+    }
+    // 有選具體聲先帶 (空=該語言預設聲；後端找不到會跌回 lang 路)。
+    if (currentAndroidTtsVoice) {
+      params.voice = currentAndroidTtsVoice;
+    }
   }
   // 對話界面: 機械人「說話」即刻顯示做 assistant 氣泡 — 這裡同小智不同的是
   // TTS request 本身沒有對應的非同步 event 會將講了的文字送回來 (不似 asr_result

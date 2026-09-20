@@ -101,7 +101,11 @@ prebuilt `.so`（`head_led/head_key_mgr/serial_port`）一律在
   incremental build 無事（manifest UP-TO-DATE 就不跑）；**不 clean、不
   `--rerun-tasks`**，任何逼 `processDebugMainManifest` 重跑的操作會死
   （`File.path accessible: module java.base does not open java.io`）。
-  萬一逼死了：直接再跑一次普通 `assembleDebug --offline`，等它慢慢行完就變綠。
+  萬一逼死了：同一 powershell 先 `$env:JDK_JAVA_OPTIONS="--add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED"`
+  再 `cmd /c gradlew.bat --stop` 後重跑（`JDK_JAVA_OPTIONS` 每個 fork 出嚟嘅
+  worker JVM 都食，`GRADLE_OPTS`/user-global `gradle.properties` 唔掂——repo
+  自己個 `gradle.properties` 會蓋 user-global；2026-09-20 實測 work）。
+  用完唔使清（env 唔落盤）。
 - 不 `adb kill-server`；壞 build 不要短 loop 重試（前人經驗：1.5s loop 會崩潰）。
 - 出 APK 必 `dexdump` **方法級**驗（類表不夠；`dexdump -d classes.dex`，APK 直 dump 會 mmap 死，先 unzip）。
 - `ApiResponse.error()` 天生回 500；`Get-Content` 量行數試過不準（以實測為準）。

@@ -42,6 +42,8 @@ tags:
   description: 基礎狀態與升級
 - name: action
   description: 內建動作播放 (UbxPlayer 直驅)
+- name: apk
+  description: APK 下載去 sdcard（裝唔經面板，每部機人手裝一次）
 - name: speech
   description: 語音 / TTS（僅 Android 引擎有效）/ 本地語意配對（機身已無 Nuance/iFlytek 引擎）
 - name: servo
@@ -405,6 +407,70 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
       operationId: actionPackCancel_get
+  /api/apk/download:
+    get:
+      tags:
+      - apk
+      summary: 下載 APK 去 sdcard（Google TTS 指定版本）
+      description: 固定 URL，後端直落 apk 到 sdcard 即完；安裝唔經面板（每部機人手 adb install 一次）。進度經 apk event / apk/status 查。
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 已開始下載（進度經 apk event / apk/status 查）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: apkDownload_get
+  /api/apk/status:
+    get:
+      tags:
+      - apk
+      summary: APK 下載進度（state/progress/bytes/total）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 下載狀態
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: apkStatus_get
+  /api/apk/cancel:
+    get:
+      tags:
+      - apk
+      summary: 取消進行中的 APK 下載
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 已取消
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: apkCancel_get
   /api/direct/ubx/list:
     get:
       tags:
@@ -1319,6 +1385,75 @@ paths:
                     voice:
                       type: string
       operationId: speechCurTtsVoice_get
+  /api/speech/cur_tts_follow_vosk:
+    get:
+      tags:
+      - speech
+      summary: 查詢 TTS 自動跟隨 Vosk 開關（手動／自動）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 跟隨現狀 (enabled/voskLang/effectiveLang，effectiveLang 空=未開或無對應聲)
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    voskLang:
+                      type: string
+                      nullable: true
+                    effectiveLang:
+                      type: string
+      operationId: speechCurTtsFollowVosk_get
+  /api/speech/set_tts_follow_vosk:
+    get:
+      tags:
+      - speech
+      summary: 設定 TTS 自動跟隨 Vosk 開關（手動／自動）
+      description: 開＝對話 TTS／空參數 speech/tts 自動跟當前 Vosk 模型走；關＝手動選擇（現況不變）。手動語言／聲音選擇保留不刪，轉返手動即還原。
+      parameters:
+      - name: enabled
+        in: query
+        required: true
+        schema:
+          type: boolean
+        description: true=自動跟隨，false=手動選擇
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 跟隨現狀 (同 cur_tts_follow_vosk 同格式)
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    voskLang:
+                      type: string
+                      nullable: true
+                    effectiveLang:
+                      type: string
+      operationId: speechSetTtsFollowVosk_get
   /api/speech/set_mic:
     get:
       tags:

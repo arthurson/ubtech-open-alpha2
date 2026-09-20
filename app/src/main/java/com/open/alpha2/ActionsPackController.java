@@ -75,6 +75,10 @@ public final class ActionsPackController {
         if ("downloading".equals(packState) || "unzipping".equals(packState)) {
             return "already downloading (" + packProgress + "%)";
         }
+        // 單通道：Vosk 模型下載緊就唔開得（見 DownloadGate，實驗 tab 資源下載卡）。
+        if (!DownloadGate.tryAcquire("actions", "actions.zip")) {
+            return "another download in progress (" + DownloadGate.describe() + ")";
+        }
         packState = "downloading";
         packProgress = 0;
         packBytes = 0;
@@ -331,6 +335,7 @@ public final class ActionsPackController {
                 Log.w(TAG, "invalidateCache failed", e);
             }
             setPack("done", 100, null);
+            DownloadGate.release("actions");
             Log.i(TAG, "actions pack downloaded+installed");
         } catch (Throwable e) {
             boolean cancelled;
@@ -365,6 +370,7 @@ public final class ActionsPackController {
                 deleteRecursive(staging);
             } catch (Throwable ignore) {
             }
+            DownloadGate.release("actions");
             if (cancelled || "cancelled".equalsIgnoreCase(msg)) {
                 setPack("cancelled", packProgress, "cancelled");
             } else {

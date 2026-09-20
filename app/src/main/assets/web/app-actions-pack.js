@@ -1,7 +1,8 @@
 // Open Alpha2 — client logic (app-actions-pack.js)
-// 實驗 tab 動作包下載卡：固定 actions.zip，後端直落＋自動 unzip 到 sdcard，
-// 舊 /sdcard/actions 改名 /sdcard/actions-backup。
-// 後端見 ActionsPackController＋action/pack/download|status|cancel。
+// 實驗 tab 資源下載卡入面嘅動作包區：固定 actions.zip，後端直落＋自動 unzip
+// 到 sdcard，舊 /sdcard/actions 改名 /sdcard/actions-backup。
+// 後端見 ActionsPackController＋action/pack/download|status|cancel；
+// 同 Vosk 共用單一下載通道（見 DownloadGate），每次只准一邊郁。
 // 全部檔案共用 window/global scope（沒有用 ES module），載入順序由 index.html 的
 // <script src="..."> 順序決定。
 
@@ -10,15 +11,10 @@ var actionsPackDlTimer = null;
 // 最近一次 status（語言切換當時重畫狀態行用，不用再問後端）。
 var actionsPackLastStatus = null;
 
-// 實驗 tab 動作包卡開關（同 voskDlCardToggle 一致寫法）：預設收起，不記狀態。
-function actionsPackCardToggle() {
-  const enabled = document.getElementById("actionsPackCardEnabled");
-  const body = document.getElementById("actionsPackCardBody");
-  const hint = document.getElementById("actionsPackCardDisabledHint");
-  const on = !!(enabled && enabled.checked);
-  if (body) body.style.display = on ? "block" : "none";
-  if (hint) hint.style.display = on ? "none" : "block";
-  if (on) actionsPackRefreshStatus();
+// 動作包落緊／解緊：Vosk 嗰邊撳鍵要一齊鎖（後端閘先係真擋）。
+function actionsPackActive() {
+  const st = actionsPackLastStatus && actionsPackLastStatus.state;
+  return st === "downloading" || st === "unzipping";
 }
 
 // 全局語言切換（setUiLanguage）當時重畫狀態行，不用再問後端。
@@ -82,7 +78,7 @@ function actionsPackPollDownloadOnce() {
 }
 
 // actions_pack event（後端 ActionsPackController 主動推）＋上面 poll 共用渲染：
-// 進度出在實驗 tab 動作包卡。done/error/cancelled 交 poll 收尾（停 timer）。
+// 進度出在實驗 tab 資源下載卡。done/error/cancelled 交 poll 收尾（停 timer）。
 function actionsPackRenderStatus(res) {
   if (!res) return;
   actionsPackLastStatus = res;
@@ -104,8 +100,10 @@ function actionsPackRenderStatus(res) {
       out.textContent = "—";
     }
   }
-  const dlBtn = document.getElementById("actionsPackDlBtn");
-  if (dlBtn) dlBtn.disabled = !!active;
   const cancelBtn = document.getElementById("actionsPackCancelBtn");
   if (cancelBtn) cancelBtn.style.display = active ? "" : "none";
+  // 跨鎖 Vosk 撳鍵（單通道，見 syncResourceDownloadButtons＋DownloadGate）。
+  try {
+    if (typeof syncResourceDownloadButtons === "function") syncResourceDownloadButtons();
+  } catch (e) {}
 }

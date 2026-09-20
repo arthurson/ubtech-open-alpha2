@@ -37,6 +37,12 @@ public final class TtsCenter {
      *  （見 setTtsEngine/setTtsLang），不要將舊聲套到新語言上。 */
     private static final String PREF_ANDROID_TTS_VOICE = "android_tts_voice";
 
+    /** TTS 跟隨 Vosk 語言包開關（語音 tab「自動跟隨 Vosk」；false＝手動＝
+     *  現況不變，true＝對話 TTS／空參數 speech/tts 自動跟當前 Vosk 模型走）。
+     *  prefs 持久化，預設關。開嗰陣手動語言／聲音選擇保留但唔用（轉返手動
+     *  即刻還原），唔使清。 */
+    private static final String PREF_ANDROID_TTS_FOLLOW_VOSK = "android_tts_follow_vosk";
+
     public static final int TTS_DATA_CHECK_REQUEST_CODE = 0x7454; // "T T" leetspeak-ish, 只是要一個穩定、未用過的 code
 
     private final Activity activity;
@@ -613,6 +619,9 @@ public final class TtsCenter {
      * locale 參數現在只是 fallback —— TTS 卡有明確選擇
      * (PREF_ANDROID_TTS_LANG 非空) 就優先用卡的選擇，對話 TTS 即時跟卡走；
      * 卡留空 ("沿用引擎目前語言") 先用傳入的自動判斷值。
+     * 跟隨 Vosk 開嗰陣（見 PREF_ANDROID_TTS_FOLLOW_VOSK）：有效語言改跟
+     * 當前 Vosk 模型走（引擎現有聲裡面揀最啱嗰個，經 resolveFollowLocale；
+     * 舊手動聲唔跟），揀唔到先跌回下面手動邏輯，唔靜音。
      * 嘗試切 locale (不支援就記 warning 照用引擎現有語言讀, 不靜音),
      * QUEUE_FLUSH 單句播放。嘴 LED 由 UtteranceProgressListener 負責關,
      * 呼叫方開始前點亮、失敗時自己關即可。
@@ -624,22 +633,32 @@ public final class TtsCenter {
             Log.w(TAG, "speakAndroidTts: Android TTS not ready, drop: " + text);
             return false;
         }
+        // 自動跟隨 Vosk：有效語言跟當前模型走，舊手動聲唔跟（聲綁死舊語言）。
+        java.util.Locale followLocale = ttsFollowVosk() ? resolveFollowLocale() : null;
         // TTS 卡優先：有明確選擇就用它，否則用傳入的自動判斷值。
+        // 跟隨開＋解到聲就唔行呢度（上面已經有有效語言）。
         java.util.Locale effective = locale;
-        try {
-            String cardLang = prefs().getString(PREF_ANDROID_TTS_LANG, "");
-            if (cardLang != null && !cardLang.isEmpty()) {
-                effective = java.util.Locale.forLanguageTag(cardLang);
+        if (followLocale == null) {
+            try {
+                String cardLang = prefs().getString(PREF_ANDROID_TTS_LANG, "");
+                if (cardLang != null && !cardLang.isEmpty()) {
+                    effective = java.util.Locale.forLanguageTag(cardLang);
+                }
+            } catch (Throwable ignore) {
             }
-        } catch (Throwable ignore) {
+        } else {
+            effective = followLocale;
         }
         locale = effective;
-        // 卡有選具體聲就用聲（setVoice 連 locale 一齊換）；找不到先跌回下面 setLanguage。
+        // 卡有選具體聲就用聲（setVoice 連 locale 一齊換）；跟隨開就唔用聲，
+        // 找不到先跌回下面 setLanguage。
         boolean voiced = false;
-        try {
-            voiced = applyVoiceByName(tts, ttsVoicePref());
-        } catch (Throwable ignore) {
-            voiced = false;
+        if (followLocale == null) {
+            try {
+                voiced = applyVoiceByName(tts, ttsVoicePref());
+            } catch (Throwable ignore) {
+                voiced = false;
+            }
         }
         if (locale != null && !voiced) {
             try {
@@ -681,7 +700,10 @@ public final class TtsCenter {
 
     /** speech/tts engine=android 分支本體。回 null = 已送去讀；回字串 = 錯誤訊息。
      *  voice（可空）＝ Voice.getName()：有就優先 setVoice（連 locale 一齊換，
-     *  不要求 lang 相符）；找不到先跌回 lang 路。空就照舊只用 lang。 */
+     *  不要求 lang 相符）；找不到先跌回 lang 路。空就照舊只用 lang。
+     *  跟隨 Vosk 開＋lang／voice 都無帶（前端自動模式個測試掣就係咁送）：
+     *  改跟當前 Vosk 模型解出嚟個聲讀；解唔到就沿用引擎目前語言（唔報錯）。
+     *  明確帶咗 lang／voice（Blockly／curl）一律優先，唔受跟隨影響。 */
     public String speakPanelTts(String text, String lang, String voice) {
         if (androidTts == null || !androidTtsReady) {
             return "Android TTS not ready";
@@ -698,6 +720,20 @@ public final class TtsCenter {
             int result = androidTts.setLanguage(locale);
             if (result < TextToSpeech.LANG_AVAILABLE) {
                 return "Android TTS engine does not support language: " + lang;
+            }
+        }
+        if (!voiced && lang.isEmpty() && ttsFollowVosk()) {
+            java.util.Locale auto = resolveFollowLocale();
+            if (auto != null) {
+                try {
+                    int r = androidTts.setLanguage(auto);
+                    if (r < TextToSpeech.LANG_AVAILABLE) {
+                        Log.w(TAG, "speakPanelTts: follow locale " + auto.toLanguageTag()
+                                + " not supported, speak with current language instead");
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "speakPanelTts follow setLanguage failed", e);
+                }
             }
         }
         LedCenter.startMouthLedForTts();
@@ -813,6 +849,112 @@ public final class TtsCenter {
     public HttpServer.ApiResponse curTtsVoice() {
         return HttpServer.ApiResponse.ok(
                 "{\"ok\":true,\"voice\":\"" + MainActivity.jsonSafe(ttsVoicePref()) + "\"}");
+    }
+
+    // -- TTS 跟隨 Vosk 語言包（語音 tab 手動／自動選擇） --------------------------
+    // 關＝手動（現況不變：卡語言／聲選擇＋傳入 locale 原樣行）；
+    // 開＝自動（speakAndroidTts 有效語言跟當前 Vosk 模型走、
+    // speech/tts 空參數一樣跟；明確帶 lang／voice 照樣優先）。
+    // 解算讀 live 狀態（vosk.getDialogueLang＋引擎現有聲），唔使喺 vosk 切包
+    // 當時寫任何嘢——開機自動載入／下載自動載入呢啲唔經 vosk/load 嘅路都一樣跟到。
+
+    /** 跟隨開關現狀（prefs，預設關＝手動）。 */
+    public boolean ttsFollowVosk() {
+        try {
+            return prefs().getBoolean(PREF_ANDROID_TTS_FOLLOW_VOSK, false);
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    /** 當前 Vosk 模型解出嚟應該用邊個 TTS locale（引擎現有聲裡面揀）。
+     *  解唔到（無 vosk／引擎無對應聲）回 null，呼叫方跌回手動邏輯，唔靜音。 */
+    private java.util.Locale resolveFollowLocale() {
+        String vlang = null;
+        try {
+            if (vosk != null) vlang = vosk.getDialogueLang();
+        } catch (Throwable ignore) {
+        }
+        String tag = bestTtsTagForVoskLang(vlang);
+        if (tag == null) return null;
+        try {
+            return java.util.Locale.forLanguageTag(tag);
+        } catch (Throwable ignore) {
+            return null;
+        }
+    }
+
+    /** Vosk 對話語言→偏好 TTS primary language 順序。zh 行先 cmn（vosk small-cn
+     *  係普通話，唔係粵語），再 zh，最後 yue（有中文聲好過無）；其餘一對一。 */
+    private static String[] ttsLangPrefsFor(String vlang) {
+        if ("zh".equals(vlang)) return new String[]{"cmn", "zh", "yue"};
+        if ("en".equals(vlang)) return new String[]{"en"};
+        if ("es".equals(vlang)) return new String[]{"es"};
+        if ("fr".equals(vlang)) return new String[]{"fr"};
+        if ("ja".equals(vlang)) return new String[]{"ja"};
+        if ("de".equals(vlang)) return new String[]{"de"};
+        if ("it".equals(vlang)) return new String[]{"it"};
+        if ("pt".equals(vlang)) return new String[]{"pt"};
+        if ("ko".equals(vlang)) return new String[]{"ko"};
+        if ("ru".equals(vlang)) return new String[]{"ru"};
+        return null;
+    }
+
+    /** 引擎現有語言裡面揀最啱當前 Vosk 模型嗰個 tag（BCP-47，連 region 保留，
+     *  例如 es-ES 唔係齋 es，engine 先 match 到）。揀唔到回 null。 */
+    private String bestTtsTagForVoskLang(String vlang) {
+        String[] prefs = ttsLangPrefsFor(vlang);
+        if (prefs == null) return null;
+        List<TtsLanguageOption> langs;
+        try {
+            langs = listAndroidTtsLanguages(java.util.Locale.US);
+        } catch (Throwable e) {
+            return null;
+        }
+        if (langs == null || langs.isEmpty()) return null;
+        for (String p : prefs) {
+            for (TtsLanguageOption o : langs) {
+                String got;
+                try {
+                    got = java.util.Locale.forLanguageTag(o.langTag).getLanguage();
+                } catch (Throwable ignore) {
+                    continue;
+                }
+                if (p.equalsIgnoreCase(got)) return o.langTag;
+            }
+        }
+        return null;
+    }
+
+    /** 跟隨現狀 JSON（cur＋set 成功都回呢個，等前端一次 round trip refresh）。
+     *  voskLang＝當前模型對話語言（無 vosk 就 null）；effectiveLang＝解到嘅
+     *  TTS tag（未開／解唔到就空字串）。 */
+    public String ttsFollowStatusJson() {
+        boolean enabled = ttsFollowVosk();
+        String vlang = null;
+        try {
+            if (vosk != null) vlang = vosk.getDialogueLang();
+        } catch (Throwable ignore) {
+        }
+        String eff = "";
+        if (enabled) {
+            String tag = bestTtsTagForVoskLang(vlang);
+            if (tag != null) eff = tag;
+        }
+        return "{\"ok\":true,\"enabled\":" + enabled
+                + ",\"voskLang\":" + (vlang == null ? "null"
+                        : "\"" + MainActivity.jsonSafe(vlang) + "\"")
+                + ",\"effectiveLang\":\"" + MainActivity.jsonSafe(eff) + "\"}";
+    }
+
+    public HttpServer.ApiResponse curTtsFollowVosk() {
+        return HttpServer.ApiResponse.ok(ttsFollowStatusJson());
+    }
+
+    public HttpServer.ApiResponse setTtsFollowVosk(Map<String, String> query) {
+        boolean enabled = ApiValidator.requireBoolean(query, "enabled");
+        prefs().edit().putBoolean(PREF_ANDROID_TTS_FOLLOW_VOSK, enabled).apply();
+        return HttpServer.ApiResponse.ok(ttsFollowStatusJson());
     }
 }
 

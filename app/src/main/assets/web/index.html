@@ -252,7 +252,7 @@
         <label data-i18n="vosk_model_label">模型：</label>
         <div id="voskModelBtns" style="flex:1; display:flex; gap:6px; flex-wrap:wrap"></div>
       </div>
-      <!-- 僅顯示已下載模型鍵：藍＝聆聽中（再按即停變灰），灰色按即載入＋自動開聽。下載在實驗 tab（voskDlCard）。 -->
+      <!-- 僅顯示已下載模型鍵：藍＝聆聽中（再按即停變灰），灰色按即載入＋自動開聽。下載在實驗 tab（資源下載卡）。 -->
       <p class="hint" style="margin-top:6px" id="voskPartialOut">—</p>
       <p class="hint" style="margin-top:6px" id="voskStatusOut">—</p>
       <!-- 幻聽過濾逐個開關測試面板：後端 6 開關＋conf 閾值經 vosk/hallu(_set) 即時生效
@@ -275,6 +275,19 @@
     </section>
     <section class="card">
       <h2 data-i18n="tts_heading">語音 / TTS</h2>
+      <!-- TTS 手動／自動選擇（掣喺三行上面）：開＝手動選擇（引擎／語言／聲音三行
+           出現，現況不變，預設）；關＝自動跟當前 Vosk 模型走（三行直情收起）。
+           後端見 TtsCenter 跟隨開關＋speech/cur_tts_follow_vosk、speech/set_tts_follow_vosk。 -->
+      <div class="row" id="ttsFollowVoskRow">
+        <label class="switch-label"><span data-i18n="tts_follow_vosk_label">✋ 手動選擇</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="ttsFollowVoskToggle" onchange="setTtsFollowVosk()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
+      <p class="hint" data-i18n="tts_follow_vosk_hint">開＝手動選擇語言／聲音；關＝自動跟 Vosk 語言包走</p>
+      <p class="hint" id="ttsFollowVoskStatus"></p>
       <!-- TTS 只用 Android 內置；引擎／語言選擇常駐顯示。 -->
       <div class="row" id="ttsAndroidEngineRow">
         <label for="ttsAndroidEngineSelect" data-i18n="tts_android_engine_label">TTS 引擎：</label>
@@ -757,56 +770,52 @@
       </div>
     </section>
 
-    <!-- Vosk 模型下載卡：開關揭開先顯示，分有對話／無對話兩區。
-         點擊後端直落官方 zip＋自動 unzip 到 sdcard 頂層，完成自動 load，
-         語音頁會即時多一個對應語言鍵。後端見 VoskController DL_CATALOG＋
-         vosk/catalog、vosk/download、vosk/download_status、vosk/download_cancel。 -->
+    <!-- 資源下載卡（二合一）：Vosk 模型＋動作包共用單一下載通道，每次只准一樣。
+         開關揭開先顯示 10 種有對話 Vosk＋動作包；無對話（只聽寫）嗰區要再撳鍵先展開。
+         Vosk 後端見 VoskController DL_CATALOG＋vosk/catalog、vosk/download、
+         vosk/download_status、vosk/download_cancel；動作包後端見
+         ActionsPackController＋action/pack/download|status|cancel；
+         互斥見 DownloadGate。 -->
     <section class="card">
       <div class="row" style="justify-content:space-between;align-items:center">
-        <h2 style="margin:0" data-i18n="vosk_dl_heading">⬇ Vosk 模型下載</h2>
+        <h2 style="margin:0" data-i18n="res_dl_heading">📦 資源下載</h2>
         <label class="switch-label">
           <span class="toggle-switch">
-            <input type="checkbox" id="voskDlCardEnabled" onchange="voskDlCardToggle()">
+            <input type="checkbox" id="resDlCardEnabled" onchange="resDlCardToggle()">
             <span class="toggle-track"></span>
           </span>
         </label>
       </div>
-      <p id="voskDlCardDisabledHint" class="hint" data-i18n="vosk_dl_disabled_hint">開啟後才會顯示可下載模型</p>
-      <div id="voskDlCardBody" style="display:none">
-        <p class="hint" data-i18n="vosk_dl_hint">點擊下載官方模型並自動解壓到 sdcard（完成自動載入，語音頁即多一個按鍵）。下面分有對話／無對話兩區。</p>
+      <p id="resDlCardDisabledHint" class="hint" data-i18n="res_dl_disabled_hint">開啟後才會顯示可下載資源</p>
+      <div id="resDlCardBody" style="display:none">
+        <p class="hint" data-i18n="res_dl_hint">一次只可下載一樣（Vosk 模型同動作包共用通道）。Vosk 落完自動載入，語音頁即多一個按鍵；動作包落完去動作頁重新載入列表。</p>
         <h4 data-i18n="vosk_dl_supported_heading" style="margin:8px 0 4px">✓ 有對話（有 matcher）</h4>
         <div id="voskCatalogSupported" style="display:flex; gap:6px; flex-wrap:wrap"></div>
-        <h4 data-i18n="vosk_dl_unsupported_heading" style="margin:8px 0 4px">無對話（只聽寫）</h4>
-        <div id="voskCatalogList" style="display:flex; gap:6px; flex-wrap:wrap"></div>
+        <div class="row" style="margin-top:6px">
+          <button class="secondary" id="voskUnsupportedToggleBtn" onclick="voskUnsupportedToggle()">顯示只聽寫模型 ▸</button>
+        </div>
+        <div id="voskUnsupportedWrap" style="display:none">
+          <h4 data-i18n="vosk_dl_unsupported_heading" style="margin:8px 0 4px">無對話（只聽寫）</h4>
+          <div id="voskCatalogList" style="display:flex; gap:6px; flex-wrap:wrap"></div>
+        </div>
         <div class="row" style="margin-top:6px">
           <button class="secondary" id="voskCatCancelBtn" onclick="voskCancelDownload()" data-i18n="vosk_download_cancel_btn" style="display:none">取消下載</button>
         </div>
         <p class="hint" style="margin-top:6px" id="voskCatStatusOut">—</p>
-      </div>
-    </section>
-
-    <!-- 動作包下載卡：開關揭開先顯示，固定 actions.zip，後端直落＋自動 unzip
-         到 sdcard 頂層，舊 /sdcard/actions 改名 /sdcard/actions-backup。
-         後端見 ActionsPackController＋action/pack/download|status|cancel。 -->
-    <section class="card">
-      <div class="row" style="justify-content:space-between;align-items:center">
-        <h2 style="margin:0" data-i18n="actions_pack_heading">⬇ 動作包下載</h2>
-        <label class="switch-label">
-          <span class="toggle-switch">
-            <input type="checkbox" id="actionsPackCardEnabled" onchange="actionsPackCardToggle()">
-            <span class="toggle-track"></span>
-          </span>
-        </label>
-      </div>
-      <p id="actionsPackCardDisabledHint" class="hint" data-i18n="actions_pack_disabled_hint">開啟後才會顯示動作包下載</p>
-      <div id="actionsPackCardBody" style="display:none">
-        <p class="hint" data-i18n="actions_pack_hint">下載官方動作包並自動解壓到 sdcard（舊 /sdcard/actions 會改名 /sdcard/actions-backup）。完成後去動作頁重新載入列表。</p>
+        <h4 data-i18n="actions_pack_heading" style="margin:8px 0 4px">⬇ 動作包下載</h4>
         <p class="hint"><code>https://github.com/arthurson/ubtech-open-alpha2/releases/download/beta/actions.zip</code><br><span data-i18n="actions_pack_url_hint">來源：github release actions.zip（固定連結，後端直落）</span></p>
         <div class="row" style="margin-top:6px">
           <button id="actionsPackDlBtn" onclick="actionsPackDownload()" data-i18n="actions_pack_download_btn">⬇ 下載 actions.zip</button>
           <button class="secondary" id="actionsPackCancelBtn" onclick="actionsPackCancel()" data-i18n="actions_pack_cancel_btn" style="display:none">取消下載</button>
         </div>
         <p class="hint" style="margin-top:6px" id="actionsPackStatusOut">—</p>
+        <h4 data-i18n="apk_dl_heading" style="margin:8px 0 4px">📱 Google TTS 下載</h4>
+        <p class="hint" data-i18n="apk_dl_hint">下載指定版本 Google TTS 去 sdcard，落完每部機人手 adb install 一次。同卡其他下載共用通道，一次一樣。</p>
+        <div class="row" style="margin-top:6px">
+          <button id="apkDlBtn" onclick="apkDownload()" data-i18n="apk_dl_download_btn">⬇ 下載 Google TTS</button>
+          <button class="secondary" id="apkCancelBtn" onclick="apkCancel()" data-i18n="vosk_download_cancel_btn" style="display:none">取消下載</button>
+        </div>
+        <p class="hint" style="margin-top:6px" id="apkStatusOut">—</p>
       </div>
     </section>
 
@@ -949,6 +958,7 @@
 <script src="app-qr.js"></script>
 <script src="app-chest.js"></script>
 <script src="app-actions-pack.js"></script>
+<script src="app-apk.js"></script>
 <script src="app-log.js"></script>
 
 <!-- ============================================================

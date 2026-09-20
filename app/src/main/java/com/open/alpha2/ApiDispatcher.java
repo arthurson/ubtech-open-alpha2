@@ -59,6 +59,7 @@ public final class ApiDispatcher {
     // servo/sonar 直調這裡 (放最尾，慣例)。
     private final SonarCenter sonarCenter;
     private final ActionsPackController actionsPackController;
+    private final ApkDownloadController apkDownloadController;
 
     public ApiDispatcher(Context context, Host host, XiaozhiBridge.HostState sensorState,
             ActionDirect actionDirect, UbxApi ubxApi, ChestQuery chestQuery,
@@ -68,7 +69,7 @@ public final class ApiDispatcher {
             MicCenter micCenter, RobotStub robot,
             GrammarCenter grammarCenter, UbxPlayer ubxPlayer, MusicController musicController,
             LocalAlpha2Services localServices, SonarCenter sonarCenter,
-            ActionsPackController actionsPackController) {
+            ActionsPackController actionsPackController, ApkDownloadController apkDownloadController) {
         this.appContext = context.getApplicationContext();
         this.host = host;
         this.sensorState = sensorState;
@@ -92,6 +93,7 @@ public final class ApiDispatcher {
         this.localServices = localServices;
         this.sonarCenter = sonarCenter;
         this.actionsPackController = actionsPackController;
+        this.apkDownloadController = apkDownloadController;
     }
 
     // directChestReady() 內聯：經 appContext 不用 Activity（各 center 自帶副本）。
@@ -218,6 +220,38 @@ public final class ApiDispatcher {
                 if (err != null) return HttpServer.ApiResponse.error(err);
                 return HttpServer.ApiResponse.ok(actionsPackController.statusJson());
             }
+            // -- APK 下載（實驗 tab 資源下載卡 Google TTS 區用；body 在
+            // ApkDownloadController，薄 delegate，不要在這裡加 logic）--
+            // 固定 URL（見 ApkDownloadController.APK_URL），後端直落 apk 到
+            // sdcard 即完；安裝唔經面板（每部機人手 adb install 一次）。
+            case "apk/download": {
+                if (apkDownloadController == null) {
+                    return HttpServer.ApiResponse.error("apk download not initialised");
+                }
+                String err = apkDownloadController.startDownload();
+                if (err != null) {
+                    // 正在下載中都回現狀等前端跟進度（同 vosk/download 一致）。
+                    if (err.startsWith("already downloading")) {
+                        return HttpServer.ApiResponse.ok(apkDownloadController.statusJson());
+                    }
+                    return HttpServer.ApiResponse.error(err);
+                }
+                return HttpServer.ApiResponse.ok(apkDownloadController.statusJson());
+            }
+            case "apk/status": {
+                if (apkDownloadController == null) {
+                    return HttpServer.ApiResponse.error("apk download not initialised");
+                }
+                return HttpServer.ApiResponse.ok(apkDownloadController.statusJson());
+            }
+            case "apk/cancel": {
+                if (apkDownloadController == null) {
+                    return HttpServer.ApiResponse.error("apk download not initialised");
+                }
+                String err = apkDownloadController.cancelDownload();
+                if (err != null) return HttpServer.ApiResponse.error(err);
+                return HttpServer.ApiResponse.ok(apkDownloadController.statusJson());
+            }
 
             // -- Ubx 直播（供前端动作 tab：api() 只发 /api/alpha2/*，故在此挂一份；
             // /api/direct/ubx/* 那份调同一 helper，行为一致；/api/ubx/* 裸路径经
@@ -283,6 +317,14 @@ public final class ApiDispatcher {
 
             case "speech/cur_tts_voice":
                 return ttsCenter.curTtsVoice();
+
+            // TTS 跟隨 Vosk 開關（語音 tab 手動／自動選擇；body 在 TtsCenter；
+            // 薄 delegate，不要在這裡加 logic）。
+            case "speech/cur_tts_follow_vosk":
+                return ttsCenter.curTtsFollowVosk();
+
+            case "speech/set_tts_follow_vosk":
+                return ttsCenter.setTtsFollowVosk(query);
 
             case "speech/set_mic":
                 return micCenter.setMic(query);

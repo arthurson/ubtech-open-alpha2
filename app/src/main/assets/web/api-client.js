@@ -47,6 +47,22 @@ const Alpha2Api = (function() {
     return api('action/stop', params);
   }
 
+  // ── apk ──────────────────────────────────────────────
+  function apkCancel(params) {
+    // 取消進行中的 APK 下載
+    return api('apk/cancel', params);
+  }
+
+  function apkDownload(params) {
+    // 下載 APK 去 sdcard（Google TTS 指定版本）
+    return api('apk/download', params);
+  }
+
+  function apkStatus(params) {
+    // APK 下載進度（state/progress/bytes/total）
+    return api('apk/status', params);
+  }
+
   // ── audio ──────────────────────────────────────────────
   function audioDiagnose(params) {
     // AudioTrack 診斷掃描
@@ -512,6 +528,11 @@ const Alpha2Api = (function() {
     return api('speech/cur_tts_engine', params);
   }
 
+  function speechCurTtsFollowVosk(params) {
+    // 查詢 TTS 自動跟隨 Vosk 開關（手動／自動）
+    return api('speech/cur_tts_follow_vosk', params);
+  }
+
   function speechCurTtsLang(params) {
     // 查詢 TTS 卡語言選擇
     return api('speech/cur_tts_lang', params);
@@ -550,6 +571,11 @@ const Alpha2Api = (function() {
   function speechSetTtsEngine(params) {
     // 切換 Android TTS 引擎 (async, 需 poll cur_tts_engine)
     return api('speech/set_tts_engine', params);
+  }
+
+  function speechSetTtsFollowVosk(params) {
+    // 設定 TTS 自動跟隨 Vosk 開關（手動／自動）
+    return api('speech/set_tts_follow_vosk', params);
   }
 
   function speechSetTtsLang(params) {
@@ -823,6 +849,9 @@ const Alpha2Api = (function() {
     actionPackStatus,
     actionPlay,
     actionStop,
+    apkCancel,
+    apkDownload,
+    apkStatus,
     audioDiagnose,
     audioLocalMusicFillerActionGet,
     audioLocalMusicFillerActionSet,
@@ -906,6 +935,7 @@ const Alpha2Api = (function() {
     servoReadAll,
     servoSonar,
     speechCurTtsEngine,
+    speechCurTtsFollowVosk,
     speechCurTtsLang,
     speechCurTtsVoice,
     speechGetDefaultGrammar,
@@ -914,6 +944,7 @@ const Alpha2Api = (function() {
     speechSetMic,
     speechSetMicKeepHeld,
     speechSetTtsEngine,
+    speechSetTtsFollowVosk,
     speechSetTtsLang,
     speechSetTtsVoice,
     speechStop,
