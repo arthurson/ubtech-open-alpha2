@@ -12,7 +12,7 @@ import java.util.Map;
 
 /**
  * 小智 AI 語音對話包：HTTP API (handleXiaozhiApi)、mic 生命週期＋hold enforcer、
- * OTA/activation＋重連、vision/explain、MCP bridge (listTools/callTool)、
+ * OTA/activation＋重連、相機 vision (inline 回傳)、MCP bridge (listTools/callTool)、
  * mute 鍵開關＋連線指示燈。
  *
  * 擁有關係：
@@ -271,43 +271,16 @@ public final class XiaozhiBridge {
 
     private static final String PREF_XIAOZHI_DEVICE_ID = "xiaozhi_device_id";
 
-    /** 官方 xiaozhi-esp32 firmware 寫死用的 vision/explain endpoint (esp32_camera.cc
-     *  Explain() 實作) - 這個 URL 不會經 OTA check_version 的回應帶回來 (見
-     *  runXiaozhiActivationFlow() 的 comment: response 只有 activation/websocket
-     *  兩個 block), 所以要獨立一個設定。自訂 server 開著的時候如果沒填這個, 就跟回
-     *  官方這個 - 很多自架 server 都沒實作 vision explain, 這種情況下 take_photo
-     *  call 出去會收到 404/連不到, self.camera.take_photo 的 case 會將這個原因
-     *  告訴 LLM 知道, 而不是默默假裝成功。
-     *
-     * 官方 esp32_camera.cc (SetExplainUrl/Explain()) 同 GitHub issue #708
-     *  實機 log 顯示官方 firmware 打的是 http:// (不加密):
-     *  "Opening HTTP connection to http://api.xiaozhi.me/mcp/vision/explain"，
-     *  不同 scheme 在 server 側可能是不同 virtual host/沒有 mapping，會 404。 */
-    /** Fallback vision/explain URL, only used when the server hasn't (yet) told us
-     *  its real one via the "initialize" MCP request's params.capabilities.vision
-     *  (see XiaozhiClient.getVisionUrl()'s comment for the full story - that's the
-     *  authoritative source; this constant is a last-resort default for the case
-     *  where take_photo is somehow called before any "initialize" has been
-     *  received). 不保證對 - 純粹一個合理猜測的底線值, 不應該是主要路徑。
-     *
-     * 反編譯實測拍照成功的第三方 apk (package com.huihongcloud.xiaozhi)
-     *  證實 OTA 用的是 https://api.tenclass.net/xiaozhi/ota/
-     *  (和 DEFAULT_OTA_URL 一致)；api.xiaozhi.me 沒有 /mcp/vision/explain 路由，
-     *  所以跟 api.tenclass.net，scheme 跟 DEFAULT_OTA_URL 一致用 https。 */
-    private static final String DEFAULT_VISION_URL = "https://api.tenclass.net/xiaozhi/mcp/vision/explain";
-    private static final String PREF_XIAOZHI_VISION_URL = "xiaozhi_vision_url";
     /** 相機解析度 (用戶指定) - take_photo 特意用小於一般 camera/snapshot 預覽的
-     *  解析度, 因為這張照片只是要上傳去 vision explain 給 LLM 「看」, 不是給人單獨
-     *  看的照片, 小一點可以讓上傳/處理快一點, 也夠 LLM 辨識到大致內容。 */
+     *  解析度, 因為這張照片只係要 inline 回傳俾 LLM 「看」, 不是給人單獨
+     *  看的照片, 小一點可以讓 tools/call 回包細一點, 也夠 LLM 辨識到大致內容。 */
     private static final int XIAOZHI_PHOTO_WIDTH = 480;
     private static final int XIAOZHI_PHOTO_HEIGHT = 360;
 
-    // 記住最近一次 self.camera.take_photo 拿到的 "async, 未完成"
-    // uuid (見 xiaozhiVisionExplainRequest() 的 comment) - 給之後 LLM
-    // 主動再發的 "self.camera.image_to_text" tools/call 用來核對/取回真正描述。
-    // 只記最新一個 (單一 device, 沒有並行 take_photo 的需要) - 用完/逾時後應
-    // 清成 null, 避免舊 uuid 混進新一次 call。
-    private volatile String lastPendingPhotoUuid;
+    // 最近一張 self.camera.take_photo 影到嘅 JPEG（image_to_text 兼容 shim
+    // 直接拎呢張重發，唔使再影）。單一 device 永遠得一張最新，take_photo
+    // 成功即覆蓋。
+    private volatile byte[] lastPhotoJpeg;
 
     // 小智 (XiaoZhi) AI 對話 - 獨立於機械人 AIDL 之外的 client-side WebSocket
     // 連線, 連出去 xiaozhi.me。單一 instance, 在 onCreate() 才建立 (要用
@@ -375,17 +348,6 @@ public final class XiaozhiBridge {
     /** Published on EventBus whenever xiaozhiMicHeld changes - payload
      *  {"held":true/false}, consumed by app-xiaozhi.js to drive the mic LED. */
     private static final String XIAOZHI_MIC_STATE_EVENT = "xiaozhi_mic_state";
-
-    /** Bearer token from the most recent successful runXiaozhiActivationFlow() -
-     *  reused for the vision/explain HTTP call (self.camera.take_photo tool, see
-     *  xiaozhiVisionExplain()) since that endpoint uses the same Device-Id/Client-Id/
-     *  Authorization headers as the WebSocket connection itself, not a separate
-     *  credential. null until the first successful connect. */
-    private volatile String xiaozhiAccessToken;
-    // vision/explain 要送同 WebSocket 連接一樣的 Device-Id/Client-Id/Authorization
-    // headers；反編譯實測成功的第三方 apk 證實有送 Client-Id (連接 WebSocket
-    // 那個 client_id)。這個 field 保存 session 用的 clientId，供 vision request 讀。
-    private volatile String xiaozhiClientId;
 
     // listTools() (見 xiaozhiMcpBridge()) 每次被 call 都會存下一份
     // 完整、未過濾的 tool 清單到這裡 - 給 "mcp_tools/list" HTTP endpoint (MCP 設定
@@ -956,10 +918,7 @@ public final class XiaozhiBridge {
             // capture deviceId, capture 到的 local variable 一定要是 effectively
             // final, 重新賦值會導致這個 method 編譯不過。
             final String effectiveDeviceId = deviceIdOverride.isEmpty() ? deviceId : deviceIdOverride;
-            // 存下這個 session 用的 clientId，給 xiaozhiVisionExplain()
-            // 送回同一個 Client-Id header (見 xiaozhiClientId field)。
             final String effectiveClientId = java.util.UUID.randomUUID().toString();
-            xiaozhiClientId = effectiveClientId;
             XiaozhiOtaClient ota = new XiaozhiOtaClient(otaUrl,
                 effectiveDeviceId, effectiveClientId);
             XiaozhiOtaClient.CheckVersionResult checkResult = ota.checkVersion();
@@ -1071,10 +1030,6 @@ public final class XiaozhiBridge {
                 }
             });
             xiaozhiClient.connect(wsUrl, wsToken);
-            // self.camera.take_photo (xiaozhiTakePhotoAndExplain()) reuses this same
-            // bearer token for the vision/explain HTTP call - see that method's
-            // comment for why (same auth domain as the WebSocket connection).
-            xiaozhiAccessToken = wsToken;
             xiaozhiActivationStatus.set(XiaozhiActivationStatus.connected(xiaozhiClient.getSessionId()));
             // mute 鍵 LED = 小智連線指示燈，真正連上才亮 (按鍵當下只是即時反應，
             // 這裡才是權威狀態)。
@@ -1336,53 +1291,27 @@ public final class XiaozhiBridge {
     }
 
     /** Result of xiaozhiTakePhotoAndExplain() - exactly one of text/error is set. */
-    private static final class XiaozhiVisionResult {
-        final String text;
-        final String error;
-        private XiaozhiVisionResult(String text, String error) {
-            this.text = text;
-            this.error = error;
-        }
-        static XiaozhiVisionResult ok(String text) { return new XiaozhiVisionResult(text, null); }
-        static XiaozhiVisionResult fail(String error) { return new XiaozhiVisionResult(null, error); }
-    }
+    // ---------------- Camera vision (MCP self.camera.*) --------------------
+    //
+    // 由零重寫（舊 vision/explain side-channel 已成段刪除）：相直接 inline 回傳。
+    //
+    // 舊路係估返嚟嘅：影完相，另外 POST 去一條非官方文件化嘅 /mcp/vision/explain
+    // HTTP endpoint（URL 靠 initialize 夾帶／寫死 fallback 猜），再靠 server 回
+    // uuid＋叫 LLM 轉頭 call image_to_text 做第二程握手。server 嗰邊對唔上其中
+    // 任何一環（URL／token／握手形狀／根本無開 vision 服務）就全死——
+    // 「server 睇唔到」就係咁嚟；之前 N 次小手術都係喺估返嚟嘅形狀上面改，唔會好。
+    //
+    // 新路行返 MCP 標準：take_photo 將 JPEG（base64）當 image content block
+    // 連同文字一齊回傳，LLM 即時見到。唔經任何 HTTP side-channel：無 URL、
+    // 無 token、無 uuid 握手、無第二程。image_to_text 留做兼容 shim
+    // （回傳最近一張相，唔使再影）。
 
-    /** resolveVisionEndpoint() 回包：vision/explain 用哪條 URL＋哪個 token。 */
-    private static final class VisionEndpoint {
-        final String url;
-        final String token;
-        VisionEndpoint(String url, String token) { this.url = url; this.token = token; }
-    }
-
-    /** vision url 優先順序：server 在 "initialize" 附上的 (最新鮮、最權威，
-     *  見 XiaozhiClient.getVisionUrl() 同官方 mcp-protocol.md) -> 用戶自訂設定
-     *  (開啟自訂 server 又沒收到 server url) -> DEFAULT_VISION_URL (最後保險)。
-     *  xiaozhiTakePhotoAndExplain() 同 xiaozhiFetchImageToText() 共用（之前兩份逐字一樣）。 */
-    private VisionEndpoint resolveVisionEndpoint() {
-        android.content.SharedPreferences prefs = appContext.getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE);
-        String serverProvidedUrl = xiaozhiClient.getVisionUrl();
-        if (serverProvidedUrl != null && !serverProvidedUrl.isEmpty()) {
-            return new VisionEndpoint(serverProvidedUrl, xiaozhiClient.getVisionToken());
-        }
-        String visionUrl = xiaozhiConfig.isOtaCustomEnabled()
-                ? prefs.getString(PREF_XIAOZHI_VISION_URL, DEFAULT_VISION_URL)
-                : DEFAULT_VISION_URL;
-        if (visionUrl == null || visionUrl.trim().isEmpty()) {
-            visionUrl = DEFAULT_VISION_URL;
-        }
-        return new VisionEndpoint(visionUrl, xiaozhiAccessToken);
-    }
-
-    /** Backs the self.camera.take_photo MCP tool: captures one frame from the robot's
-     *  camera at XIAOZHI_PHOTO_WIDTH x XIAOZHI_PHOTO_HEIGHT, then POSTs it (multipart,
-     *  matching the official xiaozhi-esp32 firmware's Explain() request shape) to the
-     *  vision/explain endpoint, returning the description text the server sends back.
-     *  Runs synchronously on the MCP tool-call thread (already off the WebSocket
-     *  read-loop thread per callTool()'s own threading, matching how other blocking
-     *  robot actions in this switch behave) - camera capture + HTTP round-trip can take
-     *  a few seconds, which is acceptable for a tool call the LLM is explicitly waiting
-     *  on. */
-    private XiaozhiVisionResult xiaozhiTakePhotoAndExplain(String question) {
+    /** 共用拍攝本體：set 解像度＋start＋takePicture＋stopIfIdle。
+     *  成功回 jpeg（順手寫入 lastPhotoJpeg）；失敗掟 JSONException 帶原因
+     *  （PhotoResult.fail() 係 package-private，外包只能讀 jpeg／error
+     *  兩個 public field，所以這裡自己掟，唔經 factory）。
+     *  Throws JSONException only on failure (caller converts to error text). */
+    private byte[] capturePhoto() throws org.json.JSONException {
         // 沿用 XiaoZhi 語音對話同一個 cameraController 實例 (整個 app 只有一個相機
         // 硬件, camera/snapshot 這類其他功能都共用它) - setRequestedResolution()
         // 只影響下一次 start(), 不會影響目前正在使用的其他 session (見
@@ -1390,272 +1319,76 @@ public final class XiaozhiBridge {
         cameraController.setRequestedResolution(XIAOZHI_PHOTO_WIDTH, XIAOZHI_PHOTO_HEIGHT);
         CameraController.StartResult started = cameraController.start(8000);
         if (started.error != null) {
-            return XiaozhiVisionResult.fail("camera start failed: " + started.error);
+            throw new org.json.JSONException("camera start failed: " + started.error);
         }
-        byte[] jpeg;
         try {
             // 用 CameraController.takePhoto() (Camera1 takePicture()) 做真正單張拍攝——
             // preview frame 沒有經過 HAL 完整單張 AE/AF/降噪 pipeline。
-            CameraController.PhotoResult photoResult =
+            CameraController.PhotoResult r =
                     cameraController.takePhoto(XIAOZHI_PHOTO_WIDTH, XIAOZHI_PHOTO_HEIGHT, 8000);
-            if (photoResult.error != null) {
-                return XiaozhiVisionResult.fail("camera takePicture failed: " + photoResult.error);
+            if (r.error != null) {
+                throw new org.json.JSONException("camera takePicture failed: " + r.error);
             }
-            jpeg = photoResult.jpeg;
+            if (r.jpeg == null) {
+                throw new org.json.JSONException("takePicture() returned no photo data");
+            }
+            lastPhotoJpeg = r.jpeg;
+            Log.i("XiaozhiVision", "photo captured (" + r.jpeg.length + "B), cached for image_to_text");
+            return r.jpeg;
         } finally {
             cameraController.stopIfIdle();
         }
-        if (jpeg == null) {
-            return XiaozhiVisionResult.fail("takePicture() returned no photo data");
-        }
-
-        // vision url＋token 經 resolveVisionEndpoint()（server 附上 -> 用戶自訂 -> 保底）。
-        VisionEndpoint endpoint = resolveVisionEndpoint();
-        String visionUrl = endpoint.url;
-        String token = endpoint.token;
-
-        String deviceId = getXiaozhiDeviceId();
-        try {
-            return xiaozhiVisionExplainRequest(visionUrl, deviceId, xiaozhiClientId, token, jpeg, question);
-        } catch (java.io.IOException e) {
-            return XiaozhiVisionResult.fail("vision/explain request failed: " + e.getMessage());
-        }
     }
 
-    /** Backs the self.camera.image_to_text MCP tool - see that tool's definition in
-     *  buildMcpToolsList() and the "vision/explain is async" comment in
-     *  xiaozhiVisionExplainRequest() for the full story. Re-POSTs to the same
-     *  vision/explain endpoint (same headers/auth as the original photo upload) but with
-     *  a small JSON body carrying just the uuid instead of a fresh multipart JPEG upload,
-     *  on the theory that the uuid is how the server matches this follow-up call back to
-     *  the photo it already has stored. This exact request shape is NOT documented
-     *  anywhere (see the async comment) - it's this codebase's best guess given the
-     *  server's own wording ("call the tool `image_to_text`... using the uuid"), so the
-     *  raw response is logged in full for correcting the shape if this guess is wrong. */
-    // 判斷字串是否像真 UUID (8-4-4-4-12 hex 用 "-" 分隔)——用在
-    // self.camera.image_to_text，篩走 LLM 填佔位符字面值 (如 "placeholder")
-    // 的情況。刻意寬鬆 regex：格式正確即採信，勝過逐個字面值比對。
-    private static final java.util.regex.Pattern UUID_LIKE_PATTERN = java.util.regex.Pattern.compile(
-            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
-
-    private static boolean isLikelyUuid(String s) {
-        return s != null && UUID_LIKE_PATTERN.matcher(s).matches();
+    /** 包一個 text＋image 雙 block 的 tools/call result（MCP 標準 image block，
+     *  LLM 即時見到相）。NO_WRAP 免 base64 換行塞落 JSON。 */
+    private static org.json.JSONObject imageResult(String text, byte[] jpeg)
+            throws org.json.JSONException {
+        org.json.JSONArray content = new org.json.JSONArray();
+        org.json.JSONObject textBlock = new org.json.JSONObject();
+        textBlock.put("type", "text");
+        textBlock.put("text", text);
+        content.put(textBlock);
+        org.json.JSONObject imageBlock = new org.json.JSONObject();
+        imageBlock.put("type", "image");
+        imageBlock.put("data",
+                android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP));
+        imageBlock.put("mimeType", "image/jpeg");
+        content.put(imageBlock);
+        org.json.JSONObject result = new org.json.JSONObject();
+        result.put("content", content);
+        result.put("isError", false);
+        return result;
     }
 
-    private XiaozhiVisionResult xiaozhiFetchImageToText(String uuid) {
-        // vision url＋token 經 resolveVisionEndpoint()（同 take_photo 共用）。
-        VisionEndpoint endpoint = resolveVisionEndpoint();
-        String visionUrl = endpoint.url;
-        String token = endpoint.token;
-        String deviceId = getXiaozhiDeviceId();
-
-        try {
-            org.json.JSONObject payloadJson = new org.json.JSONObject();
-            payloadJson.put("type", "image_to_text");
-            payloadJson.put("uuid", uuid);
-            byte[] payload = payloadJson.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
-
-            VisionHttpResult res = postVisionRequest(visionUrl, deviceId, xiaozhiClientId, token,
-                    "application/json", payload);
-            int status = res.status;
-            String responseText = res.text;
-            Log.i("XiaozhiVision", "image_to_text raw response (uuid=" + uuid + ", status="
-                    + status + "): " + responseText);
-
-            if (status < 200 || status >= 300) {
-                return XiaozhiVisionResult.fail("image_to_text returned HTTP " + status + ": "
-                        + head200(responseText));
-            }
-            try {
-                org.json.JSONObject json = new org.json.JSONObject(responseText);
-                if (json.optBoolean("success", false)) {
-                    String text = extractVisionText(json);
-                    if (text.isEmpty()) {
-                        // 也是空的 - 這次沒有 message 可以再 relay 下去 (沒有下一層
-                        // tool 可以呼叫), 直接把完整 raw response 當成
-                        // error 帶回給 LLM/開發者, 讓看 logcat 的 "image_to_text
-                        // raw response" 個 log 可以直接對照真正欄位。
-                        return XiaozhiVisionResult.fail(
-                                "image_to_text succeeded but returned no text; raw: " + responseText);
-                    }
-                    return XiaozhiVisionResult.ok(text);
-                }
-                return XiaozhiVisionResult.fail(json.optString("message",
-                        "image_to_text reported failure with no message"));
-            } catch (org.json.JSONException e) {
-                return XiaozhiVisionResult.fail("image_to_text returned non-JSON response: "
-                        + head200(responseText));
-            }
-        } catch (java.io.IOException e) {
-            return XiaozhiVisionResult.fail("image_to_text request failed: " + e.getMessage());
-        } catch (org.json.JSONException e) {
-            // 理論上 payloadJson.put("type",...)/put("uuid",...) 這兩個 put(String,
-            // Object) overload 不會真的 throw (value 本身沒問題), 但它們簽名有
-            // 宣告 throws JSONException, 純粹補上這個 catch 通過 javac 的 checked
-            // exception 檢查, 不代表這裡預期會撞到。
-            return XiaozhiVisionResult.fail("image_to_text failed building request JSON: " + e.getMessage());
-        }
+    /** Backs the self.camera.take_photo MCP tool: 影一張，inline 回傳 LLM 即時睇。
+     *  Runs synchronously on the MCP tool-call thread (already off the WebSocket
+     *  read-loop thread per callTool()'s own threading, matching how other blocking
+     *  robot actions in this switch behave) - camera capture can take a few seconds,
+     *  which is acceptable for a tool call the LLM is explicitly waiting on.
+     *  Throws JSONException only if envelope building fails (caller converts). */
+    private org.json.JSONObject takePhotoEnvelope(String question)
+            throws org.json.JSONException {
+        byte[] jpeg = capturePhoto();
+        String caption = "Photo captured and attached below."
+                + (question == null || question.isEmpty()
+                        ? "" : " Question about this photo: " + question);
+        return imageResult(caption, jpeg);
     }
 
-    /** postVisionRequest() 回包：HTTP status＋全文 responseText。 */
-    private static final class VisionHttpResult {
-        final int status;
-        final String text;
-        VisionHttpResult(int status, String text) { this.status = status; this.text = text; }
-    }
-
-    /** vision/explain POST 共用骨架：開連接、Device-Id/Client-Id/Authorization
-     *  headers、connect/read timeouts、fixed-length 寫 payload、讀 status＋全文。
-     *  multipart explain 同 JSON image_to_text 之前逐字一樣（除 Content-Type，
-     *  同 explain 版多了一個 os.flush()——close() 本身會 flush，行為一致）。
-     *  logging 留在 caller（兩邊 log 字面不同）。 */
-    private static VisionHttpResult postVisionRequest(String urlStr, String deviceId, String clientId,
-            String accessToken, String contentType, byte[] payload) throws java.io.IOException {
-        java.net.HttpURLConnection conn = null;
-        try {
-            java.net.URL url = new java.net.URL(urlStr);
-            NetLog.out("xiaozhi-vision", urlStr);
-            conn = (java.net.HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(15000);
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", contentType);
-            conn.setRequestProperty("Device-Id", deviceId);
-            if (clientId != null && !clientId.isEmpty()) {
-                conn.setRequestProperty("Client-Id", clientId);
-            }
-            if (accessToken != null && !accessToken.isEmpty()) {
-                conn.setRequestProperty("Authorization", "Bearer " + accessToken);
-            }
-            conn.setFixedLengthStreamingMode(payload.length);
-            java.io.OutputStream os = conn.getOutputStream();
-            try {
-                os.write(payload);
-                os.flush();
-            } finally {
-                os.close();
-            }
-
-            int status = conn.getResponseCode();
-            java.io.InputStream is = status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream();
-            String responseText = is != null ? MainActivity.readFully(is) : "";
-            return new VisionHttpResult(status, responseText);
-        } finally {
-            if (conn != null) conn.disconnect();
+    /** Backs the self.camera.image_to_text MCP tool: 兼容 shim——唔再影，
+     *  直接回傳最近一張 take_photo 嘅相（inline）。uuid 參數照收但唔用
+     *  （單一 device 永遠得一張最新，唔使核對；佔位符一樣唔使篩）。
+     *  未影過相就回 null，caller 回 error text 叫 LLM 先 call take_photo。 */
+    private org.json.JSONObject imageToTextEnvelope(String uuid)
+            throws org.json.JSONException {
+        byte[] cached = lastPhotoJpeg;
+        if (cached == null) {
+            return null;
         }
-    }
-
-    /** vision 回包 text 抽取："text" 拿不到就試 result.text／data.text 幾種常見巢狀。
-     *  未經證實哪個對、純粹碰運氣，主要靠 caller 印 raw response 先真正確診。
-     *  image_to_text 同 explain 共用（之前兩份逐字一樣）。 */
-    private static String extractVisionText(org.json.JSONObject json) {
-        String text = json.optString("text", "");
-        if (text.isEmpty()) {
-            org.json.JSONObject nestedResult = json.optJSONObject("result");
-            if (nestedResult != null) {
-                text = nestedResult.optString("text", "");
-            }
-            if (text.isEmpty()) {
-                org.json.JSONObject nestedData = json.optJSONObject("data");
-                if (nestedData != null) {
-                    text = nestedData.optString("text", "");
-                }
-            }
-        }
-        return text;
-    }
-
-    /** vision error 回包頭 200 字（不將整個 response 塞落 error string）。 */
-    private static String head200(String s) {
-        return s.substring(0, Math.min(200, s.length()));
-    }
-
-    /** Multipart POST to the vision/explain endpoint - mirrors XiaozhiOtaClient's
-     *  postJsonWithStatus() (same Device-Id/Client-Id header convention, same
-     *  zero-third-party HttpURLConnection style), but a
-     *  multipart body instead of JSON since this carries binary JPEG data - see
-     *  esp32_camera.cc's Explain() for the request shape being matched: a "question"
-     *  text field alongside a "file" field holding the JPEG.
-     *
-     *  multipart body 開頭多一個 "type" part (值 "multipart"，在 "question" part 之前)，
-     *  同送 Client-Id header（同 WebSocket 一樣）。 */
-    private XiaozhiVisionResult xiaozhiVisionExplainRequest(String urlStr, String deviceId,
-            String clientId,
-            String accessToken, byte[] jpeg, String question) throws java.io.IOException {
-        // boundary 用固定字串 "----ESP32_CAMERA_BOUNDARY" (官方 esp32-camera.cc 同款)，
-        // 不自己動態生成。
-        String boundary = "----ESP32_CAMERA_BOUNDARY";
-        java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
-        java.io.Writer w = new java.io.OutputStreamWriter(body, java.nio.charset.StandardCharsets.UTF_8);
-
-        w.write("--" + boundary + "\r\n");
-        w.write("Content-Disposition: form-data; name=\"type\"\r\n\r\n");
-        w.write("multipart");
-        w.write("\r\n");
-        w.write("--" + boundary + "\r\n");
-        w.write("Content-Disposition: form-data; name=\"question\"\r\n\r\n");
-        w.write(question == null ? "" : question);
-        w.write("\r\n");
-        w.flush();
-
-        body.write(("--" + boundary + "\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        body.write(("Content-Disposition: form-data; name=\"file\"; filename=\"camera.jpg\"\r\n")
-                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        body.write("Content-Type: image/jpeg\r\n\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        body.write(jpeg);
-        body.write("\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        body.write(("--" + boundary + "--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
-
-        byte[] payload = body.toByteArray();
-
-        VisionHttpResult res = postVisionRequest(urlStr, deviceId, clientId, accessToken,
-                "multipart/form-data; boundary=" + boundary, payload);
-        int status = res.status;
-        String responseText = res.text;
-        if (status == 404) {
-            // 404 不是 URL 打錯，多數是這個帳戶/agent 在 xiaozhi.me
-            // console 未開通 vision/camera MCP 服務。
-            return XiaozhiVisionResult.fail("vision/explain returned HTTP 404 - this usually "
-                    + "means the vision/camera MCP service has not been enabled for this "
-                    + "device/agent in the xiaozhi.me console (look for \"MCP 接入點\" / "
-                    + "\"MCP Services\" / vision settings there), not a URL problem.");
-        }
-        if (status < 200 || status >= 300) {
-            return XiaozhiVisionResult.fail("vision/explain returned HTTP " + status + ": "
-                    + head200(responseText));
-        }
-        try {
-            org.json.JSONObject json = new org.json.JSONObject(responseText);
-            // 印 raw response 方便對照 server JSON 結構。
-            // 轉 Log.d＋截 300 字（image 描述加 token/uuid 可以好長）。
-            android.util.Log.d("XiaozhiVision", "vision/explain raw response: "
-                    + (responseText.length() > 300 ? responseText.substring(0, 300) + "…(" + responseText.length() + "B)" : responseText));
-            if (json.optBoolean("success", false)) {
-                String text = extractVisionText(json);
-                    if (text.isEmpty()) {
-                        // vision/explain 是異步：成功但無 text 時回 {"success":true,"uuid":"...",
-                        // "message":"Please call the tool `image_to_text`..."}，真正描述要 LLM
-                        // 再發 tools/call 問 "image_to_text" 先拿到。這裡將 server 的 "message"
-                        // 原文傳回給 LLM，等它主動再問。
-                    String uuid = json.optString("uuid", null);
-                    String message = json.optString("message", null);
-                    if (uuid != null && !uuid.isEmpty() && message != null && !message.isEmpty()) {
-                        Log.i("XiaozhiVision", "vision/explain is async (uuid=" + ChestQuery.maskUuid(uuid)
-                                + ") - relaying server's own instruction text to the LLM "
-                                + "instead of an empty result");
-                        lastPendingPhotoUuid = uuid;
-                        return XiaozhiVisionResult.ok(message);
-                    }
-                }
-                return XiaozhiVisionResult.ok(text);
-            }
-            return XiaozhiVisionResult.fail(json.optString("message",
-                    "vision/explain reported failure with no message"));
-        } catch (org.json.JSONException e) {
-            return XiaozhiVisionResult.fail("vision/explain returned non-JSON response: "
-                    + head200(responseText));
-        }
+        Log.i("XiaozhiVision", "image_to_text: re-sending last photo (" + cached.length
+                + "B, uuid arg ignored: " + uuid + ")");
+        return imageResult("Most recent photo attached below.", cached);
     }
 
     /** Builds the MCP bridge XiaozhiClient uses to answer tools/list and tools/call.
@@ -1788,41 +1521,31 @@ public final class XiaozhiBridge {
 
                         case "self.camera.take_photo": {
                             String question = arguments.optString("question", "");
-                            XiaozhiVisionResult visionResult = xiaozhiTakePhotoAndExplain(question);
-                            if (visionResult.error != null) {
+                            try {
+                                // 相 inline 回傳（text＋image 雙 block），LLM 即時見到，
+                                // 唔經 vision/explain side-channel。
+                                return takePhotoEnvelope(question);
+                            } catch (org.json.JSONException e) {
                                 isError = true;
-                                resultText = visionResult.error;
-                            } else {
-                                resultText = visionResult.text;
+                                resultText = "failed building photo result: " + e.getMessage();
                             }
                             break;
                         }
                         case "self.camera.image_to_text": {
-                            // 見 buildMcpToolsList() 這個 tool 定義那段 comment 和
-                            // xiaozhiVisionExplainRequest() 裡 "vision/explain is async"
-                            // 那段 comment。vision/explain 後端行為和用哪個 model 無關。
-                            String uuid = arguments.optString("uuid", "");
-                            // LLM 有時帶佔位符字面值 (如 "placeholder") 而不是真 uuid，
-                            // 用寬鬆 UUID 格式檢查篩走，fallback 用 device 記下的 lastPendingPhotoUuid。
-                            if (!isLikelyUuid(uuid)) {
-                                uuid = lastPendingPhotoUuid;
-                            }
-                            if (uuid == null || uuid.isEmpty()) {
+                            // 兼容 shim：回傳最近一張相（唔再影），uuid 參數唔用。
+                            try {
+                                org.json.JSONObject imgEnv = imageToTextEnvelope(
+                                        arguments.optString("uuid", ""));
+                                if (imgEnv == null) {
+                                    isError = true;
+                                    resultText = "no photo captured yet "
+                                            + "(call self.camera.take_photo first)";
+                                    break;
+                                }
+                                return imgEnv;
+                            } catch (org.json.JSONException e) {
                                 isError = true;
-                                resultText = "no pending photo uuid to look up "
-                                        + "(call self.camera.take_photo first)";
-                                break;
-                            }
-                            XiaozhiVisionResult imgResult = xiaozhiFetchImageToText(uuid);
-                            if (imgResult.error != null) {
-                                // image_to_text 格式未定，失敗時回自然說法不回技術 error，
-                                // 原始 error 已有 log。
-                                Log.w("XiaozhiVision", "image_to_text follow-up failed, "
-                                        + "using fallback reply: " + imgResult.error);
-                                resultText = "拍到照片了，不過現在還看不到照片裡面的內容，晚點可能才答得出來。";
-                            } else {
-                                resultText = imgResult.text;
-                                lastPendingPhotoUuid = null; // 用完即清, 避免舊 uuid 混入新的
+                                resultText = "failed building photo result: " + e.getMessage();
                             }
                             break;
                         }

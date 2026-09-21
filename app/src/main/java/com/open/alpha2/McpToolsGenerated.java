@@ -32,7 +32,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.robot.list_actions");
-            t.put("description", "List all built-in robot actions with their id, Chinese name, and English name. Useful for browsing what actions exist, but self.robot.play_action can now be called directly with a Chinese or English action name (fuzzy-matched server-side) - you do not need to call this first just to play a known action.");
+            t.put("description", "List all built-in robot actions (id, Chinese and English names). Only needed when unsure of the exact name - self.robot.play_action accepts names directly with server-side fuzzy matching.");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
@@ -45,7 +45,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.robot.play_action");
-            t.put("description", "Play a named built-in robot action/animation. Pass the action's Chinese or English name in natural language (e.g. \"舉左手\" or \"take left hand\", \"跳舞\" or \"dance\") - it will be matched against the robot's actual action list automatically. Only actions that exist in the robot's list can actually play, so if in doubt call self.robot.list_actions to see exact names first.");
+            t.put("description", "Play a built-in robot action by Chinese or English name (fuzzy-matched server-side, e.g. \"跳舞\" or \"dance\"). Call self.robot.list_actions first if unsure of the exact name.");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
@@ -78,7 +78,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.robot.play_random_action");
-            t.put("description", "Play a random filler movement to make the robot look more alive/expressive - use this when it feels natural to add a bit of physical animation, not necessarily tied to any specific emotion or reply content. Takes no arguments. IMPORTANT ordering rule: if the user's request also calls for a specific action via self.robot.play_action (e.g. they asked you to wave, dance, nod, etc.), call that specific action instead of (not in addition to) this random one for this turn - only reach for play_random_action when there is no other action already planned for this reply.");
+            t.put("description", "Play a random filler movement so the robot looks alive; takes no arguments. If this turn already plays a specific action via self.robot.play_action, skip this one instead of calling both.");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
@@ -91,7 +91,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.robot.servo_set_one");
-            t.put("description", "Move a single servo to an angle. Servo ids and their valid angle ranges are specific to this robot's build - if unsure, use small movements first.");
+            t.put("description", "Move a single servo to an angle. Ids and valid ranges are specific to this robot's build - use small movements when unsure.");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
@@ -159,7 +159,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.robot.led_set_head");
-            t.put("description", "Set the head 5-mic LED ring. color: 1=red 2=green 3=blue 4=yellow 5=purple 6=cyan 7=white. brightness: 1 (dimmest) to 9 (brightest). preset: \"long\" (solid), \"flash\", \"breathe\", \"chase\", \"dual\", or \"stop\" (turns the ring off - color/brightness ignored).");
+            t.put("description", "Set the head LED ring. color 1=red 2=green 3=blue 4=yellow 5=purple 6=cyan 7=white; brightness 1-9; preset long/flash/breathe/chase/dual, or \"stop\" (off; color/brightness ignored).");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
@@ -196,7 +196,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.robot.led_set_eye");
-            t.put("description", "Set the eye 5-mic LED ring. Same color/brightness/preset semantics as self.robot.led_set_head (preset \"breathe\" is not available for the eye ring - only \"long\", \"flash\", \"chase\", \"dual\", \"stop\").");
+            t.put("description", "Set the eye LED ring. Same color/brightness/preset as the head ring, except preset \"breathe\" is unavailable.");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
@@ -233,7 +233,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.robot.led_set_mouth");
-            t.put("description", "Set the mouth LED. preset \"breathing\" pulses at the given speed (0-5000ms, 0=fastest); preset \"off\" turns it off. Note: this is driven automatically during XiaoZhi TTS playback, so calling it manually mid-conversation may fight with that.");
+            t.put("description", "Set the mouth LED. preset \"breathing\" pulses at speed 0-5000ms (0=fastest); \"off\" turns it off. Driven automatically during TTS playback - manual calls mid-conversation may conflict.");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
@@ -263,7 +263,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.sensors.get_pir");
-            t.put("description", "Read the last known PIR motion-sensor state (whether someone was last detected entering/present nearby). This is the most recently received event, not a live poll - if the sensor is disabled or no event has arrived yet, state will be \"unknown\".");
+            t.put("description", "Read the last known PIR motion state (most recent event, not a live poll; \"unknown\" if disabled or nothing received yet).");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
@@ -296,7 +296,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.sensors.get_sonar");
-            t.put("description", "Read the last known ultrasonic sonar distance reading (centimeters) and the currently configured trigger threshold. This is the most recently received reading, not a live poll - if no reading has arrived yet, distance_cm will be -1.");
+            t.put("description", "Read the last known sonar distance in cm plus the trigger threshold (most recent reading, not a live poll; -1 if none yet).");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
@@ -331,7 +331,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.camera.take_photo");
-            t.put("description", "Take a photo with the robot's camera and get a description of what it sees. Optionally pass a specific question to focus the description on (e.g. \"how many people are there\"), otherwise a general description is returned.");
+            t.put("description", "Take a photo and get a description of what the robot sees. Optionally pass a question to focus the description (e.g. \"how many people are there\").");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
@@ -350,14 +350,14 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.camera.image_to_text");
-            t.put("description", "Get the text description for a photo previously captured via self.camera.take_photo. Call this after take_photo tells you to, using the uuid it gave you.");
+            t.put("description", "See the most recently captured photo again (from self.camera.take_photo) - the image is attached directly, no follow-up needed.");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
             {
                 JSONObject p = new JSONObject();
                 p.put("type", "string");
-                p.put("description", "The uuid returned by self.camera.take_photo.");
+                p.put("description", "Accepted but not required; the most recent photo is always returned.");
                 props.put("uuid", p);
             }
             s.put("properties", props);
@@ -402,7 +402,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.media.play_music");
-            t.put("description", "Play a local music file on the robot. Pass the song name in natural language (it will be fuzzy-matched against the actual filenames) - call self.media.list_music first if unsure what is available.");
+            t.put("description", "Play a local music file by song name (fuzzy-matched to filenames). Call self.media.list_music first if unsure what's available.");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
@@ -435,7 +435,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.media.search_radio");
-            t.put("description", "Search for live FM/internet radio stations from around the world (station name, e.g. a city, country, broadcaster or genre). Returns a list of matching stations - call self.media.play_radio with one of the returned names afterwards to actually play it.");
+            t.put("description", "Search worldwide radio stations by name, city, country, broadcaster or genre. Returns matches - then call self.media.play_radio with one of the names to play it.");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
@@ -455,7 +455,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.media.play_radio");
-            t.put("description", "Play (or switch to) a live FM/internet radio station on the robot. Pass a station name in natural language - if it matches one of the stations returned by a previous self.media.search_radio call, that exact station is played; otherwise this will search for it directly. Switching straight to a different station is fine, no need to call self.media.stop_radio first.");
+            t.put("description", "Play (or switch to) a radio station by name. Matches a previous self.media.search_radio result when possible, otherwise searches directly. No need to call self.media.stop_radio first.");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();

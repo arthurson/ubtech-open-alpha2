@@ -297,6 +297,12 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // TTS orchestration 包 (speech/tts＋stop＋總停)：要 xiaozhiBridge
         // (經 stopSpeechPlayback 停小智管道)，放 voskApi 之後、dispatcher 之前。
         speechCenter = new SpeechCenter(ttsCenter, vosk, xiaozhiBridge);
+        // FUNCTION 真執行後補（避開建構順序 cycle：semanticCenter 早過
+        // deviceStatus/cameraApi/speechCenter 起，呢度先齊人）。
+        semanticCenter.setAudioCenter(audioCenter);
+        semanticCenter.setDeviceStatus(deviceStatus);
+        semanticCenter.setCameraApi(cameraApi);
+        semanticCenter.setSpeechStopHost(this);
         // (sonarCenter 已在上面 xiaozhiBridge 之前建好；
         // dispatcher 放最尾。)
         // dispatcher 包全部上面 controller (+speechCenter 做 Host；sensorState

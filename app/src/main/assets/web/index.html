@@ -803,14 +803,14 @@
         </div>
         <p class="hint" style="margin-top:6px" id="voskCatStatusOut">—</p>
         <h4 data-i18n="actions_pack_heading" style="margin:8px 0 4px">⬇ 動作包下載</h4>
-        <p class="hint"><code>https://github.com/arthurson/ubtech-open-alpha2/releases/download/beta/actions.zip</code><br><span data-i18n="actions_pack_url_hint">來源：github release actions.zip（固定連結，後端直落）</span></p>
+        <p class="hint" data-i18n="actions_pack_hint">更新包有 202 個動作，下載並自動解壓到 sdcard（舊 /sdcard/actions 會改名 /sdcard/actions-backup）。完成後去動作頁重新載入列表。</p>
         <div class="row" style="margin-top:6px">
           <button id="actionsPackDlBtn" onclick="actionsPackDownload()" data-i18n="actions_pack_download_btn">⬇ 下載 actions.zip</button>
           <button class="secondary" id="actionsPackCancelBtn" onclick="actionsPackCancel()" data-i18n="actions_pack_cancel_btn" style="display:none">取消下載</button>
         </div>
         <p class="hint" style="margin-top:6px" id="actionsPackStatusOut">—</p>
         <h4 data-i18n="apk_dl_heading" style="margin:8px 0 4px">📱 Google TTS 下載</h4>
-        <p class="hint" data-i18n="apk_dl_hint">下載指定版本 Google TTS 去 sdcard，落完每部機人手 adb install 一次。同卡其他下載共用通道，一次一樣。</p>
+        <p class="hint" data-i18n="apk_dl_hint">下載指定版本 Google TTS，落完自動開系統安裝器（經 scrcpy mouse 撳確認）。同卡其他下載共用通道，一次一樣。</p>
         <div class="row" style="margin-top:6px">
           <button id="apkDlBtn" onclick="apkDownload()" data-i18n="apk_dl_download_btn">⬇ 下載 Google TTS</button>
           <button class="secondary" id="apkCancelBtn" onclick="apkCancel()" data-i18n="vosk_download_cancel_btn" style="display:none">取消下載</button>

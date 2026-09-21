@@ -1711,6 +1711,260 @@
       ]
     },
     {
+      "id": "func.poweroff",
+      "type": "FUNCTION",
+      "op": "poweroff",
+      "a": [
+        "Está bem, mantenha o botão de energia pressionado para desligar. Não consigo desligar sozinho.",
+        "Entendido. Para desligar, mantenha o botão de energia pressionado. Não posso fazer isso automaticamente.",
+        "Certo, por favor desligue manualmente. Não tenho permissão para desligamento automático.",
+        "Pressione o botão de energia para desligar. Não consigo executar um desligamento automático.",
+        "Desligar exige um toque manual no botão. Não tenho essa permissão."
+      ],
+      "qs": [
+        "Desligue",
+        "Desliga-te",
+        "Encerrar o sistema",
+        "Por favor, desligue",
+        "Quero desligar"
+      ]
+    },
+    {
+      "id": "func.volumedown",
+      "type": "FUNCTION",
+      "op": "volumedown",
+      "a": [
+        "Vou baixar o volume já.",
+        "Está bem, volume mais baixo.",
+        "Entendido, baixando o volume.",
+        "Certo, agora está mais baixo.",
+        "Deixe comigo, já fica mais baixo."
+      ],
+      "qs": [
+        "Mais baixo",
+        "Baixe o volume",
+        "Fale mais baixo",
+        "Alto demais",
+        "Baixe um pouco o volume",
+        "Está muito alto",
+        "Por favor, baixe o volume"
+      ]
+    },
+    {
+      "id": "func.volumeup",
+      "type": "FUNCTION",
+      "op": "volumeup",
+      "a": [
+        "Vou aumentar o volume já.",
+        "Está bem, volume mais alto.",
+        "Entendido, aumentando o volume.",
+        "Certo, agora está mais alto.",
+        "Deixe comigo, já fica mais alto."
+      ],
+      "qs": [
+        "Mais alto",
+        "Aumente o volume",
+        "Fale mais alto",
+        "Não consigo ouvir",
+        "Baixo demais",
+        "Aumente um pouco o volume",
+        "Por favor, aumente o volume"
+      ]
+    },
+    {
+      "id": "func.stopall",
+      "type": "FUNCTION",
+      "op": "stopall",
+      "a": [
+        "Está bem, parei tudo.",
+        "Entendido, movimentos e música parados.",
+        "Certo, tudo interrompido.",
+        "Já parei tudo para você.",
+        "Certo, agora está tudo silencioso."
+      ],
+      "qs": [
+        "Pare tudo",
+        "Pare o que está fazendo",
+        "Pare todas as ações",
+        "Fique quieto",
+        "Não se mexa",
+        "Interrompa tudo",
+        "Por favor, pare tudo"
+      ]
+    },
+    {
+      "id": "func.bton",
+      "type": "FUNCTION",
+      "op": "bton",
+      "a": [
+        "Está bem, Bluetooth ativado.",
+        "Entendido, ativando o Bluetooth.",
+        "Certo, o Bluetooth está ligando.",
+        "O Bluetooth já está ativado para você.",
+        "Deixe comigo, já fica pronto."
+      ],
+      "qs": [
+        "Ative o Bluetooth",
+        "Ligue o Bluetooth",
+        "Por favor, ative o Bluetooth",
+        "Ativar o Bluetooth",
+        "Ative o Bluetooth para mim"
+      ]
+    },
+    {
+      "id": "func.btoff",
+      "type": "FUNCTION",
+      "op": "btoff",
+      "a": [
+        "Está bem, Bluetooth desativado.",
+        "Entendido, desativando o Bluetooth.",
+        "Certo, o Bluetooth está desligando.",
+        "O Bluetooth já está desativado para você.",
+        "Deixe comigo, já fica desligado."
+      ],
+      "qs": [
+        "Desative o Bluetooth",
+        "Desligue o Bluetooth",
+        "Por favor, desative o Bluetooth",
+        "Desativar o Bluetooth",
+        "Desative o Bluetooth para mim"
+      ]
+    },
+    {
+      "id": "func.wifion",
+      "type": "FUNCTION",
+      "op": "wifion",
+      "a": [
+        "Está bem, rede Wi-Fi ativada.",
+        "Entendido, ativando a rede Wi-Fi.",
+        "Certo, a rede Wi-Fi está ligando.",
+        "A rede Wi-Fi já está ativada para você.",
+        "Deixe comigo, já fica pronta."
+      ],
+      "qs": [
+        "Ative o Wi-Fi",
+        "Ligue o Wi-Fi",
+        "Por favor, ative o Wi-Fi",
+        "Ativar o Wi-Fi",
+        "Ative o Wi-Fi para mim"
+      ]
+    },
+    {
+      "id": "func.wifioff",
+      "type": "FUNCTION",
+      "op": "wifioff",
+      "a": [
+        "Está bem, rede Wi-Fi desativada.",
+        "Entendido, desativando a rede Wi-Fi.",
+        "Certo, a rede Wi-Fi está desligando.",
+        "A rede Wi-Fi já está desativada para você.",
+        "Deixe comigo, já fica desligada."
+      ],
+      "qs": [
+        "Desative o Wi-Fi",
+        "Desligue o Wi-Fi",
+        "Por favor, desative o Wi-Fi",
+        "Desativar o Wi-Fi",
+        "Desative o Wi-Fi para mim"
+      ]
+    },
+    {
+      "id": "func.reboot",
+      "type": "FUNCTION",
+      "op": "reboot",
+      "a": [
+        "Está bem, mantenha o botão de energia pressionado para reiniciar. Não consigo reiniciar sozinho.",
+        "Entendido. Para reiniciar, mantenha o botão de energia pressionado. Não posso fazer isso automaticamente.",
+        "Certo, por favor reinicie manualmente. Não tenho permissão para reinício automático.",
+        "Reinicie a máquina manualmente. Não consigo executar um reinício automático.",
+        "Reiniciar exige um toque manual no botão. Não tenho essa permissão."
+      ],
+      "qs": [
+        "Reinicie",
+        "Reinicie a máquina",
+        "Reiniciar o sistema",
+        "Por favor, reinicie",
+        "Quero reiniciar"
+      ]
+    },
+    {
+      "id": "func.takepicture",
+      "type": "FUNCTION",
+      "op": "takepicture",
+      "a": [
+        "Pronto, foto tirada.",
+        "Entendido, a foto está salva.",
+        "Certo, aí está a foto.",
+        "Já tirei a foto para você.",
+        "Certo, diga xis. Pronto."
+      ],
+      "qs": [
+        "Tire uma foto",
+        "Fotografe-me",
+        "Por favor, tire uma foto",
+        "Diga xis",
+        "Abra a câmera",
+        "Bata uma foto"
+      ]
+    },
+    {
+      "id": "func.musicplay",
+      "type": "FUNCTION",
+      "op": "musicplay",
+      "a": [
+        "Está bem, tocando música.",
+        "Entendido, reproduzindo música local.",
+        "Certo, a música vai começar.",
+        "Deixe comigo, já toca a música.",
+        "Certo, aproveite a música."
+      ],
+      "qs": [
+        "Toque música",
+        "Reproduza música",
+        "Toque uma canção",
+        "Ponha uma música",
+        "Toque uma música para mim"
+      ]
+    },
+    {
+      "id": "func.musicnext",
+      "type": "FUNCTION",
+      "op": "musicnext",
+      "a": [
+        "Está bem, próxima música.",
+        "Entendido, passando para a próxima.",
+        "Certo, aí vem a próxima canção.",
+        "Deixe comigo, já vem a próxima.",
+        "Certo, vamos trocar de música."
+      ],
+      "qs": [
+        "Próxima música",
+        "Toque a próxima",
+        "Passe para a próxima",
+        "Troque de música",
+        "A próxima"
+      ]
+    },
+    {
+      "id": "func.musicprev",
+      "type": "FUNCTION",
+      "op": "musicprev",
+      "a": [
+        "Está bem, música anterior.",
+        "Entendido, voltando uma música.",
+        "Certo, aí vem a canção anterior.",
+        "Deixe comigo, já vem a anterior.",
+        "Certo, vamos voltar uma."
+      ],
+      "qs": [
+        "Música anterior",
+        "Toque a anterior",
+        "Volte uma música",
+        "Ouça a anterior",
+        "A anterior"
+      ]
+    },
+    {
       "id": "pt.daily.001",
       "type": "CHAT",
       "actionId": "__RANDOM__",

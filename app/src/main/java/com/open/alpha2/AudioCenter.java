@@ -562,8 +562,7 @@ public final class AudioCenter {
      *  參數 (Radio Browser 的 name 搜尋本身就是不分大小寫的 substring, 不用這台機器
      *  自己再做 fuzzy match)。在獨立 thread (由 HttpServer 的
      *  newCachedThreadPool 保證, 每個 HTTP request 已經在自己的 thread) 上執行
-     *  blocking HttpURLConnection, 不在 UI thread 做, 安全性和
-     *  xiaozhiVisionExplainRequest() 一致。 */
+     *  blocking HttpURLConnection, 不在 UI thread 做, 安全性和其他 HTTP 直調一致。 */
     public java.util.List<org.json.JSONObject> searchRadioStations(String query, int limit)
             throws java.io.IOException, org.json.JSONException {
         String encodedQuery = java.net.URLEncoder.encode(query, "UTF-8");
@@ -861,6 +860,65 @@ public final class AudioCenter {
         vol = Math.max(0, Math.min(max, vol));
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, vol, 0);
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"volume\":" + vol + ",\"max\":" + max + "}");
+    }
+
+    /** 語音 FUNCTION 共用：行一格系統音量（同頭頂 +/- pad 的 stepVolume 同語義，
+     *  STREAM_MUSIC + SHOW_UI + PLAY_SOUND）。任意線程可調，SemanticCenter 經此行
+     *  volumeup/volumedown 真動作，不再得把口。 */
+    public void adjustSystemVolume(boolean up) {
+        try {
+            AudioManager audioManager =
+                    (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
+            if (audioManager == null) return;
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                    up ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER,
+                    AudioManager.FLAG_SHOW_UI | AudioManager.FLAG_PLAY_SOUND);
+        } catch (Exception e) {
+            Log.w(TAG, "adjustSystemVolume failed", e);
+        }
+    }
+
+    /** 語音 FUNCTION 共用：本地音樂播第一首（檔名排序首個）。無歌回 null，
+     *  有歌即播並回檔名。任意線程可調（內已 synchronized）。 */
+    public synchronized String playFirstLocalMusic() {
+        java.util.List<java.io.File> files = listLocalMusicFiles();
+        if (files.isEmpty()) return null;
+        java.io.File first = files.get(0);
+        playLocalMusicFile(first);
+        return first.getName();
+    }
+
+    /** 語音 FUNCTION 共用：下一首（按檔名排序，循環；無 current 當第一首）。
+     *  無歌回 null，有歌即播並回檔名。 */
+    public synchronized String playNextLocalMusic() {
+        java.util.List<java.io.File> files = listLocalMusicFiles();
+        if (files.isEmpty()) return null;
+        int idx = indexOfCurrentTrackLocked(files);
+        int next = (idx < 0) ? 0 : (idx + 1) % files.size();
+        java.io.File f = files.get(next);
+        playLocalMusicFile(f);
+        return f.getName();
+    }
+
+    /** 語音 FUNCTION 共用：上一首（按檔名排序，循環；無 current 當最尾一首）。 */
+    public synchronized String playPrevLocalMusic() {
+        java.util.List<java.io.File> files = listLocalMusicFiles();
+        if (files.isEmpty()) return null;
+        int idx = indexOfCurrentTrackLocked(files);
+        int prev = (idx < 0) ? files.size() - 1 : (idx - 1 + files.size()) % files.size();
+        java.io.File f = files.get(prev);
+        playLocalMusicFile(f);
+        return f.getName();
+    }
+
+    /** 在已排序歌單中搵 currentMusicTrackName 下標，搵唔到回 -1。 */
+    private int indexOfCurrentTrackLocked(java.util.List<java.io.File> files) {
+        String cur = currentMusicTrackName;
+        if (cur == null) return -1;
+        for (int i = 0; i < files.size(); i++) {
+            if (cur.equals(files.get(i).getName())) return i;
+        }
+        return -1;
     }
     // audio spectrum - 回傳最近一次 FFT 算出的頻譜
     // (MUSIC_SPECTRUM_BANDS 條, 每條 0-255), 前端 ~100ms 輪詢一次畫 bar。

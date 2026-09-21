@@ -223,7 +223,7 @@ public final class ApiDispatcher {
             // -- APK 下載（實驗 tab 資源下載卡 Google TTS 區用；body 在
             // ApkDownloadController，薄 delegate，不要在這裡加 logic）--
             // 固定 URL（見 ApkDownloadController.APK_URL），後端直落 apk 到
-            // sdcard 即完；安裝唔經面板（每部機人手 adb install 一次）。
+            // sdcard，落完自動開系統安裝器等人手確認。
             case "apk/download": {
                 if (apkDownloadController == null) {
                     return HttpServer.ApiResponse.error("apk download not initialised");

@@ -1783,95 +1783,6 @@
       ]
     },
     {
-      "id": "func.beginconnect",
-      "type": "FUNCTION",
-      "op": "beginconnect",
-      "a": [
-        "Connecting now.",
-        "I'm on it.",
-        "Give me a moment to connect.",
-        "Connecting right away.",
-        "Please wait, connecting."
-      ],
-      "qs": [
-        "Connect to the network",
-        "Get me connected",
-        "Connect to wifi please",
-        "Please connect",
-        "Help me connect",
-        "Start the connection process",
-        "Begin connecting",
-        "Please hurry and connect",
-        "I need you to connect"
-      ]
-    },
-    {
-      "id": "func.connect",
-      "type": "FUNCTION",
-      "op": "connect",
-      "a": [
-        "Let me check.",
-        "I'll check for you.",
-        "Checking now.",
-        "Hold on, let me look.",
-        "I'll find out for you."
-      ],
-      "qs": [
-        "Are you connected to the internet",
-        "Are you online",
-        "Have you connected to wifi",
-        "Check if you're connected",
-        "Are you not connected",
-        "Are you online right now",
-        "Is your wifi connected",
-        "Are you currently online",
-        "Have you already connected"
-      ]
-    },
-    {
-      "id": "func.poweroff",
-      "type": "FUNCTION",
-      "op": "poweroff",
-      "a": [
-        "Okay, powering off now.",
-        "Got it, shutting down.",
-        "Alright, see you later.",
-        "Powering down, bye.",
-        "Okay, see you next time."
-      ],
-      "qs": [
-        "Power off",
-        "Shut down",
-        "Turn off"
-      ]
-    },
-    {
-      "id": "func.sleep",
-      "type": "FUNCTION",
-      "op": "sleep",
-      "a": [
-        "Okay, going to rest now.",
-        "Goodnight, heading to sleep.",
-        "Off to rest now.",
-        "Alright, taking a nap.",
-        "Goodnight."
-      ],
-      "qs": [
-        "Go rest",
-        "Go get some rest",
-        "Go to sleep",
-        "Time to sleep",
-        "Take a rest",
-        "You should go rest",
-        "If you're tired go to sleep",
-        "If you're tired go rest",
-        "Take a break",
-        "You should rest now",
-        "You should get some rest",
-        "Rest a bit"
-      ]
-    },
-    {
       "id": "func.volumedown",
       "type": "FUNCTION",
       "op": "volumedown",
@@ -1917,6 +1828,219 @@
         "That's too quiet",
         "Increase the volume",
         "A little louder"
+      ]
+    },
+    {
+      "id": "func.poweroff",
+      "type": "FUNCTION",
+      "op": "poweroff",
+      "a": [
+        "Okay, please press and hold the power button to shut down. I can't power off by myself.",
+        "Got it. To shut down, please long-press the power button. I can't do it automatically.",
+        "Alright, please shut down manually. I don't have permission to power off automatically.",
+        "Please press the power button to shut down. I can't run an automatic shutdown.",
+        "Shutting down needs a manual button press. I don't have that permission."
+      ],
+      "qs": [
+        "Power off",
+        "Shut down",
+        "Turn off",
+        "Please shut down",
+        "Power this machine off"
+      ]
+    },
+    {
+      "id": "func.stopall",
+      "type": "FUNCTION",
+      "op": "stopall",
+      "a": [
+        "Okay, everything has stopped.",
+        "Got it, motion and music are stopped.",
+        "Alright, all stopped.",
+        "I've stopped everything for you.",
+        "Okay, all quiet now."
+      ],
+      "qs": [
+        "Stop everything",
+        "Stop all",
+        "Stop what you're doing",
+        "Hold still",
+        "Don't move",
+        "Stop all actions",
+        "Please stop everything"
+      ]
+    },
+    {
+      "id": "func.bton",
+      "type": "FUNCTION",
+      "op": "bton",
+      "a": [
+        "Okay, Bluetooth is on.",
+        "Got it, turning Bluetooth on.",
+        "Alright, Bluetooth is switching on.",
+        "Bluetooth is on for you now.",
+        "On it, Bluetooth will be ready in a moment."
+      ],
+      "qs": [
+        "Turn on Bluetooth",
+        "Enable Bluetooth",
+        "Please turn on Bluetooth",
+        "Switch Bluetooth on",
+        "Turn Bluetooth on for me"
+      ]
+    },
+    {
+      "id": "func.btoff",
+      "type": "FUNCTION",
+      "op": "btoff",
+      "a": [
+        "Okay, Bluetooth is off.",
+        "Got it, turning Bluetooth off.",
+        "Alright, Bluetooth is switching off.",
+        "Bluetooth is off for you now.",
+        "On it, Bluetooth will be off in a moment."
+      ],
+      "qs": [
+        "Turn off Bluetooth",
+        "Disable Bluetooth",
+        "Please turn off Bluetooth",
+        "Switch Bluetooth off",
+        "Turn Bluetooth off for me"
+      ]
+    },
+    {
+      "id": "func.wifion",
+      "type": "FUNCTION",
+      "op": "wifion",
+      "a": [
+        "Okay, Wi-Fi is on.",
+        "Got it, turning Wi-Fi on.",
+        "Alright, Wi-Fi is switching on.",
+        "Wi-Fi is on for you now.",
+        "On it, Wi-Fi will be ready in a moment."
+      ],
+      "qs": [
+        "Turn on Wi-Fi",
+        "Enable Wi-Fi",
+        "Please turn on Wi-Fi",
+        "Switch Wi-Fi on",
+        "Turn Wi-Fi on for me"
+      ]
+    },
+    {
+      "id": "func.wifioff",
+      "type": "FUNCTION",
+      "op": "wifioff",
+      "a": [
+        "Okay, Wi-Fi is off.",
+        "Got it, turning Wi-Fi off.",
+        "Alright, Wi-Fi is switching off.",
+        "Wi-Fi is off for you now.",
+        "On it, Wi-Fi will be off in a moment."
+      ],
+      "qs": [
+        "Turn off Wi-Fi",
+        "Disable Wi-Fi",
+        "Please turn off Wi-Fi",
+        "Switch Wi-Fi off",
+        "Turn Wi-Fi off for me"
+      ]
+    },
+    {
+      "id": "func.reboot",
+      "type": "FUNCTION",
+      "op": "reboot",
+      "a": [
+        "Okay, please press and hold the power button to restart. I can't reboot by myself.",
+        "Got it. To restart, please long-press the power button. I can't do it automatically.",
+        "Alright, please restart manually. I don't have permission to reboot automatically.",
+        "Please restart the machine by hand. I can't run an automatic reboot.",
+        "Restarting needs a manual button press. I don't have that permission."
+      ],
+      "qs": [
+        "Reboot",
+        "Restart",
+        "Please restart",
+        "Restart this machine",
+        "Reboot the machine"
+      ]
+    },
+    {
+      "id": "func.takepicture",
+      "type": "FUNCTION",
+      "op": "takepicture",
+      "a": [
+        "Done, picture taken.",
+        "Got it, the photo is saved.",
+        "Alright, photo taken.",
+        "I've taken the photo for you.",
+        "Okay, say cheese. Done."
+      ],
+      "qs": [
+        "Take a picture",
+        "Take a photo",
+        "Please take a photo",
+        "Say cheese",
+        "Open the camera and take a picture",
+        "Take my picture"
+      ]
+    },
+    {
+      "id": "func.musicplay",
+      "type": "FUNCTION",
+      "op": "musicplay",
+      "a": [
+        "Okay, playing music now.",
+        "Got it, playing local music.",
+        "Alright, the music is starting.",
+        "On it, playing music for you.",
+        "Okay, enjoy the music."
+      ],
+      "qs": [
+        "Play music",
+        "Play local music",
+        "Play a song",
+        "Put on some music",
+        "Play me a song"
+      ]
+    },
+    {
+      "id": "func.musicnext",
+      "type": "FUNCTION",
+      "op": "musicnext",
+      "a": [
+        "Okay, next track.",
+        "Got it, moving to the next one.",
+        "Alright, playing the next song.",
+        "On it, the next track is starting.",
+        "Okay, switching to the next song."
+      ],
+      "qs": [
+        "Next song",
+        "Play the next one",
+        "Next track",
+        "Skip to the next song",
+        "Change the song",
+        "Next one"
+      ]
+    },
+    {
+      "id": "func.musicprev",
+      "type": "FUNCTION",
+      "op": "musicprev",
+      "a": [
+        "Okay, previous track.",
+        "Got it, going back one song.",
+        "Alright, playing the previous song.",
+        "On it, the previous track is starting.",
+        "Okay, back to the previous song."
+      ],
+      "qs": [
+        "Previous song",
+        "Play the previous one",
+        "Previous track",
+        "Go back one song",
+        "Hear the last one again"
       ]
     },
     {

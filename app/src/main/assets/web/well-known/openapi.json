@@ -37,7 +37,7 @@
     },
     {
       "name": "apk",
-      "description": "APK 下載去 sdcard（裝唔經面板，每部機人手裝一次）"
+      "description": "APK 下載去 sdcard，落完開系統安裝器等人手確認"
     },
     {
       "name": "speech",
@@ -669,7 +669,7 @@
           "apk"
         ],
         "summary": "下載 APK 去 sdcard（Google TTS 指定版本）",
-        "description": "固定 URL，後端直落 apk 到 sdcard 即完；安裝唔經面板（每部機人手 adb install 一次）。進度經 apk event / apk/status 查。",
+        "description": "固定 URL，後端直落 apk 到 sdcard，落完自動開系統安裝器等人手確認（經 scrcpy mouse 撳到）。進度經 apk event / apk/status 查。",
         "parameters": [
           {
             "$ref": "#/components/parameters/PanelToken"

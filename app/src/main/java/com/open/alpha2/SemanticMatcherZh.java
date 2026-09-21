@@ -23,7 +23,7 @@ import android.content.Context;
  *  播嗰刻先 resolve，同 fallback 做法一致)。72 ACTION 對齊英文版
  *  改到 85 組 (id/op/actionId 全同英文版一致, slot 清一色 None；問法≥5
  *  (原表同組多行變體保留, 未刪)、答案≥5；笑面併入 express、雙手併入
- *  handsup.3；答案沿用原有通用句)；6 FUNCTION 唔動。
+  *  handsup.3；答案沿用原有通用句)；13 FUNCTION (要求外的 beginconnect/connect/sleep 已刪)。
  *  cn800 (電影／名言／歌詞／潮語各 200) 啱意境的 119 句按意配入 70 個日常組
  *  答案 (18 句暴力／粗口／陰暗／純英文剔除唔用)；剩低 662 句全入下面
  *  fallback (舊 265 句池丟棄)；對白尾巴普通話翻譯括號＋潮語解釋括號已剝走，

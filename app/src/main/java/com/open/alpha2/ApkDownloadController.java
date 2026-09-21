@@ -11,10 +11,10 @@ import java.io.File;
  * APK 下載（實驗 tab「資源下載」卡 Google TTS 區用）。
  *
  * <p>固定單一 URL（allowlist，不收任意 URL，防 SSRF）：
- * Google TTS 指定版本。後端直落 apk 到 sdcard 頂層即完——安裝唔經得
- * 面板做（靜默安裝要 INSTALL_PACKAGES signature|system 級，普通 App 攞唔到；
- * 系統安裝器要人手確認，部機又冇觸屏），每部機落完人手 {@code adb install}
- * 一次，之後唔使再裝。
+ * Google TTS 指定版本。後端直落 apk 到 sdcard 頂層，落完即開系統
+ * 安裝器等人手確認（經 scrcpy mouse 撳到；部機無觸屏）。
+ *
+ * <p>開唔到安裝器都唔當下載失敗（檔已落好，照樣可用 adb 裝）。
  *
  * <p>同 Vosk／動作包共用單一下載通道（見 {@link DownloadGate}），每次只准
  * 一樣下載緊。狀態機：idle／downloading／done／error／cancelled。
@@ -175,10 +175,11 @@ public final class ApkDownloadController {
             synchronized (this) {
                 if (apkCancel) throw new java.io.IOException("cancelled");
             }
+            // 落完即開系統安裝器等人手確認（開唔到唔當失敗，檔已落好）。
+            openSystemInstaller(new File(root, apkFileName()));
             setApk("done", 100, null);
             DownloadGate.release("apk");
-            Log.i(TAG, "apk downloaded: /sdcard/" + apkFileName()
-                    + " (install once via adb install)");
+            Log.i(TAG, "apk downloaded: /sdcard/" + apkFileName());
         } catch (Throwable e) {
             boolean cancelled;
             synchronized (this) {
@@ -286,6 +287,22 @@ public final class ApkDownloadController {
                 } catch (Throwable ignore) {
                 }
             }
+        }
+    }
+
+    /** 落完開系統安裝器等人手確認（經 scrcpy mouse 撳到；部機無觸屏）。
+     *  開唔到都唔當下載失敗（檔已落好，照樣可用 adb 裝）。絕不 throw。 */
+    private void openSystemInstaller(File apk) {
+        try {
+            android.content.Intent intent =
+                    new android.content.Intent(android.content.Intent.ACTION_VIEW);
+            intent.setDataAndType(android.net.Uri.fromFile(apk),
+                    "application/vnd.android.package-archive");
+            intent.setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            appContext.startActivity(intent);
+            Log.i(TAG, "system installer opened for " + apk.getName());
+        } catch (Throwable e) {
+            Log.w(TAG, "open system installer failed (install via adb instead)", e);
         }
     }
 

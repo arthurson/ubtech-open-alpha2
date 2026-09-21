@@ -20,7 +20,7 @@ import android.content.Context;
  *  CHAT (chat.001-476＋en.mov/son/cit/arg) 全刪, 新建 en.daily.001-200
  *  (每組地道英文 5 問法＋5 個答案: 001-040 問候天氣、041-080 飲食、081-120
  *  家庭家居寵物、121-160 工作學習健康、161-200 休閒旅行日常; 同法西日版一樣
- *  200 日常組動作全 __RANDOM__ (fallback 60 池，播嗰刻先 resolve)。85 ACTION＋6 FUNCTION 原封唔動。
+ *  200 日常組動作全 __RANDOM__ (fallback 60 池，播嗰刻先 resolve)。85 ACTION＋13 FUNCTION (要求外的 beginconnect/connect/sleep 已刪)。
  *  每個 intent 內:
  *   q      - 用戶問法 (例如 "Dance for me", "How old are you")
  *   a      - 候選答案句 (5句, 隨機選一句做 TTS; 部分 FUNCTION 類沒答案句)

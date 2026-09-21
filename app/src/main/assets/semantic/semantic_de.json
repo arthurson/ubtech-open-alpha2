@@ -1711,6 +1711,261 @@
       ]
     },
     {
+      "id": "func.poweroff",
+      "type": "FUNCTION",
+      "op": "poweroff",
+      "a": [
+        "Verstanden, halte bitte die Einschalttaste gedrückt, um auszuschalten. Ich kann mich nicht automatisch ausschalten.",
+        "Alles klar. Zum Ausschalten halte bitte die Einschalttaste gedrückt. Automatisch geht das nicht.",
+        "Okay, bitte schalte manuell aus. Ich habe keine Berechtigung zum automatischen Ausschalten.",
+        "Drück bitte die Einschalttaste zum Ausschalten. Ein automatisches Herunterfahren geht nicht.",
+        "Ausschalten braucht einen manuellen Tastendruck. Diese Berechtigung habe ich nicht."
+      ],
+      "qs": [
+        "Schalte dich aus",
+        "Ausschalten",
+        "Fahr herunter",
+        "Bitte schalte dich aus",
+        "Mach aus"
+      ]
+    },
+    {
+      "id": "func.volumedown",
+      "type": "FUNCTION",
+      "op": "volumedown",
+      "a": [
+        "Ich mache es sofort leiser.",
+        "Verstanden, leiser gestellt.",
+        "Alles klar, ich drehe die Lautstärke runter.",
+        "Okay, jetzt ist es leiser.",
+        "Lass mich machen, gleich ist es leiser."
+      ],
+      "qs": [
+        "Leiser",
+        "Mach leiser",
+        "Zu laut",
+        "Du bist zu laut",
+        "Dreh die Lautstärke runter",
+        "Stell leiser",
+        "Bitte leiser"
+      ]
+    },
+    {
+      "id": "func.volumeup",
+      "type": "FUNCTION",
+      "op": "volumeup",
+      "a": [
+        "Ich mache es sofort lauter.",
+        "Verstanden, lauter gestellt.",
+        "Alles klar, ich drehe die Lautstärke rauf.",
+        "Okay, jetzt ist es lauter.",
+        "Lass mich machen, gleich ist es lauter."
+      ],
+      "qs": [
+        "Lauter",
+        "Mach lauter",
+        "Zu leise",
+        "Ich höre dich nicht",
+        "Dreh die Lautstärke rauf",
+        "Stell lauter",
+        "Bitte lauter"
+      ]
+    },
+    {
+      "id": "func.stopall",
+      "type": "FUNCTION",
+      "op": "stopall",
+      "a": [
+        "Verstanden, alles gestoppt.",
+        "Alles klar, Bewegung und Musik sind gestoppt.",
+        "Okay, alles angehalten.",
+        "Ich habe alles für dich gestoppt.",
+        "Okay, jetzt ist es still."
+      ],
+      "qs": [
+        "Stopp alles",
+        "Halt an",
+        "Alles anhalten",
+        "Alle Aktionen stoppen",
+        "Beweg dich nicht",
+        "Stopp, was du tust",
+        "Bitte stopp alles"
+      ]
+    },
+    {
+      "id": "func.bton",
+      "type": "FUNCTION",
+      "op": "bton",
+      "a": [
+        "Verstanden, Bluetooth ist eingeschaltet.",
+        "Alles klar, ich schalte Bluetooth ein.",
+        "Okay, Bluetooth startet gerade.",
+        "Bluetooth ist jetzt für dich eingeschaltet.",
+        "Lass mich machen, gleich ist es bereit."
+      ],
+      "qs": [
+        "Schalte Bluetooth ein",
+        "Bluetooth einschalten",
+        "Bitte schalte Bluetooth ein",
+        "Mach Bluetooth an",
+        "Bluetooth anmachen"
+      ]
+    },
+    {
+      "id": "func.btoff",
+      "type": "FUNCTION",
+      "op": "btoff",
+      "a": [
+        "Verstanden, Bluetooth ist ausgeschaltet.",
+        "Alles klar, ich schalte Bluetooth aus.",
+        "Okay, Bluetooth wird gerade beendet.",
+        "Bluetooth ist jetzt für dich ausgeschaltet.",
+        "Lass mich machen, gleich ist es aus."
+      ],
+      "qs": [
+        "Schalte Bluetooth aus",
+        "Bluetooth ausschalten",
+        "Bitte schalte Bluetooth aus",
+        "Mach Bluetooth aus",
+        "Bluetooth ausmachen"
+      ]
+    },
+    {
+      "id": "func.wifion",
+      "type": "FUNCTION",
+      "op": "wifion",
+      "a": [
+        "Verstanden, WLAN ist eingeschaltet.",
+        "Alles klar, ich schalte WLAN ein.",
+        "Okay, WLAN startet gerade.",
+        "WLAN ist jetzt für dich eingeschaltet.",
+        "Lass mich machen, gleich ist es bereit."
+      ],
+      "qs": [
+        "Schalte WLAN ein",
+        "WLAN einschalten",
+        "Bitte schalte WLAN ein",
+        "Mach WLAN an",
+        "Schalte Wi-Fi ein"
+      ]
+    },
+    {
+      "id": "func.wifioff",
+      "type": "FUNCTION",
+      "op": "wifioff",
+      "a": [
+        "Verstanden, WLAN ist ausgeschaltet.",
+        "Alles klar, ich schalte WLAN aus.",
+        "Okay, WLAN wird gerade beendet.",
+        "WLAN ist jetzt für dich ausgeschaltet.",
+        "Lass mich machen, gleich ist es aus."
+      ],
+      "qs": [
+        "Schalte WLAN aus",
+        "WLAN ausschalten",
+        "Bitte schalte WLAN aus",
+        "Mach WLAN aus",
+        "Schalte Wi-Fi aus"
+      ]
+    },
+    {
+      "id": "func.reboot",
+      "type": "FUNCTION",
+      "op": "reboot",
+      "a": [
+        "Verstanden, halte bitte die Einschalttaste gedrückt, um neu zu starten. Ich kann nicht automatisch neu starten.",
+        "Alles klar. Zum Neustart halte bitte die Einschalttaste gedrückt. Automatisch geht das nicht.",
+        "Okay, bitte starte manuell neu. Ich habe keine Berechtigung zum automatischen Neustart.",
+        "Starte die Maschine bitte von Hand neu. Ein automatischer Neustart geht nicht.",
+        "Neustarten braucht einen manuellen Tastendruck. Diese Berechtigung habe ich nicht."
+      ],
+      "qs": [
+        "Starte neu",
+        "Neustart",
+        "Bitte starte neu",
+        "Starte die Maschine neu",
+        "Mach einen Neustart"
+      ]
+    },
+    {
+      "id": "func.takepicture",
+      "type": "FUNCTION",
+      "op": "takepicture",
+      "a": [
+        "Fertig, Foto gemacht.",
+        "Alles klar, das Foto ist gespeichert.",
+        "Okay, Aufnahme fertig.",
+        "Ich habe das Foto für dich gemacht.",
+        "Okay, bitte lächeln. Fertig."
+      ],
+      "qs": [
+        "Mach ein Foto",
+        "Fotografiere mich",
+        "Bitte lächeln",
+        "Öffne die Kamera",
+        "Mach bitte ein Foto",
+        "Cheese"
+      ]
+    },
+    {
+      "id": "func.musicplay",
+      "type": "FUNCTION",
+      "op": "musicplay",
+      "a": [
+        "Verstanden, ich spiele Musik ab.",
+        "Alles klar, ich spiele lokale Musik.",
+        "Okay, die Musik startet gleich.",
+        "Lass mich machen, gleich läuft die Musik.",
+        "Okay, viel Spaß mit der Musik."
+      ],
+      "qs": [
+        "Spiel Musik",
+        "Spiel lokale Musik",
+        "Spiel ein Lied",
+        "Mach Musik an",
+        "Spiel mir ein Lied"
+      ]
+    },
+    {
+      "id": "func.musicnext",
+      "type": "FUNCTION",
+      "op": "musicnext",
+      "a": [
+        "Verstanden, nächstes Lied.",
+        "Alles klar, ich springe zum nächsten.",
+        "Okay, das nächste Lied läuft.",
+        "Lass mich machen, gleich kommt das nächste.",
+        "Okay, wir wechseln das Lied."
+      ],
+      "qs": [
+        "Nächstes Lied",
+        "Spiel das nächste",
+        "Nächster Titel",
+        "Spring zum nächsten",
+        "Lied wechseln",
+        "Weiter"
+      ]
+    },
+    {
+      "id": "func.musicprev",
+      "type": "FUNCTION",
+      "op": "musicprev",
+      "a": [
+        "Verstanden, vorheriges Lied.",
+        "Alles klar, ich gehe eins zurück.",
+        "Okay, das vorige Lied läuft.",
+        "Lass mich machen, gleich kommt das vorige.",
+        "Okay, zurück zum vorigen Lied."
+      ],
+      "qs": [
+        "Vorheriges Lied",
+        "Spiel das vorige",
+        "Voriger Titel",
+        "Geh eins zurück",
+        "Nochmal das letzte"
+      ]
+    },
+    {
       "id": "de.daily.001",
       "type": "CHAT",
       "actionId": "__RANDOM__",

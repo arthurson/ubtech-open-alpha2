@@ -37,10 +37,9 @@ mappings:
     openapi: /api/action/list
     method: GET
     description: >-
-      List all built-in robot actions with their id, Chinese name, and English name.
-      Useful for browsing what actions exist, but self.robot.play_action can now be
-      called directly with a Chinese or English action name (fuzzy-matched server-side)
-      - you do not need to call this first just to play a known action.
+      List all built-in robot actions (id, Chinese and English names). Only needed
+      when unsure of the exact name - self.robot.play_action accepts names directly
+      with server-side fuzzy matching.
     params: []
     exclude: [panel_token]
 
@@ -48,11 +47,9 @@ mappings:
     openapi: /api/action/play
     method: GET
     description: >-
-      Play a named built-in robot action/animation. Pass the action's Chinese or English
-      name in natural language (e.g. "舉左手" or "take left hand", "跳舞" or "dance") -
-      it will be matched against the robot's actual action list automatically. Only actions
-      that exist in the robot's list can actually play, so if in doubt call
-      self.robot.list_actions to see exact names first.
+      Play a built-in robot action by Chinese or English name (fuzzy-matched
+      server-side, e.g. "跳舞" or "dance"). Call self.robot.list_actions first
+      if unsure of the exact name.
     params:
       - mcp: name
         openapi: name
@@ -71,13 +68,9 @@ mappings:
   - mcp: self.robot.play_random_action
     openapi: null
     description: >-
-      Play a random filler movement to make the robot look more alive/expressive - use this
-      when it feels natural to add a bit of physical animation, not necessarily tied to any
-      specific emotion or reply content. Takes no arguments. IMPORTANT ordering rule: if the
-      user's request also calls for a specific action via self.robot.play_action (e.g. they
-      asked you to wave, dance, nod, etc.), call that specific action instead of (not in
-      addition to) this random one for this turn - only reach for play_random_action when
-      there is no other action already planned for this reply.
+      Play a random filler movement so the robot looks alive; takes no arguments.
+      If this turn already plays a specific action via self.robot.play_action, skip
+      this one instead of calling both.
     params: []
     note: 無直接 HTTP 對應，隨機選動作（resolveRandomActionId）
 
@@ -85,8 +78,8 @@ mappings:
     openapi: /api/servo/one
     method: GET
     description: >-
-      Move a single servo to an angle. Servo ids and their valid angle ranges are specific
-      to this robot's build - if unsure, use small movements first.
+      Move a single servo to an angle. Ids and valid ranges are specific to this
+      robot's build - use small movements when unsure.
     params:
       - mcp: id
         openapi: id
@@ -124,9 +117,9 @@ mappings:
     openapi: /api/led/head/set
     method: GET
     description: >-
-      Set the head 5-mic LED ring. color: 1=red 2=green 3=blue 4=yellow 5=purple 6=cyan
-      7=white. brightness: 1 (dimmest) to 9 (brightest). preset: "long" (solid), "flash",
-      "breathe", "chase", "dual", or "stop" (turns the ring off - color/brightness ignored).
+      Set the head LED ring. color 1=red 2=green 3=blue 4=yellow 5=purple 6=cyan
+      7=white; brightness 1-9; preset long/flash/breathe/chase/dual, or "stop"
+      (off; color/brightness ignored).
     params:
       - mcp: preset
         openapi: preset
@@ -147,9 +140,8 @@ mappings:
     openapi: /api/led/eye/set
     method: GET
     description: >-
-      Set the eye 5-mic LED ring. Same color/brightness/preset semantics as
-      self.robot.led_set_head (preset "breathe" is not available for the eye ring - only
-      "long", "flash", "chase", "dual", "stop").
+      Set the eye LED ring. Same color/brightness/preset as the head ring, except
+      preset "breathe" is unavailable.
     params:
       - mcp: preset
         openapi: preset
@@ -169,9 +161,9 @@ mappings:
     openapi: /api/led/mouth/set
     method: GET
     description: >-
-      Set the mouth LED. preset "breathing" pulses at the given speed (0-5000ms, 0=fastest);
-      preset "off" turns it off. Note: this is driven automatically during XiaoZhi TTS
-      playback, so calling it manually mid-conversation may fight with that.
+      Set the mouth LED. preset "breathing" pulses at speed 0-5000ms (0=fastest);
+      "off" turns it off. Driven automatically during TTS playback - manual calls
+      mid-conversation may conflict.
     params:
       - mcp: preset
         openapi: preset
@@ -189,9 +181,8 @@ mappings:
   - mcp: self.sensors.get_pir
     openapi: null
     description: >-
-      Read the last known PIR motion-sensor state (whether someone was last detected
-      entering/present nearby). This is the most recently received event, not a live poll -
-      if the sensor is disabled or no event has arrived yet, state will be "unknown".
+      Read the last known PIR motion state (most recent event, not a live poll;
+      "unknown" if disabled or nothing received yet).
     params: []
     note: 對應 broadcast 查詢，無 HTTP GET，僅 WebSocket pir_state
 
@@ -209,9 +200,8 @@ mappings:
   - mcp: self.sensors.get_sonar
     openapi: null
     description: >-
-      Read the last known ultrasonic sonar distance reading (centimeters) and the currently
-      configured trigger threshold. This is the most recently received reading, not a live
-      poll - if no reading has arrived yet, distance_cm will be -1.
+      Read the last known sonar distance in cm plus the trigger threshold (most recent
+      reading, not a live poll; -1 if none yet).
     params: []
     note: 讀數經 WebSocket sonar_distance，配置經 /api/servo/sonar
 
@@ -230,9 +220,8 @@ mappings:
     openapi: /api/camera/snapshot
     method: GET
     description: >-
-      Take a photo with the robot's camera and get a description of what it sees.
-      Optionally pass a specific question to focus the description on (e.g. "how many people
-      are there"), otherwise a general description is returned.
+      Take a photo and get a description of what the robot sees. Optionally pass a
+      question to focus the description (e.g. "how many people are there").
     params: []
     exclude: [panel_token]
     mcp_only:
@@ -245,15 +234,15 @@ mappings:
   - mcp: self.camera.image_to_text
     openapi: null
     description: >-
-      Get the text description for a photo previously captured via self.camera.take_photo.
-      Call this after take_photo tells you to, using the uuid it gave you.
+      See the most recently captured photo again (from self.camera.take_photo) -
+      the image is attached directly, no follow-up needed.
     params: []
     mcp_only:
       - mcp: uuid
         type: string
         required: false
-        desc: The uuid returned by self.camera.take_photo.
-    note: v1 誤寫 image_base64，實際 code 讀 uuid（lastPendingPhotoUuid fallback），v2 以 code 為準修正；屬 xiaozhi.me vision async flow 非官方行為
+        desc: Accepted but not required; the most recent photo is always returned.
+    note: 兼容 shim——直接回傳最近一張相 inline，唔再影；uuid 照收但唔用（單一 device 永遠得一張最新）
 
   - mcp: self.robot.speak
     openapi: /api/speech/tts
@@ -278,9 +267,8 @@ mappings:
     openapi: /api/audio/local_music/play
     method: GET
     description: >-
-      Play a local music file on the robot. Pass the song name in natural language (it will
-      be fuzzy-matched against the actual filenames) - call self.media.list_music first if
-      unsure what is available.
+      Play a local music file by song name (fuzzy-matched to filenames). Call
+      self.media.list_music first if unsure what's available.
     params:
       - mcp: name
         openapi: name
@@ -299,9 +287,9 @@ mappings:
     openapi: /api/audio/radio/search
     method: GET
     description: >-
-      Search for live FM/internet radio stations from around the world (station name, e.g. a
-      city, country, broadcaster or genre). Returns a list of matching stations - call
-      self.media.play_radio with one of the returned names afterwards to actually play it.
+      Search worldwide radio stations by name, city, country, broadcaster or genre.
+      Returns matches - then call self.media.play_radio with one of the names
+      to play it.
     params:
       - mcp: query
         openapi: query
@@ -313,11 +301,9 @@ mappings:
     openapi: /api/audio/radio/play
     method: GET
     description: >-
-      Play (or switch to) a live FM/internet radio station on the robot. Pass a station name
-      in natural language - if it matches one of the stations returned by a previous
-      self.media.search_radio call, that exact station is played; otherwise this will search
-      for it directly. Switching straight to a different station is fine, no need to call
-      self.media.stop_radio first.
+      Play (or switch to) a radio station by name. Matches a previous
+      self.media.search_radio result when possible, otherwise searches directly.
+      No need to call self.media.stop_radio first.
     params:
       - mcp: name
         openapi: name

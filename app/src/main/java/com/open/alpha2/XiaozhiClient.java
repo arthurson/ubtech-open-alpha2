@@ -113,19 +113,8 @@ public class XiaozhiClient {
     private volatile DisconnectListener disconnectListener;
     private volatile Socket socket;
     private volatile OutputStream out;
-    // vision explain 的真正 URL/token 不是寫死常數 - 對照官方
-    // mcp-protocol.md 原文 ("initialize" 章節), server 送過來的 "initialize" request
-    // 的 params.capabilities.vision 裡面夾著 device 應該用來 POST 照片的
-    // url/token, 每次 session 都可能不同 (自架 server 實測回報的 vision url
-    // 就是那個 server 自己的本地地址, 每個部署都不同)。這兩個 field 由 handleMcpMessage()
-    // 的 case "initialize" 填, 給 MainActivity 的 xiaozhiTakePhotoAndExplain() 讀
-    // (getVisionUrl()/getVisionToken()) - 沒收過 initialize request (例如用戶還沒
-    // 連接過就試 take_photo) 就是 null, caller 要 fallback 用回自己那個
-    // DEFAULT_VISION_URL 常數。
     private volatile String sessionId;
     private volatile boolean open = false;
-    private volatile String visionUrl;
-    private volatile String visionToken;
 
     public XiaozhiClient(String deviceId) {
         this.deviceId = deviceId;
@@ -158,20 +147,6 @@ public class XiaozhiClient {
 
     public String getSessionId() {
         return sessionId;
-    }
-
-    /** Server-provided vision explain endpoint from the most recent "initialize" MCP
-     *  request's params.capabilities.vision (see handleMcpMessage()'s case
-     *  "initialize" for where these get set). Null if no initialize request has been
-     *  received yet in this connection (e.g. server hasn't reached MCP setup, or this
-     *  server variant doesn't advertise a vision capability at all) - caller should
-     *  fall back to a hardcoded default in that case rather than failing outright. */
-    public String getVisionUrl() {
-        return visionUrl;
-    }
-
-    public String getVisionToken() {
-        return visionToken;
     }
 
     /** Runtime capability check for the audio (Opus) half of this feature, kept here
@@ -691,23 +666,6 @@ public class XiaozhiClient {
             JSONObject result;
             switch (method) {
                 case "initialize": {
-                    // 官方 mcp-protocol.md: backend->device initialize 的
-                    // params.capabilities.vision 帶 device POST 照片做 explain 的
-                    // url/token, 存下來給 takePhotoAndExplain 用。
-                    JSONObject initParams = payload.optJSONObject("params");
-                    JSONObject initCapabilities = initParams != null
-                            ? initParams.optJSONObject("capabilities") : null;
-                    JSONObject visionCap = initCapabilities != null
-                            ? initCapabilities.optJSONObject("vision") : null;
-                    if (visionCap != null) {
-                        String url = visionCap.optString("url", null);
-                        String token = visionCap.optString("token", null);
-                        if (url != null && !url.isEmpty()) {
-                            visionUrl = url;
-                            visionToken = token;
-                            Log.i(TAG, "Server-provided vision explain URL: " + url);
-                        }
-                    }
                     result = new JSONObject();
                     JSONObject serverInfo = new JSONObject();
                     serverInfo.put("name", "open-alpha2");

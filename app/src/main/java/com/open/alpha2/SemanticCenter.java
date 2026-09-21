@@ -7,6 +7,16 @@ import java.util.Map;
 
 /**
  * 本地語意配對膠水：對話語言→matcher（未設就文字判斷）＋TTS/動作執行。
+ *
+ * FUNCTION 真執行（2026-09 起不再得把口）：
+ * stopall=跟雙鍵總停（動作+TTS+音樂/電台，不停 mic）；
+ * volumeup/down=行一格系統音量（經 AudioCenter，同 +/- pad）；
+ * bton/btoff=開關藍牙（經 DeviceStatus）；
+ * wifion/wifioff=開關無線網路（經 DeviceStatus）；
+ * reboot/shutdown=無 REBOOT 權限，只 TTS 提示手動操作；
+ * takepicture=高清存檔（經 CameraApi，不報路徑）；
+ * musicplay/next/prev=本地音樂首首/上首/下首（經 AudioCenter，檔名排序循環）。
+ * 新增 collaborator 經 setter 後補（避開 MainActivity onCreate 建構順序 cycle）。
  */
 public final class SemanticCenter {
 
@@ -30,6 +40,17 @@ public final class SemanticCenter {
     private final SemanticMatcherRu semanticMatcherRu;
     private final ActionDirect actionDirect;
     private final TtsCenter ttsCenter;
+
+    /** FUNCTION 真執行 collaborator（setter 後補，見上；未補就 null-guard 跳過副作用、照 TTS）。 */
+    private volatile AudioCenter audioCenter;
+    private volatile DeviceStatus deviceStatus;
+    private volatile CameraApi cameraApi;
+    private volatile GestureCenter.Host speechStopHost;
+
+    public void setAudioCenter(AudioCenter c) { audioCenter = c; }
+    public void setDeviceStatus(DeviceStatus d) { deviceStatus = d; }
+    public void setCameraApi(CameraApi c) { cameraApi = c; }
+    public void setSpeechStopHost(GestureCenter.Host h) { speechStopHost = h; }
 
     /** 對話語言（zh/en/es/fr/ja/de/it/pt/ko/ru；null＝未設）：vosk/load 換 model 當時經 setDialogueLang()
      *  傳入。vosk 什麼話就對什麼 matcher；十個以外（setDialogueLang 唔收，
@@ -199,6 +220,10 @@ public final class SemanticCenter {
         new Thread(new Runnable() {
             @Override
             public void run() {
+                // FUNCTION 真執行：副作用先行（同 TTS/動作流程同 thread，背景線程安全；
+                // camera takePhoto 最長 8s，絕不可搬去主線程）。
+                // ttsOverride 非 null 就用佢代替 JSON 靜態答案（失敗/動態歌名用，跟命中語言）。
+                String ttsOverride = runFunctionSideEffect(finalResult, hitLangFinal);
                 // 先 resolve 做真實 action id（分類隨機/__RANDOM__ 本來播嗰刻先解，
                 // 家下播之前就要知有無聲，所以提早解；解唔到 null 就當無動作行）。
                 String actionId = finalResult.actionId;
@@ -226,9 +251,10 @@ public final class SemanticCenter {
                     actionDirect.playActionDirect(actionId); // pure-direct：旧 AIDL 已无服务承载
                     return;
                 }
-                if (ttsAnswer != null && !ttsAnswer.isEmpty()) {
+                String speakText = (ttsOverride != null) ? ttsOverride : ttsAnswer;
+                if (speakText != null && !speakText.isEmpty()) {
                     LedCenter.startMouthLedForTts();
-                    if (!ttsCenter.speakAndroidTts(ttsAnswer, ttsLocale)) {
+                    if (!ttsCenter.speakAndroidTts(speakText, ttsLocale)) {
                         LedCenter.stopMouthLedForTts();
                     }
                 }
@@ -245,6 +271,196 @@ public final class SemanticCenter {
             }
         }, "SemanticMatchAction").start();
         return result;
+    }
+
+    /** FUNCTION op 副作用（背景線程調用）。回 null=用 JSON 靜態答案照 TTS；
+     *  回非 null=改播呢句（失敗提示/動態歌名，跟 lang 命中語言）。
+     *  非 FUNCTION 或未知 op 一律回 null。
+     *  reboot/shutdown 刻意無副作用（無 REBOOT 權限，答案本身已係手動提示）。 */
+    private String runFunctionSideEffect(SemanticMatcherBase.MatchResult r, String lang) {
+        if (r == null || !"FUNCTION".equals(r.type) || r.operation == null) return null;
+        String op = r.operation;
+        try {
+            if ("volumeup".equals(op)) {
+                if (audioCenter != null) audioCenter.adjustSystemVolume(true);
+                return null;
+            }
+            if ("volumedown".equals(op)) {
+                if (audioCenter != null) audioCenter.adjustSystemVolume(false);
+                return null;
+            }
+            if ("stopall".equals(op)) {
+                // 跟雙鍵總停：先截停各路，再由外層 TTS 播「停晒」答案（唔會自宮，
+                // 因為 stop 在 speak 之前行）。
+                try { actionDirect.stopActionWithRecovery(); } catch (Exception e) {
+                    Log.w(TAG, "stopall: stopAction failed", e);
+                }
+                try {
+                    if (speechStopHost != null) speechStopHost.stopAllSpeech();
+                    else ttsCenter.stop();
+                } catch (Exception e) {
+                    Log.w(TAG, "stopall: stopSpeech failed", e);
+                }
+                try {
+                    if (audioCenter != null) {
+                        audioCenter.stopLocalMusicPlayback();
+                        audioCenter.stopRadioPlayback();
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "stopall: stopMusic failed", e);
+                }
+                return null;
+            }
+            if ("bton".equals(op) || "btoff".equals(op)) {
+                boolean wantOn = "bton".equals(op);
+                if (deviceStatus == null) return null;
+                boolean ok = deviceStatus.setBluetoothEnabled(wantOn);
+                if (ok) return null;
+                return functionText(lang, wantOn ? "btOnFail" : "btOffFail", null);
+            }
+            if ("wifion".equals(op) || "wifioff".equals(op)) {
+                boolean wantOn = "wifion".equals(op);
+                if (deviceStatus == null) return null;
+                boolean ok = deviceStatus.setWifiEnabled(wantOn);
+                if (ok) return null;
+                return functionText(lang, wantOn ? "wifiOnFail" : "wifiOffFail", null);
+            }
+            if ("takepicture".equals(op)) {
+                if (cameraApi == null) return functionText(lang, "camNotReady", null);
+                try {
+                    HttpServer.ApiResponse resp = cameraApi.takePhotoSave(
+                            new java.util.HashMap<String, String>());
+                    String body = resp != null ? resp.body : "";
+                    if (body != null && body.contains("\"ok\":true")) return null; // 成功播 JSON 靜態「已拍好」
+                    return functionText(lang, "camFail", null);
+                } catch (Exception e) {
+                    Log.w(TAG, "takepicture failed", e);
+                    return functionText(lang, "camFail", null);
+                }
+            }
+            if ("musicplay".equals(op) || "musicnext".equals(op) || "musicprev".equals(op)) {
+                if (audioCenter == null) return functionText(lang, "musicNotReady", null);
+                String name;
+                if ("musicnext".equals(op)) name = audioCenter.playNextLocalMusic();
+                else if ("musicprev".equals(op)) name = audioCenter.playPrevLocalMusic();
+                else name = audioCenter.playFirstLocalMusic();
+                if (name == null) return functionText(lang, "musicEmpty", null);
+                String base = name;
+                int dot = base.lastIndexOf('.');
+                if (dot > 0) base = base.substring(0, dot);
+                return functionText(lang, "musicNow", base);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "runFunctionSideEffect op=" + op + " failed", e);
+        }
+        return null;
+    }
+
+    /** FUNCTION 失敗/動態提示多語言（key 見上；musicNow 的 name 係去副檔名歌名）。
+     *  未知語言兜底英文。 */
+    private static String functionText(String lang, String key, String name) {
+        if ("es".equals(lang)) {
+            if ("btOnFail".equals(key)) return "Lo siento, no pude activar el Bluetooth.";
+            if ("btOffFail".equals(key)) return "Lo siento, no pude desactivar el Bluetooth.";
+            if ("wifiOnFail".equals(key)) return "Lo siento, no pude activar la red Wi-Fi.";
+            if ("wifiOffFail".equals(key)) return "Lo siento, no pude desactivar la red Wi-Fi.";
+            if ("camNotReady".equals(key)) return "Lo siento, la cámara no está lista.";
+            if ("camFail".equals(key)) return "Lo siento, no pude tomar la foto.";
+            if ("musicNotReady".equals(key)) return "Lo siento, la música no está lista.";
+            if ("musicEmpty".equals(key)) return "No hay canciones en la carpeta de música.";
+            if ("musicNow".equals(key)) return "De acuerdo, reproduciendo " + name + ".";
+        } else if ("fr".equals(lang)) {
+            if ("btOnFail".equals(key)) return "Désolé, impossible d'activer le Bluetooth.";
+            if ("btOffFail".equals(key)) return "Désolé, impossible de désactiver le Bluetooth.";
+            if ("wifiOnFail".equals(key)) return "Désolé, impossible d'activer le Wi-Fi.";
+            if ("wifiOffFail".equals(key)) return "Désolé, impossible de désactiver le Wi-Fi.";
+            if ("camNotReady".equals(key)) return "Désolé, l'appareil photo n'est pas prêt.";
+            if ("camFail".equals(key)) return "Désolé, la photo a échoué.";
+            if ("musicNotReady".equals(key)) return "Désolé, la musique n'est pas prête.";
+            if ("musicEmpty".equals(key)) return "Il n'y a aucune chanson dans le dossier de musique.";
+            if ("musicNow".equals(key)) return "D'accord, je joue " + name + ".";
+        } else if ("ja".equals(lang)) {
+            if ("btOnFail".equals(key)) return "すみません、Bluetoothをオンにできませんでした。";
+            if ("btOffFail".equals(key)) return "すみません、Bluetoothをオフにできませんでした。";
+            if ("wifiOnFail".equals(key)) return "すみません、Wi-Fiをオンにできませんでした。";
+            if ("wifiOffFail".equals(key)) return "すみません、Wi-Fiをオフにできませんでした。";
+            if ("camNotReady".equals(key)) return "すみません、カメラの準備ができていません。";
+            if ("camFail".equals(key)) return "すみません、撮影に失敗しました。";
+            if ("musicNotReady".equals(key)) return "すみません、音楽の準備ができていません。";
+            if ("musicEmpty".equals(key)) return "音楽フォルダに曲がありません。";
+            if ("musicNow".equals(key)) return "わかりました、「" + name + "」を再生します。";
+        } else if ("de".equals(lang)) {
+            if ("btOnFail".equals(key)) return "Leider konnte ich Bluetooth nicht einschalten.";
+            if ("btOffFail".equals(key)) return "Leider konnte ich Bluetooth nicht ausschalten.";
+            if ("wifiOnFail".equals(key)) return "Leider konnte ich WLAN nicht einschalten.";
+            if ("wifiOffFail".equals(key)) return "Leider konnte ich WLAN nicht ausschalten.";
+            if ("camNotReady".equals(key)) return "Leider ist die Kamera nicht bereit.";
+            if ("camFail".equals(key)) return "Leider hat das Foto nicht geklappt.";
+            if ("musicNotReady".equals(key)) return "Leider ist die Musik nicht bereit.";
+            if ("musicEmpty".equals(key)) return "Im Musikordner sind keine Lieder.";
+            if ("musicNow".equals(key)) return "Verstanden, ich spiele jetzt " + name + ".";
+        } else if ("it".equals(lang)) {
+            if ("btOnFail".equals(key)) return "Mi dispiace, non riesco ad attivare il Bluetooth.";
+            if ("btOffFail".equals(key)) return "Mi dispiace, non riesco a disattivare il Bluetooth.";
+            if ("wifiOnFail".equals(key)) return "Mi dispiace, non riesco ad attivare il Wi-Fi.";
+            if ("wifiOffFail".equals(key)) return "Mi dispiace, non riesco a disattivare il Wi-Fi.";
+            if ("camNotReady".equals(key)) return "Mi dispiace, la fotocamera non è pronta.";
+            if ("camFail".equals(key)) return "Mi dispiace, la foto non è riuscita.";
+            if ("musicNotReady".equals(key)) return "Mi dispiace, la musica non è pronta.";
+            if ("musicEmpty".equals(key)) return "Non ci sono canzoni nella cartella della musica.";
+            if ("musicNow".equals(key)) return "Va bene, riproduco " + name + ".";
+        } else if ("pt".equals(lang)) {
+            if ("btOnFail".equals(key)) return "Desculpe, não consegui ativar o Bluetooth.";
+            if ("btOffFail".equals(key)) return "Desculpe, não consegui desativar o Bluetooth.";
+            if ("wifiOnFail".equals(key)) return "Desculpe, não consegui ativar o Wi-Fi.";
+            if ("wifiOffFail".equals(key)) return "Desculpe, não consegui desativar o Wi-Fi.";
+            if ("camNotReady".equals(key)) return "Desculpe, a câmera não está pronta.";
+            if ("camFail".equals(key)) return "Desculpe, não consegui tirar a foto.";
+            if ("musicNotReady".equals(key)) return "Desculpe, a música não está pronta.";
+            if ("musicEmpty".equals(key)) return "Não há músicas na pasta de música.";
+            if ("musicNow".equals(key)) return "Está bem, tocando " + name + ".";
+        } else if ("ko".equals(lang)) {
+            if ("btOnFail".equals(key)) return "죄송합니다, 블루투스를 켤 수 없습니다.";
+            if ("btOffFail".equals(key)) return "죄송합니다, 블루투스를 끌 수 없습니다.";
+            if ("wifiOnFail".equals(key)) return "죄송합니다, 와이파이를 켤 수 없습니다.";
+            if ("wifiOffFail".equals(key)) return "죄송합니다, 와이파이를 끌 수 없습니다.";
+            if ("camNotReady".equals(key)) return "죄송합니다, 카메라가 준비되지 않았습니다.";
+            if ("camFail".equals(key)) return "죄송합니다, 사진 촬영에 실패했습니다.";
+            if ("musicNotReady".equals(key)) return "죄송합니다, 음악이 준비되지 않았습니다.";
+            if ("musicEmpty".equals(key)) return "음악 폴더에 노래가 없습니다.";
+            if ("musicNow".equals(key)) return "알겠습니다, " + name + " 재생합니다.";
+        } else if ("ru".equals(lang)) {
+            if ("btOnFail".equals(key)) return "Извините, не получается включить Bluetooth.";
+            if ("btOffFail".equals(key)) return "Извините, не получается выключить Bluetooth.";
+            if ("wifiOnFail".equals(key)) return "Извините, не получается включить Wi-Fi.";
+            if ("wifiOffFail".equals(key)) return "Извините, не получается выключить Wi-Fi.";
+            if ("camNotReady".equals(key)) return "Извините, камера не готова.";
+            if ("camFail".equals(key)) return "Извините, не получилось сделать снимок.";
+            if ("musicNotReady".equals(key)) return "Извините, музыка не готова.";
+            if ("musicEmpty".equals(key)) return "В папке с музыкой нет песен.";
+            if ("musicNow".equals(key)) return "Хорошо, сейчас играет " + name + ".";
+        } else if ("zh".equals(lang)) {
+            if ("btOnFail".equals(key)) return "抱歉，無法打開藍牙。";
+            if ("btOffFail".equals(key)) return "抱歉，無法關閉藍牙。";
+            if ("wifiOnFail".equals(key)) return "抱歉，無法打開無線網路。";
+            if ("wifiOffFail".equals(key)) return "抱歉，無法關閉無線網路。";
+            if ("camNotReady".equals(key)) return "抱歉，相機尚未準備就緒。";
+            if ("camFail".equals(key)) return "抱歉，照片拍攝失敗。";
+            if ("musicNotReady".equals(key)) return "抱歉，音樂尚未準備就緒。";
+            if ("musicEmpty".equals(key)) return "音樂資料夾中沒有歌曲。";
+            if ("musicNow".equals(key)) return "好的，正在播放" + name + "。";
+        }
+        // en + 兜底
+        if ("btOnFail".equals(key)) return "Sorry, I couldn't turn on Bluetooth.";
+        if ("btOffFail".equals(key)) return "Sorry, I couldn't turn off Bluetooth.";
+        if ("wifiOnFail".equals(key)) return "Sorry, I couldn't turn on Wi-Fi.";
+        if ("wifiOffFail".equals(key)) return "Sorry, I couldn't turn off Wi-Fi.";
+        if ("camNotReady".equals(key)) return "Sorry, the camera isn't ready.";
+        if ("camFail".equals(key)) return "Sorry, I couldn't take the picture.";
+        if ("musicNotReady".equals(key)) return "Sorry, the music player isn't ready.";
+        if ("musicEmpty".equals(key)) return "There are no songs in the music folder.";
+        if ("musicNow".equals(key)) return "Okay, now playing " + name + ".";
+        return null;
     }
 
     // "打字當作自己說了這句" - 直接把輸入文字當成語音引擎

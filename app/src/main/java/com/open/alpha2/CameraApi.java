@@ -42,9 +42,8 @@ public final class CameraApi {
         return controller.getLastFrame();
     }
 
-    /** snapshot 系三 endpoint 共用起手式：start 相機，失敗即回現成 error response
-     *  （之前三份逐字一樣；stream 版行 socket 503、vision 版回 XiaozhiVisionResult，
-     *  各自保留）。成功回 null。 */
+    /** snapshot 系三 endpoint 共用起手式：start 相機，失敗即回現成 error response。
+     *  成功回 null。 */
     private HttpServer.ApiResponse startCameraOrError() {
         CameraController.StartResult started = cameraController.start(8000);
         if (started.error != null) {

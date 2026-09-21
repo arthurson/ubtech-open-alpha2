@@ -86,6 +86,42 @@ public final class DeviceStatus implements SensorEventListener {
         }
     }
 
+    /** 語音 FUNCTION 共用：開/關藍牙（API22 經 BluetoothAdapter.enable()/disable()
+     *  仍有效；要 BLUETOOTH_ADMIN，見 Manifest）。回 true=已達目標狀態，
+     *  false=無 adapter 或系統拒絕。任意線程可調。 */
+    public boolean setBluetoothEnabled(boolean on) {
+        try {
+            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+            if (adapter == null) return false;
+            if (on == adapter.isEnabled()) return true;
+            return on ? adapter.enable() : adapter.disable();
+        } catch (SecurityException se) {
+            Log.w(TAG, "setBluetoothEnabled permission denied", se);
+            return false;
+        } catch (Exception e) {
+            Log.w(TAG, "setBluetoothEnabled failed", e);
+            return false;
+        }
+    }
+
+    /** 語音 FUNCTION 共用：開/關無線網路（經 WifiManager.setWifiEnabled；
+     *  要 CHANGE_WIFI_STATE，見 Manifest）。回 true=已達目標狀態或調用成功，
+     *  false=無服務或系統拒絕。任意線程可調。 */
+    public boolean setWifiEnabled(boolean on) {
+        try {
+            WifiManager wm = (WifiManager) appContext.getSystemService(Context.WIFI_SERVICE);
+            if (wm == null) return false;
+            if (on == wm.isWifiEnabled()) return true;
+            return wm.setWifiEnabled(on);
+        } catch (SecurityException se) {
+            Log.w(TAG, "setWifiEnabled permission denied", se);
+            return false;
+        } catch (Exception e) {
+            Log.w(TAG, "setWifiEnabled failed", e);
+            return false;
+        }
+    }
+
     private BroadcastReceiver batteryReceiver;
     /** 低電量蹲下 latch：10% 播過一次後不再重複，直到充過電或回升過 12% 才重置。 */
     private boolean batteryLowSquatDone = false;
