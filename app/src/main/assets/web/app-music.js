@@ -37,11 +37,15 @@ let sharedActiveSource = null;   // "local" 或 "radio"，記錄最後一次播�
 // 熄開關／停歌就停手，燈留喺最後隻色（唔自動還原，用 LED 頁再較）。
 let musicDiscoEnabled = false;
 let musicDiscoPrevLevel = 0;
+let musicDiscoRecentMax = 0; // 近期能量峰值（自動增益用，每幀慢慢跌）
 let musicDiscoBeatCount = 0;
 let musicDiscoLastLedAt = 0;
-const DISCO_SILENCE_THR = 22;   // 整體能量低過呢個當靜音，唔轉色
-const DISCO_BEAT_THR = 60;      // 大聲就當一拍
-const DISCO_ONSET_DELTA = 12;   // 細聲時要能量突然爆發先當一拍
+const DISCO_SILENCE_MIN = 8;      // 靜音底線：細過呢個一律唔轉（擋底噪）
+const DISCO_SILENCE_RATIO = 0.12; // 靜音閘 = max(8, 近期峰*0.12)
+const DISCO_BEAT_RATIO = 0.55;    // 大聲拍 = 近期峰*0.55
+const DISCO_ONSET_MIN = 5;        // onset 底線
+const DISCO_ONSET_RATIO = 0.12;   // onset 閘 = max(5, 近期峰*0.12)
+const DISCO_PEAK_DECAY = 0.992;   // 近期峰每幀衰減（~33ms 一幀）
 const DISCO_MIN_INTERVAL_MS = 300; // 兩次轉色最密間隔
 const DISCO_WARM = [1, 4, 5];   // 紅 黃 紫
 const DISCO_COLD = [3, 6, 2, 7]; // 藍 青 綠 白
@@ -124,8 +128,13 @@ function musicDiscoTick(bands) {
   const level = Math.max(bass, mid, treb);
   const delta = level - musicDiscoPrevLevel;
   musicDiscoPrevLevel = level;
-  if (level < DISCO_SILENCE_THR) return; // 靜音唔轉
-  if (level < DISCO_BEAT_THR && delta < DISCO_ONSET_DELTA) return; // 未起拍唔轉
+  // 自動增益：閘門跟近期峰值按比例走，bar 升得唔高都閃到；真正的
+  // 靜音（細過底線 8）先唔轉。
+  if (level > musicDiscoRecentMax) musicDiscoRecentMax = level;
+  else musicDiscoRecentMax *= DISCO_PEAK_DECAY;
+  if (level < Math.max(DISCO_SILENCE_MIN, musicDiscoRecentMax * DISCO_SILENCE_RATIO)) return;
+  if (level < musicDiscoRecentMax * DISCO_BEAT_RATIO
+      && delta < Math.max(DISCO_ONSET_MIN, musicDiscoRecentMax * DISCO_ONSET_RATIO)) return;
   const now = Date.now();
   if (now - musicDiscoLastLedAt < DISCO_MIN_INTERVAL_MS) return; // 節流
   // 能量揀色：低音勁暖色，高音勁冷色，唔係就全盤輪。
