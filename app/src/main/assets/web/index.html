@@ -665,6 +665,14 @@
         </span>
       </label>
       <span id="musicFillerStateLabel" class="hint" data-i18n="music_filler_on" style="margin:0;">開</span>
+      <label class="switch-label" style="margin-left:12px; border-left:1px solid var(--border); padding-left:12px;" title="開啟的話，播本地音樂期間頭/眼 LED 會跟住節奏轉色">
+        <span data-i18n="music_disco_heading">🪩 Disco LED</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="musicDiscoToggle" onchange="musicSetDiscoEnabled(this.checked)">
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+      <span id="musicDiscoStateLabel" class="hint" data-i18n="music_disco_off" style="margin:0;">關</span>
     </div>
     <p id="musicResult" class="hint"></p>
     <p id="radioSearchStatus2" class="hint" style="display:none"></p>
