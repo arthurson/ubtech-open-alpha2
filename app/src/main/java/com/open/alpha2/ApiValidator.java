@@ -46,6 +46,17 @@ public final class ApiValidator {
     public static final int SERVO_TIME_MIN_MS = 20;
     public static final int SERVO_TIME_MAX_MS = 32767;
 
+    /** LED 範圍單一來源（同 openapi spec／MCP schema／McpToolsGenerated 約束一致）：
+     *  color 1-7、brightness 1-9、mouth speed 0-5000ms。之前 HTTP（requireColor
+     *  等）同 MCP（LedCenter mcpLedSet*）各寫裸 literal／直情唔驗，MCP 超範圍
+     *  靜默落 JNI——收斂到這裡，兩邊同一套。 */
+    public static final int LED_COLOR_MIN = 1;
+    public static final int LED_COLOR_MAX = 7;
+    public static final int LED_BRIGHTNESS_MIN = 1;
+    public static final int LED_BRIGHTNESS_MAX = 9;
+    public static final int LED_MOUTH_SPEED_MIN_MS = 0;
+    public static final int LED_MOUTH_SPEED_MAX_MS = 5000;
+
     // ── 內部共用解析（全部 trim；訊息形狀不變）─────────────────────
     private static int parseIntOrThrow(String key, String v) {
         try {

@@ -1,85 +1,55 @@
-# Open Alpha2 — beta5 (pure-direct)
+# Open Alpha2
 
-`com.open.alpha2` —— 裝在 UBTECH Alpha2 機械人本機的 Android App（`versionName "beta 5"`
-/ `versionCode 5`）。開機自動起一個 HTTP + WebSocket server（port `8888`），同一
-WiFi 任何瀏覽器開 `http://<機械人IP>:8888/` 就是成部機的控制面板；另有 Blockly
-積木編程頁同小智 AI 語音對話橋接。
+`com.open.alpha2` — an Android app that runs on the UBTECH Alpha2 robot
+(`versionName "beta 5"` / `versionCode 5`) and turns it into a remotely
+controllable device. On boot the app starts an HTTP + WebSocket server on port
+`8888`; opening `http://<robot-ip>:8888/` from any browser on the same Wi-Fi
+gives you the full control panel. A Blockly programming page lives at
+`/blockly.html`.
 
-beta5 同 beta3 最大分別：**機身根本無 `alpha2services.apk`，成套 AIDL 已經死了**——
-全部舊 binder 調用註定失敗，一律不再經 `RobotStub` 以外的路；硬件改行直驅，
-訊飛離線引擎成套移除。beta3 時代的文件收了在 `docs/legacy-beta3/`，只供考古。
+`com.open.alpha2` —— 裝在 UBTECH Alpha2 機械人上的 Android 應用程式
+（`versionName "beta 5"`／`versionCode 5`），讓機械人可以被遙距操控。
+開機後會自動啟動 HTTP＋WebSocket 伺服器（port `8888`）；在同一 Wi-Fi
+下的任何瀏覽器開啟 `http://<機械人IP>:8888/`，即可使用完整控制面板。
+Blockly 編程頁面位於 `/blockly.html`。
 
-## 前提（beta5 實測組合）
+## Requirements / 前提條件
 
-- 機械人：RK3288（`armeabi-v7a` 單一 ABI）、Android 5.1.1（API 22）；App
-  `minSdkVersion 19`、`targetSdkVersion 22`（刻意不升，不上架 Play Store）。
-- 胸板 MCU：`/dev/ttyS1`；頭板 MCU：`/dev/ttyS3`；波特率 `115200`；幀
-  `F8 8F LEN CMD PARAM SUM ED`。頭頂 +/- pad：`/dev/input/event0`
- （rk29-keypad）；眼/頭/嘴燈：`libhead_led.so` JNI。
-- 機械人同瀏覽器裝置要在同一個 WiFi。Server 純 HTTP（自簽 HTTPS 方案已永久移除）。
-- ⚠️ **只用可信 LAN**：預設無 auth，同網段任何人可播動作、看相機/聽 mic、上傳固件；
-  不要橋接上網、不要放公用/宿舍大 LAN，亦不要經 port-forward 對外網。
-  實驗 tab 另有 opt-in 面板 token（`system/auth/*`，見 `PanelAuth.java`）：預設關閉
-  （全開）；啟用後整個面板上鎖——全部 `/api/*`（含讀操作、其他分頁、Blockly）
-  同 `/upload/*` 要帶 `panel_token`（缺／錯回 401）；僅 `system/auth/*`
-  （解鎖入口）、靜態頁、`/ws`、`/stream/*` 開放。Token 記在瀏覽器
-  localStorage（同一個面板地址跨 tab 共用）。認證卡預設收起，開開關先見詳情；
-  啟用後未解鎖開面板會成版鎖屏浮層蓋住（數據靠後端閘，靜態 HTML/JS 殼擋不住下載）。
-- 動作檔在機身 `/sdcard/actions/`：`<id>.ubx`＋同名目錄 `<id>/xxx.mp3`＋
-  `actionInfo.txt`（GBK，`<fileId>##中文名##英文名##type`；機身檔版本眾多，
-  「202 個」是指 `actionInfo.txt` 行數口徑，實機 `.ubx` 檔數／前端 preset
-  數（199→200）會因版本差一兩個，以機身 `actionInfo.txt` 為準）。
+- Robot: RK3288 (`armeabi-v7a` only), Android 5.1.1 (API 22).
+  The APK declares `minSdkVersion 19`, `targetSdkVersion 22` (deliberate, no
+  Play Store release — it is installed with `adb install`).
+- Hardware wired up by the app: chest MCU on `/dev/ttyS1`, head MCU on
+  `/dev/ttyS3` (115200 baud); head +/- touch pads on `/dev/input/event0`;
+  head/eye/mouth LEDs via `libhead_led.so` (JNI).
+- Robot and browser must be on the same Wi-Fi. The server is plain HTTP.
+- ⚠️ **Trusted LAN only**: by default there is no auth — anyone on the
+  network can play actions, view the camera, listen to the mic, or upload
+  firmware. Do not bridge it to the internet or run it on a shared LAN.
+  The Experiment tab offers an opt-in panel token (`system/auth/*`): once
+  enabled, every `/api/*` (including reads) and `/upload/*` call needs a
+  `panel_token` (401 otherwise); only `system/auth/*`, static pages, `/ws`
+  and `/stream/*` stay open.
 
-## 控制面板（`app/src/main/assets/web/`）
+- 機械人：RK3288（僅 `armeabi-v7a`），Android 5.1.1（API 22）。
+  APK 宣告 `minSdkVersion 19`、`targetSdkVersion 22`（刻意如此，不上架
+  Play Store——以 `adb install` 直接安裝）。
+- 應用程式接管的硬件：胸板 MCU（`/dev/ttyS1`）、頭板 MCU（`/dev/ttyS3`，
+  波特率 115200）；頭頂＋/－觸控鍵（`/dev/input/event0`）；頭／眼／嘴
+  LED（經 `libhead_led.so` JNI）。
+- 機械人與瀏覽器裝置必須在同一 Wi-Fi。伺服器只用純 HTTP。
+- ⚠️ **僅限可信內網**：預設沒有認證——同網段任何人都可以播放動作、查看
+  相機、收聽咪高峰或上載韌體。切勿橋接至互聯網，亦不要放在共用大內網。
+  實驗分頁提供自選面板口令（`system/auth/*`）：啟用後，所有 `/api/*`
+  （包括讀取操作）及 `/upload/*` 都必須帶上 `panel_token`（否則回 401）；
+  只有 `system/auth/*`、靜態頁、`/ws` 及 `/stream/*` 保持開放。
 
-分頁（`index.html`，TAB 註記）：STATUS（系統狀態/裝置資訊/聲納/PIR/加速度計）·
-ACTIONS（動作列表＋分類＋播放/停止＋**變速 0.5/0.67/1/1.5/2**）· SERVO（20 軸逐顆/
-全組＋Angle Tuner）· SPEECH（對話界面/TTS/引擎）· LED（頭/眼/嘴 preset）· ADVANCED
-（UUID/胸板固件升級/事件 Log）＋相機（串流/拍照/錄影/pan-tilt 搖桿）＋小智＋
-本地音樂＋網絡電台＋Blockly（`blockly.html`，獨立頁）。中英雙語
-（`app-core.js` 字典），WebSocket 即時事件不用 refresh。
+## Build / install / 編譯／安裝
 
-## .ubx 播放（`sdk-module/hardware-direct/.../ubx/`）
+Toolchain: Temurin JDK 11 + Gradle 7.0 + Android SDK (`ANDROID_SDK_ROOT`
+pointing at your SDK; `local.properties` is yours, never committed).
 
-1.1.7.3 反編譯還原、203 個機身檔全量驗證、真機毫秒級對過 pace：
-
-- 結構：track → `d.a` 復幀列 → `a.d` 分發 → `a.h` → `a.c` → `a.b` → `a.a` 幀；
-  每段 `[outer][echo]` 雙寫長度，嚴絲合縫。
-- 舵機：`f==0` 幀經胸 **`cmd 3 [20 軸 byte + short time]`**，`time = b×timeBase`；
-  tick 週期 `T = timeBase`（type-0 第一個 int），幀槽位 `(b+c)×T`，單調 deadline
-  無漂移（`UbxPlayer`）。
-- 配樂：servo 鏈內 `type==4` 塊走 `a/j/a/o`，同 clock 並行——槽位起播、播至多
-  `b×timeBase` 自停、切幀打斷；路徑 `ubx去扩展名/music名`（`UbxPlayer` + `VoiceStream`）。
-- 變速：舵機槽位/move 同縮放；歌 1x 行 MediaPlayer，非 1x 行 decode+線性重採樣
-  「磁帶式」變速（API 22 無 PlaybackParams，不變調刻意不做）。正在播轉速自動由頭重播。
-- 一鍵全停：正在播按第二個動作抢占；頭頂雙 pad（`0x5e` 拍頭）、MCP、HTTP 共用
-  `stopActionWithRecovery()`（截停＋蹲下站起回位）。
-
-## API
-
-- `/api/alpha2/*`（前端用）：`action/list|play|stop`（`actionInfo.txt` 直讀）、
-  `ubx/*`、`servo/*`、`speech/*`、`led/*`、`audio/*`（本地音樂/電台）、`chest/*`、
-  `system/*`、`xiaozhi/*`；另有 `/api/direct/*`（底層直調）、`/upload/*`、
-  `/stream/*`、`/ws`（RFC6455 即時事件）。
-- OpenAPI 3.0（`openapi/open-alpha2-openapi.yml`，142 paths＝134 條 API＋
-  5 upload/stream＋`/、blockly.html、/ws` 3 個）是單一真相源；
-  `app/.../web/api-client.js`（`Alpha2Api.*`，134 個 wrapper）由
-  `scripts/generate-api-client.py` 生成，改 spec 必重 gen；
-  `scripts/check-openapi-drift.py` 保 code↔spec 對齊；另有 AsyncAPI
-  （`/ws` 事件）同 MCP 聲明表（`mcp-openapi-sync.yml` v2）。
-- 小智 MCP 工具（22 個，全部自動生成）：`self.robot.*`（list/play/stop/random 動作、單/全舵機、
-  頭/眼/嘴燈、speak）、`self.sensors.*`（PIR/聲納）、`self.camera.*`
-  （take_photo/image_to_text）、`self.media.*`（本地音樂/電台）——
-  `inputSchema` 由 `scripts/generate-mcp-tools.py` 讀 spec＋聲明表生成
-  `McpToolsGenerated.java`，`XiaozhiBridge.listTools()` 只做 enable/disable 過濾。
-
-## Build / 裝機
-
-> ⚠️ **JAVA_HOME 必須指 Temurin JDK 11**（不是 JDK 17/21：AGP 4.2.2 的 manifest
-> merger 會死，見下「地雷」）。CI 同本地同一個組合先編到一樣的東西。
-
-組合：Temurin JDK 11 + Gradle 7.0 + Android SDK（`ANDROID_SDK_ROOT` 指向 SDK；
-`local.properties` 只放你自己部機，不入 repo）：
+工具鏈：Temurin JDK 11＋Gradle 7.0＋Android SDK（`ANDROID_SDK_ROOT`
+指向你的 SDK；`local.properties` 只屬本機，切勿提交）。
 
 ```bash
 ./gradlew assembleDebug --offline
@@ -88,67 +58,224 @@ adb -s <serial> shell am start -n com.open.alpha2/.MainActivity
 adb -s <serial> forward tcp:8888 tcp:8888
 ```
 
-輸出 `app-debug.apk`（CI 會改名 `open-alpha2-beta5.apk` 做 artifact）。
-`app/debug.keystore` 是確定性 debug key（密碼 `android`），簽名不同要先解除安裝。
-這條 key 視為公開（標準 Android debug key，入了 repo 正常）；release 另用正式 key，不要靠簽名做權限隔離。
-prebuilt `.so`（`head_led/head_key_mgr/serial_port`）一律在
+`app/debug.keystore` is a committed, non-secret debug key (password
+`android`); uninstall first if a signature mismatch blocks reinstall. The app
+auto-starts on boot (`BootReceiver`), so the panel is reachable without
+touching the robot. CI (`build-apk.yml`, JDK 11) builds the same APK and
+publishes it as `open-alpha2-beta5.apk`. Prebuilt `.so` files
+(`head_led`/`head_key_mgr`/`serial_port`) live in
+`sdk-module/hardware-direct/src/main/jniLibs`; `libeasyopus.so` is compiled
+from `app/src/main/cpp` via CMake.
+
+`app/debug.keystore` 是已提交的公開測試鑰匙（密碼 `android`）；如因簽名
+不符無法覆蓋安裝，請先解除安裝。應用程式會在開機時自動啟動
+（`BootReceiver`），無需觸碰機械人即可連上控制面板。CI
+（`build-apk.yml`，JDK 11）會編出同一個 APK，並以
+`open-alpha2-beta5.apk` 之名發佈。預編 `.so` 檔
+（`head_led`／`head_key_mgr`／`serial_port`）放在
 `sdk-module/hardware-direct/src/main/jniLibs`；`libeasyopus.so` 由
-`app/src/main/cpp` CMake 即編。
+`app/src/main/cpp` 經 CMake 即時編譯。
 
-### 本地工具鏈地雷（2026-09 實測）
+## Control panel / 控制面板 (`app/src/main/assets/web/`)
 
-- 本機 JDK 21 + AGP 4.2.2：manifest merger 用了 JDK 16+ 已封的反射——平時
-  incremental build 無事（manifest UP-TO-DATE 就不跑）；**不 clean、不
-  `--rerun-tasks`**，任何逼 `processDebugMainManifest` 重跑的操作會死
-  （`File.path accessible: module java.base does not open java.io`）。
-  萬一逼死了：同一 powershell 先 `$env:JDK_JAVA_OPTIONS="--add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED"`
-  再 `cmd /c gradlew.bat --stop` 後重跑（`JDK_JAVA_OPTIONS` 每個 fork 出嚟嘅
-  worker JVM 都食，`GRADLE_OPTS`/user-global `gradle.properties` 唔掂——repo
-  自己個 `gradle.properties` 會蓋 user-global；2026-09-20 實測 work）。
-  用完唔使清（env 唔落盤）。
-- 不 `adb kill-server`；壞 build 不要短 loop 重試（前人經驗：1.5s loop 會崩潰）。
-- 出 APK 必 `dexdump` **方法級**驗（類表不夠；`dexdump -d classes.dex`，APK 直 dump 會 mmap 死，先 unzip）。
-- `ApiResponse.error()` 天生回 500；`Get-Content` 量行數試過不準（以實測為準）。
-- 寫路徑只打缺參 400，不打真值：`misc/set_uuid`、`pir/set`、`servo/*`、
-  `vosk/endpointer`。
-- 每輪必做：compile＋`test-apivalidator.py`（104）＋routes＋drift＋dexdump＋
-  裝機＋端點＋logcat `FATAL EXCEPTION`。
-- `C:/Users/user/AppData/Local/Temp/opencode`（即 `%TEMP%\opencode`）有舊 session 幾百 MB log，不要理。
+Bilingual (EN/繁中), live updates over WebSocket, no refresh needed:
 
-## 檔案結構
+中英雙語（EN／繁中），經 WebSocket 即時更新，無需重新整理：
+
+- Status — system/device info, battery, Wi-Fi/Bluetooth, sonar, PIR,
+  accelerometer.
+- 狀態——系統／裝置資訊、電池、Wi-Fi／藍牙、聲納、PIR、加速度計。
+- Actions — action list with categories, play/stop, playback speed
+  (0.5/0.67/1/1.5/2x), action-pack download.
+- 動作——動作清單及分類、播放／停止、變速（0.5／0.67／1／1.5／2 倍）、
+  動作包下載。
+- Servo — 20 joints individually or all at once, live command-pose display,
+  single-servo read-back via `servo/angle`.
+- 舵機——20 軸逐顆或全組控制、即時指令位姿顯示、經 `servo/angle`
+  讀回單顆舵機角度。
+- Speech — conversation UI, TTS (voice/lang/engine pickers), Vosk model
+  management, semantic-simulate test box.
+- 語音——對話界面、TTS（聲線／語言／引擎選擇）、Vosk 模型管理、語意模擬
+  測試框。
+- Music — local music (`/mnt/internal_sd/music`) with spectrum display and
+  dance-along random motions, plus internet radio search/play.
+- 音樂——本地音樂（`/mnt/internal_sd/music`，附頻譜顯示及隨歌伴舞動作）、
+  網絡電台搜尋／播放。
+- LED — head/eye/mouth presets.
+- LED——頭／眼／嘴燈預設效果。
+- Camera — MJPEG stream, preview snapshot, hi-res photo capture, digital
+  zoom, pan-tilt joystick (drives head servos), shutter cue.
+- 相機——MJPEG 串流、預覽快照、高清拍照、數碼變焦、雲台搖桿（帶動頭部
+  舵機）、快門提示音。
+- Xiaozhi — AI voice-chat bridge: connect/disconnect, mic control, OTA and
+  TTS config, text chat, auto mode, boot greeting.
+- 小智——AI 語音對話橋接：連接／斷線、咪高峰控制、OTA 及 TTS 設定、文字
+  對話、自動模式、開機問候語。
+- Advanced — UUID, chest firmware upgrade, mic stream, auth token, event log.
+- 進階——UUID、胸板韌體升級、咪高峰串流、認證口令、事件紀錄。
+- Blockly (`blockly.html`, standalone page) — visual programming with
+  action/servo/ringtone blocks.
+- Blockly（`blockly.html`，獨立頁面）——以動作／舵機／鈴聲積木做可視化
+  編程。
+
+## Voice interaction / 語音互動
+
+- Offline speech recognition via Vosk (models live on the sdcard and are
+  auto-detected; Vosk needs API 21+, so it stays off on older devices).
+- 離線語音辨識用 Vosk（模型放在 sdcard 並自動偵測；Vosk 需要 API 21＋，
+  較舊裝置會自動停用）。
+- Spoken replies use the Android system TTS (`speech/tts`, `speech/stop`).
+- 回答語音使用 Android 系統 TTS（`speech/tts`、`speech/stop`）。
+- Local intent matching in 10 dialogue languages (zh/en/es/fr/ja/de/it/pt/
+  ko/ru, `app/src/main/assets/semantic/`). Each language ships 85 action
+  intents, 13 function intents and 200 chat intents (~298 total).
+- 十種對話語言的本地意圖配對（中英西法日德意葡韓俄，
+  `app/src/main/assets/semantic/`）。每種語言各有 85 組動作意圖、13 組
+  功能意圖及 200 組閒聊意圖（約 298 組）。
+  - Action intents speak a reply and play a robot motion.
+  - 動作意圖會說出回覆並播放機械人動作。
+  - Function intents really act: stop-everything, volume step up/down,
+    Bluetooth on/off, Wi-Fi on/off, photo capture, local-music
+    play/next/previous. Power-off/reboot intents only speak a
+    press-the-button prompt — a sideloaded app has no `REBOOT` permission.
+  - 功能意圖會真正執行：全部停止、音量加／減一格、藍牙開／關、Wi-Fi
+    開／關、拍照、本地音樂播放／上／下一首。關機／重啟意圖只會說出
+    「請按電源鍵」的提示——側載應用程式沒有 `REBOOT` 權限。
+  - Anything unmatched gets a fallback reply with a random filler motion.
+  - 配對不中的說話會得到一句候補回覆，外加一個隨機填充動作。
+  - Type-to-test without a microphone: `speech/semantic_simulate`.
+  - 不用咪高峰也可打字測試：`speech/semantic_simulate`。
+- Head pads: +/- step the media volume (hold to repeat); pressing both
+  together stops action + speech + music + radio, same as the voice
+  stop-everything command.
+- 頭頂按鍵：＋／－逐格調校媒體音量（長按連調）；兩鍵齊按即停止動作＋
+  語音＋音樂＋電台，等同語音全部停止指令。
+
+## HTTP API / HTTP 接口
+
+Single source of truth: `openapi/open-alpha2-openapi.yml` (~140 paths).
+Namespaces:
+
+單一真相源：`openapi/open-alpha2-openapi.yml`（約 140 條路徑）。
+命名空間：
+
+- `/api/alpha2/*` — actions, `.ubx` playback, servos, speech, LEDs, audio,
+  camera, battery, Wi-Fi/BT, sonar/PIR, chest, misc.
+- `/api/alpha2/*`——動作、`.ubx` 播放、舵機、語音、LED、音頻、相機、電池、
+  Wi-Fi／藍牙、聲納／PIR、胸板、雜項。
+- `/api/system/*` — discovery, music player, panel auth.
+- `/api/system/*`——裝置探索、音樂播放器、面板認證。
+- `/api/direct/*` — low-level passthrough (ubx/servo/LED/sonar).
+- `/api/direct/*`——底層直調（ubx／舵機／LED／聲納）。
+- `/api/xiaozhi/*` — AI bridge control, OTA/MCP/TTS config.
+- `/api/xiaozhi/*`——AI 橋接控制、OTA／MCP／TTS 設定。
+- `/upload/*` — audio, music and chest-firmware uploads.
+- `/upload/*`——音頻、音樂及胸板韌體上載。
+- `/stream/camera` (MJPEG), `/stream/mic`, `/ws` (RFC 6455 event feed,
+  described by `openapi/asyncapi.yml`), `/` and `/blockly.html`.
+- `/stream/camera`（MJPEG）、`/stream/mic`、`/ws`（RFC 6455 事件推送，
+  見 `openapi/asyncapi.yml`）、`/` 及 `/blockly.html`。
+
+The JS client (`assets/web/api-client.js`, `Alpha2Api.*`) is generated from
+the spec — never hand-edit it:
+
+JS 客戶端（`assets/web/api-client.js`，`Alpha2Api.*`）由 spec 自動生成——
+切勿手改：
+
+```bash
+python scripts/generate-api-client.py
+python scripts/generate-api-client.py --check   # CI drift gate
+```
+
+`scripts/check-openapi-drift.py` keeps code and spec aligned; the MCP tool
+table (`McpToolsGenerated.java`, 22 tools) is generated from
+`openapi/mcp-openapi-sync.yml` via `scripts/generate-mcp-tools.py`.
+
+`scripts/check-openapi-drift.py` 負責代碼與 spec 對齊；MCP 工具表
+（`McpToolsGenerated.java`，22 個工具）由 `openapi/mcp-openapi-sync.yml`
+經 `scripts/generate-mcp-tools.py` 生成。
+
+## Xiaozhi AI bridge + MCP / 小智 AI 橋接＋MCP
+
+The app can connect the robot to a Xiaozhi AI backend for open-ended voice
+chat (connect/disconnect, mic start/stop, auto mode, OTA config, per-voice
+TTS config, typed `send_text`). Over MCP it exposes 22 tools the model can
+call: `self.robot.*` (list/play/stop/random actions, single/all servos,
+head/eye/mouth LEDs, speak), `self.sensors.*` (PIR/sonar),
+`self.camera.*` (take photo, image Q&A) and `self.media.*` (local
+music/radio).
+
+應用程式可將機械人接上小智 AI 後端做開放式語音對話（連接／斷線、咪高峰
+開／關、自動模式、OTA 設定、逐聲線 TTS 設定、手動 `send_text`）。經 MCP
+向模型開放 22 個工具：`self.robot.*`（列出／播放／停止／隨機動作、單顆／
+全組舵機、頭／眼／嘴燈、說話）、`self.sensors.*`（PIR／聲納）、
+`self.camera.*`（拍照、看圖問答）及 `self.media.*`（本地音樂／電台）。
+
+## On-device data / 機身數據
+
+- Actions: `/sdcard/actions/` — `<id>.ubx` files plus per-action music and
+  `actionInfo.txt`.
+- 動作：`/sdcard/actions/`——`<id>.ubx` 檔、外加每個動作的配樂及
+  `actionInfo.txt`。
+- Local music: `/mnt/internal_sd/music` (mp3/wav/ogg/m4a/flac, filename
+  order = track order; voice next/previous wraps around).
+- 本地音樂：`/mnt/internal_sd/music`（mp3／wav／ogg／m4a／flac，檔名排序
+  即曲目順序；語音上／下一首會循環）。
+- Photos: `/sdcard/DCIM/Alpha2/`.
+- 照片：`/sdcard/DCIM/Alpha2/`。
+- Vosk models: auto-detected on the sdcard (not bundled, ~65 MB each).
+- Vosk 模型：在 sdcard 自動偵測（不隨 App 附送，每個約 65 MB）。
+
+## Project layout / 項目結構
 
 ```
 open-alpha2/
-├── docs/legacy-beta3/            ← beta3 專用舊文件（AIDL/訊飛/README-beta3），已無用
-├── openapi/                      ← open-alpha2-openapi.yml / asyncapi.yml / mcp 對齊表 / README
-├── scripts/                      ← generate-api-client.py / check-openapi-drift.py / strip-web-comments.js
-├── .github/workflows/            ← build-apk.yml / check-openapi.yml
-├── sdk-module/hardware-direct/   ← 唯一 SDK module：胸/頭串口、LED/HeadKey JNI、
-│   │                                wire 常數、ubx 解析+播放+變速配樂
-│   └── src/main/{java/{hardware/{Direct*,HardwareDirectManager,LocalAlpha2Services,
-│   │                       HeadKeyPoller,MouthLedData,ubx/{UbxParser,UbxPlayer,UbxFile,
-│   │                       VoiceStream},jni/{SerialPortFile,LedControl,headkey/}},
-│   │               jniLibs/armeabi-v7a/, AndroidManifest.xml}
-└── app/                          ← com.open.alpha2（MainActivity 路由+MCP、HttpServer、
-    │                               WebSocketServer、EventBus、TTS/音樂/電台/相機/小智…）
-    ├── src/main/{cpp/ (easyopus), assets/web/ (面板+Blockly), jniLibs/ (已清空，見上)}
-    └── build.gradle (versionName "beta 5") / debug.keystore
+├── app/                            ← com.open.alpha2 (UI server, API, all centers)
+│   ├── src/main/java/com/open/alpha2/  ← MainActivity wiring + centers
+│   │   (ActionDirect, ApiDispatcher, AudioCenter, CameraApi, DeviceStatus,
+│   │    GestureCenter, LedCenter, SemanticCenter + 10 matchers, SpeechCenter,
+│   │    TtsCenter, VoskController/Api, XiaozhiBridge/Client, …)
+│   ├── src/main/assets/web/        ← control panel + Blockly + generated api-client.js
+│   ├── src/main/assets/semantic/   ← 10 intent libraries + action category pools
+│   ├── src/main/cpp/               ← easyopus JNI (CMake)
+│   └── build.gradle                ← versionName "beta 5", armeabi-v7a only
+├── sdk-module/hardware-direct/     ← serial ports, LED/pad JNI, wire protocol,
+│                                      .ubx parse/play/speed-shifted music
+├── openapi/                        ← open-alpha2-openapi.yml / asyncapi.yml /
+│                                      mcp-openapi-sync.yml + README
+├── scripts/                        ← generators, drift checks, ubx inspect tools
+└── .github/workflows/              ← build-apk.yml, check-openapi.yml
 ```
 
-## CI（push 即跑）
+## CI (runs on push) / 持續整合（push 即跑）
 
-- `build-apk`：JDK 11 Temurin → Node strip web 註解 → `assembleDebug` → 上傳 APK。
-- `check-openapi`：drift（code case 必入 spec）→ client 重 gen 比對 → yaml 合法 →
-  `versionName` 對 `info.version`。改親 `MainActivity`/`ApiValidator`/spec 會觸發。
+- `build-apk`: JDK 11 → strip web comments → `assembleDebug` → upload APK.
+- `build-apk`：JDK 11 → 剝離網頁註解 → `assembleDebug` → 上載 APK。
+- `check-openapi`: spec/code drift, client freshness, route prefixes, MCP
+  freshness, YAML validity, `ApiValidator`/serial-codec unit tests, web spec
+  copies in sync, `versionName` == spec `info.version`.
+- `check-openapi`：spec／代碼漂移、客戶端新鮮度、路由前綴、MCP 新鮮度、
+  YAML 合法性、`ApiValidator`／串口編解碼單元測試、網頁 spec 副本同步、
+  `versionName` == spec `info.version`。
 
-## 已知限制
+## Known limitations / 已知限制
 
-- HTTPS / 瀏覽器麥克風（walkie-talkie）永久停用；「聽機械人」正常。
-- 舊 AIDL passthrough（進階分頁大部份）回 `NOT_INIT`；`RobotStub` 只是誠實失敗的 facade。
-- 無舵機電流回授；聲納圖表等部份 UI 仍只畫 triggered。角度方面：單粒 cmd6
-  實際讀取已證實可用（`06 [00] [id] [hi] [lo]`，同 `servo/one` 同單位，跟位誤差約
-  1°），但硬件連讀會弄垮全機出力（15ms／100ms 兩種節奏都試過，Lynx 那邊
-  同樣結論），故 SERVO 分頁個榜顯示命令位姿（零 wire：跳舞逐幀＋servo/one
-  逐顆追踪，開機伸展後即已知），單粒即時驗證行 `servo/angle`。
-- 複合編排動作的多 block 窗口偏移忽略；歌尾可以長過舵機（跟官方）。
-- 跳大舞當時 USB 易震掉（實測多次），長驗證建議先固定條線或用 `adb logcat` 內錄。
+- Plain HTTP only, so browser-microphone talk-back (needs a secure context)
+  is unavailable; listening to the robot mic in the browser works.
+- 只有純 HTTP，瀏覽器咪高峰對講（需要安全上下文）用不到；在瀏覽器收聽
+  機械人咪高峰則正常。
+- No reboot/shutdown endpoint or voice action (no `REBOOT` permission);
+  both only explain how to press the power button.
+- 沒有重啟／關機接口或語音動作（沒有 `REBOOT` 權限）；兩者只會說明如何
+  按電源鍵。
+- No servo current feedback; the Servo tab shows command pose, with
+  single-servo live verification via `servo/angle`.
+- 沒有舵機電流回授；舵機分頁顯示指令位姿，另有 `servo/angle` 做單顆舵機
+  即時驗證。
+- Spoken conversation follows the original "speak, wait 200 ms, move"
+  timing; loud sound-effect actions skip the spoken reply so the two don't
+  fight over the speaker.
+- 語音對話沿用「先說話、等 200 毫秒、再動作」的時序；帶大音效的動作會
+  跳過語音回覆，以免兩者搶喇叭。
+
+License: GPL-3.0-only. / 授權：GPL-3.0-only。

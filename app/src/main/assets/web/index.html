@@ -255,23 +255,6 @@
       <!-- 僅顯示已下載模型鍵：藍＝聆聽中（再按即停變灰），灰色按即載入＋自動開聽。下載在實驗 tab（資源下載卡）。 -->
       <p class="hint" style="margin-top:6px" id="voskPartialOut">—</p>
       <p class="hint" style="margin-top:6px" id="voskStatusOut">—</p>
-      <!-- 幻聽過濾逐個開關測試面板：後端 6 開關＋conf 閾值經 vosk/hallu(_set) 即時生效
-           （grammar 切換聽緊會停完重開）；前端 2 開關只存本瀏覽器 localStorage。
-           關＝拆走該層過濾（裸奔對照組），預設全開。 -->
-      <h3 data-i18n="vosk_hallu_heading" style="margin-top:10px">🧪 幻聽過濾測試開關</h3>
-      <p class="hint" data-i18n="vosk_hallu_hint">逐個開關做 AB 測試。grammar 切換聽緊會停完重開；前端兩項只存本瀏覽器。</p>
-      <div id="voskHalluBox">
-        <div class="row"><label><input type="checkbox" checked id="hallu_confGate" onchange="voskHalluSet('confGate', this.checked)"> <span data-i18n="vosk_hallu_confgate">認可度閘 (conf)</span></label>
-          <label><span data-i18n="vosk_hallu_conthr">閾值 0–1：</span><input id="hallu_confThr" type="number" min="0" max="1" step="0.05" style="width:70px"></label>
-          <button class="secondary" onclick="voskHalluSetThr()" data-i18n="vosk_hallu_thr_apply">套用</button></div>
-        <div class="row"><label><input type="checkbox" checked id="hallu_dedup" onchange="voskHalluSet('dedup', this.checked)"> <span data-i18n="vosk_hallu_dedup">4 秒去重</span></label></div>
-        <div class="row"><label><input type="checkbox" checked id="hallu_grammar" onchange="voskHalluSet('grammar', this.checked)"> <span data-i18n="vosk_hallu_grammar">限定文法</span></label></div>
-        <div class="row"><label><input type="checkbox" checked id="hallu_unk" onchange="voskHalluSet('unk', this.checked)"> <span data-i18n="vosk_hallu_unk">[unk] 清理</span></label></div>
-        <div class="row"><label><input type="checkbox" checked id="hallu_ttsPause" onchange="voskHalluSet('ttsPause', this.checked)"> <span data-i18n="vosk_hallu_ttspause">TTS 時停 decode</span></label></div>
-        <div class="row"><label><input type="checkbox" checked id="hallu_resumeDelay" onchange="voskHalluSet('resumeDelay', this.checked)"> <span data-i18n="vosk_hallu_resumedelay">播完 800ms 先 resume</span></label></div>
-        <div class="row"><label><input type="checkbox" checked id="halluFront_quiet" onchange="halluFrontSet('quiet', this.checked)"> <span data-i18n="vosk_hallu_frontquiet">前端 2.5s 靜音窗（本機）</span></label></div>
-        <div class="row"><label><input type="checkbox" checked id="halluFront_single" onchange="halluFrontSet('single', this.checked)"> <span data-i18n="vosk_hallu_frontsingle">前端單字掉棄（本機）</span></label></div>
-      </div>
     </section>
     <section class="card">
       <h2 data-i18n="tts_heading">語音 / TTS</h2>

@@ -698,9 +698,16 @@ public final class LedCenter {
     // -- MCP tools (XiaozhiBridge callTool switch 轉調) --
 
     /** self.robot.led_set_head 本體 (XiaozhiBridge 轉調)。
-     *  pure-direct: 经 JNI 直驱，单发即稳住。 */
+     *  pure-direct: 经 JNI 直驱，单发即稳住。
+     *  同 HTTP 一套驗證（preset 枚舉＋color 1-7＋brightness 1-9），不合即報錯，
+     *  不靜默 clamp／不靜默當 long（之前錯值直落 JNI／錯 preset 靜默變 long）。 */
     public SonarCenter.McpResult mcpLedSetHead(org.json.JSONObject arguments) {
         String preset = arguments.optString("preset", "long");
+        if (!"long".equals(preset) && !"flash".equals(preset) && !"breathe".equals(preset)
+                && !"chase".equals(preset) && !"dual".equals(preset) && !"stop".equals(preset)) {
+            return SonarCenter.McpResult.err(
+                    "preset must be one of [long, flash, breathe, chase, dual, stop], got: " + preset);
+        }
         UbxErrorCode.API_ERROR_CODE code;
         if ("stop".equals(preset)) {
             code = MainActivity.directCode(DirectLedController.stopHead5Mic());
@@ -710,6 +717,17 @@ public final class LedCenter {
             }
             int color = arguments.optInt("color");
             int brightness = arguments.optInt("brightness");
+            if (color < ApiValidator.LED_COLOR_MIN || color > ApiValidator.LED_COLOR_MAX) {
+                return SonarCenter.McpResult.err("color must be between "
+                        + ApiValidator.LED_COLOR_MIN + " and " + ApiValidator.LED_COLOR_MAX
+                        + ", got: " + color);
+            }
+            if (brightness < ApiValidator.LED_BRIGHTNESS_MIN
+                    || brightness > ApiValidator.LED_BRIGHTNESS_MAX) {
+                return SonarCenter.McpResult.err("brightness must be between "
+                        + ApiValidator.LED_BRIGHTNESS_MIN + " and " + ApiValidator.LED_BRIGHTNESS_MAX
+                        + ", got: " + brightness);
+            }
             int p5, p6, p8;
             switch (preset) {
                 case "flash":   p5 = 100; p6 = 100; p8 = 0; break;
@@ -726,9 +744,17 @@ public final class LedCenter {
                 String.valueOf(code) + " (headerReady=" + hReady + ")");
     }
 
-    /** self.robot.led_set_eye 本體 (XiaozhiBridge 轉調)。pure-direct: 经 JNI 直驱。 */
+    /** self.robot.led_set_eye 本體 (XiaozhiBridge 轉調)。pure-direct: 经 JNI 直驱。
+     *  同 HTTP 一套驗證——眼燈無 breathe（之前 "breathe" 靜默變 long，同 schema
+     *  講嘅唔啱），錯 preset 即報錯。 */
     public SonarCenter.McpResult mcpLedSetEye(org.json.JSONObject arguments) {
         String preset = arguments.optString("preset", "long");
+        if (!"long".equals(preset) && !"flash".equals(preset) && !"chase".equals(preset)
+                && !"dual".equals(preset) && !"stop".equals(preset)) {
+            return SonarCenter.McpResult.err(
+                    "preset must be one of [long, flash, chase, dual, stop]"
+                            + " (eye has no breathe), got: " + preset);
+        }
         UbxErrorCode.API_ERROR_CODE code;
         if ("stop".equals(preset)) {
             code = MainActivity.directCode(DirectLedController.stopEye5Mic());
@@ -738,6 +764,17 @@ public final class LedCenter {
             }
             int color = arguments.optInt("color");
             int brightness = arguments.optInt("brightness");
+            if (color < ApiValidator.LED_COLOR_MIN || color > ApiValidator.LED_COLOR_MAX) {
+                return SonarCenter.McpResult.err("color must be between "
+                        + ApiValidator.LED_COLOR_MIN + " and " + ApiValidator.LED_COLOR_MAX
+                        + ", got: " + color);
+            }
+            if (brightness < ApiValidator.LED_BRIGHTNESS_MIN
+                    || brightness > ApiValidator.LED_BRIGHTNESS_MAX) {
+                return SonarCenter.McpResult.err("brightness must be between "
+                        + ApiValidator.LED_BRIGHTNESS_MIN + " and " + ApiValidator.LED_BRIGHTNESS_MAX
+                        + ", got: " + brightness);
+            }
             int p5, p6, p8;
             switch (preset) {
                 case "flash": p5 = 100; p6 = 100; p8 = 0; break;
@@ -753,14 +790,26 @@ public final class LedCenter {
                 String.valueOf(code) + " (headerReady=" + eReady + ")");
     }
 
-    /** self.robot.led_set_mouth 本體 (XiaozhiBridge 轉調)。 */
+    /** self.robot.led_set_mouth 本體 (XiaozhiBridge 轉調)。
+     *  同 HTTP 一套驗證（preset 枚舉＋speed 0-5000）：之前打錯 preset
+     *  （如 "flash"）靜默變 breathing，speed 超範圍直落——家下即報錯。 */
     public SonarCenter.McpResult mcpLedSetMouth(org.json.JSONObject arguments) {
         String preset = arguments.optString("preset", "breathing");
+        if (!"breathing".equals(preset) && !"off".equals(preset)) {
+            return SonarCenter.McpResult.err(
+                    "preset must be one of [breathing, off], got: " + preset);
+        }
         boolean ok;
         if ("off".equals(preset)) {
             ok = MouthLedData.off().apply();
         } else {
             int speedMs = arguments.optInt("speed_ms", 0);
+            if (speedMs < ApiValidator.LED_MOUTH_SPEED_MIN_MS
+                    || speedMs > ApiValidator.LED_MOUTH_SPEED_MAX_MS) {
+                return SonarCenter.McpResult.err("speed_ms must be between "
+                        + ApiValidator.LED_MOUTH_SPEED_MIN_MS + " and "
+                        + ApiValidator.LED_MOUTH_SPEED_MAX_MS + ", got: " + speedMs);
+            }
             ok = MouthLedData.breathing(speedMs).apply();
         }
         return new SonarCenter.McpResult(!ok, "ok=" + ok);

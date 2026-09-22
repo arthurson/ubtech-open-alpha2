@@ -366,10 +366,6 @@ public final class ApiDispatcher {
                 return voskApi.voskDownloadCancel();
             case "vosk/catalog":
                 return voskApi.voskCatalog();
-            case "vosk/hallu":
-                return voskApi.voskHallu();
-            case "vosk/hallu_set":
-                return voskApi.voskHalluSet(query);
             // -- Servos -----------------------------------------------------------------
             case "servo/one":
                 return ubxApi.servoOneResponse(query);

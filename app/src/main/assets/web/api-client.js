@@ -635,17 +635,6 @@ const Alpha2Api = (function() {
     return api('vosk/download_status', params);
   }
 
-  function voskHallu(params) {
-    // 幻聽過濾開關現狀 (confGate/confThr/dedup/grammar/unk/ttsPause/resumeDelay，語音頁測試面板用)
-    return api('vosk/hallu', params);
-  }
-
-  function voskHalluSet(params) {
-    if (params && params.key != null) assertEnum(params.key, ['confGate', 'confThr', 'dedup', 'grammar', 'unk', 'ttsPause', 'resumeDelay'], 'key');
-    // 設一個幻聽過濾開關 (grammar 切換即時重建文法，聽緊就停完重開)
-    return api('vosk/hallu_set', params);
-  }
-
   function voskLoad(params) {
     // 載入指定 Vosk model (背景幾秒，一次一粒)
     return api('vosk/load', params);
@@ -956,8 +945,6 @@ const Alpha2Api = (function() {
     voskDownload,
     voskDownloadCancel,
     voskDownloadStatus,
-    voskHallu,
-    voskHalluSet,
     voskLoad,
     voskModels,
     voskStart,

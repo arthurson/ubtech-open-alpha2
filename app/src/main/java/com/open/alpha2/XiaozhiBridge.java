@@ -1556,24 +1556,20 @@ public final class XiaozhiBridge {
                                 resultText = "missing required argument: text";
                                 break;
                             }
-                            // Mirrors the "speech/tts" HTTP endpoint below (handleApi()) -
-                            // same SpeechCenter.STOP_TO_TTS_MIN_GAP_MS race guard against a just-issued
-                            // speech/stop, same mouth-LED bracket, same 3-arg
-                            // speech_startTTS(lang, text, voice) signature (Alpha2RobotApi
-                            // exposes no high-priority/interrupting TTS variant, so this
-                            // shares the low-priority entry point the rest of the app uses).
-                            // Fixed to Nuance/en_us rather than reading an "engine" query
-                            // param (no query string here, this is an MCP tool call) -
-                            // consistent with defaulting away from iFlytek's per-call voice
-                            // picker, which has no equivalent argument in this tool's schema.
+                            // beta5：機身已無 alpha2services，robot.speech_startTTS()
+                            // 恆回 NOT_INIT（死路，之前 LLM 叫親都失敗）——轉行
+                            // Android TTS（同 SemanticCenter 對話管線／speakActivationCode
+                            // 同一部機，speakAndroidTts）：卡有選語言／聲就跟卡，
+                            // 否則用英文（沿用舊 en_us 語義）。gap＋嘴 LED 同舊路一致。
                             awaitTtsGap();
                             LedCenter.startMouthLedForTts();
-                            UbxErrorCode.API_ERROR_CODE code = robot.speech_startTTS("en_us", text, null);
-                            if (!MainActivity.isOk(code)) {
+                            boolean spoken = ttsCenter != null
+                                    && ttsCenter.speakAndroidTts(text, java.util.Locale.ENGLISH);
+                            if (!spoken) {
                                 LedCenter.stopMouthLedForTts();
                             }
-                            isError = !MainActivity.isOk(code);
-                            resultText = String.valueOf(code);
+                            isError = !spoken;
+                            resultText = spoken ? "spoken" : "Android TTS not ready";
                             break;
                         }
 

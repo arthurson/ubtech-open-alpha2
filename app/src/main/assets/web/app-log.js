@@ -33,36 +33,14 @@ function nowTimeStr() {
 }
 
 /** 統一的語意配對＋TTS＋動作觸發函數 — 各種輸入方法（文字輸入等）都用這個
- *  方法處理，同 sendSpeechChatText() 後半段邏輯一致。
- *  fromVoice＝經 Vosk 語音觸發：短句 fallback 之後有 2.5 秒靜音窗
- *  （環境噪音 final 成串來當時不會連珠炮亂答；打字觸發一律不閘）。 */
-var lastFallbackQuietUntil = 0;
-// 前端幻聽開關（語音頁測試面板；讀 app-vosk.js halluFrontGet 共用 key，
-// typeof guard 防 script 載入順序；預設全開＝出廠行為不變）。
-function halluFrontOn(k) {
-  if (typeof halluFrontGet === "function") return halluFrontGet(k, true);
-  try {
-    const v = localStorage.getItem("halluFront_" + k);
-    return v === null ? true : v === "1";
-  } catch (e) {
-    return true;
-  }
-}
+ *  方法處理，同 sendSpeechChatText() 後半段邏輯一致。 */
 function triggerSemanticSimulate(text, fromVoice) {
   if (!text) return;
   Alpha2Api.speechSemanticSimulate( { text: text }).then(function (res) {
     if (!res || !res.ok) return;
     if (!res.matched) {
       appendSpeechChatLine("xiaozhi-msg-system", t("speech_chat_simulate_no_match"));
-      if (halluFrontOn("quiet") && fromVoice && text.length < 4) {
-        lastFallbackQuietUntil = Date.now() + 2500;
-      }
       return;
-    }
-    // fallback 台詞一樣顯示（matched 恒 true，見 SemanticCenter），但短句
-    // 語音 fallback 照入靜音窗，唔好畀噪音連珠炮長台詞＋隨機動作。
-    if (halluFrontOn("quiet") && res.fallback && fromVoice && text.length < 4) {
-      lastFallbackQuietUntil = Date.now() + 2500;
     }
     // 對話界面僅顯示中英文對白 — [TYPE operation] 動作ID detail 行不在對話流顯示 (Event Log 有同樣資訊)。
     if (res.answer) {
@@ -146,22 +124,14 @@ function appendLog(msg) {
     // 對話界面：辨識結果顯示做 user 氣泡 (經 cleanChatText 過濾，JSON 碎片不出現在對話流)。
     const cleanAsr = cleanChatText(msg.data.text);
     if (cleanAsr && typeof appendSpeechChatLine === "function") {
-      // 單字 final（啊/嗯/哦之類底噪幻聽）連氣泡都不出——出了都不會配對
-      // （下面道閘），僅洗版。真人講的單字指令（嗨）一樣不出氣泡，
-      // 可用「你好」代替；打字照出不影響。想看 Vosk 實際聽到什麼，
-      // 語音頁即時 partial 行＋logcat "final:" 照有。測試開關可拆（halluFront_single）。
-      if (halluFrontOn("single") && cleanAsr.length < 2) {
+      // 單字 final（啊/嗯/哦之類底噪）連氣泡都不出——真人單字指令（嗨）
+      // 一樣不出氣泡，可用「你好」代替；打字照出不影響。
+      // 想看 Vosk 實際聽到什麼，語音頁即時 partial 行＋logcat "final:" 照有。
+      if (cleanAsr.length < 2) {
         // 不出氣泡，不配對，直接處理下一個 event。
       } else {
         appendSpeechChatLine("xiaozhi-msg-user", cleanAsr);
-      // 語音觸發兩重閘：單字噪音 final（啊/嗯/哦之類）只出氣泡不配對，
-      // 否則經包含配對會撞入「早啊」之類招呼；短句 fallback 後 2.5 秒內
-      // 的短句亦只出氣泡（打斷噪音連珠炮）。打字觸發行另一條路，不受影響。
-      // 測試開關 halluFront_quiet 關了就行過唔閘。
-      if (cleanAsr.length >= 2
-          && (!halluFrontOn("quiet") || cleanAsr.length >= 4 || Date.now() >= lastFallbackQuietUntil)) {
         triggerSemanticSimulate(cleanAsr, true);
-      }
       }
     }
   }

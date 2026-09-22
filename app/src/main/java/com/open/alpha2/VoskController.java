@@ -37,9 +37,8 @@ import java.util.Set;
  * final 經沿用的 {@code asr_result} event（前端同打字模擬同一條：user 氣泡＋
  * 語意配對＋Android TTS）。
  *
- * <p>限定文法：load 時用問法庫起 grammar（中文問法轉簡體先對得上普通話
- * acoustic 輸出，見 SimplifiedToTraditional.toSimplified），命中率遠高過開放
- * 式。起不到就跌回無約束 Recognizer（不死）。
+ * <p>開放式辨識（open vocab）：唔起限定文法，直接無約束 Recognizer。
+ *  幻聽只靠三樣硬編碼：conf 閘定值 0.01／TTS 時停 decode／前端單字唔出氣泡。
  *
  * <p>所有 public 方法 thread-safe；heavy 工（load）自己開 thread，callback
  * 經 listener 返回（SpeechService 那些在 main thread，要輕手）。
@@ -144,49 +143,14 @@ public final class VoskController {
     private Model model;
     private Recognizer recognizer;
     private SpeechService speechService;
-    private String grammarJson; // 建好時記下，start 先 new Recognizer
-    private boolean stripSpaces; // 中文 char-grammar 吐字之間有空格，發佈前要去掉
-
-    /** 最近發佈過的 final 全文＋時間 - onVoskFinal 去重用 (Vosk 會經 onResult
-     *  同 onFinalResult 將同一句派兩次, 不擋機械人會答兩次)。 */
-    private volatile String lastFinalText = null;
-    private volatile long lastFinalAtMs = 0;
-    private static final long DEDUP_WINDOW_MS = 4000;
+    private String grammarJson; // 恆 null（開放式辨識，保留欄位免改 start 流程）
+    private boolean stripSpaces; // 恆 false（舊中文 char-grammar 先用）
 
     /** final 平均 word conf 低過呢個就當底噪幻聽掉咗佢 (唔發佈、
-     *  唔入配對；logcat 照留 "low-conf final dropped" 供校準)。
+     *  唔入配對；logcat 照留 "low-conf final dropped")。
      *  -1＝未知 (舊 lib／無 result 陣列) 照放行，不誤殺。
-     *  校準史：0.70 攔到法色級幻聽但 margin 太薄，用戶要求回落 0.45
-     *  （只擋明顯垃圾如夫/假/法 0.36~0.40，真人說話優先唔誤殺；
-     *  幻聽主要靠去重＋前端閘＋文法擋）。
-     *  出廠預設值（runtime 用 halluConfThr，經測試面板可調）。 */
-    private static final double MIN_FINAL_CONF = 0.45;
-
-    /** TTS pause 序號 - onTtsStarted() 加一, onTtsFinished() 延遲 resume 當時
-     *  對唔上就唔 resume (新一句 TTS 已經開始緊, 即 resume 會當場製造迴音)。 */
-    private volatile int ttsPauseSeq = 0;
-    /** TTS 播完多少 ms 先 resume decode - 等房間殘響散去, 否則自己句尾誤認
-     *  轉頭造成自言自語迴圈。 */
-    private static final long RESUME_AFTER_TTS_MS = 800;
-
-    /** 幻聽過濾開關組（語音 tab 測試面板逐個開關，見 halluJson/setHallu）。
-     *  全部 prefs 持久化＋volatile，預設全開（出廠行為不變）：
-     *  confGate/confThr＝認可度閘＋閾值／dedup＝4秒去重／grammar＝限定文法／
-     *  unk＝[unk]清理／ttsPause＝TTS時停decode／resumeDelay＝播完800ms先resume。 */
-    private static final String PREF_HALLU_CONF_GATE = "hallu_conf_gate";
-    private static final String PREF_HALLU_CONF_THR = "hallu_conf_thr";
-    private static final String PREF_HALLU_DEDUP = "hallu_dedup";
-    private static final String PREF_HALLU_GRAMMAR = "hallu_grammar";
-    private static final String PREF_HALLU_UNK = "hallu_unk";
-    private static final String PREF_HALLU_TTSPAUSE = "hallu_ttspause";
-    private static final String PREF_HALLU_RESUMEDELAY = "hallu_resumedelay";
-    private volatile boolean halluConfGate = true;
-    private volatile float halluConfThr = 0.45f;
-    private volatile boolean halluDedup = true;
-    private volatile boolean halluGrammar = true;
-    private volatile boolean halluUnk = true;
-    private volatile boolean halluTtsPause = true;
-    private volatile boolean halluResumeDelay = true;
+     *  定值 0.01：幾乎全放行，只擋極低分垃圾。 */
+    private static final double MIN_FINAL_CONF = 0.01;
 
     public VoskController(Context context, SemanticMatcherZh zh,
             SemanticMatcherEn en, SemanticMatcherEs es, SemanticMatcherFr fr, SemanticMatcherJa ja,
@@ -203,17 +167,6 @@ public final class VoskController {
         this.matcherPt = pt;
         this.matcherKo = ko;
         this.matcherRu = ru;
-        try {
-            android.content.SharedPreferences p = prefs();
-            halluConfGate = p.getBoolean(PREF_HALLU_CONF_GATE, true);
-            halluConfThr = p.getFloat(PREF_HALLU_CONF_THR, 0.45f);
-            halluDedup = p.getBoolean(PREF_HALLU_DEDUP, true);
-            halluGrammar = p.getBoolean(PREF_HALLU_GRAMMAR, true);
-            halluUnk = p.getBoolean(PREF_HALLU_UNK, true);
-            halluTtsPause = p.getBoolean(PREF_HALLU_TTSPAUSE, true);
-            halluResumeDelay = p.getBoolean(PREF_HALLU_RESUMEDELAY, true);
-        } catch (Throwable ignore) {
-        }
         try {
             LibVosk.setLogLevel(LogLevel.WARNINGS);
         } catch (Throwable ignore) {
@@ -525,171 +478,10 @@ public final class VoskController {
         return "zh";
     }
 
-    /** 幻聽開關現狀 JSON（vosk/hallu endpoint 用；confThr 取三位小數）。 */
-    public String halluJson() {
-        return "{\"ok\":true"
-                + ",\"confGate\":" + halluConfGate
-                + ",\"confThr\":" + String.format(java.util.Locale.US, "%.3f", halluConfThr)
-                + ",\"dedup\":" + halluDedup
-                + ",\"grammar\":" + halluGrammar
-                + ",\"unk\":" + halluUnk
-                + ",\"ttsPause\":" + halluTtsPause
-                + ",\"resumeDelay\":" + halluResumeDelay
-                + "}";
-    }
-
-    /** 設一個幻聽開關（vosk/hallu_set 用；key 僅收上面七個，confThr 收 0..1）。
-     *  grammar 切換即時重建文法（聽緊就停完重開，等同下次 load 效果，即 set 即測）。
-     *  return null＝成功，否則錯誤字串。 */
-    public synchronized String setHallu(String key, String value) {
-        try {
-            if ("confThr".equals(key)) {
-                float f = Float.parseFloat(value.trim());
-                if (!(f >= 0 && f <= 1)) return "confThr out of range 0..1: " + value;
-                halluConfThr = f;
-                prefs().edit().putFloat(PREF_HALLU_CONF_THR, f).apply();
-                return null;
-            }
-            boolean b;
-            if ("true".equalsIgnoreCase(value) || "1".equals(value)) {
-                b = true;
-            } else if ("false".equalsIgnoreCase(value) || "0".equals(value)) {
-                b = false;
-            } else {
-                return "bad boolean value (true/1/false/0): " + value;
-            }
-            String pref;
-            if ("confGate".equals(key)) {
-                halluConfGate = b;
-                pref = PREF_HALLU_CONF_GATE;
-            } else if ("dedup".equals(key)) {
-                halluDedup = b;
-                pref = PREF_HALLU_DEDUP;
-            } else if ("grammar".equals(key)) {
-                halluGrammar = b;
-                pref = PREF_HALLU_GRAMMAR;
-            } else if ("unk".equals(key)) {
-                halluUnk = b;
-                pref = PREF_HALLU_UNK;
-            } else if ("ttsPause".equals(key)) {
-                halluTtsPause = b;
-                pref = PREF_HALLU_TTSPAUSE;
-            } else if ("resumeDelay".equals(key)) {
-                halluResumeDelay = b;
-                pref = PREF_HALLU_RESUMEDELAY;
-            } else {
-                return "unknown hallu key: " + key;
-            }
-            prefs().edit().putBoolean(pref, b).apply();
-            if ("grammar".equals(key)) {
-                return refreshGrammar();
-            }
-            return null;
-        } catch (NumberFormatException nfe) {
-            return "bad confThr value: " + value;
-        } catch (Throwable e) {
-            return "setHallu failed: " + e.getMessage();
-        }
-    }
-
-    /** 按目前 halluGrammar 重建文法；聽緊就停完重開，等 grammar 開關即 set 即測，
-     *  不用等下次 load。return null＝成功，否則錯誤字串。 */
-    private synchronized String refreshGrammar() {
-        grammarJson = (modelId == null) ? null : buildGrammar(modelId);
-        if (state == State.LISTENING) {
-            stopLocked();
-            state = State.READY;
-            return startListeningLocked();
-        }
-        return null;
-    }
-
-    /** 起限定文法（問法庫）；不行就回 null 用開放式。絕不 throw。
-     *  halluGrammar 關了直接回 null（開放式，等同文法擋拆走）。
-     *  中文要逐字空格（"你好嗎"→"你 好 嗎"）：small-cn 的 words.txt 是字級，
-     *  成句當一個 entry 會全部 OOV 被 ignore（logcat 實證）。輸出時認回
-     *  stripSpaces 去掉空格。英文 keep 原樣（本身是 word 級）。 */
+    /** 起限定文法已移除：而家一律開放式辨識（open vocab），直接回 null。絕不 throw。 */
     private String buildGrammar(String id) {
-        if (!halluGrammar) {
-            stripSpaces = false;
-            return null;
-        }
-        try {
-            List<String> phrases;
-            String lang = langOfModelId(id);
-            if ("zh".equals(lang)) {
-                phrases = new ArrayList<>();
-                for (String q : matcherZh.questions()) {
-                    String s = SimplifiedToTraditional.toSimplified(q);
-                    if (s != null && !s.isEmpty()) phrases.add(spaced(s));
-                }
-                stripSpaces = true;
-            } else if ("en".equals(lang)) {
-                phrases = matcherEn.questions();
-                stripSpaces = false;
-            } else if ("es".equals(lang)) {
-                // 西文同英文一樣 word 級（唔使逐字空格），將來有 es model 先用得。
-                phrases = matcherEs.questions();
-                stripSpaces = false;
-            } else if ("fr".equals(lang)) {
-                // 法文同英文一樣 word 級（唔使逐字空格）。空庫骨架當時 questions()
-                // 係空，下面照回 null 行開放式辨識，唔死。
-                phrases = matcherFr.questions();
-                stripSpaces = false;
-            } else if ("ja".equals(lang)) {
-                // 日文同英文一樣 word 級（唔使逐字空格）。空庫骨架當時 questions()
-                // 係空，下面照回 null 行開放式辨識，唔死。
-                phrases = matcherJa.questions();
-                stripSpaces = false;
-            } else if ("de".equals(lang)) {
-                // 德文／意大利文／葡萄牙文／韓文／俄文同英文一樣 word 級。
-                // 骨架空庫 questions() 係空，下面照回 null 行開放式辨識，唔死。
-                phrases = matcherDe.questions();
-                stripSpaces = false;
-            } else if ("it".equals(lang)) {
-                phrases = matcherIt.questions();
-                stripSpaces = false;
-            } else if ("pt".equals(lang)) {
-                phrases = matcherPt.questions();
-                stripSpaces = false;
-            } else if ("ko".equals(lang)) {
-                phrases = matcherKo.questions();
-                stripSpaces = false;
-            } else if ("ru".equals(lang)) {
-                phrases = matcherRu.questions();
-                stripSpaces = false;
-            } else {
-                stripSpaces = false;
-                return null;
-            }
-            if (phrases.isEmpty()) {
-                stripSpaces = false;
-                return null;
-            }
-            JSONArray arr = new JSONArray();
-            arr.put("[unk]");
-            for (String p : phrases) arr.put(p);
-            return arr.toString();
-        } catch (Throwable e) {
-            Log.w(TAG, "buildGrammar failed, open vocab", e);
-            stripSpaces = false;
-            return null;
-        }
-    }
-
-    /** "你好嗎？" → "你 好 嗎 ？"（Vosk 中文 char 級文法用，空白才是分隔符）。
-     *  標點/拉丁/數字原樣保留：small-cn words.txt 沒有的字，Vosk 起文法時會
-     *  逐個 ignore（logcat "Ignoring word"），不影響其他字的約束，不用自己
-     *  預先過濾（亂濾反而可能濾走 acoustic 認得的字，例如數字）。 */
-    private static String spaced(String s) {
-        StringBuilder sb = new StringBuilder(s.length() * 2);
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') continue;
-            if (sb.length() > 0) sb.append(' ');
-            sb.append(c);
-        }
-        return sb.toString();
+        stripSpaces = false;
+        return null;
     }
 
     /** 丟掉個 model（不清 prefs 記住的選擇）。 */
@@ -838,27 +630,17 @@ public final class VoskController {
 
     /** 成句結果：沿用舊管線（氣泡＋語意配對＋TTS）。
      *  跑在 SpeechService listener thread（main）。絕不 throw。
-     *  兩重閘（各自有測試開關，見 halluJson；全關＝裸奔對照組）：
-     *   1) 認可度閘 (confGate/confThr) - 平均 word conf 低過閾值即當底噪幻聽掉咗
-     *      (唔發佈唔配對；未知 conf 回 -1 照放行，不誤殺真人說話)。
-     *   2) 去重 (dedup) - 同一全文 4 秒內再派就吞掉 (Vosk onResult/onFinalResult
-     *      會將同一句派兩次；靜音環境重複噪音 final 亦擋一次)。 */
+     *  認可度閘定值 0.01 - 平均 word conf 低過即當底噪掉咗
+     *  (唔發佈唔配對；未知 conf 回 -1 照放行)。 */
     private void onVoskFinal(String hypothesis) {
         try {
             String text = transcript(hypothesis, "text");
             if (text == null || text.isEmpty()) return;
             double conf = avgWordConf(hypothesis);
-            if (halluConfGate && conf >= 0 && conf < halluConfThr) {
+            if (conf >= 0 && conf < MIN_FINAL_CONF) {
                 Log.i(TAG, "low-conf final dropped (" + conf + "): " + text);
                 return;
             }
-            long now = System.currentTimeMillis();
-            if (halluDedup && text.equals(lastFinalText) && now - lastFinalAtMs < DEDUP_WINDOW_MS) {
-                Log.i(TAG, "dup final skipped: " + text);
-                return;
-            }
-            lastFinalText = text;
-            lastFinalAtMs = now;
             // 斷症用：log 下認到什麼＋幾多分（EventBus 只帶去前端，logcat 看不到內容）。
             Log.i(TAG, "final: " + text + " conf="
                     + (conf < 0 ? "?" : String.format("%.2f", conf)));
@@ -904,47 +686,16 @@ public final class VoskController {
         }
     }
 
-    /** TTS 開始播：記序號＋即 pause decode (同 setPaused(true)，多個序號防亂序)。
-     *  halluTtsPause 關了就行過唔 pause（測迴音用；setPaused 本體唔閘，
-     *  等 SpeechCenter／XiaozhiBridge 讓 mic 嗰啲外部 pause 照行）。 */
+    /** TTS 開始播：即 pause decode (同 setPaused(true)）。 */
     public synchronized void onTtsStarted() {
-        ttsPauseSeq++;
-        if (!halluTtsPause) return;
         setPaused(true);
     }
 
-    /** TTS 播完：等殘響散去先 resume, 序號對不上 (新一句已經開始) 就不 resume。
-     *  不可以直接 setPaused(false) - onDone 即 resume 會將自己句尾殘響誤認
-     *  轉頭，機械人就會自己同自己聊天。halluResumeDelay 關了就唔等 800ms
-     *  即 resume（測殘響誤認用）。 */
+    /** TTS 播完：即 resume decode。 */
     public void onTtsFinished() {
-        if (!halluResumeDelay) {
-            synchronized (VoskController.this) {
-                ttsPauseSeq++;
-                Log.i(TAG, "resume decode immediately (test switch)");
-                setPaused(false);
-            }
-            return;
-        }        final int seq;
         synchronized (VoskController.this) {
-            seq = ttsPauseSeq;
+            setPaused(false);
         }
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Thread.sleep(RESUME_AFTER_TTS_MS);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-                synchronized (VoskController.this) {
-                    if (seq != ttsPauseSeq) return; // 新一句正在播，不要 resume
-                    Log.i(TAG, "resume decode after tts");
-                    setPaused(false);
-                }
-            }
-        }, "VoskResume").start();
     }
 
     public synchronized String stopListening() {
@@ -988,24 +739,11 @@ public final class VoskController {
         state = State.IDLE;
     }
 
-    /** optText＋中文 char 文法空格清理（stripSpaces 開時）＋[unk] 碎片清理
-     *  （halluUnk 開關；關了就行過唔剪，測模糊配對污染用）。
-     *  [unk]（大小寫不拘）代表 Vosk 嗰截認唔到——成段係 [unk] 就唔發佈，
-     *  [unk]（大小寫不拘）代表 Vosk 嗰截認唔到——成段係 [unk] 就唔發佈，
-     *  否則會觸發語意配對亂答（fallback 隨機答案＋可能隨機動作）；
-     *  夾雜嘅 [unk] 碎片（例如「你好[unk]」）就剪走，唔好污染之後嘅
-     *  包含／模糊配對（unk 三個字母會嘥咗編輯距離）。partial 同 final 共用。 */
+    /** optText＋trim。空即回 null 唔發佈。partial 同 final 共用。 */
     private String transcript(String json, String key) {
         String s = optText(json, key);
         if (s != null) {
-            if (halluUnk) {
-                s = s.replaceAll("(?i)\\[unk\\]", "").trim();
-            } else {
-                s = s.trim();
-            }
-            if (stripSpaces) {
-                s = s.replace(" ", "").replace("\t", "").trim();
-            }
+            s = s.trim();
         }
         if (s == null || s.isEmpty()) return null;
         return s;

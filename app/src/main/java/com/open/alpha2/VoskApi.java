@@ -159,27 +159,6 @@ public final class VoskApi {
     public HttpServer.ApiResponse voskCatalog() {
         return HttpServer.ApiResponse.ok(VoskController.catalogJson());
     }
-
-    // 幻聽過濾開關現狀（confGate/confThr/dedup/grammar/unk/ttsPause/resumeDelay，
-    // 全部 prefs 持久化，預設全開；前端測試面板讀這個畫開關）。
-    public HttpServer.ApiResponse voskHallu() {
-        HttpServer.ApiResponse need = voskOrError();
-        if (need != null) return need;
-        return HttpServer.ApiResponse.ok(vosk.halluJson());
-    }
-
-    // 設一個幻聽開關：key＝上面七個之一，value＝開關類收 true/1/false/0，
-    // confThr 收 0..1 小數。grammar 切換即時重建文法（聽緊就停完重開）。
-    // 成功回現狀 JSON（等前端一次 round trip refresh），失敗回 500＋原因。
-    public HttpServer.ApiResponse voskHalluSet(Map<String, String> query) {
-        HttpServer.ApiResponse need = voskOrError();
-        if (need != null) return need;
-        String key = ApiValidator.require(query, "key");
-        String value = ApiValidator.require(query, "value");
-        String err = vosk.setHallu(key, value);
-        if (err != null) return HttpServer.ApiResponse.error(err);
-        return HttpServer.ApiResponse.ok(vosk.halluJson());
-    }
 }
 
 

@@ -36,9 +36,6 @@ function voskApplyUiLanguage() {
 }
 
 function voskRefreshModels() {
-  // 幻聽開關面板同步（後端現狀＋前端本機開關；有卡先做，無卡（如實驗 tab 直開）即走）。
-  voskHalluRefresh();
-  halluFrontInit();
   // API 19 熔斷：部機太舊就成張卡收起（後端 voskOrError 會擋，但不要完位）。
   return Alpha2Api.status().then(function (st) {
     if (st && st.ok && st.apiLevel && st.apiLevel < 21) {
@@ -500,65 +497,5 @@ function voskRenderStatus(res) {
   } catch (e) {}
 }
 
-// ---------------- 幻聽過濾測試開關 (voskHalluBox) ----------------
-//
-// 後端 6 開關＋conf 閾值經 vosk/hallu(_set)（prefs 持久化，預設全開）；
-// 前端 2 開關（quiet 2.5s 靜音窗／single 單字掉棄）只存本瀏覽器 localStorage，
-// app-log.js 經 halluFrontGet() 讀同一個 key。全部檔案共用 global scope。
-var HALLU_KEYS = ["confGate", "dedup", "grammar", "unk", "ttsPause", "resumeDelay"];
 
-// 讀後端現狀畫開關（開頁／切換後 refresh；無卡即走，API19 熔斷回錯誤即略過）。
-function voskHalluRefresh() {
-  if (!document.getElementById("voskHalluBox")) return Promise.resolve();
-  return Alpha2Api.voskHallu().then(function (res) {
-    if (!res || !res.ok) return res;
-    HALLU_KEYS.forEach(function (k) {
-      const cb = document.getElementById("hallu_" + k);
-      if (cb && typeof res[k] === "boolean") cb.checked = !!res[k];
-    });
-    const thr = document.getElementById("hallu_confThr");
-    if (thr && res.confThr !== undefined && res.confThr !== null) thr.value = res.confThr;
-    return res;
-  });
-}
-
-// 切一個開關（checkbox 傳 boolean，轉 1/0；成功自動 refresh 回後端真相）。
-function voskHalluSet(key, val) {
-  return Alpha2Api.voskHalluSet({ key: key, value: val ? "1" : "0" }).then(function (res) {
-    return voskHalluRefresh();
-  });
-}
-
-// 套用 conf 閾值（0–1 小數；非法後端回 500，前端維持舊值等下次 refresh）。
-function voskHalluSetThr() {
-  const thr = document.getElementById("hallu_confThr");
-  if (!thr) return Promise.resolve();
-  return Alpha2Api.voskHalluSet({ key: "confThr", value: String(thr.value).trim() }).then(function (res) {
-    return voskHalluRefresh();
-  });
-}
-
-// 前端開關讀寫（localStorage，預設開；app-log.js 共用）。
-function halluFrontGet(k, def) {
-  try {
-    const v = localStorage.getItem("halluFront_" + k);
-    if (v === null || v === undefined) return (def === undefined) ? true : !!def;
-    return v === "1";
-  } catch (e) {
-    return (def === undefined) ? true : !!def;
-  }
-}
-
-function halluFrontSet(k, on) {
-  try {
-    localStorage.setItem("halluFront_" + k, on ? "1" : "0");
-  } catch (e) {}
-}
-
-function halluFrontInit() {
-  ["quiet", "single"].forEach(function (k) {
-    const cb = document.getElementById("halluFront_" + k);
-    if (cb) cb.checked = halluFrontGet(k, true);
-  });
-}
 

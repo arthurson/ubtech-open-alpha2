@@ -1781,61 +1781,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
       operationId: voskCatalog_get
-  /api/vosk/hallu:
-    get:
-      tags:
-      - speech
-      summary: 幻聽過濾開關現狀 (confGate/confThr/dedup/grammar/unk/ttsPause/resumeDelay，語音頁測試面板用)
-      parameters:
-      - $ref: '#/components/parameters/PanelToken'
-      responses:
-        '401':
-          description: 面板 token 缺／錯（僅啟用後）
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OkWrapper'
-        '200':
-          description: 現狀 (ok/confGate/confThr/dedup/grammar/unk/ttsPause/resumeDelay)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OkWrapper'
-      operationId: voskHallu_get
-  /api/vosk/hallu_set:
-    get:
-      tags:
-      - speech
-      summary: 設一個幻聽過濾開關 (grammar 切換即時重建文法，聽緊就停完重開)
-      parameters:
-      - name: key
-        in: query
-        required: true
-        schema:
-          type: string
-          enum: [confGate, confThr, dedup, grammar, unk, ttsPause, resumeDelay]
-        description: 開關名 (confThr 收 0..1 小數，其餘收 true/1/false/0)
-      - name: value
-        in: query
-        required: true
-        schema:
-          type: string
-        description: 開關值
-      - $ref: '#/components/parameters/PanelToken'
-      responses:
-        '401':
-          description: 面板 token 缺／錯（僅啟用後）
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OkWrapper'
-        '200':
-          description: 成功回現狀 (同 vosk/hallu 同格式，key/value 非法回 500)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OkWrapper'
-      operationId: voskHalluSet_get
   /api/vosk/download:
     get:
       tags:
