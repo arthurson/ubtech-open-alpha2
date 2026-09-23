@@ -104,7 +104,18 @@ public final class DirectLedController {
         return null;
     }
 
+    // 全局驅動鎖：disco 線程／pad 燈線程／HTTP 線程／wifi 燈全部經呢度打
+    // /dev/led_eye，舊驅動疑似頂唔順併發 open（幾次硬 hang 無 ANR、adb 齊死
+    // 都係 disco 高頻期）。一齊排隊，一次一個，慢幾 ms 好過死機。
+    private static final Object DRIVER_LOCK = new Object();
+
     private static boolean callLedReflect(String method, Class<?>[] types, Object[] args, String desc) {
+        synchronized (DRIVER_LOCK) {
+            return callLedReflectLocked(method, args, desc);
+        }
+    }
+
+    private static boolean callLedReflectLocked(String method, Object[] args, String desc) {
         try {
             if (!ensureInit()) return false;
             java.lang.reflect.Method m = methodFor(method);

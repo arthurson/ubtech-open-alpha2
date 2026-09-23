@@ -337,6 +337,8 @@ function xiaozhiStopAll() {
     Alpha2Api.speechStop(),
     Alpha2Api.audioLocalMusicStop(),
     Alpha2Api.audioRadioStop(), // FM/網絡電台都是「播放中」一種，跟本地音樂一齊納入總停鍵。
+    Alpha2Api.ledHeadSet({ preset: "stop" }), // 總停埋頭燈（嘴燈跟 TTS 停，見 speech/stop）。
+    Alpha2Api.ledEyeSet({ preset: "stop" }), // 眼燈同上。
   ]);
 }
 

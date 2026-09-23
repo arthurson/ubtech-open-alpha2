@@ -339,6 +339,7 @@
           <button onclick="eyeLedPreset('chase')" data-i18n="led_preset_chase">🏃 跑馬燈</button>
           <button onclick="eyeLedPreset('dual')" data-i18n="led_preset_dual">🎨 雙色燈</button>
           <button onclick="eyeLedPreset('stop')" data-i18n="led_preset_stop">⏹ 停止</button>
+          <button onclick="eyeCountdown3s()" data-i18n="led_eye_countdown">⏳ 3秒倒數</button>
         </div>
       </div>
 
@@ -665,7 +666,7 @@
         </span>
       </label>
       <span id="musicFillerStateLabel" class="hint" data-i18n="music_filler_on" style="margin:0;">開</span>
-      <label class="switch-label" style="margin-left:12px; border-left:1px solid var(--border); padding-left:12px;" title="開啟的話，播歌（本地/電台/點歌）期間頭跟拍子、眼跟人聲轉色">
+      <label class="switch-label" style="margin-left:12px; border-left:1px solid var(--border); padding-left:12px;" title="開啟的話，播歌期間頭做假立體聲錶、眼跟人聲轉色">
         <span data-i18n="music_disco_heading">🪩 Disco LED</span>
         <span class="toggle-switch">
           <input type="checkbox" id="musicDiscoToggle" onchange="musicSetDiscoEnabled(this.checked)">

@@ -3437,7 +3437,7 @@ paths:
     get:
       tags:
       - audio
-      summary: 查詢播歌 Disco LED 開關 (本地/電台/點歌播緊嗰陣頭跟拍子眼跟人聲，後端跑)
+      summary: 查詢播歌節奏燈開關 (頭假立體聲錶眼跟人聲，後端跑)
       parameters:
       - $ref: '#/components/parameters/PanelToken'
       responses:
@@ -3463,7 +3463,7 @@ paths:
     get:
       tags:
       - audio
-      summary: 設定播歌 Disco LED 開關
+      summary: 設定播歌節奏燈開關
       parameters:
       - name: enabled
         in: query

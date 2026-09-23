@@ -170,12 +170,13 @@ public final class GestureCenter {
         }, 1500);
     }
 
-    /** 即行一格音量（click 模型：tap 靠這一下，不靠 repeat）。 */
+    /** 即行一格音量（click 模型：tap 靠這一下，不靠 repeat）。行完即更頭燈綠色音量計。 */
     private void stepVolume(boolean up) {
         if (audioManager != null) {
             audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
                     up ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER,
                     AudioManager.FLAG_SHOW_UI | AudioManager.FLAG_PLAY_SOUND);
+            ledCenter.showVolumeMeter();
         }
     }
     /**
@@ -200,6 +201,7 @@ public final class GestureCenter {
                     audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
                             up ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER,
                             AudioManager.FLAG_SHOW_UI | AudioManager.FLAG_PLAY_SOUND);
+                    ledCenter.showVolumeMeter();
                 }
                 mainHandler.postDelayed(this, VOLUME_REPEAT_INTERVAL_MS);
             }

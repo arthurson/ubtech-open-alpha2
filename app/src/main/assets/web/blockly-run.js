@@ -1125,17 +1125,146 @@
   // Blockly 自己 Trashcan/ZoomControls 起 DOM 正在用的是同一個 function
   // (在 minified source 裡確認過, 對應 Blockly.utils.dom.createSvgElement)。
 
-  const EDIT_FAB_ICON_PATHS = {
-    // 每個 icon 用 20x20 的 viewBox 座標系統畫, 用 <path> stroke 勾線 (不用
-    // 實心 fill), 對齊返 Code Lab 個線條風格 (undo/redo 箭頭、剪刀、複製兩個
-    // 重疊的方格、貼上剪貼板形狀、垃圾桶)。
-    undo: 'M6 6 L6 3 M6 6 L9 6 M6 6 C6 6 15 4 15 11 C15 15.5 11.5 17 8.5 17 C6.5 17 5 16.3 4 15.3',
-    redo: 'M14 6 L14 3 M14 6 L11 6 M14 6 C14 6 5 4 5 11 C5 15.5 8.5 17 11.5 17 C13.5 17 15 16.3 16 15.3',
-    cut: 'M6 5 L14 15 M14 5 L10 9 M6 15 L8.5 12.5 M6 5 A1.6 1.6 0 1 0 6 8.2 A1.6 1.6 0 1 0 6 5 Z M6 11.8 A1.6 1.6 0 1 0 6 15 A1.6 1.6 0 1 0 6 11.8 Z',
-    copy: 'M8 3 H15 V12 H8 Z M5 6 H12 V15 H5 Z',
-    paste: 'M7 3 H13 V5 H7 Z M5 4 H15 V17 H5 Z M8 9 H12 M8 12 H12',
-    delete: 'M5 6 H15 M8 6 V4 H12 V6 M7 6 L7.7 17 H12.3 L13 6 M9 9 V14 M11 9 V14',
+  // 2026-09: 對齊 Code Lab 同款實心 fill icon —— path data 由
+  // codelab.nuwarobotics.com 抽出 (index bundle 內嵌 SVG sprite + chunk-843ccf1e):
+  // undo/redo 是 16x16 viewBox, cut/copy/paste/center/zoom 是 25x25 viewBox。
+  // 每個 icon 記低自己原本的 viewBox 尺寸 (vb), 畫出來當時一律縮放到
+  // FAB_ICON_BOX (25px, 同 Code Lab 在 42px 圓裡面畫 25px icon 一致) 再置中,
+  // 所以不同 viewBox 的 icon 睇落一樣大。paste/center/zoom-in/zoom-out 原本是
+  // 兩個 subpath (主體 + 細節/圓環), 串埋一條 d 畫, 配 fill-rule:evenodd 保證
+  // 圓環這類鏤空形狀正確 (nonzero 會填實變實心餅)。
+  const FAB_ICON_BOX = 25;
+  const EDIT_FAB_ICONS = {
+    undo: { vb: 16, d: 'M11.758 5.345H2.484l3.121-3.11a.721.721 0 0 0 0-1.023.729.729 0 0 0-1.028 0L.214 5.557a.722.722 0 0 0 .03 1.053l4.364 3.863a.73.73 0 0 0 1.027-.061.722.722 0 0 0-.061-1.023L2.641 6.793h9.117c1.537 0 2.787 1.516 2.787 3.38 0 1.863-1.25 3.379-2.787 3.379H8.263a.726.726 0 0 0-.727.724c0 .4.325.724.727.724h3.495C14.098 15 16 12.834 16 10.172c0-2.662-1.903-4.827-4.242-4.827' },
+    redo: { vb: 16, d: 'M15.787 5.557l-4.364-4.345a.73.73 0 0 0-1.028 0 .722.722 0 0 0 0 1.025l3.122 3.108H4.243C1.903 5.345 0 7.51 0 10.172S1.903 15 4.243 15h3.494a.726.726 0 0 0 .728-.724c0-.4-.326-.724-.728-.724H4.243c-1.538 0-2.788-1.516-2.788-3.38 0-1.862 1.25-3.379 2.788-3.379h9.117L10.427 9.39a.72.72 0 0 0-.062 1.022.726.726 0 0 0 1.027.06l4.364-3.862a.72.72 0 0 0 .031-1.053' },
+    cut: { vb: 25, d: 'M12.695 20.404c-.211.8-.668 1.484-1.19 1.788-.234.133-.45.174-.64.124-.591-.162-.996-1.308-.655-2.604.212-.8.667-1.485 1.191-1.787a.945.945 0 0 1 .474-.145c.057 0 .112.006.165.02.59.162.996 1.31.655 2.604zm-6.63-7.814c-.302.522-.987.979-1.788 1.19-1.295.339-2.442-.064-2.602-.652-.052-.193-.01-.408.125-.64.301-.525.987-.981 1.788-1.192.327-.086.645-.125.94-.125.871 0 1.542.337 1.661.778.052.192.011.408-.124.64zm16.03-1.829l1.894-4.203-8.79 2.234L17.433 0l-4.204 1.896-1.344 7.74-4.477 1.136c-.78-1.072-2.46-1.545-4.242-1.075C1.937 10.022.89 10.756.37 11.66c-.36.62-.458 1.277-.288 1.901.338 1.242 1.653 2 3.24 2A5.42 5.42 0 0 0 4.7 15.38c1.23-.325 2.275-1.059 2.798-1.963.198-.342.307-.695.347-1.048l4.512-1.147.263.152.15.262-1.146 4.512a2.666 2.666 0 0 0-1.048.346c-.905.523-1.639 1.568-1.963 2.799-.57 2.157.23 4.186 1.819 4.618.197.053.398.08.6.08a2.59 2.59 0 0 0 1.3-.368c.905-.523 1.638-1.567 1.963-2.797.47-1.783-.005-3.464-1.077-4.242l1.139-4.476 7.739-1.346z' },
+    copy: { vb: 25, d: 'M20.5 18H10c-1.654 0-3-1.346-3-3V4.5c0-1.654 1.346-3 3-3h7.5v5.25c0 .414.336.75.75.75h5.25V15c0 1.654-1.346 3-3 3m-6.185 5.5H5.967A4.472 4.472 0 0 1 1.5 19.032v-8.347c0-2.304 1.758-4.183 4-4.42V15c0 2.481 2.019 4.5 4.5 4.5h8.735c-.237 2.241-2.117 4-4.42 4M24.993 6.751a.742.742 0 0 0-.213-.531l-.596-.596L19.108.236A.746.746 0 0 0 18.563 0H10a4.505 4.505 0 0 0-4.5 4.5v.241C2.428 4.98 0 7.552 0 10.685v8.347A5.974 5.974 0 0 0 5.967 25h8.348c3.133 0 5.704-2.428 5.943-5.5h.242c2.481 0 4.5-2.019 4.5-4.5V6.787c0-.013-.006-.024-.007-.036' },
+    paste: { vb: 25, d: 'M21.765 14.139a3.633 3.633 0 0 1-3.63 3.63h-6.441a.812.812 0 0 0 0 1.623h4.955c-.189 1.934-1.805 3.456-3.786 3.456H5.446a3.828 3.828 0 0 1-3.822-3.823V11.61c0-1.983 1.521-3.599 3.455-3.787v4.422a.812.812 0 0 0 1.624 0V6.336a3.634 3.634 0 0 1 3.63-3.63h7.803a3.633 3.633 0 0 1 3.63 3.63v7.803zm-3.63-13.056h-7.801c-2.85 0-5.165 2.283-5.24 5.114C2.257 6.384 0 8.726 0 11.61v7.416a5.452 5.452 0 0 0 5.446 5.446h7.417c2.882 0 5.225-2.257 5.41-5.092 2.832-.076 5.116-2.39 5.116-5.24V6.336a5.26 5.26 0 0 0-5.253-5.253z M15.026 13.254v-3.81h-3.808l1.143 1.144-6.656 6.656 1.524 1.523 6.654-6.656z' },
+    center: { vb: 25, d: 'M16.5498,12.5286538 C16.5498,14.6526923 14.7588,16.3748077 12.5498,16.3748077 C10.3408,16.3748077 8.5498,14.6526923 8.5498,12.5286538 C8.5498,10.4046154 10.3408,8.6825 12.5498,8.6825 C14.7588,8.6825 16.5498,10.4046154 16.5498,12.5286538 M13.5498,20.1542308 L13.5498,19.2311538 C13.5498,18.6994231 13.1018,18.2696154 12.5498,18.2696154 C11.9978,18.2696154 11.5498,18.6994231 11.5498,19.2311538 L11.5498,20.1542308 C7.9378,19.7176923 5.0728,16.9628846 4.6188,13.4898077 L5.9998,13.4898077 C6.5518,13.4898077 6.9998,13.06 6.9998,12.5282692 C6.9998,11.9975 6.5518,11.5667308 5.9998,11.5667308 L4.6188,11.5667308 C5.0728,8.09461538 7.9378,5.33884615 11.5498,4.90326923 L11.5498,5.76961538 C11.5498,6.30038462 11.9978,6.73115385 12.5498,6.73115385 C13.1018,6.73115385 13.5498,6.30038462 13.5498,5.76961538 L13.5498,4.90326923 C17.1618,5.33884615 20.0268,8.09461538 20.4808,11.5667308 L18.9998,11.5667308 C18.4478,11.5667308 17.9998,11.9975 17.9998,12.5282692 C17.9998,13.06 18.4478,13.4898077 18.9998,13.4898077 L20.4808,13.4898077 C20.0268,16.9628846 17.1618,19.7176923 13.5498,20.1542308 M23.9998,11.5667308 L22.4988,11.5667308 C22.0288,7.03115385 18.2668,3.41480769 13.5498,2.96192308 L13.5498,0.961923077 C13.5498,0.430192308 13.1018,0.000384615385 12.5498,0.000384615385 C11.9978,0.000384615385 11.5498,0.430192308 11.5498,0.961923077 L11.5498,2.96192308 C6.8328,3.41480769 3.0708,7.03115385 2.6008,11.5667308 L0.9998,11.5667308 C0.4478,11.5667308 -0.0002,11.9975 -0.0002,12.5282692 C-0.0002,13.06 0.4478,13.4898077 0.9998,13.4898077 L2.6008,13.4898077 C3.0708,18.0263462 6.8328,21.6426923 11.5498,22.0955769 L11.5498,24.0388462 C11.5498,24.5696154 11.9978,25.0003846 12.5498,25.0003846 C13.1018,25.0003846 13.5498,24.5696154 13.5498,24.0388462 L13.5498,22.0955769 C18.2668,21.6426923 22.0288,18.0263462 22.4988,13.4898077 L23.9998,13.4898077 C24.5518,13.4898077 24.9998,13.06 24.9998,12.5282692 C24.9998,11.9975 24.5518,11.5667308 23.9998,11.5667308' },
+    zoom_in: { vb: 25, d: 'M19,11.5 L13.5,11.5 L13.5,6 C13.5,5.448 13.052,5 12.5,5 C11.948,5 11.5,5.448 11.5,6 L11.5,11.5 L6,11.5 C5.448,11.5 5,11.948 5,12.5 C5,13.052 5.448,13.5 6,13.5 L11.5,13.5 L11.5,19 C11.5,19.552 11.948,20 12.5,20 C13.052,20 13.5,19.552 13.5,19 L13.5,13.5 L19,13.5 C19.552,13.5 20,13.052 20,12.5 C20,11.948 19.552,11.5 19,11.5 M12.5,2 C6.71,2 2,6.71 2,12.5 C2,18.29 6.71,23 12.5,23 C18.29,23 23,18.29 23,12.5 C23,6.71 18.29,2 12.5,2 M12.5,25 C5.607,25 0,19.393 0,12.5 C0,5.607 5.607,0 12.5,0 C19.393,0 25,5.607 25,12.5 C25,19.393 19.393,25 12.5,25' },
+    zoom_out: { vb: 25, d: 'M19 13.5H6a1 1 0 0 1 0-2h13a1 1 0 0 1 0 2 M12.5 2C6.71 2 2 6.71 2 12.5S6.71 23 12.5 23 23 18.29 23 12.5 18.29 2 12.5 2m0 23C5.607 25 0 19.393 0 12.5S5.607 0 12.5 0 25 5.607 25 12.5 19.393 25 12.5 25' },
+    // delete 按鈕沒有獨立渲染 (刪除由垃圾桶負責), 這個 path 純粹留低備用。
+    delete: { vb: 20, d: 'M5 6 H15 M8 6 V4 H12 V6 M7 6 L7.7 17 H12.3 L13 6 M9 9 V14 M11 9 V14' },
   };
+
+  // EditFabControls 同 ZoomFabControls 共用的起按鈕 helper: 一粒深色圓 +
+  // 置中實心 icon + <title> tooltip, 回傳 { group, titleEl }。
+  function appendFabButton(parentG, iconDef, x, y, size, titleText, onClick) {
+    const group = Blockly.utils.dom.createSvgElement('g', {
+      class: 'bk-svg-fab-group', transform: `translate(${x}, ${y})`,
+    }, parentG);
+    Blockly.utils.dom.createSvgElement('circle', {
+      class: 'bk-svg-fab-circle',
+      cx: size / 2, cy: size / 2, r: size / 2 - 1,
+    }, group);
+    const scale = FAB_ICON_BOX / iconDef.vb;
+    const off = (size - FAB_ICON_BOX) / 2;
+    const iconG = Blockly.utils.dom.createSvgElement('g', {
+      transform: `translate(${off}, ${off}) scale(${scale})`,
+    }, group);
+    Blockly.utils.dom.createSvgElement('path', {
+      class: 'bk-svg-fab-icon',
+      d: iconDef.d,
+      'fill-rule': 'evenodd',
+    }, iconG);
+    const titleEl = Blockly.utils.dom.createSvgElement('title', {}, group);
+    titleEl.textContent = titleText;
+    group.addEventListener('pointerdown', (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+    });
+    group.addEventListener('click', (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      onClick();
+    });
+    return { group, titleEl };
+  }
+
+  // ------------------------------------------------------------------
+  // 垃圾桶改裝 — 對齊 Code Lab 同款深色圓形。
+  //
+  // Code Lab (chunk-843ccf1e webpack module a073) 成個
+  // Trashcan.prototype.createDom 換走: 60px #333 深色圓底 + 自畫 vector
+  // 蓋/身 (fill #A8A8AC, 打開變 #0ED3FF, 蓋有 700ms 開合動畫)。
+  //
+  // 這裡唔成個換走, 只做「換皮」: 照 call 原本 Blockly 13.2.0 的 createDom
+  // (a11y role/label、focus ring、sprite clippath、pointerdown/up 綁定、
+  // flyout 還原、拖放刪除 hit-test 全部保留), 之後:
+  //   1. 墊一粒深色圓底 (塞去第一個 child);
+  //   2. 抌走兩個 sprite <image>, 換上 Code Lab 同款 vector 蓋/身 path
+  //      (由 codelab.nuwarobotics.com 抽出, 原 ~24 單位空間, scale 1.4
+  //      同 Code Lab 一樣)。
+  // 視覺 footprint 維持 47x60 (同 getBoundingRectangle/position/getClientRect
+  // 的假設一致), 所以 EditFabControls/ZoomFabControls 的避讓計算唔使改。
+  // 開合變色靠 blockly.css .blocklyTrash.blocklyTrashOpen 規則 (Blockly 13
+  // setLidOpen() 本身就是 toggle 這個 class)。
+  //
+  // 執行時機: 這個 IIFE 在 script load 當時即行 (blockly-page.js
+  // initWorkspace()/Blockly.inject() 在 DOMContentLoaded 先行), 所以 patch
+  // 一定趕得切在 addTrashcan()->createDom() 之前生效。
+  // ------------------------------------------------------------------
+  (function patchAlphaTrashcan() {
+    if (typeof Blockly === 'undefined' || !Blockly.Trashcan || !Blockly.Trashcan.prototype) return;
+    const proto = Blockly.Trashcan.prototype;
+    if (proto.__alphaTrashPatched) return;
+    proto.__alphaTrashPatched = true;
+    const origCreateDom = proto.createDom;
+    // Code Lab 垃圾桶蓋 (lid bar + handle) 同身 (body + 兩條坑紋)。
+    const TRASH_LID_PATHS = [
+      'M21.192 2.265H1a1 1 0 0 1 0-2h20.192a1 1 0 0 1 0 2',
+      'M15.17 2H8.848a1 1 0 0 1 0-2h6.324a1 1 0 0 1 0 2',
+    ];
+    const TRASH_BODY_PATHS = [
+      'M18.358 24.62H5.534c-1.556 0-2.823-1.371-2.823-3.058V7.175a1 1 0 0 1 2 0v14.387c0 .574.377 1.059.823 1.059h12.824c.446 0 .823-.485.823-1.06V7.176a1 1 0 0 1 2 0v14.387c0 1.687-1.266 3.059-2.823 3.059',
+      'M8.847 20.034a1 1 0 0 1-1-1V8.76a1 1 0 1 1 2 0v10.274a1 1 0 0 1-1 1M15.17 20.034a1 1 0 0 1-1-1V8.578a1 1 0 0 1 2 0v10.456a1 1 0 0 1-1 1',
+    ];
+    proto.createDom = function () {
+      const g = origCreateDom.call(this);
+      const NS = 'http://www.w3.org/2000/svg';
+      // 1. 深色圓底: 47x60 rect 之內最大圓 (圓心 23.5,30, r=23)。
+      const disc = document.createElementNS(NS, 'circle');
+      disc.setAttribute('cx', '23.5');
+      disc.setAttribute('cy', '30');
+      disc.setAttribute('r', '23');
+      disc.setAttribute('class', 'trash-bg');
+      g.insertBefore(disc, g.firstChild);
+      // 2. 抌走 sprite <image> (兩個: body 同 lid 各一)。
+      const imgs = g.querySelectorAll('image');
+      for (let i = 0; i < imgs.length; i++) {
+        const im = imgs[i];
+        if (im.parentNode) im.parentNode.removeChild(im);
+      }
+      // 3. Code Lab icon art (約 22x24.6, scale 1.4 -> 30.8x34.4)。
+      // 身體照舊擺喺主 group; 蓋一定要擺入原生 g.blocklyTrashLid wrapper
+      // 裡面 —— Blockly 13 的開合動畫是 CSS rotate 這個 wrapper
+      // (有嘢 5deg / 打開 45deg), 之前將蓋放自己個 group 就令個動畫打去
+      // 空殼 (呢個就係「動畫無左」的原因)。兩邊用同一個
+      // translate(8.1 12.8) scale(1.4) 定位, 等蓋同身對返齊 (蓋 x 9.5..37.8,
+      // y ~13.2..16, 同之前個版位完全一樣)。
+      const ICON_TRANSFORM = 'translate(8.1 12.8) scale(1.4)';
+      const iconG = Blockly.utils.dom.createSvgElement('g', {
+        class: 'trashcan-icon', transform: ICON_TRANSFORM,
+      }, g);
+      const bodyG = Blockly.utils.dom.createSvgElement('g', { class: 'trashcan-body' }, iconG);
+      TRASH_BODY_PATHS.forEach(function (d) {
+        Blockly.utils.dom.createSvgElement('path', { d: d }, bodyG);
+      });
+      const lidWrap = g.querySelector('.blocklyTrashLid');
+      if (lidWrap) {
+        // 清走裡面個空 svg viewport (image 已經抌走, 留低都 render 唔到嘢)。
+        const oldSvg = lidWrap.querySelector('svg');
+        if (oldSvg && oldSvg.parentNode) oldSvg.parentNode.removeChild(oldSvg);
+      }
+      const lidParent = lidWrap || iconG; // 萬一將來 Blockly 改 DOM, 跌回主 group 保底
+      const lidPos = Blockly.utils.dom.createSvgElement('g', { transform: ICON_TRANSFORM }, lidParent);
+      const capG = Blockly.utils.dom.createSvgElement('g', { class: 'trashcan-cap' }, lidPos);
+      TRASH_LID_PATHS.forEach(function (d) {
+        Blockly.utils.dom.createSvgElement('path', { d: d }, capG);
+      });
+      return g;
+    };
+  })();
 
   // ------------------------------------------------------------------
   // EditFabControls — 一個 IPositionable component, 內部包住五粒小按鈕
@@ -1144,8 +1273,12 @@
   // component, 一次 getBoundingRectangle() covers 完成組)。
   // 注意: editAction() 下面還有一個 'delete' case (checkAndDelete()) 沒有被
   // 這裡任何按鈕觸發 —— 刪除功能刻意沒有獨立按鈕, 由 Blockly 內建垃圾桶負責 (見
-  // updateButtonStates() 的 comment), 個 case 純粹留下方便將來想加回一個
+  // 下面垃圾桶改裝 patch), 個 case 純粹留下方便將來想加回一個
   // 獨立按鈕當時可以直接用, 不是漏刪的死 code。
+  //
+  // 2026-09: 對齊 Code Lab quick-edit —— 5 粒均勻橫排、無分隔、42px 深色圓、
+  // 實心 icon (見上面 EDIT_FAB_ICONS)、無 disabled 狀態 (永遠可按, 無選中時
+  // cut/copy/paste 靜默 no-op, 同 Code Lab 一致)。
   // ------------------------------------------------------------------
   class EditFabControls {
     constructor(ws) {
@@ -1153,20 +1286,18 @@
       this.id = 'alphaEditFabControls';
       this.top = 0;
       this.left = 0;
-      // 版面: 每粒按鈕是獨立的圓形按鈕 (直徑 32px), 自己一個圓圈背景, 按鈕與按鈕之間
-      // 僅用間距分隔 (沒有一併一條 pill, 沒有分隔線), 橫向排完一行, 抄 Code Lab
-      // 個排位 (六粒獨立圓形按鈕, 一行, 不是分兩行/直排)。分組之間 (復原/取消
-      // 復原 ｜ 剪/copy/貼 ｜ 刪除) 用較大的 GROUP_GAP 帶出視覺分隔, 不再靠
-      // 實體分隔線。
-      this.BUTTON_SIZE = 36;
-      this.GAP = 8;
-      this.GROUP_GAP = 16; // 分組之間的額外間距 (取代之前的分隔線)
+      // 版面: 5 粒獨立深色圓形按鈕 (直徑 42px, Code Lab 同款), 自己一個圓圈
+      // 背景, 按鈕與按鈕之間僅用均勻間距 (GAP=15, Code Lab 同款) 分隔, 橫向
+      // 排完一行, 沒有分組、沒有分隔線 (之前個 { sep:true } + GROUP_GAP 已經
+      // 刪走, 因為 Code Lab 係 5 粒均勻、undo/redo 同 cut/copy/paste 之間無
+      // 特別分隔)。
+      this.BUTTON_SIZE = 42;
+      this.GAP = 15;
       this.MARGIN_HORIZONTAL = 12;
       this.MARGIN_VERTICAL = 12;
       this.buttons = [
         { action: 'undo', icon: 'undo', titleKey: 'page_edit_undo_title' },
         { action: 'redo', icon: 'redo', titleKey: 'page_edit_redo_title' },
-        { sep: true },
         { action: 'cut', icon: 'cut', titleKey: 'page_edit_cut_title' },
         { action: 'copy', icon: 'copy', titleKey: 'page_edit_copy_title' },
         { action: 'paste', icon: 'paste', titleKey: 'page_edit_paste_title' },
@@ -1185,83 +1316,36 @@
     }
 
     getGroupWidth() {
-      // 直接模擬返 createDom() 裡面個 x 累加邏輯, 不用獨立公式計 (兩者之前試過
-      // 對不實, 因為分隔線的 GAP 計算方式好易手民之誤), 保證這裡拿到的闊度
-      // 同真正畫出來的闊度完全一致 —— 這個闊度會直接影響
-      // getBoundingRectangle(), 錯了會令 bumpPositionRect() 的避讓計算不準。
-      let x = 0;
-      let lastButtonEnd = 0;
-      for (const b of this.buttons) {
-        if (b.sep) {
-          x += this.GROUP_GAP;
-        } else {
-          lastButtonEnd = x + this.BUTTON_SIZE;
-          x += this.BUTTON_SIZE + this.GAP;
-        }
-      }
-      return lastButtonEnd;
+      // 5 粒均勻橫排: n 粒圓 + (n-1) 個間距。
+      const n = this.buttons.length;
+      return n * this.BUTTON_SIZE + (n - 1) * this.GAP;
     }
 
     createDom() {
       const svg = this.workspace.getParentSvg();
       this.svgGroup = Blockly.utils.dom.createSvgElement('g', { class: 'bk-svg-fab-bar' }, null);
-      // 沒有一併一條的背景 pill —— 每粒按鈕自己的 circle 就是它個背景 (獨立圓形
-      // 按鈕, 按鈕與按鈕之間有留白, 抄 Code Lab 個排位)。分組之間 (sep 位置) 僅
-      // 加大間距 (GROUP_GAP), 不畫實體分隔線。
+      // 沒有一併一條的背景 pill —— 每粒按鈕自己的 circle 就是它個背景 (獨立深色
+      // 圓形按鈕, Code Lab 同款), 按鈕與按鈕之間均勻留白, 無分組無分隔線。
       let x = 0;
       for (const b of this.buttons) {
-        if (b.sep) {
-          x += this.GROUP_GAP;
-          continue;
-        }
-        const group = Blockly.utils.dom.createSvgElement('g', {
-          class: 'bk-svg-fab-group', transform: `translate(${x}, 0)`,
-        }, this.svgGroup);
-        const circle = Blockly.utils.dom.createSvgElement('circle', {
-          class: 'bk-svg-fab-circle',
-          cx: this.BUTTON_SIZE / 2, cy: this.BUTTON_SIZE / 2, r: this.BUTTON_SIZE / 2 - 1,
-        }, group);
-        const iconGroup = Blockly.utils.dom.createSvgElement('g', {
-          transform: `translate(${(this.BUTTON_SIZE - 20) / 2}, ${(this.BUTTON_SIZE - 20) / 2}) scale(0.72)`,
-        }, group);
-        Blockly.utils.dom.createSvgElement('path', {
-          class: 'bk-svg-fab-icon',
-          d: EDIT_FAB_ICON_PATHS[b.icon],
-        }, iconGroup);
-        const titleEl = Blockly.utils.dom.createSvgElement('title', {}, group);
-        titleEl.textContent = t(b.titleKey);
-        group.addEventListener('pointerdown', (evt) => {
-          evt.preventDefault();
-          evt.stopPropagation();
-        });
-        group.addEventListener('click', (evt) => {
-          evt.preventDefault();
-          evt.stopPropagation();
-          if (group.classList.contains('bk-svg-fab-disabled')) return;
-          editAction(b.action);
-        });
-        this.buttonEls[b.action] = { group, circle, titleEl };
+        const made = appendFabButton(this.svgGroup, EDIT_FAB_ICONS[b.icon], x, 0,
+          this.BUTTON_SIZE, t(b.titleKey), () => editAction(b.action));
+        this.buttonEls[b.action] = made;
         x += this.BUTTON_SIZE + this.GAP;
       }
       svg.appendChild(this.svgGroup);
     }
 
-    // 更新複製/剪下兩粒按鈕的 disabled 狀態 (同之前 HTML 版一樣邏輯: 沒有正在選
-    // block 就 disable 這兩粒, 復原/取消復原一路留下給用家自己試; 刪除功能
-    // 已經沒有獨立按鈕, 由垃圾桶本身負責, 不關這裡事)。
-    updateButtonStates() {
-      const hasSelection = !!currentSelectedBlock();
-      for (const action of ['cut', 'copy']) {
-        const el = this.buttonEls[action];
-        if (el) el.group.classList.toggle('bk-svg-fab-disabled', !hasSelection);
-      }
-    }
+    // 2026-09: 對齊 Code Lab —— 浮動按鈕無 disabled 狀態, 5 粒永遠可按。
+    // 無選中 block 時撳 cut/copy/paste 只是靜默 no-op (見 editAction 守衛),
+    // 所以這個 method 變 no-op, 保留個名等舊 call site 不用改 (實際下面已經
+    // 沒有 call 它, 留低僅做文件作用)。
+    updateButtonStates() { /* no-op: 對齊 Code Lab, 永遠全部可按 */ }
 
     // 語言切換後, title (SVG <title> tooltip) 要跟著換 —— 同 blockly-i18n.js
     // 的 applyUiTextLocale() 對應的 HTML 版做法一致, 這裡用來給它 call。
     updateI18n() {
       for (const b of this.buttons) {
-        if (b.sep) continue;
         const el = this.buttonEls[b.action];
         if (el) el.titleEl.textContent = t(b.titleKey);
       }
@@ -1298,6 +1382,100 @@
           ? Blockly.uiPosition.bumpDirection.DOWN
           : Blockly.uiPosition.bumpDirection.UP;
         rect = Blockly.uiPosition.bumpPositionRect(rect, this.MARGIN_VERTICAL, bumpDir, savedPositions);
+        this.top = rect.top;
+        this.left = rect.left;
+      }
+      this.svgGroup.setAttribute('transform', `translate(${this.left}, ${this.top})`);
+    }
+
+    dispose() {
+      this.workspace.getComponentManager().removeComponent(this.id);
+      if (this.svgGroup && this.svgGroup.parentNode) this.svgGroup.parentNode.removeChild(this.svgGroup);
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // ZoomFabControls — 對齊 Code Lab editor-tool: 右下角垂直 3 粒同款深色圓
+  // (歸中 / 放大 / 縮細), 疊在垃圾桶正上方。同 EditFabControls 一樣是
+  // IPositionable component, 共用 appendFabButton() 起按鈕, 所以視覺同 edit
+  // 橫排完全同一個系列。Blockly 內建 zoom controls 已經關掉
+  // (見 blockly-page.js zoom.controls:false), 由這組取代。
+  // ------------------------------------------------------------------
+  class ZoomFabControls {
+    constructor(ws) {
+      this.workspace = ws;
+      this.id = 'alphaZoomFabControls';
+      this.top = 0;
+      this.left = 0;
+      this.BUTTON_SIZE = 42; // 同 EditFabControls 一樣大, 同一個系列
+      this.GAP = 15;
+      this.MARGIN_ABOVE_TRASH = 16; // 同垃圾桶頂的距離 (Code Lab editor-tool 同垃圾桶之間約 18px)
+      this.buttons = [
+        { action: 'center', icon: 'center', titleKey: 'page_edit_center_title' },
+        { action: 'zoom_in', icon: 'zoom_in', titleKey: 'page_edit_zoom_in_title' },
+        { action: 'zoom_out', icon: 'zoom_out', titleKey: 'page_edit_zoom_out_title' },
+      ];
+      this.buttonEls = {}; // action -> { group, titleEl }
+      this.createDom();
+      ws.getComponentManager().addComponent({
+        component: this,
+        capabilities: [Blockly.ComponentManager.Capability.POSITIONABLE],
+        weight: 4, // 排在 EditFabControls (3) 之後定位, 避免兩組撞位
+      });
+      this.workspace.resizeContents();
+    }
+
+    getGroupHeight() {
+      const n = this.buttons.length;
+      return n * this.BUTTON_SIZE + (n - 1) * this.GAP;
+    }
+
+    createDom() {
+      const svg = this.workspace.getParentSvg();
+      this.svgGroup = Blockly.utils.dom.createSvgElement('g', { class: 'bk-svg-fab-bar' }, null);
+      let y = 0;
+      for (const b of this.buttons) {
+        const made = appendFabButton(this.svgGroup, EDIT_FAB_ICONS[b.icon], 0, y,
+          this.BUTTON_SIZE, t(b.titleKey), () => editAction(b.action));
+        this.buttonEls[b.action] = made;
+        y += this.BUTTON_SIZE + this.GAP;
+      }
+      svg.appendChild(this.svgGroup);
+    }
+
+    updateI18n() {
+      for (const b of this.buttons) {
+        const el = this.buttonEls[b.action];
+        if (el) el.titleEl.textContent = t(b.titleKey);
+      }
+    }
+
+    getBoundingRectangle() {
+      const height = this.getGroupHeight();
+      return new Blockly.utils.Rect(this.top, this.top + height, this.left, this.left + this.BUTTON_SIZE);
+    }
+
+    position(uiMetrics, savedPositions) {
+      const height = this.getGroupHeight();
+      const trashcan = this.workspace.trashcan;
+      if (trashcan && typeof trashcan.getBoundingRectangle === 'function') {
+        // 擺喺垃圾桶正上方、水平同垃圾桶中心對齊 —— Code Lab editor-tool 個位
+        // (bottom:110 right:29, 即垃圾桶上方)。讀垃圾桶自己的 rect 來計, 同
+        // EditFabControls 一樣直接可靠, 不經 uiPosition 避讓管線。
+        const tRect = trashcan.getBoundingRectangle();
+        const tWidth = tRect.right - tRect.left;
+        this.left = tRect.left + (tWidth - this.BUTTON_SIZE) / 2;
+        this.top = tRect.top - this.MARGIN_ABOVE_TRASH - height;
+      } else {
+        // fallback: 垃圾桶未起好, 用角落定位做保險。
+        const size = new Blockly.utils.Size(this.BUTTON_SIZE, height);
+        const corner = Blockly.uiPosition.getCornerOppositeToolbox(this.workspace, uiMetrics);
+        let rect = Blockly.uiPosition.getStartPositionRect(
+          corner, size, 12, 12, uiMetrics, this.workspace);
+        const bumpDir = corner.vertical === Blockly.uiPosition.verticalPosition.TOP
+          ? Blockly.uiPosition.bumpDirection.DOWN
+          : Blockly.uiPosition.bumpDirection.UP;
+        rect = Blockly.uiPosition.bumpPositionRect(rect, 12, bumpDir, savedPositions);
         this.top = rect.top;
         this.left = rect.left;
       }
@@ -1406,6 +1584,7 @@
   }
 
   let editFabControls = null;
+  let zoomFabControls = null;
   let sidePanelToggleControl = null;
 
   function currentSelectedBlock() {
@@ -1441,6 +1620,22 @@
           Blockly.clipboard.paste(workspace);
         }
         break;
+      // 2026-09: ZoomFabControls 垂直組 (對齊 Code Lab editor-tool)。
+      case 'center': {
+        // 回到預設視角: 縮放重設做 inject 當時的 startScale, 再置中畫布。
+        // (Code Lab 用 setScale(1), 因為佢 startScale 本來就是 1; 這裡讀返
+        // 自己 workspace 的 startScale, 語意一樣。)
+        const zs = workspace.options && workspace.options.zoomOptions;
+        workspace.setScale(zs && zs.startScale ? zs.startScale : 1);
+        workspace.scrollCenter();
+        break;
+      }
+      case 'zoom_in':
+        workspace.zoomCenter(1);
+        break;
+      case 'zoom_out':
+        workspace.zoomCenter(-1);
+        break;
       case 'delete': {
         const b = currentSelectedBlock();
         if (b && b.isDeletable()) {
@@ -1451,7 +1646,9 @@
       default:
         return;
     }
-    if (editFabControls) editFabControls.updateButtonStates();
+    // 2026-09: 對齊 Code Lab, 浮動按鈕無 disabled 狀態, 做完 action 不用再
+    // refresh 按鈕狀態 (之前這裡會 call editFabControls.updateButtonStates(),
+    // 個 method 而家是 no-op, 直接刪走個 call)。
   }
 
   // ------------------------------------------------------------------
@@ -1475,21 +1672,16 @@
         clearTimeout(saveTimer);
         saveTimer = setTimeout(autoSaveToLocalStorage, 800);
       });
-      // 選/取消選 block 都是 UI event (isUiEvent === true, 上面那個 listener
-      // 特登 return 了不理), 所以剪貼按鈕的 enable/disable 狀態要獨立一個
-      // listener 專門聽 SELECTED 事件先追得到。
-      workspace.addChangeListener(function (e) {
-        if (e.type === Blockly.Events.SELECTED || e.type === Blockly.Events.FINISHED_LOADING) {
-          if (editFabControls) editFabControls.updateButtonStates();
-        }
-      });
-      // 起返兩組 IPositionable component (詳見上面 EditFabControls/
-      // SidePanelToggleControl 這兩個 class 的大段註解) —— 一定要在 workspace
+      // 選/取消選 block 都是 UI event —— 2026-09 對齊 Code Lab 之後浮動按鈕
+      // 無 disabled 狀態, 不再需要獨立 listener 追 SELECTED 來 toggle
+      // cut/copy, 成段刪走。
+      // 起返三組 IPositionable component (詳見上面 EditFabControls/
+      // ZoomFabControls/SidePanelToggleControl 這三個 class 的大段註解) —— 一定要在 workspace
       // inject 了、有真正的 SVG root 之後先可以起, 所以擺在 init() 這裡做,
       // 不是在 module load 當時就起。
       editFabControls = new EditFabControls(workspace);
+      zoomFabControls = new ZoomFabControls(workspace);
       sidePanelToggleControl = new SidePanelToggleControl(workspace);
-      editFabControls.updateButtonStates();
     },
     run: runProgram,
     stop: stopProgram,
@@ -1502,12 +1694,13 @@
     refreshActionDropdown: refreshActionDropdown,
     refreshSavedProgramDropdown: refreshSavedProgramDropdown, // 給 blockly-i18n.js 切語言當時取回來用, 令 "-- 已儲存的程式 --" placeholder 跟著重新 render
     editAction: editAction,
-    // 語言切換後 (blockly-i18n.js setUiLanguage()) 要跟著換返這兩組 SVG
+    // 語言切換後 (blockly-i18n.js setUiLanguage()) 要跟著換返這三組 SVG
     // component 的 <title> tooltip 文字, HTML 版 data-i18n 這套機制僅支援
     // 找 DOM 元素, 執行不到我們自己起的 SVG UI, 要給 blockly-i18n.js 專登
     // call 這個 method。
     refreshEditControlsI18n: function () {
       if (editFabControls) editFabControls.updateI18n();
+      if (zoomFabControls) zoomFabControls.updateI18n();
       if (sidePanelToggleControl) sidePanelToggleControl.updateI18n();
     },
     toggleSidePanel: function () {

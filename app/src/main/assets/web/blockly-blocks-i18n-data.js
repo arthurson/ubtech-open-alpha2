@@ -249,6 +249,10 @@ window.ALPHA_BLOCK_I18N = {
   page_edit_copy_title:      { zh: '複製選取的積木 (Ctrl+C)', en: 'Copy selected block (Ctrl+C)' },
   page_edit_paste_title:     { zh: '貼上 (Ctrl+V)', en: 'Paste (Ctrl+V)' },
   page_edit_delete_title:    { zh: '刪除選取的積木 (Delete)', en: 'Delete selected block (Delete)' },
+  // -- 縮放按鈕列 (垂直組, 同上對齊 Code Lab editor-tool: 歸中/放大/縮細) --
+  page_edit_center_title:    { zh: '回到預設視角', en: 'Centre view' },
+  page_edit_zoom_in_title:   { zh: '放大', en: 'Zoom in' },
+  page_edit_zoom_out_title:  { zh: '縮細', en: 'Zoom out' },
   page_side_toggle_title:    { zh: '收起/展開執行紀錄面板', en: 'Collapse/expand the run log panel' },
 
   page_run_log_title:        { zh: '執行紀錄', en: 'Run log' },

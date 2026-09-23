@@ -221,6 +221,7 @@ const I18N = {
   led_preset_chase:      { zh: "🏃 跑馬燈",        en: "🏃 Chase" },
   led_preset_dual:       { zh: "🎨 雙色燈",        en: "🎨 Dual Color" },
   led_preset_stop:       { zh: "⏹ 停止",          en: "⏹ Stop" },
+  led_eye_countdown:     { zh: "⏳ 3秒倒數",        en: "⏳ 3s countdown" },
 
   // -- camera tab --
   camera_heading:        { zh: "相機",             en: "Camera" },
@@ -352,7 +353,7 @@ const I18N = {
   music_filler_heading:         { zh: "💃 隨機動作",            en: "💃 Random Movement" },
   music_filler_on:              { zh: "開",                    en: "On" },
   music_filler_off:              { zh: "關",                    en: "Off" },
-  music_disco_heading:          { zh: "🪩 Disco LED",           en: "🪩 Disco LED" },
+  music_disco_heading:          { zh: "🎵 節奏燈",           en: "🎵 Rhythm LED" },
   music_disco_on:               { zh: "開",                    en: "On" },
   music_disco_off:              { zh: "關",                    en: "Off" },
   music_upload_uploading:       { zh: "上載中…",               en: "Uploading…" },

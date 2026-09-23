@@ -31,11 +31,47 @@ public final class LedCenter {
         this.appContext = context.getApplicationContext();
         this.mainHandler = mainHandler;
         this.ringtoneCenter = ringtoneCenter;
+        registerVolumeChangeReceiver();
     }
 
-    /** onDestroy 共用：停 pad LED worker。 */
+    /** onDestroy 共用：停 pad LED worker＋反註冊音量廣播。 */
     public void shutdown() {
         padLedExecutor.shutdownNow();
+        try {
+            if (volumeChangeReceiver != null) {
+                appContext.unregisterReceiver(volumeChangeReceiver);
+            }
+        } catch (Throwable ignore) {
+        }
+        volumeChangeReceiver = null;
+    }
+
+    // 任何路改系統音量（實體 V+/V-、HTML 音量 slider、Android 設定）都會出呢個
+    // 廣播——呢度聽住，條綠燈 bar 乜路改都跟到，唔使逐個 call 位勾。
+    private BroadcastReceiver volumeChangeReceiver = null;
+
+    private void registerVolumeChangeReceiver() {
+        try {
+            volumeChangeReceiver = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    try {
+                        if (intent == null) return;
+                        // 常數逐字寫：呢個 SDK 冇 AudioManager.EXTRA_VOLUME_STREAM_TYPE
+                        int stream = intent.getIntExtra(
+                                "android.media.EXTRA_VOLUME_STREAM_TYPE", -1);
+                        if (stream != android.media.AudioManager.STREAM_MUSIC) return;
+                        showVolumeMeter();
+                    } catch (Throwable ignore) {
+                    }
+                }
+            };
+            appContext.registerReceiver(volumeChangeReceiver,
+                    new IntentFilter("android.media.VOLUME_CHANGED_ACTION"));
+        } catch (Throwable t) {
+            Log.w(TAG, "volume receiver register failed", t);
+            volumeChangeReceiver = null;
+        }
     }
 
     // -- Pad (+/-) 實體鍵指示燈 -----------------------------------------------
@@ -73,6 +109,51 @@ public final class LedCenter {
 
     public void setPadPlusHeld(boolean held) {
         padPlusHeld = held;
+    }
+
+    /**
+     * V+/V- 綠色音量計（用戶要求）：讀 STREAM_MUSIC 即時音量，0-4 粒綠燈
+     * 顯示喺頭（能用只有 1-4，見上面位圖）。level 0 即全滅，滿格即 4 粒。
+     * 每次撳掣即更，留低唔還原（disco／LED 頁／下次撳掣會自然覆寫）。
+     * 行 pad 單線程，同 pad 燈 burst 排隊，唔會同 JNI 打架。
+     */
+    private static final int VOLUME_LED_GREEN = 2;
+    private static final int VOLUME_LED_BRIGHTNESS = 9;
+
+    public void showVolumeMeter() {
+        postPadLed(() -> {
+            try {
+                android.media.AudioManager am = (android.media.AudioManager)
+                        appContext.getSystemService(Context.AUDIO_SERVICE);
+                if (am == null) return;
+                int level;
+                int max;
+                try {
+                    level = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
+                    max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
+                } catch (Throwable t) {
+                    return;
+                }
+                int count;
+                if (level <= 0 || max <= 0) {
+                    count = 0;
+                } else {
+                    count = Math.min(4, Math.max(1, (int) Math.round(level * 4.0 / max)));
+                }
+                int p4;
+                int p3;
+                switch (count) {
+                    case 1: p4 = 1; p3 = 16; break;
+                    case 2: p4 = 3; p3 = 24; break;
+                    case 3: p4 = 7; p3 = 28; break;
+                    case 4: p4 = 15; p3 = 30; break;
+                    default: p4 = 0; p3 = 0; break;
+                }
+                DirectLedController.setHead5MicRaw(VOLUME_LED_GREEN, VOLUME_LED_BRIGHTNESS,
+                        p3, p4, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
+            } catch (Throwable ignore) {
+            }
+        });
     }
 
     /**
@@ -551,6 +632,15 @@ public final class LedCenter {
     //   brightness: 1 (dimmest) .. 9 (brightest)
     //   preset -> (p5 upTime, p6 downTime, p7 runTime, p8 mode) mapping below.
     //   mode codes differ between head and eye - see Alpha2RobotApi javadoc.
+    // 頭部左右各 5 粒 LED 位置圖（實機試位確認）：
+    //   P4＝左邊（正序）：滅=0，開1=1，開2=2，開3=4，開4=8，開5=16；
+    //     開1,2=3，開1,2,3=7，開1,2,3,4=15，全開=31。
+    //   P3＝右邊（反序）：滅=0，開1=16，開2=8，開3=4，開4=2，開5=1；
+    //     開1,2=24，開1,2,3=28，開1,2,3,4=30，全開=31。
+    //   注意：左右第 5 粒畀 wifi 搶走咗（閂唔到），實際能用只有 1-4：
+    //     左＝P4=15，右＝P3=30（disco 就係用呢組）。
+    //   V+/V- 綠色音量計（用戶要求）：最大聲 4 粒綠燈、無聲全滅，
+    //   見下面 showVolumeMeter()，GestureCenter 每次調音量都更一次。
     public HttpServer.ApiResponse ledHeadSet(Map<String, String> query) {
         // pure-direct: 5-mic 经 libhead_led.so JNI 直驱（DirectLedController），不再经 binder。
         String preset = ApiValidator.requireLedHeadPreset(query);
@@ -593,6 +683,13 @@ public final class LedCenter {
         return MainActivity.sentReadyResponse(sent, headerReady());
     }
 
+    // 眼部每邊 8 粒 LED 位置圖（實機試位確認）：P3＝左眼，P4＝右眼；
+    // 順時針排：12點=1號，3點=3號，6點=5號，9點=7號。
+    // bit 對位：開1=16，開2=8，開3=4，開4=2，開5=1，開6=128，開7=64，開8=32；
+    //   開1,2=24，開1,2,3=28，開1-4=30，開1-5=31，
+    //   開1-6=159，開1-7=223，全開=255。
+    // 平時 255/255 全開。
+
     // NOTE: unlike led/head/set and led/eye/set above, this does NOT go through
     // Alpha2RobotApi/AIDL at all - there is no AIDL "mouth LED" method. It calls
     // com.ubtechinc.alpha.jni.LedControl directly (a native JNI class backed by
@@ -632,7 +729,7 @@ public final class LedCenter {
             LedControl.close();
             Log.i(TAG, "ledSetOFF open=" + openOk + " raw=" + r);
             return HttpServer.ApiResponse.ok(
-                    "{\"open\":" + openOk + ",\"raw\":" + r + "}");
+                    "{\"ok\":true,\"open\":" + openOk + ",\"raw\":" + r + "}");
         }
         boolean openOk = LedControl.open();
         try {
@@ -641,7 +738,7 @@ public final class LedCenter {
                 boolean r = LedControl.ledSetOn(i);
                 Log.i(TAG, "ledSetOn(" + i + ") open=" + openOk + " raw=" + r);
                 return HttpServer.ApiResponse.ok(
-                        "{\"open\":" + openOk + ",\"raw\":" + r + "}");
+                        "{\"ok\":true,\"open\":" + openOk + ",\"raw\":" + r + "}");
             }
             int[] a = new int[8];
             for (int k = 0; k < 8; k++) {
@@ -655,7 +752,7 @@ public final class LedCenter {
             }
             Log.i(TAG, "ledSet" + func + " open=" + openOk
                     + " raw=" + r + " args=" + java.util.Arrays.toString(a));
-            return HttpServer.ApiResponse.ok("{\"open\":" + openOk
+            return HttpServer.ApiResponse.ok("{\"ok\":true,\"open\":" + openOk
                     + ",\"raw\":" + r + ",\"args\":"
                     + java.util.Arrays.toString(a).replace(" ", "") + "}");
         } finally {

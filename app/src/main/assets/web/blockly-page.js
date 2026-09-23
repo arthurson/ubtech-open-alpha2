@@ -144,23 +144,27 @@ function initWorkspace() {
   workspace = Blockly.inject('blocklyDiv', {
     toolbox: window.ALPHA_TOOLBOX,
     // 這個 Blockly 版本的預設 pathToMedia 是 "https://static.blockly.com/media/"
-    // (外部 CDN) —— 在這個 app 的 WebView 環境裡面拿不到, 令
-    // 還原/放大/縮細/垃圾桶 (undo/redo/zoom-in/zoom-out/zoom-reset/trashcan)
-    // 那批 icon 全部壞掉 (SVG sprite 拿不到)。改用本機 media/ 資料夾 (已經
-    // copy 了 Blockly 官方 npm package 的 media 檔案下來), 全部 offline 可用。
+    // (外部 CDN) —— 在這個 app 的 WebView 環境裡面拿不到。改用本機 media/
+    // 資料夾 (已經 copy 了 Blockly 官方 npm package 的 media 檔案下來), 全部
+    // offline 可用。(2026-09: zoom sprite 按鈕同垃圾桶 sprite 已經唔用 ——
+    // zoom 關了 controls 用自畫組, 垃圾桶換了 vector art, media/ 純粹留做後備。)
     media: 'media/',
     grid: { spacing: 24, length: 2, colour: '#c3cad6', snap: true },
-    zoom: { controls: true, wheel: true, startScale: 0.9, maxScale: 3, minScale: 0.3, scaleSpeed: 1.1 },
+    // 2026-09: zoom.controls 關掉 —— 內建三粒 sprite 按鈕 (zoom-in/out/reset)
+    // 同 Code Lab 風格唔夾, 改用 blockly-run.js ZoomFabControls 自畫垂直組
+    // (歸中/放大/縮細, 同 edit 橫排同一個深色圓系列)。wheel 縮放保留。
+    zoom: { controls: false, wheel: true, startScale: 0.9, maxScale: 3, minScale: 0.3, scaleSpeed: 1.1 },
     trashcan: true,
     move: { scrollbars: true, drag: true, wheel: false },
     theme: buildAlphaTheme(),
     sounds: false,
   });
   window.__alphaBlocklyWorkspace = workspace; // 給 blockly-i18n.js 切語言當時取回來用
-  // AlphaBlockly.init() 裡面現在一併起返「復原/剪貼按鈕列」同「側欄收起按鈕」這兩組
-  // Blockly IPositionable component (詳見 blockly-run.js 的 EditFabControls/
-  // SidePanelToggleControl 大段註解) —— 它們同垃圾桶/zoom controls 用回完全
-  // 同一套 Blockly 官方定位管線, 一定要在 workspace inject 了之後先可以起。
+  // AlphaBlockly.init() 裡面現在一併起返「復原/剪貼按鈕列」「縮放按鈕列」同
+  // 「側欄收起按鈕」這三組 Blockly IPositionable component (詳見 blockly-run.js
+  // 的 EditFabControls/ZoomFabControls/SidePanelToggleControl 大段註解) ——
+  // 它們同垃圾桶用回完全同一套 Blockly 官方定位管線, 一定要在 workspace
+  // inject 了之後先可以起。
   window.AlphaBlockly.init(workspace);
 
   // 視窗 resize 時重新計算 Blockly 畫布大小。

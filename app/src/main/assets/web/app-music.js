@@ -29,10 +29,9 @@ let musicSpectrumSmooth = [];    // 平滑化後用來畫的值
 let sharedActiveSource = null;   // "local" 或 "radio"，記錄最後一次播放來源，用於共用上一首/下一首/隨機分流
 
 // ---------------- disco LED ----------------
-// 🪩 Disco：播本地音樂當時，眼/頭 7 色 LED 跟住節奏轉色。後端跑：
+// 🪩 Disco：播歌嗰陣，眼/頭 LED 跟住節奏轉色。後端跑：
 // Visualizer callback 拍點偵測＋DirectLedController 直推燈，唔經 HTTP。
-// 呢個掣淨係較後端開關（同隨機動作一樣後端持久化）；熄開關／停歌就停手，
-// 燈留喺最後隻色（唔自動還原，用 LED 頁再較）。
+// 呢個掣淨係較後端開關（同隨機動作一樣後端持久化）；熄掣即熄頭+眼燈。
 let musicDiscoEnabled = false;
 
 // ---------------- audio spectrum ----------------
@@ -323,6 +322,8 @@ function musicStopAll() {
     Alpha2Api.speechStop(),
     Alpha2Api.audioLocalMusicStop(),
     Alpha2Api.audioRadioStop(),
+    Alpha2Api.ledHeadSet({ preset: "stop" }), // 總停埋頭燈（嘴燈跟 TTS 停）。
+    Alpha2Api.ledEyeSet({ preset: "stop" }), // 眼燈同上。
   ]).then(function () {
     musicStopStatusPolling();
     musicCurrentName = null;

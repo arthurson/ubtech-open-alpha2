@@ -104,6 +104,43 @@ function eyeLedPreset(preset) {
   return ledPresetApply("led/eye/set", preset, selectedEyeColor, "eyeBrightness");
 }
 
+// 眼部「3秒倒數」：雙眼齊漸滿 3 圈（綠→黃→紅，每圈約 1 秒）→ 白燈 3 秒 → 熄。
+// 經 debug/jni/led 直透 raw（p3/p4 正式 endpoint 無呢啲參數）。
+// 連撳唔重入，行緊嗰陣再撳唔理。
+let eyeCountdownRunning = false;
+function eyeCountdown3s() {
+  if (eyeCountdownRunning) return Promise.resolve();
+  eyeCountdownRunning = true;
+  const masks = [16, 24, 28, 30, 31, 159, 223, 255];
+  const colors = ["2", "4", "1"]; // 綠 黃 紅
+  const MAX = "2147483647"; // long 常亮同 ledEyeSet 一致
+  function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+  function step(color, mask) {
+    return Alpha2Api.debugJniLed({ func: "eye", a1: color, a2: "9",
+      a3: String(mask), a4: String(mask), a5: MAX, a6: "0", a7: MAX, a8: "0" });
+  }
+  let p = Promise.resolve();
+  colors.forEach(function (color) {
+    masks.forEach(function (mask) {
+      p = p.then(function () {
+        const t0 = Date.now();
+        return step(color, mask).then(function () {
+          const dt = Date.now() - t0;
+          if (dt < 125) return sleep(125 - dt); // 每格約 125ms，一圈約 1 秒
+        });
+      });
+    });
+  });
+  function done() { eyeCountdownRunning = false; }
+  return p.then(function () {
+    return step("7", 255); // 白燈全開
+  }).then(function () {
+    return sleep(3000);
+  }).then(function () {
+    return Alpha2Api.ledEyeSet({ preset: "stop" });
+  }).then(done, done);
+}
+
 // Mouth LED - breathing effect only (confirmed the one usable effect on this
 // hardware; see README "嘴部 LED" section for what was tried and ruled out).
 function mouthLedApply() {

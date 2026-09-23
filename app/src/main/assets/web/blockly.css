@@ -205,51 +205,77 @@
   position: relative;
 }
 
-/* 2026-08: 復原/取消復原/剪下/複製/貼上/刪除 6 粒按鈕, 同「收起/展開執行紀錄
+/* 2026-08: 復原/取消復原/剪下/複製/貼上 5 粒按鈕, 同「收起/展開執行紀錄
    面板」那顆 ›/‹ 按鈕, 之前用的是獨立在 Blockly 之外的 HTML <div>/<button>,
    靠 CSS position:absolute + JS 度度 Blockly 垃圾桶現在在哪正在裡隨它 ——
    試過兩次都始終同 Blockly 真正的內部排位邏輯對不實 (scrollbar/toolbox
    闊度/zoom 等因素動態影響垃圾桶實際位置, HTML overlay 怎麼追都會慢半拍或者
    量錯)。現在改用 Blockly 官方的 Blockly.ComponentManager +
-   Blockly.uiPosition 這一套 IPositionable 機制重寫這兩組按鈕, 同垃圾桶/zoom
-   controls 用回完全同一套定位管線 (WorkspaceSvg 內部會將所有已註冊的
+   Blockly.uiPosition 這一套 IPositionable 機制重寫這幾組按鈕, 同垃圾桶用回
+   完全同一套定位管線 (WorkspaceSvg 內部會將所有已註冊的
    POSITIONABLE component 按 weight 排序, 逐個 call .position(metrics,
    alreadyPositionedRects) 再取回 .getBoundingRectangle() 傳給下一個, 等
-   它們自動 stacking 不會重疊), 所以這兩組按鈕現在是真正的 Blockly SVG UI
-   component (在 blockly-run.js 的 EditToolbarControls/SidePanelToggle
-   class 度實現), 不再需要這裡有對應的 HTML/CSS —— 這兩組按鈕自己的視覺
-   style 直接用 inline SVG attribute/CSS class (.bk-svg-fab 系列, 定義在
-   下面) 控制。 */
+   它們自動 stacking 不會重疊), 所以這幾組按鈕現在是真正的 Blockly SVG UI
+   component (在 blockly-run.js 的 EditFabControls/ZoomFabControls/
+   SidePanelToggleControl class 度實現), 不再需要這裡有對應的 HTML/CSS ——
+   這幾組按鈕自己的視覺 style 直接用 inline SVG attribute/CSS class
+   (.bk-svg-fab 系列, 定義在下面) 控制。
+   2026-09: 對齊 NuwaRobotics Code Lab 同一系列視覺 —— 42px 深色 (#333)
+   圓、實心灰 icon (#A8A8AC)、hover/active 青色 (#0ED3FF); 垃圾桶改裝做
+   同款深色圓 (見 blockly-run.js patchAlphaTrashcan); zoom 自畫垂直組
+   (blockly-page.js zoom.controls:false, 由 ZoomFabControls 取代)。 */
 .bk-svg-fab-group {
   cursor: pointer;
 }
-/* 2026-08: 跟 Code Lab 個風格 —— 平時透明底、沒有邊框, 純線條圖示浮在畫布
-   之上; hover 先出返淺灰圓底 (提示可以按)。不再有一併一整條的 pill 背景
-   (.bk-svg-fab-bg 已拆走), 每粒按鈕是獨立一個透明區域。 */
+/* Code Lab 同款: 深灰圓底常駐, icon 灰色, hover/active 變青色 (圓底不變)。
+   無 disabled 狀態 (對齊 Code Lab, 5 粒永遠可按)。 */
 .bk-svg-fab-circle {
-  fill: transparent;
+  fill: #333333;
 }
-.bk-svg-fab-group:hover .bk-svg-fab-circle {
-  fill: var(--track);
-}
-.bk-svg-fab-group.bk-svg-fab-disabled {
-  cursor: default;
-  opacity: 0.35;
-}
-.bk-svg-fab-group.bk-svg-fab-disabled .bk-svg-fab-circle {
-  fill: transparent;
+.bk-svg-fab-group:hover .bk-svg-fab-circle,
+.bk-svg-fab-group:active .bk-svg-fab-circle {
+  fill: #333333;
 }
 .bk-svg-fab-icon {
-  fill: none;
-  stroke: var(--text);
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  fill: #a8a8ac;
+  stroke: none;
   pointer-events: none;
 }
-.bk-svg-fab-sep {
-  stroke: var(--border);
-  stroke-width: 1;
+.bk-svg-fab-group:hover .bk-svg-fab-icon,
+.bk-svg-fab-group:active .bk-svg-fab-icon {
+  fill: #0ed3ff;
+}
+/* ------------------------------------------------------------------
+   改裝垃圾桶 (blockly-run.js patchAlphaTrashcan 起的 DOM):
+   .trash-bg 深色圓底 + .trashcan-icon (蓋/身 vector, 灰色, 打開變青色)。
+   注意: Blockly 13 內建 CSS 有 .blocklyTrash { opacity: 0.4 }, 而且是
+   inject 當時 runtime 先插入 <style> (排在我這份 static CSS 之後, 同級
+   specificity 會贏), 所以這裡用 !important 鎖死全實, 等垃圾桶同 edit/zoom
+   按鈕睇落係同一個系列 (Code Lab 個垃圾桶都係全實、淨係開合變色)。
+   ------------------------------------------------------------------ */
+.blocklyInjectionDiv .blocklyTrash {
+  opacity: 1 !important;
+}
+.blocklyTrash .trash-bg {
+  fill: #333333;
+}
+/* 蓋 (原生 g.blocklyTrashLid 裡面) 同身 (.trashcan-icon 裡面) 一齊灰色,
+   打開一齊變青色。注意蓋唔喺 .trashcan-icon 裡面 —— 佢要留喺原生
+   .blocklyTrashLid wrapper 先食到 Blockly 13 嘅開合 rotate 動畫。 */
+.blocklyTrash .trashcan-icon,
+.blocklyTrash .blocklyTrashLid {
+  fill: #a8a8ac;
+}
+.blocklyTrash.blocklyTrashOpen .trashcan-icon,
+.blocklyTrash.blocklyTrashOpen .blocklyTrashLid {
+  fill: #0ed3ff;
+}
+/* 開合動畫本身係 Blockly 13 內建 (.blocklyTrashLid rotate: 有嘢 5deg / 打開
+   45deg), 這裡只改鉸鏈位: 原生 46px 12px 係舊 sprite 闊蓋嘅右端, 而家個蓋
+   窄咗 (x ~9.5..37.8), 鉸鏈改做佢自己右端中間 (~38px 15px) 先自然。
+   (舊 WebView 不支援 CSS rotate 會靜默冇動畫, 顏色都照變, 屬正常退化。) */
+.blocklyInjectionDiv .blocklyTrash .blocklyTrashLid {
+  transform-origin: 38px 15px;
 }
 .bk-svg-side-toggle-bg {
   fill: #ffffff;

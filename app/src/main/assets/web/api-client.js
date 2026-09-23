@@ -70,12 +70,12 @@ const Alpha2Api = (function() {
   }
 
   function audioLocalMusicDiscoGet(params) {
-    // 查詢播歌 Disco LED 開關 (本地/電台/點歌播緊嗰陣頭跟拍子眼跟人聲，後端跑)
+    // 查詢播歌節奏燈開關 (頭假立體聲錶眼跟人聲，後端跑)
     return api('audio/local_music/disco/get', params);
   }
 
   function audioLocalMusicDiscoSet(params) {
-    // 設定播歌 Disco LED 開關
+    // 設定播歌節奏燈開關
     return api('audio/local_music/disco/set', params);
   }
 
