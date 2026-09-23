@@ -69,6 +69,16 @@ const Alpha2Api = (function() {
     return api('audio/diagnose', params);
   }
 
+  function audioLocalMusicDiscoGet(params) {
+    // 查詢播歌 Disco LED 開關 (本地/電台/點歌播緊嗰陣頭跟拍子眼跟人聲，後端跑)
+    return api('audio/local_music/disco/get', params);
+  }
+
+  function audioLocalMusicDiscoSet(params) {
+    // 設定播歌 Disco LED 開關
+    return api('audio/local_music/disco/set', params);
+  }
+
   function audioLocalMusicFillerActionGet(params) {
     // 查詢播歌隨機動作開關
     return api('audio/local_music/filler_action/get', params);
@@ -842,6 +852,8 @@ const Alpha2Api = (function() {
     apkDownload,
     apkStatus,
     audioDiagnose,
+    audioLocalMusicDiscoGet,
+    audioLocalMusicDiscoSet,
     audioLocalMusicFillerActionGet,
     audioLocalMusicFillerActionSet,
     audioLocalMusicList,

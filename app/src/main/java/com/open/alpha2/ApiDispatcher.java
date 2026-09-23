@@ -519,6 +519,11 @@ public final class ApiDispatcher {
             case "audio/local_music/filler_action/set":
                 return audioCenter.fillerActionSet(query);
 
+            case "audio/local_music/disco/get":
+                return audioCenter.discoGet();
+            case "audio/local_music/disco/set":
+                return audioCenter.discoSet(query);
+
             // -- FM/網絡電台 (經 Radio Browser API, radio-browser.info, 動態搜全
             // 世界公開電台 - 見 searchRadioStations()/resolveRadioStation() 的
             // javadoc, 這台機器不再內建任何寫死的電台清單) - "search" 對應

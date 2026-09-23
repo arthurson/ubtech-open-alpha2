@@ -8282,6 +8282,110 @@
         },
         "operationId": "blocklyhtml_get"
       }
+    },
+    "/api/audio/local_music/disco/get": {
+      "get": {
+        "tags": [
+          "audio"
+        ],
+        "summary": "查詢播歌 Disco LED 開關 (本地/電台/點歌播緊嗰陣頭跟拍子眼跟人聲，後端跑)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "狀態",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "audioLocalMusicDiscoGet_get"
+      }
+    },
+    "/api/audio/local_music/disco/set": {
+      "get": {
+        "tags": [
+          "audio"
+        ],
+        "summary": "設定播歌 Disco LED 開關",
+        "parameters": [
+          {
+            "name": "enabled",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "已設定",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "audioLocalMusicDiscoSet_get"
+      }
     }
   },
   "components": {

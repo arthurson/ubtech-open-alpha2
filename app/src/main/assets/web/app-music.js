@@ -29,31 +29,15 @@ let musicSpectrumSmooth = [];    // 平滑化後用來畫的值
 let sharedActiveSource = null;   // "local" 或 "radio"，記錄最後一次播放來源，用於共用上一首/下一首/隨機分流
 
 // ---------------- disco LED ----------------
-// 🪩 Disco：播本地音樂當時，眼/頭 7 色 LED 跟住頻譜能量轉色。
-// 獨立開關（同隨機動作一樣，localStorage 本機記住），前端跑：
-// 頻譜幀（~33ms）計低/高頻能量，onset（能量爆發）先轉色，兼做 450ms
-// 節流，唔會洗版後端。低音勁行暖色（紅/黃/紫），高音勁行冷色
-// （藍/青/綠/白），頭同眼用差 3 格嘅對比色。
-// 熄開關／停歌就停手，燈留喺最後隻色（唔自動還原，用 LED 頁再較）。
+// 🪩 Disco：播本地音樂當時，眼/頭 7 色 LED 跟住節奏轉色。後端跑：
+// Visualizer callback 拍點偵測＋DirectLedController 直推燈，唔經 HTTP。
+// 呢個掣淨係較後端開關（同隨機動作一樣後端持久化）；熄開關／停歌就停手，
+// 燈留喺最後隻色（唔自動還原，用 LED 頁再較）。
 let musicDiscoEnabled = false;
-let musicDiscoPrevLevel = 0;
-let musicDiscoRecentMax = 0; // 近期能量峰值（自動增益用，每幀慢慢跌）
-let musicDiscoBeatCount = 0;
-let musicDiscoLastLedAt = 0;
-const DISCO_SILENCE_MIN = 8;      // 靜音底線：細過呢個一律唔轉（擋底噪）
-const DISCO_SILENCE_RATIO = 0.12; // 靜音閘 = max(8, 近期峰*0.12)
-const DISCO_BEAT_RATIO = 0.55;    // 大聲拍 = 近期峰*0.55
-const DISCO_ONSET_MIN = 5;        // onset 底線
-const DISCO_ONSET_RATIO = 0.12;   // onset 閘 = max(5, 近期峰*0.12)
-const DISCO_PEAK_DECAY = 0.992;   // 近期峰每幀衰減（~33ms 一幀）
-const DISCO_MIN_INTERVAL_MS = 300; // 兩次轉色最密間隔
-const DISCO_WARM = [1, 4, 5];   // 紅 黃 紫
-const DISCO_COLD = [3, 6, 2, 7]; // 藍 青 綠 白
-const DISCO_ALL = [1, 2, 3, 4, 5, 6, 7];
 
 // ---------------- audio spectrum ----------------
 // server 端 Visualizer FFT -> audio/local_music/spectrum 每條
-// band 一個 0-255 值。輪詢 100ms 更新目標值, 另外有條 ~33ms 的動畫 timer 用
+// band 一個 0-255 值。輪詢 50ms 更新目標值, 另外有條 ~33ms 的動畫 timer 用
 // 「快上慢落」(attack 即刻, release 指數衰減) 插值, bar 才會順滑不會一跳一跳。
 
 function musicStartSpectrumLoop() {
@@ -83,7 +67,7 @@ function musicSpectrumLoop() {
   Alpha2Api.audioLocalMusicSpectrum().then(function (res) {
     if (!res.ok) return;
     musicSpectrumTargets = res.bands || [];
-    musicSpectrumTimer = setTimeout(musicSpectrumLoop, 100);
+    musicSpectrumTimer = setTimeout(musicSpectrumLoop, 50);
   }).catch(function () {
     musicSpectrumTimer = setTimeout(musicSpectrumLoop, 300); // 斷線慢啲再試
   });
@@ -103,58 +87,6 @@ function musicRenderSpectrumFrame() {
     musicSpectrumSmooth[i] = target >= prev ? target : Math.max(target, prev * 0.82);
   }
   musicDrawSpectrum(musicSpectrumSmooth);
-  musicDiscoTick(musicSpectrumSmooth);
-}
-
-/** Disco 拍點：由平滑後頻譜揀色，夠格先送 LED（節流＋靜音閘內置）。 */
-function musicDiscoTick(bands) {
-  if (!musicDiscoEnabled || !bands || bands.length === 0) return;
-  // 淨係本地音樂播緊先閃：電台／暫停／停咗就唔好亂閃。
-  if (typeof isRadioActive === "function" && isRadioActive()) return;
-  const btn = document.getElementById("musicPlayPauseBtn");
-  if (!btn || btn.textContent.trim() !== "⏸") return;
-  const n = bands.length;
-  const third = Math.max(1, Math.floor(n / 3));
-  let bass = 0, mid = 0, treb = 0;
-  for (let i = 0; i < n; i++) {
-    const v = bands[i] || 0;
-    if (i < third) bass += v;
-    else if (i < third * 2) mid += v;
-    else treb += v;
-  }
-  bass /= third;
-  mid /= third;
-  treb /= Math.max(1, n - third * 2);
-  const level = Math.max(bass, mid, treb);
-  const delta = level - musicDiscoPrevLevel;
-  musicDiscoPrevLevel = level;
-  // 自動增益：閘門跟近期峰值按比例走，bar 升得唔高都閃到；真正的
-  // 靜音（細過底線 8）先唔轉。
-  if (level > musicDiscoRecentMax) musicDiscoRecentMax = level;
-  else musicDiscoRecentMax *= DISCO_PEAK_DECAY;
-  if (level < Math.max(DISCO_SILENCE_MIN, musicDiscoRecentMax * DISCO_SILENCE_RATIO)) return;
-  if (level < musicDiscoRecentMax * DISCO_BEAT_RATIO
-      && delta < Math.max(DISCO_ONSET_MIN, musicDiscoRecentMax * DISCO_ONSET_RATIO)) return;
-  const now = Date.now();
-  if (now - musicDiscoLastLedAt < DISCO_MIN_INTERVAL_MS) return; // 節流
-  // 能量揀色：低音勁暖色，高音勁冷色，唔係就全盤輪。
-  let pool;
-  if (bass >= treb && bass >= mid) pool = DISCO_WARM;
-  else if (treb >= bass && treb >= mid) pool = DISCO_COLD;
-  else pool = DISCO_ALL;
-  const pick = pool[musicDiscoBeatCount % pool.length];
-  musicDiscoBeatCount++;
-  musicDiscoLastLedAt = now;
-  // 頭眼對比色（差 3 格），先有 disco 味。
-  const eye = ((pick - 1 + 3) % 7) + 1;
-  const headB = document.getElementById("headBrightness");
-  const eyeB = document.getElementById("eyeBrightness");
-  const hb = headB ? headB.value : 9;
-  const eb = eyeB ? eyeB.value : 9;
-  try {
-    Alpha2Api.ledHeadSet({ preset: "long", color: pick, brightness: hb }).catch(function () {});
-    Alpha2Api.ledEyeSet({ preset: "long", color: eye, brightness: eb }).catch(function () {});
-  } catch (e) {}
 }
 
 /** 畫一幀 spectrum - bands=null 就畫全平 (停止狀態)。 */
@@ -575,30 +507,22 @@ function musicApplyFillerToggleUi(enabled) {
 }
 
 // ---------------- disco LED toggle ----------------
-// 同隨機動作一樣獨立開關，不過只存本瀏覽器 localStorage（前端跑，
-// 後端唔使加嘢）。預設關，開咗播本地音樂先會閃。
-
-function musicDiscoGet(def) {
-  try {
-    const v = localStorage.getItem("musicDisco");
-    if (v === null || v === undefined) return (def === undefined) ? false : !!def;
-    return v === "1";
-  } catch (e) {
-    return (def === undefined) ? false : !!def;
-  }
-}
+// 同隨機動作一樣：後端 prefs 持久化，唔開瀏覽器都記得；推燈本身後端跑。
 
 function musicRefreshDiscoToggle() {
-  musicDiscoEnabled = musicDiscoGet(false);
-  musicApplyDiscoToggleUi(musicDiscoEnabled);
+  Alpha2Api.audioLocalMusicDiscoGet().then(function (res) {
+    if (!res.ok) return;
+    musicDiscoEnabled = !!res.enabled;
+    musicApplyDiscoToggleUi(musicDiscoEnabled);
+  });
 }
 
 function musicSetDiscoEnabled(enabled) {
-  musicDiscoEnabled = !!enabled;
-  try {
-    localStorage.setItem("musicDisco", musicDiscoEnabled ? "1" : "0");
-  } catch (e) {}
-  musicApplyDiscoToggleUi(musicDiscoEnabled);
+  Alpha2Api.audioLocalMusicDiscoSet({ enabled: enabled ? "true" : "false" }).then(function (res) {
+    if (!res.ok) return;
+    musicDiscoEnabled = !!res.enabled;
+    musicApplyDiscoToggleUi(musicDiscoEnabled);
+  });
 }
 
 function musicApplyDiscoToggleUi(enabled) {

@@ -46,20 +46,85 @@ public final class DirectLedController {
         return callLedReflect("ledSetOFF", new Class[]{int.class}, new Object[]{0}, "ledSetOFF");
     }
 
+    // 反射快取：之前每次打燈都 Class.forName + getMethod 全套（disco 高頻下
+    // 每秒十幾次，又跑喺 Visualizer callback thread）。而家 resolve 一次留用。
+    private static final Object INIT_LOCK = new Object();
+    private static volatile boolean sInitDone = false;
+    private static volatile boolean sInitOk = false;
+    private static Class<?> sCls = null;
+    private static java.lang.reflect.Method sOpen = null;
+    private static java.lang.reflect.Method sClose = null;
+    private static java.lang.reflect.Method sHead = null;
+    private static java.lang.reflect.Method sEye = null;
+    private static java.lang.reflect.Method sMouth = null;
+    private static java.lang.reflect.Method sOn = null;
+    private static java.lang.reflect.Method sOff = null;
+
+    private static boolean ensureInit() {
+        if (sInitDone) return sInitOk;
+        synchronized (INIT_LOCK) {
+            if (sInitDone) return sInitOk;
+            boolean ok = false;
+            try {
+                sCls = Class.forName(LED_CTRL);
+                sOpen = sCls.getMethod("open");
+                try {
+                    sClose = sCls.getMethod("close");
+                } catch (NoSuchMethodException e) {
+                    // close 唔存在＝每次 open 都漏一個 fd——高頻打燈會拖死成部機，
+                    // 大聲 log 出嚟等 logcat 睇到。
+                    Log.e(TAG, "LedControl.close() NOT FOUND - every open() leaks an fd, do NOT hammer LED");
+                    sClose = null;
+                }
+                Class<?>[] i8 = new Class[]{int.class, int.class, int.class, int.class,
+                        int.class, int.class, int.class, int.class};
+                Class<?>[] i5 = new Class[]{int.class, int.class, int.class, int.class, int.class};
+                Class<?>[] i1 = new Class[]{int.class};
+                sHead = sCls.getMethod("ledSetHead", i8);
+                sEye = sCls.getMethod("ledSetEye", i8);
+                sMouth = sCls.getMethod("ledSetMouth", i5);
+                sOn = sCls.getMethod("ledSetOn", i1);
+                sOff = sCls.getMethod("ledSetOFF", i1);
+                ok = sOpen != null && sHead != null && sEye != null;
+            } catch (Throwable t) {
+                Log.w(TAG, "LED reflect init failed: " + t.getMessage());
+            }
+            sInitOk = ok;
+            sInitDone = true;
+            return ok;
+        }
+    }
+
+    private static java.lang.reflect.Method methodFor(String method) {
+        if ("ledSetHead".equals(method)) return sHead;
+        if ("ledSetEye".equals(method)) return sEye;
+        if ("ledSetMouth".equals(method)) return sMouth;
+        if ("ledSetOn".equals(method)) return sOn;
+        if ("ledSetOFF".equals(method)) return sOff;
+        return null;
+    }
+
     private static boolean callLedReflect(String method, Class<?>[] types, Object[] args, String desc) {
         try {
-            Class<?> cls = Class.forName(LED_CTRL);
-            Object openRes = cls.getMethod("open").invoke(null);
+            if (!ensureInit()) return false;
+            java.lang.reflect.Method m = methodFor(method);
+            if (m == null) {
+                Log.w(TAG, "LED method not found: " + method);
+                return false;
+            }
+            Object openRes = sOpen.invoke(null);
             if (openRes instanceof Boolean && !(Boolean) openRes) {
                 Log.w(TAG, "LedControl.open() failed for " + desc);
                 return false;
             }
             boolean raw = false;
             try {
-                Object r = cls.getMethod(method, types).invoke(null, args);
+                Object r = m.invoke(null, args);
                 raw = r instanceof Boolean ? (Boolean) r : false;
             } finally {
-                try { cls.getMethod("close").invoke(null); } catch (Exception ignore) {}
+                if (sClose != null) {
+                    try { sClose.invoke(null); } catch (Exception ignore) {}
+                }
             }
             // libhead_led.so 的返回值是反的：ioctl 成功返回 0(false)，失敗返回 0xF2(true)，見 MouthLedData:100
             boolean ok = !raw;
