@@ -216,39 +216,43 @@
    POSITIONABLE component 按 weight 排序, 逐個 call .position(metrics,
    alreadyPositionedRects) 再取回 .getBoundingRectangle() 傳給下一個, 等
    它們自動 stacking 不會重疊), 所以這幾組按鈕現在是真正的 Blockly SVG UI
-   component (在 blockly-run.js 的 EditFabControls/ZoomFabControls/
-   SidePanelToggleControl class 度實現), 不再需要這裡有對應的 HTML/CSS ——
+   component (在 blockly-run.js 的 EditFabControls/ZoomFabControls
+   class 度實現), 不再需要這裡有對應的 HTML/CSS ——
    這幾組按鈕自己的視覺 style 直接用 inline SVG attribute/CSS class
    (.bk-svg-fab 系列, 定義在下面) 控制。
-   2026-09: 對齊 NuwaRobotics Code Lab 同一系列視覺 —— 42px 深色 (#333)
-   圓、實心灰 icon (#A8A8AC)、hover/active 青色 (#0ED3FF); 垃圾桶改裝做
-   同款深色圓 (見 blockly-run.js patchAlphaTrashcan); zoom 自畫垂直組
-   (blockly-page.js zoom.controls:false, 由 ZoomFabControls 取代)。 */
+   2026-09: 浮動掣排位/結構對齊 Code Lab (42px 圓、均勻排、無 disabled、
+   實心 icon、zoom 垂直組、垃圾桶改裝), 但配色跟返本站淺色主題 (Code Lab
+   成個站深色先用 #333 圓; 這裡用白圓＋主題藍 hover, 經 CSS variables 接
+   主題, 見下面)。 */
 .bk-svg-fab-group {
   cursor: pointer;
 }
-/* Code Lab 同款: 深灰圓底常駐, icon 灰色, hover/active 變青色 (圓底不變)。
-   無 disabled 狀態 (對齊 Code Lab, 5 粒永遠可按)。 */
+/* 本站淺色主題版: 白圓＋淺灰邊常駐 (浮喺 #f5f7fa 畫布上面靠條邊分辦),
+   icon 深灰, hover/active 底轉淺藍＋icon 轉主題藍 (同頂欄 .bk-btn 藍色系)。
+   全部經 CSS variables, 轉主題會自動跟。無 disabled 狀態 (5 粒永遠可按)。 */
 .bk-svg-fab-circle {
-  fill: #333333;
+  fill: #ffffff;
+  stroke: var(--border);
+  stroke-width: 1;
 }
 .bk-svg-fab-group:hover .bk-svg-fab-circle,
 .bk-svg-fab-group:active .bk-svg-fab-circle {
-  fill: #333333;
+  fill: #eef2ff;
+  stroke: var(--accent);
 }
 .bk-svg-fab-icon {
-  fill: #a8a8ac;
+  fill: var(--text);
   stroke: none;
   pointer-events: none;
 }
 .bk-svg-fab-group:hover .bk-svg-fab-icon,
 .bk-svg-fab-group:active .bk-svg-fab-icon {
-  fill: #0ed3ff;
+  fill: var(--accent);
 }
 /* ------------------------------------------------------------------
    改裝垃圾桶 (blockly-run.js patchAlphaTrashcan 起的 DOM):
-   .trash-bg 深色圓底 + .trashcan-icon (蓋/身 vector, 灰色, 打開變青色)。
-   注意: Blockly 13 內建 CSS 有 .blocklyTrash { opacity: 0.4 }, 而且是
+   .trash-bg 白圓底＋淺灰邊, .trashcan-icon 蓋/身 vector 深灰, 打開/hover
+   變主題藍。注意: Blockly 13 內建 CSS 有 .blocklyTrash { opacity: 0.4 }, 而且是
    inject 當時 runtime 先插入 <style> (排在我這份 static CSS 之後, 同級
    specificity 會贏), 所以這裡用 !important 鎖死全實, 等垃圾桶同 edit/zoom
    按鈕睇落係同一個系列 (Code Lab 個垃圾桶都係全實、淨係開合變色)。
@@ -257,18 +261,26 @@
   opacity: 1 !important;
 }
 .blocklyTrash .trash-bg {
-  fill: #333333;
+  fill: #ffffff;
+  stroke: var(--border);
+  stroke-width: 1;
 }
-/* 蓋 (原生 g.blocklyTrashLid 裡面) 同身 (.trashcan-icon 裡面) 一齊灰色,
-   打開一齊變青色。注意蓋唔喺 .trashcan-icon 裡面 —— 佢要留喺原生
-   .blocklyTrashLid wrapper 先食到 Blockly 13 嘅開合 rotate 動畫。 */
+.blocklyTrash:hover .trash-bg {
+  stroke: var(--accent);
+}
+/* 蓋 (原生 g.blocklyTrashLid 裡面) 同身 (.trashcan-icon 裡面) 一齊深灰,
+   打開 / hover 一齊變主題藍 (同上面浮動掣同一套 hover 語言, 同一個系列)。
+   注意蓋唔喺 .trashcan-icon 裡面 —— 佢要留喺原生 .blocklyTrashLid
+   wrapper 先食到 Blockly 13 嘅開合 rotate 動畫。 */
 .blocklyTrash .trashcan-icon,
 .blocklyTrash .blocklyTrashLid {
-  fill: #a8a8ac;
+  fill: var(--text);
 }
 .blocklyTrash.blocklyTrashOpen .trashcan-icon,
-.blocklyTrash.blocklyTrashOpen .blocklyTrashLid {
-  fill: #0ed3ff;
+.blocklyTrash.blocklyTrashOpen .blocklyTrashLid,
+.blocklyTrash:hover .trashcan-icon,
+.blocklyTrash:hover .blocklyTrashLid {
+  fill: var(--accent);
 }
 /* 開合動畫本身係 Blockly 13 內建 (.blocklyTrashLid rotate: 有嘢 5deg / 打開
    45deg), 這裡只改鉸鏈位: 原生 46px 12px 係舊 sprite 闊蓋嘅右端, 而家個蓋
@@ -277,44 +289,97 @@
 .blocklyInjectionDiv .blocklyTrash .blocklyTrashLid {
   transform-origin: 38px 15px;
 }
-.bk-svg-side-toggle-bg {
-  fill: #ffffff;
-  stroke: var(--border);
-  stroke-width: 1;
+/* ------------------------------------------------------------------
+   側欄收起掣 — 2026-09 對齊 Code Lab simulator-area 做法。
+   Code Lab 右面板收起唔係成個消失, 而係留一條 32px 闊邊, 上面有粒 32x32
+   ribbon trigger (箭嘴 ‹, hover 變色, 撳開轉 ›) —— 成日都撳到, 唔似之前
+   浮喺畫布上面嗰粒 18x36 SVG 掣咁難中 (嗰個 class 已經刪走)。配色跟返
+   本站淺色主題 (淺灰掣＋灰箭嘴＋主題藍 hover), 同上面浮動掣同一個系列。
+   結構見 blockly.html #bkSide: trigger 定死喺左緣, 內容包喺 .bk-side-body
+   (左邊留 32px gutter 畀條 trigger 邊)。
+   ------------------------------------------------------------------ */
+.bk-side-trigger {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  left: 0;
+  top: 15px;
+  background: var(--track);
+  line-height: 32px;
+  text-align: center;
+  cursor: pointer;
+  z-index: 5;
 }
-.bk-svg-side-toggle-group:hover .bk-svg-side-toggle-bg {
-  fill: #eef2f8;
-}
-.bk-svg-side-toggle-arrow {
-  fill: none;
+.bk-side-trigger svg {
+  fill: var(--muted);
   stroke: var(--muted);
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  pointer-events: none;
+  transform-origin: center;
+  transition: transform 0.18s ease;
+  vertical-align: middle;
 }
-.bk-svg-side-toggle-group:hover .bk-svg-side-toggle-arrow {
-  stroke: var(--text);
+/* 收起嗰陣顯示 ‹ (撳落去向左展開); 展開嗰陣轉 180° 變 › (撳落去向右收起) ——
+   同 Code Lab .trigger.active 轉法一致, 方向純 CSS 跟 .bk-side-collapsed。 */
+.bk-main:not(.bk-side-collapsed) .bk-side-trigger svg {
+  transform: rotate(180deg);
+}
+.bk-side-trigger:hover svg {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+/* ribbon 上下緞帶角 (Code Lab 同款 :before/:after 三角) —— 令粒掣睇落係
+   一條直向飄帶。撳落去會計入粒掣度 (pseudo element 嘅 click 會冒落 parent),
+   所以實際命中區係 32x64。 */
+.bk-side-trigger:before,
+.bk-side-trigger:after {
+  content: "";
+  display: block;
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-left: 32px solid transparent;
+}
+.bk-side-trigger:before {
+  top: -16px;
+  border-bottom: 16px solid var(--track);
+}
+.bk-side-trigger:after {
+  top: 32px;
+  border-top: 16px solid var(--track);
 }
 
 .bk-main.bk-side-collapsed .bk-side {
   /* display:none 會令 Blockly.svgResize() 拿不到正確的剩餘闊度 (flex 计算
-     在個元素消失那一刻已經定了), 用 flex-basis:0 + overflow:hidden 僅將
-     它闊度收窄到 0, 保保留個 flex box 存在, resize 先計得啱。 */
-  flex: 0 0 0;
+     在個元素消失那一刻已經定了), 所以唔成個隱藏 —— 對齊 Code Lab 留一條
+     32px 闊邊條擺 trigger 掣, 淨係收起內容 (.bk-side-body display:none)。
+     flex box 本體保留, resize 先計得啱。 */
+  flex: 0 0 32px;
   min-width: 0;
   overflow: hidden;
-  border-left: none;
 }
 
 .bk-side {
   flex: 0 0 340px;
   display: flex;
   flex-direction: column;
+  position: relative;
   border-left: 1px solid var(--border);
   background: var(--card-bg);
   min-height: 0;
   transition: flex-basis 0.18s ease;
+}
+
+/* 側欄內容本體: 左邊預留 32px gutter 畀條 trigger 邊 (Code Lab 個
+   simulator-container 都係 calc(100% - 32px) 咁讓位)。 */
+.bk-side-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  margin-left: 32px;
+}
+.bk-main.bk-side-collapsed .bk-side-body {
+  display: none;
 }
 
 .bk-side-header {
@@ -354,11 +419,17 @@
   .bk-main { flex-direction: column; }
   .bk-side { flex: 0 0 260px; border-left: none; border-top: 1px solid var(--border); }
   .bk-main.bk-side-collapsed .bk-side {
-    flex: 0 0 0;
+    /* 直向嗰陣收起變一條全闊 32px 高橫條 (唔係 0), 掣照留喺度好撳。 */
+    flex: 0 0 32px;
     min-height: 0;
     overflow: hidden;
     border-top: none;
   }
+  /* 橫條入面掣貼頂 (緞帶角會被 overflow 剪走, 剩返四方掣, 啱啱好)。
+     箭嘴轉 90°: 收起顯示 ^ (撳落去向上展開), 展開顯示 v (撳落去向下收起)。 */
+  .bk-main.bk-side-collapsed .bk-side-trigger { top: 0; }
+  .bk-side-trigger svg { transform: rotate(90deg); }
+  .bk-main:not(.bk-side-collapsed) .bk-side-trigger svg { transform: rotate(270deg); }
   .bk-header h1 { font-size: 15px; }
   /* 窄螢幕 (手機直向) 個 header 已經幾迫: 返回箭頭 + 標題 + WS 連接狀態,
      版本號 badge 僅參考資訊, 不是核心操作, 索性在這個闊度隱藏, 保留空間

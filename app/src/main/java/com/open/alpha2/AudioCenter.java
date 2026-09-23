@@ -37,6 +37,11 @@ public final class AudioCenter {
         this.ubxPlayer = ubxPlayer;
         this.actionDirect = actionDirect;
         this.mainHandler = mainHandler;
+        // 遺言機制起步：見下面 discoWatchLoop
+        try {
+            mainHandler.post(discoWatchLoop);
+        } catch (Throwable ignore) {
+        }
     }
 
     private android.content.SharedPreferences prefs() {
@@ -80,6 +85,7 @@ public final class AudioCenter {
      *  (音樂能量天生集中在低頻, 不補償的話只有前幾條會動)。*/
     private void updateMusicSpectrumFromFft(byte[] fft, int samplingRate) {
         if (fft == null || fft.length < 4) return;
+        discoLastCallbackMs = SystemClock.elapsedRealtime();
         if (musicSpectrumBinMap == null) {
             buildMusicSpectrumBinMap(samplingRate, fft.length / 2);
             if (musicSpectrumBinMap == null) return;
@@ -106,44 +112,40 @@ public final class AudioCenter {
 
     // -- Disco LED --------------------------------------------------
     // 🪩 播歌嗰陣分開跟：頭係假立體聲 VU 表（左＝低頻量，右＝高頻量，
-    // 各 0-4 粒，色隨機；真 L/R Android Visualizer 攞唔到，mono mix only），
-    // 眼跟人聲（人聲頻段有存在感先轉）。轉色兩邊都係 1-7 純隨機。
+    // 各 0-4 粒，青色；真 L/R 攞唔到，mono mix only），
+    // 眼跟人聲（存在感＋樂句起頭，1-7 純隨機）。
     // 後端跑：Visualizer callback（約 10Hz）經 DirectLedController 直推燈
-    // （long 常亮、頭用 1-4（左 P4＝0/1/3/7/15，右 P3＝0/16/24/28/30，
-    // 第 5 粒留返畀 wifi）、光度 9 最光），全程唔經 HTTP。
-    // 24 格 band 係 log 分佈（40Hz-12kHz）：左錶用 0-11（約 40-133Hz），
-    // 右錶用 16-23（高頻），眼用人聲 10-21。
+    // （long 常亮、光度 9 最光），全程唔經 HTTP。
+    // 24 格 band 係 log 分佈（40Hz-12kHz）：左錶/鼓用 0-11，
+    // 右錶/高頻用 16-23，眼用人聲 10-21。
     // 任何經呢個 visualizer 播嘅嘢都閃：本地/電台/網上點歌/小智播歌
     // 全部入同一個 visualizer（短鈴聲/TTS 唔經呢度，唔閃）。
     // 熄開關即熄頭+眼（嘴唔郁，留返畀 TTS）；停歌就停手（callback 冇咗）。
     private static final String PREF_DISCO_ENABLED = "music_disco_enabled";
     private volatile double discoBassRecentMax = 0;
     private volatile double discoHighRecentMax = 0;
-    private volatile double discoVocalRecentMax = 0;
-    private volatile double discoVocalPrev = 0;
     private volatile long discoLastFrameAtMs = 0;
     private volatile long discoLastPushAtMs = 0;
+    private volatile long discoLastVuPushAtMs = 0;
     private volatile long discoEyeLedAtMs = 0; // 眼上次真係轉色（cadence 用）
-    private volatile int discoLastVuLeft = -1; // 上次推出嘅左右粒數（變先再推）
+    private volatile int discoLastVuLeft = -1; // 上次推出嘅頭表左右粒數（變先再推）
     private volatile int discoLastVuRight = -1;
+    private volatile double discoVocalRecentMax = 0;
+    private volatile double discoVocalPrev = 0;
     private final java.util.Random discoRandom = new java.util.Random();
-    // 左／右 0-4 粒對應 mask（左 P4 正序、右 P3 反序，第 5 粒留返畀 wifi）
-    private static final int[] DISCO_LEFT_MASK = {0, 1, 3, 7, 15};
-    private static final int[] DISCO_RIGHT_MASK = {0, 16, 24, 28, 30};
     private static final double DISCO_SILENCE_MIN = 8;
     private static final double DISCO_SILENCE_RATIO = 0.12;
     private static final double DISCO_ONSET_MIN = 5;
     private static final double DISCO_ONSET_RATIO = 0.15; // 實測調校：0.25 太嚴漏四成拍，
     // 0.15 命中 85% 誤報 ~10%，0.12 誤報倍增（見 beat-sweep.py 愛情蝙蝠俠 30 秒數據）
+    private static final double DISCO_PEAK_HALFLIFE_MS = 600;
+    // 節流合流：眼拍子／頭 VU 各自 100ms 閘（頭+眼最多 2 個 ioctl 一轉）。
+    private static final long DISCO_PUSH_INTERVAL_MS = 100;
+    private static final long DISCO_VU_INTERVAL_MS = 100;
+    private static final long DISCO_EYE_CADENCE_MS = 400;
     private static final double DISCO_VOCAL_FLOOR = 10;
     private static final double DISCO_VOCAL_PRESENCE_RATIO = 0.35;
-    private static final double DISCO_PEAK_HALFLIFE_MS = 600;
-    // 節流合流：成個 disco 每 100ms 最多推一轉燈（頭+眼最多 2 個 ioctl）。
-    // 用戶要求 100ms 測 10 分鐘：全局鎖＋executor＋熔斷照開住，煲機睇實。
-    private static final long DISCO_PUSH_INTERVAL_MS = 100;
-    private static final long DISCO_EYE_CADENCE_MS = 400;
     private static final int DISCO_BRIGHTNESS = 9;
-    private static final int DISCO_HEAD_COLOR = 6; // 頭錶固定青色（硬件一次一色，左右唔分得）
 
     /** Disco 開關 - prefs 持久化，預設關（同 filler 預設開唔同：燈亂閃預設唔著）。 */
     private boolean isDiscoEnabled() {
@@ -177,14 +179,94 @@ public final class AudioCenter {
             java.util.concurrent.Executors.newSingleThreadExecutor();
     private final Object discoLedLock = new Object();
     private boolean discoLedBusy = false;
-    private int discoPendingHead = -1; // -1＝無等緊；-2＝熄燈；否則最新要打嘅色
+    private int discoPendingHead = -1; // -1＝無等緊；-2＝熄燈（閂 disco 用）
     private int discoPendingEye = -1;
-    private int discoPendingVuColor = -1;
-    private int discoPendingVuP3 = 0;
-    private int discoPendingVuP4 = 0;
-    private boolean discoVuPending = false;
+    private int discoPendingHeadColor = -1; // 頭 VU 呢轉嘅色＋左右 mask
+    private int discoPendingHeadP3 = 0;
+    private int discoPendingHeadP4 = 0;
+    private boolean discoHeadPending = false;
+    private int discoPendingEyeColor = -1; // 眼拍子機呢轉嘅色＋左右 mask
+    private int discoPendingEyeP3 = 0;
+    private int discoPendingEyeP4 = 0;
+    private boolean discoEyePending = false;
     private volatile int discoFailStreak = 0;
     private static final int DISCO_FAIL_DISABLE_AT = 10;
+
+    // -- 遺言機制 ---------------------------------------------------
+    // 之前幾次 hang 機全部靠 adb/logcat 捉，一斷 USB 就咩都無。
+    // 而家 App 自己每 30 秒寫一行心跳去機身 sdcard（/mnt/internal_sd/
+    // disco-watch.log），異常（熔斷、callback 停）即寫。死完 reboot 照
+    // pull 得返，睇最後幾行就知死前發生咩事。~1ms 一次，唔覺。
+    private static final java.io.File DISCO_WATCH_FILE =
+            new java.io.File("/mnt/internal_sd/disco-watch.log");
+    private static final long DISCO_WATCH_INTERVAL_MS = 30000;
+    private volatile long discoWatchLastWriteMs = 0;
+    private volatile long discoLastCallbackMs = 0;
+    private volatile int discoPushCount = 0;
+
+    private final Runnable discoWatchLoop = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                discoWatchHeartbeat(SystemClock.elapsedRealtime());
+            } catch (Throwable ignore) {
+            }
+            try {
+                mainHandler.postDelayed(this, DISCO_WATCH_INTERVAL_MS);
+            } catch (Throwable ignore) {
+            }
+        }
+    };
+
+    /** 30 秒心跳＋stall 偵測。邊條 thread 叫都得，絕不 throw。 */
+    private void discoWatchHeartbeat(long now) {
+        if (now - discoWatchLastWriteMs < DISCO_WATCH_INTERVAL_MS) return;
+        discoWatchLastWriteMs = now;
+        try {
+            boolean hasPlayer;
+            synchronized (this) {
+                hasPlayer = currentMusicPlayer != null || currentRadioPlayer != null;
+            }
+            long cbGap = now - discoLastCallbackMs;
+            StringBuilder sb = new StringBuilder();
+            sb.append(now).append(" hb pushes=").append(discoPushCount)
+                    .append(" fails=").append(discoFailStreak)
+                    .append(" disco=").append(isDiscoEnabled())
+                    .append(" playing=").append(hasPlayer);
+            // 播緊歌但 3 秒收唔到 Visualizer callback＝audio pipeline 塞咗
+            if (hasPlayer && discoLastCallbackMs > 0 && cbGap > 3000) {
+                sb.append(" VISUALIZER-STALL ").append(cbGap).append("ms");
+            }
+            sb.append('\n');
+            String line = sb.toString();
+            java.io.FileWriter w = new java.io.FileWriter(DISCO_WATCH_FILE, true);
+            w.write(line);
+            w.close();
+            try {
+                if (DISCO_WATCH_FILE.length() > 200 * 1024) {
+                    java.io.FileWriter w2 = new java.io.FileWriter(DISCO_WATCH_FILE, false);
+                    w2.write(line);
+                    w2.close();
+                }
+            } catch (Throwable ignore) {
+            }
+        } catch (Throwable ignore) {
+        }
+    }
+
+    /** 異常即寫一行（熔斷之類）。絕不 throw。 */
+    private void discoWatchEvent(String msg) {
+        try {
+            java.io.FileWriter w = new java.io.FileWriter(DISCO_WATCH_FILE, true);
+            w.write(SystemClock.elapsedRealtime() + " " + msg + '\n');
+            w.close();
+        } catch (Throwable ignore) {
+        }
+    }
+    // 頭 VU 左右 0-4 粒對應 mask（左 P4 正序、右 P3 反序，第 5 粒留返畀 wifi）
+    private static final int[] DISCO_LEFT_MASK = {0, 1, 3, 7, 15};
+    private static final int[] DISCO_RIGHT_MASK = {0, 16, 24, 28, 30};
+    private static final int DISCO_HEAD_COLOR = 6; // 頭錶固定青色
 
     /** 能量轉 0-4 粒：靜音 floor 以下即 0（全滅），否則按 recent 比例 1-4。 */
     private static int vuCount(double level, double recent) {
@@ -197,12 +279,15 @@ public final class AudioCenter {
         return c;
     }
 
-    /** 留低最新色＋確保有人打（合併舊拍）。跑喺 Visualizer callback thread，絕不 block。 */
-    private void discoPushLed(boolean isHead, int color) {
+    /** 眼拍子機專用：排一轉眼燈（最新色＋左右 mask，舊拍直接冚）。
+     *  跑喺 Visualizer callback thread，絕不 block。 */
+    private void discoPushEyes(int color, int p3, int p4) {
         Runnable job = null;
         synchronized (discoLedLock) {
-            if (isHead) discoPendingHead = color;
-            else discoPendingEye = color;
+            discoPendingEyeColor = color;
+            discoPendingEyeP3 = p3;
+            discoPendingEyeP4 = p4;
+            discoEyePending = true;
             if (discoLedBusy) return;
             discoLedBusy = true;
             job = discoLedJob;
@@ -218,14 +303,15 @@ public final class AudioCenter {
         }
     }
 
-    /** VU 專用：排一轉頭燈（最新色＋p3＋p4，舊拍直接冚）。同條線程做，唔會打架。 */
-    private void discoPushVu(int color, int p3, int p4) {
+    /** 頭 VU 專用：排一轉頭燈（青色＋左右粒數 mask，舊拍直接冚）。
+     *  跑喺 Visualizer callback thread，絕不 block。 */
+    private void discoPushHeadVu(int left, int right) {
         Runnable job = null;
         synchronized (discoLedLock) {
-            discoPendingVuColor = color;
-            discoPendingVuP3 = p3;
-            discoPendingVuP4 = p4;
-            discoVuPending = true;
+            discoPendingHeadColor = DISCO_HEAD_COLOR;
+            discoPendingHeadP3 = DISCO_RIGHT_MASK[right];
+            discoPendingHeadP4 = DISCO_LEFT_MASK[left];
+            discoHeadPending = true;
             if (discoLedBusy) return;
             discoLedBusy = true;
             job = discoLedJob;
@@ -263,34 +349,44 @@ public final class AudioCenter {
     }
 
     private final Runnable discoLedJob = new Runnable() {
-        // pending 值：-1＝無嘢做，-2＝熄燈，>=0＝打呢隻色；vu 另有三個 field
+        // pending 值：-1＝無嘢做，-2＝熄燈；頭 VU／眼拍子機另有三個 field
         @Override
         public void run() {
             for (;;) {
                 int h;
                 int e;
-                int vc;
-                int vp3;
-                int vp4;
-                boolean vu;
+                int hc;
+                int hp3;
+                int hp4;
+                boolean hu;
+                int ec;
+                int ep3;
+                int ep4;
+                boolean eu;
                 synchronized (discoLedLock) {
                     h = discoPendingHead;
                     e = discoPendingEye;
-                    vc = discoPendingVuColor;
-                    vp3 = discoPendingVuP3;
-                    vp4 = discoPendingVuP4;
-                    vu = discoVuPending;
+                    hc = discoPendingHeadColor;
+                    hp3 = discoPendingHeadP3;
+                    hp4 = discoPendingHeadP4;
+                    hu = discoHeadPending;
+                    ec = discoPendingEyeColor;
+                    ep3 = discoPendingEyeP3;
+                    ep4 = discoPendingEyeP4;
+                    eu = discoEyePending;
                     discoPendingHead = -1;
                     discoPendingEye = -1;
-                    discoVuPending = false;
+                    discoHeadPending = false;
+                    discoEyePending = false;
                     // 熄咗 disco 之後先至排到／之前留低嘅嘢，一律丟走唔打
                     // （淨係 -2 熄燈本身行得）。
                     if (!isDiscoEnabled()) {
                         if (h != -2) h = -1;
                         if (e != -2) e = -1;
-                        vu = false;
+                        hu = false;
+                        eu = false;
                     }
-                    if (h == -1 && e == -1 && !vu) {
+                    if (h == -1 && e == -1 && !hu && !eu) {
                         discoLedBusy = false;
                         return;
                     }
@@ -309,24 +405,27 @@ public final class AudioCenter {
                     } catch (Throwable ignore) {
                         ok = false;
                     }
-                } else if (e >= 0) {
+                }
+                if (hu) {
                     try {
-                        ok &= DirectLedController.setEye5MicRaw(e, DISCO_BRIGHTNESS,
-                                255, 255, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
+                        ok &= DirectLedController.setHead5MicRaw(hc, DISCO_BRIGHTNESS,
+                                hp3, hp4, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
                     } catch (Throwable ignore) {
                         ok = false;
                     }
                 }
-                if (vu) {
+                if (eu) {
                     try {
-                        ok &= DirectLedController.setHead5MicRaw(vc, DISCO_BRIGHTNESS,
-                                vp3, vp4, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
+                        ok &= DirectLedController.setEye5MicRaw(ec, DISCO_BRIGHTNESS,
+                                ep3, ep4, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
                     } catch (Throwable ignore) {
                         ok = false;
                     }
                 }
                 if (ok) {
                     discoFailStreak = 0;
+                    discoPushCount++;
+                    discoWatchHeartbeat(SystemClock.elapsedRealtime());
                 } else {
                     discoFailStreak++;
                     Log.w(TAG, "disco LED failed x" + discoFailStreak);
@@ -337,6 +436,7 @@ public final class AudioCenter {
                         }
                         Log.e(TAG, "disco auto-disabled after " + discoFailStreak
                                 + " consecutive LED failures (driver wedged?)");
+                        discoWatchEvent("AUTO-DISABLED fails=" + discoFailStreak);
                     }
                 }
             }
@@ -344,7 +444,7 @@ public final class AudioCenter {
     };
 
     /** Disco 拍點：跑喺 Visualizer callback thread（唔係 main）。開關開先推燈；
-     *  頭睇低頻鼓點起拍，眼睇人聲頻段存在感。絕不 throw。 */
+     *  眼係左右拍子機（低頻一下左眼行前一格，高頻一下右眼行前一格）。絕不 throw。 */
     private void discoOnSpectrumFrame() {
         try {
             double bassSum = 0;
@@ -357,11 +457,6 @@ public final class AudioCenter {
                 highSum += musicSpectrumBands[i];
             }
             double high = highSum / 8;
-            double vocalSum = 0;
-            for (int i = 10; i <= 21 && i < MUSIC_SPECTRUM_BANDS; i++) {
-                vocalSum += musicSpectrumBands[i];
-            }
-            double vocal = vocalSum / 12;
             long now = SystemClock.elapsedRealtime();
             long lastFrame = discoLastFrameAtMs;
             discoLastFrameAtMs = now;
@@ -372,13 +467,18 @@ public final class AudioCenter {
                     decay = Math.pow(0.5, (double) dt / DISCO_PEAK_HALFLIFE_MS);
                 }
             }
-            double vocalPrev = discoVocalPrev;
-            discoVocalPrev = vocal;
             double bassRecent = Math.max(bass, discoBassRecentMax * decay);
             double highRecent = Math.max(high, discoHighRecentMax * decay);
-            double vocalRecent = Math.max(vocal, discoVocalRecentMax * decay);
             discoBassRecentMax = bassRecent;
             discoHighRecentMax = highRecent;
+            double vocalSum = 0;
+            for (int i = 10; i <= 21 && i < MUSIC_SPECTRUM_BANDS; i++) {
+                vocalSum += musicSpectrumBands[i];
+            }
+            double vocal = vocalSum / 12;
+            double vocalPrev = discoVocalPrev;
+            discoVocalPrev = vocal;
+            double vocalRecent = Math.max(vocal, discoVocalRecentMax * decay);
             discoVocalRecentMax = vocalRecent;
             if (!isDiscoEnabled()) return;
             // 頭：假立體聲 VU（左＝低頻粒數，右＝高頻粒數；變先推，靜音即 0/0 熄）
@@ -391,19 +491,17 @@ public final class AudioCenter {
             boolean vocalAttack = vocal - vocalPrev >= Math.max(DISCO_ONSET_MIN, vocalRecent * DISCO_ONSET_RATIO);
             boolean eyeFire = vocalPresent
                     && (vocalAttack || now - discoEyeLedAtMs >= DISCO_EYE_CADENCE_MS);
-            // 合流推出：150ms 內就算兩邊都中都只推一轉，唔好 hammer 驅動
-            if ((vuChanged || eyeFire) && now - discoLastPushAtMs >= DISCO_PUSH_INTERVAL_MS) {
+            // 分開推出：眼 100ms 閘，頭 VU 100ms 閘（唔好 hammer 驅動）
+            if (vuChanged && now - discoLastVuPushAtMs >= DISCO_VU_INTERVAL_MS) {
+                discoLastVuPushAtMs = now;
+                discoLastVuLeft = left;
+                discoLastVuRight = right;
+                discoPushHeadVu(left, right);
+            }
+            if (eyeFire && now - discoLastPushAtMs >= DISCO_PUSH_INTERVAL_MS) {
                 discoLastPushAtMs = now;
-                if (vuChanged) {
-                    discoLastVuLeft = left;
-                    discoLastVuRight = right;
-                    discoPushVu(DISCO_HEAD_COLOR,
-                            DISCO_RIGHT_MASK[right], DISCO_LEFT_MASK[left]);
-                }
-                if (eyeFire) {
-                    discoEyeLedAtMs = now;
-                    discoPushLed(false, 1 + discoRandom.nextInt(7));
-                }
+                discoEyeLedAtMs = now;
+                discoPushEyes(1 + discoRandom.nextInt(7), 255, 255);
             }
         } catch (Throwable ignore) {
         }

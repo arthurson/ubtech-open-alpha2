@@ -183,6 +183,13 @@ function appendLog(msg) {
   if (msg.type === "alpha2_pir_state" && msg.data) {
     onAlpha2PirState(msg.data);
   }
+  // 音量反向同步：機械人嗰邊改音量（頭頂 +/- 鍵／語音大細聲／第二個分頁條
+  // slider）→ LedCenter volume receiver 播 volume_changed → 兩邊 slider
+  // 即時跟（見 app-servo.js onVolumeChangedEvent；正向 HTML→機械人經 API
+  // 回包同步，唔經呢度）。
+  if (msg.type === "volume_changed" && msg.data) {
+    if (typeof onVolumeChangedEvent === "function") onVolumeChangedEvent(msg.data);
+  }
   if (msg.type === "accel" && msg.data) {
     onAccelSample(msg.data);
   }

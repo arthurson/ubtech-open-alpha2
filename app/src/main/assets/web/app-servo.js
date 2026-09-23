@@ -11,14 +11,29 @@
 // set. refreshVolume() is called on page load; the slider's max attribute is set from
 // the device's actual getStreamMaxVolume() rather than assumed, since that can vary.
 
+let servoVolLastPushAt = 0;
 function onVolumeSliderInput(value) {
-  // Live-update the numeric readout while dragging; the actual API call only fires on
-  // "change" (see the oninput/onchange split on the slider itself in index.html),
-  // matching the same drag-then-release pattern used by the servo sliders.
+  // Live-update the numeric readout while dragging; 同音樂頁一樣，拖曳嗰陣
+  // 150ms 節流即刻推（唔等放手），放手嗰下 onchange 再送一次準數。
   document.getElementById("volumeVal").textContent = value;
+  markVolLocalInput(); // 反向同步 guard：拖緊呢 400ms 唔好畀 WS echo 郁返轉頭
+  const now = Date.now();
+  if (now - servoVolLastPushAt < 150) return;
+  servoVolLastPushAt = now;
+  Alpha2Api.audioVolumeSet( { level: String(value) }).then(function (json) {
+    if (json.ok) {
+      document.getElementById("volumeSlider").value = json.volume;
+      document.getElementById("volumeVal").textContent = json.volume;
+      const shSlider = document.getElementById("sharedVolumeSlider");
+      const shVal = document.getElementById("sharedVolumeVal");
+      if (shSlider) shSlider.value = json.volume;
+      if (shVal) shVal.textContent = json.volume;
+    }
+  });
 }
 
 function setVolume(value) {
+  markVolLocalInput(); // 反向同步 guard（見上面 onVolumeChangedEvent）
   return Alpha2Api.audioVolumeSet( { level: String(value) }).then(function (json) {
     if (json.ok) {
       document.getElementById("volumeSlider").value = json.volume;
@@ -46,6 +61,32 @@ function refreshVolume() {
       if (shVal) shVal.textContent = json.volume;
     }
     return json;
+  });
+}
+
+// 反向同步：機械人嗰邊乜路改音量（頭頂 +/- 鍵／語音大細聲／另一個分頁條 slider）
+// 都會經 LedCenter 個 VOLUME_CHANGED receiver 播 volume_changed WS event
+// （見 app-log.js appendLog dispatch）。收到就將兩邊 slider＋讀數撥返去新值。
+// 為免同用家正在拖緊嗰粒爭（server echo 慢半拍，會將拖緊嗰粒扯返去舊值），
+// 本地郁過 slider 400ms 內嘅 event 一律 skip —— 時間戳記喺下面幾個本地
+// push 位＋app-music.js 那邊一齊寫。
+function markVolLocalInput() {
+  try { window.__volLastLocalAt = Date.now(); } catch (e) { /* ignore */ }
+}
+function onVolumeChangedEvent(data) {
+  if (!data) return;
+  const v = Number(data.volume);
+  if (!isFinite(v)) return;
+  if (Date.now() - (window.__volLastLocalAt || 0) < 400) return;
+  const max = Number(data.max);
+  const pairs = [["volumeSlider", "volumeVal"], ["sharedVolumeSlider", "sharedVolumeVal"]];
+  pairs.forEach(function (pair) {
+    const slider = document.getElementById(pair[0]);
+    if (!slider) return;
+    if (isFinite(max)) slider.max = String(max);
+    slider.value = String(v);
+    const val = document.getElementById(pair[1]);
+    if (val) val.textContent = String(v);
   });
 }
 

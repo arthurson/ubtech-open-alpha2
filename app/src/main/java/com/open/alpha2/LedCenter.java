@@ -62,6 +62,25 @@ public final class LedCenter {
                                 "android.media.EXTRA_VOLUME_STREAM_TYPE", -1);
                         if (stream != android.media.AudioManager.STREAM_MUSIC) return;
                         showVolumeMeter();
+                        // 反向同步：乜路改音量（HTML slider／頭頂 +/- 鍵／語音大細聲）
+                        // 都會出呢個 broadcast，順手 publish 個 volume_changed 上 WS，
+                        // 等 HTML 兩邊 slider 即時跟返（正向 HTML→機械人係經
+                        // /api/audio/volume/set 回包即時同步；見 app-log.js
+                        // appendLog＋app-servo.js onVolumeChangedEvent）。
+                        // 純讀 AudioManager＋組 string，無阻塞，onReceive 時限內搞掂。
+                        try {
+                            android.media.AudioManager am = (android.media.AudioManager)
+                                    appContext.getSystemService(Context.AUDIO_SERVICE);
+                            if (am != null) {
+                                int vol = am.getStreamVolume(
+                                        android.media.AudioManager.STREAM_MUSIC);
+                                int max = am.getStreamMaxVolume(
+                                        android.media.AudioManager.STREAM_MUSIC);
+                                EventBus.get().publish("volume_changed",
+                                        "{\"volume\":" + vol + ",\"max\":" + max + "}");
+                            }
+                        } catch (Throwable ignore) {
+                        }
                     } catch (Throwable ignore) {
                     }
                 }

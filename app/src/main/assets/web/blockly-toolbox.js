@@ -74,6 +74,14 @@ window.buildAlphaToolbox = function () {
         { kind: 'block', type: 'alpha_speech_ringtone_phone', inputs: { DURATION: { shadow: { type: 'math_number', fields: { NUM: 10 } } } } },
         { kind: 'block', type: 'alpha_speech_ringtone_notification', inputs: { DURATION: { shadow: { type: 'math_number', fields: { NUM: 5 } } } } },
         { kind: 'block', type: 'alpha_speech_ringtone_stop' },
+        { kind: 'sep' },
+        // 2026-09 新增: 本地音樂 (同 Music 分頁同一套 /api/audio/local_music/*)。
+        // 曲目 dropdown 是 live list, 開頁自動抓 (見 blockly-run.js
+        // refreshMusicDropdown), 頂欄「🔄 取得音樂清單」可以重抓。
+        { kind: 'block', type: 'alpha_music_play' },
+        { kind: 'block', type: 'alpha_music_stop' },
+        { kind: 'block', type: 'alpha_music_pause' },
+        { kind: 'block', type: 'alpha_music_resume' },
       ]
     },
     {

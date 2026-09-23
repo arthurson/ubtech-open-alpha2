@@ -29,7 +29,7 @@ let musicSpectrumSmooth = [];    // 平滑化後用來畫的值
 let sharedActiveSource = null;   // "local" 或 "radio"，記錄最後一次播放來源，用於共用上一首/下一首/隨機分流
 
 // ---------------- disco LED ----------------
-// 🪩 Disco：播歌嗰陣，眼/頭 LED 跟住節奏轉色。後端跑：
+// 🪩 節奏燈：播歌嗰陣眼做左右拍子機。後端跑：
 // Visualizer callback 拍點偵測＋DirectLedController 直推燈，唔經 HTTP。
 // 呢個掣淨係較後端開關（同隨機動作一樣後端持久化）；熄掣即熄頭+眼燈。
 let musicDiscoEnabled = false;
@@ -351,12 +351,32 @@ function musicSeekTo(value) {
   });
 }
 
-// 共用音量（系統 STREAM_MUSIC，同時影響本地與電台）— 前端共用滑桿
+// 共用音量（系統 STREAM_MUSIC，同時影響本地與電台）— 前端共用滑桿。
+// 拖曳嗰陣即刻推（150ms 節流，唔洗等放手）；放手嗰下 onchange 再送一次準數。
+let musicVolLastPushAt = 0;
 function onSharedVolumeInput(value) {
   const valEl = document.getElementById("sharedVolumeVal");
   if (valEl) valEl.textContent = value;
+  // 反向同步 guard（見 app-servo.js onVolumeChangedEvent）：本地拖緊 400ms
+  // 內唔好畀 WS echo 郁返轉頭。markVolLocalInput 住在 app-servo.js，typeof
+  // guard 防 load 序問題。
+  if (typeof markVolLocalInput === "function") markVolLocalInput();
+  const now = Date.now();
+  if (now - musicVolLastPushAt < 150) return;
+  musicVolLastPushAt = now;
+  const v = Math.max(0, Math.min(15, parseInt(value, 10) || 0));
+  Alpha2Api.audioVolumeSet( { level: String(v) }).then(function (res) {
+    if (res.ok) {
+      const statusSlider = document.getElementById("volumeSlider");
+      const statusVal = document.getElementById("volumeVal");
+      const rv = String(res.volume != null ? res.volume : v);
+      if (statusSlider) statusSlider.value = rv;
+      if (statusVal) statusVal.textContent = rv;
+    }
+  });
 }
 function setSharedVolume(value) {
+  if (typeof markVolLocalInput === "function") markVolLocalInput(); // 反向同步 guard
   const v = Math.max(0, Math.min(15, parseInt(value, 10) || 0));
   Alpha2Api.audioVolumeSet( { level: String(v) }).then(function (res) {
     if (res.ok) {

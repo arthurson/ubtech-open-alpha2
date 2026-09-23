@@ -10,7 +10,7 @@
 (function () {
   const clr = {
     action: 20,     // 橙 - 動作
-    speech: 160,     // 綠 - 語音
+    speech: 160,     // 綠 - 聲音 (TTS/鈴聲/本地音樂共用)
     servo: 230,     // 藍 - 伺服
     led: 290,     // 紫 - LED
     sensor: 0,       // 紅 - 感應/事件
@@ -231,7 +231,9 @@
 
 
   // ---------------------------------------------------------------------
-  // 語音 Speech / TTS / ASR
+  // 聲音 Sound: TTS / 系統鈴聲 / 本地音樂
+  // (2026-09: toolbox 分類由「語音」改名做「聲音」, block type 名維持
+  // alpha_speech_* 不變 —— 舊 .xml 存檔用緊這些 type 名, 改會 load 唔返。)
   // ---------------------------------------------------------------------
 
   Blockly.Blocks['alpha_speech_tts'] = {
@@ -340,6 +342,67 @@
       this.setNextStatement(true, null);
       this.setColour(clr.speech);
       this.setTooltip(t('ringtone_stop__tooltip'));
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // 本地音樂 (同 Music 分頁同一套 /api/audio/local_music/*)。
+  //
+  // 曲目 dropdown 是 live list: blockly-run.js refreshMusicDropdown() 開頁
+  // 自動抓一次 (頂欄「🔄 取得音樂清單」可以重抓), 存入
+  // window.__alphaMusicOptions, 做法跟 alpha_action_play_dropdown
+  // (window.__alphaActionOptions) 一樣。未抓到之前顯示 fallback 選項。
+  // ---------------------------------------------------------------------
+  Blockly.Blocks['alpha_music_play'] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField(t('music__label'))
+        .appendField(t('music__track_label'))
+        .appendField(new Blockly.FieldDropdown(function () {
+          return (window.__alphaMusicOptions && window.__alphaMusicOptions.length)
+            ? window.__alphaMusicOptions
+            : [[t('music__not_loaded'), '']];
+        }), 'NAME');
+      this.appendDummyInput()
+        .appendField(t('music__disco_label'))
+        .appendField(new Blockly.FieldDropdown([
+          [t('toggle_off'), 'false'],
+          [t('toggle_on'), 'true'],
+        ]), 'DISCO');
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(clr.speech);
+      this.setTooltip(t('music__tooltip'));
+    }
+  };
+
+  Blockly.Blocks['alpha_music_stop'] = {
+    init: function () {
+      this.appendDummyInput().appendField(t('music_stop__label'));
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(clr.speech);
+      this.setTooltip(t('music_stop__tooltip'));
+    }
+  };
+
+  Blockly.Blocks['alpha_music_pause'] = {
+    init: function () {
+      this.appendDummyInput().appendField(t('music_pause__label'));
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(clr.speech);
+      this.setTooltip(t('music_pause__tooltip'));
+    }
+  };
+
+  Blockly.Blocks['alpha_music_resume'] = {
+    init: function () {
+      this.appendDummyInput().appendField(t('music_resume__label'));
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(clr.speech);
+      this.setTooltip(t('music_resume__tooltip'));
     }
   };
 

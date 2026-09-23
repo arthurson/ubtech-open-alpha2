@@ -160,11 +160,11 @@ function initWorkspace() {
     sounds: false,
   });
   window.__alphaBlocklyWorkspace = workspace; // 給 blockly-i18n.js 切語言當時取回來用
-  // AlphaBlockly.init() 裡面現在一併起返「復原/剪貼按鈕列」「縮放按鈕列」同
-  // 「側欄收起按鈕」這三組 Blockly IPositionable component (詳見 blockly-run.js
-  // 的 EditFabControls/ZoomFabControls/SidePanelToggleControl 大段註解) ——
+  // AlphaBlockly.init() 裡面現在一併起返「復原/剪貼按鈕列」「縮放按鈕列」這兩組
+  // Blockly IPositionable component (詳見 blockly-run.js
+  // 的 EditFabControls/ZoomFabControls 大段註解) ——
   // 它們同垃圾桶用回完全同一套 Blockly 官方定位管線, 一定要在 workspace
-  // inject 了之後先可以起。
+  // inject 了之後先可以起。(側欄收起掣是 HTML #bkSideTrigger, 唔經這裡。)
   window.AlphaBlockly.init(workspace);
 
   // 視窗 resize 時重新計算 Blockly 畫布大小。
@@ -184,8 +184,8 @@ function initWorkspace() {
 }
 
 // 視窗 resize / 側欄收/展開之後都要重新計算 Blockly 畫布大小 —— Blockly.svgResize()
-// 一 call, 內部會自動一併 ComponentManager 那批 POSITIONABLE component (垃圾桶/
-// zoom controls/我們自己的 EditFabControls/SidePanelToggleControl) 一齊重新
+// 一 call, 內部會自動一併 ComponentManager 那批 POSITIONABLE component
+// (垃圾桶/我們自己的 EditFabControls/ZoomFabControls) 一齊重新
 // 定位, 不用各自另外再動它們。拆做獨立 function 等 window resize listener 同
 // AlphaBlockly.toggleSidePanel() 可以共用。
 function resizeBlockly() {

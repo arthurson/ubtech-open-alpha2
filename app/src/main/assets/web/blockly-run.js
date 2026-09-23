@@ -422,7 +422,7 @@
         return;
       }
 
-      // ---------------- 語音 ----------------
+      // ---------------- 聲音 (TTS/鈴聲/本地音樂) ----------------
       case 'alpha_speech_tts': {
         const text = await evalValue(block.getInputTargetBlock('TEXT'));
         const engine = block.getFieldValue('ENGINE');
@@ -482,6 +482,37 @@
       case 'alpha_speech_ringtone_stop':
         logLine(t('run_ringtone_stop'));
         await Alpha2Api.audioRingtonesStop();
+        return;
+
+      // ---------------- 本地音樂 (同 Music 分頁同一套 /api/audio/local_music/*) ----------------
+      case 'alpha_music_play': {
+        const name = block.getFieldValue('NAME');
+        if (!name) {
+          logLine(t('run_no_music_selected'), 'warn');
+          return;
+        }
+        const disco = block.getFieldValue('DISCO') === 'true';
+        logLine(t('run_music_play', {
+          name: name,
+          discoNote: (disco ? t('run_music_disco_note') : ''),
+        }));
+        // 先設隨歌伴舞開關 (disco 是一個持久設定, 每次播歌明確寫一次最穩陣),
+        // 再播歌。播歌本身 fire-and-forget (server 即回, 後台播), 不等待播完。
+        await Alpha2Api.audioLocalMusicDiscoSet({ enabled: disco ? 'true' : 'false' });
+        await Alpha2Api.audioLocalMusicPlay({ name: name });
+        return;
+      }
+      case 'alpha_music_stop':
+        logLine(t('run_music_stop'));
+        await Alpha2Api.audioLocalMusicStop();
+        return;
+      case 'alpha_music_pause':
+        logLine(t('run_music_pause'));
+        await Alpha2Api.audioLocalMusicPause();
+        return;
+      case 'alpha_music_resume':
+        logLine(t('run_music_resume'));
+        await Alpha2Api.audioLocalMusicResume();
         return;
 
       // ---------------- 伺服 ----------------
@@ -1105,6 +1136,48 @@
   // 一齊移除, 見 blockly.html。
 
   // ------------------------------------------------------------------
+  // 本地音樂曲目清單 (live dropdown, 做法跟上面 refreshActionDropdown 一樣):
+  // 開頁自動抓一次, 頂欄「🔄 取得音樂清單」可以重抓, 存入
+  // window.__alphaMusicOptions 給 alpha_music_play 個 NAME dropdown 讀。
+  // 回傳格式見 app-music.js: { files: [{ name, sizeBytes }] }。
+  // ------------------------------------------------------------------
+  async function refreshMusicDropdown() {
+    logLine(t('run_fetching_music_list'), 'sys');
+    try {
+      const r = await Alpha2Api.audioLocalMusicList();
+      if (r && r.ok && Array.isArray(r.files)) {
+        window.__alphaMusicOptions = r.files
+          .filter(function (f) { return f && f.name; })
+          .map(function (f) { return [f.name, f.name]; });
+        if (!window.__alphaMusicOptions.length) {
+          window.__alphaMusicOptions = [[t('run_music_list_empty'), '']];
+        }
+        logLine(t('run_music_list_loaded', { count: r.files.length }), 'sys');
+      } else {
+        throw new Error('bad response');
+      }
+    } catch (e) {
+      logLine(t('run_music_list_failed'), 'err');
+      window.__alphaMusicOptions = [[t('run_music_list_load_failed_option'), '']];
+    }
+    // 同 refreshActionDropdown 一樣: 新清單返來之後, 現存 block 個 field 值
+    // 可能已經不在新 options 裡面 (例如之前是 fallback ''), 要主動校準返去
+    // 第一項, 不然個 dropdown 會撳極冇反應。
+    if (workspace) {
+      workspace.getBlocksByType('alpha_music_play', false).forEach(function (b) {
+        const field = b.getField('NAME');
+        if (field && field.getOptions) {
+          const opts = field.getOptions(false);
+          const curVal = field.getValue();
+          const stillValid = opts.some(function (pair) { return pair[1] === curVal; });
+          if (!stillValid && opts.length) field.setValue(opts[0][1]);
+          field.forceRerender();
+        }
+      });
+    }
+  }
+
+  // ------------------------------------------------------------------
   // 剪貼/復原/收起側欄這兩組按鈕 —— 抄自 NuwaRobotics Code Lab, 用 Blockly 官方的
   // Blockly.ComponentManager + Blockly.uiPosition (IPositionable 介面) 重寫,
   // 同垃圾桶 (Trashcan) / 縮放按鈕 (ZoomControls) 用回完全同一套定位管線：
@@ -1488,104 +1561,13 @@
     }
   }
 
-  // ------------------------------------------------------------------
-  // SidePanelToggleControl — 同上面一樣機制的另一個 IPositionable component,
-  // 「收起/展開執行紀錄面板」那顆 ›/‹ 按鈕。獨立成一個 component (不是塞入
-  // EditFabControls 度) 是因為它的 weight/擺位邏輯不同 —— 這粒按鈕要貼住
-  // .bk-side 個左邊界, 不是跟 Blockly 慣常的「畫布角落」定位, 所以 position()
-  // 裡面不用 uiPosition 那套, 改為直接讀 .bk-side 的實際 DOM 緊貼位置。
-  // ------------------------------------------------------------------
-  class SidePanelToggleControl {
-    constructor(ws) {
-      this.workspace = ws;
-      this.id = 'alphaSidePanelToggle';
-      this.top = 14;
-      this.left = 0;
-      this.WIDTH = 18;
-      this.HEIGHT = 36;
-      this.collapsed = false;
-      this.createDom();
-      ws.getComponentManager().addComponent({
-        component: this,
-        capabilities: [Blockly.ComponentManager.Capability.POSITIONABLE],
-        weight: 10, // 這粒按鈕位置獨立計算, 不用理其他 component bump 它, 擺
-                    // 在最後 (weight 最大) 就得。
-      });
-    }
-
-    createDom() {
-      const svg = this.workspace.getParentSvg();
-      this.svgGroup = Blockly.utils.dom.createSvgElement('g', {
-        class: 'bk-svg-side-toggle-group',
-      }, svg);
-      Blockly.utils.dom.createSvgElement('rect', {
-        class: 'bk-svg-side-toggle-bg',
-        x: 0, y: 0, width: this.WIDTH, height: this.HEIGHT, rx: 6,
-      }, this.svgGroup);
-      this.arrowEl = Blockly.utils.dom.createSvgElement('path', {
-        class: 'bk-svg-side-toggle-arrow',
-        d: this.arrowPath(false),
-      }, this.svgGroup);
-      this.titleEl = Blockly.utils.dom.createSvgElement('title', {}, this.svgGroup);
-      this.titleEl.textContent = t('page_side_toggle_title');
-      this.svgGroup.addEventListener('pointerdown', (evt) => {
-        evt.preventDefault();
-        evt.stopPropagation();
-      });
-      this.svgGroup.addEventListener('click', (evt) => {
-        evt.preventDefault();
-        evt.stopPropagation();
-        toggleSidePanel();
-      });
-    }
-
-    // 未收起顯示 › (正在指右, 就是「按了會收起去右邊」), 收起了顯示 ‹ (正在指左,
-    // 就是「按了會展開回來」) —— 同 Code Lab 個箭頭方向邏輯一致。
-    arrowPath(collapsed) {
-      const cx = this.WIDTH / 2, cy = this.HEIGHT / 2;
-      return collapsed
-        ? `M${cx + 3} ${cy - 6} L${cx - 3} ${cy} L${cx + 3} ${cy + 6}`
-        : `M${cx - 3} ${cy - 6} L${cx + 3} ${cy} L${cx - 3} ${cy + 6}`;
-    }
-
-    setCollapsed(collapsed) {
-      this.collapsed = collapsed;
-      this.arrowEl.setAttribute('d', this.arrowPath(collapsed));
-    }
-
-    updateI18n() {
-      this.titleEl.textContent = t('page_side_toggle_title');
-    }
-
-    getBoundingRectangle() {
-      return new Blockly.utils.Rect(this.top, this.top + this.HEIGHT, this.left, this.left + this.WIDTH);
-    }
-
-    // 這粒按鈕要半浮在「畫布/側欄交界」—— 不跟 Blockly 慣常的四角定位, 直接讀
-    // .bk-side 個 DOM 元素實際站在哪裡 (getBoundingClientRect()), 減返
-    // .bk-canvas 個 SVG 原點的螢幕座標, 就拿到正確的 SVG 內部座標。側欄收起了
-    // 當時 (.bk-side flex-basis 變 0) 它個 left 都會自動變做 canvas 右邊緣,
-    // 按鈕就自然跟著動埋去右邊界, 不用額外邏輯。
-    position(uiMetrics, savedPositions) {
-      const svg = this.workspace.getParentSvg();
-      const svgRect = svg.getBoundingClientRect();
-      const sideEl = document.getElementById('bkSide');
-      const sideRect = sideEl ? sideEl.getBoundingClientRect() : null;
-      const boundaryX = sideRect ? (sideRect.left - svgRect.left) : (svgRect.width);
-      this.left = boundaryX - this.WIDTH / 2;
-      this.top = 14;
-      this.svgGroup.setAttribute('transform', `translate(${this.left}, ${this.top})`);
-    }
-
-    dispose() {
-      this.workspace.getComponentManager().removeComponent(this.id);
-      if (this.svgGroup && this.svgGroup.parentNode) this.svgGroup.parentNode.removeChild(this.svgGroup);
-    }
-  }
+  // 2026-09: 舊 SidePanelToggleControl (floating SVG ›/‹ 掣, 18x36 太細難撳)
+  // 已刪除 —— 對齊 Code Lab simulator-area 做法: 側欄收起嗰陣留一條 32px 闊
+  // 邊條, 上面有粒深色 ribbon trigger 掣 (見 blockly.html #bkSideTrigger 同
+  // blockly.css .bk-side-trigger), 成日都撳到, 唔使再靠 Blockly 畫布定位。
 
   let editFabControls = null;
   let zoomFabControls = null;
-  let sidePanelToggleControl = null;
 
   function currentSelectedBlock() {
     return (Blockly.common && Blockly.common.getSelected) ? Blockly.common.getSelected() : null;
@@ -1675,13 +1657,17 @@
       // 選/取消選 block 都是 UI event —— 2026-09 對齊 Code Lab 之後浮動按鈕
       // 無 disabled 狀態, 不再需要獨立 listener 追 SELECTED 來 toggle
       // cut/copy, 成段刪走。
-      // 起返三組 IPositionable component (詳見上面 EditFabControls/
-      // ZoomFabControls/SidePanelToggleControl 這三個 class 的大段註解) —— 一定要在 workspace
+      // 起返兩組 IPositionable component (詳見上面 EditFabControls/
+      // ZoomFabControls 這兩個 class 的大段註解) —— 一定要在 workspace
       // inject 了、有真正的 SVG root 之後先可以起, 所以擺在 init() 這裡做,
       // 不是在 module load 當時就起。
       editFabControls = new EditFabControls(workspace);
       zoomFabControls = new ZoomFabControls(workspace);
-      sidePanelToggleControl = new SidePanelToggleControl(workspace);
+      // 2026-09: 音樂曲目 live dropdown 開頁自動抓一次 (fire-and-forget, 唔等;
+      // 失敗都唔緊要, 個 dropdown 會顯示 fallback, 用家可以撳頂欄掣重抓)。
+      // 動作清單唔自動抓 (要等用家撳「取得動作列表」, 因為抓一次好慢), 但音樂
+      // list 係輕量 API, 直接自動抓方便 block 即刻有嘢揀。
+      try { refreshMusicDropdown(); } catch (e) { /* 頂欄掣可以重抓, 不緊要 */ }
     },
     run: runProgram,
     stop: stopProgram,
@@ -1692,28 +1678,27 @@
     exportXmlFile: exportXmlFile,
     importXmlFile: importXmlFile,
     refreshActionDropdown: refreshActionDropdown,
+    refreshMusicDropdown: refreshMusicDropdown,
     refreshSavedProgramDropdown: refreshSavedProgramDropdown, // 給 blockly-i18n.js 切語言當時取回來用, 令 "-- 已儲存的程式 --" placeholder 跟著重新 render
     editAction: editAction,
-    // 語言切換後 (blockly-i18n.js setUiLanguage()) 要跟著換返這三組 SVG
-    // component 的 <title> tooltip 文字, HTML 版 data-i18n 這套機制僅支援
-    // 找 DOM 元素, 執行不到我們自己起的 SVG UI, 要給 blockly-i18n.js 專登
-    // call 這個 method。
+    // 語言切換後 (blockly-i18n.js setUiLanguage()) 要跟著換返這兩組 SVG
+    // component 的 <title> tooltip 文字。側欄收起掣 (#bkSideTrigger) 是普通
+    // HTML, 經 data-i18n-attr="title" 自動跟語言, 唔使經這裡。
     refreshEditControlsI18n: function () {
       if (editFabControls) editFabControls.updateI18n();
       if (zoomFabControls) zoomFabControls.updateI18n();
-      if (sidePanelToggleControl) sidePanelToggleControl.updateI18n();
     },
     toggleSidePanel: function () {
       const main = document.querySelector('.bk-main');
       if (!main) return;
       const collapsed = !main.classList.contains('bk-side-collapsed');
       main.classList.toggle('bk-side-collapsed', collapsed);
-      if (sidePanelToggleControl) sidePanelToggleControl.setCollapsed(collapsed);
       try { localStorage.setItem('blocklySideCollapsed', collapsed ? '1' : '0'); } catch (e) { /* 不緊要, 沒有記錄低就下次預設展開 */ }
-      // .bk-side flex-basis 有 CSS transition (0.18s), 畫布闊度同
-      // SidePanelToggleControl 個位置都要跟著個過渡動畫慢慢動, resize
-      // 幾次涵蓋整個過程 (Blockly.svgResize 會觸發 ComponentManager
-      // 重新 position 一次, 所以這裡僅要負責在正確的時間點 call 它)。
+      // .bk-side flex-basis 有 CSS transition (0.18s), 畫布闊度要跟著個過渡
+      // 動畫慢慢變, resize 幾次涵蓋整個過程 (Blockly.svgResize 會觸發
+      // ComponentManager 重新 position 一次, 所以這裡僅要負責在正確的時間點
+      // call 它)。側欄收起掣 (#bkSideTrigger) 是 HTML, 箭嘴方向純 CSS
+      // (rotate) 跟 .bk-side-collapsed 轉, 不用 JS set。
       if (workspace) {
         Blockly.svgResize(workspace);
         setTimeout(function () { Blockly.svgResize(workspace); }, 100);
@@ -1727,7 +1712,6 @@
       const main = document.querySelector('.bk-main');
       if (!main) return;
       main.classList.toggle('bk-side-collapsed', collapsed);
-      if (sidePanelToggleControl) sidePanelToggleControl.setCollapsed(collapsed);
     },
     clearWorkspace: function () {
       if (workspace) workspace.clear();

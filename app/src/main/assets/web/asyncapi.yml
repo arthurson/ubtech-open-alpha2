@@ -88,6 +88,7 @@ components:
               - tts_end
               - vosk_download
               - vosk_state
+              - volume_changed
               - wakeup
               - wifi_result
               - xiaozhi_activation
@@ -121,6 +122,10 @@ components:
           payload:
             type: alpha2_pir_state
             data: { triggered: true, raw: -109 }
+        - name: volume
+          payload:
+            type: volume_changed
+            data: { volume: 6, max: 15 }
     ClientPing:
       name: ClientPing
       payload:

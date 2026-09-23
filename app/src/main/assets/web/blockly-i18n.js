@@ -147,11 +147,12 @@
     if (window.AlphaBlockly && window.AlphaBlockly.refreshSavedProgramDropdown) {
       window.AlphaBlockly.refreshSavedProgramDropdown();
     }
-    // 復原/剪貼按鈕列 + 側欄收起按鈕現在是 SVG UI component (見 blockly-run.js
-    // 的 EditFabControls/SidePanelToggleControl), 不是普通 HTML <button>,
+    // 復原/剪貼/縮放按鈕列現在是 SVG UI component (見 blockly-run.js
+    // 的 EditFabControls/ZoomFabControls), 不是普通 HTML <button>,
     // 不在 applyUiTextLocale() 的 [data-i18n] 掃描範圍之內 (它只會找
     // document.querySelectorAll('[data-i18n]') 那批 DOM 元素) —— 要主動 call
-    // 才會令它們的 <title> tooltip 文字跟著轉語言。
+    // 才會令它們的 <title> tooltip 文字跟著轉語言。(側欄收起掣是普通 HTML,
+    // 經 data-i18n-attr 自動跟, 唔使經這裡。)
     if (window.AlphaBlockly && window.AlphaBlockly.refreshEditControlsI18n) {
       window.AlphaBlockly.refreshEditControlsI18n();
     }

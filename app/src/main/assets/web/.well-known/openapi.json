@@ -8288,7 +8288,7 @@
         "tags": [
           "audio"
         ],
-        "summary": "查詢播歌節奏燈開關 (頭假立體聲錶眼跟人聲，後端跑)",
+        "summary": "查詢播歌節奏燈開關 (頭 VU 錶眼跟人聲，後端跑)",
         "parameters": [
           {
             "$ref": "#/components/parameters/PanelToken"
