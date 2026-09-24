@@ -2,9 +2,40 @@
    刻意不重新定義色系, 全部食 style.css 已有的 CSS 變數 (--bg/--accent/--border/...),
    等這頁同「控制面板」個幾個 tab 看來是同一個產品, 不是外掛第三方風格。 */
 
-.blockly-body {
-  /* style.css 個 body 本身已經是 flex column + height:100vh + overflow:hidden,
-     這裡僅補回 Blockly 頁專屬的內層排版, 不覆寫 body 本身。 */
+/* ------------------------------------------------------------------
+   Desktop 同手機共用嘅 layout 底 (2026-09 對齊):
+   - body 用 100dvh (desktop 瀏覽器縮細嗰陣一樣唔會跳, fallback vh)
+   - toolbar 單行橫向捲動, 唔換行食高度
+   - header/toolbar 左右 padding 收窄, 畫布同 chrome 用哂成闊
+   - 側欄第一次入預設收起 (用家展開過就記住 localStorage)
+   手機額外嘢留喺下面 @media (max-width: 900px)。
+   ------------------------------------------------------------------ */
+body.blockly-body {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  width: 100%;
+}
+
+.bk-header {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.bk-toolbar {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  padding-left: 10px;
+  padding-right: 10px;
+  gap: 8px 12px;
+  scrollbar-width: thin;
+}
+.bk-toolbar-group {
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
 }
 
 /* 2026-08 修正: 之前這個 class 完全沒有任何 rule - showError() (blockly-page.js)
@@ -34,7 +65,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 20px;
+  padding-top: 10px;
+  padding-bottom: 10px;
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
 }
@@ -108,10 +140,10 @@
 .bk-toolbar {
   flex: 0 0 auto;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 8px 18px;
-  padding: 8px 20px;
+  padding-top: 8px;
+  padding-bottom: 8px;
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
 }
@@ -120,7 +152,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
 }
 
 .bk-btn {
@@ -195,12 +226,16 @@
   flex: 1 1 auto;
   display: flex;
   min-height: 0;
+  min-width: 0;
   position: relative;
+  width: 100%;
 }
 
 .bk-canvas {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
+  width: 100%;
   background: var(--bg);
   position: relative;
 }
@@ -290,25 +325,29 @@
   transform-origin: 38px 15px;
 }
 /* ------------------------------------------------------------------
-   側欄收起掣 — 2026-09 對齊 Code Lab simulator-area 做法。
-   Code Lab 右面板收起唔係成個消失, 而係留一條 32px 闊邊, 上面有粒 32x32
-   ribbon trigger (箭嘴 ‹, hover 變色, 撳開轉 ›) —— 成日都撳到, 唔似之前
-   浮喺畫布上面嗰粒 18x36 SVG 掣咁難中 (嗰個 class 已經刪走)。配色跟返
-   本站淺色主題 (淺灰掣＋灰箭嘴＋主題藍 hover), 同上面浮動掣同一個系列。
-   結構見 blockly.html #bkSide: trigger 定死喺左緣, 內容包喺 .bk-side-body
-   (左邊留 32px gutter 畀條 trigger 邊)。
+   側欄收起掣 — 2026-09: 展開/收起都係一粒獨立浮動掣, 唔再喺展開嗰陣
+   浪費一條 32px 直條 gutter。
+   展開: 掣騎住畫布同面板嗰條邊 (left:-16px, 一半喺畫布一半喺面板);
+   收起: 側欄闊度 0, 掣浮喺畫布右緣 (left:-40px)。箭嘴 ‹/› 純 CSS 轉。
    ------------------------------------------------------------------ */
 .bk-side-trigger {
   position: absolute;
   width: 32px;
   height: 32px;
-  left: 0;
+  left: -16px;
   top: 15px;
-  background: var(--track);
-  line-height: 32px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(28,33,38,.15);
+  line-height: 30px;
   text-align: center;
   cursor: pointer;
   z-index: 5;
+}
+/* 收起嗰陣側欄得返 0 闊, 掣要再伸出去啲浮喺畫布上面 (離邊 8px)。 */
+.bk-main.bk-side-collapsed .bk-side-trigger {
+  left: -40px;
 }
 .bk-side-trigger svg {
   fill: var(--muted);
@@ -326,35 +365,16 @@
   fill: var(--accent);
   stroke: var(--accent);
 }
-/* ribbon 上下緞帶角 (Code Lab 同款 :before/:after 三角) —— 令粒掣睇落係
-   一條直向飄帶。撳落去會計入粒掣度 (pseudo element 嘅 click 會冒落 parent),
-   所以實際命中區係 32x64。 */
-.bk-side-trigger:before,
-.bk-side-trigger:after {
-  content: "";
-  display: block;
-  position: absolute;
-  width: 0;
-  height: 0;
-  border-left: 32px solid transparent;
-}
-.bk-side-trigger:before {
-  top: -16px;
-  border-bottom: 16px solid var(--track);
-}
-.bk-side-trigger:after {
-  top: 32px;
-  border-top: 16px solid var(--track);
-}
-
 .bk-main.bk-side-collapsed .bk-side {
   /* display:none 會令 Blockly.svgResize() 拿不到正確的剩餘闊度 (flex 计算
-     在個元素消失那一刻已經定了), 所以唔成個隱藏 —— 對齊 Code Lab 留一條
-     32px 闊邊條擺 trigger 掣, 淨係收起內容 (.bk-side-body display:none)。
-     flex box 本體保留, resize 先計得啱。 */
-  flex: 0 0 32px;
+     在個元素消失那一刻已經定了), 所以唔成個隱藏 —— 收到 0 闊但 flex box
+     本體保留, resize 照計得啱。收起掣自己浮喺畫布右緣 (見上面 left:-40px),
+     所以唔使留邊條; 內容照舊 display:none。overflow 要 visible, 唔係會剪走
+     伸出去嗰粒掣。 */
+  flex: 0 0 0;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
+  border-left: none;
 }
 
 .bk-side {
@@ -368,15 +388,15 @@
   transition: flex-basis 0.18s ease;
 }
 
-/* 側欄內容本體: 左邊預留 32px gutter 畀條 trigger 邊 (Code Lab 個
-   simulator-container 都係 calc(100% - 32px) 咁讓位)。 */
+/* 展開嗰陣內容用盡成個面板闊度 —— 收起掣已經改做浮喺條邊度, 唔使再
+   預留 32px gutter 直條 (用家反映「伸出黎係一條浪費空間」)。 */
 .bk-side-body {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  margin-left: 32px;
+  margin-left: 0;
 }
 .bk-main.bk-side-collapsed .bk-side-body {
   display: none;
@@ -416,26 +436,115 @@
 .run-log-line.err { color: var(--err); }
 
 @media (max-width: 900px) {
-  .bk-main { flex-direction: column; }
-  .bk-side { flex: 0 0 260px; border-left: none; border-top: 1px solid var(--border); }
-  .bk-main.bk-side-collapsed .bk-side {
-    /* 直向嗰陣收起變一條全闊 32px 高橫條 (唔係 0), 掣照留喺度好撳。 */
-    flex: 0 0 32px;
-    min-height: 0;
+  /* 手機 header: 收窄單行, 掣/輸入框 38px+ 手指撳到 (input 16px 字, 唔係 iOS
+     自動 zoom)。版本 badge 隱藏, WS 狀態縮做點+短字。 */
+  .bk-header {
+    flex-wrap: nowrap;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    padding-left: 8px;
+    padding-right: 8px;
+    gap: 8px;
+    min-height: 42px;
     overflow: hidden;
+  }
+  .bk-header h1 {
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .bk-version-badge { display: none; }
+  .bk-lang-toggle button { padding: 4px 8px; font-size: 12px; }
+  .bk-header-status { font-size: 11px; white-space: nowrap; }
+  .bk-header-status #wsStatusText {
+    max-width: 7em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Toolbar: 已喺 base 做橫捲; 手機再收 padding, 隱藏 scrollbar。 */
+  .bk-toolbar {
+    padding-top: 6px;
+    padding-bottom: 6px;
+    padding-left: 8px;
+    padding-right: 8px;
+    gap: 8px;
+    scrollbar-width: none;
+  }
+  .bk-toolbar::-webkit-scrollbar { display: none; }
+  .bk-btn {
+    padding: 9px 11px;
+    font-size: 13px;
+    min-height: 40px;
+    min-width: 40px;
+  }
+  .bk-input {
+    font-size: 16px;
+    min-height: 40px;
+    max-width: 40vw;
+  }
+
+  /* 主區: 直向, 但唔俾佢成區自己捲 (body 已經鎖 100dvh) —— 畫布 flex 1
+     撐滿剩低空間, 側欄手機版改做「展開時最多 38% 主區高」。 */
+  .bk-main {
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .bk-canvas {
+    flex: 1 1 auto;
+    min-height: 120px; /* 給 Blockly inject 一個下限, 唔係會 0 高成版空白 */
+  }
+  .bk-side {
+    flex: 0 0 auto;
+    max-height: 38%;
+    min-height: 0;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+  .bk-main.bk-side-collapsed .bk-side {
+    /* 直向收起 = 高度 0, 掣浮喺畫布底緣。overflow visible 等粒掣唔好被剪。 */
+    flex: 0 0 0;
+    min-height: 0;
+    max-height: 0;
+    overflow: visible;
     border-top: none;
   }
-  /* 橫條入面掣貼頂 (緞帶角會被 overflow 剪走, 剩返四方掣, 啱啱好)。
-     箭嘴轉 90°: 收起顯示 ^ (撳落去向上展開), 展開顯示 v (撳落去向下收起)。 */
-  .bk-main.bk-side-collapsed .bk-side-trigger { top: 0; }
+  /* 手機: 展開嗰陣掣喺面板頂邊; 收起嗰陣喺畫布底緣。
+     箭嘴轉 90°: 收起顯示 ^ (撳向上展), 展開顯示 v (撳向下收)。 */
+  .bk-side-trigger,
+  .bk-main.bk-side-collapsed .bk-side-trigger {
+    left: 15px;
+    top: -40px;
+  }
   .bk-side-trigger svg { transform: rotate(90deg); }
   .bk-main:not(.bk-side-collapsed) .bk-side-trigger svg { transform: rotate(270deg); }
-  .bk-header h1 { font-size: 15px; }
-  /* 窄螢幕 (手機直向) 個 header 已經幾迫: 返回箭頭 + 標題 + WS 連接狀態,
-     版本號 badge 僅參考資訊, 不是核心操作, 索性在這個闊度隱藏, 保留空間
-     給 WebSocket 連接狀態 (這個才是用家實際需要留意的東西)。 */
-  .bk-version-badge { display: none; }
-  .bk-lang-toggle button { padding: 3px 8px; font-size: 11px; }
-  .bk-backend-btn { padding: 3px 8px; font-size: 11px; }
+
+  /* 側欄 header/log 手機版收返啲 padding, log 字細少少。 */
+  .bk-side-header { padding: 8px 10px; }
+  .run-log { padding: 8px 10px; font-size: 11px; }
+
+  /* Blockly 自己個 flyout/工具箱手機版會好闊 —— 用 CSS 收窄 category 列。
+     直版手機全闊得 ~360px, 工具箱本身 ~140px 會食咗三分一畫布 (見截圖),
+     限返 118px, label 過長出 …。 */
+  .blocklyToolboxDiv {
+    font-size: 12px;
+    max-width: 118px;
+  }
+  .blocklyTreeRow {
+    height: 32px !important;
+    padding: 0 6px !important;
+    max-width: 118px;
+  }
+  .blocklyTreeRow .blocklyTreeLabel {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 92px;
+    display: inline-block;
+    vertical-align: middle;
+  }
 }
 

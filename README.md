@@ -277,5 +277,20 @@ open-alpha2/
   fight over the speaker.
 - 語音對話沿用「先說話、等 200 毫秒、再動作」的時序；帶大音效的動作會
   跳過語音回覆，以免兩者搶喇叭。
+- Expected logcat noise, not bugs: `linker: ... unused DT entry` warnings
+  for the prebuilt native libraries (`head_led`/`head_key_mgr`/`serial_port`,
+  Vosk, JNA) and occasional `Atlas: ... not in getPreloadedDrawables?`
+  lines at startup. The Android 5.1 linker simply doesn't understand newer
+  GNU ELF entries (`DT_VERNEED`, `DT_GNU_HASH`), and the Atlas line comes
+  from framework graphics code — the libraries load fine (no
+  `UnsatisfiedLinkError`, verified). Do not "fix" by hacking the `.so`
+  files or disabling hardware acceleration.
+- 預期會見到嘅 logcat 噪音，並非 bug：預編 native 庫（`head_led`／
+  `head_key_mgr`／`serial_port`、Vosk、JNA）嘅 `linker: ... unused DT
+  entry` 警告，以及開機時偶爾嘅 `Atlas: ... not in
+  getPreloadedDrawables?`。Android 5.1 linker 本來就不認識新式 GNU ELF
+  項目（`DT_VERNEED`、`DT_GNU_HASH`），Atlas 那句來自框架圖形代碼——庫
+  照常載入（無 `UnsatisfiedLinkError`，已驗證）。切勿為此改 `.so` 檔或關
+  硬件加速。
 
 License: GPL-3.0-only. / 授權：GPL-3.0-only。

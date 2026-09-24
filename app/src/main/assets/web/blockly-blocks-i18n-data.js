@@ -59,6 +59,17 @@ window.ALPHA_BLOCK_I18N = {
   // -- alpha_speech_stop --
   speech_stop__label:        { zh: '停止 TTS 播放', en: 'Stop TTS playback' },
 
+  // -- alpha_media_stop (三合一: TTS / 鈴聲 / 本地音樂) --
+  media_stop__label:         { zh: '⏹ 停止播放', en: '⏹ Stop playback' },
+  media_stop__type_tts:      { zh: 'TTS 語音', en: 'TTS speech' },
+  media_stop__type_ringtone: { zh: '系統鈴聲', en: 'System ringtone' },
+  media_stop__type_music:    { zh: '本地音樂', en: 'Local music' },
+  media_stop__tooltip:       { zh: '停止正在播嘅 TTS 語音 / 系統鈴聲 / 本地音樂 (3 選 1)。對應 /api/speech/stop、/api/audio/ringtones/stop、/api/audio/local_music/stop。',
+                                en: 'Stop whichever is playing: TTS speech / system ringtone / local music (pick one of three). Maps to /api/speech/stop, /api/audio/ringtones/stop, /api/audio/local_music/stop.' },
+  media_stop__run_tts:       { zh: '⏹ 停止 TTS 語音', en: '⏹ Stop TTS speech' },
+  media_stop__run_ringtone:  { zh: '⏹ 停止系統鈴聲', en: '⏹ Stop system ringtone' },
+  media_stop__run_music:     { zh: '⏹ 停止本地音樂', en: '⏹ Stop local music' },
+
   // -- alpha_speech_set_mic --
   speech_set_mic__label:     { zh: '麥克風擁有權：', en: 'Mic ownership:' },
   speech_set_mic__release:   { zh: '釋放給機械人 (機械人可以自己聽)', en: 'Release to robot (robot can listen itself)' },
@@ -84,25 +95,20 @@ window.ALPHA_BLOCK_I18N = {
   ringtone__type_notification: { zh: '通知', en: 'notification' },
   ringtone__type_phone:      { zh: '電話', en: 'phone' },
 
-  // -- alpha_speech_ringtone_stop --
-  ringtone_stop__label:      { zh: '⏹ 停止鈴聲播放', en: '⏹ Stop ringtone playback' },
-  ringtone_stop__tooltip:    { zh: '停止現在正在播放的系統鈴聲/通知聲 (電話鈴聲或通知鈴聲兩個 block 播放的那個)。(/api/audio/ringtones/stop)',
-                                en: 'Stop whichever system ringtone/notification sound is currently playing (from either the phone or notification ringtone block). (/api/audio/ringtones/stop)' },
+  // 2026-09 移除: alpha_speech_ringtone_stop i18n — block 已刪,
+  // 停鈴聲經 alpha_media_stop (media_stop__type_ringtone / media_stop__run_ringtone)。
 
-  // -- alpha_music_play / alpha_music_stop / alpha_music_pause / alpha_music_resume --
+  // -- alpha_music_play / alpha_music_stop --
   // 本地音樂 (/mnt/internal_sd/music), 同 Music 分頁同一套 /api/audio/local_music/*。
   music__label:             { zh: '🎵 播放本地音樂', en: '🎵 Play local music' },
   music__track_label:       { zh: '曲目', en: 'Track' },
   music__not_loaded:        { zh: '(清單未載入)', en: '(list not loaded)' },
-  music__disco_label:       { zh: '隨歌伴舞', en: 'Dance along' },
-  music__tooltip:           { zh: '播放機械人本機音樂檔 (/api/audio/local_music/play)。開頁會自動抓一次曲目清單, 亦可按頂欄「🔄 取得音樂清單」重抓。「隨歌伴舞」開會一併啟用 disco 模式, 播歌嗰陣機械人跟住郁。',
-                                en: 'Play a local music file on the robot (/api/audio/local_music/play). The track list is fetched automatically when the page loads; use the "🔄 Load Music List" toolbar button to refresh. "Dance along" also enables disco mode so the robot moves with the music.' },
+  music__disco_label:       { zh: '節奏燈', en: 'Rhythm LED' },
+  music__filler_label:      { zh: '隨歌伴舞', en: 'Dance along' },
+  music__tooltip:           { zh: '播放機械人本機音樂檔 (/api/audio/local_music/play)。開頁會自動抓一次曲目清單。兩個獨立開關:「隨歌伴舞」= 播歌時隨機郁動作 (filler_action);「節奏燈」= 眼做拍子機跟節拍 (disco)。播歌前會先 set 呢兩個持久設定。',
+                                en: 'Play a local music file on the robot (/api/audio/local_music/play). The track list is fetched automatically when the page loads. Two independent toggles: "Dance along" = random filler actions while music plays (filler_action); "Rhythm LED" = eyes keep the beat (disco). Both persistent settings are written before playback starts.' },
   music_stop__label:        { zh: '⏹ 停止本地音樂', en: '⏹ Stop local music' },
   music_stop__tooltip:      { zh: '停止本地音樂播放 (/api/audio/local_music/stop)。', en: 'Stop local music playback (/api/audio/local_music/stop).' },
-  music_pause__label:       { zh: '⏸ 暫停本地音樂', en: '⏸ Pause local music' },
-  music_pause__tooltip:     { zh: '暫停本地音樂, 之後可以繼續 (/api/audio/local_music/pause)。', en: 'Pause local music; can be resumed later (/api/audio/local_music/pause).' },
-  music_resume__label:      { zh: '▶ 繼續本地音樂', en: '▶ Resume local music' },
-  music_resume__tooltip:    { zh: '繼續播之前暫停了的本地音樂 (/api/audio/local_music/resume)。', en: 'Resume previously paused local music (/api/audio/local_music/resume).' },
 
   // -- servo groups --
   servo_group_head:          { zh: '頭', en: 'Head' },
@@ -315,13 +321,13 @@ window.ALPHA_BLOCK_I18N = {
   run_ringtone_type_phone:   { zh: '電話', en: 'phone' },
   run_ringtone_duration_note: { zh: '（播 {duration} 秒）', en: ' (play for {duration}s)' },
   run_ringtone_duration_full: { zh: '（播到完為止）', en: ' (play to the end)' },
-  run_ringtone_stop:         { zh: '⏹ 停止鈴聲播放', en: '⏹ Stop ringtone playback' },
+  // 2026-09 移除: run_ringtone_stop — alpha_speech_ringtone_stop case 已刪,
+  // 停鈴聲 log 經 media_stop__run_ringtone。
   run_no_music_selected:     { zh: '⚠ 未選曲目', en: '⚠ No track selected' },
-  run_music_play:            { zh: '🎵 播放本地音樂: {name}{discoNote}', en: '🎵 Play local music: {name}{discoNote}' },
-  run_music_disco_note:      { zh: ' (隨歌伴舞開)', en: ' (dance along on)' },
+  run_music_play:            { zh: '🎵 播放本地音樂: {name}{fillerNote}{discoNote}', en: '🎵 Play local music: {name}{fillerNote}{discoNote}' },
+  run_music_filler_note:     { zh: ' (隨歌伴舞開)', en: ' (dance along on)' },
+  run_music_disco_note:      { zh: ' (節奏燈開)', en: ' (rhythm LED on)' },
   run_music_stop:            { zh: '⏹ 停止本地音樂', en: '⏹ Stop local music' },
-  run_music_pause:           { zh: '⏸ 暫停本地音樂', en: '⏸ Pause local music' },
-  run_music_resume:          { zh: '▶ 繼續本地音樂', en: '▶ Resume local music' },
   run_fetching_music_list:   { zh: '🔄 正在抓取本地音樂清單…', en: '🔄 Fetching local music list…' },
   run_music_list_empty:      { zh: '(機械人回傳空清單)', en: '(robot returned an empty list)' },
   run_music_list_loaded:     { zh: '✅ 已載入 {count} 首音樂', en: '✅ Loaded {count} track(s)' },

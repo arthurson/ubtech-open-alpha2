@@ -274,6 +274,27 @@
     }
   };
 
+  // 2026-09: 三合一「停止播放」block — TTS / 系統鈴聲 / 本地音樂 3 選 1。
+  // 取代 alpha_speech_stop / alpha_speech_ringtone_stop / alpha_music_stop
+  // 三粒分開 stop block。toolbox 只出呢粒統一版; alpha_speech_stop 同
+  // alpha_music_stop 定義同 interpreter case 仍保留畀舊 .xml,
+  // alpha_speech_ringtone_stop 已完全移除 (經 TYPE=ringtone 蓋)。
+  Blockly.Blocks['alpha_media_stop'] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField(t('media_stop__label'))
+        .appendField(new Blockly.FieldDropdown([
+          [t('media_stop__type_tts'), 'tts'],
+          [t('media_stop__type_ringtone'), 'ringtone'],
+          [t('media_stop__type_music'), 'music'],
+        ]), 'TYPE');
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(clr.speech);
+      this.setTooltip(t('media_stop__tooltip'));
+    }
+  };
+
   Blockly.Blocks['alpha_speech_set_mic'] = {
     init: function () {
       this.appendDummyInput()
@@ -331,19 +352,8 @@
   makeRingtoneBlock('alpha_speech_ringtone_phone', 'ringtone', 'ringtone_phone__label');
   makeRingtoneBlock('alpha_speech_ringtone_notification', 'notification', 'ringtone_notification__label');
 
-  // 2026-08 新增: 停止現在正在播的鈴聲/通知聲 (call /api/audio/ringtones/stop)。
-  // 兩粒 makeRingtoneBlock() 出品的 block 沒有 loop, 但用家按多次「執行」或者個
-  // 鈴聲檔本身好長, 之前完全沒有辦法在播完之前打斷它 —— 這粒 block 就是給 Blockly
-  // 「例子 5」用來做個手動停止按鈕。
-  Blockly.Blocks['alpha_speech_ringtone_stop'] = {
-    init: function () {
-      this.appendDummyInput().appendField(t('ringtone_stop__label'));
-      this.setPreviousStatement(true, null);
-      this.setNextStatement(true, null);
-      this.setColour(clr.speech);
-      this.setTooltip(t('ringtone_stop__tooltip'));
-    }
-  };
+  // 2026-09 移除: alpha_speech_ringtone_stop — 改用三合一
+  // alpha_media_stop (TYPE=ringtone), 見上面 alpha_media_stop 定義。
 
   // ---------------------------------------------------------------------
   // 本地音樂 (同 Music 分頁同一套 /api/audio/local_music/*)。
@@ -363,6 +373,15 @@
             ? window.__alphaMusicOptions
             : [[t('music__not_loaded'), '']];
         }), 'NAME');
+      // 兩個獨立開關, 對應 Music 分頁兩個唔同 checkbox:
+      //   隨歌伴舞 FILLER → /api/audio/local_music/filler_action/set (隨機動作)
+      //   節奏燈   DISCO  → /api/audio/local_music/disco/set (眼做拍子機)
+      this.appendDummyInput()
+        .appendField(t('music__filler_label'))
+        .appendField(new Blockly.FieldDropdown([
+          [t('toggle_off'), 'false'],
+          [t('toggle_on'), 'true'],
+        ]), 'FILLER');
       this.appendDummyInput()
         .appendField(t('music__disco_label'))
         .appendField(new Blockly.FieldDropdown([
@@ -386,25 +405,10 @@
     }
   };
 
-  Blockly.Blocks['alpha_music_pause'] = {
-    init: function () {
-      this.appendDummyInput().appendField(t('music_pause__label'));
-      this.setPreviousStatement(true, null);
-      this.setNextStatement(true, null);
-      this.setColour(clr.speech);
-      this.setTooltip(t('music_pause__tooltip'));
-    }
-  };
-
-  Blockly.Blocks['alpha_music_resume'] = {
-    init: function () {
-      this.appendDummyInput().appendField(t('music_resume__label'));
-      this.setPreviousStatement(true, null);
-      this.setNextStatement(true, null);
-      this.setColour(clr.speech);
-      this.setTooltip(t('music_resume__tooltip'));
-    }
-  };
+  // 2026-09 移除: alpha_music_disco / alpha_music_pause /
+  // alpha_music_resume —— 用家要求精簡 toolbox。play block 個 FILLER +
+  // DISCO 兩個 field 分別管隨歌伴舞同節奏燈。定義同 interpreter case
+  // 一齊拿走, 舊 .xml 有呢啲 type 會顯示為未知 block (罕見, 接受)。
 
   // ---------------------------------------------------------------------
   // 伺服 Servo (20 顆) + Sonar

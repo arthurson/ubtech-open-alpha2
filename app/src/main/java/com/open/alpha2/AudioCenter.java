@@ -127,6 +127,9 @@ public final class AudioCenter {
     private volatile long discoLastFrameAtMs = 0;
     private volatile long discoLastPushAtMs = 0;
     private volatile long discoLastVuPushAtMs = 0;
+    private volatile long discoLastMouthAtMs = 0;
+    private volatile int discoLastMouthSpeed = -3; // 上次推出嘅嘴速度（-2＝熄，-3＝未知即推）
+    private volatile int discoMouthQuietRounds = 0; // 連續靜音輪數（3 輪先真熄，唔好畀間奏chok熄）
     private volatile long discoEyeLedAtMs = 0; // 眼上次真係轉色（cadence 用）
     private volatile int discoLastVuLeft = -1; // 上次推出嘅頭表左右粒數（變先再推）
     private volatile int discoLastVuRight = -1;
@@ -142,6 +145,7 @@ public final class AudioCenter {
     // 節流合流：眼拍子／頭 VU 各自 100ms 閘（頭+眼最多 2 個 ioctl 一轉）。
     private static final long DISCO_PUSH_INTERVAL_MS = 100;
     private static final long DISCO_VU_INTERVAL_MS = 100;
+    private static final long DISCO_MOUTH_INTERVAL_MS = 1000; // 嘴郁得慢，1 秒先郁一次
     private static final long DISCO_EYE_CADENCE_MS = 400;
     private static final double DISCO_VOCAL_FLOOR = 10;
     private static final double DISCO_VOCAL_PRESENCE_RATIO = 0.35;
@@ -181,6 +185,7 @@ public final class AudioCenter {
     private boolean discoLedBusy = false;
     private int discoPendingHead = -1; // -1＝無等緊；-2＝熄燈（閂 disco 用）
     private int discoPendingEye = -1;
+    private int discoPendingMouth = -1; // -1＝無等緊；-2＝熄嘴；>=0＝呼吸速度 ms
     private int discoPendingHeadColor = -1; // 頭 VU 呢轉嘅色＋左右 mask
     private int discoPendingHeadP3 = 0;
     private int discoPendingHeadP4 = 0;
@@ -327,12 +332,34 @@ public final class AudioCenter {
         }
     }
 
-    /** 閂 disco 專用：排一個熄燈（-2），冚過排緊隊嘅拍；同條線程做，唔會打架。 */
+    /** 嘴專用：排一個嘴狀態（-2＝熄，>=0＝呼吸速度；變先排）。同條線程做。 */
+    private void discoPushMouth(int speed) {
+        Runnable job = null;
+        synchronized (discoLedLock) {
+            discoPendingMouth = speed;
+            if (discoLedBusy) return;
+            discoLedBusy = true;
+            job = discoLedJob;
+        }
+        if (job != null) {
+            try {
+                discoLedExecutor.execute(job);
+            } catch (Throwable ignore) {
+                synchronized (discoLedLock) {
+                    discoLedBusy = false;
+                }
+            }
+        }
+    }
+
+    /** 閂 disco 專用：排一個熄燈（-2），冚過排緊隊嘅拍；同條線程做，唔會打架。
+     *  嘴都一齊熄（TTS 播緊嗰陣唔熄，留返畀佢，下次講嘢會自己再著）。 */
     private void discoPushOff() {
         Runnable job = null;
         synchronized (discoLedLock) {
             discoPendingHead = -2;
             discoPendingEye = -2;
+            if (!LedCenter.isMouthTtsActive()) discoPendingMouth = -2;
             if (discoLedBusy) return;
             discoLedBusy = true;
             job = discoLedJob;
@@ -349,7 +376,7 @@ public final class AudioCenter {
     }
 
     private final Runnable discoLedJob = new Runnable() {
-        // pending 值：-1＝無嘢做，-2＝熄燈；頭 VU／眼拍子機另有三個 field
+        // pending 值：-1＝無嘢做，-2＝熄燈；頭 VU／眼拍子機／嘴另有 field
         @Override
         public void run() {
             for (;;) {
@@ -363,6 +390,7 @@ public final class AudioCenter {
                 int ep3;
                 int ep4;
                 boolean eu;
+                int mm;
                 synchronized (discoLedLock) {
                     h = discoPendingHead;
                     e = discoPendingEye;
@@ -374,19 +402,22 @@ public final class AudioCenter {
                     ep3 = discoPendingEyeP3;
                     ep4 = discoPendingEyeP4;
                     eu = discoEyePending;
+                    mm = discoPendingMouth;
                     discoPendingHead = -1;
                     discoPendingEye = -1;
                     discoHeadPending = false;
                     discoEyePending = false;
+                    discoPendingMouth = -1;
                     // 熄咗 disco 之後先至排到／之前留低嘅嘢，一律丟走唔打
-                    // （淨係 -2 熄燈本身行得）。
+                    // （淨係 -2 熄燈本身行得；嘴就睇下 TTS 播唔播緊）。
                     if (!isDiscoEnabled()) {
                         if (h != -2) h = -1;
                         if (e != -2) e = -1;
                         hu = false;
                         eu = false;
+                        if (mm != -2 || LedCenter.isMouthTtsActive()) mm = -1;
                     }
-                    if (h == -1 && e == -1 && !hu && !eu) {
+                    if (h == -1 && e == -1 && !hu && !eu && mm == -1) {
                         discoLedBusy = false;
                         return;
                     }
@@ -418,6 +449,19 @@ public final class AudioCenter {
                     try {
                         ok &= DirectLedController.setEye5MicRaw(ec, DISCO_BRIGHTNESS,
                                 ep3, ep4, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
+                    } catch (Throwable ignore) {
+                        ok = false;
+                    }
+                }
+                if (mm == -2) {
+                    try {
+                        ok &= com.ubtechinc.alpha.hardware.MouthLedData.off().apply();
+                    } catch (Throwable ignore) {
+                        ok = false;
+                    }
+                } else if (mm >= 0) {
+                    try {
+                        ok &= com.ubtechinc.alpha.hardware.MouthLedData.breathing(mm).apply();
                     } catch (Throwable ignore) {
                         ok = false;
                     }
@@ -502,6 +546,25 @@ public final class AudioCenter {
                 discoLastPushAtMs = now;
                 discoEyeLedAtMs = now;
                 discoPushEyes(1 + discoRandom.nextInt(7), 255, 255);
+            }
+            // 嘴：有聲就每秒 refresh 一次最快呼吸（speed 0，同 TTS 一樣）keep 住閃，
+            // 連續靜音 3 秒先真熄（唔好畀間奏／細聲位 chok 熄）；
+            // TTS 播緊嗰陣讓路唔郁（佢把聲要個嘴）
+            if (!LedCenter.isMouthTtsActive() && now - discoLastMouthAtMs >= DISCO_MOUTH_INTERVAL_MS) {
+                discoLastMouthAtMs = now;
+                double all = 0;
+                for (int i = 0; i < MUSIC_SPECTRUM_BANDS; i++) all += musicSpectrumBands[i];
+                all /= MUSIC_SPECTRUM_BANDS;
+                if (all < DISCO_SILENCE_MIN) {
+                    if (++discoMouthQuietRounds >= 3 && discoLastMouthSpeed != -2) {
+                        discoLastMouthSpeed = -2;
+                        discoPushMouth(-2);
+                    }
+                } else {
+                    discoMouthQuietRounds = 0;
+                    discoLastMouthSpeed = 0;
+                    discoPushMouth(0);
+                }
             }
         } catch (Throwable ignore) {
         }

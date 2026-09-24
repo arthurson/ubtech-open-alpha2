@@ -435,6 +435,23 @@
         logLine(t('run_tts_stop'));
         await Alpha2Api.speechStop();
         return;
+      case 'alpha_media_stop': {
+        // 三合一停止: toolbox 出呢粒統一版。舊 .xml 若有 alpha_speech_stop /
+        // alpha_music_stop 仍然靠下面（各自區段）嗰兩個 case 照行到;
+        // alpha_speech_ringtone_stop 已無 block 定義, 統一經 TYPE=ringtone。
+        const stopType = block.getFieldValue('TYPE');
+        if (stopType === 'ringtone') {
+          logLine(t('media_stop__run_ringtone'));
+          await Alpha2Api.audioRingtonesStop();
+        } else if (stopType === 'music') {
+          logLine(t('media_stop__run_music'));
+          await Alpha2Api.audioLocalMusicStop();
+        } else {
+          logLine(t('media_stop__run_tts'));
+          await Alpha2Api.speechStop();
+        }
+        return;
+      }
       case 'alpha_speech_set_mic':
         logLine(t('run_mic_ownership', { owner: (block.getFieldValue('WAKE') === 'true' ? t('run_mic_owner_robot') : t('run_mic_owner_app')) }));
         await Alpha2Api.speechSetMic({ wake: block.getFieldValue('WAKE') });
@@ -479,10 +496,9 @@
         }
         return;
       }
-      case 'alpha_speech_ringtone_stop':
-        logLine(t('run_ringtone_stop'));
-        await Alpha2Api.audioRingtonesStop();
-        return;
+
+      // 2026-09 移除: alpha_speech_ringtone_stop case — block 定義已刪,
+      // 停鈴聲統一經 alpha_media_stop (TYPE=ringtone)。
 
       // ---------------- 本地音樂 (同 Music 分頁同一套 /api/audio/local_music/*) ----------------
       case 'alpha_music_play': {
@@ -491,13 +507,17 @@
           logLine(t('run_no_music_selected'), 'warn');
           return;
         }
+        const filler = block.getFieldValue('FILLER') === 'true';
         const disco = block.getFieldValue('DISCO') === 'true';
         logLine(t('run_music_play', {
           name: name,
+          fillerNote: (filler ? t('run_music_filler_note') : ''),
           discoNote: (disco ? t('run_music_disco_note') : ''),
         }));
-        // 先設隨歌伴舞開關 (disco 是一個持久設定, 每次播歌明確寫一次最穩陣),
-        // 再播歌。播歌本身 fire-and-forget (server 即回, 後台播), 不等待播完。
+        // 先 set 兩個持久開關 (每次播歌明確寫一次最穩陣), 再播歌。
+        // 隨歌伴舞 = filler_action (隨機動作), 節奏燈 = disco — 兩個獨立 API。
+        // 播歌本身 fire-and-forget (server 即回, 後台播), 不等待播完。
+        await Alpha2Api.audioLocalMusicFillerActionSet({ enabled: filler ? 'true' : 'false' });
         await Alpha2Api.audioLocalMusicDiscoSet({ enabled: disco ? 'true' : 'false' });
         await Alpha2Api.audioLocalMusicPlay({ name: name });
         return;
@@ -506,14 +526,10 @@
         logLine(t('run_music_stop'));
         await Alpha2Api.audioLocalMusicStop();
         return;
-      case 'alpha_music_pause':
-        logLine(t('run_music_pause'));
-        await Alpha2Api.audioLocalMusicPause();
-        return;
-      case 'alpha_music_resume':
-        logLine(t('run_music_resume'));
-        await Alpha2Api.audioLocalMusicResume();
-        return;
+
+      // 2026-09 移除: alpha_music_disco / alpha_music_pause /
+      // alpha_music_resume case — 對應 block 已刪。play block 個 FILLER +
+      // DISCO 兩個 field 分別管隨歌伴舞 (filler_action) 同節奏燈 (disco)。
 
       // ---------------- 伺服 ----------------
       // 2026-08 更新: alpha_servo_one 拆了做 5 粒獨立 block (頭/右手/左手/右腳
@@ -1137,7 +1153,7 @@
 
   // ------------------------------------------------------------------
   // 本地音樂曲目清單 (live dropdown, 做法跟上面 refreshActionDropdown 一樣):
-  // 開頁自動抓一次, 頂欄「🔄 取得音樂清單」可以重抓, 存入
+  // blockly-page.js 開頁嗰陣自動抓一次, 存入
   // window.__alphaMusicOptions 給 alpha_music_play 個 NAME dropdown 讀。
   // 回傳格式見 app-music.js: { files: [{ name, sizeBytes }] }。
   // ------------------------------------------------------------------
@@ -1359,15 +1375,20 @@
       this.id = 'alphaEditFabControls';
       this.top = 0;
       this.left = 0;
-      // 版面: 5 粒獨立深色圓形按鈕 (直徑 42px, Code Lab 同款), 自己一個圓圈
-      // 背景, 按鈕與按鈕之間僅用均勻間距 (GAP=15, Code Lab 同款) 分隔, 橫向
+      // 版面: 5 粒獨立深色圓形按鈕 (直徑 42px desktop / 34px 手機, Code Lab 同款), 自己一個圓圈
+      // 背景, 按鈕與按鈕之間僅用均勻間距 (GAP=15 desktop / 8 手機) 分隔, 橫向
       // 排完一行, 沒有分組、沒有分隔線 (之前個 { sep:true } + GROUP_GAP 已經
       // 刪走, 因為 Code Lab 係 5 粒均勻、undo/redo 同 cut/copy/paste 之間無
       // 特別分隔)。
-      this.BUTTON_SIZE = 42;
-      this.GAP = 15;
-      this.MARGIN_HORIZONTAL = 12;
-      this.MARGIN_VERTICAL = 12;
+      // 手機版要縮細: 直版手機 toolbox 食咗 ~110px 之後剩低 ~240px 畫布,
+      // 42px 版成組 270px 闊會伸出 toolbox 外被剪 (見手機截圖底欄得返兩粒掣),
+      // 34px 版成組 202px 先至放得入。
+      const isMobile = (typeof window !== 'undefined' && window.matchMedia &&
+        window.matchMedia('(max-width: 900px)').matches);
+      this.BUTTON_SIZE = isMobile ? 34 : 42;
+      this.GAP = isMobile ? 8 : 15;
+      this.MARGIN_HORIZONTAL = isMobile ? 8 : 12;
+      this.MARGIN_VERTICAL = isMobile ? 8 : 12;
       this.buttons = [
         { action: 'undo', icon: 'undo', titleKey: 'page_edit_undo_title' },
         { action: 'redo', icon: 'redo', titleKey: 'page_edit_redo_title' },
@@ -1444,6 +1465,9 @@
         const tRect = trashcan.getBoundingRectangle();
         const tHeight = tRect.bottom - tRect.top;
         this.left = tRect.left - this.MARGIN_HORIZONTAL - width;
+        // 手機畫布窄: 成組闊過剩餘空間嗰陣唔好伸入 toolbox / 出界,
+        // 夾返喺畫布左緣 (toolbox 以外) —— 好過成組被剪到得返兩粒掣。
+        if (this.left < this.MARGIN_HORIZONTAL) this.left = this.MARGIN_HORIZONTAL;
         this.top = tRect.top + (tHeight - this.BUTTON_SIZE) / 2;
       } else {
         // fallback: 垃圾桶未起好 (理論上不應該發生, addTrashcan() 一定早過
@@ -1480,9 +1504,13 @@
       this.id = 'alphaZoomFabControls';
       this.top = 0;
       this.left = 0;
-      this.BUTTON_SIZE = 42; // 同 EditFabControls 一樣大, 同一個系列
-      this.GAP = 15;
-      this.MARGIN_ABOVE_TRASH = 16; // 同垃圾桶頂的距離 (Code Lab editor-tool 同垃圾桶之間約 18px)
+      // 同 EditFabControls 一樣大, 同一個系列 (desktop 42 / 手機 34,
+      // 見上面手機截圖: 橫版高度唔夠, 42px 版垂直成組 156px+垃圾桶會頂住)。
+      const isMobileZoom = (typeof window !== 'undefined' && window.matchMedia &&
+        window.matchMedia('(max-width: 900px)').matches);
+      this.BUTTON_SIZE = isMobileZoom ? 34 : 42; // 同 EditFabControls 一樣大, 同一個系列
+      this.GAP = isMobileZoom ? 8 : 15;
+      this.MARGIN_ABOVE_TRASH = isMobileZoom ? 10 : 16; // 同垃圾桶頂的距離 (Code Lab editor-tool 同垃圾桶之間約 18px)
       this.buttons = [
         { action: 'center', icon: 'center', titleKey: 'page_edit_center_title' },
         { action: 'zoom_in', icon: 'zoom_in', titleKey: 'page_edit_zoom_in_title' },
@@ -1539,6 +1567,9 @@
         const tWidth = tRect.right - tRect.left;
         this.left = tRect.left + (tWidth - this.BUTTON_SIZE) / 2;
         this.top = tRect.top - this.MARGIN_ABOVE_TRASH - height;
+        // 手機橫版畫布矮: 唔好畀成組升出頂界被剪, 夾返喺頂緣以內
+        // (疊住少少都好過成粒唔見咗)。
+        if (this.top < 8) this.top = 8;
       } else {
         // fallback: 垃圾桶未起好, 用角落定位做保險。
         const size = new Blockly.utils.Size(this.BUTTON_SIZE, height);
@@ -1663,11 +1694,8 @@
       // 不是在 module load 當時就起。
       editFabControls = new EditFabControls(workspace);
       zoomFabControls = new ZoomFabControls(workspace);
-      // 2026-09: 音樂曲目 live dropdown 開頁自動抓一次 (fire-and-forget, 唔等;
-      // 失敗都唔緊要, 個 dropdown 會顯示 fallback, 用家可以撳頂欄掣重抓)。
-      // 動作清單唔自動抓 (要等用家撳「取得動作列表」, 因為抓一次好慢), 但音樂
-      // list 係輕量 API, 直接自動抓方便 block 即刻有嘢揀。
-      try { refreshMusicDropdown(); } catch (e) { /* 頂欄掣可以重抓, 不緊要 */ }
+      // 2026-09: 動作清單 + 音樂清單改由 blockly-page.js 開頁嗰陣統一自動抓
+      // (fire-and-forget), 呢度唔再各自抓, 頂欄手動掣亦已移除。
     },
     run: runProgram,
     stop: stopProgram,

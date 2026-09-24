@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title data-i18n="page_title">Open Alpha2 — Blockly 積木編程</title>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="blockly.css">
@@ -34,11 +34,6 @@
   </div>
 
   <div class="bk-toolbar-group">
-    <button class="bk-btn" onclick="AlphaBlockly.refreshActionDropdown()" data-i18n="page_refresh_actions_btn">🔄 取得動作列表</button>
-    <button class="bk-btn" onclick="AlphaBlockly.refreshMusicDropdown()" data-i18n="page_refresh_music_btn">🔄 取得音樂清單</button>
-  </div>
-
-  <div class="bk-toolbar-group">
     <input id="saveNameInput" class="bk-input" placeholder="程式名稱" data-i18n="page_save_name_placeholder" data-i18n-attr="placeholder" style="width:120px">
     <button class="bk-btn" onclick="doSaveNamed()" data-i18n="page_save_btn">💾 儲存</button>
     <select id="savedProgramSelect" class="bk-input"></select>
@@ -60,9 +55,9 @@
   <div id="blocklyDiv" class="bk-canvas"></div>
 
   <div class="bk-side" id="bkSide">
-    <!-- 2026-09: 對齊 Code Lab simulator-area 做法 —— 收起掣是側欄自己左緣一粒
-      32x32 深色 ribbon trigger (唔係浮喺畫布上面嘅 SVG 掣), 收起嗰陣成條 32px
-      邊照留喺度, 所以成日都撳到。箭嘴方向純 CSS 跟 .bk-side-collapsed 轉。 -->
+    <!-- 2026-09: 側欄收起掣 —— 展開/收起都係一粒 32x32 浮動掣 (展開嗰陣
+      騎住畫布同面板條邊, 唔再留 32px 直條 gutter)。箭嘴方向純 CSS 跟
+      .bk-side-collapsed 轉。 -->
     <div class="bk-side-trigger" id="bkSideTrigger" onclick="toggleSidePanel()"
       data-i18n="page_side_toggle_title" data-i18n-attr="title" title="收起/展開執行紀錄面板">
       <svg viewBox="0 0 8 16" width="8" height="16"><path d="M7 1L1 8l6 7"/></svg>

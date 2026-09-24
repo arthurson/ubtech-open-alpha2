@@ -70,7 +70,7 @@ const Alpha2Api = (function() {
   }
 
   function audioLocalMusicDiscoGet(params) {
-    // 查詢播歌節奏燈開關 (頭 VU 錶眼跟人聲，後端跑)
+    // 查詢播歌節奏燈開關 (頭 VU 錶眼跟人聲嘴跟大細聲，後端跑)
     return api('audio/local_music/disco/get', params);
   }
 

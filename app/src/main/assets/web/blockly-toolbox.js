@@ -68,20 +68,21 @@ window.buildAlphaToolbox = function () {
       kind: 'category', name: t('toolbox_cat_speech'), colour: '160',
       contents: [
         { kind: 'block', type: 'alpha_speech_tts', inputs: { TEXT: { shadow: { type: 'text', fields: { TEXT: t('toolbox_tts_default_shadow') } } } } },
-        { kind: 'block', type: 'alpha_speech_stop' },
+        // 2026-09: 三合一停止 (TTS/鈴聲/音樂 3選1) 取代舊三粒分開 stop block
+        // (blockly-blocks.js alpha_media_stop)。alpha_speech_stop /
+        // alpha_music_stop 定義同 case 仍保留畀舊 .xml。
+        { kind: 'block', type: 'alpha_media_stop' },
         { kind: 'block', type: 'alpha_speech_set_mic' },
         { kind: 'sep' },
         { kind: 'block', type: 'alpha_speech_ringtone_phone', inputs: { DURATION: { shadow: { type: 'math_number', fields: { NUM: 10 } } } } },
         { kind: 'block', type: 'alpha_speech_ringtone_notification', inputs: { DURATION: { shadow: { type: 'math_number', fields: { NUM: 5 } } } } },
-        { kind: 'block', type: 'alpha_speech_ringtone_stop' },
         { kind: 'sep' },
         // 2026-09 新增: 本地音樂 (同 Music 分頁同一套 /api/audio/local_music/*)。
-        // 曲目 dropdown 是 live list, 開頁自動抓 (見 blockly-run.js
-        // refreshMusicDropdown), 頂欄「🔄 取得音樂清單」可以重抓。
+        // 曲目 dropdown 是 live list, 開頁自動抓 (見 blockly-page.js +
+        // blockly-run.js refreshMusicDropdown)。play block 兩個獨立開關:
+        // 隨歌伴舞 FILLER (filler_action 隨機動作) + 節奏燈 DISCO (disco)。
+        // 停止經三合一 alpha_media_stop (TYPE=music); 暫停/繼續 block 已移除。
         { kind: 'block', type: 'alpha_music_play' },
-        { kind: 'block', type: 'alpha_music_stop' },
-        { kind: 'block', type: 'alpha_music_pause' },
-        { kind: 'block', type: 'alpha_music_resume' },
       ]
     },
     {
@@ -210,7 +211,7 @@ window.buildAlphaToolbox = function () {
                   kind: 'block', type: 'alpha_wait_seconds',
                   inputs: { SECONDS: { shadow: { type: 'math_number', fields: { NUM: 7 } } } },
                   next: { block: {
-                    kind: 'block', type: 'alpha_speech_ringtone_stop'
+                    kind: 'block', type: 'alpha_media_stop', fields: { TYPE: 'ringtone' }
                   } }
                 } }
               } }

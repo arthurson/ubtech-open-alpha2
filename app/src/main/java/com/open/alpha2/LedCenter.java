@@ -638,11 +638,20 @@ public final class LedCenter {
      * corresponding stop call arrives from whichever completion signal fires.
      */
     public static void startMouthLedForTts() {
+        mouthTtsActive = true;
         MouthLedData.breathing(TTS_MOUTH_LED_SPEED).apply();
     }
 
     public static void stopMouthLedForTts() {
+        mouthTtsActive = false;
         MouthLedData.off().apply();
+    }
+
+    /** TTS 播緊唔播緊（嘴係咪佢嘅）——disco 推嘴之前要讓路，唔好同佢打架。 */
+    private static volatile boolean mouthTtsActive = false;
+
+    public static boolean isMouthTtsActive() {
+        return mouthTtsActive;
     }
 
     // -- LEDs (5-mic hardware only path - server-side preset mapping) --------------

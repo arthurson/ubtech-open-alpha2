@@ -141,6 +141,11 @@ function showBlocklyVersionBadge() {
 
 function initWorkspace() {
   showBlocklyVersionBadge();
+  // 手機畫布剩低闊度得 ~240px, 中文積木本身闊 (~300-400px, 見截圖
+  // 「播放本地音樂」被右緣切走), startScale 0.9 會一入嚟就出界要左右捽。
+  // 手機版用 0.6 起跳, 積木成個放得入畫布; desktop 維持 0.9。
+  const isMobileStart = (typeof window !== 'undefined' && window.matchMedia &&
+    window.matchMedia('(max-width: 900px)').matches);
   workspace = Blockly.inject('blocklyDiv', {
     toolbox: window.ALPHA_TOOLBOX,
     // 這個 Blockly 版本的預設 pathToMedia 是 "https://static.blockly.com/media/"
@@ -153,7 +158,7 @@ function initWorkspace() {
     // 2026-09: zoom.controls 關掉 —— 內建三粒 sprite 按鈕 (zoom-in/out/reset)
     // 同 Code Lab 風格唔夾, 改用 blockly-run.js ZoomFabControls 自畫垂直組
     // (歸中/放大/縮細, 同 edit 橫排同一個深色圓系列)。wheel 縮放保留。
-    zoom: { controls: false, wheel: true, startScale: 0.9, maxScale: 3, minScale: 0.3, scaleSpeed: 1.1 },
+    zoom: { controls: false, wheel: true, startScale: (isMobileStart ? 0.6 : 0.9), maxScale: 3, minScale: 0.3, scaleSpeed: 1.1 },
     trashcan: true,
     move: { scrollbars: true, drag: true, wheel: false },
     theme: buildAlphaTheme(),
@@ -175,12 +180,24 @@ function initWorkspace() {
   // 記在 localStorage, 等用家下次重新開啟這個分頁都記得住上次選的收/開。用
   // setSidePanelCollapsedInitial() 不是 toggleSidePanel(), 因為這個是
   // 「頁面剛剛 load 就要已經是這樣」, 不應該播 0.18s 的收起動畫。
+  //
+  // 2026-09: desktop 同手機都係「第一次入預設收起側欄」—— 畫布用哂成個
+  // 螢幕闊度, 用家要 log 先撳返開 (狀態會記住)。
   try {
-    if (localStorage.getItem('blocklySideCollapsed') === '1') {
+    const savedCollapsed = localStorage.getItem('blocklySideCollapsed');
+    if (savedCollapsed === '1' || savedCollapsed == null) {
       window.AlphaBlockly.setSidePanelCollapsedInitial(true);
       resizeBlockly();
     }
   } catch (e) { /* localStorage 在部分 WebView 環境可能不可用, 沒有記錄就預設展開, 不緊要 */ }
+
+  // 手機旋轉/地址列收展會觸發 resize; 另外 layout 第一幀可能未 settle,
+  // 延遲多 call 一次 svgResize 保證 Blockly 攞到正確畫布尺寸。
+  window.addEventListener('orientationchange', function () {
+    setTimeout(resizeBlockly, 200);
+    setTimeout(resizeBlockly, 500);
+  });
+  setTimeout(resizeBlockly, 300);
 }
 
 // 視窗 resize / 側欄收/展開之後都要重新計算 Blockly 畫布大小 —— Blockly.svgResize()
@@ -263,5 +280,14 @@ function onClearWorkspace() {
 document.addEventListener('DOMContentLoaded', function () {
   initWorkspace();
   connectWs();
+  // 2026-09: 開頁自動抓動作清單 (actioninfo.txt) + 本地音樂清單, fire-and-
+  // forget 唔阻 workspace; 失敗會有 error banner + dropdown fallback, 同之前
+  // 手撳掣一樣。頂欄嗰兩粒手動掣已移除 (見 blockly.html)。
+  try {
+    if (window.AlphaBlockly) {
+      window.AlphaBlockly.refreshActionDropdown();
+      window.AlphaBlockly.refreshMusicDropdown();
+    }
+  } catch (e) { /* showError / fallback 會處理, 不緊要 */ }
 });
 
