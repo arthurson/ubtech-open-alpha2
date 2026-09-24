@@ -116,6 +116,29 @@ public class XiaozhiClient {
     private volatile String sessionId;
     private volatile boolean open = false;
 
+    // initialize params.capabilities.vision (見 mcp-protocol.md + mcp_server.cc
+    // ParseCapabilities): 後端話俾 device 知相片上傳去邊 (http URL + token)。
+    // take_photo 唔係 inline 回傳，而係 POST multipart 去呢個 URL
+    // (見 esp32_camera.cc Explain)，server 先至會計入 vision 做描述。
+    private volatile String visionUrl;
+    private volatile String visionToken;
+
+    public String getVisionUrl() {
+        return visionUrl;
+    }
+
+    public String getVisionToken() {
+        return visionToken;
+    }
+
+    public String getDeviceId() {
+        return deviceId;
+    }
+
+    public String getClientId() {
+        return clientId;
+    }
+
     public XiaozhiClient(String deviceId) {
         this.deviceId = deviceId;
         // Client-Id must persist across reconnects within a process lifetime but the
@@ -666,6 +689,33 @@ public class XiaozhiClient {
             JSONObject result;
             switch (method) {
                 case "initialize": {
+                    // 官方 vision 鏈路 (mcp_server.cc ParseCapabilities +
+                    // esp32_camera.cc Explain): 後端經 params.capabilities.vision
+                    // 話俾 device 知相片 POST 去邊 (http URL + token)。
+                    // 唔記低就會行咗 inline 舊路，server 睇唔到相、亂答。
+                    try {
+                        JSONObject params = payload.optJSONObject("params");
+                        JSONObject caps = params != null
+                                ? params.optJSONObject("capabilities") : null;
+                        JSONObject vision = caps != null
+                                ? caps.optJSONObject("vision") : null;
+                        if (vision != null) {
+                            String url = vision.optString("url", "");
+                            String token = vision.optString("token", "");
+                            if (!url.isEmpty()) {
+                                visionUrl = url;
+                                visionToken = token;
+                                Log.i(TAG, "vision config: url=" + url
+                                        + " tokenLen=" + token.length());
+                            } else {
+                                Log.i(TAG, "initialize without vision capability");
+                            }
+                        } else {
+                            Log.i(TAG, "initialize without vision capability");
+                        }
+                    } catch (Exception e) {
+                        Log.w(TAG, "failed parsing vision capability", e);
+                    }
                     result = new JSONObject();
                     JSONObject serverInfo = new JSONObject();
                     serverInfo.put("name", "open-alpha2");

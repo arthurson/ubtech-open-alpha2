@@ -12,7 +12,7 @@ import java.util.Map;
 
 /**
  * 小智 AI 語音對話包：HTTP API (handleXiaozhiApi)、mic 生命週期＋hold enforcer、
- * OTA/activation＋重連、相機 vision (inline 回傳)、MCP bridge (listTools/callTool)、
+ * OTA/activation＋重連、相機 vision (官方上傳鏈路，失敗才 inline)、MCP bridge (listTools/callTool)、
  * mute 鍵開關＋連線指示燈。
  *
  * 擁有關係：
@@ -1293,18 +1293,13 @@ public final class XiaozhiBridge {
     /** Result of xiaozhiTakePhotoAndExplain() - exactly one of text/error is set. */
     // ---------------- Camera vision (MCP self.camera.*) --------------------
     //
-    // 由零重寫（舊 vision/explain side-channel 已成段刪除）：相直接 inline 回傳。
-    //
-    // 舊路係估返嚟嘅：影完相，另外 POST 去一條非官方文件化嘅 /mcp/vision/explain
-    // HTTP endpoint（URL 靠 initialize 夾帶／寫死 fallback 猜），再靠 server 回
-    // uuid＋叫 LLM 轉頭 call image_to_text 做第二程握手。server 嗰邊對唔上其中
-    // 任何一環（URL／token／握手形狀／根本無開 vision 服務）就全死——
-    // 「server 睇唔到」就係咁嚟；之前 N 次小手術都係喺估返嚟嘅形狀上面改，唔會好。
-    //
-    // 新路行返 MCP 標準：take_photo 將 JPEG（base64）當 image content block
-    // 連同文字一齊回傳，LLM 即時見到。唔經任何 HTTP side-channel：無 URL、
-    // 無 token、無 uuid 握手、無第二程。image_to_text 留做兼容 shim
-    // （回傳最近一張相，唔使再影）。
+    // 官方鏈路 (對照 mcp_server.cc ParseCapabilities + esp32_camera.cc Explain):
+    // initialize 嘅 params.capabilities.vision 會帶 url/token (XiaozhiClient 記低)，
+    // take_photo 影完 POST multipart (question + file/camera.jpg) 上呢個 URL，
+    // server 回 {"success":true,"filename":"...","text":"..."}，LLM 憑呢段 text
+    // 即刻講得出見到乜 (唔使再問，console 亦會顯示縮圖)。
+    // 冇 vision URL (自架 server 未配 vision) / 上傳失敗先至跌返落 inline
+    // (text+image 雙 block，MCP 標準形)，唔好直接當死。
 
     /** 共用拍攝本體：set 解像度＋start＋takePicture＋stopIfIdle。
      *  成功回 jpeg（順手寫入 lastPhotoJpeg）；失敗掟 JSONException 帶原因
@@ -1361,15 +1356,25 @@ public final class XiaozhiBridge {
         return result;
     }
 
-    /** Backs the self.camera.take_photo MCP tool: 影一張，inline 回傳 LLM 即時睇。
+    /** Backs the self.camera.take_photo MCP tool: 影一張，官方 vision 鏈路上傳。
      *  Runs synchronously on the MCP tool-call thread (already off the WebSocket
      *  read-loop thread per callTool()'s own threading, matching how other blocking
      *  robot actions in this switch behave) - camera capture can take a few seconds,
      *  which is acceptable for a tool call the LLM is explicitly waiting on.
-     *  Throws JSONException only if envelope building fails (caller converts). */
+     *  Throws JSONException only if envelope building fails (caller converts).
+     *
+     *  正常路 (對照 esp32_camera.cc Explain): capture -> POST multipart 去
+     *  initialize 攞返嚟嘅 vision URL (question + file/camera.jpg)，server 回
+     *  {"success":true,"filename":"...","text":"..."}，呢個 text 先係 LLM
+     *  即刻講得出「見到乜」嘅來源。冇 vision URL / 上傳失敗先至跌返落 inline
+     *  (自架 server 用)，唔好直接當死。 */
     private org.json.JSONObject takePhotoEnvelope(String question)
             throws org.json.JSONException {
         byte[] jpeg = capturePhoto();
+        String visionText = tryVisionUpload(jpeg, question);
+        if (visionText != null) {
+            return textResult(visionText, false);
+        }
         String caption = "Photo captured and attached below."
                 + (question == null || question.isEmpty()
                         ? "" : " Question about this photo: " + question);
@@ -1377,9 +1382,11 @@ public final class XiaozhiBridge {
     }
 
     /** Backs the self.camera.image_to_text MCP tool: 兼容 shim——唔再影，
-     *  直接回傳最近一張 take_photo 嘅相（inline）。uuid 參數照收但唔用
+     *  直接拎最近一張 take_photo 嘅相。uuid 參數照收但唔用
      *  （單一 device 永遠得一張最新，唔使核對；佔位符一樣唔使篩）。
-     *  未影過相就回 null，caller 回 error text 叫 LLM 先 call take_photo。 */
+     *  有 vision URL 就重傳上 vision (同 take_photo 同一條路)，等 LLM 即刻
+     *  描述；冇先至 inline。未影過相就回 null，caller 回 error text
+     *  叫 LLM 先 call take_photo。 */
     private org.json.JSONObject imageToTextEnvelope(String uuid)
             throws org.json.JSONException {
         byte[] cached = lastPhotoJpeg;
@@ -1388,7 +1395,127 @@ public final class XiaozhiBridge {
         }
         Log.i("XiaozhiVision", "image_to_text: re-sending last photo (" + cached.length
                 + "B, uuid arg ignored: " + uuid + ")");
+        String visionText = tryVisionUpload(cached, "");
+        if (visionText != null) {
+            return textResult(visionText, false);
+        }
         return imageResult("Most recent photo attached below.", cached);
+    }
+
+    /** 純文字 tools/call 回包 (vision 上傳成功用) - 同 callTool() 尾段手砌嗰個
+     *  形狀一致，唔經 image block。 */
+    private static org.json.JSONObject textResult(String text, boolean isError)
+            throws org.json.JSONException {
+        org.json.JSONArray content = new org.json.JSONArray();
+        org.json.JSONObject textBlock = new org.json.JSONObject();
+        textBlock.put("type", "text");
+        textBlock.put("text", text == null ? "" : text);
+        content.put(textBlock);
+        org.json.JSONObject result = new org.json.JSONObject();
+        result.put("content", content);
+        result.put("isError", isError);
+        return result;
+    }
+
+    /** 有 vision URL 就 POST 上去 (對照 esp32_camera.cc Explain)，成功回 server
+     *  段 response text (通常係 {"success":true,"filename":"...","text":"..."}，
+     *  成段照傳返俾 LLM，等佢即刻講得出見到乜)。冇 URL / 上傳失敗就回 null，
+     *  caller 跌返落 inline。唔拋 exception - 失敗只係 log，唔好搞死成個
+     *  tools/call。 */
+    private String tryVisionUpload(byte[] jpeg, String question) {
+        String url = xiaozhiClient != null ? xiaozhiClient.getVisionUrl() : null;
+        if (url == null || url.isEmpty()) {
+            Log.i("XiaozhiVision", "no vision url (initialize 未帶 capabilities.vision)，用 inline");
+            return null;
+        }
+        String token = xiaozhiClient.getVisionToken();
+        String deviceId = xiaozhiClient.getDeviceId();
+        String clientId = xiaozhiClient.getClientId();
+        try {
+            String resp = postPhotoToVision(url, token, deviceId, clientId, jpeg,
+                    question == null ? "" : question);
+            if (resp == null || resp.isEmpty()) {
+                Log.w("XiaozhiVision", "vision 上傳回空，跌返 inline");
+                return null;
+            }
+            Log.i("XiaozhiVision", "vision 上傳成功 (" + jpeg.length + "B -> "
+                    + resp.length() + " chars)");
+            return resp;
+        } catch (Exception e) {
+            Log.w("XiaozhiVision", "vision 上傳失敗 (" + e.getMessage() + ")，跌返 inline", e);
+            return null;
+        }
+    }
+
+    /** 對照 esp32_camera.cc Explain() 逐字搬: multipart 兩 part (question +
+     *  file/camera.jpg)，headers Device-Id / Client-Id / Authorization。
+     *  用 chunked streaming，唔使預先計 Content-Length。 */
+    private static String postPhotoToVision(String urlStr, String token,
+            String deviceId, String clientId, byte[] jpeg, String question)
+            throws Exception {
+        String boundary = "----ESP32_CAMERA_BOUNDARY";
+        NetLog.out("xiaozhi-vision", urlStr);
+        java.net.HttpURLConnection conn =
+                (java.net.HttpURLConnection) new java.net.URL(urlStr).openConnection();
+        try {
+            XiaozhiTrustAllSsl.applyTrustAll(conn);
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(30000);
+            conn.setDoOutput(true);
+            conn.setChunkedStreamingMode(0);
+            conn.setRequestProperty("Device-Id", deviceId != null ? deviceId : "");
+            conn.setRequestProperty("Client-Id", clientId != null ? clientId : "");
+            if (token != null && !token.isEmpty()) {
+                conn.setRequestProperty("Authorization", "Bearer " + token);
+            }
+            conn.setRequestProperty("Content-Type",
+                    "multipart/form-data; boundary=" + boundary);
+            java.io.OutputStream out = conn.getOutputStream();
+            try {
+                String questionPart = "--" + boundary + "\r\n"
+                        + "Content-Disposition: form-data; name=\"question\"\r\n"
+                        + "\r\n"
+                        + question + "\r\n";
+                out.write(questionPart.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                String fileHeader = "--" + boundary + "\r\n"
+                        + "Content-Disposition: form-data; name=\"file\"; filename=\"camera.jpg\"\r\n"
+                        + "Content-Type: image/jpeg\r\n"
+                        + "\r\n";
+                out.write(fileHeader.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                out.write(jpeg);
+                String footer = "\r\n--" + boundary + "--\r\n";
+                out.write(footer.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                out.flush();
+            } finally {
+                out.close();
+            }
+            int status = conn.getResponseCode();
+            java.io.InputStream in = (status >= 200 && status < 300)
+                    ? conn.getInputStream() : conn.getErrorStream();
+            String body = "";
+            if (in != null) {
+                try {
+                    java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+                    byte[] chunk = new byte[4096];
+                    int n;
+                    while ((n = in.read(chunk)) != -1) {
+                        buf.write(chunk, 0, n);
+                    }
+                    body = new String(buf.toByteArray(),
+                            java.nio.charset.StandardCharsets.UTF_8);
+                } finally {
+                    in.close();
+                }
+            }
+            if (status != 200) {
+                throw new java.io.IOException("vision status " + status + ": "
+                        + (body.length() > 200 ? body.substring(0, 200) : body));
+            }
+            return body;
+        } finally {
+            conn.disconnect();
+        }
     }
 
     /** Builds the MCP bridge XiaozhiClient uses to answer tools/list and tools/call.

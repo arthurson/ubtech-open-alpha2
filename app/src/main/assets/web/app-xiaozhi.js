@@ -296,6 +296,7 @@ function xiaozhiToggleSession() {
  *  xiaozhiAudioSupported since no audio codec is involved.
  *
  *  Server echo (stt message) 是 chat log 唯一來源 — 這個 function 只清 input，不自己 append。
+ */
 function xiaozhiSendText() {
   const els = xiaozhiElements();
   const text = els.textInput ? (els.textInput.value || "").trim() : "";
