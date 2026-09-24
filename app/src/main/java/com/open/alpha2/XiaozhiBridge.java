@@ -281,6 +281,13 @@ public final class XiaozhiBridge {
     // 直接拎呢張重發，唔使再影）。單一 device 永遠得一張最新，take_photo
     // 成功即覆蓋。
     private volatile byte[] lastPhotoJpeg;
+    // 上一張相嘅 vision 上傳回包原文 ({"success":true,"uuid":"...",...})——
+    // take_photo 成功嗰陣存低，image_to_text 成段重用 (uuid 鎖死，唔再上傳)；
+    // 新一張相會先清 null (見 takePhotoEnvelope)。null = 上一程行 inline
+    // (冇 vision URL / 上傳失敗)，image_to_text 照樣行 inline。
+    private volatile String lastVisionResponse;
+    // 最近一次成功影相嘅時間 (ms)——take_photo 去重窗用，見 takePhotoEnvelope。
+    private volatile long lastPhotoAtMs = 0;
 
     // 小智 (XiaoZhi) AI 對話 - 獨立於機械人 AIDL 之外的 client-side WebSocket
     // 連線, 連出去 xiaozhi.me。單一 instance, 在 onCreate() 才建立 (要用
@@ -1364,14 +1371,44 @@ public final class XiaozhiBridge {
      *  Throws JSONException only if envelope building fails (caller converts).
      *
      *  正常路 (對照 esp32_camera.cc Explain): capture -> POST multipart 去
-     *  initialize 攞返嚟嘅 vision URL (question + file/camera.jpg)，server 回
-     *  {"success":true,"filename":"...","text":"..."}，呢個 text 先係 LLM
-     *  即刻講得出「見到乜」嘅來源。冇 vision URL / 上傳失敗先至跌返落 inline
+     *  initialize 攞返嚟嘅 vision URL (question + file/camera.jpg)。實測：
+     *  有 question 就 server 直接回 {"success":true,"filename":"...","text":"<成段描述>"}，
+     *  影完即講得；冇 question 就只回 {"success":true,"uuid":"..."} 叫行第二程。
+     *  所以呢度 question 留空嗰陣自動補預設問句，等次次都係一次過有描述，
+     *  唔使再問。冇 vision URL / 上傳失敗先至跌返落 inline
      *  (自架 server 用)，唔好直接當死。 */
     private org.json.JSONObject takePhotoEnvelope(String question)
             throws org.json.JSONException {
-        byte[] jpeg = capturePhoto();
-        String visionText = tryVisionUpload(jpeg, question);
+        if (question == null || question.isEmpty()) {
+            // LLM 成日空參數 call (take_photo({}))，噉會跌入 uuid 兩步模式；
+            // 補一句等同 8 月嗰次 "眼前有啲咩？"，直接攞描述。
+            question = "請詳細描述眼前影像。";
+        }
+        byte[] jpeg;
+        String visionText;
+        // 單一相機硬件：server 重試/前端重送導致兩個 take_photo 並行，會撞
+        // CameraController (takePicture 重疊)＋兩個上傳，server 直接掟線。
+        // 排隊逐個做，第二個等第一個做完先影 (影到嘅係最新畫面，啱)。
+        synchronized (photoLock) {
+            // server 成日將同一個 take_photo 連送兩次 (相隔幾百 ms，見 logcat
+            // id:3/id:4)，第二個排隊等第一個影完唔使再影——直接回同一份 (同
+            // 一張相、同一個 uuid，LLM 唔使追)。8 秒內先算重複：正常再影
+            // (LLM 行完一轉 TTS 先) 一定隔得耐過呢個數。
+            if (lastVisionResponse != null
+                    && System.currentTimeMillis() - lastPhotoAtMs < 8000) {
+                Log.i("XiaozhiVision", "take_photo 去重：回 8 秒內嗰份，唔再影");
+                return textResult(lastVisionResponse, false);
+            }
+            jpeg = capturePhoto();
+            lastPhotoAtMs = System.currentTimeMillis();
+            // 新相 = 新一輪：舊個 vision 回包作廢先，免 image_to_text 攞返上一張嘅 uuid。
+            lastVisionResponse = null;
+            visionText = tryVisionUpload(jpeg, question);
+            if (visionText != null) {
+                visionText = rewriteVisionMessage(visionText);
+                lastVisionResponse = visionText;
+            }
+        }
         if (visionText != null) {
             return textResult(visionText, false);
         }
@@ -1381,25 +1418,44 @@ public final class XiaozhiBridge {
         return imageResult(caption, jpeg);
     }
 
-    /** Backs the self.camera.image_to_text MCP tool: 兼容 shim——唔再影，
-     *  直接拎最近一張 take_photo 嘅相。uuid 參數照收但唔用
-     *  （單一 device 永遠得一張最新，唔使核對；佔位符一樣唔使篩）。
-     *  有 vision URL 就重傳上 vision (同 take_photo 同一條路)，等 LLM 即刻
-     *  描述；冇先至 inline。未影過相就回 null，caller 回 error text
-     *  叫 LLM 先 call take_photo。 */
+    /** Backs the self.camera.image_to_text MCP tool: 兼容 shim——唔再影，唔再
+     *  上傳。單一 device 永遠得一張最新 (lastPhotoJpeg) 配一個 vision 回包
+     *  (lastVisionResponse)：take_photo 上傳成功嗰陣已經存低，呢度成段原樣
+     *  回傳，uuid 長期不變，LLM 唔使追。uuid 參數照收嚟 log，但唔用嚟揀相
+     *  (得一張，冇得揀)。未影過相就回 null，caller 回 error text
+     *  叫 LLM 先 call take_photo。上一程行 inline (冇 vision URL) 嘅話呢度
+     *  照樣 inline。 */
     private org.json.JSONObject imageToTextEnvelope(String uuid)
             throws org.json.JSONException {
         byte[] cached = lastPhotoJpeg;
         if (cached == null) {
             return null;
         }
-        Log.i("XiaozhiVision", "image_to_text: re-sending last photo (" + cached.length
-                + "B, uuid arg ignored: " + uuid + ")");
-        String visionText = tryVisionUpload(cached, "");
+        String visionText = lastVisionResponse;
         if (visionText != null) {
+            Log.i("XiaozhiVision", "image_to_text: 重用上次 vision 回包 (uuid 鎖死, arg=" + uuid + ")");
             return textResult(visionText, false);
         }
+        Log.i("XiaozhiVision", "image_to_text: 無 vision 回包，inline 回傳 ("
+                + cached.length + "B, uuid arg ignored: " + uuid + ")");
         return imageResult("Most recent photo attached below.", cached);
+    }
+
+    // 單一相機硬件：take_photo 並行會撞，見 takePhotoEnvelope。
+    private final Object photoLock = new Object();
+
+    /** vision endpoint 回嘅 message 叫 LLM 去 call image_to_text，但呢個 tool
+     *  已經收埋 (見 listTools 過濾)，叫極都唔會有；實測 LLM 會跟住呢句兜圈甚至
+     *  亂答。直接改寫做落指令：保留 success/uuid 等機器欄位等握手照行，message
+     *  換成「詳細描述眼前影像」，等 LLM 影完即講。唔係 JSON 就原文加一句。 */
+    private static String rewriteVisionMessage(String visionText) {
+        try {
+            org.json.JSONObject o = new org.json.JSONObject(visionText);
+            o.put("message", "詳細描述眼前影像，直接回覆用戶。");
+            return o.toString();
+        } catch (org.json.JSONException e) {
+            return visionText + " 詳細描述眼前影像，直接回覆用戶。";
+        }
     }
 
     /** 純文字 tools/call 回包 (vision 上傳成功用) - 同 callTool() 尾段手砌嗰個
@@ -1418,10 +1474,10 @@ public final class XiaozhiBridge {
     }
 
     /** 有 vision URL 就 POST 上去 (對照 esp32_camera.cc Explain)，成功回 server
-     *  段 response text (通常係 {"success":true,"filename":"...","text":"..."}，
-     *  成段照傳返俾 LLM，等佢即刻講得出見到乜)。冇 URL / 上傳失敗就回 null，
-     *  caller 跌返落 inline。唔拋 exception - 失敗只係 log，唔好搞死成個
-     *  tools/call。 */
+     *  段 response text ({"success":true,"uuid":"...","message":"..."}，
+     *  成段照傳返俾 LLM，佢再經 image_to_text 握手完成後就會描述)。冇 URL /
+     *  上傳失敗就回 null，caller 跌返落 inline。唔拋 exception - 失敗只係
+     *  log，唔好搞死成個 tools/call。 */
     private String tryVisionUpload(byte[] jpeg, String question) {
         String url = xiaozhiClient != null ? xiaozhiClient.getVisionUrl() : null;
         if (url == null || url.isEmpty()) {
@@ -1556,9 +1612,21 @@ public final class XiaozhiBridge {
                     java.util.Set<String> disabledNames = xiaozhiConfig.getMcpDisabledToolNames();
                     for (int i = 0; i < tools.length(); i++) {
                         org.json.JSONObject tool = tools.getJSONObject(i);
-                        if (!disabledNames.contains(tool.optString("name"))) {
-                            filteredTools.put(tool);
+                        String toolName = tool.optString("name");
+                        if (disabledNames.contains(toolName)) {
+                            continue;
                         }
+                        // self.camera.image_to_text 唔再暴露俾 server：實測兩步握手
+                        // (take_photo 上傳攞 uuid → image_to_text) 嘅第二步成日
+                        // 攞到新 uuid / 亂描述；官方 ESP32 根本冇呢個 tool，
+                        // take_photo 上傳一次 server 就識直接報內容。收埋佢，
+                        // 等 LLM 影完即講，唔使第二程。handler 照留
+                        // (見 callTool switch)，LLM 攞住舊 list 照 call 都有
+                        // 穩定回包，唔會 unknown tool。
+                        if ("self.camera.image_to_text".equals(toolName)) {
+                            continue;
+                        }
+                        filteredTools.put(tool);
                     }
                 }
                 // MCP 設定 card 要顯示全部 tool (含已經 disable 的

@@ -683,6 +683,14 @@ public class XiaozhiClient {
             // against yet. Logged via the EVT_MCP publish above.
             return;
         }
+        // Device-initiated notifications (e.g. "notifications/initialized") are
+        // one-way per JSON-RPC: no id, no reply expected. 對照 mcp_server.cc
+        // ParseMessage 開頭 `if (method_str.find("notifications") == 0) return;`。
+        // 之前呢度跌落 default 回咗個冇 id 嘅 error 包，屬 malformed response，
+        // server 好易因此掟線 (close frame)，所以直接靜默食咗佢。
+        if (method.startsWith("notifications")) {
+            return;
+        }
         Object idRaw = payload.opt("id");
 
         try {

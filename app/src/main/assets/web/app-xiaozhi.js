@@ -290,6 +290,13 @@ function xiaozhiToggleSession() {
   }
 }
 
+// 打字送出進行中旗標 — 見 xiaozhiSendText()。放 function 外 (module 級，
+// 同 xiaozhiTtsQueue 一樣經 window/global scope 共用)。
+let xiaozhiSendTextInFlight = false;
+// 最近一次打字送出嘅原文＋時間 — 見下面 xiaozhi_stt 過濾。
+let xiaozhiLastSentText = "";
+let xiaozhiLastSentAtMs = 0;
+
 /** PHASE 4 (text input): sends whatever's typed in the text box as a "detect" message
  *  (see XiaozhiClient#sendListenDetectText()'s javadoc for the protocol caveat this
  *  relies on) rather than through the mic/Opus path - works regardless of
@@ -298,6 +305,11 @@ function xiaozhiToggleSession() {
  *  Server echo (stt message) 是 chat log 唯一來源 — 這個 function 只清 input，不自己 append。
  */
 function xiaozhiSendText() {
+  // 打字連送兩次 (Enter+撳掣同時觸發、㩒住 Enter key-repeat) 會開兩個相同
+  // LLM turn，server 跟住落兩個 take_photo，相機撞車＋server 掟線。單線程
+  // 內同步檢查+上鎖：第一個入到，之後嘅 (包括未回之前嘅 Enter repeat) 全部
+  // 食咗佢。回包先解鎖 (下面 then)，唔靠 button disabled (Enter 路唔經佢)。
+  if (xiaozhiSendTextInFlight) return;
   const els = xiaozhiElements();
   const text = els.textInput ? (els.textInput.value || "").trim() : "";
   if (!text) return;
@@ -307,13 +319,21 @@ function xiaozhiSendText() {
     if (els.textInput) els.textInput.value = "";
     return;
   }
+  xiaozhiSendTextInFlight = true;
   if (els.sendTextBtn) els.sendTextBtn.disabled = true;
+  // 認回音用嘅時間戳一定要喺 fetch 之前同步記：兩句 STT (phantom＋回音)
+  // 行 WebSocket，分分鐘快過呢個 HTTP 回包先到；擺喺 then 先記就永遠太遲。
+  xiaozhiLastSentText = text;
+  xiaozhiLastSentAtMs = Date.now();
   Alpha2Api.xiaozhiSendText({ text: text }).then(function (res) {
     if (res.ok) {
       if (els.textInput) els.textInput.value = "";
     } else {
+      // 送失敗就當冇送過，免之後 2.5 秒內嘅真語音 STT 被誤殺。
+      xiaozhiLastSentAtMs = 0;
       xiaozhiAppendChatLine("xiaozhi-msg-system", res.error || t("xiaozhi_send_text_error"));
     }
+    xiaozhiSendTextInFlight = false;
     if (els.sendTextBtn) els.sendTextBtn.disabled = !xiaozhiClientIsConnected();
   });
 }
@@ -439,7 +459,19 @@ function xiaozhiHandleEvent(type, data) {
     // xiaozhi_alert 例外: 這個是伺服器主動推送的警示 (例如電量不足), 用戶應該
     // 在對話畫面見到, 所以保留。
     case "xiaozhi_stt":
-      if (data.text) xiaozhiAppendChatLine("xiaozhi-msg-user", data.text);
+      // 打字會帶出兩行：後端送 detect 之前要先停 mic，server 會將 stop 之前
+      // 已收到嘅背景聲尾段結算成一句 phantom STT (例如 "嗯"/"我"，實測永遠喺
+      // 自己嗰句回音之前幾百 ms 到)，搞到每次打字出兩行、第一行無關。
+      // 認回音：同最近一次送出原文 (去尾標點比) 唔啱、又係送出後 2.5 秒內到
+      // 嘅，一律當 phantom 唔入對話氣泡。主 event log (appendLog) 那邊照收，
+      // 查嘢唔會唔見。語音講嘢唔經呢度 (冇 lastSent)，唔受影響。
+      if (data.text) {
+        const norm = function (s) { return (s || "").replace(/[ 。？！!?….]+$/g, ""); };
+        const ageMs = Date.now() - xiaozhiLastSentAtMs;
+        const isEcho = xiaozhiLastSentText && norm(data.text) === norm(xiaozhiLastSentText) && ageMs < 15000;
+        if (!isEcho && ageMs < 2500 && xiaozhiLastSentAtMs > 0) break;
+        xiaozhiAppendChatLine("xiaozhi-msg-user", data.text);
+      }
       break;
     case "xiaozhi_tts":
       // 小智實際回覆的文字是這個 event 的 "sentence_start" (對話氣泡本身都是

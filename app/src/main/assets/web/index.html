@@ -465,7 +465,7 @@
     <!-- 總停鍵在「送出」這行尾：一按停止全部動作播放／TTS／本地音樂／電台，
          純粹是幾個現有 stop endpoint 的前端 fan-out，沒有新增後端邏輯，詳見 xiaozhiStopAll()。 -->
     <div class="row">
-      <input id="xiaozhiTextInput" placeholder="打字與小智聊天…" data-i18n="xiaozhi_text_placeholder" data-i18n-attr="placeholder" autocomplete="off" style="flex:2" onkeydown="if(event.key==='Enter'){xiaozhiSendText();}">
+      <input id="xiaozhiTextInput" placeholder="打字與小智聊天…" data-i18n="xiaozhi_text_placeholder" data-i18n-attr="placeholder" autocomplete="off" style="flex:2" onkeydown="if(event.key==='Enter'&&!event.repeat){xiaozhiSendText();}">
       <button id="xiaozhiSendTextBtn" onclick="xiaozhiSendText()" disabled data-i18n="xiaozhi_send_text">送出</button>
       <button class="secondary" onclick="clearXiaozhiChatLog()" data-i18n="xiaozhi_clear_btn">清空</button>
       <button id="xiaozhiStopAllBtn" class="danger-btn" onclick="xiaozhiStopAll()" data-i18n="xiaozhi_stop_all_btn">⏹ 全部停止</button>
