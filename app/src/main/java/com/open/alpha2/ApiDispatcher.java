@@ -402,6 +402,12 @@ public final class ApiDispatcher {
                 return ledCenter.ledHeadSet(query);
             case "led/eye/set":
                 return ledCenter.ledEyeSet(query);
+            case "led/head/raw":
+                return ledCenter.ledHeadRaw(query);
+            case "led/eye/raw":
+                return ledCenter.ledEyeRaw(query);
+            case "led/state/get":
+                return ledCenter.ledStateGet();
             case "led/mouth/set":
                 return ledCenter.ledMouthSet(query);
             case "debug/jni/led":

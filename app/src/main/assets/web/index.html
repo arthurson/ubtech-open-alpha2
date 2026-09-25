@@ -344,6 +344,43 @@
       </div>
 
       <div class="led-block">
+        <h3 data-i18n="led_perled_heading">🔬 逐粒試燈</h3>
+        <p class="hint" data-i18n="led_perled_hint"></p>
+        <div class="perled-row">
+          <div class="perled-group">
+            <div class="perled-title"><span data-i18n="led_head_heading">頭部 LED</span></div>
+            <div class="perled-head">
+              <div class="perled-side">
+                <div class="perled-strip" id="perledHeadL"></div>
+                <div class="perled-side-label" data-i18n="led_perled_left">左</div>
+              </div>
+              <div class="perled-side">
+                <div class="perled-strip" id="perledHeadR"></div>
+                <div class="perled-side-label" data-i18n="led_perled_right">右</div>
+              </div>
+            </div>
+          </div>
+          <div class="perled-group">
+            <div class="perled-title"><span data-i18n="led_eye_heading">眼睛 LED</span></div>
+            <div class="perled-eyes">
+              <div class="perled-eye-wrap">
+                <div class="perled-ring" id="perledEyeL"></div>
+                <div class="perled-side-label" data-i18n="led_perled_left">左</div>
+              </div>
+              <div class="perled-eye-wrap">
+                <div class="perled-ring" id="perledEyeR"></div>
+                <div class="perled-side-label" data-i18n="led_perled_right">右</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <button onclick="perledAllOn()" data-i18n="led_perled_all_on">全著</button>
+          <button onclick="perledAllOff()" data-i18n="led_perled_all_off">全熄</button>
+        </div>
+      </div>
+
+      <div class="led-block">
         <h3 data-i18n="led_mouth_heading">嘴部 LED</h3>
         <div class="row">
           <label><span data-i18n="led_mouth_speed_label">速度 (0–5000)：</span><span id="mouthSpeedVal">0</span></label>

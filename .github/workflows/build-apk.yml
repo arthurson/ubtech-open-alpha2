@@ -10,6 +10,9 @@ on:
       - '**.md'
       - 'docs/**'
   workflow_dispatch: {}
+permissions:
+  actions: write
+  contents: read
 concurrency:
   group: build-apk-${{ github.ref }}
   cancel-in-progress: true
@@ -56,4 +59,15 @@ jobs:
           name: open-alpha2-beta6-apk
           path: app/build/outputs/apk/debug/open-alpha2-beta6.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
+      - name: Cleanup old artifacts (keep latest 3)
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          keep=3
+          ids=$(gh api "repos/${{ github.repository }}/actions/artifacts?per_page=100" \
+            --jq '[.artifacts | sort_by(.created_at) | reverse | .[]] | .['"$keep"':] | .[].id')
+          for id in $ids; do
+            gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id" || true
+          done

@@ -4043,6 +4043,200 @@
         "operationId": "ledEyeSet_get"
       }
     },
+    "/api/led/head/raw": {
+      "get": {
+        "tags": [
+          "led"
+        ],
+        "summary": "逐粒試燈 - 直接寫頭部 p3/p4 mask (長開)",
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            },
+            "description": "1=紅 2=綠 3=藍 4=黃 5=紫 6=青 7=白"
+          },
+          {
+            "name": "brightness",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9
+            }
+          },
+          {
+            "name": "p3",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "description": "右邊 5 粒 mask (反序: 1號=16 2號=8 3號=4 4號=2 5號=1；第5粒係wifi位)"
+          },
+          {
+            "name": "p4",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "description": "左邊 5 粒 mask (正序: 1號=1 2號=2 3號=4 4號=8 5號=16；第5粒係wifi位)"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "ledHeadRaw_get"
+      }
+    },
+    "/api/led/eye/raw": {
+      "get": {
+        "tags": [
+          "led"
+        ],
+        "summary": "逐粒試燈 - 直接寫眼部 p3/p4 mask (長開)",
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            },
+            "description": "1=紅 2=綠 3=藍 4=黃 5=紫 6=青 7=白"
+          },
+          {
+            "name": "brightness",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9
+            }
+          },
+          {
+            "name": "p3",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "description": "左眼 8 粒 ring mask (順時針由12點起 1號=16 2號=8 3號=4 4號=2 5號=1 6號=128 7號=64 8號=32，全開=255)"
+          },
+          {
+            "name": "p4",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "description": "右眼 8 粒 ring mask (同左眼)"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "ledEyeRaw_get"
+      }
+    },
+    "/api/led/state/get": {
+      "get": {
+        "tags": [
+          "led"
+        ],
+        "summary": "逐粒試燈 mirror - 讀最後燈態 (硬件 write-only，server 記低最後一轉；未打過=-1，熄咗=0)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "最後燈態 {head:{color,brightness,p3,p4},eye:{...},mouth:{runTime,breatheMs,offMs,playMs,mode}}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "ledStateGet_get"
+      }
+    },
     "/api/led/mouth/set": {
       "get": {
         "tags": [

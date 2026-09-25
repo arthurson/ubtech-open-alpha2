@@ -230,6 +230,8 @@ window.addEventListener("DOMContentLoaded", function () {
   buildServoGrid();
   buildHeadColorPicker();
   buildEyeColorPicker();
+  if (typeof perledBuild === "function") perledBuild();
+  if (typeof perledPollLoop === "function") perledPollLoop();
   setTtsEngine("android"); // Android 內置 TTS，載入引擎/語言清單
   // Vosk 卡初始化 (model 掃描＋狀態同步，有卡先做)。
   if (document.getElementById("voskModelBtns") && typeof voskRefreshModels === "function") {

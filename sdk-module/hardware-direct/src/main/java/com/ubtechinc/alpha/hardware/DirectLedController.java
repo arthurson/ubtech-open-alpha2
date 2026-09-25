@@ -23,18 +23,24 @@ public final class DirectLedController {
     // 複用 AIDL_REFERENCE 3.1 的已驗證參數表
     // p1 color 1紅2綠3藍4黄5紫6青7白, p2 亮度1-9, p5/p6 時序, p7 runTime, p8 mode
     public static boolean setHead5Mic(int color, int bright, int p5, int p6, int runTime, int mode) {
-        return callLedReflect("ledSetHead", new Class[]{int.class,int.class,int.class,int.class,int.class,int.class,int.class,int.class},
+        boolean ok = callLedReflect("ledSetHead", new Class[]{int.class,int.class,int.class,int.class,int.class,int.class,int.class,int.class},
                 new Object[]{color, bright, color, color, p5, p6, runTime, mode}, "head color=" + color + " mode=" + mode);
+        if (ok) recordHead(color, bright, color, color);
+        return ok;
     }
 
     public static boolean setEye5Mic(int color, int bright, int p5, int p6, int runTime, int mode) {
-        return callLedReflect("ledSetEye", new Class[]{int.class,int.class,int.class,int.class,int.class,int.class,int.class,int.class},
+        boolean ok = callLedReflect("ledSetEye", new Class[]{int.class,int.class,int.class,int.class,int.class,int.class,int.class,int.class},
                 new Object[]{color, bright, color, color, p5, p6, runTime, mode}, "eye color=" + color + " mode=" + mode);
+        if (ok) recordEye(color, bright, color, color);
+        return ok;
     }
 
     public static boolean setMouth(int runTime, int breathe, int off, int play, int mode) {
-        return callLedReflect("ledSetMouth", new Class[]{int.class,int.class,int.class,int.class,int.class},
+        boolean ok = callLedReflect("ledSetMouth", new Class[]{int.class,int.class,int.class,int.class,int.class},
                 new Object[]{runTime, breathe, off, play, mode}, "mouth mode=" + mode);
+        if (ok) recordMouth(runTime, breathe, off, play, mode);
+        return ok;
     }
 
     public static boolean setOn(int index) {
@@ -43,7 +49,14 @@ public final class DirectLedController {
 
     public static boolean setOff() {
         // 3.002 簽名 ledSetOFF(I)：反匯編證實該 int 只進 log（mov r3,r4 → __android_log_print），不落硬件，傳 0。
-        return callLedReflect("ledSetOFF", new Class[]{int.class}, new Object[]{0}, "ledSetOFF");
+        // 注意：呢個 ioctl 號本身會連 wifi 12/13 一起清——硬件上頭+眼係一齊熄，
+        // 所以成功嗰陣兩邊 mirror 一齊記 off。
+        boolean ok = callLedReflect("ledSetOFF", new Class[]{int.class}, new Object[]{0}, "ledSetOFF");
+        if (ok) {
+            recordHeadOff();
+            recordEyeOff();
+        }
+        return ok;
     }
 
     // 反射快取：之前每次打燈都 Class.forName + getMethod 全套（disco 高頻下
@@ -165,13 +178,17 @@ public final class DirectLedController {
      * pure-direct 下 p3/p4 保持原值，行為不變。
      */
     public static boolean setHead5MicRaw(int p1, int p2, int p3, int p4, int p5, int p6, int p7, int p8) {
-        return callLedReflect("ledSetHead", new Class[]{int.class,int.class,int.class,int.class,int.class,int.class,int.class,int.class},
+        boolean ok = callLedReflect("ledSetHead", new Class[]{int.class,int.class,int.class,int.class,int.class,int.class,int.class,int.class},
                 new Object[]{p1, p2, p3, p4, p5, p6, p7, p8}, "head raw p1=" + p1 + " p8=" + p8);
+        if (ok) recordHead(p1, p2, p3, p4);
+        return ok;
     }
 
     public static boolean setEye5MicRaw(int p1, int p2, int p3, int p4, int p5, int p6, int p7, int p8) {
-        return callLedReflect("ledSetEye", new Class[]{int.class,int.class,int.class,int.class,int.class,int.class,int.class,int.class},
+        boolean ok = callLedReflect("ledSetEye", new Class[]{int.class,int.class,int.class,int.class,int.class,int.class,int.class,int.class},
                 new Object[]{p1, p2, p3, p4, p5, p6, p7, p8}, "eye raw p1=" + p1 + " p8=" + p8);
+        if (ok) recordEye(p1, p2, p3, p4);
+        return ok;
     }
 
     // 預設：與 MainActivity 的 translateColor 等價
@@ -191,4 +208,55 @@ public final class DirectLedController {
      */
     public static boolean stopHead5Mic() { return setOff(); }
     public static boolean stopEye5Mic() { return setOff(); }
+
+    // -- 最後燈態 mirror --------------------------------------------------
+    // 硬件 write-only，讀唔返——呢度記低經呢個 class 打出去嘅最後一轉參數，
+    // 畀 /api/led/state/get 回前端畫 mirror（逐粒撳試燈用）。淨係成功嗰陣記；
+    // -1＝開機以嚟未打過。注意：debugJniLed 直透 raw 唔經呢度，嗰段時間
+    // mirror 會滯後（佢收尾多數會送返個 stop，嗰下就會同步返）。
+    private static volatile int sHeadP1 = -1;
+    private static volatile int sHeadP2 = -1;
+    private static volatile int sHeadP3 = -1;
+    private static volatile int sHeadP4 = -1;
+    private static volatile int sEyeP1 = -1;
+    private static volatile int sEyeP2 = -1;
+    private static volatile int sEyeP3 = -1;
+    private static volatile int sEyeP4 = -1;
+    private static volatile int sMouthRun = -1;
+    private static volatile int sMouthBreathe = -1;
+    private static volatile int sMouthOffDur = -1;
+    private static volatile int sMouthPlay = -1;
+    private static volatile int sMouthMode = -1;
+
+    private static void recordHead(int p1, int p2, int p3, int p4) {
+        sHeadP1 = p1; sHeadP2 = p2; sHeadP3 = p3; sHeadP4 = p4;
+    }
+    private static void recordEye(int p1, int p2, int p3, int p4) {
+        sEyeP1 = p1; sEyeP2 = p2; sEyeP3 = p3; sEyeP4 = p4;
+    }
+    private static void recordMouth(int runTime, int breathe, int off, int play, int mode) {
+        sMouthRun = runTime; sMouthBreathe = breathe; sMouthOffDur = off;
+        sMouthPlay = play; sMouthMode = mode;
+    }
+    private static void recordHeadOff() {
+        sHeadP1 = 0; sHeadP2 = 0; sHeadP3 = 0; sHeadP4 = 0;
+    }
+    private static void recordEyeOff() {
+        sEyeP1 = 0; sEyeP2 = 0; sEyeP3 = 0; sEyeP4 = 0;
+    }
+
+    /** 最後燈態 JSON（全部 int，無需 escape）：未打過＝-1，熄咗＝0。 */
+    public static String lastStateJson() {
+        return "{\"ok\":true,\"head\":{\"color\":" + sHeadP1
+                + ",\"brightness\":" + sHeadP2
+                + ",\"p3\":" + sHeadP3 + ",\"p4\":" + sHeadP4 + "}"
+                + ",\"eye\":{\"color\":" + sEyeP1
+                + ",\"brightness\":" + sEyeP2
+                + ",\"p3\":" + sEyeP3 + ",\"p4\":" + sEyeP4 + "}"
+                + ",\"mouth\":{\"runTime\":" + sMouthRun
+                + ",\"breatheMs\":" + sMouthBreathe
+                + ",\"offMs\":" + sMouthOffDur
+                + ",\"playMs\":" + sMouthPlay
+                + ",\"mode\":" + sMouthMode + "}}";
+    }
 }

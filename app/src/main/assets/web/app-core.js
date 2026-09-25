@@ -222,6 +222,13 @@ const I18N = {
   led_preset_dual:       { zh: "🎨 雙色燈",        en: "🎨 Dual Color" },
   led_preset_stop:       { zh: "⏹ 停止",          en: "⏹ Stop" },
   led_eye_countdown:     { zh: "⏳ 3秒倒數",        en: "⏳ 3s countdown" },
+  led_perled_heading:     { zh: "🔬 逐粒試燈",        en: "🔬 Per-LED Test" },
+  led_perled_hint:        { zh: "撳每粒燈即著／熄（用上面揀嘅色＋光度）。圖係 server 最後燈態，disco／其他功能郁燈嗰陣會跟住郁。第 5 粒頭燈係 wifi 位，熄未必熄到。",
+                            en: "Tap any LED to toggle it (uses the color/brightness picked above). Shows the server's last LED state, so it follows disco and other features live. Head LED #5 is the wifi spot and may refuse to turn off." },
+  led_perled_all_on:      { zh: "全著",              en: "All on" },
+  led_perled_all_off:     { zh: "全熄",              en: "All off" },
+  led_perled_left:        { zh: "左",                en: "L" },
+  led_perled_right:       { zh: "右",                en: "R" },
 
   // -- camera tab --
   camera_heading:        { zh: "相機",             en: "Camera" },

@@ -734,6 +734,37 @@ public final class LedCenter {
     //   開1-6=159，開1-7=223，全開=255。
     // 平時 255/255 全開。
 
+    /** 逐粒試燈用：直接寫 p3/p4 mask（長開 MAX，同 long preset 同形）。
+     *  頭：P4＝左 5 粒（正序 bit 1,2,4,8,16），P3＝右 5 粒（反序 16,8,4,2,1）；
+     *  第 5 粒係 wifi 位（閂唔實），見上面位置圖。 */
+    public HttpServer.ApiResponse ledHeadRaw(Map<String, String> query) {
+        int color = ApiValidator.requireColor(query);
+        int brightness = ApiValidator.requireBrightness(query);
+        int p3 = ApiValidator.requireIntRange(query, "p3", 0, 31);
+        int p4 = ApiValidator.requireIntRange(query, "p4", 0, 31);
+        boolean sent = DirectLedController.setHead5MicRaw(color, brightness, p3, p4,
+                Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
+        return MainActivity.sentReadyResponse(sent, headerReady());
+    }
+
+    /** 逐粒試燈用：直接寫 p3/p4 mask（長開 MAX）。眼：P3＝左眼，P4＝右眼，
+     *  每邊 8 粒 ring（bit 見上面位置圖，全開＝255）。 */
+    public HttpServer.ApiResponse ledEyeRaw(Map<String, String> query) {
+        int color = ApiValidator.requireColor(query);
+        int brightness = ApiValidator.requireBrightness(query);
+        int p3 = ApiValidator.requireIntRange(query, "p3", 0, 255);
+        int p4 = ApiValidator.requireIntRange(query, "p4", 0, 255);
+        boolean sent = DirectLedController.setEye5MicRaw(color, brightness, p3, p4,
+                Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
+        return MainActivity.sentReadyResponse(sent, headerReady());
+    }
+
+    /** 逐粒試燈 mirror 用：回 DirectLedController 記低嘅最後燈態（硬件 write-only
+     *  讀唔返）。未打過＝-1，熄咗＝0。 */
+    public HttpServer.ApiResponse ledStateGet() {
+        return HttpServer.ApiResponse.ok(DirectLedController.lastStateJson());
+    }
+
     // NOTE: unlike led/head/set and led/eye/set above, this does NOT go through
     // Alpha2RobotApi/AIDL at all - there is no AIDL "mouth LED" method. It goes
     // through MouthLedData, which since beta6 delegates to DirectLedController

@@ -160,3 +160,158 @@ function mouthLedOff() {
   });
 }
 
+// ---------------- 逐粒試燈 ----------------
+// bit 表（實機試位確認，見 LedCenter 註解）：
+// 頭左 P4 正序 [1,2,4,8,16]，頭右 P3 反序 [16,8,4,2,1]，第 5 粒係 wifi 位；
+// 眼每邊 8 粒 ring，順時針由 12 點起 [16,8,4,2,1,128,64,32]。
+// 硬件 write-only 讀唔返——顯示靠 /api/led/state/get（server 記低最後一轉），
+// 撳掣送 led/head/raw 或 led/eye/raw，用上面揀嘅色＋光度。
+const PERLED_HEAD_L_BITS = [1, 2, 4, 8, 16];
+const PERLED_HEAD_R_BITS = [16, 8, 4, 2, 1];
+const PERLED_EYE_BITS = [16, 8, 4, 2, 1, 128, 64, 32];
+let perledHead = { p3: 0, p4: 0, color: 0 };
+let perledEye = { p3: 0, p4: 0, color: 0 };
+let perledBuilt = false;
+let perledPollTimer = null;
+
+function perledColorHex(code) {
+  for (let i = 0; i < LED_COLORS.length; i++) {
+    if (LED_COLORS[i].code === code) return LED_COLORS[i].hex;
+  }
+  return "#9aa0a6";
+}
+
+function perledMakeDot(num, wifi) {
+  const dot = document.createElement("button");
+  dot.type = "button";
+  dot.className = "perled-dot" + (wifi ? " perled-wifi" : "");
+  dot.textContent = num;
+  dot.title = wifi ? "#5 wifi 位（熄未必熄到）" : "#" + num;
+  return dot;
+}
+
+function perledBuild() {
+  if (perledBuilt) return;
+  perledBuilt = true;
+  // 頭：左右各一條 5 粒直排，上面係 5 號、下面係 1 號（似 VU 錶由下數起）。
+  const strips = [["perledHeadL", "p4", PERLED_HEAD_L_BITS], ["perledHeadR", "p3", PERLED_HEAD_R_BITS]];
+  strips.forEach(function (cfg) {
+    const wrap = document.getElementById(cfg[0]);
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    for (let i = 4; i >= 0; i--) {
+      const dot = perledMakeDot(i + 1, i === 4);
+      (function (mask, bit) {
+        dot.onclick = function () { perledToggle("head", mask, bit); };
+      })(cfg[1], cfg[2][i]);
+      wrap.appendChild(dot);
+    }
+  });
+  // 眼：每邊 8 粒圍圈，1 號喺 12 點，順時針。
+  const rings = [["perledEyeL", "p3"], ["perledEyeR", "p4"]];
+  rings.forEach(function (cfg) {
+    const wrap = document.getElementById(cfg[0]);
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    for (let i = 0; i < 8; i++) {
+      const dot = perledMakeDot(i + 1, false);
+      const ang = (-90 + i * 45) * Math.PI / 180;
+      dot.style.left = String(Math.round(54 + 44 * Math.cos(ang))) + "px";
+      dot.style.top = String(Math.round(54 + 44 * Math.sin(ang))) + "px";
+      (function (mask, bit) {
+        dot.onclick = function () { perledToggle("eye", mask, bit); };
+      })(cfg[1], PERLED_EYE_BITS[i]);
+      wrap.appendChild(dot);
+    }
+  });
+}
+
+function perledRender() {
+  function paint(wrapId, bits, mask, hex) {
+    const wrap = document.getElementById(wrapId);
+    if (!wrap) return;
+    const dots = wrap.querySelectorAll(".perled-dot");
+    // 頭 strip 由 5 號畫到 1 號（同 build 順序一致），眼 ring 由 1 號順時針。
+    const order = wrapId.indexOf("Head") >= 0 ? [4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7];
+    order.forEach(function (bi, di) {
+      const dot = dots[di];
+      if (!dot) return;
+      const on = (mask & bits[bi]) !== 0;
+      dot.classList.toggle("perled-on", on);
+      dot.style.background = on ? hex : "";
+    });
+  }
+  paint("perledHeadL", PERLED_HEAD_L_BITS, perledHead.p4, perledColorHex(perledHead.color));
+  paint("perledHeadR", PERLED_HEAD_R_BITS, perledHead.p3, perledColorHex(perledHead.color));
+  paint("perledEyeL", PERLED_EYE_BITS, perledEye.p3, perledColorHex(perledEye.color));
+  paint("perledEyeR", PERLED_EYE_BITS, perledEye.p4, perledColorHex(perledEye.color));
+}
+
+function perledToggle(zone, mask, bit) {
+  if (zone === "head") {
+    perledHead[mask] = (perledHead[mask] ^ bit) & 31;
+    perledRender();
+    const bEl = document.getElementById("headBrightness");
+    Alpha2Api.ledHeadRaw({ color: String(selectedHeadColor),
+      brightness: String(bEl ? bEl.value : 9),
+      p3: String(perledHead.p3), p4: String(perledHead.p4) }).then(function () { perledPollOnce(); });
+  } else {
+    perledEye[mask] = (perledEye[mask] ^ bit) & 255;
+    perledRender();
+    const bEl = document.getElementById("eyeBrightness");
+    Alpha2Api.ledEyeRaw({ color: String(selectedEyeColor),
+      brightness: String(bEl ? bEl.value : 9),
+      p3: String(perledEye.p3), p4: String(perledEye.p4) }).then(function () { perledPollOnce(); });
+  }
+}
+
+function perledAllOn() {
+  perledHead = { p3: 31, p4: 31, color: selectedHeadColor };
+  perledEye = { p3: 255, p4: 255, color: selectedEyeColor };
+  perledRender();
+  const hb = document.getElementById("headBrightness");
+  const eb = document.getElementById("eyeBrightness");
+  Alpha2Api.ledHeadRaw({ color: String(selectedHeadColor), brightness: String(hb ? hb.value : 9),
+    p3: "31", p4: "31" });
+  Alpha2Api.ledEyeRaw({ color: String(selectedEyeColor), brightness: String(eb ? eb.value : 9),
+    p3: "255", p4: "255" }).then(function () { perledPollOnce(); });
+}
+
+function perledAllOff() {
+  perledHead = { p3: 0, p4: 0, color: 0 };
+  perledEye = { p3: 0, p4: 0, color: 0 };
+  perledRender();
+  // 經 preset stop 送（同 LED tab 個 ⏹ 掣同一條路，連 wifi 燈一齊清）。
+  Alpha2Api.ledHeadSet({ preset: "stop" });
+  Alpha2Api.ledEyeSet({ preset: "stop" }).then(function () { perledPollOnce(); });
+}
+
+// 即時 mirror：1 秒 poll 一次 server 最後燈態（淨係 LED tab 開緊嗰陣先打）。
+function perledPollOnce() {
+  return Alpha2Api.ledStateGet().then(function (res) {
+    if (!res || !res.ok) return res;
+    if (res.head) perledHead = { p3: res.head.p3 || 0, p4: res.head.p4 || 0, color: res.head.color || 0 };
+    if (res.eye) perledEye = { p3: res.eye.p3 || 0, p4: res.eye.p4 || 0, color: res.eye.color || 0 };
+    perledRender();
+    return res;
+  });
+}
+
+function perledPollLoop() {
+  if (perledPollTimer) clearTimeout(perledPollTimer);
+  perledPollTimer = null;
+  function tick() {
+    perledPollTimer = null;
+    const tab = document.getElementById("tab-led");
+    if (tab && tab.classList.contains("active")) {
+      perledPollOnce().then(schedule, schedule);
+    } else {
+      schedule();
+    }
+  }
+  function schedule() {
+    perledPollTimer = setTimeout(tick, 1000);
+  }
+  schedule();
+}
+

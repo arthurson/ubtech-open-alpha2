@@ -412,12 +412,30 @@ const Alpha2Api = (function() {
     return api('head/noise', params);
   }
 
+  function ledEyeRaw(params) {
+    if (params && params.color != null) assertRange(Number(params.color), 1, 7, 'color');
+    if (params && params.brightness != null) assertRange(Number(params.brightness), 1, 9, 'brightness');
+    if (params && params.p3 != null) assertRange(Number(params.p3), 0, 255, 'p3');
+    if (params && params.p4 != null) assertRange(Number(params.p4), 0, 255, 'p4');
+    // 逐粒試燈 - 直接寫眼部 p3/p4 mask (長開)
+    return api('led/eye/raw', params);
+  }
+
   function ledEyeSet(params) {
     if (params && params.color != null) assertRange(Number(params.color), 1, 7, 'color');
     if (params && params.brightness != null) assertRange(Number(params.brightness), 1, 9, 'brightness');
     if (params && params.preset != null) assertEnum(params.preset, ['long', 'flash', 'chase', 'dual', 'stop'], 'preset');
     // 設定眼部 5-mic LED (ledSetEye5Mic)
     return api('led/eye/set', params);
+  }
+
+  function ledHeadRaw(params) {
+    if (params && params.color != null) assertRange(Number(params.color), 1, 7, 'color');
+    if (params && params.brightness != null) assertRange(Number(params.brightness), 1, 9, 'brightness');
+    if (params && params.p3 != null) assertRange(Number(params.p3), 0, 31, 'p3');
+    if (params && params.p4 != null) assertRange(Number(params.p4), 0, 31, 'p4');
+    // 逐粒試燈 - 直接寫頭部 p3/p4 mask (長開)
+    return api('led/head/raw', params);
   }
 
   function ledHeadSet(params) {
@@ -433,6 +451,11 @@ const Alpha2Api = (function() {
     if (params && params.speed != null) assertRange(Number(params.speed), 0, 5000, 'speed');
     // 設定嘴部 LED (LedControl JNI, 非 AIDL)
     return api('led/mouth/set', params);
+  }
+
+  function ledStateGet(params) {
+    // 逐粒試燈 mirror - 讀最後燈態 (硬件 write-only，server 記低最後一轉；未打過=-1，熄咗=0)
+    return api('led/state/get', params);
   }
 
   // ── radio ──────────────────────────────────────────────
@@ -915,9 +938,12 @@ const Alpha2Api = (function() {
     debugJniLed,
     debugSerialSend,
     headNoise,
+    ledEyeRaw,
     ledEyeSet,
+    ledHeadRaw,
     ledHeadSet,
     ledMouthSet,
+    ledStateGet,
     audioRadioPlay,
     audioRadioPlayUrl,
     audioRadioSearch,
