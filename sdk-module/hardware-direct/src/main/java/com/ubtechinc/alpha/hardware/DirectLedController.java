@@ -104,10 +104,21 @@ public final class DirectLedController {
         return null;
     }
 
-    // 全局驅動鎖：disco 線程／pad 燈線程／HTTP 線程／wifi 燈全部經呢度打
+    // 全局驅動鎖：disco 線程／pad 燈線程／HTTP 線程／wifi 燈／嘴燈全部經呢度打
     // /dev/led_eye，舊驅動疑似頂唔順併發 open（幾次硬 hang 無 ANR、adb 齊死
     // 都係 disco 高頻期）。一齊排隊，一次一個，慢幾 ms 好過死機。
+    // 注意：任何直接掂 LedControl（open→ioctl→close）嘅路都要經呢個鎖，
+    // 唔可以自己另起爐灶，否則同排緊隊嘅打燈撞 open 即有機會 wedge 成部機。
     private static final Object DRIVER_LOCK = new Object();
+
+    /** 把一段直接掂 LedControl（open→ioctl→close）嘅 code 包入全局驅動鎖，
+     *  同所有經 callLedReflect 嘅打燈排同一條隊。鎖淨係包 ioctl 本身，
+     *  重試 sleep 留喺出面，唔好塞住其他燈。r 掟出嚟嘅 Throwable 照 propagate。 */
+    public static void runExclusive(Runnable r) {
+        synchronized (DRIVER_LOCK) {
+            r.run();
+        }
+    }
 
     private static boolean callLedReflect(String method, Class<?>[] types, Object[] args, String desc) {
         synchronized (DRIVER_LOCK) {

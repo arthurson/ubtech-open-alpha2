@@ -228,26 +228,32 @@ public final class LedCenter {
      */
     private boolean assertPadLedsComboBurst() {
         for (int attempt = 1; attempt <= PAD_LED_OPEN_ATTEMPTS; attempt++) {
-            boolean openOk = false;
-            try {
-                openOk = LedControl.open();
-            } catch (Throwable t) {
-                Log.w(TAG, "pad LED open() threw", t);
-            }
-            if (openOk) {
+            final boolean[] openOk = {false};
+            // open→ioctl→close 包入全局驅動鎖：/dev/led_eye 頂唔順併發 open，
+            // 同 disco 高頻打燈撞即有機會硬 hang。重試 sleep 留喺鎖出面。
+            DirectLedController.runExclusive(() -> {
                 try {
-                    if (padMinusHeld) {
-                        LedControl.ledSetOn(PAD_LED_INDEX_MINUS);
-                    }
-                    if (padPlusHeld) {
-                        LedControl.ledSetOn(PAD_LED_INDEX_PLUS);
-                    }
-                } finally {
+                    openOk[0] = LedControl.open();
+                } catch (Throwable t) {
+                    Log.w(TAG, "pad LED open() threw", t);
+                }
+                if (openOk[0]) {
                     try {
-                        LedControl.close();
-                    } catch (Throwable ignored) {
+                        if (padMinusHeld) {
+                            LedControl.ledSetOn(PAD_LED_INDEX_MINUS);
+                        }
+                        if (padPlusHeld) {
+                            LedControl.ledSetOn(PAD_LED_INDEX_PLUS);
+                        }
+                    } finally {
+                        try {
+                            LedControl.close();
+                        } catch (Throwable ignored) {
+                        }
                     }
                 }
+            });
+            if (openOk[0]) {
                 if (attempt > 1) {
                     Log.d(TAG, "pad LED device opened on attempt " + attempt);
                 }
@@ -271,21 +277,26 @@ public final class LedCenter {
      */
     private boolean assertPadLedsOffBurst() {
         for (int attempt = 1; attempt <= PAD_LED_OPEN_ATTEMPTS; attempt++) {
-            boolean openOk = false;
-            try {
-                openOk = LedControl.open();
-            } catch (Throwable t) {
-                Log.w(TAG, "pad LED open() threw (off)", t);
-            }
-            if (openOk) {
+            final boolean[] openOk = {false};
+            // 同上：open→ioctl→close 入全局驅動鎖，唔好同 disco 撞 open。
+            DirectLedController.runExclusive(() -> {
                 try {
-                    LedControl.ledSetOFF(0);
-                } finally {
+                    openOk[0] = LedControl.open();
+                } catch (Throwable t) {
+                    Log.w(TAG, "pad LED open() threw (off)", t);
+                }
+                if (openOk[0]) {
                     try {
-                        LedControl.close();
-                    } catch (Throwable ignored) {
+                        LedControl.ledSetOFF(0);
+                    } finally {
+                        try {
+                            LedControl.close();
+                        } catch (Throwable ignored) {
+                        }
                     }
                 }
+            });
+            if (openOk[0]) {
                 return true;
             }
             if (!sleepPadRetryGap()) return false;
@@ -422,24 +433,29 @@ public final class LedCenter {
         assertSingleLedBurst(connected ? WIFI_LED_INDEX_BLUE : WIFI_LED_INDEX_RED);
     }
 
-    /** One burst: retry open()/dev/led_eye until it opens, light a single LED index. */
+    /** One burst: retry open()/dev/led_eye until it opens, light a single LED index.
+     *  open→ioctl→close 入全局驅動鎖，唔好同 disco 撞 open（見上）。 */
     private boolean assertSingleLedBurst(int index) {
         for (int attempt = 1; attempt <= PAD_LED_OPEN_ATTEMPTS; attempt++) {
-            boolean openOk = false;
-            try {
-                openOk = LedControl.open();
-            } catch (Throwable t) {
-                Log.w(TAG, "wifi LED open() threw", t);
-            }
-            if (openOk) {
+            final boolean[] openOk = {false};
+            DirectLedController.runExclusive(() -> {
                 try {
-                    LedControl.ledSetOn(index);
-                } finally {
+                    openOk[0] = LedControl.open();
+                } catch (Throwable t) {
+                    Log.w(TAG, "wifi LED open() threw", t);
+                }
+                if (openOk[0]) {
                     try {
-                        LedControl.close();
-                    } catch (Throwable ignored) {
+                        LedControl.ledSetOn(index);
+                    } finally {
+                        try {
+                            LedControl.close();
+                        } catch (Throwable ignored) {
+                        }
                     }
                 }
+            });
+            if (openOk[0]) {
                 return true;
             }
             if (!sleepPadRetryGap()) return false;
@@ -719,13 +735,12 @@ public final class LedCenter {
     // 平時 255/255 全開。
 
     // NOTE: unlike led/head/set and led/eye/set above, this does NOT go through
-    // Alpha2RobotApi/AIDL at all - there is no AIDL "mouth LED" method. It calls
-    // com.ubtechinc.alpha.jni.LedControl directly (a native JNI class backed by
-    // libhead_led.so 3.002), a completely separate control path found in a different
-    // demo app, not gated by isHeaderReady()/waitHeaderReady() since it has
-    // nothing to do with the header serial AIDL bind. See MouthLedData's
-    // javadoc for the confirmed field semantics and the same-device-contention
-    // caveat before relying on this alongside led/head/set or led/eye/set.
+    // Alpha2RobotApi/AIDL at all - there is no AIDL "mouth LED" method. It goes
+    // through MouthLedData, which since beta6 delegates to DirectLedController
+    // (DRIVER_LOCK) - serialized with every other /dev/led_eye call, because the
+    // old driver wedges hard on concurrent open() (disco mouth + head/eye racing
+    // hung the whole robot with no ANR and dead adb). See MouthLedData's
+    // javadoc for the confirmed field semantics.
     //
     // Simplified to the two effects confirmed usable on this hardware: a
     // breathing effect (speed adjustable, 0-5000ms) and off. effectMode values
@@ -751,41 +766,50 @@ public final class LedCenter {
         // 很可能也是同一個 driver 另一個 ioctl (例如尚未用過的 ledSetOn(i))。
         // func=on&i=N -> ledSetOn(N); func=eye/head&a1..a8 -> 對應 setter。
         String func = ApiValidator.requireDebugLedFunc(query);
+        // debug 都要排全局驅動鎖：唔好喺 disco 高頻打燈途中另起 open。
         if ("off".equals(func)) {
-            boolean openOk = LedControl.open();
-            boolean r = LedControl.ledSetOFF(0);
-            LedControl.close();
-            Log.i(TAG, "ledSetOFF open=" + openOk + " raw=" + r);
+            final boolean[] res = new boolean[2];
+            DirectLedController.runExclusive(() -> {
+                res[0] = LedControl.open();
+                res[1] = LedControl.ledSetOFF(0);
+                LedControl.close();
+            });
+            Log.i(TAG, "ledSetOFF open=" + res[0] + " raw=" + res[1]);
             return HttpServer.ApiResponse.ok(
-                    "{\"ok\":true,\"open\":" + openOk + ",\"raw\":" + r + "}");
+                    "{\"ok\":true,\"open\":" + res[0] + ",\"raw\":" + res[1] + "}");
         }
-        boolean openOk = LedControl.open();
-        try {
-            if ("on".equals(func)) {
-                int i = ApiValidator.optionalInt(query, "i", 0);
-                boolean r = LedControl.ledSetOn(i);
-                Log.i(TAG, "ledSetOn(" + i + ") open=" + openOk + " raw=" + r);
-                return HttpServer.ApiResponse.ok(
-                        "{\"ok\":true,\"open\":" + openOk + ",\"raw\":" + r + "}");
+        final boolean[] openOk = new boolean[1];
+        final String[] rbody = new String[1];
+        DirectLedController.runExclusive(() -> {
+            openOk[0] = LedControl.open();
+            try {
+                if ("on".equals(func)) {
+                    int i = ApiValidator.optionalInt(query, "i", 0);
+                    boolean r = LedControl.ledSetOn(i);
+                    Log.i(TAG, "ledSetOn(" + i + ") open=" + openOk[0] + " raw=" + r);
+                    rbody[0] = "{\"ok\":true,\"open\":" + openOk[0] + ",\"raw\":" + r + "}";
+                    return;
+                }
+                int[] a = new int[8];
+                for (int k = 0; k < 8; k++) {
+                    a[k] = ApiValidator.optionalInt(query, "a" + (k + 1), 0);
+                }
+                boolean r;
+                if ("eye".equals(func)) {
+                    r = LedControl.ledSetEye(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
+                } else {
+                    r = LedControl.ledSetHead(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
+                }
+                Log.i(TAG, "ledSet" + func + " open=" + openOk[0]
+                        + " raw=" + r + " args=" + java.util.Arrays.toString(a));
+                rbody[0] = "{\"ok\":true,\"open\":" + openOk[0]
+                        + ",\"raw\":" + r + ",\"args\":"
+                        + java.util.Arrays.toString(a).replace(" ", "") + "}";
+            } finally {
+                LedControl.close();
             }
-            int[] a = new int[8];
-            for (int k = 0; k < 8; k++) {
-                a[k] = ApiValidator.optionalInt(query, "a" + (k + 1), 0);
-            }
-            boolean r;
-            if ("eye".equals(func)) {
-                r = LedControl.ledSetEye(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
-            } else {
-                r = LedControl.ledSetHead(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
-            }
-            Log.i(TAG, "ledSet" + func + " open=" + openOk
-                    + " raw=" + r + " args=" + java.util.Arrays.toString(a));
-            return HttpServer.ApiResponse.ok("{\"ok\":true,\"open\":" + openOk
-                    + ",\"raw\":" + r + ",\"args\":"
-                    + java.util.Arrays.toString(a).replace(" ", "") + "}");
-        } finally {
-            LedControl.close();
-        }
+        });
+        return HttpServer.ApiResponse.ok(rbody[0]);
     }
 
     public HttpServer.ApiResponse debugSerialSend(Map<String, String> query) {

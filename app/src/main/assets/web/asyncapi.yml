@@ -1,7 +1,7 @@
 asyncapi: 2.6.0
 info:
   title: Open Alpha2 WebSocket Events
-  version: beta 5
+  version: beta 6
   description: |
     WebSocket 即時事件總線 (RFC6455) `GET /ws`，由 `WebSocketServer.java:34` + `EventBus.java` + `RobotEventReceiver.java` 驅動。
     所有 HTTP `/api/*` 操作的非同步結果皆經此推送，無需輪詢。前端 `app-log.js` 全量訂閱。

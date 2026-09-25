@@ -1,7 +1,7 @@
 # Open Alpha2
 
 `com.open.alpha2` — an Android app that runs on the UBTECH Alpha2 robot
-(`versionName "beta 5"` / `versionCode 5`) and turns it into a remotely
+(`versionName "beta 6"` / `versionCode 6`) and turns it into a remotely
 controllable device. On boot the app starts an HTTP + WebSocket server on port
 `8888`; opening `http://<robot-ip>:8888/` from any browser on the same Wi-Fi
 gives you the full control panel. A Blockly programming page lives at
@@ -9,7 +9,7 @@ gives you the full control panel. A Blockly programming page lives at
 from the same port (see [HTTP API](#http-api--http-接口)).
 
 `com.open.alpha2` —— 裝在 UBTECH Alpha2 機械人上的 Android 應用程式
-（`versionName "beta 5"`／`versionCode 5`），讓機械人可以被遙距操控。
+（`versionName "beta 6"`／`versionCode 6`），讓機械人可以被遙距操控。
 開機後會自動啟動 HTTP＋WebSocket 伺服器（port `8888`）；在同一 Wi-Fi
 下的任何瀏覽器開啟 `http://<機械人IP>:8888/`，即可使用完整控制面板。
 Blockly 編程頁面位於 `/blockly.html`；同一 port 亦提供 OpenAPI／AsyncAPI
@@ -69,7 +69,7 @@ adb -s <serial> forward tcp:8888 tcp:8888
 `android`); uninstall first if a signature mismatch blocks reinstall. The app
 auto-starts on boot (`BootReceiver`), so the panel is reachable without
 touching the robot. CI (`build-apk.yml`, JDK 11) builds the same APK and
-publishes it as `open-alpha2-beta5.apk`. Prebuilt `.so` files
+publishes it as `open-alpha2-beta6.apk`. Prebuilt `.so` files
 (`head_led`/`head_key_mgr`/`serial_port`) live in
 `sdk-module/hardware-direct/src/main/jniLibs`; `libeasyopus.so` is compiled
 from `app/src/main/cpp` via CMake. Vosk + JNA AARs are vendored in
@@ -79,7 +79,7 @@ from `app/src/main/cpp` via CMake. Vosk + JNA AARs are vendored in
 不符無法覆蓋安裝，請先解除安裝。應用程式會在開機時自動啟動
 （`BootReceiver`），無需觸碰機械人即可連上控制面板。CI
 （`build-apk.yml`，JDK 11）會編出同一個 APK，並以
-`open-alpha2-beta5.apk` 之名發佈。預編 `.so` 檔
+`open-alpha2-beta6.apk` 之名發佈。預編 `.so` 檔
 （`head_led`／`head_key_mgr`／`serial_port`）放在
 `sdk-module/hardware-direct/src/main/jniLibs`；`libeasyopus.so` 由
 `app/src/main/cpp` 經 CMake 即時編譯。Vosk 同 JNA 的 AAR 已放喺
@@ -332,7 +332,7 @@ open-alpha2/
 │   ├── src/main/cpp/               ← easyopus JNI (CMake)
 │   ├── src/test/java/…             ← ApiValidatorTest (run via scripts/test-apivalidator.py)
 │   ├── libs/                       ← vendored vosk-android + JNA AARs (v7a)
-│   └── build.gradle                ← versionName "beta 5", armeabi-v7a only
+│   └── build.gradle                ← versionName "beta 6", armeabi-v7a only
 ├── sdk-module/hardware-direct/     ← serial ports, LED/pad JNI, wire protocol,
 │                                      .ubx parse/play/speed-shifted music
 │   └── src/test/java/…             ← SerialFrameCodecTest (scripts/test-serialcodec.py)
@@ -347,9 +347,9 @@ open-alpha2/
 ## CI (runs on push) / 持續整合（push 即跑）
 
 - `build-apk`: JDK 11 → strip web comments → `assembleDebug` → upload APK
-  (`open-alpha2-beta5.apk`, 30-day retention).
+   (`open-alpha2-beta6.apk`, 30-day retention).
 - `build-apk`：JDK 11 → 剝離網頁註解 → `assembleDebug` → 上載 APK
-  （`open-alpha2-beta5.apk`，保留 30 日）。
+   （`open-alpha2-beta6.apk`，保留 30 日）。
 - `check-openapi`: spec/code drift, client freshness, client→route prefix
   match, MCP freshness, YAML validity, `ApiValidator`/serial-codec unit
   tests, web spec copies in sync, `versionName` == spec `info.version`.

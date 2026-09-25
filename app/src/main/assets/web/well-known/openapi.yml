@@ -22,7 +22,7 @@ info:
     `/ws`、`/stream/*` 開放。Token 記喺瀏覽器 localStorage（同一個面板地址跨 tab 共用）。
 
     '
-  version: beta 5
+  version: beta 6
   contact:
     name: Open Alpha2
     url: https://github.com/arthurson/ubtech-open-alpha2
@@ -92,7 +92,7 @@ paths:
                 $ref: '#/components/schemas/StatusResponse'
               example:
                 ok: true
-                appVersion: beta 5
+                appVersion: beta 6
                 chestAvailable: true
                 headerAvailable: true
                 androidTtsReady: true

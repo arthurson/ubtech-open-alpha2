@@ -3,7 +3,7 @@
   "info": {
     "title": "Open Alpha2 API",
     "description": "`com.open.alpha2` 裝在 UBTECH Alpha2 機械人 (Android 5.1.1, API 22) 上的本地控制面板 HTTP + WebSocket API。\n依 `MainActivity handleApi()` / `HttpServer` 反向生成，\n覆蓋機械人全部本機能力（原 17 個 AIDL interface 功能，現經直驅實現），加上獨立的 system/xiaozhi/stream/upload 命名空間。\n預設由 `HttpServer.PORT = 8888` 以純 HTTP 提供 (`http://<robot-ip>:8888/`)，同 WiFi 任何瀏覽器可直接訪問。\n所有 `/api/*` 回應皆為 `application/json; charset=utf-8` 的 `{ok: boolean, ...}` 形狀，失敗時帶 `error` 欄位。\n即時事件 (觸摸/ASR/電池/跌落/PIR 等) 經 `GET /ws` (RFC6455 WebSocket) 推送，非輪詢。\n實驗 tab 另有 opt-in 面板 token (`/api/system/auth/*`，見 PanelAuth.java)：預設關閉（全開）； 啟用後成個面板上鎖——全部 `/api/*`（含讀操作、其他分頁、Blockly）同 `/upload/*` 要帶 `panel_token`，缺／錯回 401；淨 `system/auth/*`（解鎖入口）、靜態頁、 `/ws`、`/stream/*` 開放。Token 記喺瀏覽器 localStorage（同一個面板地址跨 tab 共用）。\n",
-    "version": "beta 5",
+    "version": "beta 6",
     "contact": {
       "name": "Open Alpha2",
       "url": "https://github.com/arthurson/ubtech-open-alpha2"
@@ -121,7 +121,7 @@
                 },
                 "example": {
                   "ok": true,
-                  "appVersion": "beta 5",
+                  "appVersion": "beta 6",
                   "chestAvailable": true,
                   "headerAvailable": true,
                   "androidTtsReady": true

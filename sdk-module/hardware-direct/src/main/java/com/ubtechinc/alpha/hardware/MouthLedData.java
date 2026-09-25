@@ -1,7 +1,5 @@
 package com.ubtechinc.alpha.hardware;
 
-import com.ubtechinc.alpha.jni.LedControl;
-
 /**
  * Thin value-object wrapper around {@link LedControl#ledSetMouth(int, int, int, int, int)}.
  *
@@ -41,9 +39,11 @@ import com.ubtechinc.alpha.jni.LedControl;
  *                              (e.g. matching header_ledSetEye5Mic's own "dual"=3) is
  *                              unconfirmed - only 1 is known to work.
  *
- * 控制路径说明：LedControl.open()/close() 经 libhead_led.so JNI 直达硬件。
- * 旧 AIDL 路径（alpha2services）已随 APK 移除而消失，实测各 LED 路径（头/眼/嘴/
- * MCP/HTTP）不再互抢，单发即稳住，无需补发或加锁。
+ * 控制路径说明：全部嘴燈經 {@link DirectLedController#setMouth} 排隊
+ * （DRIVER_LOCK 全局驅動鎖），同頭/眼/pad/wifi 燈排同一條隊，一次一個
+ * open→ioctl→close。絕對唔可以直接 LedControl.open() 另起爐灶——舊驅動
+ * 頂唔順併發 open，disco 每秒 refresh 個嘴撞正頭/眼 10Hz 已經試過硬 hang
+ * 成部機（無 ANR、adb 齊死，幾日後隨時發作）。
  */
 public final class MouthLedData {
     /** No confirmed effect on this hardware; true purpose unknown. */
@@ -85,44 +85,30 @@ public final class MouthLedData {
     }
 
     /**
-     * Issues the native open() -> ledSetMouth(...) -> close() sequence. Each call opens
-     * and closes the device handle around itself (matching the demo app's usage
-     * exactly) rather than holding it open across calls, to minimise how long this
-     * process holds whatever native lock open() acquires - shrinking, though not
-     * eliminating, the window where it could contend with the AIDL-based header/eye
-     * LED path.
+     * Issues the mouth effect through {@link DirectLedController#setMouth}, i.e.
+     * under the same DRIVER_LOCK as every head/eye/pad/wifi LED call (open →
+     * ledSetMouth(...) → close, one at a time). Never open() the driver directly
+     * here - concurrent open() wedges /dev/led_eye hard (no ANR, adb dead).
      *
-     * IMPORTANT - ledSetMouth's return value is INVERTED relative to normal JNI boolean
-     * convention, confirmed by disassembling libhead_led.so (arm-linux-gnueabihf-objdump,
-     * checked against ledSetEye/ledSetHead which share the identical pattern):
-     * internally it calls ioctl(fd, cmd, &struct) and returns 0 (JNI false) when ioctl
-     * succeeds, and a nonzero value (0xF2/242, JNI true) only when ioctl fails. A
-     * Java-side `!LedControl.ledSetMouth(...)` on the raw result reads as the actual
-     * hardware outcome. This does NOT apply to LedControl.open(), which uses a
-     * different, non-inverted internal convention - open()'s result is used as-is
-     * below.
+     * Return-value note (unchanged, now via DirectLedController): ledSetMouth's
+     * raw result is INVERTED relative to normal JNI boolean convention, confirmed
+     * by disassembling libhead_led.so (arm-linux-gnueabihf-objdump, checked
+     * against ledSetEye/ledSetHead which share the identical pattern):
+     * internally it calls ioctl(fd, cmd, &struct) and returns 0 (JNI false) when
+     * ioctl succeeds, and a nonzero value (0xF2/242, JNI true) only when ioctl
+     * fails.
      *
      * @return true if ledSetMouth's underlying ioctl call actually succeeded; false if
-     *         LedControl.open() failed, ledSetMouth's ioctl itself failed, or either
-     *         threw (e.g. UnsatisfiedLinkError if libhead_led.so isn't loadable).
+     *         the driver was busy/unavailable, ledSetMouth's ioctl itself failed, or
+     *         either threw (e.g. UnsatisfiedLinkError if libhead_led.so isn't loadable).
      */
     public boolean apply() {
         try {
-            if (!LedControl.open()) {
-                return false;
-            }
-            boolean rawResult;
-            try {
-                rawResult = LedControl.ledSetMouth(runTime, breatheSpeedMs, offDurationMs, playDurationMs, effectMode); // positions match LedControl's (now aligned) parameter names
-            } finally {
-                LedControl.close();
-            }
-            // Inverted on purpose - see javadoc above.
-            return !rawResult;
+            return DirectLedController.setMouth(runTime, breatheSpeedMs, offDurationMs, playDurationMs, effectMode);
         } catch (Throwable t) {
-            // Native/JNI failures (e.g. UnsatisfiedLinkError if the .so is missing or
-            // fails to load) surface here rather than crashing the HTTP handler thread -
-            // same defensive posture as the rest of this codebase's SDK call wrappers.
+            // Native/JNI failures surface here rather than crashing the caller
+            // thread - same defensive posture as the rest of this codebase's
+            // SDK call wrappers.
             return false;
         }
     }

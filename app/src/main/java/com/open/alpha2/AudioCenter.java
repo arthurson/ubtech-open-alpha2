@@ -150,6 +150,13 @@ public final class AudioCenter {
     private static final double DISCO_VOCAL_FLOOR = 10;
     private static final double DISCO_VOCAL_PRESENCE_RATIO = 0.35;
     private static final int DISCO_BRIGHTNESS = 9;
+    private static final int DISCO_HEAD_EFFECT_MS = 300; // 見下：短命燈效，唔用 MAX
+    private static final int DISCO_EYE_EFFECT_MS = 500;
+    // 燈效自帶過期（p7 runTime）：頭 300ms（100ms refresh 蓋過， steady state 睇落無分別），
+    // 眼 500ms（400ms cadence 蓋過）。點解唔用 MAX：disco 每秒十幾次重寫一個永不過期
+    // 嘅燈效，一首歌幾千個叠落去；舊驅動疑似逐個 allocation 唔放，爆嗰下硬 hang
+    // 成部機（無 ANR、adb 齊死，用嗰陣正常、開過之後隨時發作）。短命＋密 refresh＝
+    // 穩態一樣，stall 嗰陣自然熄唔會凍結，驅動嗰邊亦無嘢累積。
 
     /** Disco 開關 - prefs 持久化，預設關（同 filler 預設開唔同：燈亂閃預設唔著）。 */
     private boolean isDiscoEnabled() {
@@ -375,6 +382,13 @@ public final class AudioCenter {
         }
     }
 
+    /** pause/stop/播完/出錯嗰陣即刻熄 disco 燈——唔等短命燈效自己過期，
+     *  個嘴（MAX breathing）更加唔會自己熄。得 disco 開緊先郁手；
+     *  閂咗嗰陣啲燈係人哋嘅（音量/TTS/其他），唔好掂。 */
+    private void discoPushOffIfEnabled() {
+        if (isDiscoEnabled()) discoPushOff();
+    }
+
     private final Runnable discoLedJob = new Runnable() {
         // pending 值：-1＝無嘢做，-2＝熄燈；頭 VU／眼拍子機／嘴另有 field
         @Override
@@ -440,7 +454,7 @@ public final class AudioCenter {
                 if (hu) {
                     try {
                         ok &= DirectLedController.setHead5MicRaw(hc, DISCO_BRIGHTNESS,
-                                hp3, hp4, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
+                                hp3, hp4, Integer.MAX_VALUE, 0, DISCO_HEAD_EFFECT_MS, 0);
                     } catch (Throwable ignore) {
                         ok = false;
                     }
@@ -448,7 +462,7 @@ public final class AudioCenter {
                 if (eu) {
                     try {
                         ok &= DirectLedController.setEye5MicRaw(ec, DISCO_BRIGHTNESS,
-                                ep3, ep4, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
+                                ep3, ep4, Integer.MAX_VALUE, 0, DISCO_EYE_EFFECT_MS, 0);
                     } catch (Throwable ignore) {
                         ok = false;
                     }
@@ -859,6 +873,7 @@ public final class AudioCenter {
     private void stopLocalMusicPlaybackLocked() {
         stopMusicFillerActionLoop();
         stopSharedFillerLoopIfIdle();
+        discoPushOffIfEnabled();
         // 共用頻譜：若電台仍在播，保留給電台
         if (currentRadioPlayer == null) {
             releaseMusicVisualizerLocked();
@@ -875,6 +890,7 @@ public final class AudioCenter {
     private void releaseDoneMusicPlayerLocked(android.media.MediaPlayer mp) {
         stopMusicFillerActionLoop();
         stopSharedFillerLoopIfIdle();
+        discoPushOffIfEnabled();
         // 若電台仍在播，保留共用頻譜給電台
         if (currentRadioPlayer == null) {
             releaseMusicVisualizerLocked();
@@ -955,6 +971,7 @@ public final class AudioCenter {
                     if (currentMusicPlayer == null) {
                         releaseMusicVisualizerLocked();
                     }
+                    discoPushOffIfEnabled();
                     stopSharedFillerLoopIfIdle();
                 }
                 Log.w(TAG, "Radio stream playback error: what=" + what + " extra=" + extra
@@ -979,6 +996,7 @@ public final class AudioCenter {
         currentRadioPlayer = null;
         currentRadioStationId = null;
         currentRadioStationName = null;
+        discoPushOffIfEnabled();
         // 共用頻譜/隨機動作：若本地仍在播，保留
         if (currentMusicPlayer == null) {
             releaseMusicVisualizerLocked();
@@ -1417,6 +1435,7 @@ public final class AudioCenter {
             }
             try {
                 currentMusicPlayer.pause();
+                discoPushOffIfEnabled(); // pause 即熄燈，唔等過期（個嘴唔會自己熄）
             } catch (Exception e) {
                 return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
                         + MainActivity.jsonSafe(String.valueOf(e.getMessage())) + "\"}");

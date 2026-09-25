@@ -346,7 +346,7 @@ const I18N = {
   music_now_playing_heading:    { zh: "播放中",                en: "Now Playing" },
   music_now_playing_none:       { zh: "未選擇歌曲",            en: "No track selected" },
   music_stop_btn:               { zh: "⏹ 全部停止",            en: "⏹ Stop All" },
-  music_random_btn:             { zh: "🔀 隨機",               en: "🔀 Random" },
+  music_random_btn:             { zh: "🔀 隨機連播",            en: "🔀 Shuffle" },
   music_playall_btn:            { zh: "▶ 全部",                en: "▶ All" },
   music_play_btn_title:         { zh: "播放",                  en: "Play" },
   music_pause_btn_title:        { zh: "暫停",                  en: "Pause" },

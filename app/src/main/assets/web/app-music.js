@@ -15,6 +15,8 @@ let musicStatusPollTimer = null;
 let musicSeekDragging = false;   // 用戶正在拖進度條當時, 不要給 poll 覆蓋個位置
 let musicPlayAllMode = false;    // 「▶ 全部」模式 - 一首播完自動接落一首 (見
                                  // musicPollStatusLoop() 的 hasTrack=false 分支)
+let musicRandomMode = false;     // 「🔀 隨機」模式 - 一首播完自動再隨機一首，
+                                 // 同「▶ 全部」二選一（撳另一邊即轉 mode）
 let musicLastPlayedName = null;  // 上次播過的歌名 - stop 當時 musicCurrentName 會
                                  // 清除, 但之後按「▶」應該重播剛才那首, 不是
                                  // 沒有反應
@@ -242,9 +244,19 @@ function musicPlayNext() {
 function musicPlayRandom() {
   if (isRadioActive() && typeof radioPlayRandom === "function") { radioPlayRandom(); return; }
   if (musicTracks.length === 0) return;
+  // 隨機連播 mode：播完自動再隨機（見 poll loop），同「▶ 全部」二選一
+  musicRandomMode = true;
+  musicPlayAllMode = false;
+  musicAdvanceRandom();
+}
+
+/** 「🔀 隨機」模式底下抽下一首 - 避開而家呢首（得一首歌嗰陣無得避）。 */
+function musicAdvanceRandom() {
+  if (!musicRandomMode || musicTracks.length === 0) return;
   let idx = Math.floor(Math.random() * musicTracks.length);
   if (musicTracks.length > 1) {
-    while (musicTracks[idx].name === musicCurrentName) {
+    let guard = 0;
+    while (musicTracks[idx].name === musicCurrentName && guard++ < 10) {
       idx = Math.floor(Math.random() * musicTracks.length);
     }
   }
@@ -254,6 +266,7 @@ function musicPlayAll() {
   if (isRadioActive()) return; // 電台為直播，無「全部」概念
   if (musicTracks.length === 0) return;
   musicPlayAllMode = true;
+  musicRandomMode = false;
   const idx = musicCurrentIndex();
   if (idx < 0) {
     musicPlay(musicTracks[0].name);
@@ -314,6 +327,7 @@ function musicTogglePlayPause() {
  */
 function musicStopAll() {
   musicPlayAllMode = false;
+  musicRandomMode = false;
   musicHasLoadedTrack = false;
   sharedActiveSource = null;
   xiaozhiResetTtsQueue();
@@ -391,8 +405,12 @@ function setSharedVolume(value) {
       if (statusVal) statusVal.textContent = String(res.volume != null ? res.volume : v);
     }
   });
-  // 同時將本地 per-track 音量設為 100%，避免兩級音量疊加導致偏細聲
-  Alpha2Api.audioLocalMusicVolume( { percent: "100" });
+  // 同時將本地 per-track 音量設為 100%，避免兩級音量疊加導致偏細聲；
+  // 得個真係有歌 load 緊先打——無歌嗰陣打會食 "no track loaded" 兼彈 error，
+  // 而新起嘅 player 預設本來就係 100%，唔打唔會有分別。
+  if (typeof musicHasLoadedTrack !== "undefined" && musicHasLoadedTrack) {
+    Alpha2Api.audioLocalMusicVolume( { percent: "100" });
+  }
 }
 function refreshSharedVolume() {
   Alpha2Api.audioVolumeGet().then(function (res) {
@@ -425,8 +443,9 @@ function musicStopStatusPolling() {
 function musicPollStatusLoop() {
   Alpha2Api.audioLocalMusicStatus().then(function (res) {
     if (!res.ok) return;
-    if (!res.hasTrack && musicPlayAllMode) {
-      musicAdvancePlayAll();
+    if (!res.hasTrack && (musicPlayAllMode || musicRandomMode)) {
+      if (musicRandomMode) musicAdvanceRandom();
+      else musicAdvancePlayAll();
       return;
     }
     musicApplyStatus(res);
@@ -435,6 +454,7 @@ function musicPollStatusLoop() {
       musicStatusPollTimer = setTimeout(musicPollStatusLoop, 1000);
     } else {
       musicPlayAllMode = false;
+      musicRandomMode = false;
       // 共用頻譜：本地停了但電台還正在播，保留頻譜
       if (!radioCurrentName) {
         musicStopSpectrumLoop();
