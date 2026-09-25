@@ -360,12 +360,16 @@ public final class AudioCenter {
     }
 
     /** 閂 disco 專用：排一個熄燈（-2），冚過排緊隊嘅拍；同條線程做，唔會打架。
-     *  嘴都一齊熄（TTS 播緊嗰陣唔熄，留返畀佢，下次講嘢會自己再著）。 */
+     *  嘴都一齊熄（TTS 播緊嗰陣唔熄，留返畀佢，下次講嘢會自己再著）。
+     *  連舊拍啲 flag 一齊清——唔清嘅話 pause 嗰刻撞啱有粒舊拍排緊隊，
+     *  job 會先熄後著（有快有慢就係咁嚟）。 */
     private void discoPushOff() {
         Runnable job = null;
         synchronized (discoLedLock) {
             discoPendingHead = -2;
             discoPendingEye = -2;
+            discoHeadPending = false;
+            discoEyePending = false;
             if (!LedCenter.isMouthTtsActive()) discoPendingMouth = -2;
             if (discoLedBusy) return;
             discoLedBusy = true;
