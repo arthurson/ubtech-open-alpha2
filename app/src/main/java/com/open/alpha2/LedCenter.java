@@ -179,7 +179,8 @@ public final class LedCenter {
      * 按住 +/- firmware 不會自亮 14/16，所以按住期間繼續由
      * app 主動點亮；放手後補 ledSetOFF 清場。單線程 worker，正在跑不重入。
      */
-    public void padLedUpdate() {
+    public synchronized void padLedUpdate() {
+        // check-then-set 要原子——兩個線程同撳嗰陣唔好開多條 worker 打架。
         if (padLedWorkerRunning) {
             return;
         }
@@ -191,12 +192,19 @@ public final class LedCenter {
                     while (padMinusHeld || padPlusHeld) {
                         int combo = (padMinusHeld ? 1 : 0) | (padPlusHeld ? 2 : 0);
                         if (combo != lastCombo) {
+                            // 轉組合（例如兩粒㩒住放開一粒）先全局熄一次——
+                            // 硬件無逐粒熄，放開嗰粒唔清會著到放晒手。
+                            if (lastCombo != -1 && !assertPadLedsOffBurst()) {
+                                Log.w(TAG, "pad combo-change off-burst failed");
+                            }
                             assertPadLedsComboBurst();
                             lastCombo = combo;
                         }
                         Thread.sleep(PAD_LED_INTERVAL_MS);
                     }
-                    assertPadLedsOffBurst();
+                    if (!assertPadLedsOffBurst()) {
+                        Log.w(TAG, "pad release off-burst failed, pads may stay lit");
+                    }
                     if (!padMinusHeld && !padPlusHeld) break;
                     // 熄燈途中又按過：回到 loop，不交棒
                 }
@@ -267,13 +275,9 @@ public final class LedCenter {
     }
 
     /**
-     * 放手後熄燈 burst：連發 ledSetOFF（已熄即 no-op）。
-     * 注意 ledSetOFF 會連 wifi 12/13 一起清，wifi 燈由 applyWifiLed 在狀態變化時重設。
-     */
-
-    /**
-     * Same burst pattern but asserting ledSetOFF() instead of the held combo -
-     * used after release so the pads go dark even if we have to wait out a race.
+     * 放手後熄燈 burst：連發 ledSetOFF（已熄即 no-op），同上面 held-combo
+     * burst 同一個 pattern。注意 ledSetOFF 會連 wifi 12/13 一起清，
+     * wifi 燈由 applyWifiLed 在狀態變化時重設。
      */
     private boolean assertPadLedsOffBurst() {
         for (int attempt = 1; attempt <= PAD_LED_OPEN_ATTEMPTS; attempt++) {
@@ -297,6 +301,14 @@ public final class LedCenter {
                 }
             });
             if (openOk[0]) {
+                // 全局熄連 pad 試燈態一齊清（硬件現實：兩粒一齊死，mirror 唔呃人），
+                // 兼補返個咀（OFF 會連咀通道一齊清，唔補就永久黑）。
+                // 旗操作同 ledPadSet 揸同一把鎖，唔好兩邊同時改。
+                synchronized (padToggleLock) {
+                    padMinusLit = false;
+                    padPlusLit = false;
+                }
+                DirectLedController.restoreMouthAfterOff();
                 return true;
             }
             if (!sleepPadRetryGap()) return false;
@@ -312,6 +324,8 @@ public final class LedCenter {
     private Runnable wifiLedReapply;
 
     public void registerWifiLedReceiver() {
+        // 重入保護：唔好 register 兩次漏掉第一個 receiver。
+        if (wifiLedReceiver != null) return;
         wifiLedReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -361,6 +375,10 @@ public final class LedCenter {
     }
 
     public void unregisterWifiLedReceiver() {
+        if (wifiLedReapply != null) {
+            mainHandler.removeCallbacks(wifiLedReapply);
+            wifiLedReapply = null;
+        }
         if (wifiLedReceiver != null) {
             try {
                 appContext.unregisterReceiver(wifiLedReceiver);
@@ -389,8 +407,13 @@ public final class LedCenter {
 
     /** WiFi 燈狀態切換入口（現查版：開機/開關變化時用） - 排給 pad LED 單線程 executor 執行。 */
     private void applyWifiLed() {
+        postPadLed(() -> applyWifiLedSync());
+    }
+
+    /** 上面嘅同步本體——ledPadSet 獨立熄嗰陣要即刻同一步做埋，唔經 executor
+     *  排隊（否則同補燈搶鎖次序亂）。 */
+    private void applyWifiLedSync() {
         final boolean wifiOn;
-        final boolean connected;
         try {
             android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager)
                     appContext.getSystemService(Context.WIFI_SERVICE);
@@ -413,24 +436,33 @@ public final class LedCenter {
                 Log.w(TAG, "wifi connected check failed", e);
             }
         }
-        final boolean connectedNow = conn;
-        postPadLed(() -> applyWifiLedInternal(wifiOn, connectedNow));
+        applyWifiLedInternal(wifiOn, conn);
     }
 
     /**
      * 實際切換: 先 ledSetOFF() 清除舊色, 等 100ms, 再點目標顏色
      * （wifi 關閉就不點亮）。兩步都是 burst 重試式。
      */
+    /** Wi-Fi 燈試燈＋mirror 用嘅最後態（red/blue/off）。applyWifiLedInternal
+     *  同 ledWifiSet 都會更新；LED tab 頭燈第 5 粒跟呢個畫（硬件就係咁）。 */
+    private volatile String wifiLedState = "off";
+
     private void applyWifiLedInternal(boolean wifiOn, boolean connected) {
         try {
             assertPadLedsOffBurst();
-            if (!wifiOn) return;
+            if (!wifiOn) {
+                wifiLedState = "off";
+                return;
+            }
             Thread.sleep(100);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            // 熄完先斷線：硬件已經黑，mirror 唔好留返舊紅/藍。
+            wifiLedState = "off";
             return;
         }
-        assertSingleLedBurst(connected ? WIFI_LED_INDEX_BLUE : WIFI_LED_INDEX_RED);
+        boolean ok = assertSingleLedBurst(connected ? WIFI_LED_INDEX_BLUE : WIFI_LED_INDEX_RED);
+        if (ok) wifiLedState = connected ? "blue" : "red";
     }
 
     /** One burst: retry open()/dev/led_eye until it opens, light a single LED index.
@@ -472,8 +504,7 @@ public final class LedCenter {
     // 這台機器底層 chest MCU 硬體本身能做 PIR。
     //
     // LED 部分: 眼/頭 5-mic LED 長亮紅燈 (setHeadEyeLedLong(1, 9)), 顏色代碼 1=紅,
-    // 已在 "led/head/set" case 上面那段 comment 經實機確認過 (color: 1=紅 2=綠 3=藍
-    // 4=黃 5=紫 6=青 7=白)。
+    // 見下面 LEDs 一節 color 表 (1=紅 2=綠 3=藍 4=黃 5=紫 6=青 7=白)。
     //
     // 這台機器頭板的 5-mic head/eye LED
     // 對 PIR 警示反應是有效的 (眼/頭會亮紅燈)。PIR 警示只
@@ -596,15 +627,9 @@ public final class LedCenter {
         DirectLedController.setEye5MicRaw(color, brightness, 255, 255, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
     }
 
-    /** 這台機器 (head board / firmware 1.1.1.14) 的
-     *  header_ledSetHead5Mic/header_ledSetEye5Mic 實測全部 preset 都回傳
-     *  API_ERROR_FAILED (bindReady:true, 也就是不是尚未 ready, 是機身真的不支援/
-     *  沒實作)。Mouth LED (MouthLedData, 直接 JNI 不經 AIDL) 則實測正常。
-     *
-     *  這個方法把 obstacle-triggered 的 LED 指示同時發到兩條路: 5-mic
-     *  head/eye (setHeadEyeLedLong) 照舊保留 - 在支援的機/firmware 上會亮紫燈,
-     *  在這台機器上頂多是 API_ERROR_FAILED、沒有視覺效果、但不會拋出例外中斷流程;
-     *  同時也閃爍 mouth LED 做 fallback, 保證這台機器都看得到反應。兩條路獨立 try/catch,
+    /** 這台機器 (head board / firmware 1.1.1.14) 的 obstacle LED 指示：
+     *  頭/眼經 DirectLedController（pure-direct JNI，同 LED tab／disco 同一路，
+     *  實機識著）長著紫燈，同時閃嘴燈做多重提示。兩條路獨立 try/catch，
      *  其中一條失敗不會擋住另一條。 */
     public void applyObstacleIndicator(boolean triggered) {
         try {
@@ -633,8 +658,8 @@ public final class LedCenter {
     }
 
     // Speed used for the mouth LED breathing effect auto-triggered around TTS speech
-    // (see startMouthLedForTts()/stopMouthLedForTts()) - matches the web UI slider's
-    // default (0-5000 range, default 0).
+    // (see startMouthLedForTts()/stopMouthLedForTts()) - 0 = 最快呼吸（實機確認有光），
+    // 同 LED tab 條 slider 無關（嗰條 100-1000、預設 150，只管手動 led/mouth/set）。
     private static final int TTS_MOUTH_LED_SPEED = 0;
 
     /**
@@ -694,16 +719,22 @@ public final class LedCenter {
         }
         int color = ApiValidator.requireColor(query);
         int brightness = ApiValidator.requireBrightness(query);
+        // 速度（ms，50-500）：flash p5/p6、chase/dual p5、breathe 按比例；
+        // 唔帶＝沿用各 preset 經典值（Blockly／舊客無影響）。
+        int speed = ApiValidator.optionalIntRange(query, "speed", 50, 500, -1);
         int p5, p6, p8;
         switch (preset) {
-            case "flash":   p5 = 100; p6 = 100; p8 = 0; break;
-            case "breathe": p5 = 5;   p6 = 20;  p8 = 1; break;
-            case "chase":   p5 = 100; p6 = 0;   p8 = 3; break;
-            case "dual":    p5 = 500; p6 = 0;   p8 = 5; break;
+            case "flash":   p5 = speed < 0 ? 100 : speed; p6 = speed < 0 ? 100 : speed; p8 = 0; break;
+            case "breathe": p5 = speed < 0 ? 5 : Math.max(1, speed / 20); p6 = speed < 0 ? 20 : speed / 5; p8 = 1; break;
+            case "chase":   p5 = speed < 0 ? 100 : speed; p6 = 0; p8 = 3; break;
+            case "dual":    p5 = speed < 0 ? 500 : speed; p6 = 0; p8 = 5; break;
             case "long":
             default:        p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
         }
-        boolean sent = DirectLedController.setHead5MicRaw(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8);
+        // 逐粒試燈：preset 跟住而家著緊嘅 mask（唔帶＝全開，兼容舊客/Blockly）。
+        int p3 = ApiValidator.optionalIntRange(query, "p3", 0, 31, 31);
+        int p4 = ApiValidator.optionalIntRange(query, "p4", 0, 31, 31);
+        boolean sent = DirectLedController.setHead5MicRaw(color, brightness, p3, p4, p5, p6, Integer.MAX_VALUE, p8);
         return MainActivity.sentReadyResponse(sent, headerReady());
     }
 
@@ -715,15 +746,20 @@ public final class LedCenter {
         }
         int color = ApiValidator.requireColor(query);
         int brightness = ApiValidator.requireBrightness(query);
+        // 速度（ms，50-500）：flash p5/p6、chase/dual p5；唔帶＝經典值。
+        int speed = ApiValidator.optionalIntRange(query, "speed", 50, 500, -1);
         int p5, p6, p8;
         switch (preset) {
-            case "flash": p5 = 100; p6 = 100; p8 = 0; break;
-            case "chase": p5 = 100; p6 = 0;   p8 = 1; break;
-            case "dual":  p5 = 500; p6 = 0;   p8 = 3; break;
+            case "flash": p5 = speed < 0 ? 100 : speed; p6 = speed < 0 ? 100 : speed; p8 = 0; break;
+            case "chase": p5 = speed < 0 ? 100 : speed; p6 = 0; p8 = 1; break;
+            case "dual":  p5 = speed < 0 ? 500 : speed; p6 = 0; p8 = 3; break;
             case "long":
             default:      p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
         }
-        boolean sent = DirectLedController.setEye5MicRaw(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8);
+        // 逐粒試燈：preset 跟住而家著緊嘅 mask（唔帶＝全開，兼容舊客/Blockly）。
+        int p3 = ApiValidator.optionalIntRange(query, "p3", 0, 255, 255);
+        int p4 = ApiValidator.optionalIntRange(query, "p4", 0, 255, 255);
+        boolean sent = DirectLedController.setEye5MicRaw(color, brightness, p3, p4, p5, p6, Integer.MAX_VALUE, p8);
         return MainActivity.sentReadyResponse(sent, headerReady());
     }
 
@@ -762,7 +798,131 @@ public final class LedCenter {
     /** 逐粒試燈 mirror 用：回 DirectLedController 記低嘅最後燈態（硬件 write-only
      *  讀唔返）。未打過＝-1，熄咗＝0。 */
     public HttpServer.ApiResponse ledStateGet() {
-        return HttpServer.ApiResponse.ok(DirectLedController.lastStateJson());
+        String s = DirectLedController.lastStateJson();
+        // 搭埋 pad 試燈態＋wifi 燈態：
+        // s 尾係 ...}}，strip 走最尾個 outer }，攝 "pad" 同 "wifi" 入去，
+        // 最尾補返一個 }（唔係兩個！多一個 JSON 即爛，之前就係咁瀨嘢）。
+        // 防呆：s 空/太短/唔係 } 收尾（上游改格式嗰陣）即回原字串，唔好掟
+        // StringIndexOutOfBoundsException 變 500。
+        if (s == null || s.length() < 2 || s.charAt(s.length() - 1) != '}') {
+            return HttpServer.ApiResponse.ok(s == null ? "{\"ok\":false}" : s);
+        }
+        String extra = ",\"pad\":{\"minus\":" + padMinusLit + ",\"plus\":" + padPlusLit + "}"
+                + ",\"wifi\":\"" + wifiLedState + "\"}";
+        return HttpServer.ApiResponse.ok(s.substring(0, s.length() - 1) + extra);
+    }
+
+    // -- 系統燈試燈（wifi／pad／mute）------------------------------------------
+    // wifi 燈 firmware 唔會自己著，由 applyWifiLedInternal 按連線態手動
+    // （紅 13／藍 12）；呢度手動逼紅／藍／熄——下次 wifi 狀態變嗰陣自動
+    // 校返正，試燈用途 fire-and-forget（同 preset 掣一樣）。
+    public HttpServer.ApiResponse ledWifiSet(Map<String, String> query) {
+        String color = ApiValidator.requireWifiLedColor(query);
+        boolean ok;
+        if ("off".equals(color)) {
+            // 熄＝全局 OFF（會連頭/眼一齊清，同 applyWifiLedInternal 同一語義）。
+            ok = assertPadLedsOffBurst();
+            if (ok) wifiLedState = "off";
+        } else {
+            ok = assertSingleLedBurst("blue".equals(color) ? WIFI_LED_INDEX_BLUE : WIFI_LED_INDEX_RED);
+            if (ok) wifiLedState = color;
+        }
+        return HttpServer.ApiResponse.okBool(ok);
+    }
+
+    /** 音量 -/+ pad 燈（ledSetOn 14／16）試燈：撳一下開，再撳一下熄。
+     *  硬件無逐粒熄——熄嗰陣全局 OFF 之後逐樣補返（另一粒 pad → wifi →
+     *  頭 → 眼，long 形），肉眼睇淨係呢粒熄。disco 行緊嗰陣下一個 push
+     *  （≤50ms）自然覆寫；LED tab 動畫 preset 會變長開（要閃返撳多次）。
+     *  on 唔帶＝toggle。實體鍵按住嗰陣 worker 會搶（放手全局熄，
+     *  mirror 照清，見 assertPadLedsOffBurst）。 */
+    private volatile boolean padMinusLit = false;
+    private volatile boolean padPlusLit = false;
+    // pad toggle 讀改寫鎖：連撳快嗰陣兩個 request 會同時讀到同一個舊旗，
+    // 一齊著，結果應該熄變著（之前「時得時唔得」就係咁嚟）。成個 toggle
+    // 揸住把鎖做（連驅動 ops），排隊慢慢嚟，一次一個。
+    private final Object padToggleLock = new Object();
+
+    public HttpServer.ApiResponse ledPadSet(Map<String, String> query) {
+        synchronized (padToggleLock) {
+            return ledPadSetLocked(query);
+        }
+    }
+
+    private HttpServer.ApiResponse ledPadSetLocked(Map<String, String> query) {
+        String key = ApiValidator.requirePadKey(query);
+        boolean minus = "minus".equals(key);
+        String onStr = query.get("on");
+        boolean on = (onStr == null || onStr.isEmpty())
+                ? !(minus ? padMinusLit : padPlusLit)
+                : ApiValidator.requireBoolean(query, "on");
+        boolean ok;
+        if (on) {
+            ok = assertSingleLedBurst(minus ? PAD_LED_INDEX_MINUS : PAD_LED_INDEX_PLUS);
+            if (ok) {
+                if (minus) padMinusLit = true; else padPlusLit = true;
+            }
+        } else {
+            // 熄邊粒就留返另一粒：熄緊 minus（minus=true）就留 plus，
+            // 熄緊 plus（minus=false）就留 minus；熄緊嗰粒永遠唔補。
+            boolean keepPlus = minus && padPlusLit;
+            boolean keepMinus = !minus && padMinusLit;
+            // 一批過：OFF → 頭 → 眼 → 另一粒 pad → wifi，一次 open，
+            // 中間零停頓——逐個打要幾百 ms，肉眼見到成組閃一閃。
+            java.util.List<DirectLedController.LedOp> ops = new java.util.ArrayList<>(5);
+            ops.add(DirectLedController.LedOp.off());
+            int[] h = DirectLedController.lastHeadParams();
+            if (h != null) {
+                ops.add(DirectLedController.LedOp.head(h[0], h[1], h[2], h[3],
+                        Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0));
+            }
+            int[] e = DirectLedController.lastEyeParams();
+            if (e != null) {
+                ops.add(DirectLedController.LedOp.eye(e[0], e[1], e[2], e[3],
+                        Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0));
+            }
+            if (keepPlus) ops.add(DirectLedController.LedOp.on(PAD_LED_INDEX_PLUS));
+            if (keepMinus) ops.add(DirectLedController.LedOp.on(PAD_LED_INDEX_MINUS));
+            if ("blue".equals(wifiLedState)) {
+                ops.add(DirectLedController.LedOp.on(WIFI_LED_INDEX_BLUE));
+            } else if ("red".equals(wifiLedState)) {
+                ops.add(DirectLedController.LedOp.on(WIFI_LED_INDEX_RED));
+            }
+            ok = DirectLedController.runBatch(ops);
+            if (ok) {
+                padMinusLit = false;
+                padPlusLit = false;
+                if (keepPlus) padPlusLit = true;
+                if (keepMinus) padMinusLit = true;
+            } else {
+                // 衰咗（多數第一下 OFF 都打唔開）：mirror 兩粒一齊清，
+                // response 話失敗，用家會再撳。
+                padMinusLit = false;
+                padPlusLit = false;
+            }
+        }
+        return HttpServer.ApiResponse.ok("{\"ok\":" + ok
+                + ",\"minus\":" + padMinusLit + ",\"plus\":" + padPlusLit + "}");
+    }
+
+    /** 胸口 mute 燈（chest cmd 68）試燈：純粹點燈，唔掂小智連線。
+     *  注意：小智連線／斷線、實體 mute 鍵會按真實狀態改寫（同撳掣無關），
+     *  所以呢度 fire-and-forget，唔入 mirror。
+     *  幀格式照抄 XiaozhiBridge（F8 8F 08 00 00 44 data sum ED），
+     *  單發一次（之前連發三次，WebSocket 洗三行 chest_rcv，用家嫌煩）。 */
+    public HttpServer.ApiResponse ledMuteSet(Map<String, String> query) {
+        boolean on = ApiValidator.requireBoolean(query, "on");
+        byte data = (byte) (on ? 1 : 0);
+        int sum = (8 + 68 + (data & 0xFF)) & 0xFF;
+        byte[] frame = {(byte) 0xF8, (byte) 0x8F, 0x08, 0x00, 0x00,
+                (byte) 68, data, (byte) sum, (byte) 0xED};
+        boolean sent = false;
+        try {
+            sent = HardwareDirectManager.get(appContext).chest().sendRaw(frame);
+        } catch (Throwable t) {
+            Log.w(TAG, "mute LED send failed", t);
+        }
+        return HttpServer.ApiResponse.okBool(sent);
     }
 
     // NOTE: unlike led/head/set and led/eye/set above, this does NOT go through
@@ -774,7 +934,7 @@ public final class LedCenter {
     // javadoc for the confirmed field semantics.
     //
     // Simplified to the two effects confirmed usable on this hardware: a
-    // breathing effect (speed adjustable, 0-5000ms) and off. effectMode values
+    // breathing effect (speed adjustable, 100-1000ms) and off. effectMode values
     // other than 1 produced no light in testing, so there's no third "always
     // solid, no breathing" preset here - see README for what was tried. Also
     // triggered automatically around TTS start/end - see startMouthLedForTts()/
@@ -793,11 +953,11 @@ public final class LedCenter {
 
     public HttpServer.ApiResponse debugJniLed(Map<String, String> query) {
         // 直接試 /dev/led_eye 這個 JNI driver 的各個 native
-        // function - 這塊 5-mic 板上眼/頭/嘴部 LED 全部走這條路, 兩顆 pad 燈
+        // function（眼/頭/嘴/pad 全部走呢條路）。
         // 很可能也是同一個 driver 另一個 ioctl (例如尚未用過的 ledSetOn(i))。
         // func=on&i=N -> ledSetOn(N); func=eye/head&a1..a8 -> 對應 setter。
         String func = ApiValidator.requireDebugLedFunc(query);
-        // debug 都要排全局驅動鎖：唔好喺 disco 高頻打燈途中另起 open。
+        // 同埋照舊排全局驅動鎖：唔好喺 disco 高頻打燈途中另起 open。
         if ("off".equals(func)) {
             final boolean[] res = new boolean[2];
             DirectLedController.runExclusive(() -> {
@@ -805,42 +965,61 @@ public final class LedCenter {
                 res[1] = LedControl.ledSetOFF(0);
                 LedControl.close();
             });
+            // OFF 會連咀一齊清，補返（之前呼吸緊先補）。
+            DirectLedController.restoreMouthAfterOff();
+            // raw 反轉慣例：false＝ioctl 成功。之前一律 ok:true，連 open 失敗都報成功。
+            boolean offOk = res[0] && !res[1];
             Log.i(TAG, "ledSetOFF open=" + res[0] + " raw=" + res[1]);
             return HttpServer.ApiResponse.ok(
-                    "{\"ok\":true,\"open\":" + res[0] + ",\"raw\":" + res[1] + "}");
+                    "{\"ok\":" + offOk + ",\"open\":" + res[0] + ",\"raw\":" + res[1] + "}");
         }
         final boolean[] openOk = new boolean[1];
         final String[] rbody = new String[1];
-        DirectLedController.runExclusive(() -> {
-            openOk[0] = LedControl.open();
-            try {
-                if ("on".equals(func)) {
-                    int i = ApiValidator.optionalInt(query, "i", 0);
-                    boolean r = LedControl.ledSetOn(i);
-                    Log.i(TAG, "ledSetOn(" + i + ") open=" + openOk[0] + " raw=" + r);
-                    rbody[0] = "{\"ok\":true,\"open\":" + openOk[0] + ",\"raw\":" + r + "}";
+        try {
+            DirectLedController.runExclusive(() -> {
+                openOk[0] = LedControl.open();
+                if (!openOk[0]) {
+                    // 打唔開就唔好掂 ioctl（之前照打，close 白跑，仲要回 ok:true 呃人）。
+                    rbody[0] = "{\"ok\":false,\"open\":false}";
                     return;
                 }
-                int[] a = new int[8];
-                for (int k = 0; k < 8; k++) {
-                    a[k] = ApiValidator.optionalInt(query, "a" + (k + 1), 0);
+                try {
+                    if ("on".equals(func)) {
+                        int i = ApiValidator.requireIntRange(query, "i", 0, 255);
+                        boolean r = LedControl.ledSetOn(i);
+                        Log.i(TAG, "ledSetOn(" + i + ") open=" + openOk[0] + " raw=" + r);
+                        rbody[0] = "{\"ok\":" + !r + ",\"open\":" + openOk[0] + ",\"raw\":" + r + "}";
+                        return;
+                    }
+                    int[] a = new int[8];
+                    for (int k = 0; k < 8; k++) {
+                        a[k] = ApiValidator.requireIntRange(query, "a" + (k + 1), 0, 255);
+                    }
+                    boolean r;
+                    if ("eye".equals(func)) {
+                        r = LedControl.ledSetEye(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
+                    } else {
+                        r = LedControl.ledSetHead(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
+                    }
+                    Log.i(TAG, "ledSet" + func + " open=" + openOk[0]
+                            + " raw=" + r + " args=" + java.util.Arrays.toString(a));
+                    rbody[0] = "{\"ok\":" + !r + ",\"open\":" + openOk[0]
+                            + ",\"raw\":" + r + ",\"args\":"
+                            + java.util.Arrays.toString(a).replace(" ", "") + "}";
+                } finally {
+                    try {
+                        LedControl.close();
+                    } catch (Throwable ignored) {
+                    }
                 }
-                boolean r;
-                if ("eye".equals(func)) {
-                    r = LedControl.ledSetEye(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
-                } else {
-                    r = LedControl.ledSetHead(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
-                }
-                Log.i(TAG, "ledSet" + func + " open=" + openOk[0]
-                        + " raw=" + r + " args=" + java.util.Arrays.toString(a));
-                rbody[0] = "{\"ok\":true,\"open\":" + openOk[0]
-                        + ",\"raw\":" + r + ",\"args\":"
-                        + java.util.Arrays.toString(a).replace(" ", "") + "}";
-            } finally {
-                LedControl.close();
-            }
-        });
-        return HttpServer.ApiResponse.ok(rbody[0]);
+            });
+        } catch (Throwable t) {
+            // runExclusive 掟（少見）／參數超範圍：唔好 NPE 回 500，照回 ok:false。
+            Log.w(TAG, "debugJniLed failed", t);
+            return HttpServer.ApiResponse.ok("{\"ok\":false}");
+        }
+        // runExclusive 掟之前 rbody 未賦值嗰陣上面 catch 接住，而家一定非 null。
+        return HttpServer.ApiResponse.ok(rbody[0] != null ? rbody[0] : "{\"ok\":false}");
     }
 
     public HttpServer.ApiResponse debugSerialSend(Map<String, String> query) {
@@ -971,7 +1150,7 @@ public final class LedCenter {
     }
 
     /** self.robot.led_set_mouth 本體 (XiaozhiBridge 轉調)。
-     *  同 HTTP 一套驗證（preset 枚舉＋speed 0-5000）：之前打錯 preset
+     *  同 HTTP 一套驗證（preset 枚舉＋speed 100-1000）：之前打錯 preset
      *  （如 "flash"）靜默變 breathing，speed 超範圍直落——家下即報錯。 */
     public SonarCenter.McpResult mcpLedSetMouth(org.json.JSONObject arguments) {
         String preset = arguments.optString("preset", "breathing");
@@ -983,7 +1162,9 @@ public final class LedCenter {
         if ("off".equals(preset)) {
             ok = MouthLedData.off().apply();
         } else {
-            int speedMs = arguments.optInt("speed_ms", 0);
+            // 唔帶默認 150，同 HTTP requireMouthSpeed 睇齊（之前默認 0，
+            // 但 0 出範圍次次都錯，唔帶即錯）。
+            int speedMs = arguments.optInt("speed_ms", 150);
             if (speedMs < ApiValidator.LED_MOUTH_SPEED_MIN_MS
                     || speedMs > ApiValidator.LED_MOUTH_SPEED_MAX_MS) {
                 return SonarCenter.McpResult.err("speed_ms must be between "

@@ -88,6 +88,7 @@ window.hwApi = window.api;
 // ---------------- WebSocket：接駁事件驅動 blocks ----------------
 let ws = null;
 let wsReconnectTimer = null;
+let wsBootId = null; // server bootId（舊頁自動 reload 用，見 app-log.js）。
 
 function setWsStatus(connected) {
   document.getElementById('wsStatusDot').className = 'run-status-dot ' + (connected ? 'running' : 'idle');
@@ -113,6 +114,15 @@ function connectWs() {
     try {
       parsed = JSON.parse(evt.data);
     } catch (e) {
+      return;
+    }
+    // 同主面板一樣：app 重裝/重啟 bootId 轉咗，呢頁 JS 舊咗即 reload（見 app-log.js）。
+    if (parsed && parsed.type === "connected" && parsed.bootId) {
+      if (wsBootId && wsBootId !== parsed.bootId) {
+        location.reload();
+        return;
+      }
+      wsBootId = parsed.bootId;
       return;
     }
     if (parsed && parsed.type && parsed.type !== 'connected' && window.AlphaBlockly) {

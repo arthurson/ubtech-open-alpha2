@@ -1241,11 +1241,11 @@
             "in": "query",
             "schema": {
               "type": "integer",
-              "minimum": 0,
-              "maximum": 5000,
+              "minimum": 100,
+              "maximum": 1000,
               "default": 500
             },
-            "description": "呼吸速度 ms (實測可用範圍 0-5000)"
+            "description": "呼吸速度 ms (實測可用範圍 100-1000)"
           },
           {
             "$ref": "#/components/parameters/PanelToken"
@@ -3943,6 +3943,38 @@
             "description": "long=常亮 flash=閃 breathe=呼吸 chase=跑馬 dual=雙色 stop=熄"
           },
           {
+            "name": "speed",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 500
+            },
+            "description": "效果速度 ms（唔帶=各 preset 經典值：flash 100 chase 100 dual 500 breathe 100；long/stop 無視）"
+          },
+          {
+            "name": "p3",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31,
+              "default": 31
+            },
+            "description": "右邊 mask（唔帶=全開；逐粒試燈會帶而家著緊嗰半）"
+          },
+          {
+            "name": "p4",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31,
+              "default": 31
+            },
+            "description": "左邊 mask（唔帶=全開；逐粒試燈會帶而家著緊嗰半）"
+          },
+          {
             "$ref": "#/components/parameters/PanelToken"
           }
         ],
@@ -4013,6 +4045,38 @@
               "default": "long"
             },
             "description": "眼部無呼吸模式"
+          },
+          {
+            "name": "speed",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 500
+            },
+            "description": "效果速度 ms（唔帶=各 preset 經典值：flash 100 chase 100 dual 500；long/stop 無視）"
+          },
+          {
+            "name": "p3",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255,
+              "default": 255
+            },
+            "description": "左眼 mask（唔帶=全開；逐粒試燈會帶而家著緊嗰半）"
+          },
+          {
+            "name": "p4",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255,
+              "default": 255
+            },
+            "description": "右眼 mask（唔帶=全開；逐粒試燈會帶而家著緊嗰半）"
           },
           {
             "$ref": "#/components/parameters/PanelToken"
@@ -4224,7 +4288,7 @@
             }
           },
           "200": {
-            "description": "最後燈態 {head:{color,brightness,p3,p4},eye:{...},mouth:{runTime,breatheMs,offMs,playMs,mode}}",
+            "description": "最後燈態 {head:{color,brightness,p3,p4},eye:{...},mouth:{runTime,breatheMs,offMs,playMs,mode},pad:{minus,plus}}",
             "content": {
               "application/json": {
                 "schema": {
@@ -4235,6 +4299,158 @@
           }
         },
         "operationId": "ledStateGet_get"
+      }
+    },
+    "/api/led/wifi/set": {
+      "get": {
+        "tags": [
+          "led"
+        ],
+        "summary": "系統燈試燈 - wifi 燈紅/藍/熄 (下次 wifi 狀態變會自動校返正)",
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "red",
+                "blue",
+                "off"
+              ]
+            },
+            "description": "red=13 藍=12，off=全局熄（會連頭/眼一齊清，同系統行為一致）"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "ledWifiSet_get"
+      }
+    },
+    "/api/led/pad/set": {
+      "get": {
+        "tags": [
+          "led"
+        ],
+        "summary": "系統燈試燈 - 音量-/+ pad 燈 (14/16) 開熄 (on 唔帶=toggle)",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "minus",
+                "plus"
+              ]
+            },
+            "description": "minus=14 (音量-) plus=16 (音量+)"
+          },
+          {
+            "name": "on",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "開/熄；唔帶=反轉而家狀態。熄=全局熄（頭/眼一齊熄，wifi 會補返；回傳當時 minus/plus 態）"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "結果 {ok, minus, plus}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "ledPadSet_get"
+      }
+    },
+    "/api/led/mute/set": {
+      "get": {
+        "tags": [
+          "led"
+        ],
+        "summary": "系統燈試燈 - 胸口 mute 燈開熄 (純點燈，唔掂小智連線；連線/斷線/實體鍵會改寫)",
+        "parameters": [
+          {
+            "name": "on",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "開/熄 (chest cmd 68，連發三次防甩幀)"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "ledMuteSet_get"
       }
     },
     "/api/led/mouth/set": {
@@ -4261,11 +4477,11 @@
             "in": "query",
             "schema": {
               "type": "integer",
-              "minimum": 0,
-              "maximum": 5000,
-              "default": 0
+              "minimum": 100,
+              "maximum": 1000,
+              "default": 150
             },
-            "description": "呼吸速度 ms (0-5000)"
+            "description": "呼吸速度 ms (100-1000)"
           },
           {
             "$ref": "#/components/parameters/PanelToken"
@@ -5102,6 +5318,435 @@
           }
         },
         "operationId": "cameraZoom_get"
+      }
+    },
+    "/api/camera/face/probe": {
+      "get": {
+        "tags": [
+          "camera"
+        ],
+        "summary": "人臉偵測能力探測（driver 端 vs 軟件端）",
+        "description": "回報本機實際支援邊條路：driverMaxFaces>0 代表 camera driver 自帶偵測 （Camera.startFaceDetection，另一條零 CPU 嘅路）；detectorClass 代表 android.media.FaceDetector 呢個 framework class（API 1 就有）喺本機可唔可以 instantiate。只做探測，不會開偵測迴圈。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "能力探測結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "driverMaxFaces": {
+                          "type": "integer",
+                          "description": "Camera.Parameters.getMaxNumDetectedFaces()，0=driver 唔識偵測",
+                          "example": 0
+                        },
+                        "driverFaceDetection": {
+                          "type": "boolean"
+                        },
+                        "detectorClass": {
+                          "type": "boolean",
+                          "description": "android.media.FaceDetector 可唔可以 instantiate"
+                        },
+                        "detectorNote": {
+                          "type": "string",
+                          "description": "ok 或失敗嘅 exception"
+                        },
+                        "confidenceThreshold": {
+                          "type": "number",
+                          "description": "FaceDetector.Face.CONFIDENCE_THRESHOLD"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "cameraFaceProbe_get"
+      }
+    },
+    "/api/camera/face/start": {
+      "get": {
+        "tags": [
+          "camera"
+        ],
+        "summary": "開背景人臉偵測迴圈",
+        "description": "訂閱相機前幀，用 android.media.FaceDetector 逐幀偵測。偵測行喺專用 worker thread（唔會 block 相機 thread），前端跟 camera/fps badge 一樣輪詢 /api/camera/face 攞最新結果。w/h/crop/roi 係 run-time 調校位：FaceDetector 有 輸入尺寸上限（實機：320 級 recall 64%，640 級 recall 0%），所以 w/h 上限鎖 320。 預設 320x240 + crop 4:3，跟返 sensor 自然比例（crop 係 crop 唔係 squash）。 roi 預設關（實測 eyeDist 21→37 但 recall 33%→2%）。",
+        "parameters": [
+          {
+            "name": "w",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 96,
+              "maximum": 320,
+              "default": 320
+            },
+            "description": "偵測輸入闊。上限 320 係實測上限，640 級 recall 會跌到 0%。"
+          },
+          {
+            "name": "h",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 96,
+              "maximum": 320,
+              "default": 240
+            },
+            "description": "偵測輸入高。預設 320x240。"
+          },
+          {
+            "name": "crop",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "description": "1/true = crop 成 4:3 再餵，令塊面保持 sensor 自然比例。只 crop 唔 squash。"
+          },
+          {
+            "name": "roi",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "1/true = 追蹤上一次位置再放大。實測變差，所以預設關。"
+          },
+          {
+            "name": "duty",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.05,
+              "maximum": 0.6,
+              "default": 0.45
+            },
+            "description": "偵測迴圈允許消耗幾多比例嘅 wall-clock 時間。實測 0.45 ≈ 6.6 fps 且穩定； 0.55 未驗證到（soak 期間迴圈重啟）所以唔做預設。唔可以無腦調高：唔節流 （約 100% duty、22 fps）會令部 RK3288 直接重啟，所以用 duty 而唔係固定 fps， 令實際負荷唔會隨一幀耗時（實測 53-78ms）浮動。"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "已開／已在行",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "running": {
+                          "type": "boolean"
+                        },
+                        "already": {
+                          "type": "boolean",
+                          "description": "之前已經開住，今次係 no-op"
+                        },
+                        "w": {
+                          "type": "integer"
+                        },
+                        "h": {
+                          "type": "integer"
+                        },
+                        "crop": {
+                          "type": "boolean"
+                        },
+                        "roi": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "cameraFaceStart_get"
+      }
+    },
+    "/api/camera/face/stop": {
+      "get": {
+        "tags": [
+          "camera"
+        ],
+        "summary": "停人臉偵測迴圈",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "已停",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "running": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "cameraFaceStop_get"
+      }
+    },
+    "/api/camera/face": {
+      "get": {
+        "tags": [
+          "camera"
+        ],
+        "summary": "查詢最新人臉偵測結果",
+        "description": "count=-1 代表仲未有分析完成（未開，或者開咗但第一幀未行完）。x/y 已經 normalize 成 0-1（相對串流畫面，唔受 preview 解像度影響），px/py 係分析用 bitmap 上嘅 raw pixel 供調試。eyeDistance **唔係距離**：佢係兩眼喺分析圖上相隔 幾多 pixel，冇單位；數字越大代表塊面喺畫面越大（通常企得越近），但同一距離下 體型大嘅人會明顯高過體型細嘅人。yaw/pitch/roll 係 FaceDetector.Face.pose() 嘅 EULER 值 —— 實機（本機 Android 5.1.1）實測永遠係 0，即呢部機唔支援 head 姿態。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "最新偵測結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "running": {
+                          "type": "boolean"
+                        },
+                        "count": {
+                          "type": "integer",
+                          "example": 1
+                        },
+                        "detectMs": {
+                          "type": "integer",
+                          "description": "上一幀由 decode 到出結果嘅耗時",
+                          "example": 84
+                        },
+                        "analyzed": {
+                          "type": "integer",
+                          "description": "開住之後總共分析咗幾幀"
+                        },
+                        "srcW": {
+                          "type": "integer"
+                        },
+                        "srcH": {
+                          "type": "integer"
+                        },
+                        "error": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "calibrated": {
+                          "type": "boolean",
+                          "description": "有冇做過距離校準（未校準就唔會有 distM 欄）"
+                        },
+                        "faces": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "x": {
+                                "type": "number",
+                                "description": "人臉中點，normalize 0-1"
+                              },
+                              "y": {
+                                "type": "number",
+                                "description": "人臉中點，normalize 0-1"
+                              },
+                              "px": {
+                                "type": "integer"
+                              },
+                              "py": {
+                                "type": "integer"
+                              },
+                              "eyeDistance": {
+                                "type": "number",
+                                "description": "兩眼喺分析圖上相隔幾多 pixel。**唔係距離、冇單位。** 數字越大 = 塊面喺畫面越大（通常企得越近），但同一距離下 體型大嘅人會明顯高過體型細嘅人，所以唔可以當距離用。"
+                              },
+                              "distM": {
+                                "type": "number",
+                                "description": "距離估算（米），只有校準過先出現。per-person 估算，非量測值。"
+                              },
+                              "boxW": {
+                                "type": "integer",
+                                "description": "由 eyeDistance 推嘅粗略 box 闊（eyeDistance x 2，非真實 bbox）"
+                              },
+                              "boxH": {
+                                "type": "integer"
+                              },
+                              "confidence": {
+                                "type": "number"
+                              },
+                              "yaw": {
+                                "type": "number",
+                                "description": "EULER_X。實機實測本機永遠回 0（唔支援 head 姿態）"
+                              },
+                              "pitch": {
+                                "type": "number",
+                                "description": "EULER_Y。實機實測本機永遠回 0（唔支援 head 姿態）"
+                              },
+                              "roll": {
+                                "type": "number",
+                                "description": "EULER_Z。實機實測本機永遠回 0（唔支援 head 姿態）"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "cameraFace_get"
+      }
+    },
+    "/api/camera/face/calibrate": {
+      "get": {
+        "tags": [
+          "camera"
+        ],
+        "summary": "校準距離估算（用戶報一次真實距離）",
+        "description": "眼距只係分析圖上嘅像素數，冇通用常數可以換算成米 —— 常數取決於鏡頭 FOV、 感光尺寸同被試者面形。所以唔會用猜嘅 FOV 砌一個假精確度數字出嚟，改為由用戶 報一次「我而家企喺 X cm」，機械人記低當刻眼距中位數並反推 K，之後用 distanceM = K / eyeDistancePx。屬於 per-person 估算，換人就要再校準。 改動偵測幾何（w/h/crop/roi）會令舊校準失效並自動丟棄。",
+        "parameters": [
+          {
+            "name": "cm",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 20,
+              "maximum": 500
+            },
+            "description": "用戶目前同鏡頭嘅真實距離（厘米）"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "校準結果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "calibrated": {
+                          "type": "boolean"
+                        },
+                        "atMeters": {
+                          "type": "number",
+                          "description": "校準時用戶報知嘅距離"
+                        },
+                        "k": {
+                          "type": "number",
+                          "description": "比例常數（米 x 像素），distanceM = k / eyeDistance"
+                        },
+                        "note": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "cameraFaceCalibrate_get"
       }
     },
     "/api/audio/testtone": {
@@ -6017,6 +6662,110 @@
           }
         },
         "operationId": "audioLocalMusicFillerActionSet_get"
+      }
+    },
+    "/api/audio/local_music/disco/get": {
+      "get": {
+        "tags": [
+          "audio"
+        ],
+        "summary": "查詢播歌節奏燈開關 (頭 VU 錶眼跟人聲嘴跟大細聲，後端跑)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "狀態",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "audioLocalMusicDiscoGet_get"
+      }
+    },
+    "/api/audio/local_music/disco/set": {
+      "get": {
+        "tags": [
+          "audio"
+        ],
+        "summary": "設定播歌節奏燈開關",
+        "parameters": [
+          {
+            "name": "enabled",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "已設定",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "audioLocalMusicDiscoSet_get"
       }
     },
     "/api/audio/volume/get": {
@@ -8475,110 +9224,6 @@
           }
         },
         "operationId": "blocklyhtml_get"
-      }
-    },
-    "/api/audio/local_music/disco/get": {
-      "get": {
-        "tags": [
-          "audio"
-        ],
-        "summary": "查詢播歌節奏燈開關 (頭 VU 錶眼跟人聲嘴跟大細聲，後端跑)",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/PanelToken"
-          }
-        ],
-        "responses": {
-          "401": {
-            "description": "面板 token 缺／錯（僅啟用後）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OkWrapper"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "狀態",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/OkWrapper"
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "operationId": "audioLocalMusicDiscoGet_get"
-      }
-    },
-    "/api/audio/local_music/disco/set": {
-      "get": {
-        "tags": [
-          "audio"
-        ],
-        "summary": "設定播歌節奏燈開關",
-        "parameters": [
-          {
-            "name": "enabled",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "$ref": "#/components/parameters/PanelToken"
-          }
-        ],
-        "responses": {
-          "401": {
-            "description": "面板 token 缺／錯（僅啟用後）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OkWrapper"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "已設定",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/OkWrapper"
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "operationId": "audioLocalMusicDiscoSet_get"
       }
     }
   },

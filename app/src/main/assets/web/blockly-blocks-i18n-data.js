@@ -167,7 +167,7 @@ window.ALPHA_BLOCK_I18N = {
   led_mouth__label:          { zh: '嘴部 LED', en: 'Mouth LED' },
   led__colour_label:         { zh: '顏色', en: 'Colour' },
   led__brightness_label:     { zh: '亮度(1-9)', en: 'Brightness (1\u20139)' },
-  led__speed_label:          { zh: '速度(0-5000, 細=快)', en: 'Speed (0\u20135000, lower = faster)' },
+  led__speed_label:          { zh: '速度(100-1000)', en: 'Speed (100\u20131000)' },
   led_head__tooltip:         { zh: '選「停止」時顏色/亮度會被忽略。(/api/led/head/set)', en: 'Colour/brightness are ignored when "Stop" is selected. (/api/led/head/set)' },
   led_eye__tooltip:          { zh: '選「停止」時顏色/亮度會被忽略。(/api/led/eye/set)', en: 'Colour/brightness are ignored when "Stop" is selected. (/api/led/eye/set)' },
   led_mouth__tooltip:        { zh: '嘴部 LED 硬體實測只有「呼吸燈」這個效果可用 (沒有顏色/亮度可調, 只有速度)。選「關閉」時速度會被忽略。(/api/led/mouth/set)',

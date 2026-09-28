@@ -47,16 +47,18 @@ public final class ApiValidator {
     public static final int SERVO_TIME_MAX_MS = 32767;
 
     /** LED 範圍單一來源（同 openapi spec／MCP schema／McpToolsGenerated 約束一致）：
-     *  color 1-7、brightness 1-9、mouth speed 0-5000ms。之前 HTTP（requireColor
+     *  color 1-7、brightness 1-9、mouth speed 100-1000ms。之前 HTTP（requireColor
      *  等）同 MCP（LedCenter mcpLedSet*）各寫裸 literal／直情唔驗，MCP 超範圍
-     *  靜默落 JNI——收斂到這裡，兩邊同一套。 */
+     *  靜默落 JNI——收斂到這裡，兩邊同一套。
+     *  注意：TTS／disco 內部直調 breathing(0)（最快）唔經呢度驗——0 只係
+     *  內部保留值，公開 API（HTTP／MCP／UI slider）一律 100-1000。 */
     public static final int LED_COLOR_MIN = 1;
     public static final int LED_COLOR_MAX = 7;
     public static final int LED_BRIGHTNESS_MIN = 1;
     public static final int LED_BRIGHTNESS_MAX = 9;
-    public static final int LED_MOUTH_SPEED_MIN_MS = 0;
-    public static final int LED_MOUTH_SPEED_MAX_MS = 5000;
+    public static final int LED_MOUTH_SPEED_MIN_MS = 100;
 
+    public static final int LED_MOUTH_SPEED_MAX_MS = 1000;
     // ── 內部共用解析（全部 trim；訊息形狀不變）─────────────────────
     private static int parseIntOrThrow(String key, String v) {
         try {
@@ -151,8 +153,21 @@ public final class ApiValidator {
         return rangeCheck(key, parseIntOrThrow(key, v), min, max);
     }
 
-    public static long requireLong(Map<String, String> q, String key) {
-        return parseLongOrThrow(key, require(q, key));
+    /** camera/face/start?duty=0.30 — 偵測迴圈允許用幾多比例嘅 wall-clock 時間做運算。
+     *  故意用 double min/max：duty 係比例值（0.05-0.60），唔係整數。 */
+    public static float optionalFloatRange(Map<String, String> q, String key,
+                                           double min, double max, float defaultValue) {
+        String v = q.get(key);
+        if (v == null || v.isEmpty()) return defaultValue;
+        float f = parseFloatOrThrow(key, v);
+        if (f < min || f > max) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be between "
+                    + min + " and " + max + ", got: " + f);
+        }
+        return f;
+    }
+
+    public static long requireLong(Map<String, String> q, String key) {        return parseLongOrThrow(key, require(q, key));
     }
 
     public static long optionalLong(Map<String, String> q, String key, long defaultValue) {
@@ -252,7 +267,7 @@ public final class ApiValidator {
     }
 
     public static int requireMouthSpeed(Map<String, String> q) {
-        return optionalIntRange(q, "speed", 0, 5000, 0);
+        return optionalIntRange(q, "speed", 100, 1000, 150);
     }
 
     /** nuance/iflytek 已死 (機身無 alpha2services,
@@ -279,6 +294,14 @@ public final class ApiValidator {
 
     public static String requireDebugLedFunc(Map<String, String> q) {
         return requireEnum(q, "func", new String[]{"off","on","eye","head"});
+    }
+
+    public static String requireWifiLedColor(Map<String, String> q) {
+        return requireEnum(q, "color", new String[]{"red","blue","off"});
+    }
+
+    public static String requirePadKey(Map<String, String> q) {
+        return requireEnum(q, "key", new String[]{"minus","plus"});
     }
 
     public static String requireXiaozhiTtsEngine(Map<String, String> q) {

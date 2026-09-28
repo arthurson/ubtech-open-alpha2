@@ -233,7 +233,7 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.robot.led_set_mouth");
-            t.put("description", "Set the mouth LED. preset \"breathing\" pulses at speed 0-5000ms (0=fastest); \"off\" turns it off. Driven automatically during TTS playback - manual calls mid-conversation may conflict.");
+            t.put("description", "Set the mouth LED. preset \"breathing\" pulses at speed 100-1000ms (150=default); \"off\" turns it off. Driven automatically during TTS playback - manual calls mid-conversation may conflict.");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
@@ -248,10 +248,10 @@ public final class McpToolsGenerated {
             {
                 JSONObject p = new JSONObject();
                 p.put("type", "integer");
-                p.put("description", "Breathing speed 0-5000ms, only used when preset=breathing. Default 0.");
-                p.put("minimum", 0);
-                p.put("maximum", 5000);
-                p.put("default", 0);
+                p.put("description", "Breathing speed 100-1000ms, only used when preset=breathing. Default 150.");
+                p.put("minimum", 100);
+                p.put("maximum", 1000);
+                p.put("default", 150);
                 props.put("speed_ms", p);
             }
             s.put("properties", props);

@@ -23,6 +23,11 @@ public class WebSocketServer {
     private static final String TAG = "WebSocketServer";
     private static final String GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
+    // 每個 process 起身派一個新 bootId（APK 重裝／app 重啟即轉）：瀏覽器 tab
+    // 如果係舊 JS（裝機嗰陣開住無 reload），WS 斷線重連嗰陣見到 bootId 唔同
+    // 即 location.reload() 攞新版——以後裝完機唔使人手 F5，見前端 connectWs。
+    public static final String BOOT_ID = java.util.UUID.randomUUID().toString();
+
     // 2026-08 新增: 見下面 handleUpgrade() 的 comment - 用來偵測「半開」殭屍
     // connection。10 秒 SO_TIMEOUT, 逾時就送 ping 探一探, 連續兩次 (共 20 秒)
     // 都沒有任何回應 (包括 pong) 才當死, 不會誤殺一條正常但剛好沒 event 可送、
@@ -77,7 +82,8 @@ public class WebSocketServer {
             };
             EventBus.get().subscribe(listener);
             try {
-                conn.sendText("{\"type\":\"connected\",\"time\":\"\",\"data\":{\"msg\":\"ws connected\"}}");
+                conn.sendText("{\"type\":\"connected\",\"bootId\":\"" + BOOT_ID
+                        + "\",\"time\":\"\",\"data\":{\"msg\":\"ws connected\"}}");
                 long startMs = System.currentTimeMillis();
                 conn.readLoop(rawIn);
                 Log.i(TAG, "WebSocket closed normally after " + (System.currentTimeMillis() - startMs) + "ms"

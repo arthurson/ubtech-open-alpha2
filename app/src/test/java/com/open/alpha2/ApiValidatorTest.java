@@ -149,9 +149,10 @@ public final class ApiValidatorTest {
         eq("long", ApiValidator.requireLedEyePreset(q()), "ledEye.default");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireLedEyePreset(q("preset", "breathe")); } }, "ledEye.noBreathe");
         eq("breathing", ApiValidator.requireMouthPreset(q()), "mouth.default");
-        eq(0, ApiValidator.requireMouthSpeed(q()), "mouthSpeed.default");
+        eq(150, ApiValidator.requireMouthSpeed(q()), "mouthSpeed.default");
         eq(150, ApiValidator.requireMouthSpeed(q("speed", "150")), "mouthSpeed.present");
-        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireMouthSpeed(q("speed", "5001")); } }, "mouthSpeed.high");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireMouthSpeed(q("speed", "1001")); } }, "mouthSpeed.high");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireMouthSpeed(q("speed", "99")); } }, "mouthSpeed.low");
         // P0 行為：speech/tts 只准 android (唯一會出聲)；nuance/iflytek 已經永久
         // 唔再用 (機身無 alpha2services, binder 已死)，2026-09 由「照收但回
         // NOT_INIT」改做徹底唔准 (invalid-parameter)。
@@ -170,6 +171,13 @@ public final class ApiValidatorTest {
         eq("on", ApiValidator.requireDebugLedFunc(q("func", "on")), "debugFunc.ok");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireDebugLedFunc(q()); } }, "debugFunc.missing");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireDebugLedFunc(q("func", "blink")); } }, "debugFunc.bad");
+        eq("red", ApiValidator.requireWifiLedColor(q("color", "red")), "wifiLed.red");
+        eq("off", ApiValidator.requireWifiLedColor(q("color", "off")), "wifiLed.off");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireWifiLedColor(q("color", "green")); } }, "wifiLed.bad");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireWifiLedColor(q()); } }, "wifiLed.missing");
+        eq("minus", ApiValidator.requirePadKey(q("key", "minus")), "padKey.minus");
+        eq("plus", ApiValidator.requirePadKey(q("key", "plus")), "padKey.plus");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requirePadKey(q("key", "both")); } }, "padKey.bad");
         eq("xiaozhi", ApiValidator.requireXiaozhiTtsEngine(q("engine", "xiaozhi")), "xiaozhiTts.ok");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireXiaozhiTtsEngine(q("engine", "nuance")); } }, "xiaozhiTts.bad");
         eq("off", ApiValidator.requireBootVoiceMode(q("mode", "off")), "bootVoice.off");

@@ -184,6 +184,35 @@ const Alpha2Api = (function() {
   }
 
   // ── camera ──────────────────────────────────────────────
+  function cameraFace(params) {
+    // 查詢最新人臉偵測結果
+    return api('camera/face', params);
+  }
+
+  function cameraFaceCalibrate(params) {
+    if (params && params.cm != null) assertRange(Number(params.cm), 20, 500, 'cm');
+    // 校準距離估算（用戶報一次真實距離）
+    return api('camera/face/calibrate', params);
+  }
+
+  function cameraFaceProbe(params) {
+    // 人臉偵測能力探測（driver 端 vs 軟件端）
+    return api('camera/face/probe', params);
+  }
+
+  function cameraFaceStart(params) {
+    if (params && params.w != null) assertRange(Number(params.w), 96, 320, 'w');
+    if (params && params.h != null) assertRange(Number(params.h), 96, 320, 'h');
+    if (params && params.duty != null) assertRange(Number(params.duty), 0.05, 0.6, 'duty');
+    // 開背景人臉偵測迴圈
+    return api('camera/face/start', params);
+  }
+
+  function cameraFaceStop(params) {
+    // 停人臉偵測迴圈
+    return api('camera/face/stop', params);
+  }
+
   function cameraFps(params) {
     // 查詢相機 FPS 與是否串流中
     return api('camera/fps', params);
@@ -307,7 +336,7 @@ const Alpha2Api = (function() {
   }
 
   function directLedMouth(params) {
-    if (params && params.breathe != null) assertRange(Number(params.breathe), 0, 5000, 'breathe');
+    if (params && params.breathe != null) assertRange(Number(params.breathe), 100, 1000, 'breathe');
     // 嘴燈呼吸直驅（留空預設 500ms）
     return directApi('led/mouth', params);
   }
@@ -425,6 +454,9 @@ const Alpha2Api = (function() {
     if (params && params.color != null) assertRange(Number(params.color), 1, 7, 'color');
     if (params && params.brightness != null) assertRange(Number(params.brightness), 1, 9, 'brightness');
     if (params && params.preset != null) assertEnum(params.preset, ['long', 'flash', 'chase', 'dual', 'stop'], 'preset');
+    if (params && params.speed != null) assertRange(Number(params.speed), 50, 500, 'speed');
+    if (params && params.p3 != null) assertRange(Number(params.p3), 0, 255, 'p3');
+    if (params && params.p4 != null) assertRange(Number(params.p4), 0, 255, 'p4');
     // 設定眼部 5-mic LED (ledSetEye5Mic)
     return api('led/eye/set', params);
   }
@@ -442,20 +474,40 @@ const Alpha2Api = (function() {
     if (params && params.color != null) assertRange(Number(params.color), 1, 7, 'color');
     if (params && params.brightness != null) assertRange(Number(params.brightness), 1, 9, 'brightness');
     if (params && params.preset != null) assertEnum(params.preset, ['long', 'flash', 'breathe', 'chase', 'dual', 'stop'], 'preset');
+    if (params && params.speed != null) assertRange(Number(params.speed), 50, 500, 'speed');
+    if (params && params.p3 != null) assertRange(Number(params.p3), 0, 31, 'p3');
+    if (params && params.p4 != null) assertRange(Number(params.p4), 0, 31, 'p4');
     // 設定頭部 5-mic LED (ledSetHead5Mic)
     return api('led/head/set', params);
   }
 
   function ledMouthSet(params) {
     if (params && params.preset != null) assertEnum(params.preset, ['breathing', 'off'], 'preset');
-    if (params && params.speed != null) assertRange(Number(params.speed), 0, 5000, 'speed');
+    if (params && params.speed != null) assertRange(Number(params.speed), 100, 1000, 'speed');
     // 設定嘴部 LED (LedControl JNI, 非 AIDL)
     return api('led/mouth/set', params);
+  }
+
+  function ledMuteSet(params) {
+    // 系統燈試燈 - 胸口 mute 燈開熄 (純點燈，唔掂小智連線；連線/斷線/實體鍵會改寫)
+    return api('led/mute/set', params);
+  }
+
+  function ledPadSet(params) {
+    if (params && params.key != null) assertEnum(params.key, ['minus', 'plus'], 'key');
+    // 系統燈試燈 - 音量-/+ pad 燈 (14/16) 開熄 (on 唔帶=toggle)
+    return api('led/pad/set', params);
   }
 
   function ledStateGet(params) {
     // 逐粒試燈 mirror - 讀最後燈態 (硬件 write-only，server 記低最後一轉；未打過=-1，熄咗=0)
     return api('led/state/get', params);
+  }
+
+  function ledWifiSet(params) {
+    if (params && params.color != null) assertEnum(params.color, ['red', 'blue', 'off'], 'color');
+    // 系統燈試燈 - wifi 燈紅/藍/熄 (下次 wifi 狀態變會自動校返正)
+    return api('led/wifi/set', params);
   }
 
   // ── radio ──────────────────────────────────────────────
@@ -897,6 +949,11 @@ const Alpha2Api = (function() {
     audioTesttone,
     audioVolumeGet,
     audioVolumeSet,
+    cameraFace,
+    cameraFaceCalibrate,
+    cameraFaceProbe,
+    cameraFaceStart,
+    cameraFaceStop,
     cameraFps,
     cameraInfo,
     cameraResolution,
@@ -943,7 +1000,10 @@ const Alpha2Api = (function() {
     ledHeadRaw,
     ledHeadSet,
     ledMouthSet,
+    ledMuteSet,
+    ledPadSet,
     ledStateGet,
+    ledWifiSet,
     audioRadioPlay,
     audioRadioPlayUrl,
     audioRadioSearch,

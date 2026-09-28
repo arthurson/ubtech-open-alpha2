@@ -84,6 +84,8 @@ public final class TtsCenter {
         if (tts != null) {
             tts.stop();
         }
+        // stop() 行 onStop 唔行 onDone——呢度補熄咀燈，唔靠 listener 一定到。
+        LedCenter.stopMouthLedForTts();
     }
 
     /** onDestroy 共用：停＋shutdown。 */
@@ -93,6 +95,7 @@ public final class TtsCenter {
             tts.stop();
             tts.shutdown();
         }
+        LedCenter.stopMouthLedForTts();
     }
 
     /** 列出目前 androidTts 綁定的那個 engine 支援的所有語言/國家變體, 供
@@ -609,6 +612,15 @@ public final class TtsCenter {
                 // 的 tts_end, 之後所有排隊的句子都讀不到。
                 EventBus.get().publish("tts_end", "{\"isEnd\":true}");
             }
+
+            @Override
+            public void onStop(String utteranceId, boolean interrupted) {
+                // TextToSpeech.stop() 走呢度，唔經 onDone——淨係熄咀燈，
+                // 唔 publish tts_end（唔好令排隊緊嘅下一句自己走出嚟），
+                // vosk resume 留返原本 stop 流程搞。無呢個 override 嗰陣
+                // speech/stop 之後個旗長期 true（咀無限呼吸＋disco 咀永遠讓路）。
+                LedCenter.stopMouthLedForTts();
+            }
         });
         androidTts = created;
     }
@@ -737,7 +749,14 @@ public final class TtsCenter {
             }
         }
         LedCenter.startMouthLedForTts();
-        androidTts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "panel_tts");
+        try {
+            androidTts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "panel_tts");
+        } catch (Throwable t) {
+            // speak 掟（engine 死／未 ready 競爭）唔會行 onDone/onError，
+            // 唔清旗個咀無限呼吸。上面 speakAndroidTts 有同款 guard。
+            Log.w(TAG, "speakPanelTts speak failed", t);
+            LedCenter.stopMouthLedForTts();
+        }
         return null;
     }
 

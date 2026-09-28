@@ -22,19 +22,6 @@ public final class DirectHeadController {
         return port.send(RobotWire.HEAD_CONTROL_BYPASS, new byte[]{(byte) (open ? 0 : 1)});
     }
 
-    /** 傳統耳 LED (非 5-mic 板才有效) */
-    public boolean startEarLed(short up, short down, short run) {
-        // DeveloperEarLedData 的字節布局複用原 SDK，這裡簡化透傳
-        // 1.1.7.3 上 5-mic 板會靜默失敗，應走 DirectLedController 的 JNI 路徑
-        byte[] param = new byte[]{(byte)0xFF, (byte)0xFF, 9, (byte)(up>>8),(byte)up, (byte)(down>>8),(byte)down, (byte)(run>>8),(byte)run};
-        return port.send(RobotWire.LED_EAR, param);
-    }
-
-    public boolean stopEarLed() { return port.send(RobotWire.STOP_CMD, new byte[]{1}); }
-    public boolean stopEyeLed() { return port.send(RobotWire.STOP_CMD, new byte[]{0}); }
-
-    public boolean readVersion() { return port.send(RobotWire.HEADER_READ_VERSION, null); }
-
     /** 原始幀透傳（debug/serial/send 用）。pure-direct 下取代 robot.header_sendRawData。 */
     public boolean sendRaw(byte[] rawFrame) {
         if (rawFrame == null || rawFrame.length == 0) return false;

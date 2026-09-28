@@ -127,9 +127,11 @@ public final class AudioCenter {
     private volatile long discoLastFrameAtMs = 0;
     private volatile long discoLastPushAtMs = 0;
     private volatile long discoLastVuPushAtMs = 0;
-    private volatile long discoLastMouthAtMs = 0;
     private volatile int discoLastMouthSpeed = -3; // 上次推出嘅嘴速度（-2＝熄，-3＝未知即推）
-    private volatile int discoMouthQuietRounds = 0; // 連續靜音輪數（3 輪先真熄，唔好畀間奏chok熄）
+    private volatile long discoMouthQuietSinceMs = 0; // 呢轉靜音由幾時開始（連續靜 3 秒先真熄，唔好畀間奏chok熄）
+    // pause 緊：pause() 之後 audio pipeline 仲有幾幀尾音，唔好攞嚟推燈
+    // （否則眼會再閃、咀會續命）。resume／播新歌即清。
+    private volatile boolean discoPauseHold = false;
     private volatile long discoEyeLedAtMs = 0; // 眼上次真係轉色（cadence 用）
     private volatile int discoLastVuLeft = -1; // 上次推出嘅頭表左右粒數（變先再推）
     private volatile int discoLastVuRight = -1;
@@ -145,15 +147,14 @@ public final class AudioCenter {
     // 節流合流：眼拍子／頭 VU 各自 100ms 閘（頭+眼最多 2 個 ioctl 一轉）。
     private static final long DISCO_PUSH_INTERVAL_MS = 100;
     private static final long DISCO_VU_INTERVAL_MS = 100;
-    private static final long DISCO_MOUTH_INTERVAL_MS = 1000; // 嘴郁得慢，1 秒先郁一次
-    private static final long DISCO_EYE_CADENCE_MS = 400;
+    private static final long DISCO_EYE_CADENCE_MS = 100; // 眼拍子節奏：同頭一樣行 100ms
     private static final double DISCO_VOCAL_FLOOR = 10;
     private static final double DISCO_VOCAL_PRESENCE_RATIO = 0.35;
     private static final int DISCO_BRIGHTNESS = 9;
     private static final int DISCO_HEAD_EFFECT_MS = 300; // 見下：短命燈效，唔用 MAX
     private static final int DISCO_EYE_EFFECT_MS = 500;
     // 燈效自帶過期（p7 runTime）：頭 300ms（100ms refresh 蓋過， steady state 睇落無分別），
-    // 眼 500ms（400ms cadence 蓋過）。點解唔用 MAX：disco 每秒十幾次重寫一個永不過期
+    // 眼 500ms（100ms cadence 蓋過）。點解唔用 MAX：disco 每秒十幾次重寫一個永不過期
     // 嘅燈效，一首歌幾千個叠落去；舊驅動疑似逐個 allocation 唔放，爆嗰下硬 hang
     // 成部機（無 ANR、adb 齊死，用嗰陣正常、開過之後隨時發作）。短命＋密 refresh＝
     // 穩態一樣，stall 嗰陣自然熄唔會凍結，驅動嗰邊亦無嘢累積。
@@ -173,10 +174,12 @@ public final class AudioCenter {
 
     public HttpServer.ApiResponse discoSet(Map<String, String> query) {
         boolean enabled = ApiValidator.requireBoolean(query, "enabled");
+        boolean was = isDiscoEnabled();
         prefs().edit().putBoolean(PREF_DISCO_ENABLED, enabled).apply();
         if (enabled) {
             discoFailStreak = 0; // 人手重開＝再俾一次機會
         } else {
+            if (was) discoStopsNow(); // 即停：直接掂驅動（下面排隊嗰 part 照做埋）。
             discoPushOff(); // 閂＝頭+眼即熄（排緊隊嘅拍會因開關已關而丟走，見下）
         }
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + "}");
@@ -362,7 +365,9 @@ public final class AudioCenter {
     /** 閂 disco 專用：排一個熄燈（-2），冚過排緊隊嘅拍；同條線程做，唔會打架。
      *  嘴都一齊熄（TTS 播緊嗰陣唔熄，留返畀佢，下次講嘢會自己再著）。
      *  連舊拍啲 flag 一齊清——唔清嘅話 pause 嗰刻撞啱有粒舊拍排緊隊，
-     *  job 會先熄後著（有快有慢就係咁嚟）。 */
+     *  job 會先熄後著（有快有慢就係咁嚟）。
+     *  兼做所有 stop 路徑嘅 choke 點：嘴 shadow 一齊 reset 做 -2（無 TTS
+     *  先），否則下首歌有聲嗰陣 target(0)==shadow(0) 永遠唔推，個嘴唔再著。 */
     private void discoPushOff() {
         Runnable job = null;
         synchronized (discoLedLock) {
@@ -370,7 +375,11 @@ public final class AudioCenter {
             discoPendingEye = -2;
             discoHeadPending = false;
             discoEyePending = false;
-            if (!LedCenter.isMouthTtsActive()) discoPendingMouth = -2;
+            if (!LedCenter.isMouthTtsActive()) {
+                discoPendingMouth = -2;
+                discoLastMouthSpeed = -2;
+            }
+            discoMouthQuietSinceMs = 0;
             if (discoLedBusy) return;
             discoLedBusy = true;
             job = discoLedJob;
@@ -390,7 +399,50 @@ public final class AudioCenter {
      *  個嘴（MAX breathing）更加唔會自己熄。得 disco 開緊先郁手；
      *  閂咗嗰陣啲燈係人哋嘅（音量/TTS/其他），唔好掂。 */
     private void discoPushOffIfEnabled() {
-        if (isDiscoEnabled()) discoPushOff();
+        if (!isDiscoEnabled()) return;
+        discoStopsNow();
+        discoPushOff();
+    }
+
+    /** 即停本體：直接掂驅動，唔經 disco executor 排隊——條 queue 塞住
+     *  嗰陣排隊版會慢幾秒，直接版同 stop-all 一樣快（stop-all 都係咁直掂）。
+     *  排隊版照跟尾（清舊拍＋影子），冪等多送無害。
+     *  open 間中會撞正驅動忙碌而失敗（disco 高頻 hammer 緊嗰陣最常見），
+     *  最多補 3 次（隔 50ms）——一次唔得就靜靜放棄，之前咀慢幾秒就係咁嚟。
+     *  三次都唔得先 log（logcat 睇到，唔彈用家）。 */
+    private void discoStopsNow() {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            boolean headOk = false;
+            boolean eyeOk = false;
+            boolean mouthOk = true;
+            try {
+                headOk = DirectLedController.stopHead5Mic();
+            } catch (Throwable ignore) {
+                headOk = false;
+            }
+            try {
+                eyeOk = DirectLedController.stopEye5Mic();
+            } catch (Throwable ignore) {
+                eyeOk = false;
+            }
+            if (!LedCenter.isMouthTtsActive()) {
+                try {
+                    mouthOk = com.ubtechinc.alpha.hardware.MouthLedData.off().apply();
+                } catch (Throwable ignore) {
+                    mouthOk = false;
+                }
+            }
+            if (headOk && eyeOk && mouthOk) return;
+            if (attempt < 3) {
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
+        Log.w(TAG, "discoStopsNow: LED stops still failing after 3 attempts (driver busy?)");
     }
 
     private final Runnable discoLedJob = new Runnable() {
@@ -440,49 +492,34 @@ public final class AudioCenter {
                         return;
                     }
                 }
-                boolean ok = true;
-                if (h == -2) {
-                    try {
-                        ok &= DirectLedController.stopHead5Mic();
-                    } catch (Throwable ignore) {
-                        ok = false;
-                    }
-                }
-                if (e == -2) {
-                    try {
-                        ok &= DirectLedController.stopEye5Mic();
-                    } catch (Throwable ignore) {
-                        ok = false;
-                    }
+                boolean ok;
+                // 一轉齊推：一批過（一次 open），唔逐個開關 fd——快三倍，
+                // 中間無黑場，驅動負載都細三倍。衰一步即停，唔 hammer。
+                java.util.List<com.ubtechinc.alpha.hardware.DirectLedController.LedOp> ops =
+                        new java.util.ArrayList<>(3);
+                if (h == -2 || e == -2) {
+                    // 熄＝全局 OFF，一個就夠（頭眼一齊清）。
+                    ops.add(com.ubtechinc.alpha.hardware.DirectLedController.LedOp.off());
                 }
                 if (hu) {
-                    try {
-                        ok &= DirectLedController.setHead5MicRaw(hc, DISCO_BRIGHTNESS,
-                                hp3, hp4, Integer.MAX_VALUE, 0, DISCO_HEAD_EFFECT_MS, 0);
-                    } catch (Throwable ignore) {
-                        ok = false;
-                    }
+                    ops.add(com.ubtechinc.alpha.hardware.DirectLedController.LedOp.head(
+                            hc, DISCO_BRIGHTNESS, hp3, hp4, Integer.MAX_VALUE, 0, DISCO_HEAD_EFFECT_MS, 0));
                 }
                 if (eu) {
-                    try {
-                        ok &= DirectLedController.setEye5MicRaw(ec, DISCO_BRIGHTNESS,
-                                ep3, ep4, Integer.MAX_VALUE, 0, DISCO_EYE_EFFECT_MS, 0);
-                    } catch (Throwable ignore) {
-                        ok = false;
-                    }
+                    ops.add(com.ubtechinc.alpha.hardware.DirectLedController.LedOp.eye(
+                            ec, DISCO_BRIGHTNESS, ep3, ep4, Integer.MAX_VALUE, 0, DISCO_EYE_EFFECT_MS, 0));
                 }
                 if (mm == -2) {
-                    try {
-                        ok &= com.ubtechinc.alpha.hardware.MouthLedData.off().apply();
-                    } catch (Throwable ignore) {
-                        ok = false;
-                    }
+                    ops.add(com.ubtechinc.alpha.hardware.DirectLedController.LedOp.mouth(
+                            Integer.MAX_VALUE, 0, 0, Integer.MAX_VALUE, 0));
                 } else if (mm >= 0) {
-                    try {
-                        ok &= com.ubtechinc.alpha.hardware.MouthLedData.breathing(mm).apply();
-                    } catch (Throwable ignore) {
-                        ok = false;
-                    }
+                    ops.add(com.ubtechinc.alpha.hardware.DirectLedController.LedOp.mouth(
+                            Integer.MAX_VALUE, mm, 0, Integer.MAX_VALUE, 1));
+                }
+                try {
+                    ok = ops.isEmpty() || com.ubtechinc.alpha.hardware.DirectLedController.runBatch(ops);
+                } catch (Throwable ignore) {
+                    ok = false;
                 }
                 if (ok) {
                     discoFailStreak = 0;
@@ -543,11 +580,13 @@ public final class AudioCenter {
             double vocalRecent = Math.max(vocal, discoVocalRecentMax * decay);
             discoVocalRecentMax = vocalRecent;
             if (!isDiscoEnabled()) return;
+            // pause 緊唔推（見 discoPauseHold）：尾音幀唔好再點燈。
+            if (discoPauseHold) return;
             // 頭：假立體聲 VU（左＝低頻粒數，右＝高頻粒數；變先推，靜音即 0/0 熄）
             int left = vuCount(bass, bassRecent);
             int right = vuCount(high, highRecent);
             boolean vuChanged = left != discoLastVuLeft || right != discoLastVuRight;
-            // 眼跟人聲：人聲頻段有存在感先閃——存在期間約 400ms 轉一次，
+            // 眼跟人聲：人聲頻段有存在感先閃——存在期間約 100ms 轉一次，
             // 樂句起頭（爆發）即閃，唔使等；1-7 純隨機
             boolean vocalPresent = vocal >= Math.max(DISCO_VOCAL_FLOOR, vocalRecent * DISCO_VOCAL_PRESENCE_RATIO);
             boolean vocalAttack = vocal - vocalPrev >= Math.max(DISCO_ONSET_MIN, vocalRecent * DISCO_ONSET_RATIO);
@@ -565,23 +604,25 @@ public final class AudioCenter {
                 discoEyeLedAtMs = now;
                 discoPushEyes(1 + discoRandom.nextInt(7), 255, 255);
             }
-            // 嘴：有聲就每秒 refresh 一次最快呼吸（speed 0，同 TTS 一樣）keep 住閃，
-            // 連續靜音 3 秒先真熄（唔好畀間奏／細聲位 chok 熄）；
-            // TTS 播緊嗰陣讓路唔郁（佢把聲要個嘴）
-            if (!LedCenter.isMouthTtsActive() && now - discoLastMouthAtMs >= DISCO_MOUTH_INTERVAL_MS) {
-                discoLastMouthAtMs = now;
+            // 嘴：每幀計一次，有聲即最快呼吸（speed 0，同 TTS 一樣），
+            // 變先推（唔係每幀 hammer 驅動）；連續靜音 3 秒先真熄
+            // （唔好畀間奏／細聲位 chok 熄）；TTS 播緊嗰陣讓路唔郁（佢把聲要個嘴）
+            if (!LedCenter.isMouthTtsActive()) {
                 double all = 0;
                 for (int i = 0; i < MUSIC_SPECTRUM_BANDS; i++) all += musicSpectrumBands[i];
                 all /= MUSIC_SPECTRUM_BANDS;
                 if (all < DISCO_SILENCE_MIN) {
-                    if (++discoMouthQuietRounds >= 3 && discoLastMouthSpeed != -2) {
+                    if (discoMouthQuietSinceMs == 0) discoMouthQuietSinceMs = now;
+                    if (now - discoMouthQuietSinceMs >= 3000 && discoLastMouthSpeed != -2) {
                         discoLastMouthSpeed = -2;
                         discoPushMouth(-2);
                     }
                 } else {
-                    discoMouthQuietRounds = 0;
-                    discoLastMouthSpeed = 0;
-                    discoPushMouth(0);
+                    discoMouthQuietSinceMs = 0;
+                    if (discoLastMouthSpeed != 0) {
+                        discoLastMouthSpeed = 0;
+                        discoPushMouth(0);
+                    }
                 }
             }
         } catch (Throwable ignore) {
@@ -833,7 +874,33 @@ public final class AudioCenter {
      *  之後) 而不是這個 method 一開頭就做: 如果檔案根本播不了 (loss/corrupt,
      *  prepareAsync 觸發 onError), 不應該仍然先動了那個動作, 「動作」應該與
      *  「真的有歌聲」同步, 而不是與「這個 method 被呼叫了」同步。 */
+    /** onDestroy 共用：停播（上面 MainActivity 會調）、拆 watch loop、
+     *  停 disco 線程、放共用頻譜。之前 executor／watch loop／Visualizer
+     *  無人收，process 唔死嗰陣一直漏（特別係 disco executor 條 thread）。 */
+    public synchronized void shutdown() {
+        stopLocalMusicPlaybackLocked();
+        stopRadioPlaybackLocked();
+        try {
+            mainHandler.removeCallbacks(discoWatchLoop);
+        } catch (Throwable ignore) {
+        }
+        try {
+            discoLedExecutor.shutdownNow();
+        } catch (Throwable ignore) {
+        }
+        try {
+            releaseMusicVisualizerLocked();
+        } catch (Throwable ignore) {
+        }
+        currentMusicPlayer = null;
+        currentRadioPlayer = null;
+        currentMusicTrackName = null;
+        currentRadioStationId = null;
+        currentRadioStationName = null;
+    }
+
     public synchronized void playLocalMusicFile(java.io.File file) {
+        discoPauseHold = false; // 新歌：上首 pause 嘅 hold 即清，幀到即推
         stopLocalMusicPlaybackLocked();
         // 共用播放器：播本地時停掉電台，避免兩路同時出聲；動作配樂亦停，免疊聲
         stopRadioPlaybackLocked();
@@ -841,8 +908,9 @@ public final class AudioCenter {
         if (file == null || !file.exists()) {
             return;
         }
+        android.media.MediaPlayer player = null;
         try {
-            android.media.MediaPlayer player = new android.media.MediaPlayer();
+            player = new android.media.MediaPlayer();
             player.setAudioStreamType(AudioManager.STREAM_MUSIC);
             player.setDataSource(file.getAbsolutePath());
             player.setOnPreparedListener(mp -> {
@@ -867,6 +935,16 @@ public final class AudioCenter {
             player.prepareAsync();
         } catch (Exception e) {
             Log.w(TAG, "Failed to play local music file " + file, e);
+            // 起唔到嗰部 player 要即 release——唔係會漏一個 MediaPlayer
+            // 同佢個 audio session（Visualizer 綁錯 session 會靜晒）。
+            // 注意：呢度唔郁 currentMusicPlayer（佢仲係舊嗰部/null），
+            // 只放咗呢部新起唔到嘅。
+            if (player != null) {
+                try {
+                    player.release();
+                } catch (Throwable ignored) {
+                }
+            }
         }
     }
 
@@ -952,8 +1030,9 @@ public final class AudioCenter {
             return;
         }
         final String resolvedUrl = url;
+        android.media.MediaPlayer player = null;
         try {
-            android.media.MediaPlayer player = new android.media.MediaPlayer();
+            player = new android.media.MediaPlayer();
             player.setAudioStreamType(AudioManager.STREAM_MUSIC);
             NetLog.out("radio-play", resolvedUrl);
             player.setDataSource(url);
@@ -963,20 +1042,16 @@ public final class AudioCenter {
                 setupMusicVisualizerLocked(mp);
                 startSharedFillerLoop();
             });
+            player.setOnCompletionListener(mp -> {
+                // 串流多數無限，但有限長度/轉址 EOS 會走到呢度——
+                // 之前無 completion，清唔到 player＋頻譜＋disco 燈（咀無限呼吸留低）。
+                synchronized (AudioCenter.this) {
+                    releaseDoneRadioPlayerLocked(mp);
+                }
+            });
             player.setOnErrorListener((mp, what, extra) -> {
                 synchronized (AudioCenter.this) {
-                    mp.release();
-                    if (currentRadioPlayer == mp) {
-                        currentRadioPlayer = null;
-                        currentRadioStationId = null;
-                        currentRadioStationName = null;
-                    }
-                    // 電台出錯時若本地也沒在播，才釋放共用資源
-                    if (currentMusicPlayer == null) {
-                        releaseMusicVisualizerLocked();
-                    }
-                    discoPushOffIfEnabled();
-                    stopSharedFillerLoopIfIdle();
+                    releaseDoneRadioPlayerLocked(mp);
                 }
                 Log.w(TAG, "Radio stream playback error: what=" + what + " extra=" + extra
                         + " url=" + resolvedUrl);
@@ -988,7 +1063,35 @@ public final class AudioCenter {
             player.prepareAsync();
         } catch (Exception e) {
             Log.w(TAG, "Failed to play radio stream " + url, e);
+            // 起唔到／setDataSource 炒：currentRadioPlayer 可能已經指向呢部
+            // 爛 player（上面賦值咗），唔清嘅話下次轉台／stop 會撞到個死 reference。
+            if (player != null) {
+                try {
+                    player.release();
+                } catch (Throwable ignored) {
+                }
+            }
+            currentRadioPlayer = null;
+            currentRadioStationId = null;
+            currentRadioStationName = null;
         }
+    }
+
+    /** 電台 OnCompletion/OnError 共用：release 那部 player、是 current 先清掉、
+     *  （本地沒在播先）放共用頻譜、熄 disco 燈、停 filler（同 releaseDoneMusicPlayerLocked 對稱）。 */
+    private void releaseDoneRadioPlayerLocked(android.media.MediaPlayer mp) {
+        mp.release();
+        if (currentRadioPlayer == mp) {
+            currentRadioPlayer = null;
+            currentRadioStationId = null;
+            currentRadioStationName = null;
+        }
+        // 電台完／出錯時若本地也沒在播，才釋放共用資源
+        if (currentMusicPlayer == null) {
+            releaseMusicVisualizerLocked();
+        }
+        discoPushOffIfEnabled();
+        stopSharedFillerLoopIfIdle();
     }
 
     public synchronized void stopRadioPlayback() {
@@ -1439,7 +1542,9 @@ public final class AudioCenter {
             }
             try {
                 currentMusicPlayer.pause();
-                discoPushOffIfEnabled(); // pause 即熄燈，唔等過期（個嘴唔會自己熄）
+                // pause 即熄燈（唔等過期，個嘴唔會自己熄），兼 hold 住尾音幀唔好再推。
+                discoPauseHold = true;
+                discoPushOffIfEnabled();
             } catch (Exception e) {
                 return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
                         + MainActivity.jsonSafe(String.valueOf(e.getMessage())) + "\"}");
@@ -1455,6 +1560,7 @@ public final class AudioCenter {
             }
             try {
                 currentMusicPlayer.start();
+                discoPauseHold = false; // resume：有聲第一幀即推返
             } catch (Exception e) {
                 return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
                         + MainActivity.jsonSafe(String.valueOf(e.getMessage())) + "\"}");

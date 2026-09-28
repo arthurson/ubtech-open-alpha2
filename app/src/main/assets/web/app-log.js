@@ -6,7 +6,8 @@
 // ---------------- WebSocket event log ----------------
 
 let ws;
-function connectWs() {
+let wsBootId = null; // server 每次起身派新 bootId（見 WebSocketServer.BOOT_ID）——
+function connectWs() { // 舊 tab（裝機嗰陣開住）斷線重連見到唔同即 reload 攞新 JS。
   const proto = location.protocol === "https:" ? "wss://" : "ws://";
   ws = new WebSocket(proto + location.host + "/ws");
 
@@ -21,6 +22,13 @@ function connectWs() {
   ws.onmessage = function (evt) {
     try {
       const msg = JSON.parse(evt.data);
+      if (msg && msg.type === "connected" && msg.bootId) {
+        if (wsBootId && wsBootId !== msg.bootId) {
+          location.reload(); // app 重裝/重啟，呢頁 JS 舊咗——即刻攞新版。
+          return;
+        }
+        wsBootId = msg.bootId;
+      }
       appendLog(msg);
     } catch (e) {
       appendLog({ type: "raw", time: "", data: evt.data });

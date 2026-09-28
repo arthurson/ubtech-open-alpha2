@@ -667,7 +667,7 @@
         }), 'MODE');
       this.appendDummyInput('SPEED_ROW')
         .appendField(t('led__speed_label'))
-        .appendField(new Blockly.FieldNumber(1500, 0, 5000, 1), 'SPEED');
+        .appendField(new Blockly.FieldNumber(150, 100, 1000, 1), 'SPEED');
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(clr.led);

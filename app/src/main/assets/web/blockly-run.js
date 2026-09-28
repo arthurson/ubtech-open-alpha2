@@ -94,9 +94,14 @@
     await Alpha2Api.ledEyeSet(params);
   }
   // 嘴部 LED：僅得「off / breathe(speed)」兩態 (沒有 solid-on)。
+  // 舊存檔可能帶住 0-5000 範圍嘅 speed（如預設 1500）：clamp 入 100-1000，
+  // 唔好等 server 回 400 成個 program 停咗。
   async function ledMouthAdapter(mode, speed) {
     if (mode === 'off') await Alpha2Api.ledMouthSet({ preset: 'off' });
-    else await Alpha2Api.ledMouthSet({ speed: speed });
+    else {
+      const sp = Math.min(1000, Math.max(100, Number(speed) || 150));
+      await Alpha2Api.ledMouthSet({ speed: sp });
+    }
   }
 
   // ---- 語音 TTS ----

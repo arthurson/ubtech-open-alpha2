@@ -782,6 +782,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         if (audioCenter != null) {
             audioCenter.stopLocalMusicPlayback();
             audioCenter.stopRadioPlayback();
+            audioCenter.shutdown();
         }
     }
 

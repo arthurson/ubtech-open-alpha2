@@ -150,6 +150,9 @@ public final class MicCenter {
                     + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1));
             out.write(msg);
             out.flush();
+            // 早退唔經下面 finally——呢度補熄頭先著嘅綠燈，唔係會長著唔熄。
+            DirectLedController.stopHead5Mic();
+            DirectLedController.stopEye5Mic();
             return;
         }
 

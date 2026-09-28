@@ -134,7 +134,7 @@ mappings:
         required: false
         desc: 1-9, required unless preset=stop.
     note: spec 上 color/brightness 必填，MCP 放寬為 optional（preset=stop 免填，由 callTool 執行 required_if）
-    exclude: [panel_token]
+    exclude: [panel_token, speed, p3, p4]
 
   - mcp: self.robot.led_set_eye
     openapi: /api/led/eye/set
@@ -155,13 +155,13 @@ mappings:
         openapi: brightness
         required: false
         desc: 1-9, required unless preset=stop.
-    exclude: [panel_token]
+    exclude: [panel_token, speed, p3, p4]
 
   - mcp: self.robot.led_set_mouth
     openapi: /api/led/mouth/set
     method: GET
     description: >-
-      Set the mouth LED. preset "breathing" pulses at speed 0-5000ms (0=fastest);
+      Set the mouth LED. preset "breathing" pulses at speed 100-1000ms (150=default);
       "off" turns it off. Driven automatically during TTS playback - manual calls
       mid-conversation may conflict.
     params:
@@ -172,9 +172,7 @@ mappings:
       - mcp: speed_ms
         openapi: speed
         required: false
-        desc: Breathing speed 0-5000ms, only used when preset=breathing. Default 0.
-        minimum: 0
-        maximum: 5000
+        desc: Breathing speed 100-1000ms, only used when preset=breathing. Default 150.
     exclude: [panel_token]
     note: v1 誤寫 mcp 名 speed，實際 code/callTool 讀 speed_ms（MouthLedData.breathing），v2 以 code 為準修正
 

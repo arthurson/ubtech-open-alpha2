@@ -502,22 +502,11 @@ input[type="range"] {
   margin-top: 0;
 }
 
-/* 逐粒試燈：頭左右直排＋眼左右圈 */
-.perled-row {
+/* 逐粒試燈：頭左右直排＋眼左右圈（方形粒，淨睇位） */
+.perled-center {
   display: flex;
-  gap: 32px;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  margin: 8px 0;
-}
-.perled-group {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-.perled-title {
-  font-weight: 700;
+  justify-content: center;
+  margin: 10px 0 4px;
 }
 .perled-head {
   display: flex;
@@ -553,29 +542,125 @@ input[type="range"] {
   font-size: 12px;
   color: var(--muted);
 }
+/* 音量鍵三角掣（夾喺左右頭燈中間）：v+ 上三角，v- 倒三角，入面無字。
+ * 純 CSS 畫（border 砌），唔用字元。著＝黃，熄＝灰。 */
+.perled-pad-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+}
+.pad-tri {
+  width: 0;
+  height: 0;
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  border-left: 13px solid transparent;
+  border-right: 13px solid transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pad-tri:focus {
+  outline: none;
+}
+.pad-tri.up {
+  border-top: none;
+  border-bottom: 19px solid #9aa0a6;
+}
+.pad-tri.down {
+  border-bottom: none;
+  border-top: 19px solid #9aa0a6;
+}
+/* 熄（灰）嗰陣加黑邊：三角本身就係 border 砌，用 drop-shadow 沿形包黑邊。 */
+.pad-tri:not(.on) {
+  filter: drop-shadow(1px 0 0 #222) drop-shadow(-1px 0 0 #222) drop-shadow(0 1px 0 #222) drop-shadow(0 -1px 0 #222);
+}
+.pad-tri.up.on {
+  border-bottom-color: #ffe93b;
+  filter: drop-shadow(1px 0 0 #222) drop-shadow(-1px 0 0 #222) drop-shadow(0 1px 0 #222) drop-shadow(0 -1px 0 #222);
+}
+.pad-tri.down.on {
+  border-top-color: #ffe93b;
+  filter: drop-shadow(1px 0 0 #222) drop-shadow(-1px 0 0 #222) drop-shadow(0 1px 0 #222) drop-shadow(0 -1px 0 #222);
+}
+.pad-tri:hover {
+  background: none;
+}
+/* 咀顯示燈：眼圈中下方，倒半圓（碗形），撳即 toggle（同咀掣一樣）。 */
+.perled-mouth-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+.perled-mouth-arc {
+  width: 48px;
+  height: 22px;
+  border-radius: 0 0 48px 48px;
+  background: #9aa0a6;
+  border: 2px solid #222;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.perled-mouth-arc:focus {
+  outline: none;
+}
+.perled-mouth-arc.on {
+  background: #ff3b3b;
+  border-color: #222;
+  animation: mouthPulse 1.2s ease-in-out infinite;
+}
+.perled-mouth-arc:hover {
+  background: #9aa0a6;
+}
+.perled-mouth-arc.on:hover {
+  background: #ff3b3b;
+}
+@keyframes mouthPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
 .perled-dot {
   width: 24px;
   height: 24px;
-  border-radius: 50%;
-  border: 2px solid var(--border);
-  background: #3a3f44;
-  color: #cfd3d8;
-  font-size: 11px;
-  line-height: 1;
+  border-radius: 4px;
+  border: 2px solid #222;
+  background: #9aa0a6;
   padding: 0;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.perled-dot:focus {
+  outline: none;
+}
+.perled-dot:active {
+  outline: none;
+}
+/* 全域 button:hover 係 accent 藍（0-1-1贏過 .perled-dot 0-1-0），
+ * 手指撳落去會黐住變藍——呢度撳返住：熄＝深灰，著＝inline 色（inline 永遠贏）。 */
+.perled-dot:hover {
+  background: #9aa0a6;
 }
 .perled-ring .perled-dot {
   position: absolute;
 }
 .perled-dot.perled-on {
   border-color: #fff;
-  color: #111;
-  font-weight: 700;
 }
 .perled-dot.perled-wifi {
   border-style: dashed;
 }
+
+/* 系統燈／咀燈 toggle 掣：淨開／熄兩態（熄灰／mute 咀著紅；pad 三角掣另行 pad-tri）。
+ * hover 鎖死同色——全域 button:hover 係藍，唔鎖會一掂變藍。 */
+.sys-toggle-off { background: #9aa0a6; color: #fff; }
+.sys-toggle-on-red { background: #ff3b3b; color: #fff; }
+.sys-toggle-off:hover { background: #9aa0a6; }
+.sys-toggle-on-red:hover { background: #ff3b3b; }
 
 .color-picker {
   display: flex;
@@ -1454,3 +1539,69 @@ input[type="range"] {
 .panel-lock-card .row {
   margin-top: 12px;
 }
+
+/* ---------------- Camera: face detection card (Android built-in FaceDetector) ---------------- */
+/* The locate box is a standalone 0-1 square rather than an overlay drawn on the live
+   viewport: that viewport is object-fit:contain (so the image is letterboxed inside it)
+   and the digital-zoom applies a transform:scale() to the <img> on top, which together
+   make a percentage-positioned overlay drift off the face as soon as zoom != x1 or the
+   feed goes fullscreen. A separate box shows the exact same normalized coordinates with
+   no alignment problem at all. */
+.face-locate {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.face-locate-box {
+  position: relative;
+  flex: 0 0 auto;
+  width: 150px;
+  height: 112px; /* 4:3, same aspect as .camera-viewport so the dot lines up mentally */
+  background: #0b0d11;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.face-locate-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26px;
+  height: 34px;
+  margin: -17px 0 0 -13px; /* half-size offset, matching .crosshair-mark's trick */
+  border: 2px solid #7CFF7C;
+  border-radius: 6px;
+  background: rgba(124, 255, 124, 0.18);
+  opacity: 0;
+  transition: opacity 0.15s linear;
+  pointer-events: none;
+}
+.face-locate-dot.on { opacity: 1; }
+.face-locate-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4px;
+  text-align: center;
+  font-size: 10px;
+  color: #8a8f98;
+  pointer-events: none;
+}
+.face-readout {
+  flex: 1 1 220px;
+  margin: 0;
+  padding: 8px 10px;
+  min-height: 96px;
+  background: #0b0d11;
+  color: #7CFF7C;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.face-readout.warn { color: #fca5a5; }

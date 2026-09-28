@@ -75,7 +75,7 @@ public final class MouthLedData {
 
     /**
      * Breathing-LED preset. breatheSpeedMs is the only dial exposed in the simplified
-     * UI (slider range 0-5000, default 0); playDurationMs is always Integer.MAX_VALUE
+     * UI (slider range 100-1000, default 150); playDurationMs is always Integer.MAX_VALUE
      * (longest available play duration) since callers now start/stop this manually
      * (e.g. around TTS start/end) rather than relying on a fixed timed duration.
      * offDurationMs defaults to 0 per confirmed testing.

@@ -31,31 +31,8 @@ public final class LocalAlpha2Services {
 
     public boolean isDirectActive() { return direct.isDirectAvailable(); }
 
-    // 胸口直驅快捷（2026-09-09：各查各板，唔好查「任一板」——頭板獨活唔代表胸掂）
-    public boolean chestSetSingle(byte id, int angle, short time) {
-        if (!direct.chest().isAvailable()) return false;
-        return direct.chest().setSingleServo(id, angle, time);
-    }
-
-    public boolean chestSetAll(int[] angles20, short time) {
-        if (!direct.chest().isAvailable()) return false;
-        return direct.chest().setAllServos(angles20, time);
-    }
-
-    public boolean chestSonar(int cm) {
-        if (!direct.chest().isAvailable()) return false;
-        return direct.chest().configureSonar(cm);
-    }
-
-    // 頭直驅
-    public boolean headNoise(boolean open) {
-        if (!direct.head().isAvailable()) return false;
-        return direct.head().setNoiseReduction(open);
-    }
-
     // LED 走 JNI，不依賴串口是否可用
     public boolean ledHead(int color) { return DirectLedController.headSolid(color); }
-    public boolean ledEye(int color)  { return DirectLedController.setEye5Mic(color, 9, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0); }
     public boolean ledMouthBreathe(int speed) { return DirectLedController.setMouth(Integer.MAX_VALUE, speed, 0, Integer.MAX_VALUE, 1); }
     public boolean ledOff() { return DirectLedController.clear(); }
 }

@@ -62,6 +62,9 @@ public final class SonarCenter {
     public void applySonarThreshold(int distanceCm) {
         sonarThresholdCm = distanceCm;
         sonarLedActive = false; // threshold changed - next frame decides fresh, don't carry over stale LED state
+        // 上面淨係清旗唔夠：已經著緊紫燈嗰陣改大 threshold，下一個 false 幀會
+        // 因 triggered==sonarLedActive 提早 return，紫燈永久唔熄——呢度即熄。
+        ledCenter.applyObstacleIndicator(false);
     }
 
     /** XiaozhiBridge.HostState 轉交用：讀最新 sonar 距離（-1＝未收過讀數）。 */

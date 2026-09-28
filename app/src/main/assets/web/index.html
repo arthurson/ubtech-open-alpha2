@@ -299,10 +299,27 @@
 
   <!-- ============ TAB: LED ============ -->
   <div id="tab-led" class="tab-page">
+    <!-- UI 0927f（隱形版本釘：curl 呢頁 grep 就知部機跑緊邊版，唔使問用家） -->
     <section class="card">
       <h2>LED</h2>
       <div class="led-block">
         <h3 data-i18n="led_head_heading">頭部 LED</h3>
+        <div class="perled-center">
+          <div class="perled-head">
+            <div class="perled-side">
+              <div class="perled-strip" id="perledHeadR"></div>
+              <div class="perled-side-label" data-i18n="led_perled_right">右</div>
+            </div>
+            <div class="perled-pad-col">
+              <button id="padPlusBtn" class="pad-tri up" title="音量+" onclick="sysPadToggle('plus')"></button>
+              <button id="padMinusBtn" class="pad-tri down" title="音量-" onclick="sysPadToggle('minus')"></button>
+            </div>
+            <div class="perled-side">
+              <div class="perled-strip" id="perledHeadL"></div>
+              <div class="perled-side-label" data-i18n="led_perled_left">左</div>
+            </div>
+          </div>
+        </div>
         <div class="row">
           <label data-i18n="led_color_label">顏色：</label>
           <div id="headColorPicker" class="color-picker"></div>
@@ -311,6 +328,11 @@
           <label><span data-i18n="led_brightness_label">亮度 (1–9)：</span><span id="headBrightnessVal">9</span></label>
           <input id="headBrightness" type="range" min="1" max="9" value="9"
                  oninput="document.getElementById('headBrightnessVal').textContent=this.value; headLedApply()">
+        </div>
+        <div class="row">
+          <label><span data-i18n="led_speed_label">速度 (50–500)：</span><span id="headSpeedVal">100</span></label>
+          <input id="headSpeed" type="range" min="50" max="500" value="100"
+                 oninput="document.getElementById('headSpeedVal').textContent=this.value; headLedApply()">
         </div>
         <div class="row">
           <button onclick="headLedPreset('long')" data-i18n="led_preset_long">💡 長開</button>
@@ -324,6 +346,18 @@
 
       <div class="led-block">
         <h3 data-i18n="led_eye_heading">眼睛 LED</h3>
+        <div class="perled-center">
+          <div class="perled-eyes">
+            <div class="perled-eye-wrap">
+              <div class="perled-ring" id="perledEyeR"></div>
+              <div class="perled-side-label" data-i18n="led_perled_right">右</div>
+            </div>
+            <div class="perled-eye-wrap">
+              <div class="perled-ring" id="perledEyeL"></div>
+              <div class="perled-side-label" data-i18n="led_perled_left">左</div>
+            </div>
+          </div>
+        </div>
         <div class="row">
           <label data-i18n="led_color_label">顏色：</label>
           <div id="eyeColorPicker" class="color-picker"></div>
@@ -334,65 +368,42 @@
                  oninput="document.getElementById('eyeBrightnessVal').textContent=this.value; eyeLedApply()">
         </div>
         <div class="row">
+          <label><span data-i18n="led_speed_label">速度 (50–500)：</span><span id="eyeSpeedVal">100</span></label>
+          <input id="eyeSpeed" type="range" min="50" max="500" value="100"
+                 oninput="eyeSpeedInput(this.value)" onchange="eyeSpeedCommit()">
+        </div>
+        <div class="row">
           <button onclick="eyeLedPreset('long')" data-i18n="led_preset_long">💡 長開</button>
           <button onclick="eyeLedPreset('flash')" data-i18n="led_preset_flash">⚡ 閃燈</button>
           <button onclick="eyeLedPreset('chase')" data-i18n="led_preset_chase">🏃 跑馬燈</button>
           <button onclick="eyeLedPreset('dual')" data-i18n="led_preset_dual">🎨 雙色燈</button>
-          <button onclick="eyeLedPreset('stop')" data-i18n="led_preset_stop">⏹ 停止</button>
           <button onclick="eyeCountdown3s()" data-i18n="led_eye_countdown">⏳ 3秒倒數</button>
-        </div>
-      </div>
-
-      <div class="led-block">
-        <h3 data-i18n="led_perled_heading">🔬 逐粒試燈</h3>
-        <p class="hint" data-i18n="led_perled_hint"></p>
-        <div class="perled-row">
-          <div class="perled-group">
-            <div class="perled-title"><span data-i18n="led_head_heading">頭部 LED</span></div>
-            <div class="perled-head">
-              <div class="perled-side">
-                <div class="perled-strip" id="perledHeadL"></div>
-                <div class="perled-side-label" data-i18n="led_perled_left">左</div>
-              </div>
-              <div class="perled-side">
-                <div class="perled-strip" id="perledHeadR"></div>
-                <div class="perled-side-label" data-i18n="led_perled_right">右</div>
-              </div>
-            </div>
-          </div>
-          <div class="perled-group">
-            <div class="perled-title"><span data-i18n="led_eye_heading">眼睛 LED</span></div>
-            <div class="perled-eyes">
-              <div class="perled-eye-wrap">
-                <div class="perled-ring" id="perledEyeL"></div>
-                <div class="perled-side-label" data-i18n="led_perled_left">左</div>
-              </div>
-              <div class="perled-eye-wrap">
-                <div class="perled-ring" id="perledEyeR"></div>
-                <div class="perled-side-label" data-i18n="led_perled_right">右</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="row">
-          <button onclick="perledAllOn()" data-i18n="led_perled_all_on">全著</button>
-          <button onclick="perledAllOff()" data-i18n="led_perled_all_off">全熄</button>
+          <button onclick="eyeLedPreset('stop')" data-i18n="led_preset_stop">⏹ 停止</button>
         </div>
       </div>
 
       <div class="led-block">
         <h3 data-i18n="led_mouth_heading">嘴部 LED</h3>
-        <div class="row">
-          <label><span data-i18n="led_mouth_speed_label">速度 (0–5000)：</span><span id="mouthSpeedVal">0</span></label>
-          <input id="mouthSpeed" type="range" min="0" max="5000" value="0"
-                 oninput="document.getElementById('mouthSpeedVal').textContent=this.value; mouthLedApply()">
+        <div class="perled-center">
+          <div class="perled-mouth-wrap">
+            <button id="perledMouthArc" class="perled-mouth-arc" title="咀" onclick="mouthToggle()"></button>
+          </div>
         </div>
         <div class="row">
-          <button onclick="mouthLedApply()" data-i18n="led_preset_breathe_mouth">🫁 呼吸燈</button>
-          <button onclick="mouthLedOff()" data-i18n="led_preset_stop">⏹ 停止</button>
+          <label><span data-i18n="led_mouth_speed_label">速度 (100–1000)：</span><span id="mouthSpeedVal">150</span></label>
+          <input id="mouthSpeed" type="range" min="100" max="1000" value="150"
+                 oninput="document.getElementById('mouthSpeedVal').textContent=this.value; mouthSpeedInput(this.value)">
         </div>
-        <p id="mouthLedResult" class="hint"></p>
       </div>
+
+      <div class="led-block">
+        <h3 data-i18n="led_sys_heading">系統指示燈</h3>
+        <div class="row">
+          <label data-i18n="led_sys_mute">靜音燈：</label>
+          <button id="muteBtn" class="sys-toggle-off" onclick="sysMuteToggle()" data-i18n="led_mute_btn_title" data-i18n-attr="title" title="靜音燈"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.09-.6-.39-1.14-1-1.14z"/></svg></button>
+        </div>
+      </div>
+      <!-- 版本標記：驗瀏覽器有無用舊 JS（睇唔到最新號即係 cache 緊舊版，做 Ctrl+F5）。 -->
     </section>
   </div>
 </div><!-- /pagesAlpha2 -->
@@ -458,6 +469,56 @@
     <div id="cameraCaptureList" class="capture-list"></div>
     <div id="cameraPhoto9Grid" class="photo-9-grid" style="display:none"></div>
     <p class="hint" id="cameraPhoto9Hint" style="display:none"></p>
+  </section>
+
+  <!-- 人臉偵測：只用 Android framework 內置嘅 android.media.FaceDetector（API 1 就有），
+       所以冇加任何 aar / native lib / AndroidX，build.gradle 完全冇改。呢張卡純粹係
+       測試用：開迴圈 → 睇結果數字 → 試追頭，唔涉及任何 ML runtime。
+       執行模型同 FPS badge 一樣：後台連續偵測，前端定時輪詢 /api/camera/face，
+       唔會吊住一條長 HTTP 連線。 -->
+  <section class="card">
+    <h2 data-i18n="face_heading">👤 人臉偵測（Android 內置）</h2>
+    <p class="hint" data-i18n="face_intro_hint">
+      用 framework 內置 <code>android.media.FaceDetector</code>，零依賴零 APK 增量。
+      位置／眼距（當距離）／head 姿態（yaw·pitch·roll）全部有得讀。
+    </p>
+    <div class="row">
+      <button id="faceToggleBtn" onclick="toggleFaceDetect()">▶ 開始偵測</button>
+      <button id="faceProbeBtn" onclick="probeFaceDetect()">🔍 探測能力</button>
+      <label class="switch-label"><span data-i18n="face_follow_label">追頭</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="faceFollow">
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+      <label class="switch-label"><span data-i18n="face_crop43_label">4:3 比例</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="faceCrop43" checked onchange="faceCrop43Toggle()">
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+    </div>
+    <!-- 距離估算校準：眼距只係像素數，冇通用常數可以換算成米（取決於 FOV 同被試者
+         面形），所以由用戶報一次真實距離。校準係 per-person，換人就要再校準。 -->
+    <div class="row">
+      <span class="hint" style="margin:0">我企喺</span>
+      <input id="faceCalibCm" type="number" min="20" max="500" step="10" value="100"
+             style="width:76px" onkeydown="event.stopPropagation()">
+      <span class="hint" style="margin:0">cm</span>
+      <button onclick="calibrateFaceDistance()">📏 校準距離</button>
+    </div>
+    <p class="hint" id="faceProbeHint" style="display:none"></p>
+    <!-- 位置指示：唔畫喺串流畫面上，因為 viewport 係 object-fit:contain + 數位變焦
+         transform:scale + fullscreen 疊加，overlay 對唔準。呢度用獨立小框表示同一組
+         normalized 座標，穩陣好多。 -->
+    <div class="face-locate">
+      <div class="face-locate-box">
+        <div id="faceLocateDot" class="face-locate-dot"></div>
+        <span class="face-locate-hint">人臉位置</span>
+      </div>
+      <pre id="faceReadout" class="face-readout">未開始</pre>
+    </div>
+    <p class="hint" id="faceStatusHint"></p>
   </section>
 </div>
 
