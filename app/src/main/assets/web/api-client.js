@@ -184,35 +184,6 @@ const Alpha2Api = (function() {
   }
 
   // ── camera ──────────────────────────────────────────────
-  function cameraFace(params) {
-    // 查詢最新人臉偵測結果
-    return api('camera/face', params);
-  }
-
-  function cameraFaceCalibrate(params) {
-    if (params && params.cm != null) assertRange(Number(params.cm), 20, 500, 'cm');
-    // 校準距離估算（用戶報一次真實距離）
-    return api('camera/face/calibrate', params);
-  }
-
-  function cameraFaceProbe(params) {
-    // 人臉偵測能力探測（driver 端 vs 軟件端）
-    return api('camera/face/probe', params);
-  }
-
-  function cameraFaceStart(params) {
-    if (params && params.w != null) assertRange(Number(params.w), 96, 320, 'w');
-    if (params && params.h != null) assertRange(Number(params.h), 96, 320, 'h');
-    if (params && params.duty != null) assertRange(Number(params.duty), 0.05, 0.6, 'duty');
-    // 開背景人臉偵測迴圈
-    return api('camera/face/start', params);
-  }
-
-  function cameraFaceStop(params) {
-    // 停人臉偵測迴圈
-    return api('camera/face/stop', params);
-  }
-
   function cameraFps(params) {
     // 查詢相機 FPS 與是否串流中
     return api('camera/fps', params);
@@ -949,11 +920,6 @@ const Alpha2Api = (function() {
     audioTesttone,
     audioVolumeGet,
     audioVolumeSet,
-    cameraFace,
-    cameraFaceCalibrate,
-    cameraFaceProbe,
-    cameraFaceStart,
-    cameraFaceStop,
     cameraFps,
     cameraInfo,
     cameraResolution,

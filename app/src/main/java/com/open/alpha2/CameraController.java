@@ -213,39 +213,6 @@ public class CameraController {
         awaitQuietly(latch, timeoutMs, TimeUnit.MILLISECONDS);
         return result.get();
     }
-    /** Reads the camera driver's own max-face-detection capacity (0 = the driver/USB
-     *  webcam class of camera on this robot doesn't do detection at all).
-     *
-     *  Worth probing because if the driver reports > 0, {@code startFaceDetection()}
-     *  would do the work in the driver for free and this whole layer could stay off
-     *  the CPU. Most UVC-class webcams - which is what this unit exposes - report 0,
-     *  so the answer decides whether the software path is needed at all. Follows
-     *  getSupportedPictureSizesSync()'s shape: runs on the camera thread, opens a
-     *  temporary camera if none is currently open, and always closes that temporary.
-     */
-    public int getMaxDetectedFacesSync(long timeoutMs) {
-        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
-        final java.util.concurrent.atomic.AtomicInteger result = new java.util.concurrent.atomic.AtomicInteger(-1);
-        startCameraThreadIfNeeded();
-        cameraHandler.post(new Runnable() {
-            @Override public void run() {
-                android.hardware.Camera tmp = null;
-                try {
-                    if (camera != null) {
-                        result.set(camera.getParameters().getMaxNumDetectedFaces());
-                    } else {
-                        tmp = openFallbackCamera();
-                        if (tmp != null) result.set(tmp.getParameters().getMaxNumDetectedFaces());
-                    }
-                } catch (Exception ignored) { result.set(-1); }
-                finally {
-                    releaseTmpAndCountDown(tmp, latch);
-                }
-            }
-        });
-        awaitQuietly(latch, timeoutMs, TimeUnit.MILLISECONDS);
-        return result.get();
-    }
     public java.util.List<int[]> getSupportedPreviewFpsRangesSync(long timeoutMs) {
         final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
         final java.util.concurrent.atomic.AtomicReference<java.util.List<int[]>> result = new java.util.concurrent.atomic.AtomicReference<>();

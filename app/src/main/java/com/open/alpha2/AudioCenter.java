@@ -30,13 +30,16 @@ public final class AudioCenter {
     private final UbxPlayer ubxPlayer;
     private final ActionDirect actionDirect;
     private final Handler mainHandler;
+    private final LedCenter ledCenter;
 
     public AudioCenter(Context context, UbxPlayer ubxPlayer, ActionDirect actionDirect,
-            Handler mainHandler) {
+            Handler mainHandler, LedCenter ledCenter) {
         this.appContext = context.getApplicationContext();
         this.ubxPlayer = ubxPlayer;
         this.actionDirect = actionDirect;
         this.mainHandler = mainHandler;
+        // disco 熄燈係全域 OFF，要叫 LedCenter 補返 pad/wifi（見 discoLedJob）。
+        this.ledCenter = ledCenter;
         // 遺言機制起步：見下面 discoWatchLoop
         try {
             mainHandler.post(discoWatchLoop);
@@ -205,6 +208,11 @@ public final class AudioCenter {
     private int discoPendingEyeP4 = 0;
     private boolean discoEyePending = false;
     private volatile int discoFailStreak = 0;
+    // 系統燈（pad/wifi/mute）而家著唔著——跟 disco 燈一齊轉，唔係獨立狀態機。
+    private volatile boolean discoSystemLightsOn = false;
+    // 想要嘅狀態（電平），**由咀推**：mm>=0（有聲，咀呼吸緊）＝著，
+    // mm==-2（停歌／pause／靜 3 秒）＝熄。唔靠 play/stop 事件。
+    private volatile boolean discoSystemLightsLevel = false;
     private static final int DISCO_FAIL_DISABLE_AT = 10;
 
     // -- 遺言機制 ---------------------------------------------------
@@ -461,6 +469,7 @@ public final class AudioCenter {
                 int ep4;
                 boolean eu;
                 int mm;
+                boolean sysFlip;
                 synchronized (discoLedLock) {
                     h = discoPendingHead;
                     e = discoPendingEye;
@@ -486,8 +495,18 @@ public final class AudioCenter {
                         hu = false;
                         eu = false;
                         if (mm != -2 || LedCenter.isMouthTtsActive()) mm = -1;
+                        discoSystemLightsLevel = false;
                     }
-                    if (h == -1 && e == -1 && !hu && !eu && mm == -1) {
+                    // 系統燈（pad v-/v+、wifi、胸口 mute）**跟咀**：咀呼吸緊
+                    // （mm >= 0）＝有聲 → 一齊著；咀熄（mm == -2：停歌／pause／
+                    // 連續靜 3 秒）→ 一齊熄。呢個就係用戶要嘅「有音樂先著燈，
+                    // 跟眼/頭/咀一齊著一齊熄」。
+                    // 用咀做訊號（電平），唔用每幀有冇頭/眼 op（會每幀閃），
+                    // 亦都唔靠 play/stop 事件（會自己行起／pause 漏）。
+                    if (mm >= 0) discoSystemLightsLevel = true;
+                    else if (mm == -2) discoSystemLightsLevel = false;
+                    sysFlip = discoSystemLightsLevel != discoSystemLightsOn;
+                    if (h == -1 && e == -1 && !hu && !eu && mm == -1 && !sysFlip) {
                         discoLedBusy = false;
                         return;
                     }
@@ -498,8 +517,18 @@ public final class AudioCenter {
                 java.util.List<com.ubtechinc.alpha.hardware.DirectLedController.LedOp> ops =
                         new java.util.ArrayList<>(3);
                 if (h == -2 || e == -2) {
-                    // 熄＝全局 OFF，一個就夠（頭眼一齊清）。
+                    // 熄＝全域 OFF，一個就夠（頭眼一齊清）。OFF 係「一鑊清晒」，
+                    // 會連 pad 14/16 同 wifi 12/13 一齊清。
+                    // 系統燈跟頭/眼/咀一齊熄，所以呢度**唔補 pad**。
+                    // 重要：呢度只可以清「已套用」嗰個 flag，**唔可以**清
+                    // discoSystemLightsLevel——因為停歌排嘅 -2 可能仲喺 queue，
+                    // 落一首新歌已經 want(true) 咗，仲照清就會將新歌個指示燈熄咗
+                    // （實機：播緊歌 pad 唔著）。要熄由 stop/pause 路徑自己 want(false)。
+                    boolean wasSysOn = discoSystemLightsOn;
+                    discoSystemLightsOn = false;
                     ops.add(com.ubtechinc.alpha.hardware.DirectLedController.LedOp.off());
+                    ops.addAll(ledCenter.discoSystemLightsOps(false));
+                    if (wasSysOn) ledCenter.discoMuteLed(false);
                 }
                 if (hu) {
                     ops.add(com.ubtechinc.alpha.hardware.DirectLedController.LedOp.head(
@@ -515,6 +544,17 @@ public final class AudioCenter {
                 } else if (mm >= 0) {
                     ops.add(com.ubtechinc.alpha.hardware.DirectLedController.LedOp.mouth(
                             Integer.MAX_VALUE, mm, 0, Integer.MAX_VALUE, 1));
+                }
+                // 系統燈（pad v-/v+、wifi 紅、胸口 mute）跟頭/眼/咀**同一個
+                // batch、同一個 job** 一齊著一齊熄（用戶要求：唔好分開做）。
+                // sysFlip 係電平轉換（discoSystemLightsLevel 由播歌／停歌改），
+                // 唔係每幀有冇頭/眼/咀 op——用後者會令 pad 每幀閃。
+                if (sysFlip) {
+                    discoSystemLightsOn = discoSystemLightsLevel;
+                    ops.addAll(ledCenter.discoSystemLightsOps(discoSystemLightsOn));
+                    // 胸口 mute 燈行 chest 串口（唔喺 /dev/led_eye batch 入面），
+                    // 但時機跟呢個轉變，所以依然係「一齊」。
+                    ledCenter.discoMuteLed(discoSystemLightsOn);
                 }
                 try {
                     ok = ops.isEmpty() || com.ubtechinc.alpha.hardware.DirectLedController.runBatch(ops);
@@ -973,6 +1013,9 @@ public final class AudioCenter {
         stopMusicFillerActionLoop();
         stopSharedFillerLoopIfIdle();
         discoPushOffIfEnabled();
+        // 播完／出錯：如果係「而家播緊嗰部」先熄指示燈。舊 player 嘅 callback
+        // 唔可以熄咗新歌嘅燈。
+        
         // 若電台仍在播，保留共用頻譜給電台
         if (currentRadioPlayer == null) {
             releaseMusicVisualizerLocked();
@@ -1085,7 +1128,7 @@ public final class AudioCenter {
             currentRadioPlayer = null;
             currentRadioStationId = null;
             currentRadioStationName = null;
-        }
+            }
         // 電台完／出錯時若本地也沒在播，才釋放共用資源
         if (currentMusicPlayer == null) {
             releaseMusicVisualizerLocked();

@@ -369,6 +369,8 @@ public final class XiaozhiBridge {
     // 自己點燈, 我們在這裡補上: 按一下 → toggle 燈 (亮=muted 視覺狀態), 放開不理。
     private static final byte CHEST_MUTE_LED_CMD = 68; // 0x44, 實機掃描確認
     private volatile boolean chestMuteLedOn = false;
+    // 播歌指示燈嗰一份（disco 開住播歌）。同 chestMuteLedOn OR 埋先真係點燈。
+    private volatile boolean musicIndicatorMuteLit = false;
     // 實機 log：每次按鍵送出去的全部是 68[00] - press 事件重複
     // 觸發導致 toggle 兩次又變回原狀。加 400ms 防抖: 太接近的第二次 press 當作同一次。
     private static final long MUTE_PRESS_DEBOUNCE_MS = 400;
@@ -386,8 +388,7 @@ public final class XiaozhiBridge {
         toggleChestMuteLed();
     }
 
-    public void toggleChestMuteLed() {
-        long now = android.os.SystemClock.elapsedRealtime();
+    public void toggleChestMuteLed() {        long now = android.os.SystemClock.elapsedRealtime();
         long last = lastMutePressMs.get();
         if (now - last < MUTE_PRESS_DEBOUNCE_MS) {
             Log.d(TAG, "mute press debounced (gap " + (now - last) + "ms)");
@@ -427,14 +428,33 @@ public final class XiaozhiBridge {
         chestMuteLedOn = on;
         ledCenter.postPadLed(() -> {
             try {
+                // 同一盞燈亦有播歌指示燈一份（見 applyMuteLedByMusic），要 OR 埋，
+                // 唔好因為小智狀態一變就順手熄咗個播歌指示。
+                final boolean want = on || musicIndicatorMuteLit;
                 for (int i = 0; i < 6; i++) {
-                    sendChestMuteLedImage(on);
+                    sendChestMuteLedImage(want);
                     if (i < 5) {
                         Thread.sleep(i == 0 ? 100 : (i < 3 ? 150 : 250));
                     }
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+            }
+        });
+    }
+
+    /** 播歌指示燈要著呢盞 mute 燈（用戶要求：disco 開住播歌就 v-/v+/mute 一齊著）。
+     *  同一盞實體燈有兩個主人：小智連線態 + 播歌指示燈，實際點唔點 = OR，
+     *  所以歌停只要再報一次 false 就會自動還原做「已連線」燈，唔會誤熄。
+     *  單發一次（唔使 6 次重發：呢個係狀態轉換，唔係實體鍵怕匯流排塞）。 */
+    public void applyMuteLedByMusic(boolean litByMusic) {
+        musicIndicatorMuteLit = litByMusic;
+        final boolean want = chestMuteLedOn || litByMusic;
+        ledCenter.postPadLed(() -> {
+            try {
+                sendChestMuteLedImage(want);
+            } catch (Throwable t) {
+                Log.w(TAG, "applyMuteLedByMusic failed", t);
             }
         });
     }

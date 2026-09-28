@@ -153,8 +153,8 @@ public final class ApiValidator {
         return rangeCheck(key, parseIntOrThrow(key, v), min, max);
     }
 
-    /** camera/face/start?duty=0.30 — 偵測迴圈允許用幾多比例嘅 wall-clock 時間做運算。
-     *  故意用 double min/max：duty 係比例值（0.05-0.60），唔係整數。 */
+    /** 浮點參數嘅範圍驗證。min/max 用 double：浮點範圍通常係小數（比例、增益、門檻），
+     *  唔係整數。 */
     public static float optionalFloatRange(Map<String, String> q, String key,
                                            double min, double max, float defaultValue) {
         String v = q.get(key);

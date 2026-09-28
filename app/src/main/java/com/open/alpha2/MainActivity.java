@@ -315,6 +315,15 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 ubxPlayer, musicController, localServices, sonarCenter, actionsPackController,
                 apkDownloadController);
 
+        // 播歌指示燈（disco 開住播歌）同「小智已連線」燈共用胸口同一盞 mute 燈，
+        // 由 XiaozhiBridge 做 OR。起喺 xiaozhiBridge 之後。
+        ledCenter.setMuteLedSink(new LedCenter.MuteLedSink() {
+            @Override
+            public void applyMuteLed(boolean litByMusic) {
+                xiaozhiBridge.applyMuteLedByMusic(litByMusic);
+            }
+        });
+
         // Plain HTTP only. TLS/HTTPS was tried (self-signed cert) to make getUserMedia()
         // available for the walkie-talkie mic feature, but browsers on this device
         // repeatedly rejected new TLS connections after the very first page load with
@@ -555,7 +564,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         ubxApi = new UbxApi(this, ubxPlayer, actionDirect, chestQuery);
         chestUpgrade = new ChestUpgrade(this, chestQuery);
         // (ringtoneCenter/ledCenter 已在 onCreate 頭段建好，見上面。)
-        audioCenter = new AudioCenter(this, ubxPlayer, actionDirect, mainHandler);
+        audioCenter = new AudioCenter(this, ubxPlayer, actionDirect, mainHandler, ledCenter);
         EventBus.get().publish("authorize", "{\"code\":1,\"info\":\"have offline authority\"}");
         Log.i(TAG, "Authorize result: 1 have offline authority");
 

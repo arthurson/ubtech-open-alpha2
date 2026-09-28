@@ -463,21 +463,6 @@ public final class ApiDispatcher {
                 return cameraApi.resolution(query);
             case "camera/zoom":
                 return cameraApi.zoom(query);
-            // -- Face detection: android.media.FaceDetector only (framework, API 1+, zero
-            // dependencies). start/stop drive the background loop; the browser polls
-            // camera/face for the latest result exactly like the camera/fps badge does, so
-            // no long-lived HTTP request is needed. camera/face/probe reports what THIS
-            // hardware supports (driver-side detection vs software detector). --
-            case "camera/face/start":
-                return cameraApi.faceStart(query);
-            case "camera/face/stop":
-                return cameraApi.faceStop();
-            case "camera/face":
-                return cameraApi.faceStatus();
-            case "camera/face/probe":
-                return cameraApi.faceProbe();
-            case "camera/face/calibrate":
-                return cameraApi.faceCalibrate(query);
             // -- Walkie-talkie (body 在 MicCenter；薄 delegate，不要在這裡加 logic) --
             case "audio/testtone":
                 return micCenter.testTone();

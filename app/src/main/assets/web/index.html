@@ -470,56 +470,6 @@
     <div id="cameraPhoto9Grid" class="photo-9-grid" style="display:none"></div>
     <p class="hint" id="cameraPhoto9Hint" style="display:none"></p>
   </section>
-
-  <!-- 人臉偵測：只用 Android framework 內置嘅 android.media.FaceDetector（API 1 就有），
-       所以冇加任何 aar / native lib / AndroidX，build.gradle 完全冇改。呢張卡純粹係
-       測試用：開迴圈 → 睇結果數字 → 試追頭，唔涉及任何 ML runtime。
-       執行模型同 FPS badge 一樣：後台連續偵測，前端定時輪詢 /api/camera/face，
-       唔會吊住一條長 HTTP 連線。 -->
-  <section class="card">
-    <h2 data-i18n="face_heading">👤 人臉偵測（Android 內置）</h2>
-    <p class="hint" data-i18n="face_intro_hint">
-      用 framework 內置 <code>android.media.FaceDetector</code>，零依賴零 APK 增量。
-      位置／眼距（當距離）／head 姿態（yaw·pitch·roll）全部有得讀。
-    </p>
-    <div class="row">
-      <button id="faceToggleBtn" onclick="toggleFaceDetect()">▶ 開始偵測</button>
-      <button id="faceProbeBtn" onclick="probeFaceDetect()">🔍 探測能力</button>
-      <label class="switch-label"><span data-i18n="face_follow_label">追頭</span>
-        <span class="toggle-switch">
-          <input type="checkbox" id="faceFollow">
-          <span class="toggle-track"></span>
-        </span>
-      </label>
-      <label class="switch-label"><span data-i18n="face_crop43_label">4:3 比例</span>
-        <span class="toggle-switch">
-          <input type="checkbox" id="faceCrop43" checked onchange="faceCrop43Toggle()">
-          <span class="toggle-track"></span>
-        </span>
-      </label>
-    </div>
-    <!-- 距離估算校準：眼距只係像素數，冇通用常數可以換算成米（取決於 FOV 同被試者
-         面形），所以由用戶報一次真實距離。校準係 per-person，換人就要再校準。 -->
-    <div class="row">
-      <span class="hint" style="margin:0">我企喺</span>
-      <input id="faceCalibCm" type="number" min="20" max="500" step="10" value="100"
-             style="width:76px" onkeydown="event.stopPropagation()">
-      <span class="hint" style="margin:0">cm</span>
-      <button onclick="calibrateFaceDistance()">📏 校準距離</button>
-    </div>
-    <p class="hint" id="faceProbeHint" style="display:none"></p>
-    <!-- 位置指示：唔畫喺串流畫面上，因為 viewport 係 object-fit:contain + 數位變焦
-         transform:scale + fullscreen 疊加，overlay 對唔準。呢度用獨立小框表示同一組
-         normalized 座標，穩陣好多。 -->
-    <div class="face-locate">
-      <div class="face-locate-box">
-        <div id="faceLocateDot" class="face-locate-dot"></div>
-        <span class="face-locate-hint">人臉位置</span>
-      </div>
-      <pre id="faceReadout" class="face-readout">未開始</pre>
-    </div>
-    <p class="hint" id="faceStatusHint"></p>
-  </section>
 </div>
 
 <!-- 小智 AI 對話 - 同 tab-camera 一樣, 不屬於任何一個 AIDL backend (連線/MCP 橋接

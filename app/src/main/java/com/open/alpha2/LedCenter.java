@@ -275,46 +275,127 @@ public final class LedCenter {
     }
 
     /**
-     * 放手後熄燈 burst：連發 ledSetOFF（已熄即 no-op），同上面 held-combo
-     * burst 同一個 pattern。注意 ledSetOFF 會連 wifi 12/13 一起清，
-     * wifi 燈由 applyWifiLed 在狀態變化時重設。
+     * 放手後熄燈 burst：全域 OFF（ledSetOFF 係「一鑊清晒」，頭/眼/pad/wifi/咀
+     * 全部死）之後即刻補返應該留低嘅燈。
+     *
+     * 實機 logcat 捉到嘅原 bug：呢度以前淨係打 OFF 再補個咀，head/eye/pad/wifi
+     * 就永久黑——實機係撳一次 V+/V- 放開就見到成部機燈爆一鑊再淨返個咀，
+     * disco 跳舞途中被踩到就成段唔見。wifi 尤其慘：applyWifiLedInternal 每隔
+     * 幾百 ms 又補返 wifi 一次，於是 OFF→補 wifi 无限 ping-pong。
+     *
+     * 而家用 runBatch（OFF + 補燈同一個 open，中間零黑場），跟 ledPadSet 嗰套
+     * 一致。keepPads=false：實體鍵放手就係嗰粒(s)要滅，唔應該照 mirror 補返。
      */
     private boolean assertPadLedsOffBurst() {
         for (int attempt = 1; attempt <= PAD_LED_OPEN_ATTEMPTS; attempt++) {
-            final boolean[] openOk = {false};
-            // 同上：open→ioctl→close 入全局驅動鎖，唔好同 disco 撞 open。
-            DirectLedController.runExclusive(() -> {
-                try {
-                    openOk[0] = LedControl.open();
-                } catch (Throwable t) {
-                    Log.w(TAG, "pad LED open() threw (off)", t);
-                }
-                if (openOk[0]) {
-                    try {
-                        LedControl.ledSetOFF(0);
-                    } finally {
-                        try {
-                            LedControl.close();
-                        } catch (Throwable ignored) {
-                        }
-                    }
-                }
-            });
-            if (openOk[0]) {
-                // 全局熄連 pad 試燈態一齊清（硬件現實：兩粒一齊死，mirror 唔呃人），
-                // 兼補返個咀（OFF 會連咀通道一齊清，唔補就永久黑）。
+            java.util.List<DirectLedController.LedOp> ops = new java.util.ArrayList<>(6);
+            ops.add(DirectLedController.LedOp.off());
+            // keepPads 睇播歌指示燈：佢著嘅時候，實體鍵放手唔應該連佢一齊熄。
+            appendRestoreOps(ops, false, null);
+            if (DirectLedController.runBatch(ops)) {
+                // 全局熄連 pad 試燈態一齊清（硬件現實：兩粒一齊死，mirror 唔呃人）。
                 // 旗操作同 ledPadSet 揸同一把鎖，唔好兩邊同時改。
                 synchronized (padToggleLock) {
                     padMinusLit = false;
                     padPlusLit = false;
                 }
-                DirectLedController.restoreMouthAfterOff();
                 return true;
             }
             if (!sleepPadRetryGap()) return false;
         }
-        Log.w(TAG, "pad LED off: open() failed " + PAD_LED_OPEN_ATTEMPTS + "x in a row");
+        Log.w(TAG, "pad LED off: batch failed " + PAD_LED_OPEN_ATTEMPTS + "x in a row");
         return false;
+    }
+
+    /**
+     * 全域 OFF 之後要補返嘅燈（頭 → 眼 → pad → wifi），一個接一個加落去。
+     *
+     * @param keepPads  false = 實體音量鍵放手，pad 兩粒都唔補（要佢哋熄）。
+     * @param wifiOverride null = 照 wifiLedState 補；"red"/"blue" = 補呢隻新色；
+     *                     "off" = 唔補 wifi（ledWifiSet(color=off) 用）。
+     * 頭/眼只喺真係著過先補（DirectLedController.lastHeadParams 未打過會回 null）。
+     *
+     * pad/wifi 嘅 mirror 一定要揸住 padToggleLock 讀：ledPadSet 同一個全域 OFF
+     * 補燈都係喺呢把鎖入面做。唔鎖就會讀到半舊半新——實機見過連續轉 wifi 色
+     * （每轉一次都全域 OFF 一次）撞埋 pad 試燈，補燈時 pad 旗未更新，
+     * 嗰粒 v-/v+ 就被 OFF 咗又唔補返，變成間中熄。
+     * 鎖係可重入，ledPadSetLocked 本身已揸住，巢狀安全。
+     */
+    private void appendRestoreOps(java.util.List<DirectLedController.LedOp> ops,
+                                  boolean keepPads, String wifiOverride) {
+        int[] h = DirectLedController.lastHeadParams();
+        if (h != null) {
+            ops.add(DirectLedController.LedOp.head(h[0], h[1], h[2], h[3],
+                    Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0));
+        }
+        int[] e = DirectLedController.lastEyeParams();
+        if (e != null) {
+            ops.add(DirectLedController.LedOp.eye(e[0], e[1], e[2], e[3],
+                    Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0));
+        }
+        synchronized (padToggleLock) {
+            if (keepPads) {
+                if (padMinusLit) ops.add(DirectLedController.LedOp.on(PAD_LED_INDEX_MINUS));
+                if (padPlusLit) ops.add(DirectLedController.LedOp.on(PAD_LED_INDEX_PLUS));
+            }
+            String w = wifiOverride != null ? wifiOverride : wifiLedState;
+            if ("blue".equals(w)) {
+                ops.add(DirectLedController.LedOp.on(WIFI_LED_INDEX_BLUE));
+            } else if ("red".equals(w)) {
+                ops.add(DirectLedController.LedOp.on(WIFI_LED_INDEX_RED));
+            }
+        }
+    }
+
+    /**
+     * 節奏燈（disco）嘅系統燈：**跟頭/眼/咀同一個 batch、同一個 disco job
+     * 一齊著一齊熄**，唔好另外開一套狀態機（用戶要求）。
+     *
+     * 呢度**寫入** padMinusLit/padPlusLit（即係當成「撳咗個掣」），所以之後
+     * 用家手動改 pad 就真係改到、唔會彈返——同 wifi/mute 一致。呢個係修正
+     * 之前 pad 嘅 API 講大話：`led/pad/set?on=false` 回 ok 但粒燈即刻彈返
+     * （實測 minus=false 送完即刻 true）。disco 係「開燈嗰刻設一次」，
+     * 唔係成首歌鎖住用家隻手。
+     *
+     * @param on true = 著緊：pad v-(14)/v+(16) + wifi 紅(13)。
+     *            false = 熄：pad 兩粒都熄，wifi 校返真實連線態。
+     */
+    public java.util.List<DirectLedController.LedOp> discoSystemLightsOps(boolean on) {
+        java.util.List<DirectLedController.LedOp> ops = new java.util.ArrayList<>(5);
+        if (on) {
+            // 只加唔減：pad 由熄變著同 wifi 轉紅都係累加式，唔使全域 OFF。
+            padMinusLit = true;
+            padPlusLit = true;
+            ops.add(DirectLedController.LedOp.on(PAD_LED_INDEX_MINUS));
+            ops.add(DirectLedController.LedOp.on(PAD_LED_INDEX_PLUS));
+            ops.add(DirectLedController.LedOp.on(WIFI_LED_INDEX_RED));
+            wifiLedState = "red";
+        } else {
+            // 熄：pad 唔補（跟 disco 一齊熄）；wifi 校返真實連線態（通咗就藍）。
+            padMinusLit = false;
+            padPlusLit = false;
+            appendRestoreOps(ops, false, realWifiColor());
+            String real = realWifiColor();
+            wifiLedState = real;
+        }
+        return ops;
+    }
+
+    /** 現查 wifi 開關制＋連線態，出 "blue"/"red"/"off"。 */
+    private String realWifiColor() {
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager)
+                    appContext.getSystemService(Context.WIFI_SERVICE);
+            if (wm == null || !wm.isWifiEnabled()) return "off";
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                    appContext.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return "red";
+            android.net.NetworkInfo ni =
+                    cm.getNetworkInfo(android.net.ConnectivityManager.TYPE_WIFI);
+            return (ni != null && ni.isConnected()) ? "blue" : "red";
+        } catch (Throwable t) {
+            return "blue";
+        }
     }
 
     // -- WiFi 燈 (12 藍=有網 / 13 紅=無網) --------------------------------------
@@ -448,21 +529,22 @@ public final class LedCenter {
     private volatile String wifiLedState = "off";
 
     private void applyWifiLedInternal(boolean wifiOn, boolean connected) {
-        try {
-            assertPadLedsOffBurst();
+        String want = !wifiOn ? "off" : (connected ? "blue" : "red");
+        // 冇變色就一個 ioctl 都唔使打。實機 logcat 見過舊 path 隔幾百 ms 就
+        // 「全域 OFF → sleep 100ms → 淨返個 wifi」咁 ping-pong，仲要成部機
+        // 黑 100ms，disco 頭/眼跳舞被踩到就成段唔見。加呢個閘之後靜晒。
+        synchronized (padToggleLock) {
+            if (want.equals(wifiLedState)) return;
             if (!wifiOn) {
-                wifiLedState = "off";
+                // 熄＝全域 OFF（會連頭/眼一齊清）。跟返原本語義。
+                if (assertPadLedsOffBurst()) wifiLedState = "off";
                 return;
             }
-            Thread.sleep(100);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            // 熄完先斷線：硬件已經黑，mirror 唔好留返舊紅/藍。
-            wifiLedState = "off";
-            return;
+            // 紅↔藍淨係打 ledSetOn(12/13)，唔使先 OFF（見 ledWifiSet 註解）。
+            if (assertSingleLedBurst(connected ? WIFI_LED_INDEX_BLUE : WIFI_LED_INDEX_RED)) {
+                wifiLedState = want;
+            }
         }
-        boolean ok = assertSingleLedBurst(connected ? WIFI_LED_INDEX_BLUE : WIFI_LED_INDEX_RED);
-        if (ok) wifiLedState = connected ? "blue" : "red";
     }
 
     /** One burst: retry open()/dev/led_eye until it opens, light a single LED index.
@@ -807,7 +889,8 @@ public final class LedCenter {
         if (s == null || s.length() < 2 || s.charAt(s.length() - 1) != '}') {
             return HttpServer.ApiResponse.ok(s == null ? "{\"ok\":false}" : s);
         }
-        String extra = ",\"pad\":{\"minus\":" + padMinusLit + ",\"plus\":" + padPlusLit + "}"
+        String extra = ",\"pad\":{\"minus\":" + padMinusLit
+                + ",\"plus\":" + padPlusLit + "}"
                 + ",\"wifi\":\"" + wifiLedState + "\"}";
         return HttpServer.ApiResponse.ok(s.substring(0, s.length() - 1) + extra);
     }
@@ -824,6 +907,10 @@ public final class LedCenter {
             ok = assertPadLedsOffBurst();
             if (ok) wifiLedState = "off";
         } else {
+            // 紅↔藍淨係打一個 ledSetOn(12/13) 就得，唔使先全域 OFF——實機
+            // 確認 ledSetOn 自己會換走上一隻色。（2026-09 試過改用
+            // 「OFF + 補頭/眼/pad + 點新色」個 batch，結果每轉一次色就成版
+            // 燈爆一鑊，v-/v+ 隔住就見到熄，user 投訴。唔好行嗰條路。）
             ok = assertSingleLedBurst("blue".equals(color) ? WIFI_LED_INDEX_BLUE : WIFI_LED_INDEX_RED);
             if (ok) wifiLedState = color;
         }
@@ -838,6 +925,31 @@ public final class LedCenter {
      *  mirror 照清，見 assertPadLedsOffBurst）。 */
     private volatile boolean padMinusLit = false;
     private volatile boolean padPlusLit = false;
+
+    /** 胸口 mute 燈嘅控制權喺 XiaozhiBridge（小智連線態）。呢度淨係一個
+     *  callback：節奏燈同「已連線」燈共用一盞實體燈，所以淨係報「呢次係
+     *  因為節奏燈而定/唔定」，真正點邊個色由嗰邊 OR 埋小智狀態。 */
+    public interface MuteLedSink {
+        void applyMuteLed(boolean litByDisco);
+    }
+
+    private volatile MuteLedSink muteLedSink = null;
+
+    public void setMuteLedSink(MuteLedSink s) {
+        this.muteLedSink = s;
+    }
+
+    /** 節奏燈一齊著埋胸口 mute 燈／一齊熄。跟 disco job 同一個時機叫，
+     *  唔係另外一套狀態機。 */
+    public void discoMuteLed(boolean litByDisco) {
+        MuteLedSink s = muteLedSink;
+        if (s == null) return;
+        try {
+            s.applyMuteLed(litByDisco);
+        } catch (Throwable t) {
+            Log.w(TAG, "disco mute led failed", t);
+        }
+    }
     // pad toggle 讀改寫鎖：連撳快嗰陣兩個 request 會同時讀到同一個舊旗，
     // 一齊著，結果應該熄變著（之前「時得時唔得」就係咁嚟）。成個 toggle
     // 揸住把鎖做（連驅動 ops），排隊慢慢嚟，一次一個。
@@ -863,46 +975,26 @@ public final class LedCenter {
                 if (minus) padMinusLit = true; else padPlusLit = true;
             }
         } else {
-            // 熄邊粒就留返另一粒：熄緊 minus（minus=true）就留 plus，
-            // 熄緊 plus（minus=false）就留 minus；熄緊嗰粒永遠唔補。
-            boolean keepPlus = minus && padPlusLit;
-            boolean keepMinus = !minus && padMinusLit;
-            // 一批過：OFF → 頭 → 眼 → 另一粒 pad → wifi，一次 open，
+            // 熄邊粒就留返另一粒：OFF 係「一鑊清晒」，所以要補返。
+            // 補幾粒用「實際應否著」（手動 OR 播歌指示燈）去判。
+            // 注意：手動旗只可以改「今次撳嗰粒」，唔可以順手把對面粒嘅手動旗
+            // 覆寫成有效值——咁樣會污染手動狀態（之前搞到歌停咗之後，另一粒
+            // pad 永遠熄唔到）。對面粒原狀照留，appendRestoreOps 自然識補。
+            if (minus) padMinusLit = false; else padPlusLit = false;
+            // 一批過：OFF → 頭 → 眼 → 保留嘅 pad → wifi，一次 open，
             // 中間零停頓——逐個打要幾百 ms，肉眼見到成組閃一閃。
-            java.util.List<DirectLedController.LedOp> ops = new java.util.ArrayList<>(5);
+            java.util.List<DirectLedController.LedOp> ops = new java.util.ArrayList<>(6);
             ops.add(DirectLedController.LedOp.off());
-            int[] h = DirectLedController.lastHeadParams();
-            if (h != null) {
-                ops.add(DirectLedController.LedOp.head(h[0], h[1], h[2], h[3],
-                        Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0));
-            }
-            int[] e = DirectLedController.lastEyeParams();
-            if (e != null) {
-                ops.add(DirectLedController.LedOp.eye(e[0], e[1], e[2], e[3],
-                        Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0));
-            }
-            if (keepPlus) ops.add(DirectLedController.LedOp.on(PAD_LED_INDEX_PLUS));
-            if (keepMinus) ops.add(DirectLedController.LedOp.on(PAD_LED_INDEX_MINUS));
-            if ("blue".equals(wifiLedState)) {
-                ops.add(DirectLedController.LedOp.on(WIFI_LED_INDEX_BLUE));
-            } else if ("red".equals(wifiLedState)) {
-                ops.add(DirectLedController.LedOp.on(WIFI_LED_INDEX_RED));
-            }
+            appendRestoreOps(ops, true, null);
             ok = DirectLedController.runBatch(ops);
-            if (ok) {
-                padMinusLit = false;
-                padPlusLit = false;
-                if (keepPlus) padPlusLit = true;
-                if (keepMinus) padMinusLit = true;
-            } else {
-                // 衰咗（多數第一下 OFF 都打唔開）：mirror 兩粒一齊清，
-                // response 話失敗，用家會再撳。
-                padMinusLit = false;
-                padPlusLit = false;
+            if (!ok) {
+                // 衰咗（多數第一下 OFF 都打唔開）：response 話失敗，用家會再撳。
+                Log.w(TAG, "pad set off failed");
             }
         }
         return HttpServer.ApiResponse.ok("{\"ok\":" + ok
-                + ",\"minus\":" + padMinusLit + ",\"plus\":" + padPlusLit + "}");
+                + ",\"minus\":" + padMinusLit
+                + ",\"plus\":" + padPlusLit + "}");
     }
 
     /** 胸口 mute 燈（chest cmd 68）試燈：純粹點燈，唔掂小智連線。
