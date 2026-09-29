@@ -16,11 +16,55 @@ public final class CameraApi {
     private final Context appContext;
     private final CameraController cameraController;
     private final RingtoneCenter ringtoneCenter;
+    private volatile FaceTrackCenter faceTrackCenter;
 
     public CameraApi(Context context, CameraController cameraController, RingtoneCenter ringtoneCenter) {
         this.appContext = context.getApplicationContext();
         this.cameraController = cameraController;
         this.ringtoneCenter = ringtoneCenter;
+    }
+
+    /** MainActivity 接線用：注入人臉追蹤中心（未注入時 face/track/* 回清晰錯誤）。 */
+    public void setFaceTrackCenter(FaceTrackCenter center) {
+        this.faceTrackCenter = center;
+    }
+
+    private HttpServer.ApiResponse faceOrError() {
+        if (faceTrackCenter == null) {
+            return HttpServer.ApiResponse.error("face track not initialised");
+        }
+        return null;
+    }
+
+    // -- Android 內置人臉追蹤（見 FaceTrackCenter）：薄 delegate，不在這裡加 logic --
+    public HttpServer.ApiResponse faceTrackStart(Map<String, String> query) {
+        HttpServer.ApiResponse err = faceOrError();
+        if (err != null) return err;
+        return faceTrackCenter.start(query);
+    }
+
+    public HttpServer.ApiResponse faceTrackStop() {
+        HttpServer.ApiResponse err = faceOrError();
+        if (err != null) return err;
+        return faceTrackCenter.stop();
+    }
+
+    public HttpServer.ApiResponse faceTrackStatus() {
+        HttpServer.ApiResponse err = faceOrError();
+        if (err != null) return err;
+        return faceTrackCenter.status();
+    }
+
+    public HttpServer.ApiResponse faceTrackConfig(Map<String, String> query) {
+        HttpServer.ApiResponse err = faceOrError();
+        if (err != null) return err;
+        return faceTrackCenter.config(query);
+    }
+
+    public HttpServer.ApiResponse faceTrackProbe() {
+        HttpServer.ApiResponse err = faceOrError();
+        if (err != null) return err;
+        return faceTrackCenter.probe();
     }
 
     /** Polls CameraController.getLastFrame() until a frame newer than "none yet"

@@ -780,12 +780,103 @@ function connectCameraStream() {
 }
 
 // DOMContentLoaded 單次初始化變焦與搖桿回中（不依賴 app-log.js 順序，自身亦可獨立起）
-function initCameraUiToggles() { try { initCameraZoom(); } catch(e){} try { initJoystickAutoReturn(); } catch(e){} try { updateCrosshairVisibility(); } catch(e){} }
+function initCameraUiToggles() { try { initCameraZoom(); } catch(e){} try { initJoystickAutoReturn(); } catch(e){} try { updateCrosshairVisibility(); } catch(e){} try { faceTrackRefreshStatus(); } catch(e){} }
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initCameraUiToggles);
 } else {
   initCameraUiToggles();
 }
+
+// ---------------- Camera: Android 內置人臉追蹤 ----------------
+//
+// 後端 FaceTrackCenter（framework FaceDetector，零依賴）：檢到最大一張臉即按
+// 偏移步進驅動頭部 19/20（定案預設：步進 17°、死區 0.10、自動間隔 500/100ms，
+// 追頭＋ROI 預設開）。前端只剩功能鍵行一個開關＋viewport 綠框 overlay，不做任何
+// 影像分析（分析全在機械人端，瀏覽器只畫框）。
+// 注意：播動作（UbxPlayer）時請先停追蹤，兩邊同搶頭部舵機會打架。
+//
+// 卡片已移除（定案收斂），`faceTrackStatusHint` 等設定控件不存在——下面所有
+// getElementById 全部有 null-guard，搵唔到即跳過。
+
+let faceTrackPollTimer = null;
+let faceTrackRunning = false;
+
+function faceTrackRenderBox(json) {
+  const box = document.getElementById("faceTrackBox");
+  const viewport = document.getElementById("cameraViewport");
+  if (!box || !viewport) return;
+  if (!json || !json.running || !json.faces || json.fx == null || json.fx < 0) {
+    box.classList.remove("on");
+    return;
+  }
+  const rect = viewport.getBoundingClientRect();
+  const fx = Number(json.fx), fy = Number(json.fy);
+  const fw = Number(json.fw) || 0.25, fh = Number(json.fh) || 0.3;
+  if (!(fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1)) { box.classList.remove("on"); return; }
+  // 中心＋寬高（歸一化）轉 viewport px；img 是 object-fit:contain，簡單按 viewport
+  // 全區定位（近似框，調試用，不保證與 MJPEG 像素級對齊）。
+  const w = Math.max(24, fw * rect.width);
+  const h = Math.max(24, fh * rect.height);
+  const left = Math.max(0, Math.min(rect.width - w, fx * rect.width - w / 2));
+  const top = Math.max(0, Math.min(rect.height - h, fy * rect.height - h / 2));
+  box.style.left = left + "px";
+  box.style.top = top + "px";
+  box.style.width = w + "px";
+  box.style.height = h + "px";
+  box.classList.add("on");
+}
+
+function faceTrackRenderStatus(json) {
+  const toggle = document.getElementById("faceTrackToggle");
+  if (!json || !json.ok) return;
+  faceTrackRunning = !!json.running;
+  if (toggle && toggle.checked !== faceTrackRunning) toggle.checked = faceTrackRunning;
+  faceTrackRenderBox(json);
+}
+
+async function faceTrackRefreshStatus() {
+  try {
+    const json = await Alpha2Api.faceTrackStatus();
+    faceTrackRenderStatus(json);
+  } catch (e) {
+    showError(t("face_track_label"), e);
+  }
+}
+
+function faceTrackStartPolling() {
+  faceTrackStopPolling();
+  faceTrackPollTimer = setInterval(faceTrackRefreshStatus, 1500);
+}
+
+function faceTrackStopPolling() {
+  if (faceTrackPollTimer) { clearInterval(faceTrackPollTimer); faceTrackPollTimer = null; }
+  const box = document.getElementById("faceTrackBox");
+  if (box) box.classList.remove("on");
+}
+
+async function faceTrackToggleChanged() {
+  const toggle = document.getElementById("faceTrackToggle");
+  const on = toggle ? toggle.checked : false;
+  try {
+    if (on) {
+      // 設定卡已移除：空參數即用後端定案預設（步進 17／死區 0.10／自動 500/100ms，追頭＋ROI 開）。
+      const json = await Alpha2Api.faceTrackStart({});
+      faceTrackRenderStatus(json);
+      if (json && json.ok && json.running) faceTrackStartPolling();
+      else if (toggle) toggle.checked = false;
+    } else {
+      const json = await Alpha2Api.faceTrackStop();
+      faceTrackRenderStatus(json);
+      faceTrackStopPolling();
+      // 停後再讀一次確保框清除
+      faceTrackRenderBox({ running: false });
+    }
+  } catch (e) {
+    showError(t("face_track_label"), e);
+    if (toggle) toggle.checked = faceTrackRunning;
+  }
+}
+
 
 
 

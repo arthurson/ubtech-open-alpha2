@@ -3167,6 +3167,229 @@ paths:
                         type: integer
                         example: 100
       operationId: cameraZoom_get
+  /api/face/track/start:
+    get:
+      tags:
+      - camera
+      summary: 開始 Android 內置人臉追蹤（FaceDetector＋頭部 19/20 跟人）
+      description: 純 framework android.media.FaceDetector，零額外依賴、離線可用。會自動開相機（若未開流），按 intervalMs 抽樣檢測，死區＋步進驅動頭部 yaw/pitch。播動作時請先停追蹤，兩邊同搶頭部舵機會打架。
+      parameters:
+      - name: intervalMs
+        in: query
+        schema:
+          type: integer
+          minimum: 100
+          maximum: 3000
+        description: 檢測間隔 ms（預設 500；無臉／全圖搜用呢個；自動開且跟到臉改用 trackIntervalMs）
+      - name: trackIntervalMs
+        in: query
+        schema:
+          type: integer
+          minimum: 100
+          maximum: 3000
+        description: 跟到臉時檢測間隔 ms（預設 100；僅自動開有效；實測單幀 ROI ~25ms、全圖 320x240 ~80ms）
+      - name: autoInterval
+        in: query
+        schema:
+          type: boolean
+        description: 自動間隔（預設 true；開＝無臉慢掃、跟到快掃；關＝一律用 intervalMs）
+      - name: stepDeg
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 30
+        description: 每次最大跟隨步進（度，預設 17；死區外按偏移比例折算）
+      - name: deadband
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.5
+        description: 中央死區（歸一化半寬，預設 0.10；臉在死區內不動頭）
+      - name: timeMs
+        in: query
+        schema:
+          type: integer
+          minimum: 20
+          maximum: 2000
+        description: 單步舵機執行時間 ms（預設 400）
+      - name: maxFaces
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 5
+        description: FaceDetector 最大人臉數（預設 3；只跟最大一張）
+      - name: headFollow
+        in: query
+        schema:
+          type: boolean
+        description: 追頭總開關（預設 true；關＝只偵測＋畫框，頭不動）
+      - name: roiEnabled
+        in: query
+        schema:
+          type: boolean
+        description: ROI 跟隨（預設 true；檢到後只掃臉附近，320x240 長開 10fps 用；掃唔到 3 次回全圖）
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 追蹤狀態（同 face/track/status 同形狀）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: faceTrackStart_get
+  /api/face/track/stop:
+    get:
+      tags:
+      - camera
+      summary: 停止人臉追蹤（頭停在現位，不自動回中）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 追蹤狀態
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: faceTrackStop_get
+  /api/face/track/status:
+    get:
+      tags:
+      - camera
+      summary: 查詢人臉追蹤狀態（running／人臉框／頭角度／統計）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: '{ok, running, detector, pan, tilt, faces, fx/fy/fw/fh, confidence, roiTracking, effectiveIntervalMs, framesSeen/Processed, moves, lostStreak, lastCostMs, config, servo}'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    running:
+                      type: boolean
+                    faces:
+                      type: integer
+                    pan:
+                      type: integer
+                    tilt:
+                      type: integer
+      operationId: faceTrackStatus_get
+  /api/face/track/config:
+    get:
+      tags:
+      - camera
+      summary: 更新人臉追蹤參數（不啟停；啟動中亦可即時調）
+      parameters:
+      - name: intervalMs
+        in: query
+        schema:
+          type: integer
+          minimum: 100
+          maximum: 3000
+      - name: trackIntervalMs
+        in: query
+        schema:
+          type: integer
+          minimum: 100
+          maximum: 3000
+      - name: autoInterval
+        in: query
+        schema:
+          type: boolean
+      - name: stepDeg
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 30
+      - name: deadband
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.5
+      - name: timeMs
+        in: query
+        schema:
+          type: integer
+          minimum: 20
+          maximum: 2000
+      - name: maxFaces
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 5
+      - name: headFollow
+        in: query
+        schema:
+          type: boolean
+      - name: roiEnabled
+        in: query
+        schema:
+          type: boolean
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 追蹤狀態
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: faceTrackConfig_get
+  /api/face/track/probe:
+    get:
+      tags:
+      - camera
+      summary: 人臉偵測能力探測（硬件 HAL vs 軟件 FaceDetector）
+      description: 只讀參數，不開追蹤迴圈。hardwareMaxFaces>0 代表可用零 CPU 全速硬件路；softwareAvailable 代表現行軟件路可用。
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: '{ok, hardwareMaxFaces, hardwareSupported, softwareAvailable, detector, previewWidth, previewHeight}'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: faceTrackProbe_get
   /api/audio/testtone:
     get:
       tags:

@@ -423,6 +423,12 @@
           <span class="toggle-track"></span>
         </span>
       </label>
+      <label class="switch-label"><span data-i18n="face_track_label">人臉追蹤</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="faceTrackToggle" onchange="faceTrackToggleChanged()">
+          <span class="toggle-track"></span>
+        </span>
+      </label>
     </div>
     <div id="cameraViewport" class="camera-viewport" tabindex="0"
          ondblclick="toggleCameraFullscreen()" oncontextmenu="return false">
@@ -432,8 +438,8 @@
         <select id="cameraResolution" onchange="onResolutionChanged()" onclick="event.stopPropagation()">
           <option value="640x480">640x480</option>
           <option value="720x480">720x480</option>
-          <option value="800x600">800x600</option>
-          <option value="1280x720" selected>1280x720</option>
+          <option value="800x600" selected>800x600</option>
+          <option value="1280x720">1280x720</option>
           <option value="1920x1080">1920x1080</option>
           <option value="2064x1548">2064x1548</option>
         </select>
@@ -462,6 +468,8 @@
         <button id="recordFab" class="fab-btn" onclick="toggleRecording()">⏺</button>
         <button id="micListenFab" class="fab-btn" onclick="toggleMicListen()">🎧</button>
       </div>
+      <!-- 人臉追蹤框：後端 face/track/status 回 fx/fy/fw/fh（歸一化），前端按 viewport 比例畫綠框 -->
+      <div id="faceTrackBox" class="face-track-box"></div>
       <span class="camera-kbd-hint" id="cameraKbdHint"></span>
     </div>
     <p class="hint" id="cameraZoomHint" data-i18n="camera_zoom_hint" style="text-align:center">數位變焦 x1–x5（硬件支援時為硬件變焦，否則為軟件裁切；串流由前端即時縮放，拍照存檔由後端裁切）</p>

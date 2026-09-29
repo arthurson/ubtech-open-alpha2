@@ -1068,6 +1068,18 @@ input[type="range"] {
 
 /* #talkFab.talking 沿用 .fab-btn.talking（紅＋pulse）。 */
 
+/* 人臉追蹤框：按 face/track/status 的 fx/fy/fw/fh 歸一化座標定位，綠框不攔 pointer */
+.face-track-box {
+  position: absolute;
+  border: 2px solid rgba(34, 197, 94, 0.9);
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  display: none;
+  pointer-events: none;
+  z-index: 8;
+}
+.face-track-box.on { display: block; }
+
 .camera-kbd-hint {
   position: absolute;
   left: 12px;

@@ -36,7 +36,7 @@ public class SerialPortFile implements java.io.Closeable {
         }
     }
 
-    /** .so 是否已載入；調用方開串口前可預檢（同 LedControl/HeadKeyMgr 睇齊）。 */
+    /** .so 是否已載入；調用方開串口前可預檢（同 LedControl 睇齊）。 */
     public static boolean isLibLoaded() {
         return sLibLoaded;
     }

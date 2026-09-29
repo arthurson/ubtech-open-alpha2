@@ -58,8 +58,10 @@ public class CameraController {
     private static final String TAG = "CameraController";
     private static final int[] CAMERA_INDEX_CANDIDATES = {0, 1, 98, 99};
     private static final int JPEG_QUALITY = 60;
-    private static final int DEFAULT_PREVIEW_WIDTH = 1280;
-    private static final int DEFAULT_PREVIEW_HEIGHT = 720;
+    // 預設預覽 800x600（4:3，sensor 原生比例；人臉追蹤輸入 320x240 啱啱好除得盡，
+    // 唔使 crop/squash，見 FaceTrackCenter）。
+    private static final int DEFAULT_PREVIEW_WIDTH = 800;
+    private static final int DEFAULT_PREVIEW_HEIGHT = 600;
     private volatile int requestedWidth = DEFAULT_PREVIEW_WIDTH;
     private volatile int requestedHeight = DEFAULT_PREVIEW_HEIGHT;
     // 數位變焦 x1-x5（硬件支援時用 Camera.Parameters.setZoom，否則前端 CSS / 軟件裁切）
@@ -162,6 +164,34 @@ public class CameraController {
         requestedHeight = height;
     }
 
+    /** 同步查詢 driver 硬件人臉偵測支援（Camera.Parameters.getMaxNumDetectedFaces，API 14+）。
+     *  回值 >0 代表可用 Camera.startFaceDetection() 零 CPU 全預覽速率攞臉框
+     *  （軟件 FaceDetector 之外另一條路，見 FaceTrackCenter）；0＝不支持，-1＝查唔到／超時。 */
+    public int getMaxNumDetectedFacesSync(long timeoutMs) {
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<Integer> result = new AtomicReference<>();
+        startCameraThreadIfNeeded();
+        cameraHandler.post(new Runnable() {
+            @Override public void run() {
+                android.hardware.Camera tmp = null;
+                try {
+                    if (camera != null) {
+                        result.set(camera.getParameters().getMaxNumDetectedFaces());
+                    } else {
+                        tmp = openFallbackCamera();
+                        if (tmp != null) result.set(tmp.getParameters().getMaxNumDetectedFaces());
+                        else result.set(-1);
+                    }
+                } catch (Exception e) { result.set(-1); }
+                finally {
+                    releaseTmpAndCountDown(tmp, latch);
+                }
+            }
+        });
+        awaitQuietly(latch, timeoutMs, TimeUnit.MILLISECONDS);
+        Integer v = result.get();
+        return v != null ? v : -1;
+    }
     /** 取回相機硬件報告的全部支援 preview/picture 尺寸（需在 camera 線程上讀取參數） */
     public java.util.List<android.hardware.Camera.Size> getSupportedPreviewSizesSync(long timeoutMs) {
         final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);

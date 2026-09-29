@@ -232,6 +232,7 @@ const I18N = {
   // -- camera tab --
   camera_heading:        { zh: "相機",             en: "Camera" },
   camera_feature_key:    { zh: "功能鍵",           en: "Feature Key" },
+  face_track_label:      { zh: "人臉追蹤",         en: "Face Tracking" },
 
   // -- Alpha2 版 PIR card (見 index.html/app-servo.js/app-accel.js 的 comment) --
   // 真機已確認 PIR 觸發正常。

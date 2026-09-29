@@ -463,6 +463,18 @@ public final class ApiDispatcher {
                 return cameraApi.resolution(query);
             case "camera/zoom":
                 return cameraApi.zoom(query);
+            // -- Android 內置人臉追蹤（body 在 FaceTrackCenter，經 CameraApi 薄 delegate；
+            // 純 framework android.media.FaceDetector，零額外依賴，見該類 javadoc）--
+            case "face/track/start":
+                return cameraApi.faceTrackStart(query);
+            case "face/track/stop":
+                return cameraApi.faceTrackStop();
+            case "face/track/status":
+                return cameraApi.faceTrackStatus();
+            case "face/track/config":
+                return cameraApi.faceTrackConfig(query);
+            case "face/track/probe":
+                return cameraApi.faceTrackProbe();
             // -- Walkie-talkie (body 在 MicCenter；薄 delegate，不要在這裡加 logic) --
             case "audio/testtone":
                 return micCenter.testTone();

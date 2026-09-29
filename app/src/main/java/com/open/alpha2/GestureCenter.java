@@ -61,30 +61,35 @@ public final class GestureCenter {
     private Runnable volumeRepeater;
     private AudioManager audioManager;
     private static final long VOLUME_REPEAT_INTERVAL_MS = 300;
-    // native 長命時 hold/release 語意是真（press→hold→release），
-    // 下面 press 即行一格＋repeat、release 即停，剛剛好。跌落 Java poll 後備
-    // 才是 click 模型（按即整個 down+up、放手沒有聲），當時 tap 照行一格，
-    // hold/repeat 沒有得弄（driver 沒有報）。
-    // 不用雙擊窗：交替試按鈕會誤觸播 squat。雙鍵總停行面板按鈕／小智按鈕；synthetic 0x5e 到不到都不估。
-    // HeadKeyPoller 直讀 /dev/input/event0。
+    // 純 Java click 模型（HeadKeyPoller 直讀 /dev/input/event0）：撳落去即送
+    // 成個 raw (down,up) click（相隔 <10ms），放手冇 signal、hold 睇唔到。
+    // tap 照行一格音量；hold/repeat 冇（driver 冇報）；雙鍵經 600ms 配對窗
+    // 合成（見 HeadKeyPoller.DOUBLE_WINDOW_MS），唔用雙擊窗
+    // 延遲單鍵——交替撳-/+ 微調音量撞入窗會誤觸總停，窗大小喺該檔調。
+    // HeadKeyPoller 經 Listener 直連做動作（音量／燈／總停），唔等 EventBus；
+    // 同時照舊格式轉送 EventBus "gesture"（compound direction=(code<<8)|0x01，
+    // 即 23041/23297/…，同已移除嘅 alpha2services 發嘅 broadcast 同值），
+    // 供 WebSocket log／出面監聽者分辨 90撳落／91放開（唔係同一個 code 出 0/1）。
     public void start() {
-        // HeadKeyPoller 經 Listener 直連，不經 EventBus "gesture" 事件。
-        // head_key/head_key_native 照旧转送 EventBus，供 WebSocket log 备查。
+        // head_key 照旧转送 EventBus，供 WebSocket log 备查。
         headKeyPoller.setListener(new HeadKeyPoller.Listener() {
             @Override public void onGesture(int eventCode) {
+                EventBus.get().publish("gesture",
+                        "{\"direction\":" + ((eventCode << 8) | 0x01) + "}");
                 mainHandler.post(() -> onGestureCode(eventCode));
             }
             @Override public void onHeadKey(int code, int value) {
                 EventBus.get().publish("head_key", "{\"code\":" + code + ",\"value\":" + value + "}");
             }
-            @Override public void onHeadKeyNative(int code) {
-                EventBus.get().publish("head_key_native", "{\"code\":" + code + "}");
-            }
         });
         try { headKeyPoller.start(); } catch (Throwable t) { Log.w(TAG, "headKeyPoller start failed", t); }
     }
     /**
-     * Reacts to the head touch-pad "gestures" broadcast via {@code come.ubt.alpha2.gesture}.
+     * Reacts to the head touch-pad "gestures" from {@link HeadKeyPoller}
+     * (pure-Java /dev/input/event0 poll; the old stock
+     * {@code come.ubt.alpha2.gesture} broadcast carried the same values and is
+     * gone with alpha2services, so we re-emit the identical compound
+     * {@code (eventCode << 8) | 0x01} on the EventBus "gesture" topic).
      *
      * These are NOT documented in the SDK (docs/sensors-and-events.md only lists the raw
      * `come.ubt.alpha2.gesture` action/extra name, not what values it carries) - the values
@@ -105,9 +110,8 @@ public final class GestureCenter {
      */
     private void onGestureCode(int code) {
         switch (code) {
-            case 0x5a: // "-" pressed：即行一格先，repeat 跟著排；
-                // native 長命當時 release 先停（正常 hold）；poll 後備 click
-                // 當時 release 8ms 後就到，repeat 即停，僅行到這一格。
+            case 0x5a: // "-" pressed：即行一格先，repeat 跟著排（click 模型
+                // 無 hold，repeat 多數即刻被放手停，僅行到這一格）。
                 ledCenter.setPadMinusHeld(true);
                 ledCenter.padLedUpdate();
                 stepVolume(false);
@@ -133,8 +137,8 @@ public final class GestureCenter {
                        // 跟小智面板那顆「⏹ 全部停止」
                        // 按鈕 (xiaozhiStopAll(), 見 app-xiaozhi.js) 看齊, 一次
                        // 停止動作/小智說話/本地音樂/電台這四樣東西。
-                       // （click 模型下這個 case 只靠 synthetic 0x5e＋raw 雙按
-                       // 狀態，實測未見過，自己不會亂開火；雙擊窗已刪，見上。）
+                       // 純 Java 由 HeadKeyPoller 600ms 配對窗合成（兩粒先後腳
+                       // 齊撳；單撳交替太密會誤觸，窗大小喺該檔調）。
                 stopAllViaPads();
                 break;
             case 0x5f: // both released: nothing further to do
@@ -147,7 +151,7 @@ public final class GestureCenter {
                 break;
         }
     }
-    /** 雙鍵總停（僅 synthetic 0x5e＋raw 雙按狀態先到）。 */
+    /** 雙鍵總停（HeadKeyPoller 配對窗合成嘅 0x5e 先到）。 */
     private void stopAllViaPads() {
         ledCenter.setPadMinusHeld(true);
         ledCenter.setPadPlusHeld(true);
@@ -160,7 +164,7 @@ public final class GestureCenter {
         host.stopAllSpeech();
         audioCenter.stopLocalMusicPlayback();
         audioCenter.stopRadioPlayback();
-        // click 模型沒有放手 signal 熄燈，1.5s 後自動熄滅（不會卡死）。
+        // 正常經 0x5f 雙放開熄燈；1.5s 後自動熄滅係 failsafe（唔會卡死）。
         mainHandler.postDelayed(new Runnable() {
             @Override public void run() {
                 ledCenter.setPadMinusHeld(false);
@@ -170,7 +174,7 @@ public final class GestureCenter {
         }, 1500);
     }
 
-    /** 即行一格音量（click 模型：tap 靠這一下，不靠 repeat）。行完即更頭燈綠色音量計。 */
+    /** 即行一格音量（tap 靠這一下，不靠 repeat）。行完即更頭燈綠色音量計。 */
     private void stepVolume(boolean up) {
         if (audioManager != null) {
             audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
@@ -184,7 +188,7 @@ public final class GestureCenter {
      * simulating press-and-hold behaviour on top of AudioManager's single-step API.
      *
      * click 模型：第一格由 stepVolume() 即行（見 0x5a/0x5c），
-     * 這裡僅排之後的 repeat（release 8ms 後就到，多數即刻停；留下是為了
+     * 這裡僅排之後的 repeat（driver 無 hold，多數即刻被放手停；留下是為了
      * 萬一有 firmware 真是報 hold）。
      *
      * FLAG_PLAY_SOUND makes Android play its own built-in volume-change sound on each

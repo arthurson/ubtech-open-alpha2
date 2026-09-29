@@ -236,6 +236,43 @@ const Alpha2Api = (function() {
     return api('camera/zoom', params);
   }
 
+  function faceTrackConfig(params) {
+    if (params && params.intervalMs != null) assertRange(Number(params.intervalMs), 100, 3000, 'intervalMs');
+    if (params && params.trackIntervalMs != null) assertRange(Number(params.trackIntervalMs), 100, 3000, 'trackIntervalMs');
+    if (params && params.stepDeg != null) assertRange(Number(params.stepDeg), 1, 30, 'stepDeg');
+    if (params && params.deadband != null) assertRange(Number(params.deadband), 0, 0.5, 'deadband');
+    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2000, 'timeMs');
+    if (params && params.maxFaces != null) assertRange(Number(params.maxFaces), 1, 5, 'maxFaces');
+    // 更新人臉追蹤參數（不啟停；啟動中亦可即時調）
+    return api('face/track/config', params);
+  }
+
+  function faceTrackProbe(params) {
+    // 人臉偵測能力探測（硬件 HAL vs 軟件 FaceDetector）
+    return api('face/track/probe', params);
+  }
+
+  function faceTrackStart(params) {
+    if (params && params.intervalMs != null) assertRange(Number(params.intervalMs), 100, 3000, 'intervalMs');
+    if (params && params.trackIntervalMs != null) assertRange(Number(params.trackIntervalMs), 100, 3000, 'trackIntervalMs');
+    if (params && params.stepDeg != null) assertRange(Number(params.stepDeg), 1, 30, 'stepDeg');
+    if (params && params.deadband != null) assertRange(Number(params.deadband), 0, 0.5, 'deadband');
+    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2000, 'timeMs');
+    if (params && params.maxFaces != null) assertRange(Number(params.maxFaces), 1, 5, 'maxFaces');
+    // 開始 Android 內置人臉追蹤（FaceDetector＋頭部 19/20 跟人）
+    return api('face/track/start', params);
+  }
+
+  function faceTrackStatus(params) {
+    // 查詢人臉追蹤狀態（running／人臉框／頭角度／統計）
+    return api('face/track/status', params);
+  }
+
+  function faceTrackStop(params) {
+    // 停止人臉追蹤（頭停在現位，不自動回中）
+    return api('face/track/stop', params);
+  }
+
   // ── core ──────────────────────────────────────────────
   function batteryStatus(params) {
     // 查詢電池狀態 (BatteryManager broadcast 緩存)
@@ -929,6 +966,11 @@ const Alpha2Api = (function() {
     cameraSupportedSizes,
     cameraTakePhotoSave,
     cameraZoom,
+    faceTrackConfig,
+    faceTrackProbe,
+    faceTrackStart,
+    faceTrackStatus,
+    faceTrackStop,
     batteryStatus,
     btStatus,
     chestPage,
