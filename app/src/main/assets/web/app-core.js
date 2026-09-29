@@ -233,6 +233,14 @@ const I18N = {
   camera_heading:        { zh: "相機",             en: "Camera" },
   camera_feature_key:    { zh: "功能鍵",           en: "Feature Key" },
   face_track_label:      { zh: "人臉追蹤",         en: "Face Tracking" },
+  color_track_label:     { zh: "顏色追蹤",         en: "Color Tracking" },
+  color_name_red:        { zh: "紅",               en: "Red" },
+  color_name_green:      { zh: "綠",               en: "Green" },
+  color_name_blue:       { zh: "藍",               en: "Blue" },
+  color_name_yellow:     { zh: "黃",               en: "Yellow" },
+  color_name_purple:     { zh: "紫",               en: "Purple" },
+  color_name_cyan:       { zh: "青",               en: "Cyan" },
+  color_name_white:      { zh: "白",               en: "White" },
 
   // -- Alpha2 版 PIR card (見 index.html/app-servo.js/app-accel.js 的 comment) --
   // 真機已確認 PIR 觸發正常。

@@ -429,6 +429,16 @@
           <span class="toggle-track"></span>
         </span>
       </label>
+      <label class="switch-label"><span data-i18n="color_track_label">顏色追蹤</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="colorTrackToggle" onchange="colorTrackToggleChanged()">
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+    </div>
+    <!-- 追色選擇：同 LED 七色對應（紅綠藍黃紫青白），開咗顏色追蹤先出；點即換（行緊都即時轉，唔使重開） -->
+    <div class="row" id="colorTrackPresets" style="display:none;gap:8px;align-items:center">
+      <span class="hint" data-i18n="led_color_label" style="margin:0">顏色：</span>
     </div>
     <div id="cameraViewport" class="camera-viewport" tabindex="0"
          ondblclick="toggleCameraFullscreen()" oncontextmenu="return false">
@@ -470,6 +480,8 @@
       </div>
       <!-- 人臉追蹤框：後端 face/track/status 回 fx/fy/fw/fh（歸一化），前端按 viewport 比例畫綠框 -->
       <div id="faceTrackBox" class="face-track-box"></div>
+      <!-- 顏色追蹤框：後端 color/track/status 回同一形狀 fx/fy/fw/fh，畫橙框（同人臉追蹤互斥，唔會齊出） -->
+      <div id="colorTrackBox" class="color-track-box"></div>
       <span class="camera-kbd-hint" id="cameraKbdHint"></span>
     </div>
     <p class="hint" id="cameraZoomHint" data-i18n="camera_zoom_hint" style="text-align:center">數位變焦 x1–x5（硬件支援時為硬件變焦，否則為軟件裁切；串流由前端即時縮放，拍照存檔由後端裁切）</p>

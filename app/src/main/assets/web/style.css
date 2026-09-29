@@ -1080,6 +1080,18 @@ input[type="range"] {
 }
 .face-track-box.on { display: block; }
 
+/* 顏色追蹤框：同人臉框同一套定位邏輯，橙框區分（兩邊互斥，唔會齊出），不攔 pointer */
+.color-track-box {
+  position: absolute;
+  border: 2px solid rgba(249, 115, 22, 0.9);
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  display: none;
+  pointer-events: none;
+  z-index: 8;
+}
+.color-track-box.on { display: block; }
+
 .camera-kbd-hint {
   position: absolute;
   left: 12px;

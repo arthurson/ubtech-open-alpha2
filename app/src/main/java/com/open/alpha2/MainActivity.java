@@ -175,6 +175,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     private CameraApi cameraApi;
     private VoskApi voskApi;
     private FaceTrackCenter faceTrackCenter;
+    private ColorTrackCenter colorTrackCenter;
 
     // RobotEventReceiver 沒有 constructor/field 拿到 outer
     // MainActivity instance (它一直只經 EventBus 靜態方法送 event, 不認識
@@ -277,6 +278,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // ＋cameraController（預覽幀），放 cameraApi 之後、dispatcher 之前。
         faceTrackCenter = new FaceTrackCenter(cameraController, ubxApi);
         cameraApi.setFaceTrackCenter(faceTrackCenter);
+        // 純 Java 顏色追蹤（HSV＋最大 blob，零依賴；同人臉追蹤互斥，見 CameraApi）。
+        colorTrackCenter = new ColorTrackCenter(cameraController, ubxApi);
+        cameraApi.setColorTrackCenter(colorTrackCenter);
         // Sonar＋PIR sensors 包：只需要 ledCenter (紫燈指示)，在 xiaozhiBridge 之前起——
         // MCP sensors 4 tool 經 ctor 取得 (斷 cycle：PIR 推送
         // uplink 經下面 setUplink 後補，見 SonarCenter javadoc 縫設計)。
@@ -787,6 +791,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         if (grammarCenter != null) grammarCenter.unregisterConnectivityReceiver();
         if (faceTrackCenter != null) {
             try { faceTrackCenter.shutdown(); } catch (Throwable ignored) {}
+        }
+        if (colorTrackCenter != null) {
+            try { colorTrackCenter.shutdown(); } catch (Throwable ignored) {}
         }
         if (cameraController != null) cameraController.shutdown();
         if (audioController != null) audioController.shutdown();

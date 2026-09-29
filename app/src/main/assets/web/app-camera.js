@@ -780,7 +780,7 @@ function connectCameraStream() {
 }
 
 // DOMContentLoaded 單次初始化變焦與搖桿回中（不依賴 app-log.js 順序，自身亦可獨立起）
-function initCameraUiToggles() { try { initCameraZoom(); } catch(e){} try { initJoystickAutoReturn(); } catch(e){} try { updateCrosshairVisibility(); } catch(e){} try { faceTrackRefreshStatus(); } catch(e){} }
+function initCameraUiToggles() { try { initCameraZoom(); } catch(e){} try { initJoystickAutoReturn(); } catch(e){} try { updateCrosshairVisibility(); } catch(e){} try { faceTrackRefreshStatus(); } catch(e){} try { colorTrackRefreshStatus(); } catch(e){} }
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initCameraUiToggles);
 } else {
@@ -862,7 +862,7 @@ async function faceTrackToggleChanged() {
       // 設定卡已移除：空參數即用後端定案預設（步進 17／死區 0.10／自動 500/100ms，追頭＋ROI 開）。
       const json = await Alpha2Api.faceTrackStart({});
       faceTrackRenderStatus(json);
-      if (json && json.ok && json.running) faceTrackStartPolling();
+      if (json && json.ok && json.running) { faceTrackStartPolling(); colorTrackSyncOff(); }
       else if (toggle) toggle.checked = false;
     } else {
       const json = await Alpha2Api.faceTrackStop();
@@ -874,6 +874,181 @@ async function faceTrackToggleChanged() {
   } catch (e) {
     showError(t("face_track_label"), e);
     if (toggle) toggle.checked = faceTrackRunning;
+  }
+}
+
+// ---------------- Camera: 純 Java 顏色追蹤 ----------------
+//
+// 後端 ColorTrackCenter（HSV 閾值＋最大 blob，零依賴）：跟到最大色塊質心即按
+// 偏移步進驅動頭部 19/20（定案預設：紅色 hue 335-25°、步進 17°、死區 0.10、
+// 自動間隔 200/100ms，追頭預設開）。前端只剩功能鍵行一個開關＋viewport 橙框
+// overlay，不做任何影像分析。
+// 互斥：後端 start 一邊即停另一邊，前端兩邊 toggle／輪詢亦要同步熄（見
+// colorTrackSyncOff／faceTrackSyncOff，由成功 start 嗰邊調用）。
+// 注意：播動作（UbxPlayer）時請先停追蹤，兩邊同搶頭部舵機會打架。
+
+let colorTrackPollTimer = null;
+let colorTrackRunning = false;
+
+// 追色選擇：同 LED 七色碼對應（見 app-led.js LED_COLORS 1=紅…7=白），hex 照抄嗰邊；
+// HSV 範圍係相機實物經驗值（唔係 LED 發光色本身，現場光有偏差，框出唔到先放寬 sMin）。
+// 白色靠 sMax 去彩色（後端新加，冇佢白乜都 match）。
+const COLOR_TRACK_PRESETS = [
+  { code: 1, key: "color_name_red",    hex: "#ff3b3b", hMin: 335, hMax: 25,  sMin: 0.45, sMax: 1.0,  vMin: 0.25, vMax: 1.0 },
+  { code: 2, key: "color_name_green",  hex: "#3bff5c", hMin: 85,  hMax: 155, sMin: 0.40, sMax: 1.0,  vMin: 0.25, vMax: 1.0 },
+  { code: 3, key: "color_name_blue",   hex: "#3b6bff", hMin: 195, hMax: 255, sMin: 0.40, sMax: 1.0,  vMin: 0.25, vMax: 1.0 },
+  { code: 4, key: "color_name_yellow", hex: "#ffe93b", hMin: 38,  hMax: 75,  sMin: 0.45, sMax: 1.0,  vMin: 0.30, vMax: 1.0 },
+  { code: 5, key: "color_name_purple", hex: "#a83bff", hMin: 250, hMax: 300, sMin: 0.40, sMax: 1.0,  vMin: 0.25, vMax: 1.0 },
+  { code: 6, key: "color_name_cyan",   hex: "#3bfff0", hMin: 155, hMax: 195, sMin: 0.40, sMax: 1.0,  vMin: 0.25, vMax: 1.0 },
+  { code: 7, key: "color_name_white",  hex: "#ffffff", hMin: 0,   hMax: 360, sMin: 0,    sMax: 0.25, vMin: 0.60, vMax: 1.0 },
+];
+let colorTrackPreset = 1; // 預設紅（同後端定案預設一致）
+
+function colorTrackPresetParams(code) {
+  for (let i = 0; i < COLOR_TRACK_PRESETS.length; i++) {
+    const p = COLOR_TRACK_PRESETS[i];
+    if (p.code === code) return { hMin: p.hMin, hMax: p.hMax, sMin: p.sMin, sMax: p.sMax, vMin: p.vMin, vMax: p.vMax };
+  }
+  return {};
+}
+
+function colorTrackBuildPresets() {
+  const wrap = document.getElementById("colorTrackPresets");
+  if (!wrap || wrap.dataset.built) return;
+  COLOR_TRACK_PRESETS.forEach(function (p) {
+    const dot = document.createElement("button");
+    dot.type = "button";
+    dot.className = "color-dot" + (p.code === colorTrackPreset ? " selected" : "");
+    dot.style.background = p.hex;
+    dot.dataset.code = p.code;
+    dot.title = t(p.key);
+    dot.onclick = function () { colorTrackPickPreset(p.code); };
+    wrap.appendChild(dot);
+  });
+  wrap.dataset.built = "1";
+}
+
+function colorTrackMarkSelected() {
+  const wrap = document.getElementById("colorTrackPresets");
+  if (!wrap) return;
+  wrap.querySelectorAll(".color-dot").forEach(function (d) {
+    if (Number(d.dataset.code) === colorTrackPreset) d.classList.add("selected");
+    else d.classList.remove("selected");
+  });
+}
+
+function colorTrackUpdatePresetVisibility() {
+  const wrap = document.getElementById("colorTrackPresets");
+  if (!wrap) return;
+  const show = colorTrackRunning;
+  if ((wrap.style.display !== "none") === show) return;
+  wrap.style.display = show ? "" : "none";
+  if (show) { colorTrackBuildPresets(); colorTrackMarkSelected(); }
+}
+
+async function colorTrackPickPreset(code) {
+  colorTrackPreset = code;
+  colorTrackMarkSelected();
+  if (!colorTrackRunning) return; // 未行緊：記低選擇，下次 start 用
+  try {
+    // 行緊：config 即時換色，唔使停 tracking（後端參數 volatile，下幀即用新範圍）。
+    const json = await Alpha2Api.colorTrackConfig(colorTrackPresetParams(code));
+    colorTrackRenderStatus(json);
+  } catch (e) {
+    showError(t("color_track_label"), e);
+  }
+}
+
+function colorTrackRenderBox(json) {
+  const box = document.getElementById("colorTrackBox");
+  const viewport = document.getElementById("cameraViewport");
+  if (!box || !viewport) return;
+  if (!json || !json.running || !json.faces || json.fx == null || json.fx < 0) {
+    box.classList.remove("on");
+    return;
+  }
+  const rect = viewport.getBoundingClientRect();
+  const fx = Number(json.fx), fy = Number(json.fy);
+  const fw = Number(json.fw) || 0.25, fh = Number(json.fh) || 0.3;
+  if (!(fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1)) { box.classList.remove("on"); return; }
+  // 中心＋寬高（歸一化）轉 viewport px；同人臉框一樣按 viewport 全區定位（近似框）。
+  const w = Math.max(24, fw * rect.width);
+  const h = Math.max(24, fh * rect.height);
+  const left = Math.max(0, Math.min(rect.width - w, fx * rect.width - w / 2));
+  const top = Math.max(0, Math.min(rect.height - h, fy * rect.height - h / 2));
+  box.style.left = left + "px";
+  box.style.top = top + "px";
+  box.style.width = w + "px";
+  box.style.height = h + "px";
+  box.classList.add("on");
+}
+
+function colorTrackRenderStatus(json) {
+  const toggle = document.getElementById("colorTrackToggle");
+  if (!json || !json.ok) return;
+  colorTrackRunning = !!json.running;
+  if (toggle && toggle.checked !== colorTrackRunning) toggle.checked = colorTrackRunning;
+  colorTrackRenderBox(json);
+  colorTrackUpdatePresetVisibility();
+}
+
+async function colorTrackRefreshStatus() {
+  try {
+    const json = await Alpha2Api.colorTrackStatus();
+    colorTrackRenderStatus(json);
+  } catch (e) {
+    showError(t("color_track_label"), e);
+  }
+}
+
+function colorTrackStartPolling() {
+  colorTrackStopPolling();
+  colorTrackPollTimer = setInterval(colorTrackRefreshStatus, 1500);
+}
+
+function colorTrackStopPolling() {
+  if (colorTrackPollTimer) { clearInterval(colorTrackPollTimer); colorTrackPollTimer = null; }
+  const box = document.getElementById("colorTrackBox");
+  if (box) box.classList.remove("on");
+}
+
+// 對面（人臉）成功 start 後調：後端已停顏色，前端同步熄 toggle＋輪詢＋框＋選色列。
+function colorTrackSyncOff() {
+  colorTrackRunning = false;
+  colorTrackStopPolling();
+  const toggle = document.getElementById("colorTrackToggle");
+  if (toggle) toggle.checked = false;
+  colorTrackUpdatePresetVisibility();
+}
+
+// 人臉側成功 start 後調（上面 faceTrackToggleChanged 已接）：後端已停人臉，前端同步熄。
+function faceTrackSyncOff() {
+  faceTrackRunning = false;
+  faceTrackStopPolling(); // 內已清人臉框 .on
+  const toggle = document.getElementById("faceTrackToggle");
+  if (toggle) toggle.checked = false;
+}
+
+async function colorTrackToggleChanged() {
+  const toggle = document.getElementById("colorTrackToggle");
+  const on = toggle ? toggle.checked : false;
+  try {
+    if (on) {
+      // 帶當前選色起（預設紅；選色列點過即換 colorTrackPreset，start 即用）。
+      const json = await Alpha2Api.colorTrackStart(colorTrackPresetParams(colorTrackPreset));
+      colorTrackRenderStatus(json);
+      if (json && json.ok && json.running) { colorTrackStartPolling(); faceTrackSyncOff(); }
+      else if (toggle) toggle.checked = false;
+    } else {
+      const json = await Alpha2Api.colorTrackStop();
+      colorTrackRenderStatus(json);
+      colorTrackStopPolling();
+      // 停後再讀一次確保框清除
+      colorTrackRenderBox({ running: false });
+    }
+  } catch (e) {
+    showError(t("color_track_label"), e);
+    if (toggle) toggle.checked = colorTrackRunning;
   }
 }
 

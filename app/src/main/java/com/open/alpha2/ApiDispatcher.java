@@ -475,6 +475,16 @@ public final class ApiDispatcher {
                 return cameraApi.faceTrackConfig(query);
             case "face/track/probe":
                 return cameraApi.faceTrackProbe();
+            // -- 純 Java 顏色追蹤（body 在 ColorTrackCenter，經 CameraApi 薄 delegate；
+            // HSV 閾值＋最大 blob，零額外依賴；同人臉追蹤互斥，start 即停另一邊）--
+            case "color/track/start":
+                return cameraApi.colorTrackStart(query);
+            case "color/track/stop":
+                return cameraApi.colorTrackStop();
+            case "color/track/status":
+                return cameraApi.colorTrackStatus();
+            case "color/track/config":
+                return cameraApi.colorTrackConfig(query);
             // -- Walkie-talkie (body 在 MicCenter；薄 delegate，不要在這裡加 logic) --
             case "audio/testtone":
                 return micCenter.testTone();

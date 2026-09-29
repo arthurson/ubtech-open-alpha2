@@ -236,6 +236,50 @@ const Alpha2Api = (function() {
     return api('camera/zoom', params);
   }
 
+  function colorTrackConfig(params) {
+    if (params && params.intervalMs != null) assertRange(Number(params.intervalMs), 100, 3000, 'intervalMs');
+    if (params && params.trackIntervalMs != null) assertRange(Number(params.trackIntervalMs), 100, 3000, 'trackIntervalMs');
+    if (params && params.stepDeg != null) assertRange(Number(params.stepDeg), 1, 30, 'stepDeg');
+    if (params && params.deadband != null) assertRange(Number(params.deadband), 0, 0.5, 'deadband');
+    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2000, 'timeMs');
+    if (params && params.hMin != null) assertRange(Number(params.hMin), 0, 360, 'hMin');
+    if (params && params.hMax != null) assertRange(Number(params.hMax), 0, 360, 'hMax');
+    if (params && params.sMin != null) assertRange(Number(params.sMin), 0, 1, 'sMin');
+    if (params && params.sMax != null) assertRange(Number(params.sMax), 0, 1, 'sMax');
+    if (params && params.vMin != null) assertRange(Number(params.vMin), 0, 1, 'vMin');
+    if (params && params.vMax != null) assertRange(Number(params.vMax), 0, 1, 'vMax');
+    if (params && params.minPixels != null) assertRange(Number(params.minPixels), 10, 20000, 'minPixels');
+    // 更新顏色追蹤參數（不啟停；啟動中亦可即時調）
+    return api('color/track/config', params);
+  }
+
+  function colorTrackStart(params) {
+    if (params && params.intervalMs != null) assertRange(Number(params.intervalMs), 100, 3000, 'intervalMs');
+    if (params && params.trackIntervalMs != null) assertRange(Number(params.trackIntervalMs), 100, 3000, 'trackIntervalMs');
+    if (params && params.stepDeg != null) assertRange(Number(params.stepDeg), 1, 30, 'stepDeg');
+    if (params && params.deadband != null) assertRange(Number(params.deadband), 0, 0.5, 'deadband');
+    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2000, 'timeMs');
+    if (params && params.hMin != null) assertRange(Number(params.hMin), 0, 360, 'hMin');
+    if (params && params.hMax != null) assertRange(Number(params.hMax), 0, 360, 'hMax');
+    if (params && params.sMin != null) assertRange(Number(params.sMin), 0, 1, 'sMin');
+    if (params && params.sMax != null) assertRange(Number(params.sMax), 0, 1, 'sMax');
+    if (params && params.vMin != null) assertRange(Number(params.vMin), 0, 1, 'vMin');
+    if (params && params.vMax != null) assertRange(Number(params.vMax), 0, 1, 'vMax');
+    if (params && params.minPixels != null) assertRange(Number(params.minPixels), 10, 20000, 'minPixels');
+    // 開始純 Java 顏色追蹤（HSV 閾值＋最大 blob＋頭部 19/20 跟色）
+    return api('color/track/start', params);
+  }
+
+  function colorTrackStatus(params) {
+    // 查詢顏色追蹤狀態（running／色塊框／頭角度／統計）
+    return api('color/track/status', params);
+  }
+
+  function colorTrackStop(params) {
+    // 停止顏色追蹤（頭停在現位，不自動回中）
+    return api('color/track/stop', params);
+  }
+
   function faceTrackConfig(params) {
     if (params && params.intervalMs != null) assertRange(Number(params.intervalMs), 100, 3000, 'intervalMs');
     if (params && params.trackIntervalMs != null) assertRange(Number(params.trackIntervalMs), 100, 3000, 'trackIntervalMs');
@@ -966,6 +1010,10 @@ const Alpha2Api = (function() {
     cameraSupportedSizes,
     cameraTakePhotoSave,
     cameraZoom,
+    colorTrackConfig,
+    colorTrackStart,
+    colorTrackStatus,
+    colorTrackStop,
     faceTrackConfig,
     faceTrackProbe,
     faceTrackStart,

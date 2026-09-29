@@ -17,6 +17,7 @@ public final class CameraApi {
     private final CameraController cameraController;
     private final RingtoneCenter ringtoneCenter;
     private volatile FaceTrackCenter faceTrackCenter;
+    private volatile ColorTrackCenter colorTrackCenter;
 
     public CameraApi(Context context, CameraController cameraController, RingtoneCenter ringtoneCenter) {
         this.appContext = context.getApplicationContext();
@@ -36,10 +37,55 @@ public final class CameraApi {
         return null;
     }
 
+    /** MainActivity 接線用：注入顏色追蹤中心（未注入時 color/track/* 回清晰錯誤）。 */
+    public void setColorTrackCenter(ColorTrackCenter center) {
+        this.colorTrackCenter = center;
+    }
+
+    private HttpServer.ApiResponse colorOrError() {
+        if (colorTrackCenter == null) {
+            return HttpServer.ApiResponse.error("color track not initialised");
+        }
+        return null;
+    }
+
+    // -- 純 Java 顏色追蹤（見 ColorTrackCenter）：薄 delegate，不在這裡加 logic --
+    // 互斥：同人臉追蹤爭同一對頭舵機（19/20），start 一邊即停另一邊。
+    public HttpServer.ApiResponse colorTrackStart(Map<String, String> query) {
+        HttpServer.ApiResponse err = colorOrError();
+        if (err != null) return err;
+        try {
+            if (faceTrackCenter != null && faceTrackCenter.isRunning()) faceTrackCenter.stop();
+        } catch (Throwable ignored) {}
+        return colorTrackCenter.start(query);
+    }
+
+    public HttpServer.ApiResponse colorTrackStop() {
+        HttpServer.ApiResponse err = colorOrError();
+        if (err != null) return err;
+        return colorTrackCenter.stop();
+    }
+
+    public HttpServer.ApiResponse colorTrackStatus() {
+        HttpServer.ApiResponse err = colorOrError();
+        if (err != null) return err;
+        return colorTrackCenter.status();
+    }
+
+    public HttpServer.ApiResponse colorTrackConfig(Map<String, String> query) {
+        HttpServer.ApiResponse err = colorOrError();
+        if (err != null) return err;
+        return colorTrackCenter.config(query);
+    }
+
     // -- Android 內置人臉追蹤（見 FaceTrackCenter）：薄 delegate，不在這裡加 logic --
+    // 互斥：同顏色追蹤爭同一對頭舵機（19/20），start 一邊即停另一邊。
     public HttpServer.ApiResponse faceTrackStart(Map<String, String> query) {
         HttpServer.ApiResponse err = faceOrError();
         if (err != null) return err;
+        try {
+            if (colorTrackCenter != null && colorTrackCenter.isRunning()) colorTrackCenter.stop();
+        } catch (Throwable ignored) {}
         return faceTrackCenter.start(query);
     }
 
