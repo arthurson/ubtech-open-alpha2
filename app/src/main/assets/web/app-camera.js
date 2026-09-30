@@ -903,6 +903,7 @@ const COLOR_TRACK_PRESETS = [
   { code: 7, key: "color_name_white",  hex: "#ffffff", hMin: 0,   hMax: 360, sMin: 0,    sMax: 0.25, vMin: 0.60, vMax: 1.0 },
 ];
 let colorTrackPreset = 1; // 預設紅（同後端定案預設一致）
+let colorTrackWalkFollow = false;
 
 function colorTrackPresetParams(code) {
   for (let i = 0; i < COLOR_TRACK_PRESETS.length; i++) {
@@ -913,7 +914,7 @@ function colorTrackPresetParams(code) {
 }
 
 function colorTrackBuildPresets() {
-  const wrap = document.getElementById("colorTrackPresets");
+  const wrap = document.getElementById("colorTrackDots");
   if (!wrap || wrap.dataset.built) return;
   COLOR_TRACK_PRESETS.forEach(function (p) {
     const dot = document.createElement("button");
@@ -929,7 +930,7 @@ function colorTrackBuildPresets() {
 }
 
 function colorTrackMarkSelected() {
-  const wrap = document.getElementById("colorTrackPresets");
+  const wrap = document.getElementById("colorTrackDots");
   if (!wrap) return;
   wrap.querySelectorAll(".color-dot").forEach(function (d) {
     if (Number(d.dataset.code) === colorTrackPreset) d.classList.add("selected");
@@ -956,6 +957,25 @@ async function colorTrackPickPreset(code) {
     colorTrackRenderStatus(json);
   } catch (e) {
     showError(t("color_track_label"), e);
+  }
+}
+
+async function colorTrackWalkChanged() {
+  const toggle = document.getElementById("walkFollowToggle");
+  const on = toggle ? toggle.checked : false;
+  // 平地＋清空＋有人睇住先開：開即部機會行，browser confirm 閘一閘（誤掂唔會即刻行）。
+  if (on && !colorTrackWalkFollow) {
+    const ok = window.confirm
+      ? window.confirm(t("walk_follow_label") + "：機械人會行路跟目標。平地、清空、有人睇住先好開。確定？")
+      : true;
+    if (!ok) { if (toggle) toggle.checked = false; return; }
+  }
+  try {
+    const json = await Alpha2Api.colorTrackConfig({ walkFollow: on });
+    colorTrackRenderStatus(json); // toggle 以後端 echo 為準
+  } catch (e) {
+    showError(t("walk_follow_label"), e);
+    if (toggle) toggle.checked = colorTrackWalkFollow;
   }
 }
 
@@ -990,6 +1010,11 @@ function colorTrackRenderStatus(json) {
   if (toggle && toggle.checked !== colorTrackRunning) toggle.checked = colorTrackRunning;
   colorTrackRenderBox(json);
   colorTrackUpdatePresetVisibility();
+  // 行路跟開關以後端為準（config echo；舊版無呢個欄位即當關）。
+  const walkOn = !!(json.config && json.config.walkFollow);
+  colorTrackWalkFollow = walkOn;
+  const walkToggle = document.getElementById("walkFollowToggle");
+  if (walkToggle && walkToggle.checked !== walkOn) walkToggle.checked = walkOn;
 }
 
 async function colorTrackRefreshStatus() {

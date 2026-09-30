@@ -241,6 +241,7 @@ const I18N = {
   color_name_purple:     { zh: "紫",               en: "Purple" },
   color_name_cyan:       { zh: "青",               en: "Cyan" },
   color_name_white:      { zh: "白",               en: "White" },
+  walk_follow_label:     { zh: "行路跟",           en: "Walk Follow" },
 
   // -- Alpha2 版 PIR card (見 index.html/app-servo.js/app-accel.js 的 comment) --
   // 真機已確認 PIR 觸發正常。

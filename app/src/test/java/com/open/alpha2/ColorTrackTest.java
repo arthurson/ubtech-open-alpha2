@@ -124,6 +124,19 @@ public final class ColorTrackTest {
         ColorTrackLogic.Blob b2 = ColorTrackLogic.largestBlob(mask, 5, 5, 2);
         eq(4, b2.count, "blob.reusable");
 
+        // ── walkDecision：偏就轉、置中遠就行前、近就企 ──
+        eq(true, "left".equals(ColorTrackLogic.walkDecision(-0.5f, 0.05f, 0.35f, 0.12f)), "walk.left");
+        eq(true, "right".equals(ColorTrackLogic.walkDecision(0.5f, 0.05f, 0.35f, 0.12f)), "walk.right");
+        eq(true, "forward".equals(ColorTrackLogic.walkDecision(0.1f, 0.05f, 0.35f, 0.12f)), "walk.forward");
+        eq(true, "none".equals(ColorTrackLogic.walkDecision(0.1f, 0.2f, 0.35f, 0.12f)), "walk.close");
+        // 死區邊界 inclusive：啱好 0.35 唔轉（行前，因為細）。
+        eq(true, "forward".equals(ColorTrackLogic.walkDecision(0.35f, 0.05f, 0.35f, 0.12f)), "walk.edgeTurn");
+        eq(true, "forward".equals(ColorTrackLogic.walkDecision(-0.35f, 0.05f, 0.35f, 0.12f)), "walk.edgeTurnNeg");
+        // 夠近邊界：啱好 0.12 即企。
+        eq(true, "none".equals(ColorTrackLogic.walkDecision(0f, 0.12f, 0.35f, 0.12f)), "walk.edgeClose");
+        // 偏＋近：轉向優先（對正先好行）。
+        eq(true, "left".equals(ColorTrackLogic.walkDecision(-0.6f, 0.5f, 0.35f, 0.12f)), "walk.turnFirst");
+
         System.out.println("ColorTrackTest: passed=" + passed + " failed=" + failed);
         if (failed > 0) {
             System.exit(1);

@@ -6688,6 +6688,10 @@
                         "name": {
                           "type": "string",
                           "nullable": true
+                        },
+                        "stopSeq": {
+                          "type": "integer",
+                          "description": "明確停止世代號——pad 94 總停鍵／audio/local_music/stop／語音或 MCP stop 會令佢加一，自然播完同開新歌唔郁；browser play-all／random poll loop 用佢分辨「播完（接下一首）」同「俾人停咗（熄 mode 唔接）」"
                         }
                       }
                     }

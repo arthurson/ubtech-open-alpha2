@@ -17,6 +17,10 @@ let musicPlayAllMode = false;    // 「▶ 全部」模式 - 一首播完自動�
                                  // musicPollStatusLoop() 的 hasTrack=false 分支)
 let musicRandomMode = false;     // 「🔀 隨機」模式 - 一首播完自動再隨機一首，
                                  // 同「▶ 全部」二選一（撳另一邊即轉 mode）
+let musicModeStopSeq = null;     // 入 mode 嗰陣 server 嘅 stopSeq snapshot（null＝等
+                                 // 下次 poll 領養）；之後 poll 見到唔同即係出面
+                                 // 有人明確撳停（pad 94／stop API／MCP），熄 mode
+                                 // 唔接歌。自然播完唔郁世代號，照接。
 let musicLastPlayedName = null;  // 上次播過的歌名 - stop 當時 musicCurrentName 會
                                  // 清除, 但之後按「▶」應該重播剛才那首, 不是
                                  // 沒有反應
@@ -247,6 +251,7 @@ function musicPlayRandom() {
   // 隨機連播 mode：播完自動再隨機（見 poll loop），同「▶ 全部」二選一
   musicRandomMode = true;
   musicPlayAllMode = false;
+  musicModeStopSeq = null; // 入 mode：下次 poll 領養最新世代號做 baseline
   musicAdvanceRandom();
 }
 
@@ -267,6 +272,7 @@ function musicPlayAll() {
   if (musicTracks.length === 0) return;
   musicPlayAllMode = true;
   musicRandomMode = false;
+  musicModeStopSeq = null; // 入 mode：下次 poll 領養最新世代號做 baseline
   const idx = musicCurrentIndex();
   if (idx < 0) {
     musicPlay(musicTracks[0].name);
@@ -443,10 +449,26 @@ function musicStopStatusPolling() {
 function musicPollStatusLoop() {
   Alpha2Api.audioLocalMusicStatus().then(function (res) {
     if (!res.ok) return;
+    if (res.stopSeq != null && musicModeStopSeq == null) {
+      musicModeStopSeq = res.stopSeq; // 初次見：領養做 baseline（唔比對）
+    }
     if (!res.hasTrack && (musicPlayAllMode || musicRandomMode)) {
-      if (musicRandomMode) musicAdvanceRandom();
-      else musicAdvancePlayAll();
-      return;
+      // 出面有人明確撳停（pad 94 總停鍵／stop API／MCP stop／panel 總停）：
+      // 世代號郁咗——熄 mode，唔接歌，跌落去 shared tail 收尾（停 spectrum、
+      // 唔再 poll）。自然播完世代號唔郁，先至 advance。
+      // （入 mode 到第一次 poll 之間撞正撳停會漏一次，窗口得幾百 ms，接受。）
+      if (res.stopSeq != null && musicModeStopSeq != null && res.stopSeq !== musicModeStopSeq) {
+        musicPlayAllMode = false;
+        musicRandomMode = false;
+        musicCurrentName = null;
+        musicLastPlayedName = null;
+        musicRenderList();
+        if (typeof updateSharedNowPlaying === "function") updateSharedNowPlaying(t("music_now_playing_none"), false);
+      } else {
+        if (musicRandomMode) musicAdvanceRandom();
+        else musicAdvancePlayAll();
+        return;
+      }
     }
     musicApplyStatus(res);
     if (res.hasTrack) {

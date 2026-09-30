@@ -50,9 +50,14 @@ public final class GestureCenter {
         audioManager = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
     }
 
-    /** onDestroy 共用：停連發＋下來個 poller。 */
+    /** onDestroy 共用：停連發＋放 tick＋下來個 poller。 */
     public void shutdown() {
         stopVolumeRepeat();
+        if (tickPool != null) {
+            try { tickPool.release(); } catch (Throwable ignore) {}
+            tickPool = null;
+            tickSoundId = 0;
+        }
         headKeyPoller.setListener(null);
         try { headKeyPoller.stop(); } catch (Throwable ignored) {}
     }
@@ -61,35 +66,40 @@ public final class GestureCenter {
     private Runnable volumeRepeater;
     private AudioManager audioManager;
     private static final long VOLUME_REPEAT_INTERVAL_MS = 300;
-    // 純 Java click 模型（HeadKeyPoller 直讀 /dev/input/event0）：撳落去即送
-    // 成個 raw (down,up) click（相隔 <10ms），放手冇 signal、hold 睇唔到。
-    // tap 照行一格音量；hold/repeat 冇（driver 冇報）；雙鍵經 600ms 配對窗
-    // 合成（見 HeadKeyPoller.DOUBLE_WINDOW_MS），唔用雙擊窗
-    // 延遲單鍵——交替撳-/+ 微調音量撞入窗會誤觸總停，窗大小喺該檔調。
-    // HeadKeyPoller 經 Listener 直連做動作（音量／燈／總停），唔等 EventBus；
-    // 同時照舊格式轉送 EventBus "gesture"（compound direction=(code<<8)|0x01，
-    // 即 23041/23297/…，同已移除嘅 alpha2services 發嘅 broadcast 同值），
-    // 供 WebSocket log／出面監聽者分辨 90撳落／91放開（唔係同一個 code 出 0/1）。
+    // 每格音量 tick 聲：系統 Effect_Tick.ogg（硬件音量掣同一粒聲），經 SoundPool
+    //播（低延遲，唔使為咗 80ms 嘅 blip 開成個 MediaPlayer）。跟 STREAM_MUSIC
+    // 即時音量比例播——較細聲嗰陣 tick 細聲，靜音嗰陣唔響，同系統行為一致。
+    // FLAG_PLAY_SOUND 只係 tick 未 load 好之前嘅後備（第一下可能趕唔切）。
+    private android.media.SoundPool tickPool;
+    private int tickSoundId = 0;
+    private static final String TICK_PATH = "/system/media/audio/ui/Effect_Tick.ogg";
+    // native 長命時 hold/release 語意是真（press→hold→release），
+    // 下面 press 即行一格＋repeat、release 即停，剛剛好。跌落 Java poll 後備
+    // 才是 click 模型（按即整個 down+up、放手沒有聲），當時 tap 照行一格，
+    // hold/repeat 沒有得弄（driver 沒有報）。
+    // 不用雙擊窗：交替試按鈕會誤觸播 squat。雙鍵總停行面板按鈕／小智按鈕；synthetic 0x5e 到不到都不估。
+    // HeadKeyPoller 直讀 /dev/input/event0。
     public void start() {
-        // head_key 照旧转送 EventBus，供 WebSocket log 备查。
+        // HeadKeyPoller 經 Listener 直連，不經 EventBus "gesture" 事件。
+        // head_key/head_key_native 照旧转送 EventBus，供 WebSocket log 备查。
         headKeyPoller.setListener(new HeadKeyPoller.Listener() {
             @Override public void onGesture(int eventCode) {
-                EventBus.get().publish("gesture",
-                        "{\"direction\":" + ((eventCode << 8) | 0x01) + "}");
-                mainHandler.post(() -> onGestureCode(eventCode));
+                // 0x5a-0x5d（音量＋燈）經回調線程直行——全部落手都係
+                // volatile 寫／post 去單線程／binder call，線程安全，唔使經
+                // main 排隊等塞車；0x5e 總停重（動作＋TTS＋播歌），留喺 main。
+                // 0x5f 淨熄燈，直行。
+                if (eventCode == 0x5e) mainHandler.post(() -> onGestureCode(eventCode));
+                else onGestureCode(eventCode);
             }
-            @Override public void onHeadKey(int code, int value) {
-                EventBus.get().publish("head_key", "{\"code\":" + code + ",\"value\":" + value + "}");
+            @Override public void onHeadKeyNative(int code) {
+                EventBus.get().publish("head_key_native", "{\"code\":" + code + "}");
             }
         });
         try { headKeyPoller.start(); } catch (Throwable t) { Log.w(TAG, "headKeyPoller start failed", t); }
+        ensureTickLoaded();
     }
     /**
-     * Reacts to the head touch-pad "gestures" from {@link HeadKeyPoller}
-     * (pure-Java /dev/input/event0 poll; the old stock
-     * {@code come.ubt.alpha2.gesture} broadcast carried the same values and is
-     * gone with alpha2services, so we re-emit the identical compound
-     * {@code (eventCode << 8) | 0x01} on the EventBus "gesture" topic).
+     * Reacts to the head touch-pad "gestures" broadcast via {@code come.ubt.alpha2.gesture}.
      *
      * These are NOT documented in the SDK (docs/sensors-and-events.md only lists the raw
      * `come.ubt.alpha2.gesture` action/extra name, not what values it carries) - the values
@@ -105,13 +115,14 @@ public final class GestureCenter {
      * "direction" the field name suggests. Mapped to: "-"/"+" press-and-hold repeats
      * volume down/up every VOLUME_REPEAT_INTERVAL_MS until release; pressing both (high
      * byte 94, decimal) triggers a full stop-everything (action/speech/local music/
-     * radio - see stopAllSpeechPlayback()/onGestureCode()'s 0x5e case), matching the
+     * radio - see stopAllViaPads()/onGestureCode()'s 0x5e case), matching the
      * XiaoZhi panel's "⏹ 全部停止" button; releasing both does nothing extra.
      */
     private void onGestureCode(int code) {
         switch (code) {
-            case 0x5a: // "-" pressed：即行一格先，repeat 跟著排（click 模型
-                // 無 hold，repeat 多數即刻被放手停，僅行到這一格）。
+            case 0x5a: // "-" pressed：即行一格先，repeat 跟著排；
+                // native 長命當時 release 先停（正常 hold）；poll 後備 click
+                // 當時 release 8ms 後就到，repeat 即停，僅行到這一格。
                 ledCenter.setPadMinusHeld(true);
                 ledCenter.padLedUpdate();
                 stepVolume(false);
@@ -137,8 +148,8 @@ public final class GestureCenter {
                        // 跟小智面板那顆「⏹ 全部停止」
                        // 按鈕 (xiaozhiStopAll(), 見 app-xiaozhi.js) 看齊, 一次
                        // 停止動作/小智說話/本地音樂/電台這四樣東西。
-                       // 純 Java 由 HeadKeyPoller 600ms 配對窗合成（兩粒先後腳
-                       // 齊撳；單撳交替太密會誤觸，窗大小喺該檔調）。
+                       // （click 模型下這個 case 只靠 synthetic 0x5e＋raw 雙按
+                       // 狀態，實測未見過，自己不會亂開火；雙擊窗已刪，見上。）
                 stopAllViaPads();
                 break;
             case 0x5f: // both released: nothing further to do
@@ -151,7 +162,7 @@ public final class GestureCenter {
                 break;
         }
     }
-    /** 雙鍵總停（HeadKeyPoller 配對窗合成嘅 0x5e 先到）。 */
+    /** 雙鍵總停（僅 synthetic 0x5e＋raw 雙按狀態先到；重複 0x5e 由 HeadKeyPoller 擋）。 */
     private void stopAllViaPads() {
         ledCenter.setPadMinusHeld(true);
         ledCenter.setPadPlusHeld(true);
@@ -164,9 +175,12 @@ public final class GestureCenter {
         host.stopAllSpeech();
         audioCenter.stopLocalMusicPlayback();
         audioCenter.stopRadioPlayback();
-        // 正常經 0x5f 雙放開熄燈；1.5s 後自動熄滅係 failsafe（唔會卡死）。
+        // 冇 0x5f 到就要靠呢個 failsafe 熄燈；但期間有新撳掣（世代郁咗）就
+        // 收手——人哋㩒住緊嗰粒唔熄得（epoch 見 LedCenter）。
+        final int epoch = ledCenter.getPadHeldEpoch();
         mainHandler.postDelayed(new Runnable() {
             @Override public void run() {
+                if (ledCenter.getPadHeldEpoch() != epoch) return;
                 ledCenter.setPadMinusHeld(false);
                 ledCenter.setPadPlusHeld(false);
                 ledCenter.padLedUpdate();
@@ -174,13 +188,54 @@ public final class GestureCenter {
         }, 1500);
     }
 
-    /** 即行一格音量（tap 靠這一下，不靠 repeat）。行完即更頭燈綠色音量計。 */
+    /** 即行一格音量（tap 靠這一下，不靠 repeat）。行完即更頭燈綠色音量計＋tick 一聲。 */
     private void stepVolume(boolean up) {
         if (audioManager != null) {
             audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
                     up ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER,
-                    AudioManager.FLAG_SHOW_UI | AudioManager.FLAG_PLAY_SOUND);
+                    AudioManager.FLAG_SHOW_UI | (tickReady() ? 0 : AudioManager.FLAG_PLAY_SOUND));
+            playTick();
             ledCenter.showVolumeMeter();
+        }
+    }
+
+    /** SoundPool 預載（start() 做一次；load 係非同步，頭幾下趕唔切就靜）。 */
+    private void ensureTickLoaded() {
+        if (tickPool != null) return;
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 21) {
+                tickPool = new android.media.SoundPool.Builder()
+                        .setMaxStreams(1)
+                        .setAudioAttributes(new android.media.AudioAttributes.Builder()
+                                .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build())
+                        .build();
+            } else {
+                tickPool = new android.media.SoundPool(1, AudioManager.STREAM_MUSIC, 0);
+            }
+            tickSoundId = tickPool.load(TICK_PATH, 1);
+        } catch (Throwable t) {
+            Log.w(TAG, "tick load failed", t);
+            tickPool = null;
+            tickSoundId = 0;
+        }
+    }
+
+    private boolean tickReady() {
+        return tickPool != null && tickSoundId != 0;
+    }
+
+    /** 跟即時音量比例 tick 一聲；未 load 好／靜音就唔出聲（唔抛）。 */
+    private void playTick() {
+        try {
+            if (!tickReady() || audioManager == null) return;
+            int level = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+            int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            if (level <= 0 || max <= 0) return;
+            float v = Math.max(0f, Math.min(1f, (float) level / max));
+            tickPool.play(tickSoundId, v, v, 1, 0, 1.0f);
+        } catch (Throwable ignore) {
         }
     }
     /**
@@ -188,13 +243,11 @@ public final class GestureCenter {
      * simulating press-and-hold behaviour on top of AudioManager's single-step API.
      *
      * click 模型：第一格由 stepVolume() 即行（見 0x5a/0x5c），
-     * 這裡僅排之後的 repeat（driver 無 hold，多數即刻被放手停；留下是為了
+     * 這裡僅排之後的 repeat（release 8ms 後就到，多數即刻停；留下是為了
      * 萬一有 firmware 真是報 hold）。
      *
-     * FLAG_PLAY_SOUND makes Android play its own built-in volume-change sound on each
-     * real step - the same sound a hardware volume key produces - so there's no need
-     * for a separately synthesized beep here; it only actually sounds on ticks where
-     * the stream truly moved (Android itself no-ops silently once at min/max).
+     * FLAG_PLAY_SOUND 只係 tick 未 load 好之前嘅後備（見 stepVolume）；頂格／底格
+     * 嗰陣 Android 自己靜默（行唔郁就唔響），唔使另外處理。
      */
     private void startVolumeRepeat(boolean up) {
         stopVolumeRepeat();
@@ -204,7 +257,8 @@ public final class GestureCenter {
                 if (audioManager != null) {
                     audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
                             up ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER,
-                            AudioManager.FLAG_SHOW_UI | AudioManager.FLAG_PLAY_SOUND);
+                            AudioManager.FLAG_SHOW_UI | (tickReady() ? 0 : AudioManager.FLAG_PLAY_SOUND));
+                    playTick();
                     ledCenter.showVolumeMeter();
                 }
                 mainHandler.postDelayed(this, VOLUME_REPEAT_INTERVAL_MS);

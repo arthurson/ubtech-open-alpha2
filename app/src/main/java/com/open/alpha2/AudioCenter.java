@@ -69,6 +69,13 @@ public final class AudioCenter {
      *  哪個檔名。*/
     private volatile String currentMusicTrackName;
 
+    /** 明確停止世代號：經 public stopLocalMusicPlayback() 停親（pad 94 總停鍵、
+     *  audio/local_music/stop、語音/MCP stop、轉電台前清場……）即 +1；自然播完
+     *  （onCompletion）同開新歌唔郁。audio/local_music/status 照回，畀 browser
+     *  play-all/random poll loop 分辨「播完」（跟住播下一首）同「俾人停咗」
+     *  （熄 mode，唔接歌）。int 夠用到下次開機（每次停先 +1）。 */
+    private int musicStopSeq = 0;
+
     // -- Audio Spectrum --------------------------------------
     // 用 android.media.audiofx.Visualizer 綁定 currentMusicPlayer 的 audio session
     // 開啟 FFT 擷取, 將取得的頻譜壓縮成
@@ -989,6 +996,7 @@ public final class AudioCenter {
     }
 
     public synchronized void stopLocalMusicPlayback() {
+        musicStopSeq++;
         stopLocalMusicPlaybackLocked();
     }
 
@@ -1415,9 +1423,11 @@ public final class AudioCenter {
     public HttpServer.ApiResponse localMusicStatus() {
         synchronized (this) {
             android.media.MediaPlayer mp = currentMusicPlayer;
+            int stopSeq = musicStopSeq;
             if (mp == null) {
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"hasTrack\":false,"
-                        + "\"playing\":false,\"positionMs\":0,\"durationMs\":0,\"name\":null}");
+                        + "\"playing\":false,\"positionMs\":0,\"durationMs\":0,\"name\":null,"
+                        + "\"stopSeq\":" + stopSeq + "}");
             }
             boolean playing = false;
             int pos = 0;
@@ -1436,7 +1446,8 @@ public final class AudioCenter {
                     + "\"playing\":" + playing + ","
                     + "\"positionMs\":" + pos + ","
                     + "\"durationMs\":" + dur + ","
-                    + "\"name\":" + (name != null ? "\"" + MainActivity.jsonSafe(name) + "\"" : "null") + "}");
+                    + "\"name\":" + (name != null ? "\"" + MainActivity.jsonSafe(name) + "\"" : "null") + ","
+                    + "\"stopSeq\":" + stopSeq + "}");
         }
     }
 

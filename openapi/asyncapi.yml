@@ -75,6 +75,7 @@ components:
               - grammar_init
               - grammar_result
               - head_key
+              - head_key_native
               - head_rcv
               - mic_broadcast_debug
               - mic_state

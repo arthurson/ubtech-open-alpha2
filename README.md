@@ -70,7 +70,7 @@ adb -s <serial> forward tcp:8888 tcp:8888
 auto-starts on boot (`BootReceiver`), so the panel is reachable without
 touching the robot. CI (`build-apk.yml`, JDK 11) builds the same APK and
 publishes it as `open-alpha2-beta6.apk`. Prebuilt `.so` files
-(`head_led`/`serial_port`) live in
+(`head_led`/`head_key_mgr`/`serial_port`) live in
 `sdk-module/hardware-direct/src/main/jniLibs`; `libeasyopus.so` is compiled
 from `app/src/main/cpp` via CMake. Vosk + JNA AARs are vendored in
 `app/libs` (armeabi-v7a only) so `--offline` builds need no Maven.
@@ -80,7 +80,7 @@ from `app/src/main/cpp` via CMake. Vosk + JNA AARs are vendored in
 （`BootReceiver`），無需觸碰機械人即可連上控制面板。CI
 （`build-apk.yml`，JDK 11）會編出同一個 APK，並以
 `open-alpha2-beta6.apk` 之名發佈。預編 `.so` 檔
-（`head_led`／`serial_port`）放在
+（`head_led`／`head_key_mgr`／`serial_port`）放在
 `sdk-module/hardware-direct/src/main/jniLibs`；`libeasyopus.so` 由
 `app/src/main/cpp` 經 CMake 即時編譯。Vosk 同 JNA 的 AAR 已放喺
 `app/libs`（只留 armeabi-v7a），`--offline` 編譯毋須連 Maven。
@@ -377,7 +377,7 @@ open-alpha2/
 - 語音對話沿用「先說話、等 200 毫秒、再動作」的時序；帶大音效的動作會
   跳過語音回覆，以免兩者搶喇叭。
 - Expected logcat noise, not bugs: `linker: ... unused DT entry` warnings
-  for the prebuilt native libraries (`head_led`/`serial_port`,
+  for the prebuilt native libraries (`head_led`/`head_key_mgr`/`serial_port`,
   Vosk, JNA) and occasional `Atlas: ... not in getPreloadedDrawables?`
   lines at startup. The Android 5.1 linker simply doesn't understand newer
   GNU ELF entries (`DT_VERNEED`, `DT_GNU_HASH`), and the Atlas line comes
@@ -385,7 +385,7 @@ open-alpha2/
   `UnsatisfiedLinkError`, verified). Do not "fix" by hacking the `.so`
   files or disabling hardware acceleration.
 - 預期會見到嘅 logcat 噪音，並非 bug：預編 native 庫（`head_led`／
-   `serial_port`、Vosk、JNA）嘅 `linker: ... unused DT
+  `head_key_mgr`／`serial_port`、Vosk、JNA）嘅 `linker: ... unused DT
   entry` 警告，以及開機時偶爾嘅 `Atlas: ... not in
   getPreloadedDrawables?`。Android 5.1 linker 本來就不認識新式 GNU ELF
   項目（`DT_VERNEED`、`DT_GNU_HASH`），Atlas 那句來自框架圖形代碼——庫

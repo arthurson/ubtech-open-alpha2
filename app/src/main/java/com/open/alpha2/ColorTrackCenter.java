@@ -55,11 +55,24 @@ public final class ColorTrackCenter {
     public static final float DEFAULT_V_MIN = 0.25f;
     public static final float DEFAULT_V_MAX = 1.0f;
     public static final int DEFAULT_MIN_PIXELS = 80;
+    // ── 行路跟（預設全關，要用 opt-in；手段＝播內建 .ubx，fileId／名／檔名皆可，見 ActionDirect）──
+    /** 行路跟總開關（預設 false：淨個頭跟，唔行；開＝偏就轉向、遠就行前、近就企定）。 */
+    public static final boolean DEFAULT_WALK_FOLLOW = false;
+    /** 轉向死區（|dx| 超過先轉，預設 0.35；同頭死區 0.10 分開，身體郁大步過頭）。 */
+    public static final float DEFAULT_TURN_DB = 0.35f;
+    /** 夠近覆蓋率（blob／全圖，預設 0.12；大過即企定唔行，淨個頭瞄）。 */
+    public static final float DEFAULT_CLOSE_COVERAGE = 0.12f;
+    /** 行路動作（fileId，見 blockly-actions-data.js 移動類；可用 config 換名／檔名）。 */
+    public static final String DEFAULT_WALK_FWD = "1508999860568"; // 前進
+    public static final String DEFAULT_WALK_LEFT = "1464835936047"; // 左轉
+    public static final String DEFAULT_WALK_RIGHT = "1464835936041"; // 右轉
     /** 偵測圖寬鎖 160（高跟預覽比例：4:3→120，16:9→90），全圖掃都係個位數 ms。 */
     public static final int DETECT_W = 160;
 
     private final CameraController cameraController;
     private final UbxApi ubxApi;
+    /** 行路跟用（播 前進／左轉／右轉 .ubx；MainActivity 後補注入，未注入即行路跟唔郁）。 */
+    private volatile ActionDirect actionDirect;
 
     // ── 可調參數（volatile，HTTP 線程寫、檢測線程讀）──
     private volatile boolean running = false;
@@ -79,6 +92,12 @@ public final class ColorTrackCenter {
     private volatile float vMin = DEFAULT_V_MIN;
     private volatile float vMax = DEFAULT_V_MAX;
     private volatile int minPixels = DEFAULT_MIN_PIXELS;
+    private volatile boolean walkFollow = DEFAULT_WALK_FOLLOW;
+    private volatile float turnDb = DEFAULT_TURN_DB;
+    private volatile float closeCoverage = DEFAULT_CLOSE_COVERAGE;
+    private volatile String walkFwd = DEFAULT_WALK_FWD;
+    private volatile String walkLeft = DEFAULT_WALK_LEFT;
+    private volatile String walkRight = DEFAULT_WALK_RIGHT;
 
     // ── 狀態／統計 ──
     private volatile int curPan = PAN_HOME;
@@ -96,6 +115,9 @@ public final class ColorTrackCenter {
     private volatile float lastCoverage = 0f;
     private volatile int lastPixels = 0;
     private volatile int lastMatches = 0;
+    /** 行路跟狀態：上次播咩（fileId／名／""＝未行過）＋累計步數。 */
+    private volatile String lastWalk = "";
+    private volatile long walkMoves = 0;
     private volatile long lastMoveMs = 0;
     private volatile int lostStreak = 0;
     /** 上一幀檢測耗時 ms（decode＋HSV＋flood fill）。 */
@@ -142,6 +164,11 @@ public final class ColorTrackCenter {
         this.ubxApi = ubxApi;
     }
 
+    /** MainActivity 接線用：後補 ActionDirect（起得慢過 Center；未注入時行路跟唔郁，頭照跟）。 */
+    public void setActionDirect(ActionDirect actionDirect) {
+        this.actionDirect = actionDirect;
+    }
+
     // ── 純算法（RGB→HSV／hue 區間／最大 blob）見 ColorTrackLogic（零依賴獨立檔，
     // 直接單元測試；呢度唔重複實現）──
     private void ensureThreadLocked() {
@@ -179,6 +206,11 @@ public final class ColorTrackCenter {
         vMin = ApiValidator.optionalFloatRange(query, "vMin", 0.0, 1.0, vMin);
         vMax = ApiValidator.optionalFloatRange(query, "vMax", 0.0, 1.0, vMax);
         minPixels = ApiValidator.optionalIntRange(query, "minPixels", 10, 20000, minPixels);
+        turnDb = ApiValidator.optionalFloatRange(query, "turnDb", 0.0, 0.8, turnDb);
+        closeCoverage = ApiValidator.optionalFloatRange(query, "closeCoverage", 0.02, 0.6, closeCoverage);
+        walkFwd = optionalActionName(query, "walkFwd", walkFwd);
+        walkLeft = optionalActionName(query, "walkLeft", walkLeft);
+        walkRight = optionalActionName(query, "walkRight", walkRight);
         if (query.containsKey("headFollow") && query.get("headFollow") != null
                 && !query.get("headFollow").isEmpty()) {
             headFollow = ApiValidator.optionalBoolean(query, "headFollow", headFollow);
@@ -187,6 +219,22 @@ public final class ColorTrackCenter {
                 && !query.get("autoInterval").isEmpty()) {
             autoInterval = ApiValidator.optionalBoolean(query, "autoInterval", autoInterval);
         }
+        if (query.containsKey("walkFollow") && query.get("walkFollow") != null
+                && !query.get("walkFollow").isEmpty()) {
+            walkFollow = ApiValidator.optionalBoolean(query, "walkFollow", walkFollow);
+        }
+    }
+
+    /** 行路動作名驗收：非空、≤64 字、唔准帶路徑（/ \ ..）；唔合格即保留現值。 */
+    private static String optionalActionName(Map<String, String> query, String key, String current) {
+        if (query == null) return current;
+        String v = query.get(key);
+        if (v == null || v.isEmpty()) return current;
+        v = v.trim();
+        if (v.isEmpty() || v.length() > 64 || v.contains("/") || v.contains("\\") || v.contains("..")) {
+            return current;
+        }
+        return v;
     }
 
     /** 啟動追蹤：先確保相機開流，再訂閱抽樣。HTTP worker 線程調用（會 block 開相機）。 */
@@ -208,6 +256,7 @@ public final class ColorTrackCenter {
         running = true;
         lostStreak = 0;
         hasTrack = false;
+        lastWalk = "";
         return HttpServer.ApiResponse.ok(statusJson());
     }
 
@@ -219,6 +268,14 @@ public final class ColorTrackCenter {
                 try { cameraController.unsubscribe(sampler); } catch (Throwable ignored) {}
                 subscribed = false;
             }
+        }
+        // 行路跟開住＋播緊步嗰陣停 tracking：截停＋蹲下站起回穩（唔係部機會保持
+        // 行路中途姿勢企喺度；掃唔到嗰陣唔截——行緊嗰步有界，播完就算）。
+        ActionDirect ad = actionDirect;
+        if (walkFollow && ad != null) {
+            try {
+                if (ad.isPlaying()) ad.stopActionWithRecovery();
+            } catch (Throwable ignored) {}
         }
         return HttpServer.ApiResponse.ok(statusJson());
     }
@@ -354,6 +411,13 @@ public final class ColorTrackCenter {
             if (dy < -1f) dy = -1f;
             if (dy > 1f) dy = 1f;
 
+            // 行路跟播緊動作嗰陣唔發頭舵機：.ubx 行路步態自己會擺頭（19/20 全幀），
+            // cmd05 同佢搶會打架；等步播完（isPlaying false）頭先接返。
+            boolean ubxBusy = false;
+            ActionDirect ad = actionDirect;
+            if (walkFollow && ad != null) {
+                try { ubxBusy = ad.isPlaying(); } catch (Throwable ignored) {}
+            }
             boolean moved = false;
             int newPan = curPan;
             int newTilt = curTilt;
@@ -374,7 +438,7 @@ public final class ColorTrackCenter {
             // 只有角度真變＋同上次發送隔夠 SERVO_MIN_GAP_MS 先發舵機（同 FaceTrackCenter 一致）。
             long nowMs = System.currentTimeMillis();
             boolean servoDue = nowMs - lastServoSendMs >= SERVO_MIN_GAP_MS;
-            if (headFollow && servoDue && newPan != curPan) {
+            if (headFollow && !ubxBusy && servoDue && newPan != curPan) {
                 if (ubxApi != null
                         && ubxApi.servoSendOneCode(PAN_ID, newPan, timeMs)
                         == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
@@ -382,7 +446,7 @@ public final class ColorTrackCenter {
                     moved = true;
                 }
             }
-            if (headFollow && servoDue && newTilt != curTilt) {
+            if (headFollow && !ubxBusy && servoDue && newTilt != curTilt) {
                 if (ubxApi != null
                         && ubxApi.servoSendOneCode(TILT_ID, newTilt, timeMs)
                         == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
@@ -394,6 +458,27 @@ public final class ColorTrackCenter {
                 moves++;
                 lastMoveMs = nowMs;
                 lastServoSendMs = nowMs;
+            }
+            // ── 行路跟：偏就轉向一步、置中但遠就行前一步、近就企定。
+            // 一次一动：播緊上一动嗰陣唔疊新（isPlaying 守）；掃唔到嗰幀唔發新步，
+            // 行緊嗰步播完就算（有界，唔會盲行）；播唔起（無檔／胸板唔得）照記 warn，頭照跟。
+            if (walkFollow && !ubxBusy && ad != null) {
+                String want = ColorTrackLogic.walkDecision(dx, lastCoverage, turnDb, closeCoverage);
+                if (!"none".equals(want)) {
+                    String file = "left".equals(want) ? walkLeft
+                            : "right".equals(want) ? walkRight : walkFwd;
+                    try {
+                        if (ad.playActionDirect(file)
+                                == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+                            lastWalk = file;
+                            walkMoves++;
+                        } else {
+                            Log.w(TAG, "walk step not started: " + file);
+                        }
+                    } catch (Throwable t) {
+                        Log.w(TAG, "walk step failed: " + file, t);
+                    }
+                }
             }
         } catch (Throwable t) {
             Log.w(TAG, "detectAndTrack failed", t);
@@ -420,6 +505,14 @@ public final class ColorTrackCenter {
         sb.append(",\"confidence\":").append(fmt3(lastCoverage)).append(",");
         sb.append("\"pixels\":").append(lastPixels).append(",");
         sb.append("\"matches\":").append(lastMatches).append(",");
+        sb.append("\"lastWalk\":\"").append(JsonUtil.esc(lastWalk)).append("\",");
+        sb.append("\"walkMoves\":").append(walkMoves).append(",");
+        ActionDirect ad = actionDirect;
+        boolean ubxPlaying = false;
+        if (ad != null) {
+            try { ubxPlaying = ad.isPlaying(); } catch (Throwable ignored) {}
+        }
+        sb.append("\"ubxPlaying\":").append(ubxPlaying).append(",");
         sb.append("\"effectiveIntervalMs\":").append(effectiveIntervalMs()).append(",");
         sb.append("\"framesSeen\":").append(framesSeen)
                 .append(",\"framesProcessed\":").append(framesProcessed)
@@ -442,7 +535,13 @@ public final class ColorTrackCenter {
         sb.append("\"sMax\":").append(fmt3(sMax)).append(",");
         sb.append("\"vMin\":").append(fmt3(vMin)).append(",");
         sb.append("\"vMax\":").append(fmt3(vMax)).append(",");
-        sb.append("\"minPixels\":").append(minPixels);
+        sb.append("\"minPixels\":").append(minPixels).append(",");
+        sb.append("\"walkFollow\":").append(walkFollow).append(",");
+        sb.append("\"turnDb\":").append(fmt3(turnDb)).append(",");
+        sb.append("\"closeCoverage\":").append(fmt3(closeCoverage)).append(",");
+        sb.append("\"walkFwd\":\"").append(JsonUtil.esc(walkFwd)).append("\",");
+        sb.append("\"walkLeft\":\"").append(JsonUtil.esc(walkLeft)).append("\",");
+        sb.append("\"walkRight\":\"").append(JsonUtil.esc(walkRight)).append("\"");
         sb.append("},");
         sb.append("\"servo\":{\"panId\":").append(PAN_ID)
                 .append(",\"tiltId\":").append(TILT_ID)

@@ -3,46 +3,38 @@ package com.ubtechinc.alpha.hardware;
 import android.os.SystemClock;
 import android.util.Log;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStream;
+import com.ubtechinc.alpha.jni.headkey.HeadKeyMgr;
+
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 頭頂 +/- pad（pure-direct，純 Java 直讀；不依賴任何 prebuilt .so）。
+ * 頭頂 +/- pad：{@code libhead_key_mgr.so} native 線程唯一入口。
  *
- * <p>直讀 {@code /dev/input/event0}（實測即 rk29-keypad，777 可讀），解析
- * Linux input_event（32-bit ARM，小端，共 16 字節：
- * {@code struct timeval(8) + type u16 + code u16 + value s32}），只處理
- * EV_KEY（type=1）。調用方（如 GestureCenter）經 {@link Listener} 收 gesture，
- * 自行決定線程派發。本模塊不依賴 app 侧 EventBus。</p>
+ * <p>native 線程讀 {@code /dev/input/event*}（rk29-keypad），經
+ * {@code HeadKeyMgr.onNativeCallback(int)} 回調本類，碼形如
+ * {@code 0x5A01/0x5B01/0x5E01…}（即舊 broadcast 格式
+ * {@code (eventCode<<8)|0x01}），由 {@link #onNativeKey(int)} 按
+ * 0x5a..0x5f 合成 gesture。回調來自 native 回調線程，非主線程。</p>
  *
- * <p>click 模型（logcat timestamp 實證）：driver 㩒落去即送成個 raw
- * (down,up) click（相隔 &lt;10ms），放手冇 signal、hold 睇唔到。一個 tap＝2 句
- * 係硬件真相，唔係 bug。單鍵（0x5a/0x5b/0x5c/0x5d）即到即報，唔等人；雙鍵靠
- * {@link #DOUBLE_WINDOW_MS} 配對窗合成——第二粒喺第一粒起計窗內㩒落就報
- * 0x5e（代替第二下單鍵，第一下單鍵已報，音量會先行一格再總停），兩邊放晒後報
- * 0x5f。每對時間戳只配對一次，連續交替撳唔會連環觸發。驅動直報嘅合成碼
- * （0x5b/0x5d/0x5e/0x5f，多數係 chatter，codes 求其嚟、幾秒後都仲有）一律過
- * 閘：0x5e 得喺兩邊重疊㩒住、或者兩邊先後腳（窗內）先信，其餘吞埋；0x5b/0x5d
- * 直報永遠唔理（真放手經下面 raw (code,0) 路徑）。所有吞咗嘅 chatter 60s 報數，
- * 唔逐句洗版。</p>
+ * <p>收斂狀態機（吞重複／stray、雙鍵合成、去重）見下面各 locked 方法。
+ * 注意：本類冇 Java 後備直讀——native 起唔嚟（.so 缺失／Init 失敗）就係
+ * 起唔嚟，pad 全死，唔會靜靜跌落另一套語意（2026-09-30 決定，有問題直接
+ * 睇 log 修，唔要兩套行為）。</p>
  *
- * <p>原始鍵事件經 {@link Listener#onHeadKey(int, int)} 上報（調用方可轉送
- * WebSocket log 備查）。回調來自 poll 線程，非主線程。</p>
+ * <p>所有 native 回調原始碼另經 {@link Listener#onHeadKeyNative(int)} 上報
+ * （調用方可轉送 WebSocket log 備查；native 自身亦寫
+ * {@code /sdcard/keyjnilog.txt}，可對照）。</p>
  */
-public class HeadKeyPoller {
+public class HeadKeyPoller extends HeadKeyMgr {
     private static final String TAG = "HeadKeyPoller";
 
     /** 上報接口（調用方實現）。 */
     public interface Listener {
         /** 合成 gesture 碼（0x5a..0x5f，見 AIDL_REFERENCE 第7章）。 */
         void onGesture(int eventCode);
-        /** 原始鍵事件（code/value，EV_KEY 語義）。 */
-        void onHeadKey(int code, int value);
+        /** native 回調原始碼。 */
+        void onHeadKeyNative(int code);
     }
-
-    private static final String EVENT_NODE = "/dev/input/event0";
 
     // 舊 gesture 碼（見 AIDL_REFERENCE 第7章 + GestureCenter.onGestureCode）
     private static final int KEY_MINUS = 0x5a;
@@ -52,240 +44,190 @@ public class HeadKeyPoller {
     private static final int KEY_BOTH = 0x5e;
     private static final int KEY_BOTH_UP = 0x5f;
 
-    private static final int EV_KEY = 1;
-
-    /**
-     * 雙鍵配對窗（ms，uptime 計）。兩指齊撳通常相差 &lt;200ms，但預留慢手
-     * （一粒㩒完再㩒第二粒）放寬到 600ms。交替撳 -/+ 微調音量撞入窗會誤觸
-     * 總停——正常調音量係同粒連撳，唔會中；因為誤觸代價係成個停晒，唔好再大。
-     * 實機交替撳成日誤停就調細，慢手雙撳難食就調大。
-     */
-    static final int DOUBLE_WINDOW_MS = 600;
-
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile Listener listener;
-    private Thread thread;
-    private volatile InputStream pollInput; // stop 閂佢先叫得醒 blocking read（interrupt 叫唔醒）
+    // 2026-09-10 刪：startNativeWatchdog（6s 冇回調當死）——keyjnilog.txt 實證
+    // 誤殺健康 native。起得就信佢長命，唔使定時查。
 
     private boolean minusDown = false;
     private boolean plusDown = false;
     private boolean bothReported = false;
-    // 最近一次真 transition 按下（uptime ms；-1＝未配對／已消耗，每對只用一次）
-    private long lastMinusPressMs = -1;
-    private long lastPlusPressMs = -1;
+    // 雙鍵旗來源：true＝上次由 synthetic 0x5e01 直設（唔係 raw 㩒出嚟）。
+    // driver 長㩒唔會重發 down（3.4s hold 實證得一對），所以 raw down 到而
+    // 旗已升，要分真 hold（吞，防萬一 flood）定 synthetic 殘留（當新㩒，防
+    // stuck 吃單）。raw 邊到先清。
+    private boolean bothSynthetic = false;
+    private boolean nativeActive = false;
+    /**
+     * 同一個雙撳去重窗（ms，uptime 計）。driver 會將同一吓雙撳報幾次
+     * （raw 重疊＋遲到嘅 synthetic 0x5e01，中間重隔住 raw 放手）——窗內
+     * 一律當同一下，唔報第二次（唔係總停開兩次）。代價：1 秒內真係撳多
+     * 次雙撳，第二下會吞（正常人做唔到咁快，接受）。
+     */
+    private static final long DOUBLE_DEDUP_MS = 1000;
+    private long lastBothFireMs = -1;
 
     public void setListener(Listener l) { listener = l; }
 
     public synchronized void start() {
         if (running.get()) return;
-        startJavaPoll();
+        // 與 Java 直讀互斥寫死喺度：native 起得來就係唯一 reader，唔開第二條。
+        // 注意：反匯編證實 native Init() 成功失敗一律回 0（結尾 moveq r0,#0），
+        // 不可用返回值判斷；照原裝順序調，成敗看回調/“nativeRun” log。
+        if (HeadKeyMgr.isLibLoaded()) {
+            try {
+                boolean initRet = Init();
+                Log.i(TAG, "HeadKeyMgr.Init() returned " + initRet + " (ignored, always false)");
+                nativeInit();
+                nativeThreadStart();
+                nativeActive = true;
+                running.set(true);
+                Log.i(TAG, "native head_key thread active (3.002 libhead_key_mgr.so)");
+                return;
+            } catch (Throwable t) {
+                Log.w(TAG, "native head_key failed, no fallback: " + t.getMessage());
+            }
+        } else {
+            Log.w(TAG, "head_key_mgr.so not loaded, head keys unavailable (no fallback)");
+        }
     }
 
     public synchronized void stop() {
         running.set(false);
-        // 閂 event0 流先叫得醒 blocking read（interrupt 叫唔醒），再 join。
-        InputStream pin = pollInput;
-        pollInput = null;
-        if (pin != null) {
-            try { pin.close(); } catch (Exception ignore) {}
-        }
-        if (thread != null) {
-            try { thread.interrupt(); thread.join(500); } catch (InterruptedException ignore) {}
-            thread = null;
-        }
-    }
-
-    private void startJavaPoll() {
-        File f = new File(EVENT_NODE);
-        if (!f.exists()) {
-            Log.w(TAG, EVENT_NODE + " not found, head keys unavailable (pure-direct)");
-            return;
-        }
-        running.set(true);
-        thread = new Thread(new Runnable() {
-            @Override public void run() { loop(); }
-        }, "HeadKeyPoll");
-        thread.setDaemon(true);
-        thread.start();
-        Log.i(TAG, "polling " + EVENT_NODE + " (pure-direct, no gesture broadcast needed)");
-    }
-
-    private void loop() {
-        byte[] ev = new byte[16];
-        try {
-            InputStream in = new FileInputStream(EVENT_NODE);
-            pollInput = in; // 存 field，stop() 閂佢叫醒 blocking read
+        if (nativeActive) {
+            nativeActive = false;
             try {
-                while (running.get()) {
-                    int got = 0;
-                    while (got < 16) {
-                        int n;
-                        try {
-                            n = in.read(ev, got, 16 - got);
-                        } catch (Exception e) {
-                            Log.w(TAG, "read error: " + e.getMessage());
-                            try { Thread.sleep(200); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
-                            break;
-                        }
-                        if (n < 0) {
-                            try { Thread.sleep(200); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
-                            break;
-                        }
-                        got += n;
-                    }
-                    if (got < 16) continue;
-                    int type = (ev[8] & 0xFF) | ((ev[9] & 0xFF) << 8);
-                    int code = (ev[10] & 0xFF) | ((ev[11] & 0xFF) << 8);
-                    int value = (ev[12] & 0xFF) | ((ev[13] & 0xFF) << 8)
-                            | ((ev[14] & 0xFF) << 16) | (ev[15] << 24);
-                    if (type == EV_KEY) onKey(code, value);
-                    // 非按鍵事件（SYN 等）忽略
-                }
-            } finally {
-                pollInput = null;
-                try { in.close(); } catch (Exception ignore) {}
-            }
-        } catch (Exception e) {
-            if (running.get()) Log.w(TAG, "poll loop ended: " + e.getMessage());
-        }
-        running.set(false);
-    }
-
-    private int chatterSuppressed = 0;
-    private long chatterLastLogMs = 0;
-
-    private void onKey(int code, int value) {
-        boolean pressed = value == 1;
-        boolean released = value == 0;
-        if (!pressed && !released) {
-            // value==2 連發：照舊轉送 raw（備查），唔進手勢管線。
-            Log.d(TAG, "key code=0x" + Integer.toHexString(code) + " value=" + value);
-            notifyHeadKey(code, value);
-            return;
-        }
-        boolean publish;
-        java.util.List<Integer> gestures = new java.util.ArrayList<Integer>(2);
-        synchronized (this) {
-            if (isSynthetic(code)) {
-                publish = onSyntheticLocked(code, pressed, gestures);
-            } else {
-                publish = onKeyLocked(code, pressed, gestures);
-            }
-        }
-        if (!publish && gestures.isEmpty()) {
-            // 吞咗嘅 chatter 唔逐句打 log（之前每粒一句，logcat 洗版），60s 報數。
-            chatterSuppressed++;
-            long now = System.currentTimeMillis();
-            if (now - chatterLastLogMs > 60000) {
-                chatterLastLogMs = now;
-                Log.d(TAG, "headkey chatter suppressed x" + chatterSuppressed);
-            }
-            return;
-        }
-        Log.d(TAG, "key code=0x" + Integer.toHexString(code) + " value=" + value);
-        if (publish) notifyHeadKey(code, value);
-        for (int i = 0; i < gestures.size(); i++) emitGesture(gestures.get(i));
-    }
-
-    private static boolean isSynthetic(int code) {
-        return code == KEY_MINUS_UP || code == KEY_PLUS_UP || code == KEY_BOTH || code == KEY_BOTH_UP;
-    }
-
-    private void notifyHeadKey(int code, int value) {
-        Listener l = listener;
-        if (l != null) {
-            try {
-                l.onHeadKey(code, value);
+                nativeThreadStop();
             } catch (Throwable t) {
-                Log.w(TAG, "onHeadKey failed", t);
+                Log.w(TAG, "nativeThreadStop failed: " + t.getMessage());
             }
         }
     }
 
-    /** 鎖內 raw 狀態機（0x5a/0x5c；回 boolean＝使唔使 publish head_key）。
-     *  得真 transition 先行（重複 down/stray up 一律吞）。其他碼（如 USB 音频
-     *  0x71-0x73）照舊轉送，唔進 gesture 管道。 */
-    private boolean onKeyLocked(int code, boolean pressed,
-                               java.util.List<Integer> gestures) {
-        if (code == KEY_MINUS) return pressed ? pressLocked(true, gestures) : releaseLocked(true, gestures);
-        if (code == KEY_PLUS) return pressed ? pressLocked(false, gestures) : releaseLocked(false, gestures);
+    /**
+     * native 按鍵回調。原始碼先打 log（與 /sdcard/keyjnilog.txt 對照），
+     * 上報＋手勢一律經下面 onNativeKey 嘅收斂狀態機（唔好喺呢度直報，
+     * 否則 chatter/重複會雙重上報）。
+     */
+    @Override
+    public void onNativeCallback(int code) {
+        if (!running.get()) return; // stop 後殘留回調唔投遞
+        Log.i(TAG, "native key 0x" + Integer.toHexString(code));
+        onNativeKey(code);
+    }
+
+    /**
+     * native 回調解碼：實測碼形如 {@code 0x5A01/0x5B01/0x5E01…}，
+     * 即舊 broadcast 格式 {@code (eventCode<<8)|0x01}。
+     * 0x5a..0x5d 行收斂狀態機（防雙重派發）；0x5e01/0x5f01 信 native 但唔
+     * 重複報（raw 重疊報過就吞 synthetic 果粒；狀態全清先吞 0x5f01）。
+     */
+    private void onNativeKey(int code) {
+        int eventCode = (code >> 8) & 0xFF;
+        boolean publish = false;
+        java.util.List<Integer> tmp = new java.util.ArrayList<Integer>(1);
+        synchronized (this) {
+            switch (eventCode) {
+                case KEY_MINUS:
+                    publish = pressLocked(true, tmp);
+                    break;
+                case KEY_MINUS_UP:
+                    publish = releaseLocked(true, tmp);
+                    break;
+                case KEY_PLUS:
+                    publish = pressLocked(false, tmp);
+                    break;
+                case KEY_PLUS_UP:
+                    publish = releaseLocked(false, tmp);
+                    break;
+                case KEY_BOTH:
+                    // 信 native，但同一個雙撳窗內唔開第二次火（raw 重疊報過、
+                    // 或者頭先先報過，呢粒係遲到 echo——連旗都唔掂，等佢好似
+                    // 冇嚟過；唔係總停開兩次＋殘留假旗吃下一單）。
+                    // 開火先 set 旗（等後續 raw 放手配對），並記低係 synthetic
+                    // 嚟（raw 到先清，見 pressLocked/releaseLocked）。
+                    if (tryFireBothLocked(tmp)) {
+                        minusDown = true;
+                        plusDown = true;
+                        bothSynthetic = true;
+                    }
+                    publish = true;
+                    break;
+                case KEY_BOTH_UP:
+                    // 同理：已經清晒就唔好再報一次 0x5f（免得多一鑊全局熄燈 burst）。
+                    if (bothReported || minusDown || plusDown) {
+                        minusDown = false;
+                        plusDown = false;
+                        bothReported = false;
+                        bothSynthetic = false;
+                        tmp.add(KEY_BOTH_UP);
+                    }
+                    publish = true;
+                    break;
+                default:
+                    Log.d(TAG, "native key unmapped 0x" + Integer.toHexString(code));
+                    break;
+            }
+        }
+        if (publish) {
+            Listener l = listener;
+            if (l != null) {
+                try {
+                    l.onHeadKeyNative(code);
+                } catch (Throwable t) {
+                    Log.w(TAG, "onHeadKeyNative failed", t);
+                }
+            }
+        }
+        for (int i = 0; i < tmp.size(); i++) emitGesture(tmp.get(i));
+    }
+
+    /** 報雙撳（0x5e），同一個雙撳窗內只報一次（見 DOUBLE_DEDUP_MS）。
+     *  回 true＝開咗火（調用方先 set 旗）；false＝echo，乜都唔掂。 */
+    private boolean tryFireBothLocked(java.util.List<Integer> gestures) {
+        long now = SystemClock.uptimeMillis();
+        if (lastBothFireMs >= 0 && now - lastBothFireMs <= DOUBLE_DEDUP_MS) return false;
+        lastBothFireMs = now;
+        bothReported = true;
+        gestures.add(KEY_BOTH);
         return true;
     }
 
-    /** 鎖內合成碼（驅動直報 0x5b/0x5d/0x5e/0x5f，實證多數係 chatter）。
-     *  0x5b/0x5d 直報成日唔理（唔 publish、唔 emit、唔掂 state；真放手經 raw
-     *  (0x5a/0x5c,0) 路徑）。0x5e 直報：兩邊重疊㩒住、或者兩邊先後腳（窗內、
-     *  驅動自己識合成雙撳嗰款）先信；0x5f 直報：得雙鍵已報先收。其餘一律吞。 */
-    private boolean onSyntheticLocked(int code, boolean pressed,
-                                      java.util.List<Integer> gestures) {
-        if (code == KEY_MINUS_UP || code == KEY_PLUS_UP) return false;
-        long now = SystemClock.uptimeMillis();
-        if (pressed) {
-            if (code == KEY_BOTH) {
-                if (minusDown && plusDown && !bothReported) {
-                    emitBothLocked(gestures);
-                    return true;
-                }
-                if (!bothReported && windowPairedLocked(now)) {
-                    emitBothLocked(gestures);
-                    return true;
-                }
-                return false;
-            }
-            if (code == KEY_BOTH_UP) {
-                if (!bothReported) return false;
-                bothReported = false;
-                minusDown = false;
-                plusDown = false;
-                gestures.add(KEY_BOTH_UP);
-                return true;
-            }
+    /** 鎖內 raw 按下。driver 長㩒唔重發 down（3.4s hold 實證得一對），所以
+     *  down 到而旗已升，得兩種可能：真 hold 緊嘅重複（吞，防萬一 flood）vs
+     *  synthetic 殘留旗（當新㩒，連另一粒假旗一齊清，防 stuck 吃單）。 */
+    private boolean pressLocked(boolean isMinus, java.util.List<Integer> gestures) {
+        if ((isMinus ? minusDown : plusDown) && !(bothReported && bothSynthetic)) {
             return false;
         }
-        // value==0：0x5e/0x5f 先 sync（郁到 state 先 publish；chatter 嗰陣
-        // flags 本來就清，自動靜默）。
-        boolean b0 = bothReported;
-        syncBothStateLocked(code, false);
-        return bothReported != b0;
-    }
-
-    /** 兩邊先後腳（窗內各㩒過一次，未配對）即配成雙撳。 */
-    private boolean windowPairedLocked(long now) {
-        return lastMinusPressMs >= 0 && lastPlusPressMs >= 0
-                && now - lastMinusPressMs <= DOUBLE_WINDOW_MS
-                && now - lastPlusPressMs <= DOUBLE_WINDOW_MS;
-    }
-
-    /** 鎖內報雙撳：時間戳即時作廢（每對只配一次，唔連環觸發）。 */
-    private void emitBothLocked(java.util.List<Integer> gestures) {
-        bothReported = true;
-        lastMinusPressMs = -1;
-        lastPlusPressMs = -1;
-        gestures.add(KEY_BOTH);
-    }
-
-    /** 鎖內 raw 按下：重複 down 吞咗佢。第二粒喺窗內跟到就報 0x5e 代替單鍵
-     *  （第一下單鍵已即時報過，唔等人——音量反應唔為等雙撳而遲）。 */
-    private boolean pressLocked(boolean isMinus, java.util.List<Integer> gestures) {
-        long now = SystemClock.uptimeMillis();
-        if (isMinus ? minusDown : plusDown) return false;
-        if (isMinus) { minusDown = true; lastMinusPressMs = now; }
-        else { plusDown = true; lastPlusPressMs = now; }
-        if (minusDown && plusDown && !bothReported) {
-            emitBothLocked(gestures);
-        } else if (!bothReported) {
-            long lastOther = isMinus ? lastPlusPressMs : lastMinusPressMs;
-            if (lastOther >= 0 && now - lastOther <= DOUBLE_WINDOW_MS) {
-                emitBothLocked(gestures);
-            } else {
-                gestures.add(isMinus ? KEY_MINUS : KEY_PLUS);
-            }
+        // 新 edge（或殘留清理）：呢粒㩒落係真；synthetic 嚟嘅旗（包括另一粒）
+        // 冇 raw 證據支持，一律作廢。
+        if (bothSynthetic) {
+            minusDown = false;
+            plusDown = false;
+            bothReported = false;
+            bothSynthetic = false;
+        }
+        if (isMinus) minusDown = true; else plusDown = true;
+        if (minusDown && plusDown) {
+            tryFireBothLocked(gestures); // 重疊中唔報單鍵，等去重判
+        } else {
+            // 冇重疊就唔可能仲有 live 雙撳：bothReported 係殘留即清，照報單鍵。
+            bothReported = false;
+            gestures.add(isMinus ? KEY_MINUS : KEY_PLUS);
         }
         return true;
     }
 
-    /** 鎖內 raw 放手（合成碼 pressed 經呢度借路，語意一致）：冇㩒過嘅 stray up 吞咗佢。 */
+    /** 鎖內 raw 放手：冇㩒過嘅 stray up 吞咗佢。synthetic 殘留喺度斷（另一粒
+     *  假旗一齊清），但呢粒自己照正常程序報——行到呢度即係 driver 真係送咗
+     *  個 up 嚟（冇 up 就冇 release）。 */
     private boolean releaseLocked(boolean isMinus, java.util.List<Integer> gestures) {
+        if (bothSynthetic) {
+            bothSynthetic = false;
+            bothReported = false;
+            if (isMinus) plusDown = false; else minusDown = false;
+        }
         if (isMinus ? !minusDown : !plusDown) return false;
         if (isMinus) minusDown = false; else plusDown = false;
         if (bothReported && !minusDown && !plusDown) {
@@ -299,13 +241,6 @@ public class HeadKeyPoller {
             gestures.add(KEY_BOTH_UP);
         }
         return true;
-    }
-    /** 鎖內調用（onKeyLocked/onSyntheticLocked 嘅 synchronized 塊入面）。 */
-    private void syncBothStateLocked(int code, boolean pressed) {
-        if (code == KEY_MINUS || code == KEY_MINUS_UP) minusDown = pressed && code == KEY_MINUS;
-        else if (code == KEY_PLUS || code == KEY_PLUS_UP) plusDown = pressed && code == KEY_PLUS;
-        else if (code == KEY_BOTH) { bothReported = pressed; if (pressed) { minusDown = true; plusDown = true; } }
-        else if (code == KEY_BOTH_UP && !pressed) { bothReported = false; minusDown = false; plusDown = false; }
     }
 
     /** 合成 gesture 上報（舊 broadcast direction=(eventCode<<8)|0x01 語義由調用方按需还原）。 */

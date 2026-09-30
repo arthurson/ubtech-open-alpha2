@@ -249,6 +249,8 @@ const Alpha2Api = (function() {
     if (params && params.vMin != null) assertRange(Number(params.vMin), 0, 1, 'vMin');
     if (params && params.vMax != null) assertRange(Number(params.vMax), 0, 1, 'vMax');
     if (params && params.minPixels != null) assertRange(Number(params.minPixels), 10, 20000, 'minPixels');
+    if (params && params.turnDb != null) assertRange(Number(params.turnDb), 0, 0.8, 'turnDb');
+    if (params && params.closeCoverage != null) assertRange(Number(params.closeCoverage), 0.02, 0.6, 'closeCoverage');
     // 更新顏色追蹤參數（不啟停；啟動中亦可即時調）
     return api('color/track/config', params);
   }
@@ -266,6 +268,8 @@ const Alpha2Api = (function() {
     if (params && params.vMin != null) assertRange(Number(params.vMin), 0, 1, 'vMin');
     if (params && params.vMax != null) assertRange(Number(params.vMax), 0, 1, 'vMax');
     if (params && params.minPixels != null) assertRange(Number(params.minPixels), 10, 20000, 'minPixels');
+    if (params && params.turnDb != null) assertRange(Number(params.turnDb), 0, 0.8, 'turnDb');
+    if (params && params.closeCoverage != null) assertRange(Number(params.closeCoverage), 0.02, 0.6, 'closeCoverage');
     // 開始純 Java 顏色追蹤（HSV 閾值＋最大 blob＋頭部 19/20 跟色）
     return api('color/track/start', params);
   }

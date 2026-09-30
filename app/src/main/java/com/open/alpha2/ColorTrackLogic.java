@@ -122,4 +122,15 @@ public final class ColorTrackLogic {
         }
         return best;
     }
+
+    /**
+     * 行路跟決策（純函數，可單測）：回 "left"／"right"／"forward"／"none"。
+     * 偏得多先轉向（對正先好行，唔係越行越偏），置中但細（遠）就行前一步，
+     * 夠大（近）就企定（淨個頭繼續瞄）。
+     */
+    public static String walkDecision(float dx, float coverage, float turnDb, float closeCoverage) {
+        if (Math.abs(dx) > turnDb) return dx < 0 ? "left" : "right";
+        if (coverage < closeCoverage) return "forward";
+        return "none";
+    }
 }

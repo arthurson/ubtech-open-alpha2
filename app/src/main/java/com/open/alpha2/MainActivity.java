@@ -281,6 +281,12 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 純 Java 顏色追蹤（HSV＋最大 blob，零依賴；同人臉追蹤互斥，見 CameraApi）。
         colorTrackCenter = new ColorTrackCenter(cameraController, ubxApi);
         cameraApi.setColorTrackCenter(colorTrackCenter);
+        // 顏色行路跟要 ActionDirect：initRobot()（line 224）起得早過呢度，
+        // 嗰陣 Center 仲係 null 注入唔到，呢度兩邊齊先後補（之前擺 initRobot
+        // 入面永遠跳過——行路跟唔郁得頭郁就係咁嚟）。
+        if (actionDirect != null) {
+            try { colorTrackCenter.setActionDirect(actionDirect); } catch (Throwable ignored) {}
+        }
         // Sonar＋PIR sensors 包：只需要 ledCenter (紫燈指示)，在 xiaozhiBridge 之前起——
         // MCP sensors 4 tool 經 ctor 取得 (斷 cycle：PIR 推送
         // uplink 經下面 setUplink 後補，見 SonarCenter javadoc 縫設計)。

@@ -34,9 +34,10 @@ public final class LedCenter {
         registerVolumeChangeReceiver();
     }
 
-    /** onDestroy 共用：停 pad LED worker＋反註冊音量廣播。 */
+    /** onDestroy 共用：停 pad LED worker＋meter worker＋反註冊音量廣播。 */
     public void shutdown() {
         padLedExecutor.shutdownNow();
+        volumeMeterExecutor.shutdownNow();
         try {
             if (volumeChangeReceiver != null) {
                 appContext.unregisterReceiver(volumeChangeReceiver);
@@ -104,6 +105,20 @@ public final class LedCenter {
     private static final int PAD_LED_OPEN_ATTEMPTS = 3;
     private final java.util.concurrent.ExecutorService padLedExecutor =
             java.util.concurrent.Executors.newSingleThreadExecutor();
+    // 音量計專用單線程：唔可以同上面 padLedExecutor 共用——pad worker 喺㩒住
+    // 期間 loop 唔放（80ms 一轉），共用嗰陣 meter update 會排隊等到放手先郁
+    // （實機驗明：長撳連減嗰陣頭綠燈唔跟，放手先一次過變）。分開之後兩邊經
+    // DirectLedController 全局鎖排先後，唔會打架。
+    private final java.util.concurrent.ExecutorService volumeMeterExecutor =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
+
+    /** meter 更新專用 post（同 postPadLed 一樣吞 RejectedExecutionException）。 */
+    public void postVolumeMeter(Runnable r) {
+        try {
+            volumeMeterExecutor.execute(r);
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+        }
+    }
 
     /** onDestroy() 會 shutdownNow() 上面條 executor，但 wifi receiver
      *  之前 postDelayed 了的 runnable (1200ms) 還會在之後照開，當時再排就撞上
@@ -120,14 +135,26 @@ public final class LedCenter {
     private volatile boolean padMinusHeld = false;
     private volatile boolean padPlusHeld = false;
     private volatile boolean padLedWorkerRunning = false;
+    // pad 實體鍵狀態世代：每次 setPad*Held 即 +1。GestureCenter 雙鍵總停後
+    // 1.5s 嘅 failsafe 熄燈，淨係喺世代冇郁過（期間冇新撳掣）先清——唔係會
+    // 熄咗人哋跟住㩒住嗰粒燈（見 stopAllViaPads）。
+    private final java.util.concurrent.atomic.AtomicInteger padHeldEpoch =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     /** 手勢層設定實體鍵狀態 (0x5a-0x5f)，跟著即刻調 padLedUpdate()。 */
     public void setPadMinusHeld(boolean held) {
         padMinusHeld = held;
+        padHeldEpoch.incrementAndGet();
     }
 
     public void setPadPlusHeld(boolean held) {
         padPlusHeld = held;
+        padHeldEpoch.incrementAndGet();
+    }
+
+    /** 讀世代（failsafe 熄燈用；見上）。 */
+    public int getPadHeldEpoch() {
+        return padHeldEpoch.get();
     }
 
     /**
@@ -140,7 +167,7 @@ public final class LedCenter {
     private static final int VOLUME_LED_BRIGHTNESS = 9;
 
     public void showVolumeMeter() {
-        postPadLed(() -> {
+        postVolumeMeter(() -> {
             try {
                 android.media.AudioManager am = (android.media.AudioManager)
                         appContext.getSystemService(Context.AUDIO_SERVICE);

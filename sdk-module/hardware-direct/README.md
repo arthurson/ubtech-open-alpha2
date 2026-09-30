@@ -37,7 +37,7 @@ Serial (`com.ubtechinc.alpha.hardware`):
 - `DirectChestController` — single/all servos, sonar, PIR, firmware upgrade.
 - `DirectHeadController` — head-board commands (e.g. noise reduction).
 - `DirectLedController` / `MouthLedData` — LED drivers and mouth-LED frames.
-- JNI shims: `jni/SerialPortFile`, `jni/LedControl`.
+- JNI shims: `jni/SerialPortFile`, `jni/LedControl`, `jni/headkey/HeadKeyMgr`.
 - `HeadKeyPoller` — head-pad press/hold/release events.
 - `ServoPoseTracker` — tracks the 20-joint command pose.
 - `HardwareDirectManager` / `LocalAlpha2Services` — single entry point the
@@ -53,7 +53,8 @@ Serial (`com.ubtechinc.alpha.hardware`):
 - `DirectChestController`——單顆／全組舵機、聲納、PIR、韌體升級。
 - `DirectHeadController`——頭板指令（如降噪）。
 - `DirectLedController`／`MouthLedData`——LED 驅動及嘴燈幀數據。
-- JNI 墊片：`jni/SerialPortFile`、`jni/LedControl`。
+- JNI 墊片：`jni/SerialPortFile`、`jni/LedControl`、
+  `jni/headkey/HeadKeyMgr`。
 - `HeadKeyPoller`——頭鍵按下／長按／放手事件。
 - `ServoPoseTracker`——追蹤 20 軸指令位姿。
 - `HardwareDirectManager`／`LocalAlpha2Services`——單一入口，App 在後台
@@ -74,9 +75,7 @@ Serial (`com.ubtechinc.alpha.hardware`):
 - `VoiceStream`——動作配樂，與同一時鐘鎖定。
 
 Native libs (`src/main/jniLibs/armeabi-v7a`): `libhead_led.so`,
-`libserial_port.so`. Head +/- pads need no native lib: `HeadKeyPoller`
-reads `/dev/input/event0` in pure Java (single taps immediate, double-press
-synthesized via a 600 ms pairing window, see `DOUBLE_WINDOW_MS`).
+`libhead_key_mgr.so`, `libserial_port.so`.
 
 ## Integration / 接入
 

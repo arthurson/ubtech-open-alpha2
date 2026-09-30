@@ -401,8 +401,16 @@ public final class ActionDirect {
         return HttpServer.ApiResponse.ok(sb.toString());
     }
 
-    public HttpServer.ApiResponse actionPlayDirect(String name) {
-        java.io.File f = resolveActionFile(name);
+    /** UbxPlayer 有無播緊嘢（ColorTrackCenter 行路跟用：播緊行路動作嗰陣唔發頭舵機＋唔疊新步）。 */
+    public boolean isPlaying() {
+        try {
+            return ubxPlayer.isPlaying();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    public HttpServer.ApiResponse actionPlayDirect(String name) {        java.io.File f = resolveActionFile(name);
         if (f == null) return HttpServer.ApiResponse.error("unknown action: " + name);
         HardwareDirectManager dm = HardwareDirectManager.get(appContext);
         if (!dm.chest().isAvailable()) return HttpServer.ApiResponse.error("chest not available");
