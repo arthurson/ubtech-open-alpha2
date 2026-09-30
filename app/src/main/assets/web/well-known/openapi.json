@@ -5827,6 +5827,58 @@
             "description": "最小色塊像素（160x120 圖上計，預設 80；細過即當掃唔到，去雜訊）"
           },
           {
+            "name": "walkFollow",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "行路跟總開關（預設 false；開＝偏就播轉向、遠就播前進一步、近就企定；淨播內建短步態，一次一動，掃唔到／停即唔發新步。平地＋清空＋有人睇住先開）"
+          },
+          {
+            "name": "turnDb",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.8
+            },
+            "description": "轉向死區（|dx| 超過先轉，預設 0.35；身體郁大步過頭，同頭死區分開）"
+          },
+          {
+            "name": "closeCoverage",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 0.6
+            },
+            "description": "夠近覆蓋率（色塊／全圖，預設 0.12；大過即企定唔行，淨個頭瞄）"
+          },
+          {
+            "name": "walkFwd",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "前進一步動作（fileId／名／檔名，預設 1508999860568 前進）"
+          },
+          {
+            "name": "walkLeft",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "左轉一步動作（預設 1464835936047 左轉）"
+          },
+          {
+            "name": "walkRight",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "右轉一步動作（預設 1464835936041 右轉）"
+          },
+          {
             "$ref": "#/components/parameters/PanelToken"
           }
         ],
@@ -6075,6 +6127,52 @@
               "type": "integer",
               "minimum": 10,
               "maximum": 20000
+            }
+          },
+          {
+            "name": "walkFollow",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "turnDb",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.8
+            }
+          },
+          {
+            "name": "closeCoverage",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 0.6
+            }
+          },
+          {
+            "name": "walkFwd",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "walkLeft",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "walkRight",
+            "in": "query",
+            "schema": {
+              "type": "string"
             }
           },
           {
