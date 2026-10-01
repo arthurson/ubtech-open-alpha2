@@ -558,6 +558,13 @@ public final class ApiDispatcher {
             case "audio/local_music/disco/set":
                 return audioCenter.discoSet(query);
 
+            // -- 共用播放器 EQ（body 在 AudioCenter；Equalizer 綁 MediaPlayer
+            // session，同 Visualizer 同一生死，本地＋電台共用；薄 delegate）--
+            case "audio/local_music/eq/get":
+                return audioCenter.musicEqGet();
+            case "audio/local_music/eq/set":
+                return audioCenter.musicEqSet(query);
+
             // -- FM/網絡電台 (經 Radio Browser API, radio-browser.info, 動態搜全
             // 世界公開電台 - 見 searchRadioStations()/resolveRadioStation() 的
             // javadoc, 這台機器不再內建任何寫死的電台清單) - "search" 對應

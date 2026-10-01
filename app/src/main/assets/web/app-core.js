@@ -372,6 +372,17 @@ const I18N = {
   music_disco_heading:          { zh: "🎵 節奏燈",           en: "🎵 Rhythm LED" },
   music_disco_on:               { zh: "開",                    en: "On" },
   music_disco_off:              { zh: "關",                    en: "Off" },
+  music_eq_heading:             { zh: "🎚️ 等化器",            en: "🎚️ Equalizer" },
+  music_eq_preset_normal:       { zh: "標準",                  en: "Normal" },
+  music_eq_preset_classical:    { zh: "古典",                  en: "Classical" },
+  music_eq_preset_dance:        { zh: "舞曲",                  en: "Dance" },
+  music_eq_preset_rock:         { zh: "搖滾",                  en: "Rock" },
+  music_eq_preset_jazz:         { zh: "爵士",                  en: "Jazz" },
+  music_eq_preset_pop:          { zh: "流行",                  en: "Pop" },
+  music_eq_preset_bass:         { zh: "重低音",                en: "Bass Booster" },
+  music_eq_preset_treble:       { zh: "高音",                  en: "Treble Booster" },
+  music_eq_preset_custom:       { zh: "自定",                  en: "Custom" },
+  music_eq_unsupported:         { zh: "呢部機無 EQ",           en: "No EQ on this device" },
   music_upload_uploading:       { zh: "上載中…",               en: "Uploading…" },
   music_upload_done:            { zh: "上載完成",              en: "Upload complete" },
   music_upload_failed:          { zh: "上載失敗",              en: "Upload failed" },
@@ -538,6 +549,11 @@ function setUiLanguage(lang) {
   // APK 狀態行一樣動態起，重畫一次就轉語言（不用再問後端）。
   try {
     if (typeof apkApplyUiLanguage === "function") apkApplyUiLanguage();
+  } catch(e) {}
+  // 音樂 EQ preset 藍掣＋播放中行隨機動作／節奏燈狀態字一樣動態起，就地重標
+  // （唔 rebuild，推桿位／開關狀態唔郁）。
+  try {
+    if (typeof musicEqApplyUiLanguage === "function") musicEqApplyUiLanguage();
   } catch(e) {}
 }
 

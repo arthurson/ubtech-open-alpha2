@@ -66,6 +66,14 @@ public final class GestureCenter {
     private Runnable volumeRepeater;
     private AudioManager audioManager;
     private static final long VOLUME_REPEAT_INTERVAL_MS = 300;
+    // 連發世代＋上限：release（0x5b/0x5d）係停連發嘅唯一開關——跌咗（native
+    // state stuck 冇報放手／舊 instance 殘留鏈／stop 同 run 緊撞期），條鏈
+    // 就會無限跑，要 reboot 先停。世代：每次 start/stop 即+1，舊 runnable
+    // 對唔上即收工；上限：300ms 一格，20格＝6秒封頂（正常 hold 鬆手早過
+    // 6秒，無感；㩒足6秒唔放，停一停再撳過就得）。兩樣都係main thread
+    // 專用（start/stop/run 全經 mainHandler 排）。
+    private int volumeRepeatGen = 0;
+    private static final int VOLUME_REPEAT_MAX_TICKS = 20;
     // 每格音量 tick 聲：系統 Effect_Tick.ogg（硬件音量掣同一粒聲），經 SoundPool
     //播（低延遲，唔使為咗 80ms 嘅 blip 開成個 MediaPlayer）。跟 STREAM_MUSIC
     // 即時音量比例播——較細聲嗰陣 tick 細聲，靜音嗰陣唔響，同系統行為一致。
@@ -250,10 +258,14 @@ public final class GestureCenter {
      * 嗰陣 Android 自己靜默（行唔郁就唔響），唔使另外處理。
      */
     private void startVolumeRepeat(boolean up) {
-        stopVolumeRepeat();
+        stopVolumeRepeat(); // 先停舊鏈（世代+1 殺舊 runnable＋清場）
+        final int gen = volumeRepeatGen; // 領養新世代（唔再+1，唔係每次 start 跳兩級）
+        final int[] ticks = new int[1];
         volumeRepeater = new Runnable() {
             @Override
             public void run() {
+                if (gen != volumeRepeatGen) return; // 舊世代（已停／被新鏈取代）
+                if (++ticks[0] > VOLUME_REPEAT_MAX_TICKS) { stopVolumeRepeat(); return; }
                 if (audioManager != null) {
                     audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
                             up ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER,
@@ -261,12 +273,14 @@ public final class GestureCenter {
                     playTick();
                     ledCenter.showVolumeMeter();
                 }
+                if (gen != volumeRepeatGen) return; // 做緊嗰陣 stop 嚟過：唔續排
                 mainHandler.postDelayed(this, VOLUME_REPEAT_INTERVAL_MS);
             }
         };
         mainHandler.postDelayed(volumeRepeater, VOLUME_REPEAT_INTERVAL_MS);
     }
     private void stopVolumeRepeat() {
+        volumeRepeatGen++; // 先閂世代：排緊／行緊嘅舊 runnable 下次驗即停
         if (volumeRepeater != null) {
             mainHandler.removeCallbacks(volumeRepeater);
             volumeRepeater = null;

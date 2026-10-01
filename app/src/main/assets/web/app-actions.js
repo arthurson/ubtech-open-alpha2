@@ -34,6 +34,30 @@ let activeActionCategory = "basic";
 // 這個表故意不在 code 裡寫死: 下次要再分類就僅改/換份 json, 不用動 app-actions.js。
 let actionClassification = {}; // id -> {main, sub}
 let activeActionSubCategory = null; // null = 顯示那個大分類裡面全部動作 (未選子分類)
+// 子分類 -> 色（同子分類 tab 同一個 palette、同一個指派，key 帶大分類，
+// 唔同大分類撞名唔會溝亂）：chip 同 tab 永遠同色。
+let actionSubColors = {};
+
+function actionSubColorKey(mainCategory, sub) { return mainCategory + "|" + sub; }
+
+/** 大分類主色（tab 嗰隻；無子分類對照嘅 chip 用呢隻）。 */
+function actionMainColor(main) {
+  for (let i = 0; i < ACTION_CATEGORIES.length; i++) {
+    if (ACTION_CATEGORIES[i].key === main) return ACTION_CATEGORIES[i].color;
+  }
+  return "#6b7280";
+}
+
+/** 動作 chip 應該咩色：有子分類跟子分類（同 tab 同色），無就跟大分類。 */
+function actionChipColor(a) {
+  const main = categoryOf(a.type);
+  const sub = subCategoryOf(a);
+  if (sub) {
+    const c = actionSubColors[actionSubColorKey(main, sub)];
+    if (c) return c;
+  }
+  return actionMainColor(main);
+}
 
 function loadActionClassification() {
   return fetch("action_classification.json").then(function (r) {
@@ -193,7 +217,9 @@ function buildActionSubSubTabsShared(barElId, actions, mainCategory, getActiveSu
   subsInOrder.forEach(function (sub, i) {
     const btn = document.createElement("button");
     btn.className = "sub-tab-btn" + (sub === getActiveSub() ? " active" : "");
-    btn.style.setProperty("--sub-tab-color", SUB_CATEGORY_COLORS[i % SUB_CATEGORY_COLORS.length]);
+    const subColor = SUB_CATEGORY_COLORS[i % SUB_CATEGORY_COLORS.length];
+    actionSubColors[actionSubColorKey(mainCategory, sub)] = subColor;
+    btn.style.setProperty("--sub-tab-color", subColor);
     const count = actions.filter(function (a) {
       return categoryOf(a.type) === mainCategory && subCategoryOf(a) === sub;
     }).length;
@@ -230,8 +256,9 @@ function buildActionSubSubTabs() {
  *  @param nameFn      (action) => 顯示名
  *  @param onPick      (action) => void, 按個 chip 之後要做的東西 (填 input + 播放)
  *  @param emptyText   沒有動作時顯示的文字
+ *  @param colorFn     (action) => 色碼（可空；有即 chip 跟分類轉色，經 --chip-color）
  */
-function renderActionChips(listElId, filtered, nameFn, onPick, emptyText) {
+function renderActionChips(listElId, filtered, nameFn, onPick, emptyText, colorFn) {
   const listEl = document.getElementById(listElId);
   if (!listEl) return;
   if (filtered.length === 0) {
@@ -243,6 +270,11 @@ function renderActionChips(listElId, filtered, nameFn, onPick, emptyText) {
     const chip = document.createElement("div");
     chip.className = "chip";
     chip.textContent = nameFn(a);
+    if (typeof colorFn === "function") {
+      try {
+        chip.style.setProperty("--chip-color", colorFn(a));
+      } catch (e) {}
+    }
     chip.onclick = function () { onPick(a); };
     listEl.appendChild(chip);
   });
@@ -257,7 +289,7 @@ function renderActionList() {
   renderActionChips("actionList", filtered, displayNameOf, function (a) {
     document.getElementById("actionName").value = a.nameEn || a.nameCn;
     playAction();
-  }, "(沒有動作 / 服務未初始化)");
+  }, "(沒有動作 / 服務未初始化)", actionChipColor);
 }
 
 function playAction() {

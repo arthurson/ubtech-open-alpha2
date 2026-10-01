@@ -339,6 +339,18 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 xiaozhiBridge.applyMuteLedByMusic(litByMusic);
             }
         });
+        // LED tab 靜音掣 mirror：跟胸口 mute 燈有效態（小智 OR 播歌），播歌開 disco
+        // 嗰陣掣即轉紅，唔使靠用家手撳先轉色。
+        ledCenter.setMuteStateQuery(new LedCenter.MuteStateQuery() {
+            @Override
+            public boolean isMuteLit() {
+                try {
+                    return xiaozhiBridge.isMuteLedLit();
+                } catch (Throwable t) {
+                    return false;
+                }
+            }
+        });
 
         // Plain HTTP only. TLS/HTTPS was tried (self-signed cert) to make getUserMedia()
         // available for the walkie-talkie mic feature, but browsers on this device

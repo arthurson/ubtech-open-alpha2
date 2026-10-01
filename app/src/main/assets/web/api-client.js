@@ -79,6 +79,16 @@ const Alpha2Api = (function() {
     return api('audio/local_music/disco/set', params);
   }
 
+  function audioLocalMusicEqGet(params) {
+    // 查詢共用播放器 EQ 狀態（支援／開關／preset／每 band 頻率＋範圍＋現值）
+    return api('audio/local_music/eq/get', params);
+  }
+
+  function audioLocalMusicEqSet(params) {
+    // 設定共用播放器 EQ（開關／preset／自定每 band mB；播緊即時生效）
+    return api('audio/local_music/eq/set', params);
+  }
+
   function audioLocalMusicFillerActionGet(params) {
     // 查詢播歌隨機動作開關
     return api('audio/local_music/filler_action/get', params);
@@ -985,6 +995,8 @@ const Alpha2Api = (function() {
     audioDiagnose,
     audioLocalMusicDiscoGet,
     audioLocalMusicDiscoSet,
+    audioLocalMusicEqGet,
+    audioLocalMusicEqSet,
     audioLocalMusicFillerActionGet,
     audioLocalMusicFillerActionSet,
     audioLocalMusicList,

@@ -720,6 +720,14 @@ function perledApplyState(res) {
     mouthLitMirror = res.mouth.mode === 1;
     if (typeof mouthRender === "function") mouthRender();
   }
+  // 胸口 mute 燈有效態（小智連線 OR 播歌指示）：靜音掣跟實機轉色（著紅／熄灰）。
+  // 撳掣保持樂觀本地更新（見 sysMuteToggle），呢度 poll 到即校準——同 mouth 掣同一套紀律。
+  if (typeof res.mute === "boolean" && typeof muteRender === "function") {
+    if (muteLitLocal !== res.mute) {
+      muteLitLocal = res.mute;
+      muteRender();
+    }
+  }
   perledCheckDiverged(res);
   perledRender();
 }

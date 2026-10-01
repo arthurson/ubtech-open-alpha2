@@ -7,8 +7,9 @@ gradle cache 無 junit，不想整斷 `--offline` build。
 
 流程：找 android.jar (SDK) + javac → 編譯被測類 + Test
 → 跑 main() → 非零 exit = 失敗 (啱 CI 用)。
-跑兩套：ApiValidatorTest (ApiValidator closure)＋ColorTrackTest
-(ColorTrackLogic 單檔，連 android.jar 都唔掂)。
+跑三套：ApiValidatorTest (ApiValidator closure)＋ColorTrackTest
+(ColorTrackLogic 單檔)＋MusicEqTest (MusicEq 單檔，後兩者連 android.jar
+都唔掂)。
 
 用法: python scripts/test-apivalidator.py
 """
@@ -128,6 +129,29 @@ def main() -> int:
         raise SystemExit("編譯失敗 (ColorTrackTest)")
     r = subprocess.run(
         [java, "-cp", str(tmp), "com.open.alpha2.ColorTrackTest"],
+        capture_output=True, text=True,
+    )
+    print(r.stdout, end="")
+    if r.stderr:
+        print(r.stderr, end="", file=sys.stderr)
+    if r.returncode != 0:
+        shutil.rmtree(tmp, ignore_errors=True)
+        print("FAIL")
+        return r.returncode
+
+    # 第三套：MusicEqTest (MusicEq 純 java.*，唔經 android stub)。
+    files3 = [
+        str(src / "MusicEq.java"),
+        str(testdir / "MusicEqTest.java"),
+    ]
+    cp3 = [javac, "-encoding", "UTF-8", "-nowarn", "-d", str(tmp)] + files3
+    r = subprocess.run(cp3, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(r.stdout)
+        print(r.stderr)
+        raise SystemExit("編譯失敗 (MusicEqTest)")
+    r = subprocess.run(
+        [java, "-cp", str(tmp), "com.open.alpha2.MusicEqTest"],
         capture_output=True, text=True,
     )
     print(r.stdout, end="")

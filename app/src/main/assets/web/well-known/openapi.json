@@ -4288,7 +4288,7 @@
             }
           },
           "200": {
-            "description": "最後燈態 {head:{color,brightness,p3,p4},eye:{...},mouth:{runTime,breatheMs,offMs,playMs,mode},pad:{minus,plus}}",
+            "description": "最後燈態 {head:{color,brightness,p3,p4},eye:{...},mouth:{runTime,breatheMs,offMs,playMs,mode},pad:{minus,plus},wifi,mute}（mute＝胸口燈有效態：小智連線 OR 播歌指示）",
             "content": {
               "application/json": {
                 "schema": {
@@ -7225,6 +7225,140 @@
           }
         },
         "operationId": "audioLocalMusicDiscoSet_get"
+      }
+    },
+    "/api/audio/local_music/eq/get": {
+      "get": {
+        "tags": [
+          "audio"
+        ],
+        "summary": "查詢共用播放器 EQ 狀態（支援／開關／preset／每 band 頻率＋範圍＋現值）",
+        "description": "Equalizer 綁 MediaPlayer session（本地＋電台共用，播緊自動套用已存設定）。未播過歌都問到 caps（經 session 0 探測）；部機真係無 EQ 才報 supported=false。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, supported, bandsKnown, enabled, preset, bands[{band,freqHz,minMb,maxMb,levelMb}], customMb}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "supported": {
+                          "type": "boolean"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "preset": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "audioLocalMusicEqGet_get"
+      }
+    },
+    "/api/audio/local_music/eq/set": {
+      "get": {
+        "tags": [
+          "audio"
+        ],
+        "summary": "設定共用播放器 EQ（開關／preset／自定每 band mB；播緊即時生效）",
+        "description": "三個參數全部可選（缺席即保留）。傳 levels 即轉 custom preset；levels 數目要啱部機 band 數（播緊先驗到，未播就照存、下首套嗰陣 clamp）。回包同 eq/get 同形狀，加 applied（有無即時套落播緊嘅歌）。",
+        "parameters": [
+          {
+            "name": "enabled",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "EQ 總開關（預設開；前端已無開關掣，一開就係標準）"
+          },
+          {
+            "name": "preset",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "normal／classical／dance／rock／jazz／pop／bass／treble／custom"
+          },
+          {
+            "name": "levels",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "自定每 band mB，逗號分隔（如 \"0,300,-200,100,0\"；範圍一般 ±1500，見 eq/get 每 band minMb／maxMb）"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "同 eq/get 同形狀，加 applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "preset": {
+                          "type": "string"
+                        },
+                        "applied": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "audioLocalMusicEqSet_get"
       }
     },
     "/api/audio/volume/get": {

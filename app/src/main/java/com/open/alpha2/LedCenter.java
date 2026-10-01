@@ -919,6 +919,16 @@ public final class LedCenter {
         String extra = ",\"pad\":{\"minus\":" + padMinusLit
                 + ",\"plus\":" + padPlusLit + "}"
                 + ",\"wifi\":\"" + wifiLedState + "\"}";
+        // 胸口 mute 燈有效態（小智連線 OR 播歌指示）：LED tab 靜音掣跟實機轉色用。
+        // 未注入查詢即報 false（唔好擋住成個 state）。
+        boolean muteLit = false;
+        try {
+            MuteStateQuery q = muteStateQuery;
+            if (q != null) muteLit = q.isMuteLit();
+        } catch (Throwable ignore) {
+            muteLit = false;
+        }
+        extra = extra.substring(0, extra.length() - 1) + ",\"mute\":" + muteLit + "}";
         return HttpServer.ApiResponse.ok(s.substring(0, s.length() - 1) + extra);
     }
 
@@ -976,6 +986,18 @@ public final class LedCenter {
         } catch (Throwable t) {
             Log.w(TAG, "disco mute led failed", t);
         }
+    }
+
+    /** 胸口 mute 燈有效態查詢（小智 OR 播歌，見 XiaozhiBridge.isMuteLedLit）——
+     *  供 led/state/get mirror 跟實機轉色用（未注入即報 false，唔好擋住成個 state）。 */
+    public interface MuteStateQuery {
+        boolean isMuteLit();
+    }
+
+    private volatile MuteStateQuery muteStateQuery = null;
+
+    public void setMuteStateQuery(MuteStateQuery q) {
+        this.muteStateQuery = q;
     }
     // pad toggle 讀改寫鎖：連撳快嗰陣兩個 request 會同時讀到同一個舊旗，
     // 一齊著，結果應該熄變著（之前「時得時唔得」就係咁嚟）。成個 toggle

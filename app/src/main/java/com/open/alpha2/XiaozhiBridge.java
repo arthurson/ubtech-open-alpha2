@@ -443,6 +443,11 @@ public final class XiaozhiBridge {
         });
     }
 
+    /** 胸口 mute 燈有效態＝小智連線 OR 播歌指示（供 LED tab mirror 跟實機轉色用）。 */
+    public boolean isMuteLedLit() {
+        return chestMuteLedOn || musicIndicatorMuteLit;
+    }
+
     /** 播歌指示燈要著呢盞 mute 燈（用戶要求：disco 開住播歌就 v-/v+/mute 一齊著）。
      *  同一盞實體燈有兩個主人：小智連線態 + 播歌指示燈，實際點唔點 = OR，
      *  所以歌停只要再報一次 false 就會自動還原做「已連線」燈，唔會誤熄。

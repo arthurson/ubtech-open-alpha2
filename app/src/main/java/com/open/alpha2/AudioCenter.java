@@ -698,6 +698,7 @@ public final class AudioCenter {
 
     private void setupMusicVisualizerLocked(android.media.MediaPlayer mp) {
         releaseMusicVisualizerLocked();
+            releaseMusicEqualizerLocked();
         try {
             android.media.audiofx.Visualizer v =
                     new android.media.audiofx.Visualizer(mp.getAudioSessionId());
@@ -743,6 +744,240 @@ public final class AudioCenter {
             musicVisualizer = null;
         }
         java.util.Arrays.fill(musicSpectrumBands, 0);
+    }
+
+    // -- Music Equalizer --------------------------------------
+    // android.media.audiofx.Equalizer 綁 currentMusicPlayer／currentRadioPlayer
+    // 的 audio session，生命週期同 Visualizer 完全同步（上面 2 處 setup、
+    // 6 處 release 已勾，本地＋電台共用同一套）。
+    // 預設關（flat 無驚喜）；開關＋preset＋自定 levels 經 prefs 持久化，
+    // 下首歌／切本地↔電台自動重套。部機 band 數唔假設係 5（preset 表經
+    // MusicEq resample；單測見 MusicEqTest）。
+    private static final String PREF_EQ_ENABLED = "music_eq_enabled";
+    private static final String PREF_EQ_PRESET = "music_eq_preset";
+    private static final String PREF_EQ_LEVELS = "music_eq_levels"; // 自定 mB csv
+    private volatile android.media.audiofx.Equalizer musicEqualizer;
+    /** latch：setup 證實過部機無 EQ 就以後都報 unsupported，唔使每首歌試一次。 */
+    private volatile boolean eqUnsupported = false;
+
+    private boolean isEqEnabled() {
+        try {
+            // 預設開（用戶定案：無開關掣，一開就係標準 preset；要閂經 API）。
+            return prefs().getBoolean(PREF_EQ_ENABLED, true);
+        } catch (Throwable ignore) {
+            return true;
+        }
+    }
+
+    private String eqPreset() {
+        try {
+            String p = prefs().getString(PREF_EQ_PRESET, MusicEq.NORMAL);
+            return MusicEq.isPreset(p) ? p : MusicEq.NORMAL;
+        } catch (Throwable ignore) {
+            return MusicEq.NORMAL;
+        }
+    }
+
+    private void setupMusicEqualizerLocked(android.media.MediaPlayer mp) {
+        releaseMusicEqualizerLocked();
+        if (eqUnsupported || mp == null) return;
+        try {
+            android.media.audiofx.Equalizer eq =
+                    new android.media.audiofx.Equalizer(0, mp.getAudioSessionId());
+            applyEqSettingsLocked(eq);
+            eq.setEnabled(isEqEnabled());
+            musicEqualizer = eq;
+        } catch (Throwable t) {
+            // 同 Visualizer 一樣：effect 唔保證每台機都有，無就無 EQ，唔好拖累播歌。
+            Log.w(TAG, "Equalizer unavailable on this device", t);
+            musicEqualizer = null;
+            eqUnsupported = true;
+        }
+    }
+
+    private void releaseMusicEqualizerLocked() {
+        if (musicEqualizer != null) {
+            try {
+                musicEqualizer.setEnabled(false);
+                musicEqualizer.release();
+            } catch (Exception ignored) {
+            }
+            musicEqualizer = null;
+        }
+    }
+
+    /** 按 prefs（preset／custom levels）寫入全部 bands，逐 band clamp 落 device range。 */
+    private void applyEqSettingsLocked(android.media.audiofx.Equalizer eq) {
+        short nBands = eq.getNumberOfBands();
+        int[] mb = resolveEqLevelsMb(nBands);
+        for (short b = 0; b < nBands; b++) {
+            short[] range = eq.getBandLevelRange(); // {min,max} mB
+            eq.setBandLevel(b, (short) MusicEq.clampMb(mb[b], range[0], range[1]));
+        }
+    }
+
+    private int[] resolveEqLevelsMb(short nBands) {
+        String preset = eqPreset();
+        if (MusicEq.CUSTOM.equals(preset)) {
+            try {
+                String csv = prefs().getString(PREF_EQ_LEVELS, "");
+                return MusicEq.parseLevelsMb(csv, nBands, nBands);
+            } catch (Throwable ignore) {
+                // 自定值壞／數目唔啱（換過機／band 數變）即跌落 normal，唔好唔出聲。
+            }
+        }
+        int[] db = MusicEq.presetDb(preset);
+        if (db == null) db = MusicEq.presetDb(MusicEq.NORMAL);
+        int[] rs = MusicEq.resampleDb(db, nBands);
+        int[] out = new int[nBands];
+        for (int i = 0; i < nBands; i++) out[i] = MusicEq.dbToMb(rs[i]);
+        return out;
+    }
+
+    /** EQ caps：一格（band 數／中心頻率 mHz／每 band mB 範圍）。 */
+    private static final class EqCaps {
+        short bands;
+        int[] freqMHz;
+        short[] minMb;
+        short[] maxMb;
+    }
+
+    private static EqCaps readEqCaps(android.media.audiofx.Equalizer eq) {
+        EqCaps c = new EqCaps();
+        c.bands = eq.getNumberOfBands();
+        c.freqMHz = new int[c.bands];
+        c.minMb = new short[c.bands];
+        c.maxMb = new short[c.bands];
+        for (short b = 0; b < c.bands; b++) {
+            c.freqMHz[b] = eq.getCenterFreq(b);
+            short[] range = eq.getBandLevelRange();
+            c.minMb[b] = range[0];
+            c.maxMb[b] = range[1];
+        }
+        return c;
+    }
+
+    private EqCaps liveEqCaps() {
+        android.media.audiofx.Equalizer eq = musicEqualizer;
+        if (eq == null) return null;
+        try {
+            return readEqCaps(eq);
+        } catch (Throwable ignore) {
+            return null;
+        }
+    }
+
+    /** 未播緊歌都問到 caps：session 0＝global mix，問完即放，唔 enable 唔影響聲。 */
+    private EqCaps probeEqCaps() {
+        android.media.audiofx.Equalizer eq = null;
+        try {
+            eq = new android.media.audiofx.Equalizer(0, 0);
+            return readEqCaps(eq);
+        } catch (Throwable ignore) {
+            return null;
+        } finally {
+            if (eq != null) {
+                try { eq.release(); } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    private int[] liveEqLevels(EqCaps caps) {
+        android.media.audiofx.Equalizer eq = musicEqualizer;
+        if (eq == null || caps == null) return null;
+        try {
+            int[] out = new int[caps.bands];
+            for (short b = 0; b < caps.bands; b++) out[b] = eq.getBandLevel(b);
+            return out;
+        } catch (Throwable ignore) {
+            return null;
+        }
+    }
+
+    private String eqJson(EqCaps caps, int[] levels, Boolean applied) {
+        StringBuilder sb = new StringBuilder("{\"ok\":true,");
+        sb.append("\"supported\":").append(!eqUnsupported).append(",");
+        sb.append("\"bandsKnown\":").append(caps != null).append(",");
+        sb.append("\"enabled\":").append(isEqEnabled()).append(",");
+        sb.append("\"preset\":\"").append(MainActivity.jsonSafe(eqPreset())).append("\",");
+        sb.append("\"bands\":[");
+        if (caps != null) {
+            for (int b = 0; b < caps.bands; b++) {
+                if (b > 0) sb.append(",");
+                sb.append("{\"band\":").append(b)
+                        .append(",\"freqHz\":").append(caps.freqMHz[b] / 1000)
+                        .append(",\"minMb\":").append(caps.minMb[b])
+                        .append(",\"maxMb\":").append(caps.maxMb[b])
+                        .append(",\"levelMb\":").append(levels != null && b < levels.length ? levels[b] : 0)
+                        .append("}");
+            }
+        }
+        sb.append("],");
+        String customCsv = "";
+        try { customCsv = prefs().getString(PREF_EQ_LEVELS, ""); } catch (Throwable ignored) {}
+        if (customCsv == null) customCsv = "";
+        sb.append("\"customMb\":\"").append(MainActivity.jsonSafe(customCsv)).append("\"");
+        if (applied != null) sb.append(",\"applied\":").append(applied);
+        sb.append("}");
+        return sb.toString();
+    }
+
+    public HttpServer.ApiResponse musicEqGet() {
+        EqCaps caps = liveEqCaps();
+        if (caps == null) caps = probeEqCaps();
+        int[] levels = liveEqLevels(caps);
+        if (levels == null && caps != null) {
+            try { levels = resolveEqLevelsMb(caps.bands); } catch (Throwable ignore) { levels = null; }
+        }
+        return HttpServer.ApiResponse.ok(eqJson(caps, levels, null));
+    }
+
+    public HttpServer.ApiResponse musicEqSet(Map<String, String> query) {
+        boolean enabled = ApiValidator.optionalBoolean(query, "enabled", isEqEnabled());
+        String preset = eqPreset();
+        String presetParam = query != null ? query.get("preset") : null;
+        if (presetParam != null && !presetParam.isEmpty()) {
+            presetParam = presetParam.trim().toLowerCase(java.util.Locale.US);
+            if (!MusicEq.isPreset(presetParam)) {
+                throw new IllegalArgumentException("parameter 'preset' must be one of [normal,classical,dance,rock,jazz,pop,bass,treble,custom], got: " + presetParam);
+            }
+            preset = presetParam;
+        }
+        String levelsCsv = null;
+        String levelsParam = query != null ? query.get("levels") : null;
+        if (levelsParam != null && !levelsParam.isEmpty()) {
+            int[] lv = MusicEq.parseLevelsMb(levelsParam.trim(), 1, 16);
+            // live band 數已知即驗數目（播緊先驗到；未播就照存，下首套嗰陣先 clamp／跌落）。
+            EqCaps caps = liveEqCaps();
+            if (caps != null && lv.length != caps.bands) {
+                throw new IllegalArgumentException("parameter 'levels' must have " + caps.bands
+                        + " values on this device, got: " + lv.length);
+            }
+            levelsCsv = levelsParam.trim();
+            preset = MusicEq.CUSTOM; // 推過桿即轉 custom（同一般 EQ app 一致）。
+        }
+        prefs().edit().putBoolean(PREF_EQ_ENABLED, enabled).apply();
+        prefs().edit().putString(PREF_EQ_PRESET, preset).apply();
+        if (levelsCsv != null) prefs().edit().putString(PREF_EQ_LEVELS, levelsCsv).apply();
+        // 播緊即時套（未播就下首 setup 自動套，唔使等）。
+        boolean applied = false;
+        android.media.audiofx.Equalizer eq = musicEqualizer;
+        if (eq != null) {
+            try {
+                applyEqSettingsLocked(eq);
+                eq.setEnabled(enabled);
+                applied = true;
+            } catch (Throwable t) {
+                Log.w(TAG, "musicEqSet apply failed", t);
+            }
+        }
+        EqCaps caps = liveEqCaps();
+        if (caps == null) caps = probeEqCaps();
+        int[] levels = liveEqLevels(caps);
+        if (levels == null && caps != null) {
+            try { levels = resolveEqLevelsMb(caps.bands); } catch (Throwable ignore) { levels = null; }
+        }
+        return HttpServer.ApiResponse.ok(eqJson(caps, levels, applied));
     }
 
     /** Lists every playable audio file directly inside LOCAL_MUSIC_DIR (non-recursive -
@@ -937,6 +1172,7 @@ public final class AudioCenter {
         }
         try {
             releaseMusicVisualizerLocked();
+            releaseMusicEqualizerLocked();
         } catch (Throwable ignore) {
         }
         currentMusicPlayer = null;
@@ -963,6 +1199,7 @@ public final class AudioCenter {
             player.setOnPreparedListener(mp -> {
                 mp.start();
                 setupMusicVisualizerLocked(mp);
+                setupMusicEqualizerLocked(mp);
                 startMusicFillerActionLoop(mp);
                 startSharedFillerLoop();
             });
@@ -1007,6 +1244,7 @@ public final class AudioCenter {
         // 共用頻譜：若電台仍在播，保留給電台
         if (currentRadioPlayer == null) {
             releaseMusicVisualizerLocked();
+            releaseMusicEqualizerLocked();
         }
         if (currentMusicPlayer != null) {
             MediaPlayerUtil.stopRelease(currentMusicPlayer);
@@ -1027,6 +1265,7 @@ public final class AudioCenter {
         // 若電台仍在播，保留共用頻譜給電台
         if (currentRadioPlayer == null) {
             releaseMusicVisualizerLocked();
+            releaseMusicEqualizerLocked();
         }
         mp.release();
         if (currentMusicPlayer == mp) {
@@ -1091,6 +1330,7 @@ public final class AudioCenter {
                 mp.start();
                 // 共用頻譜/隨機動作 — 與本地音樂同一套
                 setupMusicVisualizerLocked(mp);
+                setupMusicEqualizerLocked(mp);
                 startSharedFillerLoop();
             });
             player.setOnCompletionListener(mp -> {
@@ -1140,6 +1380,7 @@ public final class AudioCenter {
         // 電台完／出錯時若本地也沒在播，才釋放共用資源
         if (currentMusicPlayer == null) {
             releaseMusicVisualizerLocked();
+            releaseMusicEqualizerLocked();
         }
         discoPushOffIfEnabled();
         stopSharedFillerLoopIfIdle();
@@ -1158,6 +1399,7 @@ public final class AudioCenter {
         // 共用頻譜/隨機動作：若本地仍在播，保留
         if (currentMusicPlayer == null) {
             releaseMusicVisualizerLocked();
+            releaseMusicEqualizerLocked();
         }
         stopSharedFillerLoopIfIdle();
     }

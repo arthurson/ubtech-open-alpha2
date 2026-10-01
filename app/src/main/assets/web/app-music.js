@@ -139,6 +139,7 @@ function musicInit() {
   musicRefreshStatus();
   musicRefreshFillerToggle();
   musicRefreshDiscoToggle();
+  musicRefreshEq();
   refreshSharedVolume();
   // 頻譜共用：無論本地或電台，同一 canvas 同一輪詢
   // 若本地有播放即啟動，否則由 radioInit 觸發
@@ -593,6 +594,186 @@ function musicApplyDiscoToggleUi(enabled) {
   const label = document.getElementById("musicDiscoStateLabel");
   if (checkbox) checkbox.checked = !!enabled;
   if (label) label.textContent = enabled ? t("music_disco_on") : t("music_disco_off");
+}
+
+// ---------------- equalizer ----------------
+// 後端 prefs 持久化（唔開瀏覽器都記得）；推桿行 dB（後端 mB÷100），
+// preset 表喺後端 MusicEq，band 數／頻率／範圍全部跟 eq/get 動態起。
+let musicEqState = null; // 最後一次 eq/get|cfg 回包
+let musicEqPushTimer = null;
+
+const MUSIC_EQ_PRESETS = ["normal", "classical", "dance", "rock", "jazz", "pop", "bass", "treble", "custom"];
+
+function musicEqPresetLabel(name) {
+  const s = t("music_eq_preset_" + name);
+  return (s && s.indexOf("music_eq_preset_") !== 0) ? s : name;
+}
+
+function musicRefreshEq() {
+  Alpha2Api.audioLocalMusicEqGet().then(function (res) {
+    if (!res || !res.ok) return;
+    // 無開關掣：預設開。後端舊 pref 仲係關（或第一版預設關留低）即推返開，
+    // 之後播歌自動係標準 preset flat（除非用戶之前揀過其他 preset，有就跟）。
+    if (!res.enabled) {
+      Alpha2Api.audioLocalMusicEqSet({ enabled: "true" }).then(function (res2) {
+        if (!res2 || !res2.ok) return;
+        musicEqState = res2;
+        musicRenderEq();
+      });
+      return;
+    }
+    musicEqState = res;
+    musicRenderEq();
+  });
+}
+
+function musicSetEqPreset(preset) {
+  Alpha2Api.audioLocalMusicEqSet({ preset: preset }).then(function (res) {
+    if (!res || !res.ok) return;
+    musicEqState = res;
+    musicRenderEq();
+  });
+}
+
+function musicRenderEq() {
+  const row = document.getElementById("musicEqRow");
+  const bandsBox = document.getElementById("musicEqBands");
+  const unsupported = document.getElementById("musicEqUnsupported");
+  if (!row || !musicEqState) return;
+  if (!musicEqState.supported) {
+    // 後端 latch 證實過真係無 EQ：成列收起，唔阻位。
+    row.style.display = "none";
+    if (bandsBox) bandsBox.classList.remove("on");
+    return;
+  }
+  row.style.display = "";
+  const presetBox = document.getElementById("musicEqPreset");
+  if (presetBox) {
+    presetBox.innerHTML = "";
+    MUSIC_EQ_PRESETS.forEach(function (p) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      // 同電台快搜同一隻方鍵（secondary），選中加藍。
+      btn.className = "secondary eq-preset-sq" + (p === musicEqState.preset ? " selected" : "");
+      btn.dataset.preset = p;
+      btn.textContent = musicEqPresetLabel(p);
+      btn.onclick = function () { musicSetEqPreset(p); };
+      presetBox.appendChild(btn);
+    });
+  }
+  if (unsupported) unsupported.style.display = musicEqState.bandsKnown ? "none" : "";
+  // 推桿：band 數未知（未播過＋探測唔到）唔起住，preset 掣照用得。
+  // 成個 bands 係一個物件（.eq-bands-box 有框＋唔換行＋橫滑，手機唔散）。
+  if (!bandsBox) return;
+  bandsBox.innerHTML = "";
+  bandsBox.classList.remove("on");
+  const bands = musicEqState.bands || [];
+  if (bands.length === 0) return;
+  bandsBox.classList.add("on");
+  bands.forEach(function (b, bi) {
+    const col = document.createElement("div");
+    col.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:4px;min-width:64px;flex:none";
+    // Band 色：跟頻率，低綠（hue 120）→高紅（hue 0），中間黃橙過渡。
+    // 用 band 序位（唔寫死 60Hz/14kHz，部機幾多 bands／咩頻率照分）。
+    const frac = bands.length <= 1 ? 0 : bi / (bands.length - 1);
+    const bandHex = "hsl(" + Math.round(120 * (1 - frac)) + ",90%,40%)";
+    const lab = document.createElement("span");
+    lab.className = "hint";
+    lab.style.margin = "0";
+    lab.textContent = b.freqHz >= 1000 ? (b.freqHz / 1000) + "k" : b.freqHz + "";
+    const minDb = Math.round(b.minMb / 100), maxDb = Math.round(b.maxMb / 100);
+    const valDb = Math.round(b.levelMb / 100);
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = minDb; slider.max = maxDb; slider.step = 1; slider.value = valDb;
+    slider.dataset.band = b.band;
+    slider.className = "eq-band-slider";
+    slider.setAttribute("orient", "vertical"); // Firefox 舊寫法，有 writing-mode 嗰啲會無視
+    // 色淨落推桿（經 --band-color 俾 CSS 個 thumb 用），dB 數唔改色。
+    try {
+      slider.style.setProperty("--band-color", bandHex);
+      slider.style.accentColor = bandHex;
+    } catch (e) {}
+    const val = document.createElement("span");
+    val.className = "volume-val";
+    val.textContent = (valDb > 0 ? "+" : "") + valDb;
+    slider.oninput = function () {
+      const v = Number(slider.value);
+      val.textContent = (v > 0 ? "+" : "") + v;
+      musicEqPaintFill(slider);
+      musicEqSchedulePush();
+    };
+    musicEqPaintFill(slider);
+    col.appendChild(val);
+    col.appendChild(slider);
+    col.appendChild(lab);
+    bandsBox.appendChild(col);
+  });
+}
+
+function musicEqSchedulePush() {
+  if (musicEqPushTimer) clearTimeout(musicEqPushTimer);
+  musicEqPushTimer = setTimeout(musicEqPushLevels, 400);
+}
+
+// 粗 bar 填充：值愈高 band 色由底填得愈滿（webkit 版，Firefox 行原生 progress）。
+function musicEqPaintFill(slider) {
+  try {
+    const min = Number(slider.min), max = Number(slider.max), v = Number(slider.value);
+    const pct = max > min ? Math.max(0, Math.min(100, (v - min) * 100 / (max - min))) : 0;
+    slider.style.setProperty("--fill", pct + "%");
+  } catch (e) {}
+}
+
+function musicEqPushLevels() {
+  musicEqPushTimer = null;
+  const bandsBox = document.getElementById("musicEqBands");
+  if (!bandsBox) return;
+  const sliders = bandsBox.querySelectorAll("input[type=range]");
+  if (!sliders || sliders.length === 0) return;
+  const mbs = [];
+  for (let i = 0; i < sliders.length; i++) mbs.push(Number(sliders[i].value) * 100);
+  Alpha2Api.audioLocalMusicEqSet({ levels: mbs.join(",") }).then(function (res) {
+    if (!res || !res.ok) return;
+    musicEqState = res;
+    // 推緊桿唔 rebuild（會打斷拖曳），淨同步 preset 藍掣（已轉 custom）。
+    musicEqMarkPresetSelected(res.preset);
+  });
+}
+
+function musicEqMarkPresetSelected(preset) {
+  const presetBox = document.getElementById("musicEqPreset");
+  if (!presetBox) return;
+  const btns = presetBox.querySelectorAll(".eq-preset-sq");
+  for (let i = 0; i < btns.length; i++) {
+    if (btns[i].dataset.preset === preset) btns[i].classList.add("selected");
+    else btns[i].classList.remove("selected");
+  }
+}
+
+// 中英切換：動態起嘅 preset 藍掣逐粒重標（唔 rebuild，推桿位唔郁）；
+// 順手將搬咗去「播放中」嗰行嘅隨機動作／節奏燈狀態字（開／On）一齊轉
+// （呢兩個之前淨係撳嗰陣先 t()，切語言會留舊字）。
+function musicEqApplyUiLanguage() {
+  try {
+    const presetBox = document.getElementById("musicEqPreset");
+    if (presetBox) {
+      const btns = presetBox.querySelectorAll(".eq-preset-sq");
+      for (let i = 0; i < btns.length; i++) {
+        if (btns[i].dataset.preset) btns[i].textContent = musicEqPresetLabel(btns[i].dataset.preset);
+      }
+    }
+    const fillerToggle = document.getElementById("musicFillerToggle");
+    const fillerLabel = document.getElementById("musicFillerStateLabel");
+    if (fillerToggle && fillerLabel) {
+      fillerLabel.textContent = fillerToggle.checked ? t("music_filler_on") : t("music_filler_off");
+    }
+    const discoToggle = document.getElementById("musicDiscoToggle");
+    const discoLabel = document.getElementById("musicDiscoStateLabel");
+    if (discoToggle && discoLabel) {
+      discoLabel.textContent = discoToggle.checked ? t("music_disco_on") : t("music_disco_off");
+    }
+  } catch (e) {}
 }
 
 // ---------------- drag & drop import ----------------

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Open Alpha2</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20261001a">
 </head>
 <body>
 
@@ -299,7 +299,7 @@
 
   <!-- ============ TAB: LED ============ -->
   <div id="tab-led" class="tab-page">
-    <!-- UI 0927f（隱形版本釘：curl 呢頁 grep 就知部機跑緊邊版，唔使問用家） -->
+    <!-- UI 1001a（隱形版本釘：curl 呢頁 grep 就知部機跑緊邊版，唔使問用家） -->
     <section class="card">
       <h2>LED</h2>
       <div class="led-block">
@@ -705,7 +705,25 @@
   <section class="card" id="sharedPlayerCard">
     <h3 data-i18n="music_now_playing_heading">播放中</h3>
     <!-- 共用顯示：本地或電台，JS 同步更新 #musicNowPlaying/#radioNowPlaying/#sharedNowPlaying -->
-    <p id="sharedNowPlaying" class="hint" data-i18n="music_now_playing_none">未播放</p>
+    <div class="row" id="sharedNowPlayingRow" style="gap:8px;align-items:center;flex-wrap:wrap">
+      <p id="sharedNowPlaying" class="hint" data-i18n="music_now_playing_none" style="margin:0;flex:1;min-width:120px">未播放</p>
+      <label class="switch-label" style="border-left:1px solid var(--border); padding-left:12px;" title="開啟的話，播歌/播電台期間機械人會不定時自己動，停止才停">
+        <span data-i18n="music_filler_heading">💃 隨機動作</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="musicFillerToggle" onchange="musicSetFillerActionEnabled(this.checked)">
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+      <span id="musicFillerStateLabel" class="hint" data-i18n="music_filler_on" style="margin:0;">開</span>
+      <label class="switch-label" style="border-left:1px solid var(--border); padding-left:12px;" title="開啟的話，播歌期間頭做水位錶、眼跟人聲轉色、嘴跟大細聲呼吸">
+        <span data-i18n="music_disco_heading">🪩 Disco LED</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="musicDiscoToggle" onchange="musicSetDiscoEnabled(this.checked)">
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+      <span id="musicDiscoStateLabel" class="hint" data-i18n="music_disco_off" style="margin:0;">關</span>
+    </div>
     <p id="musicNowPlaying" class="hint" style="display:none">未選擇歌曲</p>
     <span id="radioNowPlaying" class="hint" style="display:none">未播放電台</span>
     <!-- 共用頻譜：後端 Visualizer 已綁定至當前播放的 audio session（本地或電台），前端同一 canvas 共用 -->
@@ -733,23 +751,14 @@
       <span class="volume-icon">🔊</span>
       <!-- 保留舊 per-track 音量滑桿作兼容（隱藏），JS 仍可讀寫 -->
       <input id="musicVolumeSlider" type="range" min="0" max="100" value="100" style="display:none">
-      <label class="switch-label" style="margin-left:12px; border-left:1px solid var(--border); padding-left:12px;" title="開啟的話，播歌/播電台期間機械人會不定時自己動，停止才停">
-        <span data-i18n="music_filler_heading">💃 隨機動作</span>
-        <span class="toggle-switch">
-          <input type="checkbox" id="musicFillerToggle" onchange="musicSetFillerActionEnabled(this.checked)">
-          <span class="toggle-track"></span>
-        </span>
-      </label>
-      <span id="musicFillerStateLabel" class="hint" data-i18n="music_filler_on" style="margin:0;">開</span>
-      <label class="switch-label" style="margin-left:12px; border-left:1px solid var(--border); padding-left:12px;" title="開啟的話，播歌期間頭做水位錶、眼跟人聲轉色、嘴跟大細聲呼吸">
-        <span data-i18n="music_disco_heading">🪩 Disco LED</span>
-        <span class="toggle-switch">
-          <input type="checkbox" id="musicDiscoToggle" onchange="musicSetDiscoEnabled(this.checked)">
-          <span class="toggle-track"></span>
-        </span>
-      </label>
-      <span id="musicDiscoStateLabel" class="hint" data-i18n="music_disco_off" style="margin:0;">關</span>
     </div>
+    <!-- EQ：無開關（預設開，一開就係標準 preset）；preset 掣＋5 條直推桿一個框唔散（手機窄mon橫滑，唔換行走位） -->
+    <div class="row" id="musicEqRow" style="display:none;gap:8px;align-items:center;flex-wrap:wrap">
+      <span class="hint" data-i18n="music_eq_heading" style="margin:0">🎚️ 等化器</span>
+      <span id="musicEqPreset" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></span>
+      <span id="musicEqUnsupported" class="hint" data-i18n="music_eq_unsupported" style="display:none;margin:0">呢部機無 EQ</span>
+    </div>
+    <div id="musicEqBands" class="eq-bands-box"></div>
     <p id="musicResult" class="hint"></p>
     <p id="radioSearchStatus2" class="hint" style="display:none"></p>
   </section>
@@ -1007,26 +1016,26 @@
        3. 中間檔案之間沒有排序依賴（function hoisting），保持原 section 順序方便對照。
      尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
      所以全部 <script src> 一定要行完先到那個 inline script。 -->
-<script src="app-core.js"></script>
-<script src="api-client.js"></script>
-<script src="app-status.js"></script>
-<script src="app-actions.js"></script>
-<script src="app-speech.js"></script>
-<script src="app-vosk.js"></script>
-<script src="app-servo.js"></script>
-<script src="app-led.js"></script>
-<script src="app-camera.js"></script>
-<script src="app-xiaozhi.js"></script>
-<script src="app-music.js"></script>
-<script src="app-radio.js"></script>
-<script src="app-archive.js"></script>
-<script src="app-mic.js"></script>
-<script src="app-accel.js"></script>
-<script src="app-qr.js"></script>
-<script src="app-chest.js"></script>
-<script src="app-actions-pack.js"></script>
-<script src="app-apk.js"></script>
-<script src="app-log.js"></script>
+<script src="app-core.js?v=20261001a"></script>
+<script src="api-client.js?v=20261001a"></script>
+<script src="app-status.js?v=20261001a"></script>
+<script src="app-actions.js?v=20261001a"></script>
+<script src="app-speech.js?v=20261001a"></script>
+<script src="app-vosk.js?v=20261001a"></script>
+<script src="app-servo.js?v=20261001a"></script>
+<script src="app-led.js?v=20261001a"></script>
+<script src="app-camera.js?v=20261001a"></script>
+<script src="app-xiaozhi.js?v=20261001a"></script>
+<script src="app-music.js?v=20261001a"></script>
+<script src="app-radio.js?v=20261001a"></script>
+<script src="app-archive.js?v=20261001a"></script>
+<script src="app-mic.js?v=20261001a"></script>
+<script src="app-accel.js?v=20261001a"></script>
+<script src="app-qr.js?v=20261001a"></script>
+<script src="app-chest.js?v=20261001a"></script>
+<script src="app-actions-pack.js?v=20261001a"></script>
+<script src="app-apk.js?v=20261001a"></script>
+<script src="app-log.js?v=20261001a"></script>
 
 <!-- ============================================================
      Sample: 4角度傾側控制頭/眼 LED
