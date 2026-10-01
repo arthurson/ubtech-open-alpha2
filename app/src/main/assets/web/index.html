@@ -758,7 +758,9 @@
       <span id="musicEqPreset" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></span>
       <span id="musicEqUnsupported" class="hint" data-i18n="music_eq_unsupported" style="display:none;margin:0">呢部機無 EQ</span>
     </div>
-    <div id="musicEqBands" class="eq-bands-box"></div>
+    <div id="musicEqBands" class="eq-bands-box">
+      <canvas id="musicEqCurve" style="width:100%;height:150px;display:block;touch-action:none;cursor:grab"></canvas>
+    </div>
     <p id="musicResult" class="hint"></p>
     <p id="radioSearchStatus2" class="hint" style="display:none"></p>
   </section>

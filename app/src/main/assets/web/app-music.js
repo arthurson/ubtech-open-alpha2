@@ -662,53 +662,112 @@ function musicRenderEq() {
     });
   }
   if (unsupported) unsupported.style.display = musicEqState.bandsKnown ? "none" : "";
-  // 推桿：band 數未知（未播過＋探測唔到）唔起住，preset 掣照用得。
-  // 成個 bands 係一個物件（.eq-bands-box 有框＋唔換行＋橫滑，手機唔散）。
+  // Curve 直拖：band 數未知唔起，preset 掣照用得。推桿列已拆（定案：淨 curve）。
   if (!bandsBox) return;
-  bandsBox.innerHTML = "";
   bandsBox.classList.remove("on");
   const bands = musicEqState.bands || [];
   if (bands.length === 0) return;
   bandsBox.classList.add("on");
-  bands.forEach(function (b, bi) {
-    const col = document.createElement("div");
-    col.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:4px;min-width:64px;flex:none";
-    // Band 色：跟頻率，低綠（hue 120）→高紅（hue 0），中間黃橙過渡。
-    // 用 band 序位（唔寫死 60Hz/14kHz，部機幾多 bands／咩頻率照分）。
-    const frac = bands.length <= 1 ? 0 : bi / (bands.length - 1);
-    const bandHex = "hsl(" + Math.round(120 * (1 - frac)) + ",90%,40%)";
-    const lab = document.createElement("span");
-    lab.className = "hint";
-    lab.style.margin = "0";
-    lab.textContent = b.freqHz >= 1000 ? (b.freqHz / 1000) + "k" : b.freqHz + "";
-    const minDb = Math.round(b.minMb / 100), maxDb = Math.round(b.maxMb / 100);
-    const valDb = Math.round(b.levelMb / 100);
-    const slider = document.createElement("input");
-    slider.type = "range";
-    slider.min = minDb; slider.max = maxDb; slider.step = 1; slider.value = valDb;
-    slider.dataset.band = b.band;
-    slider.className = "eq-band-slider";
-    slider.setAttribute("orient", "vertical"); // Firefox 舊寫法，有 writing-mode 嗰啲會無視
-    // 色淨落推桿（經 --band-color 俾 CSS 個 thumb 用），dB 數唔改色。
+  try {
+    musicEqCurveMinDb = Math.round(bands[0].minMb / 100);
+    musicEqCurveMaxDb = Math.round(bands[0].maxMb / 100);
+    if (!(musicEqCurveMaxDb > musicEqCurveMinDb)) { musicEqCurveMinDb = -15; musicEqCurveMaxDb = 15; }
+  } catch (e) { musicEqCurveMinDb = -15; musicEqCurveMaxDb = 15; }
+  musicEqCurveDb = [];
+  for (let i = 0; i < bands.length; i++) {
+    let v = 0;
+    try { v = Math.round(bands[i].levelMb / 100); } catch (e) {}
+    musicEqCurveDb.push(v);
+  }
+  musicEqHookCurvePointer();
+  musicEqDrawCurve();
+}
+
+// Curve 直拖即時態（唔經後端，拖嗰下就變；送後端行 debounce／放手即送）。
+let musicEqCurveDb = [];
+let musicEqCurveMinDb = -15;
+let musicEqCurveMaxDb = 15;
+let musicEqDragBand = -1;
+
+// Band 色：跟頻率序位，低綠（hue 120）→高紅（hue 0），中間黃橙過渡。
+function musicEqBandHex(bi, n) {
+  const frac = n <= 1 ? 0 : bi / (n - 1);
+  return "hsl(" + Math.round(120 * (1 - frac)) + ",90%,40%)";
+}
+
+// Curve 座標（draw＋hit test 共用，唔好各自計兩套）。
+function musicEqCurveGeom(w, h) {
+  const lo = musicEqCurveMinDb, hi = musicEqCurveMaxDb;
+  const F_MIN = 20, F_MAX = 20000;
+  const L0 = Math.log10(F_MIN), L1 = Math.log10(F_MAX);
+  return {
+    F_MIN: F_MIN, F_MAX: F_MAX,
+    X: function (f) {
+      const lf = Math.log10(Math.max(F_MIN, Math.min(F_MAX, f)));
+      return (lf - L0) / (L1 - L0) * w;
+    },
+    Y: function (db) { return h - 4 - (db - lo) / (hi - lo) * (h - 8); }
+  };
+}
+
+function musicEqHookCurvePointer() {
+  const cv = document.getElementById("musicEqCurve");
+  if (!cv || cv.dataset.hooked) return;
+  cv.dataset.hooked = "1";
+  function posOf(evt) {
+    const r = cv.getBoundingClientRect();
+    return { x: evt.clientX - r.left, y: evt.clientY - r.top, w: r.width, h: r.height };
+  }
+  cv.addEventListener("pointerdown", function (evt) {
     try {
-      slider.style.setProperty("--band-color", bandHex);
-      slider.style.accentColor = bandHex;
+      const bands = (musicEqState && musicEqState.bands) || [];
+      if (bands.length === 0 || musicEqCurveDb.length !== bands.length) return;
+      const p = posOf(evt);
+      if (!(p.w > 0 && p.h > 0)) return;
+      const g = musicEqCurveGeom(p.w, p.h);
+      let best = -1, bestD = 26 * 26;
+      for (let i = 0; i < bands.length; i++) {
+        const f = bands[i].freqHz > 0 ? bands[i].freqHz : g.F_MIN;
+        const dx = g.X(f) - p.x, dy = g.Y(musicEqCurveDb[i]) - p.y;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = i; }
+      }
+      if (best < 0) return;
+      musicEqDragBand = best;
+      try { cv.setPointerCapture(evt.pointerId); } catch (e) {}
+      cv.style.cursor = "grabbing";
+      musicEqDragTo(p);
+      if (evt.preventDefault) evt.preventDefault();
     } catch (e) {}
-    const val = document.createElement("span");
-    val.className = "volume-val";
-    val.textContent = (valDb > 0 ? "+" : "") + valDb;
-    slider.oninput = function () {
-      const v = Number(slider.value);
-      val.textContent = (v > 0 ? "+" : "") + v;
-      musicEqPaintFill(slider);
-      musicEqSchedulePush();
-    };
-    musicEqPaintFill(slider);
-    col.appendChild(val);
-    col.appendChild(slider);
-    col.appendChild(lab);
-    bandsBox.appendChild(col);
   });
+  cv.addEventListener("pointermove", function (evt) {
+    if (musicEqDragBand < 0) return;
+    try { musicEqDragTo(posOf(evt)); } catch (e) {}
+  });
+  function endDrag() {
+    if (musicEqDragBand < 0) return;
+    musicEqDragBand = -1;
+    cv.style.cursor = "grab";
+    // 放手即送（唔等多 400ms；debounce 有剩一齊清，唔好送兩次）。
+    if (musicEqPushTimer) { clearTimeout(musicEqPushTimer); musicEqPushTimer = null; }
+    musicEqPushLevels();
+  }
+  cv.addEventListener("pointerup", endDrag);
+  cv.addEventListener("pointercancel", endDrag);
+}
+
+function musicEqDragTo(p) {
+  const bands = (musicEqState && musicEqState.bands) || [];
+  const i = musicEqDragBand;
+  if (i < 0 || i >= bands.length || i >= musicEqCurveDb.length) return;
+  if (!(p.h > 8)) return;
+  const lo = musicEqCurveMinDb, hi = musicEqCurveMaxDb;
+  let db = lo + (p.h - 4 - p.y) / (p.h - 8) * (hi - lo); // Y 反函數
+  db = Math.max(lo, Math.min(hi, Math.round(db)));
+  if (db === musicEqCurveDb[i]) return;
+  musicEqCurveDb[i] = db;
+  musicEqDrawCurve();
+  musicEqSchedulePush();
 }
 
 function musicEqSchedulePush() {
@@ -716,23 +775,123 @@ function musicEqSchedulePush() {
   musicEqPushTimer = setTimeout(musicEqPushLevels, 400);
 }
 
-// 粗 bar 填充：值愈高 band 色由底填得愈滿（webkit 版，Firefox 行原生 progress）。
-function musicEqPaintFill(slider) {
+let musicEqResizeHooked = false;
+
+// 頻響 curve（Wavelet 嗰條）：band dB 經 Catmull-Rom 平滑，橫軸 log 頻率
+// （20Hz-20kHz，兩邊拉平）；5 粒 handle 直拖（低綠→高紅），dB 數寫喺點上面。
+function musicEqDrawCurve() {
   try {
-    const min = Number(slider.min), max = Number(slider.max), v = Number(slider.value);
-    const pct = max > min ? Math.max(0, Math.min(100, (v - min) * 100 / (max - min))) : 0;
-    slider.style.setProperty("--fill", pct + "%");
+    const cv = document.getElementById("musicEqCurve");
+    if (!cv || !musicEqState) return;
+    const bands = musicEqState.bands || [];
+    if (bands.length === 0 || musicEqCurveDb.length !== bands.length) return;
+    const w = cv.clientWidth || 300, h = 150;
+    if (cv.width !== w * 2) { cv.width = w * 2; cv.height = h * 2; }
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(2, 0, 0, 2, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const g = musicEqCurveGeom(w, h);
+    const X = g.X;
+    function Y(db) { return g.Y(db); }
+    const minDb = musicEqCurveMinDb, maxDb = musicEqCurveMaxDb;
+    // 底 grid：0dB 實線＋band 位虛線。
+    let accent = "#2563eb";
+    try {
+      const a = getComputedStyle(document.documentElement).getPropertyValue("--accent");
+      if (a && a.trim()) accent = a.trim();
+    } catch (e) {}
+    ctx.lineWidth = 1;
+    if (0 >= minDb && 0 <= maxDb) {
+      ctx.strokeStyle = "rgba(0,0,0,0.35)";
+      ctx.beginPath(); ctx.moveTo(0, Y(0)); ctx.lineTo(w, Y(0)); ctx.stroke();
+    }
+    ctx.strokeStyle = "rgba(0,0,0,0.12)";
+    ctx.setLineDash([3, 3]);
+    for (let i = 0; i < bands.length; i++) {
+      const fx = X(bands[i].freqHz > 0 ? bands[i].freqHz : F_MIN);
+      ctx.beginPath(); ctx.moveTo(fx, 0); ctx.lineTo(fx, h); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // 控制點：band（log f 即時 dB）＋兩邊拉平。
+    const n = bands.length;
+    const px = [], py = [];
+    const db0 = musicEqCurveDb[0], dbN = musicEqCurveDb[n - 1];
+    px.push(X(g.F_MIN)); py.push(db0);
+    for (let i = 0; i < n; i++) {
+      const f = bands[i].freqHz > 0 ? bands[i].freqHz : g.F_MIN;
+      px.push(X(f)); py.push(musicEqCurveDb[i]);
+    }
+    px.push(X(g.F_MAX)); py.push(dbN);
+    // Catmull-Rom（index 參數，log-x 已經喺 X 入面）。
+    ctx.beginPath();
+    const SEG = 64;
+    for (let k = 0; k <= SEG; k++) {
+      const t = k / SEG * (px.length - 1);
+      const i0 = Math.min(px.length - 2, Math.floor(t)), fr = t - i0;
+      const q0x = px[Math.max(0, i0 - 1)], q1x = px[i0], q2x = px[i0 + 1], q3x = px[Math.min(px.length - 1, i0 + 2)];
+      const q0y = py[Math.max(0, i0 - 1)], q1y = py[i0], q2y = py[i0 + 1], q3y = py[Math.min(py.length - 1, i0 + 2)];
+      const fr2 = fr * fr, fr3 = fr2 * fr;
+      const x = 0.5 * ((2 * q1x) + (-q0x + q2x) * fr + (2 * q0x - 5 * q1x + 4 * q2x - q3x) * fr2 + (-q0x + 3 * q1x - 3 * q2x + q3x) * fr3);
+      const yv = 0.5 * ((2 * q1y) + (-q0y + q2y) * fr + (2 * q0y - 5 * q1y + 4 * q2y - q3y) * fr2 + (-q0y + 3 * q1y - 3 * q2y + q3y) * fr3);
+      if (k === 0) ctx.moveTo(x, Y(yv)); else ctx.lineTo(x, Y(yv));
+    }
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // 0dB 以下淡填（有色先係 EQ 郁過嘅位）。
+    ctx.lineTo(w, Y(0)); ctx.lineTo(0, Y(0)); ctx.closePath();
+    let fill = accent;
+    try {
+      const m = accent.match(/^#([0-9a-f]{6})$/i);
+      if (m) {
+        const r = parseInt(m[1].slice(0, 2), 16), g = parseInt(m[1].slice(2, 4), 16), b = parseInt(m[1].slice(4, 6), 16);
+        fill = "rgba(" + r + "," + g + "," + b + ",0.15)";
+      }
+    } catch (e) {}
+    ctx.fillStyle = fill;
+    ctx.fill();
+    // 5 粒 handle：band 色波＋dB 數（直拖用，hit 半徑 26px 見 hook）。
+    try {
+      ctx.font = "11px sans-serif";
+      ctx.textAlign = "center";
+      for (let i = 0; i < n; i++) {
+        const f = bands[i].freqHz > 0 ? bands[i].freqHz : g.F_MIN;
+        const cx = X(f), cy = Y(musicEqCurveDb[i]);
+        const hex = musicEqBandHex(i, n);
+        ctx.beginPath();
+        ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+        ctx.fillStyle = hex;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#222";
+        ctx.stroke();
+        const label = (musicEqCurveDb[i] > 0 ? "+" : "") + musicEqCurveDb[i];
+        ctx.fillStyle = "#333";
+        const ly = cy - 14 < 10 ? cy + 22 : cy - 14;
+        ctx.fillText(label, cx, ly);
+        const fl = bands[i].freqHz >= 1000 ? (bands[i].freqHz / 1000) + "k" : "" + bands[i].freqHz;
+        ctx.fillStyle = "#888";
+        ctx.fillText(fl, cx, h - 4);
+      }
+    } catch (e) {}
+    if (!musicEqResizeHooked) {
+      musicEqResizeHooked = true;
+      try {
+        window.addEventListener("resize", function () {
+          try { musicEqDrawCurve(); } catch (e) {}
+        });
+      } catch (e) {}
+    }
   } catch (e) {}
 }
 
 function musicEqPushLevels() {
   musicEqPushTimer = null;
-  const bandsBox = document.getElementById("musicEqBands");
-  if (!bandsBox) return;
-  const sliders = bandsBox.querySelectorAll("input[type=range]");
-  if (!sliders || sliders.length === 0) return;
+  const bands = (musicEqState && musicEqState.bands) || [];
+  if (bands.length === 0 || musicEqCurveDb.length !== bands.length) return;
   const mbs = [];
-  for (let i = 0; i < sliders.length; i++) mbs.push(Number(sliders[i].value) * 100);
+  for (let i = 0; i < bands.length; i++) mbs.push(musicEqCurveDb[i] * 100);
   Alpha2Api.audioLocalMusicEqSet({ levels: mbs.join(",") }).then(function (res) {
     if (!res || !res.ok) return;
     musicEqState = res;

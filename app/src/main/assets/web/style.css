@@ -694,63 +694,21 @@ button.eq-preset-sq.selected {
   color: #fff;
 }
 
-/* EQ 推桿打直＋成條粗 bar：track 26px 闊，band 色由底填到值（--fill 由 JS
-   逐條計，低綠→高紅經 --band-color），thumb 透明淨係捉拖（睇唔到就唔使煩置中）。
-   Firefox 用原生 range-progress；舊瀏覽器唔識 appearance 會跌返原生推桿，照推得。 */
-.eq-band-slider {
-  writing-mode: vertical-lr;
-  direction: rtl;
-  width: 34px;
-  height: 120px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: transparent;
-  cursor: pointer;
-  margin: 0;
-  --fill: 50%;
-}
-.eq-band-slider::-webkit-slider-runnable-track {
-  width: 26px;
-  border-radius: 8px;
-  background: linear-gradient(to top, var(--band-color, var(--accent)) var(--fill), var(--border) var(--fill));
-}
-.eq-band-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 26px;
-  height: 26px;
-  background: transparent;
-  border: none;
-}
-.eq-band-slider::-moz-range-track {
-  width: 26px;
-  border-radius: 8px;
-  background: var(--border);
-}
-.eq-band-slider::-moz-range-progress {
-  width: 26px;
-  border-radius: 8px;
-  background: var(--band-color, var(--accent));
-}
-.eq-band-slider::-moz-range-thumb {
-  width: 26px;
-  height: 26px;
-  background: transparent;
-  border: none;
+/* EQ curve 直拖：canvas touch-action 關捲動（指拖唔會扯走成頁），cursor 提示可拖 */
+#musicEqCurve {
+  touch-action: none;
+  cursor: grab;
 }
 
-/* EQ 5 推桿一個物件：有框、唔換行、窄 mon 橫滑，唔會散開走位 */
+/* EQ bands 一個物件：有框、上 curve 下推桿、推桿列唔換行、窄 mon 橫滑，唔會散開走位 */
 .eq-bands-box {
   display: none;
-  gap: 10px;
   margin-top: 6px;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  align-items: stretch;
 }
-.eq-bands-box.on { display: flex; }
+.eq-bands-box.on { display: block; }
 
 .device-grid {
   display: grid;

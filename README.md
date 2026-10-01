@@ -68,8 +68,11 @@ adb -s <serial> forward tcp:8888 tcp:8888
 `app/debug.keystore` is a committed, non-secret debug key (password
 `android`); uninstall first if a signature mismatch blocks reinstall. The app
 auto-starts on boot (`BootReceiver`), so the panel is reachable without
-touching the robot. CI (`build-apk.yml`, JDK 11) builds the same APK and
-publishes it as `open-alpha2-beta6.apk`. Prebuilt `.so` files
+touching the robot. APK size: a clean build is ~5.4 MB — plain incremental
+rebuilds leave stale entries behind and can bloat it to ~9 MB (harmless at
+runtime); run `./gradlew clean assembleDebug --offline` before shipping.
+CI (`build-apk.yml`, JDK 11) builds the same APK and publishes it as
+`open-alpha2-beta6.apk`. Prebuilt `.so` files
 (`head_led`/`head_key_mgr`/`serial_port`) live in
 `sdk-module/hardware-direct/src/main/jniLibs`; `libeasyopus.so` is compiled
 from `app/src/main/cpp` via CMake. Vosk + JNA AARs are vendored in
@@ -77,8 +80,10 @@ from `app/src/main/cpp` via CMake. Vosk + JNA AARs are vendored in
 
 `app/debug.keystore` 是已提交的公開測試鑰匙（密碼 `android`）；如因簽名
 不符無法覆蓋安裝，請先解除安裝。應用程式會在開機時自動啟動
-（`BootReceiver`），無需觸碰機械人即可連上控制面板。CI
-（`build-apk.yml`，JDK 11）會編出同一個 APK，並以
+（`BootReceiver`），無需觸碰機械人即可連上控制面板。APK 大細：clean
+編出嚟約 5.4 MB——普通增量編譯會留低廢棄 entries，脹到 9 MB 都唔出奇
+（運行無影響）；出機前跑一次 `./gradlew clean assembleDebug --offline`
+即可。CI（`build-apk.yml`，JDK 11）會編出同一個 APK，並以
 `open-alpha2-beta6.apk` 之名發佈。預編 `.so` 檔
 （`head_led`／`head_key_mgr`／`serial_port`）放在
 `sdk-module/hardware-direct/src/main/jniLibs`；`libeasyopus.so` 由
@@ -99,8 +104,11 @@ Bilingual (EN/繁中), live updates over WebSocket, no refresh needed:
   UUID、胸板韌體）、聲納圖表、PIR 感應器（可選警示：紅燈＋鈴聲）、加速度
   計即時曲線，以及可選的四方向傾側 → 頭／眼 LED。
 - Actions — action list with category sub-tabs, play/stop, playback speed
-  (0.5/0.67/1/1.5/2x). (Pack download lives in the Experiment tab.)
+  (0.5/0.67/1/1.5/2x). Action chips are coloured by category (sub-category
+  colour first, main-category fallback). (Pack download lives in the
+  Experiment tab.)
 - 動作——動作清單及分類分頁、播放／停止、變速（0.5／0.67／1／1.5／2 倍）。
+  動作名粒粒跟分類轉色（先跟子分類色，無就跟大分類色）。
   （動作包下載在實驗分頁。）
 - Servo — 20 joints individually or all at once, live command-pose display,
   single-servo and read-all live angle read-back (`servo/angle`,
@@ -116,21 +124,34 @@ Bilingual (EN/繁中), live updates over WebSocket, no refresh needed:
 - Music — local music (`/mnt/internal_sd/music`, drag-and-drop upload,
   spectrum display), internet radio (radio-browser.info), Internet Archive
   online tracks (search in browser, play on robot), shared transport with
-  optional dance-along random motions (“filler”) and music-reactive Disco
-  LED (head VU / eye beat / mouth level).
+  random-motion filler and music-reactive Disco LED toggles in the
+  now-playing row, plus a 5-band equalizer (presets + per-band vertical
+  faders, colour-coded green→red, persisted server-side).
 - 音樂——本地音樂（`/mnt/internal_sd/music`，支援拖放上載、附頻譜顯示）、
   網絡電台（radio-browser.info）、Internet Archive 網上點歌（瀏覽器搜尋、
-  機械人播放）、共用播放器，可選隨歌伴舞隨機動作（filler）及跟音樂節奏嘅
-  Disco LED（頭部水位錶／眼拍子機／嘴跟音量呼吸）。
+  機械人播放）、共用播放器；隨歌伴舞開關及 Disco LED 開關在「播放中」
+  同一行；另有 5-band 等化器（preset＋每 band 垂直推桿，低綠→高紅，
+  設定記喺機械人）。
 - LED — head/eye/mouth presets (long/flash/breathe/chase/dual, eye 3s
-  countdown, mouth breathing speed).
+  countdown, mouth breathing speed). The mute button mirrors the real
+  chest lamp (Xiaozhi-connected OR music-indicator); pad/Wi-Fi/head-5th-dot
+  already follow via the 100 ms `led/state/get` poll.
 - LED——頭／眼／嘴燈預設效果（長開／閃燈／呼吸／跑馬燈／雙色、眼 3 秒
-  倒數、嘴呼吸速度）。
+  倒數、嘴呼吸速度）。靜音掣跟實機胸口燈（小智連線 OR 播歌指示）；pad／
+  Wi-Fi／頭第 5 粒經 100ms `led/state/get` 輪詢跟機。
 - Camera — MJPEG stream, preview snapshot, hi-res photo capture, digital
   zoom, pan-tilt joystick (drives head servos), shutter cue, mic-listen FAB
-  (plays `/stream/mic` in the browser), fullscreen.
+  (plays `/stream/mic` in the browser), fullscreen, plus two head trackers
+  (mutually exclusive, servos 19/20): built-in face tracking
+  (`android.media.FaceDetector`, zero dependencies) and pure-Java colour
+  tracking (HSV + largest blob, 7 LED colours to pick from, optional
+  walk-follow that steps/turns the robot toward the target via built-in
+  `.ubx` gait actions).
 - 相機——MJPEG 串流、預覽快照、高清拍照、數碼變焦、雲台搖桿（帶動頭部
-  舵機）、快門提示音、咪高峰收聽鍵（瀏覽器播放 `/stream/mic`）、全螢幕。
+  舵機）、快門提示音、咪高峰收聽鍵（瀏覽器播放 `/stream/mic`）、全螢幕，
+  另有兩種追頭（互斥，用 19／20 號舵機）：內置人臉追蹤
+  （`android.media.FaceDetector`，零依賴）及純 Java 顏色追蹤（HSV＋最大
+  色塊，7 隻 LED 色可揀，可選行路跟——經內建 `.ubx` 步態轉向／向前追）。
 - Xiaozhi — AI voice-chat bridge: pairing code, connect/disconnect, mic
   state, text chat, TTS output choice (Xiaozhi opus vs Android TTS), custom
   OTA/server override, in-app MCP tool list with per-tool enable/disable,
@@ -203,10 +224,10 @@ Bilingual (EN/繁中), live updates over WebSocket, no refresh needed:
 
 ## HTTP API / HTTP 接口
 
-Single source of truth: `openapi/open-alpha2-openapi.yml` (**160 paths**,
+Single source of truth: `openapi/open-alpha2-openapi.yml` (**177 paths**,
 one operation each). Namespaces as spelled in the spec:
 
-單一真相源：`openapi/open-alpha2-openapi.yml`（**160 條路徑**，每條一個
+單一真相源：`openapi/open-alpha2-openapi.yml`（**177 條路徑**，每條一個
 operation）。spec 入面嘅命名空間：
 
 - `/api/*` — main robot API (actions, `.ubx` playback, servos, speech, LEDs,
@@ -251,10 +272,10 @@ Self-describing endpoints on the robot (same port):
   pointer.
 - `/apis.yml`——apis.json 風格目錄條目；`/llms.txt`——畀 LLM 嘅簡短指引。
 
-The JS client (`assets/web/api-client.js`, `Alpha2Api.*`, **152 typed
+The JS client (`assets/web/api-client.js`, `Alpha2Api.*`, **169 typed
 wrappers**) is generated from the spec — never hand-edit it:
 
-JS 客戶端（`assets/web/api-client.js`，`Alpha2Api.*`，**152 個 typed
+JS 客戶端（`assets/web/api-client.js`，`Alpha2Api.*`，**169 個 typed
 wrapper**）由 spec 自動生成——切勿手改：
 
 ```bash
@@ -323,14 +344,19 @@ open-alpha2/
 ├── app/                            ← com.open.alpha2 (UI server, API, all centers)
 │   ├── src/main/java/com/open/alpha2/  ← MainActivity wiring + centers
 │   │   (ActionDirect, ApiDispatcher, ApiValidator, AudioCenter, CameraApi,
-│   │    DeviceStatus, GestureCenter, GrammarCenter, LedCenter, MicCenter,
+│   │    ColorTrackCenter/Logic (colour tracking + walk-follow),
+│   │    DeviceStatus, FaceTrackCenter (face tracking), GestureCenter,
+│   │    GrammarCenter, LedCenter, MicCenter, MusicEq (EQ presets),
 │   │    PanelAuth, RingtoneCenter, SemanticCenter + 10 matchers,
 │   │    SpeechCenter, TtsCenter, VoskController/Api, XiaozhiBridge/Client,
 │   │    ActionsPackController, ApkDownloadController, DownloadGate, …)
 │   ├── src/main/assets/web/        ← control panel + Blockly + generated api-client.js
+│   │                                  (static assets carry `?v=` so plain F5
+│   │                                   picks up updates, no Ctrl+F5 needed)
 │   ├── src/main/assets/semantic/   ← 10 intent libraries + action category pools
 │   ├── src/main/cpp/               ← easyopus JNI (CMake)
-│   ├── src/test/java/…             ← ApiValidatorTest (run via scripts/test-apivalidator.py)
+│   ├── src/test/java/…             ← ApiValidatorTest + ColorTrackTest + MusicEqTest
+│   │                                  (run via scripts/test-apivalidator.py)
 │   ├── libs/                       ← vendored vosk-android + JNA AARs (v7a)
 │   └── build.gradle                ← versionName "beta 6", armeabi-v7a only
 ├── sdk-module/hardware-direct/     ← serial ports, LED/pad JNI, wire protocol,
@@ -351,11 +377,13 @@ open-alpha2/
 - `build-apk`：JDK 11 → 剝離網頁註解 → `assembleDebug` → 上載 APK
    （`open-alpha2-beta6.apk`，保留 30 日）。
 - `check-openapi`: spec/code drift, client freshness, client→route prefix
-  match, MCP freshness, YAML validity, `ApiValidator`/serial-codec unit
-  tests, web spec copies in sync, `versionName` == spec `info.version`.
+  match, MCP freshness, YAML validity, unit tests (`test-apivalidator.py`:
+  ApiValidator/ColorTrack/MusicEq suites; `test-serialcodec.py`), web spec
+  copies in sync, `versionName` == spec `info.version`.
 - `check-openapi`：spec／代碼漂移、客戶端新鮮度、客戶端→路由前綴一致、
-  MCP 新鮮度、YAML 合法性、`ApiValidator`／串口編解碼單元測試、網頁 spec
-  副本同步、`versionName` == spec `info.version`。
+  MCP 新鮮度、YAML 合法性、單元測試（`test-apivalidator.py`：ApiValidator
+  ／顏色追蹤／EQ 三套；`test-serialcodec.py`）、網頁 spec 副本同步、
+  `versionName` == spec `info.version`。
 
 ## Known limitations / 已知限制
 
