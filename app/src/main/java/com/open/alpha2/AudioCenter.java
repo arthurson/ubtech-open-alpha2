@@ -126,8 +126,8 @@ public final class AudioCenter {
     // 眼跟人聲（存在感＋樂句起頭，1-7 純隨機）。
     // 後端跑：Visualizer callback（約 10Hz）經 DirectLedController 直推燈
     // （long 常亮、光度 9 最光），全程唔經 HTTP。
-    // 24 格 band 係 log 分佈（40Hz-12kHz）：左錶/鼓用 0-11，
-    // 右錶/高頻用 16-23，眼用人聲 10-21。
+    // 24 格 band 真 log 均分（40Hz-16kHz）：左錶/鼓用 0-5，
+    // 右錶/高頻用 10-23，眼用人聲 4-19。
     // 任何經呢個 visualizer 播嘅嘢都閃：本地/電台/網上點歌/小智播歌
     // 全部入同一個 visualizer（短鈴聲/TTS 唔經呢度，唔閃）。
     // 熄開關即熄頭+眼（嘴唔郁，留返畀 TTS）；停歌就停手（callback 冇咗）。
@@ -593,16 +593,20 @@ public final class AudioCenter {
      *  眼係左右拍子機（低頻一下左眼行前一格，高頻一下右眼行前一格）。絕不 throw。 */
     private void discoOnSpectrumFrame() {
         try {
+            // 低／高／人聲頻段（bins 2026-10 起真 log 均分 40Hz-16k，
+            // index 範圍跟住搬，覆蓋頻率同舊版一致：bass ≈40-180Hz、
+            // high ≈490Hz+、vocal ≈110Hz-5.9kHz；門檻係量級數，暫唔郁，
+            // 實機聽落唔對再調，見下）。
             double bassSum = 0;
-            for (int i = 0; i <= 11 && i < MUSIC_SPECTRUM_BANDS; i++) {
+            for (int i = 0; i <= 5 && i < MUSIC_SPECTRUM_BANDS; i++) {
                 bassSum += musicSpectrumBands[i];
             }
-            double bass = bassSum / 12;
+            double bass = bassSum / 6;
             double highSum = 0;
-            for (int i = 16; i <= 23 && i < MUSIC_SPECTRUM_BANDS; i++) {
+            for (int i = 10; i <= 23 && i < MUSIC_SPECTRUM_BANDS; i++) {
                 highSum += musicSpectrumBands[i];
             }
-            double high = highSum / 8;
+            double high = highSum / 14;
             long now = SystemClock.elapsedRealtime();
             long lastFrame = discoLastFrameAtMs;
             discoLastFrameAtMs = now;
@@ -618,10 +622,10 @@ public final class AudioCenter {
             discoBassRecentMax = bassRecent;
             discoHighRecentMax = highRecent;
             double vocalSum = 0;
-            for (int i = 10; i <= 21 && i < MUSIC_SPECTRUM_BANDS; i++) {
+            for (int i = 4; i <= 19 && i < MUSIC_SPECTRUM_BANDS; i++) {
                 vocalSum += musicSpectrumBands[i];
             }
-            double vocal = vocalSum / 12;
+            double vocal = vocalSum / 16;
             double vocalPrev = discoVocalPrev;
             discoVocalPrev = vocal;
             double vocalRecent = Math.max(vocal, discoVocalRecentMax * decay);
@@ -676,14 +680,18 @@ public final class AudioCenter {
         }
     }
 
-    /** 用 log 刻度起「band index -> FFT bin 範圍」對照表, 範圍大約 40Hz - 12kHz。 */
+    /** 用 log 刻度起「band index -> FFT bin 範圍」對照表, 範圍 40Hz - 16kHz
+     *  （bins log 均分，每格等闊；舊版 frac 誤寫 (b/24)^2，低頻塞咗 7 格喺
+     *  60Hz 以下，顯示＋disco 低頻解像全歪，2026-10 改返真 log）。
+     *  上限 16k（唔係 Nyquist）係為咗包埋 EQ 最高 band（14kHz）；取樣率低過
+     *  32k 嗰陣自動㩒返 Nyquist，有幾多用幾多。 */
     private void buildMusicSpectrumBinMap(int samplingRate, int binCount) {
         if (samplingRate <= 0 || binCount <= 0) return;
         double minFreq = 40.0;
-        double maxFreq = Math.min(12000.0, samplingRate / 2.0);
+        double maxFreq = Math.min(16000.0, samplingRate / 2.0);
         musicSpectrumBinMap = new int[MUSIC_SPECTRUM_BANDS + 1];
         for (int b = 0; b <= MUSIC_SPECTRUM_BANDS; b++) {
-            double frac = Math.pow((double) b / MUSIC_SPECTRUM_BANDS, 2.0); // 近似 log 分佈
+            double frac = (double) b / MUSIC_SPECTRUM_BANDS; // 真 log 均分
             double freq = minFreq * Math.pow(maxFreq / minFreq, frac);
             int bin = (int) Math.round(freq / samplingRate * binCount * 2.0);
             musicSpectrumBinMap[b] = Math.max(0, Math.min(binCount - 1, bin));

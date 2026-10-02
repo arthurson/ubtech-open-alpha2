@@ -94,30 +94,43 @@ function musicRenderSpectrumFrame() {
   musicDrawSpectrum(musicSpectrumSmooth);
 }
 
-/** 畫一幀 spectrum - bands=null 就畫全平 (停止狀態)。 */
+/** 二合一畫幀：頻譜柱做底（log 頻率橫軸，同 curve 共用）＋EQ curve 疊面＋handle。
+ *  bands=null 就柱全平（停止狀態），curve 照留（EQ 態唔跟播停走）。
+ *  由 33ms 動畫 loop、拖點、preset 切換共用。 */
 function musicDrawSpectrum(bands) {
-  const canvas = document.getElementById("musicSpectrumCanvas");
+  const canvas = document.getElementById("musicEqSpectrum");
   if (!canvas || !canvas.getContext) return;
+  // EQ 盒未出（唔支援／未載入）就唔畫——舊獨立頻譜 canvas 已退役，呢度係唯一视图。
+  const box = document.getElementById("musicEqBands");
+  if (!box || !box.classList.contains("on")) return;
   const ctx = canvas.getContext("2d");
-  const w = canvas.width;
-  const h = canvas.height;
+  if (!ctx) return;
+  // backing 跟 CSS 闊（x2 retina 清；hit-test 行 CSS px，兩邊同一個座標系先對得上）。
+  const w = canvas.clientWidth || 300;
+  const h = 150;
+  if (canvas.width !== w * 2) { canvas.width = w * 2; canvas.height = h * 2; }
+  ctx.setTransform(2, 0, 0, 2, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  const n = bands ? bands.length : 24;
-  if (n === 0) return;
-  const gap = 3;
-  const barW = Math.max(2, Math.floor((w - gap * (n + 1)) / n));
+  // 底：24 柱均闊拉滿（bin 序 x，值照後端 bins；色跟 x 位，同 curve 點對齊）。
+  const n = 24;
   for (let i = 0; i < n; i++) {
+    const x0 = Math.floor(i / n * w), x1 = Math.ceil((i + 1) / n * w);
     const v = bands ? Math.max(0, Math.min(255, bands[i] | 0)) : 0;
     const barH = Math.max(2, Math.round(v / 255 * (h - 6)));
-    const x = gap + i * (barW + gap);
     const y = h - 3 - barH;
-    // 由綠到紅的漸變 (低頻綠、高頻紅), 頂部加少少亮色。
-    const hue = 120 - Math.round(120 * i / n);
+    const hue = Math.round(120 * (1 - (i + 0.5) / n));
     const grad = ctx.createLinearGradient(0, y, 0, h - 3);
     grad.addColorStop(0, "hsl(" + hue + ",95%,65%)");
     grad.addColorStop(1, "hsl(" + hue + ",85%,38%)");
-    ctx.fillStyle = v > 0 ? grad : "#232a36";
-    ctx.fillRect(x, y, barW, barH);
+    ctx.globalAlpha = 0.45; // 做底，唔好搶 curve
+    ctx.fillStyle = v > 0 ? grad : "#e5e7eb";
+    ctx.fillRect(x0, y, Math.max(2, x1 - x0 - 1), barH);
+    ctx.globalAlpha = 1;
+  }
+  // 面：EQ curve（無 EQ 態就淨柱；X 尺由 paint 入面跟 geom 拎，唔經呢度傳）。
+  if (musicEqState && musicEqState.bands && musicEqState.bands.length > 0
+      && musicEqCurveDb.length === musicEqState.bands.length) {
+    musicEqPaintCurve(ctx, w, h);
   }
 }
 
@@ -689,31 +702,50 @@ let musicEqCurveMinDb = -15;
 let musicEqCurveMaxDb = 15;
 let musicEqDragBand = -1;
 
-// Band 色：跟頻率序位，低綠（hue 120）→高紅（hue 0），中間黃橙過渡。
+// 二合一 x 軸：後端 bin 序（0-24），唔係真 log 頻率。
+// 點解：後端 24 bins 係 (b/24)^2 疏密分佈，真 log 位擺會低頻縮成碎條、高頻一嚿嚿
+// （實測 7 條塞 8% 闊，睇唔到）。全幅統一用 bin 序：柱均闊，curve 點企返自己
+// 頻率對應嘅 bin 位——同 x 位永遠對齊，唔會再錯位。
+// 頻率→bin 位（同後端 buildMusicSpectrumBinMap 同一條式：
+// 真 log 均分 40Hz-16kHz，b = 24*log(f/40)/log(400)，夾實 0-24）。
+function musicFreqBin(fHz) {
+  const fr = Math.log(Math.max(40.0001, Math.min(15999.999, fHz)) / 40) / Math.log(400);
+  return Math.max(0, Math.min(24, 24 * fr));
+}
+
+// 色跟 x 位（bin 序）：同 x 同色，柱同點永遠對得上。
+function musicFreqHue(fHz) {
+  return Math.round(120 * (1 - musicFreqBin(fHz) / 24));
+}
+
 function musicEqBandHex(bi, n) {
-  const frac = n <= 1 ? 0 : bi / (n - 1);
-  return "hsl(" + Math.round(120 * (1 - frac)) + ",90%,40%)";
+  const bands = (musicEqState && musicEqState.bands) || [];
+  const f = (bands[bi] && bands[bi].freqHz > 0) ? bands[bi].freqHz : 20;
+  return "hsl(" + musicFreqHue(f) + ",90%,40%)";
 }
 
 // Curve 座標（draw＋hit test 共用，唔好各自計兩套）。
 function musicEqCurveGeom(w, h) {
   const lo = musicEqCurveMinDb, hi = musicEqCurveMaxDb;
-  const F_MIN = 20, F_MAX = 20000;
-  const L0 = Math.log10(F_MIN), L1 = Math.log10(F_MAX);
   return {
-    F_MIN: F_MIN, F_MAX: F_MAX,
-    X: function (f) {
-      const lf = Math.log10(Math.max(F_MIN, Math.min(F_MAX, f)));
-      return (lf - L0) / (L1 - L0) * w;
-    },
+    // curve x 同柱共用 bin 序（唔係 log 頻率）：X(f)＝個頻率對應邊個 bin 位。
+    X: function (f) { return musicFreqBin(f) / 24 * w; },
     Y: function (db) { return h - 4 - (db - lo) / (hi - lo) * (h - 8); }
   };
 }
 
 function musicEqHookCurvePointer() {
-  const cv = document.getElementById("musicEqCurve");
+  const cv = document.getElementById("musicEqSpectrum");
   if (!cv || cv.dataset.hooked) return;
   cv.dataset.hooked = "1";
+  if (!musicEqResizeHooked) {
+    musicEqResizeHooked = true;
+    try {
+      window.addEventListener("resize", function () {
+        try { musicEqDrawCurve(); } catch (e) {}
+      });
+    } catch (e) {}
+  }
   function posOf(evt) {
     const r = cv.getBoundingClientRect();
     return { x: evt.clientX - r.left, y: evt.clientY - r.top, w: r.width, h: r.height };
@@ -727,7 +759,7 @@ function musicEqHookCurvePointer() {
       const g = musicEqCurveGeom(p.w, p.h);
       let best = -1, bestD = 26 * 26;
       for (let i = 0; i < bands.length; i++) {
-        const f = bands[i].freqHz > 0 ? bands[i].freqHz : g.F_MIN;
+        const f = bands[i].freqHz > 0 ? bands[i].freqHz : 40;
         const dx = g.X(f) - p.x, dy = g.Y(musicEqCurveDb[i]) - p.y;
         const d = dx * dx + dy * dy;
         if (d < bestD) { bestD = d; best = i; }
@@ -777,24 +809,24 @@ function musicEqSchedulePush() {
 
 let musicEqResizeHooked = false;
 
-// 頻響 curve（Wavelet 嗰條）：band dB 經 Catmull-Rom 平滑，橫軸 log 頻率
-// （20Hz-20kHz，兩邊拉平）；5 粒 handle 直拖（低綠→高紅），dB 數寫喺點上面。
+// 頻響 curve 重畫＝成幅二合一重畫（柱用現 smooth 值，無就全平；curve 用即時拖值）。
 function musicEqDrawCurve() {
   try {
-    const cv = document.getElementById("musicEqCurve");
-    if (!cv || !musicEqState) return;
-    const bands = musicEqState.bands || [];
+    const n = musicSpectrumSmooth.length || 0;
+    musicDrawSpectrum(n > 0 ? musicSpectrumSmooth : null);
+  } catch (e) {}
+}
+
+/** 二合一上面嗰層：grid＋curve＋fill＋handle（由 musicDrawSpectrum 調用）。 */
+function musicEqPaintCurve(ctx, w, h) {
+  try {
+    const bands = (musicEqState && musicEqState.bands) || [];
     if (bands.length === 0 || musicEqCurveDb.length !== bands.length) return;
-    const w = cv.clientWidth || 300, h = 150;
-    if (cv.width !== w * 2) { cv.width = w * 2; cv.height = h * 2; }
-    const ctx = cv.getContext("2d");
-    if (!ctx) return;
-    ctx.setTransform(2, 0, 0, 2, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    const g = musicEqCurveGeom(w, h);
-    const X = g.X;
-    function Y(db) { return g.Y(db); }
+    const X = musicEqCurveGeom(w, h).X;
     const minDb = musicEqCurveMinDb, maxDb = musicEqCurveMaxDb;
+    function Y(db) {
+      return h - 4 - (db - minDb) / (maxDb - minDb) * (h - 8);
+    }
     // 底 grid：0dB 實線＋band 位虛線。
     let accent = "#2563eb";
     try {
@@ -809,20 +841,20 @@ function musicEqDrawCurve() {
     ctx.strokeStyle = "rgba(0,0,0,0.12)";
     ctx.setLineDash([3, 3]);
     for (let i = 0; i < bands.length; i++) {
-      const fx = X(bands[i].freqHz > 0 ? bands[i].freqHz : F_MIN);
+      const fx = X(bands[i].freqHz > 0 ? bands[i].freqHz : 40);
       ctx.beginPath(); ctx.moveTo(fx, 0); ctx.lineTo(fx, h); ctx.stroke();
     }
     ctx.setLineDash([]);
-    // 控制點：band（log f 即時 dB）＋兩邊拉平。
+    // 控制點：band（bin 序 x 即時 dB）＋兩邊拉平到軸邊。
     const n = bands.length;
     const px = [], py = [];
     const db0 = musicEqCurveDb[0], dbN = musicEqCurveDb[n - 1];
-    px.push(X(g.F_MIN)); py.push(db0);
+    px.push(0); py.push(db0);
     for (let i = 0; i < n; i++) {
-      const f = bands[i].freqHz > 0 ? bands[i].freqHz : g.F_MIN;
+      const f = bands[i].freqHz > 0 ? bands[i].freqHz : 40;
       px.push(X(f)); py.push(musicEqCurveDb[i]);
     }
-    px.push(X(g.F_MAX)); py.push(dbN);
+    px.push(w); py.push(dbN);
     // Catmull-Rom（index 參數，log-x 已經喺 X 入面）。
     ctx.beginPath();
     const SEG = 64;
@@ -856,7 +888,7 @@ function musicEqDrawCurve() {
       ctx.font = "11px sans-serif";
       ctx.textAlign = "center";
       for (let i = 0; i < n; i++) {
-        const f = bands[i].freqHz > 0 ? bands[i].freqHz : g.F_MIN;
+        const f = bands[i].freqHz > 0 ? bands[i].freqHz : 40;
         const cx = X(f), cy = Y(musicEqCurveDb[i]);
         const hex = musicEqBandHex(i, n);
         ctx.beginPath();
@@ -875,14 +907,6 @@ function musicEqDrawCurve() {
         ctx.fillText(fl, cx, h - 4);
       }
     } catch (e) {}
-    if (!musicEqResizeHooked) {
-      musicEqResizeHooked = true;
-      try {
-        window.addEventListener("resize", function () {
-          try { musicEqDrawCurve(); } catch (e) {}
-        });
-      } catch (e) {}
-    }
   } catch (e) {}
 }
 

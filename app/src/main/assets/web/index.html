@@ -726,8 +726,16 @@
     </div>
     <p id="musicNowPlaying" class="hint" style="display:none">未選擇歌曲</p>
     <span id="radioNowPlaying" class="hint" style="display:none">未播放電台</span>
-    <!-- 共用頻譜：後端 Visualizer 已綁定至當前播放的 audio session（本地或電台），前端同一 canvas 共用 -->
-    <canvas id="musicSpectrumCanvas" class="music-spectrum" width="480" height="72"></canvas>
+    <!-- 板面次序（定案）：播放中 → 二合一 canvas → EQ preset → 進度＋播放掣 → 音量 -->
+    <div id="musicEqBands" class="eq-bands-box">
+      <canvas id="musicEqSpectrum" style="width:100%;height:150px;display:block;touch-action:none;cursor:grab"></canvas>
+    </div>
+    <!-- EQ：無開關（預設開，一開就係標準 preset） -->
+    <div class="row" id="musicEqRow" style="display:none;gap:8px;align-items:center;flex-wrap:wrap">
+      <span class="hint" data-i18n="music_eq_heading" style="margin:0">🎚️ 等化器</span>
+      <span id="musicEqPreset" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></span>
+      <span id="musicEqUnsupported" class="hint" data-i18n="music_eq_unsupported" style="display:none;margin:0">呢部機無 EQ</span>
+    </div>
     <div class="row music-progress-row" id="sharedProgressRow">
       <span id="musicPositionLabel">0:00</span>
       <input id="musicSeekBar" type="range" min="0" max="0" value="0"
@@ -742,7 +750,7 @@
       <button onclick="musicPlayAll()" data-i18n="music_playall_btn">▶ 全部</button>
       <button class="danger-btn" onclick="musicStopAll()" data-i18n="music_stop_btn">⏹ 全部停止</button>
     </div>
-    <!-- 共用音量（系統 STREAM_MUSIC，同時影響本地與電台）+ 隨機動作 -->
+    <!-- 共用音量（SYSTEM MUSIC）：板尾 -->
     <div class="row volume-row" id="sharedVolumeRow">
       <span class="volume-icon">🔈</span>
       <input id="sharedVolumeSlider" type="range" min="0" max="15" value="7"
@@ -751,15 +759,6 @@
       <span class="volume-icon">🔊</span>
       <!-- 保留舊 per-track 音量滑桿作兼容（隱藏），JS 仍可讀寫 -->
       <input id="musicVolumeSlider" type="range" min="0" max="100" value="100" style="display:none">
-    </div>
-    <!-- EQ：無開關（預設開，一開就係標準 preset）；preset 掣＋5 條直推桿一個框唔散（手機窄mon橫滑，唔換行走位） -->
-    <div class="row" id="musicEqRow" style="display:none;gap:8px;align-items:center;flex-wrap:wrap">
-      <span class="hint" data-i18n="music_eq_heading" style="margin:0">🎚️ 等化器</span>
-      <span id="musicEqPreset" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></span>
-      <span id="musicEqUnsupported" class="hint" data-i18n="music_eq_unsupported" style="display:none;margin:0">呢部機無 EQ</span>
-    </div>
-    <div id="musicEqBands" class="eq-bands-box">
-      <canvas id="musicEqCurve" style="width:100%;height:150px;display:block;touch-action:none;cursor:grab"></canvas>
     </div>
     <p id="musicResult" class="hint"></p>
     <p id="radioSearchStatus2" class="hint" style="display:none"></p>
@@ -990,7 +989,7 @@
     <section class="card">
       <h3>ℹ️ Open Alpha2 版本</h3>
       <div class="row">
-        <button onclick="window.open('https://github.com/arthurson/ubtech-open-alpha2/releases','_blank','noopener')" style="font-weight:700;">Open Alpha2 beta 6 ↗</button>
+        <button onclick="window.open('https://github.com/arthurson/ubtech-open-alpha2/releases','_blank','noopener')" style="font-weight:700;">Open Alpha2 beta 7 ↗</button>
       </div>
     </section>
   </div>

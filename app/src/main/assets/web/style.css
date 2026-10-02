@@ -694,10 +694,21 @@ button.eq-preset-sq.selected {
   color: #fff;
 }
 
-/* EQ curve 直拖：canvas touch-action 關捲動（指拖唔會扯走成頁），cursor 提示可拖 */
+/* EQ curve 直拖：canvas touch-action 關捲動（指拖唔會扯走成頁），cursor 提示可拖；
+   頻率背景白色（睇 curve 清楚啲），圓角跟返個框 */
 #musicEqCurve {
   touch-action: none;
   cursor: grab;
+  background: #fff;
+  border-radius: 6px;
+}
+
+/* 二合一頻譜＋EQ：同一幅，白底，頻譜柱做底、curve 疊面 */
+#musicEqSpectrum {
+  touch-action: none;
+  cursor: grab;
+  background: #fff;
+  border-radius: 6px;
 }
 
 /* EQ bands 一個物件：有框、上 curve 下推桿、推桿列唔換行、窄 mon 橫滑，唔會散開走位 */
@@ -1427,15 +1438,7 @@ button.eq-preset-sq.selected {
 }
 
 /* audio spectrum 顯示區 — 深色底令 bar 搶眼 */
-.music-spectrum {
-  width: 100%;
-  height: 72px;
-  background: #10141c;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin: 6px 0;
-  display: block;
-}
+/* （舊獨立頻譜 .music-spectrum 已退役，二合一併入 #musicEqSpectrum，此處不再留樣式） */
 .music-progress-row input[type="range"] {
   flex: 1 1 160px;
   min-width: 120px;
