@@ -70,6 +70,10 @@ components:
               - chest_rcv
               - chest_upgrade_done
               - chest_upgrade_progress
+              - gamepad_axis
+              - gamepad_bt
+              - gamepad_key
+              - gamepad_touch
               - gesture
               - grammar_error
               - grammar_init

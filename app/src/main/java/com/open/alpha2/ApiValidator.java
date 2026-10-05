@@ -46,6 +46,44 @@ public final class ApiValidator {
     public static final int SERVO_TIME_MIN_MS = 20;
     public static final int SERVO_TIME_MAX_MS = 32767;
 
+    /** 每軸行程＋原點（同 app-core.js SERVO_CALIBRATION 一字不差，實機量度；
+     *  改一邊記得改另一邊——servo tab slider 同手柄 jog 共用同一套，
+     *  邊個都唔可以將舵機頂過機械限位）。
+     *  index 0＝1 號舵機；未知軸回 0-255 wire 範圍（fail-safe）。 */
+    private static final int[] SERVO_CAL_MIN = {
+            5, 50, 55, 5, 30, 55, 100, 20, 35, 35,
+            100, 40, 20, 10, 25, 50, 95, 95, 75, 105};
+    private static final int[] SERVO_CAL_MAX = {
+            235, 210, 185, 235, 190, 185, 200, 220, 230, 215,
+            190, 140, 220, 205, 205, 140, 125, 125, 165, 155};
+    private static final int[] SERVO_CAL_HOME = {
+            120, 120, 120, 120, 120, 120, 120, 65, 145, 140,
+            120, 120, 175, 95, 100, 120, 120, 120, 120, 120};
+
+    public static int servoCalMin(int id) {
+        if (id < SERVO_ID_MIN || id > SERVO_ID_MAX) return SERVO_ANGLE_MIN;
+        return SERVO_CAL_MIN[id - 1];
+    }
+
+    public static int servoCalMax(int id) {
+        if (id < SERVO_ID_MIN || id > SERVO_ID_MAX) return SERVO_ANGLE_MAX;
+        return SERVO_CAL_MAX[id - 1];
+    }
+
+    public static int servoCalHome(int id) {
+        if (id < SERVO_ID_MIN || id > SERVO_ID_MAX) return 128;
+        return SERVO_CAL_HOME[id - 1];
+    }
+
+    /** 校準 clamp（未知軸回 0-255 wire clamp；同 app-core.js clampServoAngle 一致）。 */
+    public static int clampServoAngle(int id, int value) {
+        int lo = servoCalMin(id);
+        int hi = servoCalMax(id);
+        if (value < lo) return lo;
+        if (value > hi) return hi;
+        return value;
+    }
+
     /** LED 範圍單一來源（同 openapi spec／MCP schema／McpToolsGenerated 約束一致）：
      *  color 1-7、brightness 1-9、mouth speed 100-1000ms。之前 HTTP（requireColor
      *  等）同 MCP（LedCenter mcpLedSet*）各寫裸 literal／直情唔驗，MCP 超範圍

@@ -115,6 +115,22 @@ Bilingual (EN/繁中), live updates over WebSocket, no refresh needed:
   `servo/angle-all` / `servo/read-all`).
 - 舵機——20 軸逐顆或全組控制、即時指令位姿顯示、經 `servo/angle` 讀回單顆
   舵機角度，另有 `servo/angle-all`／`servo/read-all` 一次過讀全部。
+- Gamepad — BT gamepad/keyboard in two modes sharing one key mapping
+  (`gamepad/*`): A = HID paired straight to the robot (BT on/scan/pair from
+  the page, offline OK, keys via `dispatchKeyEvent`, right stick drives head
+  19/20); B = pad/keyboard on the browser (Gamepad API poll + key listener,
+  injected via `gamepad/key`/`gamepad/axis`).
+- 手柄——藍牙手柄／鍵盤直連機器人、手柄鍵盤映射分開（`gamepad/*`，同名鍵獨立
+  值）：頁面開藍牙／只列 HID 的掃描／配對／主動連接／解除綁定，離線可用；
+  撳鍵即執行，右搖桿轉頭 19／20 號；滑鼠類直吞；直連手柄／直連鍵盤開關分開，
+  熄邊只記唔做。手柄圖／全鍵盤圖即時亮燈，映射表分兩區；`gamepad/key`／
+  `gamepad/axis` 後端保留畀脚本直調。動作值支援 20 軸 `servo1-20±` 步進
+  （撳住連走、放手停，40 格封頂；跟 servo tab 同一套校準大小值，
+  到頂唔送幀兼自己停）、本地音樂功能鍵（含隨機歌）／
+  隨機瑜伽／系統鈴聲（名／預設電話鈴）／頭眼咀 LED／三燈全熄／影相＋人臉顏色
+  追蹤開關＋202 動作（基本／舞蹈／故事／瑜伽／其他 5 分組）；mapping `stop`
+  係全部停止（動作回位＋TTS＋音樂電台＋鈴聲＋三燈）；`taken` 照真執行结果，
+  面板 `✓`／`✗只記錄唔執行`一眼分清。
 - Speech — conversation UI (type-to-test `speech/semantic_simulate`), Vosk
   offline ASR card (load/listen, model download in Experiment), TTS
   (engine/lang/voice pickers + optional auto-follow-Vosk).

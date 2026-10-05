@@ -518,5 +518,6 @@ public final class ActionDirect {
         return new SonarCenter.McpResult(!MainActivity.isOk(code),
                 String.valueOf(code) + " (played random action id " + randomId + ")");
     }
+
 }
 

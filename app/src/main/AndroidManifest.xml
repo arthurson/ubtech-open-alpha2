@@ -30,8 +30,11 @@
          app targets API 22 / compiles against API 25, well under that threshold, so
          SCHEDULE_EXACT_ALARM is deliberately NOT declared here. -->
 
+    <!-- allowBackup=false：實測 install -r 會將 SharedPreferences 還原去舊
+         snapshot（開關／映射詐屍，見 gamepad input 雙 false 事件），本機
+         面板設定靠文件本身持久化就夠，唔要雲還原。 -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:label="Open Alpha2"
         android:icon="@android:drawable/ic_menu_manage"
         android:largeHeap="true"

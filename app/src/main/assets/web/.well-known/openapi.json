@@ -72,6 +72,10 @@
       "description": "不經機身服務的系統功能 (/api/system/*)"
     },
     {
+      "name": "gamepad",
+      "description": "BT 手柄／鍵盤（機器人直連 HID；映射分手柄／鍵盤兩邊）"
+    },
+    {
       "name": "xiaozhi",
       "description": "小智 AI 對話橋接 (xiaozhi.me) 與 MCP 工具 (/api/xiaozhi/*)"
     },
@@ -7877,6 +7881,663 @@
           }
         },
         "operationId": "btStatus_get"
+      }
+    },
+    "/api/gamepad/status": {
+      "get": {
+        "tags": [
+          "gamepad"
+        ],
+        "summary": "手柄中心狀態（藍牙＋已接 HID＋映射＋最後事件）",
+        "description": "A 端直連設備經 InputDevice 列出（gamepad/keyboard 來源才列）；gamepad/key／axis 係脚本直調注入，不經此列。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, bt, devices, mapping, last}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gamepadStatus_get"
+      }
+    },
+    "/api/gamepad/config/get": {
+      "get": {
+        "tags": [
+          "gamepad"
+        ],
+        "summary": "查詢按鍵映射（分邊）",
+        "parameters": [
+          {
+            "name": "side",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pad",
+                "kb"
+              ],
+              "default": "pad"
+            },
+            "description": "pad=手柄邊，kb=鍵盤邊（同名鍵獨立值）"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, mapping}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gamepadConfigGet_get"
+      }
+    },
+    "/api/gamepad/config/set": {
+      "get": {
+        "tags": [
+          "gamepad"
+        ],
+        "summary": "改單鍵映射（或 reset=1 回該邊預設）",
+        "parameters": [
+          {
+            "name": "side",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pad",
+                "kb"
+              ],
+              "default": "pad"
+            },
+            "description": "pad=手柄邊（14 鍵），kb=鍵盤邊（62 鍵）"
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "該邊邏輯鍵名（pad：方向/a/b/x/y/start/select/l1/r1/l2/r2；kb：方向/a/b/x/y/字母數字/控制/符號/音量/F1-F12；reset=1 時可省略；後端按邊校驗）"
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "none/stop/vol_up/vol_down/music_*6+random/ring_phone/ring_stop/ring:<title>/head:<preset>:<color>/eye:<preset>:<color>/mouth:breathing:<speedMs>/mouth:off/led_off/camera_photo/face_start/face_stop/color_start/color_stop/servo1-20+/servo1-20-/action:<id>"
+            },
+            "description": "映射動作（reset=1 時可省略；music_* 為本地音樂；servo 步進覆蓋全部 20 軸）"
+          },
+          {
+            "name": "reset",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1",
+                "true",
+                "false"
+              ]
+            },
+            "description": "1 回預設映射"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, mapping}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gamepadConfigSet_get"
+      }
+    },
+    "/api/gamepad/key": {
+      "get": {
+        "tags": [
+          "gamepad"
+        ],
+        "summary": "注入按鍵事件（脚本直調；B 端瀏覽器遙控已移除）",
+        "description": "key 為該邊邏輯鍵名（兼容 Android 數字鍵碼）；pressed 預設 true；action=down/up 為 pressed 別名。",
+        "parameters": [
+          {
+            "name": "side",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pad",
+                "kb"
+              ]
+            },
+            "description": "唔帶就按 source 猜（keyboard→kb，其餘 pad）"
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "該邊邏輯鍵名或 Android keyCode 數字"
+          },
+          {
+            "name": "pressed",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "description": "true=按下，false=放開（放開只記事件不重播動作）"
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "down",
+                "up"
+              ]
+            },
+            "description": "pressed 別名（優先於 pressed）"
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "browser"
+            },
+            "description": "事件來源標記（browser/robot，最長 32）"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, key, pressed, action, taken}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gamepadKey_get"
+      }
+    },
+    "/api/gamepad/axis": {
+      "get": {
+        "tags": [
+          "gamepad"
+        ],
+        "summary": "注入搖桿連續量（右搖桿驅頭 19/20）",
+        "description": "rx→20 號 yaw，ry→19 號 pitch；死區 0.15，150ms 節流，增量速度式不跳變。八向（lx/ly/rx/ry ±）可在映射表配動作（過半觸發，servo 值連走；未配右桿轉頭、左桿唔郁）。",
+        "parameters": [
+          {
+            "name": "lx",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1,
+              "default": 0
+            }
+          },
+          {
+            "name": "ly",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1,
+              "default": 0
+            }
+          },
+          {
+            "name": "rx",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1,
+              "default": 0
+            }
+          },
+          {
+            "name": "ry",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1,
+              "default": 0
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "browser"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, moved}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gamepadAxis_get"
+      }
+    },
+    "/api/gamepad/bt": {
+      "get": {
+        "tags": [
+          "gamepad"
+        ],
+        "summary": "開／關藍牙（管理 UI 用）",
+        "parameters": [
+          {
+            "name": true,
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, enabled}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gamepadBt_get"
+      }
+    },
+    "/api/gamepad/scan": {
+      "get": {
+        "tags": [
+          "gamepad"
+        ],
+        "summary": "掃描周邊藍牙（A 端配對用，冪等）",
+        "description": "未開藍牙先 gamepad/bt?on=true；掃到經 gamepad_bt 事件即時推，found＋bonded 兩張表即查。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, scanning, started, found, bonded}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gamepadScan_get"
+      }
+    },
+    "/api/gamepad/pair": {
+      "get": {
+        "tags": [
+          "gamepad"
+        ],
+        "summary": "配對指定 MAC（A 端直連 HID 用）",
+        "description": "先將手柄／鍵盤置於配對模式再調；已綁定即直接回 bonded:true；結果經 gamepad_bt 事件推。",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$",
+              "example": "AA:BB:CC:DD:EE:FF"
+            },
+            "description": "藍牙 MAC"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, bonded, address}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gamepadPair_get"
+      }
+    },
+    "/api/gamepad/connect": {
+      "get": {
+        "tags": [
+          "gamepad"
+        ],
+        "summary": "對已綁定設備發起 HID 連接（bonded 但未連上時用）",
+        "description": "配對不等於連接——bonded 但手柄頁「已接設備」無佢嗰陣調；結果經 gamepad_bt 事件推，幾秒後重查 gamepad/status 驗證。",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$",
+              "example": "AA:BB:CC:DD:EE:FF"
+            },
+            "description": "已綁定藍牙 MAC"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, address}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gamepadConnect_get"
+      }
+    },
+    "/api/gamepad/unpair": {
+      "get": {
+        "tags": [
+          "gamepad"
+        ],
+        "summary": "解除綁定（A 端唔要嗰部機時用）",
+        "description": "未綁定即直接回 bonded:false；結果經 gamepad_bt 事件推。",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$",
+              "example": "AA:BB:CC:DD:EE:FF"
+            },
+            "description": "藍牙 MAC"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, bonded, address}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gamepadUnpair_get"
+      }
+    },
+    "/api/gamepad/input/get": {
+      "get": {
+        "tags": [
+          "gamepad"
+        ],
+        "summary": "查詢機身直連輸入開關（分邊）",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, pad, kb}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gamepadInputGet_get"
+      }
+    },
+    "/api/gamepad/input/set": {
+      "get": {
+        "tags": [
+          "gamepad"
+        ],
+        "summary": "開／關機身直連輸入（分邊）",
+        "description": "熄咗嗰邊直連一律只記唔做。兩邊預設開；唔帶 side＝兩邊一齊 set。",
+        "parameters": [
+          {
+            "name": "side",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pad",
+                "kb"
+              ]
+            },
+            "description": "邊；唔帶＝兩邊一齊"
+          },
+          {
+            "name": true,
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, pad, kb}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "gamepadInputSet_get"
       }
     },
     "/api/misc/request_uuid": {

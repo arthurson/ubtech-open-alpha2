@@ -1778,6 +1778,16 @@ public final class AudioCenter {
         }
     }
 
+    /** GamepadCenter 共用：本地音樂隨機一首。無歌回 null，有歌即播並回檔名。
+     *  任意線程可調（內已 synchronized）。 */
+    public synchronized String playRandomLocalMusic() {
+        java.util.List<java.io.File> files = listLocalMusicFiles();
+        if (files.isEmpty()) return null;
+        java.io.File f = files.get(new java.util.Random().nextInt(files.size()));
+        playLocalMusicFile(f);
+        return f.getName();
+    }
+
     /** 語音 FUNCTION 共用：本地音樂播第一首（檔名排序首個）。無歌回 null，
      *  有歌即播並回檔名。任意線程可調（內已 synchronized）。 */
     public synchronized String playFirstLocalMusic() {
@@ -1871,6 +1881,45 @@ public final class AudioCenter {
             }
         }
         return HttpServer.ApiResponse.okTrue();
+    }
+
+    /** GamepadCenter／手柄映射共用：有載入即暫停（同 localMusicPause 同語義，
+     *  無 track 即 false）。任意線程可調。 */
+    public synchronized boolean pauseLocalMusicNow() {
+        if (currentMusicPlayer == null) return false;
+        try {
+            currentMusicPlayer.pause();
+            discoPauseHold = true;
+            discoPushOffIfEnabled();
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "pauseLocalMusicNow failed", e);
+            return false;
+        }
+    }
+
+    /** GamepadCenter／手柄映射共用：播緊唔緊（MediaPlayer.isPlaying），
+     *  任意線程可調（music_toggle 用）。 */
+    public synchronized boolean isLocalMusicPlayingNow() {
+        try {
+            return currentMusicPlayer != null && currentMusicPlayer.isPlaying();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** GamepadCenter／手柄映射共用：有載入即繼續（同 localMusicResume 同語義，
+     *  無 track 即 false）。任意線程可調。 */
+    public synchronized boolean resumeLocalMusicNow() {
+        if (currentMusicPlayer == null) return false;
+        try {
+            currentMusicPlayer.start();
+            discoPauseHold = false;
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "resumeLocalMusicNow failed", e);
+            return false;
+        }
     }
 
     // 「播歌隨機動作」開關 - 預設 true。

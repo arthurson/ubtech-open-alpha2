@@ -209,6 +209,13 @@ function appendLog(msg) {
   if (msg.type.indexOf("xiaozhi_") === 0 && msg.data) {
     xiaozhiHandleEvent(msg.type, msg.data);
   }
+  // 手柄事件直達手柄頁「最後按鍵」等即時位 (gamepad_key/bt/axis)，唔經 Log 先顯示。
+  // app-gamepad.js 雖然排在這個檔案之前 load，但呢度係 WS message 到先 call，
+  // 實質一定已定義；加 typeof 守衛防舊緩存頁。
+  if ((msg.type === "gamepad_key" || msg.type === "gamepad_bt" || msg.type === "gamepad_axis")
+      && msg.data && typeof onGamepadKeyEvent === "function") {
+    try { onGamepadKeyEvent(msg.type, msg.data); } catch (e) { /* ignore */ }
+  }
   // tts_end 不帶 "xiaozhi_" 前綴 (機身/Android 本地 TTS 讀完一句的全域訊號,
   // 不止小智專用, 見 MainActivity 個 onServerPlayEnd/
   // UtteranceProgressListener.onDone() 兩處 comment), 所以行不到上面那條
@@ -253,6 +260,7 @@ window.addEventListener("DOMContentLoaded", function () {
   if (typeof panelAuthRefreshStatus === "function") panelAuthRefreshStatus();
   applyUiLanguage();
   refreshVolume();
+  if (typeof gamepadInitPage === "function") gamepadInitPage();
   connectWs();
   musicInit();
   if (typeof radioInit === "function") radioInit();

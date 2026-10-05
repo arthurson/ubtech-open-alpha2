@@ -208,6 +208,19 @@ public final class ApiValidatorTest {
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireAngles20(q("angles", "1,2,3")); } }, "angles20.short");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireAngles20(q()); } }, "angles20.missing");
 
+        // ── 舵機校準 clamp（同 app-core.js SERVO_CALIBRATION 一字不差；
+        // 手柄 jog／搖桿／觸控板共用，頂限位唔會再頂過龍）──
+        eq(5, ApiValidator.servoCalMin(1), "cal.min1");
+        eq(235, ApiValidator.servoCalMax(1), "cal.max1");
+        eq(65, ApiValidator.servoCalHome(8), "cal.home8");
+        eq(105, ApiValidator.servoCalMin(20), "cal.min20");
+        eq(155, ApiValidator.servoCalMax(20), "cal.max20");
+        eq(125, ApiValidator.clampServoAngle(17, 200), "clamp.17high");
+        eq(95, ApiValidator.clampServoAngle(17, 0), "clamp.17low");
+        eq(120, ApiValidator.clampServoAngle(17, 120), "clamp.17mid");
+        eq(0, ApiValidator.clampServoAngle(99, -5), "clamp.unknownLow");
+        eq(255, ApiValidator.clampServoAngle(0, 999), "clamp.unknownHigh");
+
         // ── 回應 helpers ──
         eq(true, ApiValidator.okTrue().body.contains("\"ok\":true"), "okTrue.body");
         eq(200, ApiValidator.ok("{\"ok\":true}").status, "ok.status");

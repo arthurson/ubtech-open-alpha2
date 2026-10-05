@@ -161,6 +161,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     private GrammarCenter grammarCenter;
     private SpeechCenter speechCenter;
     private SonarCenter sonarCenter;
+    private GamepadCenter gamepadCenter;
 
     // -- XiaozhiBridge.HostState (宿主縫)：TTS 兩法轉交 SpeechCenter，sonar 四法
     // 轉交 SonarCenter（delegate＋null-guard；MCP 4 tool 經這裡照讀）。 --
@@ -321,6 +322,10 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         semanticCenter.setSpeechStopHost(this);
         // (sonarCenter 已在上面 xiaozhiBridge 之前建好；
         // dispatcher 放最尾。)
+        // BT 手柄／鍵盤包（要 actionDirect＋ubxApi＋deviceStatus，A 端物理鍵＋B 端
+        // HTTP 共用同一套映射，見 GamepadCenter；放 dispatcher 之前）。
+        gamepadCenter = new GamepadCenter(this, actionDirect, ubxApi, ubxPlayer, deviceStatus,
+                audioCenter, ringtoneCenter, ledCenter, speechCenter, cameraApi);
         // dispatcher 包全部上面 controller (+speechCenter 做 Host；sensorState
         // 繼續經 this——TTS／sonar 全部轉交給對應 center；servo/sonar 直調
         // sonarCenter)。
@@ -329,7 +334,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 chestUpgrade, ttsCenter, voskApi, ledCenter, semanticCenter, deviceStatus,
                 cameraApi, audioCenter, ringtoneCenter, micCenter, robot, grammarCenter,
                 ubxPlayer, musicController, localServices, sonarCenter, actionsPackController,
-                apkDownloadController);
+                apkDownloadController, gamepadCenter);
 
         // 播歌指示燈（disco 開住播歌）同「小智已連線」燈共用胸口同一盞 mute 燈，
         // 由 XiaozhiBridge 做 OR。起喺 xiaozhiBridge 之後。
@@ -750,6 +755,254 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         }
     }
 
+    // -- A 端：機器人直連 BT／USB 手柄／鍵盤 ----------------------------------
+    // HID 經這三個回調進（見 GamepadCenter 兩端分別註解）。
+    // - 分邊執行：鍵盤類來源（KEYBOARD 有、GAMEPAD／JOYSTICK 無）行 kb 映射，
+    //   其餘行 pad 映射；認得的鍵即攔即執行（撳鍵就郁，兩邊預設開）。
+    // - 該邊開關（HTML「直連手柄／直連鍵盤」，gamepad/input/*）熄咗就只記唔做。
+    // - 認唔到的鍵：記 unmapped（帶 code）再放行／吞（鍵盤吞、滑鼠吞、手柄放行）。
+    // - 滑鼠類（MOUSE 來源，一體觸控板）：一律吞，唔入系統。
+    // 重複 down（長按 repeat，getRepeatCount>0）一律靜默吞，唔記唔播。
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        try {
+            if (gamepadCenter != null && event != null
+                    && event.getAction() != android.view.KeyEvent.ACTION_MULTIPLE) {
+                int kc = event.getKeyCode();
+                int src = 0;
+                try {
+                    src = event.getSource();
+                } catch (Throwable ignored) {
+                }
+                boolean isGame = (src & android.view.InputDevice.SOURCE_GAMEPAD)
+                        == android.view.InputDevice.SOURCE_GAMEPAD
+                        || (src & android.view.InputDevice.SOURCE_JOYSTICK)
+                        == android.view.InputDevice.SOURCE_JOYSTICK;
+                boolean isKb = (src & android.view.InputDevice.SOURCE_KEYBOARD)
+                        == android.view.InputDevice.SOURCE_KEYBOARD;
+                boolean isMouse = (src & android.view.InputDevice.SOURCE_MOUSE)
+                        == android.view.InputDevice.SOURCE_MOUSE;
+                boolean pressed = event.getAction() == android.view.KeyEvent.ACTION_DOWN;
+                // 鍵盤類（無手柄位）行 kb 邊，其餘一律 pad 邊（含 DPAD-only 帽）。
+                String side = (isKb && !isGame) ? GamepadCenter.SIDE_KB : GamepadCenter.SIDE_PAD;
+                boolean enabled = gamepadCenter.isInputEnabled(side);
+                // 滑鼠類：成個功能閂咗——靜默吞，唔記事件唔入系統。
+                if (isMouse) {
+                    return true;
+                }
+                String logical = GamepadCenter.keyCodeToLogical(kc);
+                if (logical != null && GamepadCenter.isKnownKey(side, logical)) {
+                    if (event.getRepeatCount() > 0) return true;
+                    if (enabled) {
+                        gamepadCenter.handleRobotKey(kc, pressed, src, side);
+                    } else {
+                        gamepadCenter.recordOnlyRobotKey(kc, pressed, side);
+                    }
+                    return true;
+                }
+                // 未映射：外接鍵盤吞（唔入系統）、手柄放行；一律先記。
+                if (isKb && !isGame) {
+                    if (event.getRepeatCount() == 0) gamepadCenter.handleRobotUnknown(kc, pressed, src);
+                    return true;
+                }
+                if (isGame) {
+                    gamepadCenter.handleRobotUnknown(kc, pressed, src);
+                }
+            }
+        } catch (Throwable t) {
+            android.util.Log.w(TAG, "gamepad dispatchKeyEvent failed", t);
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    // 外接輸入黑洞（滑鼠／觸控板成個功能閂咗）：
+    // - TOOL_TYPE_MOUSE：一律吞（左中右掣＋位移）。
+    // - 觸控屏類觸摸：只吞外接設備（isExternal；部份藍牙觸控板行絕對模式，
+    //   扮觸控屏，唔喺度攔會撳到機身 view）。機身自帶觸控屏（如果有）放行——
+    //   本機經 dumpsys input 核實過無觸控屏硬件，所以現階段外來即吞得。
+    // 手指／觸控筆經機身屏照行，機身掣照撳得。
+    /**
+     * 外接設備判別（isExternal 要 API 26，本 project compileSdk 25 無此符號，
+     * 故 reflection＋名字後備；行唔到即當機身設備＝放行，唔會誤吞）。
+     */
+    private static boolean isExternalInputDevice(int deviceId) {
+        android.view.InputDevice dev = null;
+        try {
+            dev = android.view.InputDevice.getDevice(deviceId);
+        } catch (Throwable t) {
+            return false;
+        }
+        if (dev == null) return false;
+        try {
+            java.lang.reflect.Method m = dev.getClass().getMethod("isExternal");
+            Object r = m.invoke(dev);
+            if (r instanceof Boolean) return ((Boolean) r).booleanValue();
+        } catch (Throwable ignored) {
+        }
+        try {
+            String nm = dev.getName() != null ? dev.getName() : "";
+            if (nm.contains("rk29") || nm.startsWith("C-Media")
+                    || nm.equals("Virtual") || nm.isEmpty()) return false;
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * 觸控板判別（名含 touchpad／trackpad 即係；ThinkPad 之類唔含完整字串，
+     * 誤中唔到；null／未知名一律當真滑鼠＝吞）。
+     */
+    private static boolean isTouchpadDevice(int deviceId) {
+        try {
+            android.view.InputDevice dev = android.view.InputDevice.getDevice(deviceId);
+            if (dev == null || dev.getName() == null) return false;
+            String nl = dev.getName().toLowerCase(java.util.Locale.US);
+            return nl.contains("touchpad") || nl.contains("trackpad");
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * 觸控板／滑鼠分流（touch＋motion 共用；回 true＝食咗）。
+     * - 觸控板（名判）：kb 邊開即經 handleRobotTouchpad 節流轉頭 19/20；
+     *   熄咗靜默吞。相對＋絕對模式都行（delta 累積）。
+     * - 真滑鼠：一律吞（掣／位移／觸控，連 Event Log 都唔出）。
+     * - 外接觸控屏（唔係觸控板名）：保守吞；機身屏放行。
+     * - 手柄／搖桿／其他：一律 false，交返正常鏈。
+     */
+    private boolean routeTouchpadMotion(android.view.MotionEvent event) {
+        if (gamepadCenter == null || event == null) return false;
+        int src = 0;
+        try {
+            src = event.getSource();
+        } catch (Throwable ignored) {
+        }
+        boolean mouseBit = (src & android.view.InputDevice.SOURCE_MOUSE)
+                == android.view.InputDevice.SOURCE_MOUSE;
+        boolean touchBit = (src & android.view.InputDevice.SOURCE_TOUCHSCREEN)
+                == android.view.InputDevice.SOURCE_TOUCHSCREEN;
+        if (!mouseBit && !touchBit) return false;
+        int deviceId = 0;
+        try {
+            deviceId = event.getDeviceId();
+        } catch (Throwable ignored) {
+        }
+        if (isTouchpadDevice(deviceId)) {
+            if (!gamepadCenter.isInputEnabled(GamepadCenter.SIDE_KB)) return true;
+            int ai = 0;
+            try {
+                ai = event.getActionIndex();
+                if (ai < 0 || ai >= event.getPointerCount()) ai = 0;
+            } catch (Throwable ignored) {
+            }
+            float x = 0f;
+            float y = 0f;
+            try {
+                x = event.getAxisValue(android.view.MotionEvent.AXIS_X, ai);
+                y = event.getAxisValue(android.view.MotionEvent.AXIS_Y, ai);
+            } catch (Throwable t) {
+                return true;
+            }
+            int masked = android.view.MotionEvent.ACTION_MASK;
+            try {
+                masked = event.getActionMasked();
+            } catch (Throwable ignored) {
+            }
+            boolean down = masked == android.view.MotionEvent.ACTION_DOWN
+                    || masked == android.view.MotionEvent.ACTION_POINTER_DOWN
+                    || masked == android.view.MotionEvent.ACTION_HOVER_ENTER
+                    || masked == android.view.MotionEvent.ACTION_UP
+                    || masked == android.view.MotionEvent.ACTION_POINTER_UP
+                    || masked == android.view.MotionEvent.ACTION_HOVER_EXIT
+                    || masked == android.view.MotionEvent.ACTION_CANCEL;
+            try {
+                gamepadCenter.handleRobotTouchpad(deviceId, x, y, down);
+            } catch (Throwable t) {
+                android.util.Log.w(TAG, "handleRobotTouchpad failed", t);
+            }
+            return true;
+        }
+        int tool = -1;
+        try {
+            int ai = event.getActionIndex();
+            if (ai < 0 || ai >= event.getPointerCount()) ai = 0;
+            tool = event.getToolType(ai);
+        } catch (Throwable ignored) {
+        }
+        if (tool == android.view.MotionEvent.TOOL_TYPE_MOUSE) return true;
+        if (touchBit) {
+            try {
+                return isExternalInputDevice(deviceId);
+            } catch (Throwable t) {
+                return true;
+            }
+        }
+        return mouseBit;
+    }
+
+    // 觸控板轉頭＋滑鼠掐死點：dispatchTouchEvent（最前，view 食之前）。
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        try {
+            if (routeTouchpadMotion(event)) return true;
+        } catch (Throwable t) {
+            android.util.Log.w(TAG, "gamepad dispatchTouchEvent failed", t);
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    // 滑鼠類位移掐死點：dispatchGenericMotionEvent（最前，view 食之前）。
+    // 背景：onGenericMotionEvent 太遲——hover／滾輪／觸控板點擊會先畀 view 食咗
+    // （如機身 Copy 掣畀滑鼠撳到），activity override 攔唔到。觸控屏
+    // （TOUCHSCREEN，0x1002，同 MOUSE 0x2002 位唔重疊）唔受影響，機身 Copy 掣
+    // 手指照撳得。手柄搖桿（JOYSTICK／GAMEPAD 位）放行，交下面處理。
+    @Override
+    public boolean dispatchGenericMotionEvent(android.view.MotionEvent event) {
+        try {
+            // 觸控板轉頭／滑鼠吞（見上；手柄搖桿源唔經呢度，落下面）。
+            if (routeTouchpadMotion(event)) return true;
+        } catch (Throwable t) {
+            android.util.Log.w(TAG, "gamepad dispatchGenericMotionEvent failed", t);
+        }
+        return super.dispatchGenericMotionEvent(event);
+    }
+
+    @Override
+    // 滑鼠已喺上面 dispatchGenericMotionEvent 掐死，呢度只剩手柄搖桿。
+    public boolean onGenericMotionEvent(android.view.MotionEvent event) {
+        try {
+            if (gamepadCenter != null && event != null
+                    && ((event.getSource() & android.view.InputDevice.SOURCE_JOYSTICK)
+                    == android.view.InputDevice.SOURCE_JOYSTICK
+                    || (event.getSource() & android.view.InputDevice.SOURCE_GAMEPAD)
+                    == android.view.InputDevice.SOURCE_GAMEPAD)) {
+                float lx = 0f;
+                float ly = 0f;
+                float rx = 0f;
+                float ry = 0f;
+                try {
+                    lx = event.getAxisValue(android.view.MotionEvent.AXIS_X);
+                    ly = event.getAxisValue(android.view.MotionEvent.AXIS_Y);
+                    rx = event.getAxisValue(android.view.MotionEvent.AXIS_Z);
+                    ry = event.getAxisValue(android.view.MotionEvent.AXIS_RZ);
+                } catch (Throwable ignored) {
+                }
+                if (lx != 0f || ly != 0f || rx != 0f || ry != 0f) {
+                    // pad 邊熄咗：靜默吞（唔記，免 150ms 洗版）。
+                    if (gamepadCenter.isInputEnabled(GamepadCenter.SIDE_PAD)) {
+                        gamepadCenter.handleRobotAxis(lx, ly, rx, ry, "robot");
+                    }
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            android.util.Log.w(TAG, "gamepad onGenericMotionEvent failed", t);
+        }
+        return super.onGenericMotionEvent(event);
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -759,6 +1012,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 逐個 null-guard（onCreate 中途炸/早退再 destroy）。
         mainHandler.removeCallbacks(bootVoiceRunnable);
         if (gestureCenter != null) gestureCenter.shutdown();
+        if (gamepadCenter != null) gamepadCenter.shutdown();
         if (ubxPlayer != null) ubxPlayer.stopVoice();
         if (micCenter != null) micCenter.shutdownMicHold();
         if (deviceStatus != null) deviceStatus.setAccelerometerEnabled(false);

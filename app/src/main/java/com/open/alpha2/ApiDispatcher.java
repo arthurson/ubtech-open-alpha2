@@ -60,6 +60,7 @@ public final class ApiDispatcher {
     private final SonarCenter sonarCenter;
     private final ActionsPackController actionsPackController;
     private final ApkDownloadController apkDownloadController;
+    private final GamepadCenter gamepadCenter;
 
     public ApiDispatcher(Context context, Host host, XiaozhiBridge.HostState sensorState,
             ActionDirect actionDirect, UbxApi ubxApi, ChestQuery chestQuery,
@@ -69,7 +70,8 @@ public final class ApiDispatcher {
             MicCenter micCenter, RobotStub robot,
             GrammarCenter grammarCenter, UbxPlayer ubxPlayer, MusicController musicController,
             LocalAlpha2Services localServices, SonarCenter sonarCenter,
-            ActionsPackController actionsPackController, ApkDownloadController apkDownloadController) {
+            ActionsPackController actionsPackController, ApkDownloadController apkDownloadController,
+            GamepadCenter gamepadCenter) {
         this.appContext = context.getApplicationContext();
         this.host = host;
         this.sensorState = sensorState;
@@ -94,6 +96,7 @@ public final class ApiDispatcher {
         this.sonarCenter = sonarCenter;
         this.actionsPackController = actionsPackController;
         this.apkDownloadController = apkDownloadController;
+        this.gamepadCenter = gamepadCenter;
     }
 
     // directChestReady() 內聯：經 appContext 不用 Activity（各 center 自帶副本）。
@@ -602,6 +605,34 @@ public final class ApiDispatcher {
                 return deviceStatus.wifiStatus();
             case "bt/status":
                 return deviceStatus.btStatus();
+
+            // -- BT 手柄／鍵盤（body 在 GamepadCenter；薄 delegate，不要在這裡加 logic）--
+            // A 端＝機器人直連 HID（物理鍵經 MainActivity 截獲）；gamepad/key／axis
+            // 係脚本直調注入（B 端瀏覽器遙控已移除）。全部行同一套分邊映射。
+            case "gamepad/status":
+                return gamepadCenter.statusResponse();
+            case "gamepad/config/get":
+                return gamepadCenter.configGetResponse(query);
+            case "gamepad/config/set":
+                return gamepadCenter.configSetResponse(query);
+            case "gamepad/key":
+                return gamepadCenter.keyResponse(query);
+            case "gamepad/axis":
+                return gamepadCenter.axisResponse(query);
+            case "gamepad/bt":
+                return gamepadCenter.btResponse(query);
+            case "gamepad/scan":
+                return gamepadCenter.scanResponse();
+            case "gamepad/pair":
+                return gamepadCenter.pairResponse(query);
+            case "gamepad/connect":
+                return gamepadCenter.connectResponse(query);
+            case "gamepad/unpair":
+                return gamepadCenter.unpairResponse(query);
+            case "gamepad/input/get":
+                return gamepadCenter.inputGetResponse();
+            case "gamepad/input/set":
+                return gamepadCenter.inputSetResponse(query);
 
             // -- Robot-service broadcasts with simple boolean extras. --------------------
             // 已移除（假活）：misc/power_save（見下）與 misc/charge_play ——

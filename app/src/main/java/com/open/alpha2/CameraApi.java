@@ -19,6 +19,24 @@ public final class CameraApi {
     private volatile FaceTrackCenter faceTrackCenter;
     private volatile ColorTrackCenter colorTrackCenter;
 
+    /** GamepadCenter 追蹤 toggle 共用：讀真態（唔經自記 flag，兩邊互斥都啱）。 */
+    public boolean isFaceTrackRunning() {
+        try {
+            return faceTrackCenter != null && faceTrackCenter.isRunning();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** GamepadCenter 追蹤 toggle 共用：讀真態。 */
+    public boolean isColorTrackRunning() {
+        try {
+            return colorTrackCenter != null && colorTrackCenter.isRunning();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     public CameraApi(Context context, CameraController cameraController, RingtoneCenter ringtoneCenter) {
         this.appContext = context.getApplicationContext();
         this.cameraController = cameraController;

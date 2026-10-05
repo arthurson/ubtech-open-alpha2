@@ -489,6 +489,77 @@ const Alpha2Api = (function() {
     return api('ubx/stop', params);
   }
 
+  // ── gamepad ──────────────────────────────────────────────
+  function gamepadAxis(params) {
+    if (params && params.lx != null) assertRange(Number(params.lx), -1, 1, 'lx');
+    if (params && params.ly != null) assertRange(Number(params.ly), -1, 1, 'ly');
+    if (params && params.rx != null) assertRange(Number(params.rx), -1, 1, 'rx');
+    if (params && params.ry != null) assertRange(Number(params.ry), -1, 1, 'ry');
+    // 注入搖桿連續量（右搖桿驅頭 19/20）
+    return api('gamepad/axis', params);
+  }
+
+  function gamepadBt(params) {
+    // 開／關藍牙（管理 UI 用）
+    return api('gamepad/bt', params);
+  }
+
+  function gamepadConfigGet(params) {
+    if (params && params.side != null) assertEnum(params.side, ['pad', 'kb'], 'side');
+    // 查詢按鍵映射（分邊）
+    return api('gamepad/config/get', params);
+  }
+
+  function gamepadConfigSet(params) {
+    if (params && params.side != null) assertEnum(params.side, ['pad', 'kb'], 'side');
+    if (params && params.reset != null) assertEnum(params.reset, ['0', '1', 'true', 'false'], 'reset');
+    // 改單鍵映射（或 reset=1 回該邊預設）
+    return api('gamepad/config/set', params);
+  }
+
+  function gamepadConnect(params) {
+    // 對已綁定設備發起 HID 連接（bonded 但未連上時用）
+    return api('gamepad/connect', params);
+  }
+
+  function gamepadInputGet(params) {
+    // 查詢機身直連輸入開關（分邊）
+    return api('gamepad/input/get', params);
+  }
+
+  function gamepadInputSet(params) {
+    if (params && params.side != null) assertEnum(params.side, ['pad', 'kb'], 'side');
+    // 開／關機身直連輸入（分邊）
+    return api('gamepad/input/set', params);
+  }
+
+  function gamepadKey(params) {
+    if (params && params.side != null) assertEnum(params.side, ['pad', 'kb'], 'side');
+    if (params && params.action != null) assertEnum(params.action, ['down', 'up'], 'action');
+    // 注入按鍵事件（脚本直調；B 端瀏覽器遙控已移除）
+    return api('gamepad/key', params);
+  }
+
+  function gamepadPair(params) {
+    // 配對指定 MAC（A 端直連 HID 用）
+    return api('gamepad/pair', params);
+  }
+
+  function gamepadScan(params) {
+    // 掃描周邊藍牙（A 端配對用，冪等）
+    return api('gamepad/scan', params);
+  }
+
+  function gamepadStatus(params) {
+    // 手柄中心狀態（藍牙＋已接 HID＋映射＋最後事件）
+    return api('gamepad/status', params);
+  }
+
+  function gamepadUnpair(params) {
+    // 解除綁定（A 端唔要嗰部機時用）
+    return api('gamepad/unpair', params);
+  }
+
   // ── led ──────────────────────────────────────────────
   function debugJniLed(params) {
     if (params && params.func != null) assertEnum(params.func, ['off', 'on', 'eye', 'head'], 'func');
@@ -1064,6 +1135,18 @@ const Alpha2Api = (function() {
     ubxSpeed,
     ubxStatus,
     ubxStop,
+    gamepadAxis,
+    gamepadBt,
+    gamepadConfigGet,
+    gamepadConfigSet,
+    gamepadConnect,
+    gamepadInputGet,
+    gamepadInputSet,
+    gamepadKey,
+    gamepadPair,
+    gamepadScan,
+    gamepadStatus,
+    gamepadUnpair,
     debugJniLed,
     debugSerialSend,
     headNoise,

@@ -1592,3 +1592,191 @@ button.eq-preset-sq.selected {
   margin-top: 12px;
 }
 
+/* ---------------- Gamepad visual (hardwaretester-style live pad) ----------------
+   純 CSS 手柄示意：十字／ABXY／肩鍵／雙搖桿，.lit 即亮燈（亮燈經 app-gamepad.js
+   三路驅動：瀏覽器 Gamepad API 輪詢本地即亮、瀏覽器按鍵、B 端 WS 回聲＋A 端
+   物理鍵 WS）。 */
+.gp-pad {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 12px 14px;
+  color: var(--text);
+  user-select: none;
+  max-width: 560px;
+}
+.gp-shoulders {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.gp-sh {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: #eef1f6;
+  border-radius: 8px;
+  padding: 4px 0;
+  border: 1px solid var(--border);
+}
+.gp-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.gp-dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 30px);
+  grid-template-rows: repeat(3, 30px);
+  gap: 2px;
+}
+.gp-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: #eef1f6;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 30px;
+  min-height: 30px;
+}
+.gp-dpad .gp-btn { border-radius: 6px; }
+.gp-abxy {
+  display: grid;
+  grid-template-columns: repeat(3, 34px);
+  grid-template-rows: repeat(3, 34px);
+  gap: 2px;
+}
+.gp-abxy .gp-btn { border-radius: 50%; }
+.gp-mid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+.gp-mid .gp-btn {
+  border-radius: 999px;
+  font-size: 10px;
+  padding: 4px 10px;
+  min-height: 0;
+}
+.gp-sticks {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 10px;
+}
+.gp-stick {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  background: #eef1f6;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+.gp-nub {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  left: 19px;
+  top: 19px;
+  background: #9aa5b8;
+  border-radius: 50%;
+}
+.gp-stick-label {
+  text-align: center;
+  font-size: 10px;
+  color: #8b94a9;
+  margin-top: 2px;
+}
+.gp-btn.lit, .gp-sh.lit {
+  background: var(--accent);
+  border-color: #ffffff;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(59, 125, 255, 0.8);
+}
+
+/* 映射表行跟手亮：成行轉色（長按一直著），唔使大海撈針。
+   有映射成行藍底白字，無映射成行綠底白字（同兩張圖一致）。 */
+.gprow-lit {
+  background: var(--accent);
+  border-radius: 8px;
+  color: #ffffff;
+}
+.gprow-lit span:first-child { color: #ffffff; }
+.gprow-free {
+  background: var(--ok);
+  border-radius: 8px;
+  color: #ffffff;
+}
+.gprow-free span:first-child { color: #ffffff; }
+
+/* ---------------- Keyboard visual (full live keyboard) ----------------
+   JS 生成全鍵盤（見 app-gamepad.js gamepadBuildKeyboardDiagram），.lit 亮燈，
+   驅動同上三路。寬鍵用 flex-grow 拉闊。 */
+.kb-board {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px;
+  user-select: none;
+  max-width: 720px;
+}
+.kb-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.kb-row:last-child { margin-bottom: 0; }
+.kb-key {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  background: #eef1f6;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.kb-key.wide { flex-grow: 2.2; }
+.kb-key.wider { flex-grow: 3.2; }
+.kb-key.space { flex-grow: 8; }
+/* 頂行 F 區分組空位。 */
+.kb-gap { flex: 0.7 1 0; min-width: 4px; }
+.kb-key.lit {
+  background: var(--accent);
+  border-color: #ffffff;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(59, 125, 255, 0.8);
+}
+/* 未映射的鍵撳落係綠色（有映射先係上面藍色），一眼分到有無嘢做。 */
+.kb-key.lit-free {
+  background: var(--ok);
+  border-color: #ffffff;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(22, 163, 74, 0.8);
+}
+.gp-btn.lit-free, .gp-sh.lit-free {
+  background: var(--ok);
+  border-color: #ffffff;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(22, 163, 74, 0.8);
+}
+/* 真鍵盤三區排法：主區＋導航＋數字區並排，窄屏自動疊起。 */
+.kb-zones {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.kb-zone-main { flex: 5 1 340px; min-width: 0; }
+.kb-zone-nav { flex: 2 1 130px; min-width: 0; }
+.kb-zone-num { flex: 2 1 130px; min-width: 0; }
+

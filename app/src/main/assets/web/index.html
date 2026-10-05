@@ -32,6 +32,7 @@
   <button class="tab-btn active" data-tab="tab-status" onclick="switchTab('tab-status')" data-i18n="nav_status">📊 狀態</button>
   <button class="tab-btn" data-tab="tab-actions" onclick="switchTab('tab-actions')" data-i18n="nav_actions">🕺 動作</button>
   <button class="tab-btn" data-tab="tab-servo" onclick="switchTab('tab-servo')" data-i18n="nav_servo">⚙️ 舵機</button>
+  <button class="tab-btn" data-tab="tab-gamepad" onclick="switchTab('tab-gamepad')" data-i18n="nav_gamepad">🎮 手柄</button>
   <button class="tab-btn" data-tab="tab-speech" onclick="switchTab('tab-speech')" data-i18n="nav_speech">🗣️ 語音</button>
   <button class="tab-btn" data-tab="tab-music" onclick="switchTab('tab-music')" data-i18n="nav_music">🎵 音樂</button>
   <button class="tab-btn" data-tab="tab-led" onclick="switchTab('tab-led')" data-i18n="nav_led">💡 LED</button>
@@ -212,6 +213,123 @@
       </div>
       <p class="hint" data-i18n="servo_read_hint">讀指定一顆或一次過讀全部舵機即時角度（讀完即寫回上力），顯示在對應行右邊；讀不到顯示 -。全部約 6 秒，讀取時請固定好機械人。</p>
       <div id="servoGroups"></div>
+    </section>
+  </div>
+
+  <!-- ============ TAB: GAMEPAD (BT 手柄／鍵盤，兩端共用映射) ============ -->
+  <div id="tab-gamepad" class="tab-page">
+    <section class="card">
+      <h2 data-i18n="gamepad_manage_heading">🔷 藍牙</h2>
+      <div class="row">
+        <label class="switch-label"><span data-i18n="gamepad_bt_toggle">藍牙開關</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="gamepadBtToggle" onchange="gamepadBtToggle()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+        <button class="secondary" onclick="gamepadScan()" data-i18n="gamepad_scan_btn">🔍 掃描</button>
+        <span id="gamepadScanState" class="hint"></span>
+      </div>
+      <div id="gamepadFoundOut"></div>
+    </section>
+
+    <section class="card">
+      <h2 data-i18n="gamepad_pad_card_heading">🎮 手柄</h2>
+      <div class="row">
+        <label class="switch-label"><span data-i18n="gamepad_input_pad_toggle">直連手柄</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="gamepadInputPadToggle" onchange="gamepadInputToggle('pad')" checked>
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+        <label class="switch-label"><span data-i18n="gamepad_mapping_show_pad">映射表</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="gamepadMappingPadToggle" onchange="gamepadMappingToggle('pad')">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
+      <!-- 手柄示意（hardwaretester 風即時亮燈：直連手柄按鍵經 WebSocket 亮） -->
+      <div class="gp-pad" id="gpPadDiagram">
+        <div class="gp-shoulders">
+          <div class="gp-sh" id="gpcap-l2">L2</div>
+          <div class="gp-sh" id="gpcap-l1">L1</div>
+          <div class="gp-sh" id="gpcap-r1">R1</div>
+          <div class="gp-sh" id="gpcap-r2">R2</div>
+        </div>
+        <div class="gp-main">
+          <div class="gp-dpad">
+            <span></span><div class="gp-btn" id="gpcap-up">▲</div><span></span>
+            <div class="gp-btn" id="gpcap-left">◀</div><span></span><div class="gp-btn" id="gpcap-right">▶</div>
+            <span></span><div class="gp-btn" id="gpcap-down">▼</div><span></span>
+          </div>
+          <div class="gp-mid">
+            <div class="gp-btn" id="gpcap-select">SELECT</div>
+            <div class="gp-btn" id="gpcap-start">START</div>
+          </div>
+          <div class="gp-abxy">
+            <span></span><div class="gp-btn" id="gpcap-y">Y</div><span></span>
+            <div class="gp-btn" id="gpcap-x">X</div><span></span><div class="gp-btn" id="gpcap-b">B</div>
+            <span></span><div class="gp-btn" id="gpcap-a">A</div><span></span>
+          </div>
+        </div>
+        <div class="gp-sticks">
+          <div><div class="gp-stick"><div class="gp-nub" id="gpnub-l"></div></div><div class="gp-stick-label">L</div></div>
+          <div><div class="gp-stick"><div class="gp-nub" id="gpnub-r"></div></div><div class="gp-stick-label">R</div></div>
+        </div>
+      </div>
+      <p class="hint" data-i18n="gamepad_pad_card_hint">直連手柄按鍵即時亮燈（經 WebSocket）；右搖桿郁點。默认映射：十字步態，A 停止。</p>
+      <div class="row">
+        <span data-i18n="gamepad_last_label">最後按鍵：</span>
+        <span id="gamepadLastOut" class="device-value">-</span>
+      </div>
+      <div id="gamepadMappingPadWrap">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <h3 style="margin:0" data-i18n="gamepad_mapping_pad_heading">🎮 手柄映射</h3>
+          <span>
+            <button onclick="gamepadSaveAll('pad')" data-i18n="gamepad_save_all_btn">💾 存全部</button>
+            <button class="secondary" onclick="gamepadResetMapping('pad')" data-i18n="gamepad_reset_btn">↩ 回預設</button>
+          </span>
+        </div>
+        <p class="hint" data-i18n="gamepad_mapping_pad_hint">同名鍵兩邊獨立值；改完即存機器人（重啟保留）。熄掣即收起。</p>
+        <div id="gamepadMappingPadGrid"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 data-i18n="gamepad_kb_card_heading">⌨️ 鍵盤</h2>
+      <div class="row">
+        <label class="switch-label"><span data-i18n="gamepad_input_kb_toggle">直連鍵盤</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="gamepadInputKbToggle" onchange="gamepadInputToggle('kb')" checked>
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+        <label class="switch-label"><span data-i18n="gamepad_mapping_show_kb">映射表</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="gamepadMappingKbToggle" onchange="gamepadMappingToggle('kb')">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
+      <!-- 全鍵盤示意（JS 生成，直連鍵盤撳鍵即時亮燈，見 gamepadBuildKeyboardDiagram） -->
+      <div class="kb-board" id="kbBoardDiagram"></div>
+      <p class="hint" data-i18n="gamepad_kb_card_hint">直連鍵盤按鍵即時亮燈（經 WebSocket）；字母數字原樣＋控制鍵全覆蓋可映射，a/b/x/y 同手柄同名但獨立值。</p>
+      <div class="row">
+        <span data-i18n="gamepad_last_label">最後按鍵：</span>
+        <span id="gamepadKbLastOut" class="device-value">-</span>
+      </div>
+      <div id="gamepadMappingKbWrap">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <h3 style="margin:0" data-i18n="gamepad_mapping_kb_heading">⌨️ 鍵盤映射</h3>
+          <span>
+            <button onclick="gamepadSaveAll('kb')" data-i18n="gamepad_save_all_btn">💾 存全部</button>
+            <button class="secondary" onclick="gamepadResetMapping('kb')" data-i18n="gamepad_reset_btn">↩ 回預設</button>
+          </span>
+        </div>
+        <p class="hint" data-i18n="gamepad_mapping_kb_hint">同名鍵兩邊獨立值；改完即存機器人（重啟保留）。熄掣即收起。</p>
+        <div id="gamepadMappingKbGrid"></div>
+      </div>
     </section>
   </div>
 
@@ -1024,6 +1142,7 @@
 <script src="app-speech.js?v=20261001a"></script>
 <script src="app-vosk.js?v=20261001a"></script>
 <script src="app-servo.js?v=20261001a"></script>
+<script src="app-gamepad.js?v=20261001a"></script>
 <script src="app-led.js?v=20261001a"></script>
 <script src="app-camera.js?v=20261001a"></script>
 <script src="app-xiaozhi.js?v=20261001a"></script>

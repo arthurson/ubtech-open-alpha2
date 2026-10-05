@@ -144,6 +144,16 @@ public final class RingtoneCenter {
         stopRingtonePlaybackLocked();
     }
 
+    /** GamepadCenter ring toggle 共用：而家有無鈴聲播緊（player 在即係；
+     * 播完／出错 listener 會清掉）。 */
+    public synchronized boolean isRingtonePlaying() {
+        try {
+            return currentRingtonePlayer != null;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     private void stopRingtonePlaybackLocked() {
         MediaPlayerUtil.stopRelease(currentRingtonePlayer);
         currentRingtonePlayer = null;
@@ -290,6 +300,37 @@ public final class RingtoneCenter {
     public HttpServer.ApiResponse ringtonesStop() {
         stopRingtonePlayback();
         return HttpServer.ApiResponse.okTrue();
+    }
+
+    /** GamepadCenter 映射共用：按 title 播系統鈴聲（同 play_by_title 同一路
+     *  title→Uri＋STREAM_MUSIC；搵唔到回 false）。任意線程可調。 */
+    public synchronized boolean playRingtoneTitleNow(String title) {
+        if (title == null || title.trim().isEmpty()) return false;
+        android.net.Uri uri;
+        try {
+            uri = findRingtoneByTitle(title.trim());
+        } catch (Exception e) {
+            Log.w(TAG, "playRingtoneTitleNow lookup failed", e);
+            return false;
+        }
+        if (uri == null) return false;
+        playRingtoneUri(uri);
+        return true;
+    }
+
+    /** GamepadCenter 映射共用：播系統預設電話鈴聲（TYPE_RINGTONE default；
+     *  無即 false）。任意線程可調。 */
+    public synchronized boolean playDefaultPhoneRingtoneNow() {
+        try {
+            android.net.Uri uri = android.media.RingtoneManager.getDefaultUri(
+                    android.media.RingtoneManager.TYPE_RINGTONE);
+            if (uri == null) return false;
+            playRingtoneUri(uri);
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "playDefaultPhoneRingtoneNow failed", e);
+            return false;
+        }
     }
 }
 
