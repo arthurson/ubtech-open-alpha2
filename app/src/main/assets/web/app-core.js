@@ -148,6 +148,60 @@ const I18N = {
   gamepad_mapping_pad_hint:    { zh: "同名鍵兩邊獨立值；改完即存機器人（重啟保留）。", en: "Same names hold separate values per side. Saved on robot." },
   gamepad_mapping_kb_hint:     { zh: "同名鍵兩邊獨立值；改完即存機器人（重啟保留）。", en: "Same names hold separate values per side. Saved on robot." },
 
+  // -- gamepad 映射行下拉（種類＋各值，中英齊，免版面又中又英） --
+  gamepad_kind_none:   { zh: "無動作", en: "None" },
+  gamepad_kind_stop:   { zh: "停止", en: "Stop" },
+  gamepad_kind_servo:  { zh: "舵機", en: "Servo" },
+  gamepad_kind_music:  { zh: "音樂", en: "Music" },
+  gamepad_kind_ring:   { zh: "鈴聲", en: "Ringtone" },
+  gamepad_kind_led:    { zh: "燈效", en: "LED" },
+  gamepad_kind_camera: { zh: "相機", en: "Camera" },
+  gamepad_kind_sensor: { zh: "傳感器", en: "Sensors" },
+  gamepad_kind_action: { zh: "動作", en: "Action" },
+  gamepad_mfn_play:    { zh: "播放", en: "Play" },
+  gamepad_mfn_next:    { zh: "下一首", en: "Next" },
+  gamepad_mfn_prev:    { zh: "上一首", en: "Previous" },
+  gamepad_mfn_pause:   { zh: "暫停", en: "Pause" },
+  gamepad_mfn_resume:  { zh: "繼續", en: "Resume" },
+  gamepad_mfn_toggle:  { zh: "播／停切換", en: "Play/Pause" },
+  gamepad_mfn_stop:    { zh: "停止", en: "Stop" },
+  gamepad_mfn_random:  { zh: "隨機播", en: "Shuffle" },
+  gamepad_mfn_radio:   { zh: "電台", en: "Radio" },
+  gamepad_mfn_disco:   { zh: "節奏燈", en: "Rhythm LED" },
+  gamepad_mfn_filler:  { zh: "隨機動作", en: "Shuffle moves" },
+  gamepad_mfn_volup:   { zh: "音量+", en: "Vol+" },
+  gamepad_mfn_voldn:   { zh: "音量-", en: "Vol-" },
+  gamepad_ring_phone:  { zh: "電話鈴聲", en: "Phone ringtone" },
+  gamepad_ring_stop:   { zh: "停鈴聲", en: "Stop ringtone" },
+  gamepad_ring_random: { zh: "隨機鈴聲", en: "Random ringtone" },
+  gamepad_led_head:    { zh: "頭", en: "Head" },
+  gamepad_led_eye:     { zh: "眼", en: "Eye" },
+  gamepad_led_mouth:   { zh: "咀", en: "Mouth" },
+  gamepad_led_long:    { zh: "長亮", en: "Solid" },
+  gamepad_led_flash:   { zh: "閃爍", en: "Flash" },
+  gamepad_led_breathe: { zh: "呼吸", en: "Breathe" },
+  gamepad_led_chase:   { zh: "追逐", en: "Chase" },
+  gamepad_led_dual:    { zh: "雙色", en: "Dual" },
+  gamepad_led_stop:    { zh: "停", en: "Stop" },
+  gamepad_led_off:     { zh: "關", en: "Off" },
+  gamepad_led_breathing: { zh: "呼吸", en: "Breathing" },
+  gamepad_led_random:  { zh: "隨機", en: "Random" },
+  gamepad_cam_photo:   { zh: "影相", en: "Photo" },
+  gamepad_cam_face:    { zh: "人臉追蹤", en: "Face tracking" },
+  gamepad_cam_color:   { zh: "顏色追蹤", en: "Color tracking" },
+  gamepad_cam_video:   { zh: "錄影", en: "Video" },
+  gamepad_sen_sonar:   { zh: "聲納", en: "Sonar" },
+  gamepad_sen_pir:     { zh: "PIR", en: "PIR" },
+  gamepad_sen_accel:   { zh: "加速度", en: "Accelerometer" },
+  gamepad_act_basic:   { zh: "基本", en: "Basic" },
+  gamepad_act_dance:   { zh: "跳舞", en: "Dance" },
+  gamepad_act_story:   { zh: "故事", en: "Story" },
+  gamepad_act_yoga:    { zh: "瑜伽", en: "Yoga" },
+  gamepad_act_others:  { zh: "其他", en: "Others" },
+  gamepad_dual_bg:     { zh: "藍綠", en: "Blue-Green" },
+  gamepad_dual_rg:     { zh: "紅綠", en: "Red-Green" },
+  gamepad_dual_rb:     { zh: "紅藍", en: "Red-Blue" },
+
   // -- servo tab --
   servo_heading:         { zh: "舵機 (Servos, 1–20)", en: "Servos (1–20)" },
   servo_hint:            { zh: "拖動滑桿, 放手即送出, 自動限制在安全範圍內。", en: "Drag a slider and release to send — values are auto-clamped to a safe range." },
@@ -778,9 +832,8 @@ window.addEventListener("unhandledrejection", function (e) {
 
 function api(path, params) {
   clearError();
-  const merged = withPanelToken(params);
-  const qs = merged ? "?" + new URLSearchParams(merged).toString() : "";
-  return fetch(API + "alpha2/" + path + qs).then(function (res) {
+  const qs = apiQuery(params);
+  return fetch(API + "alpha2/" + path + qs, { headers: panelAuthHeaders(params) }).then(function (res) {
     return res.json().catch(function (e) {
       return { ok: false, error: "invalid response (status " + res.status + ")" };
     }).then(function (json) {
@@ -813,9 +866,8 @@ function hwApi(path, params) {
 // api('system/...') 會打去 /api/alpha2/system/... 而 404, 不要這麼做。
 function sysApi(path, params) {
   clearError();
-  const merged = withPanelToken(params);
-  const qs = merged ? "?" + new URLSearchParams(merged).toString() : "";
-  return fetch(API + "system/" + path + qs).then(function (res) {
+  const qs = apiQuery(params);
+  return fetch(API + "system/" + path + qs, { headers: panelAuthHeaders(params) }).then(function (res) {
     return res.json().catch(function (e) {
       return { ok: false, error: "invalid response (status " + res.status + ")" };
     }).then(function (json) {
@@ -832,9 +884,8 @@ function sysApi(path, params) {
 
 function directApi(path, params) {
   clearError();
-  const merged = withPanelToken(params);
-  const qs = merged ? "?" + new URLSearchParams(merged).toString() : "";
-  return fetch(API + "direct/" + path + qs).then(function (res) {
+  const qs = apiQuery(params);
+  return fetch(API + "direct/" + path + qs, { headers: panelAuthHeaders(params) }).then(function (res) {
     return res.json().catch(function (e) {
       return { ok: false, error: "invalid response (status " + res.status + ")" };
     }).then(function (json) {
@@ -851,12 +902,13 @@ function directApi(path, params) {
 
 // ---------------- Panel token（實驗 tab 認證，見 PanelAuth.java） ----------------
 //
-// 範圍：opt-in，預設關＝全開。啟用後整個面板上鎖（全部 /api/*＋/upload/* 要帶
-// token；僅 auth/*＋靜態頁＋ws/stream 開放），其他 tab／Blockly 照跟同一粒
-// token（下面自動帶）。token 放 localStorage（同一個 browser＋同一個面板地址
-// 跨 tab 共用，關 browser 都還記得；要忘記就按「清除」）。
-// 傳遞 key 用 panel_token（不用 token：xiaozhi ota_config/set 個 token 是另一樣東西，
-// 同名會撞；受保護 endpoint 另收 token 別名方便 curl，見 PanelAuth）。
+// 範圍：opt-in，預設關＝全開。啟用後整個面板上鎖（全部 /api/*＋/upload/*＋/stream/*＋/ws
+// 要帶 token；僅 auth/*＋靜態頁開放），其他 tab／Blockly 照跟同一粒 token（下面自動帶）。
+// token 放 localStorage（同一個 browser＋同一個面板地址跨 tab 共用，關 browser 都還記得；
+// 要忘記就按「清除」）。
+// 傳遞：/api／upload 行 Authorization: Bearer header（不入 URL／logcat，見 panelAuthHeaders）；
+// 設不到 header 的 <img>／WebSocket 先用 ?panel_token= query fallback（見 withPanelToken）。
+// 舊 ?token= 別名已移除（同小智 ota token 撞名，見 PanelAuth），curl 請用 header 或 panel_token。
 function panelTokenGet() {
   try { return localStorage.getItem("panel_token") || ""; } catch (e) { return ""; }
 }
@@ -868,7 +920,33 @@ function panelTokenSet(t) {
   } catch (e) { /* private mode 等寫不入就當無記住，不阻操作 */ }
 }
 
-/** 將記住的 token 混入 params（無 token 即原樣；已有 panel_token 不覆寫）。 */
+/** 記住的 token 轉 Authorization header（無 token 即 {}，fetch 照發）。
+ *  params 顯式帶 panel_token 時優先用佢（舊調用位向後兼容；query 本身會經 strip 剝走）。 */
+function panelAuthHeaders(params) {
+  const tok = (params && params.panel_token) ? params.panel_token : panelTokenGet();
+  if (!tok) return {};
+  return { "Authorization": "Bearer " + tok };
+}
+
+/** 去掉 params 入面嘅 panel_token 認證 key（轉咗行 header，唔再放 URL；token／current
+ *  業務參數唔郁——auth/set 新值、ota token、current 證明照行 query）。 */
+function stripPanelToken(params) {
+  if (!params) return params;
+  if (params.panel_token == null) return params;
+  const out = {};
+  for (const k in params) { if (k !== "panel_token") out[k] = params[k]; }
+  return out;
+}
+
+/** /api query string（panel_token 剝走行 header，見上）。 */
+function apiQuery(params) {
+  const clean = stripPanelToken(params);
+  return clean ? "?" + new URLSearchParams(clean).toString() : "";
+}
+
+/** 將記住的 token 混入 params query（只給設不到 header 的 <img>／WebSocket／舊調用位用；
+ *  /api／upload 新 code 請用 panelAuthHeaders()＋apiQuery()，唔經呢度。
+ *  無 token 即原樣；已有 panel_token 不覆寫）。 */
 function withPanelToken(params) {
   const tok = panelTokenGet();
   if (!tok) return params;

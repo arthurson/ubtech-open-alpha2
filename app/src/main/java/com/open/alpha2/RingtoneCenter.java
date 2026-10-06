@@ -332,5 +332,33 @@ public final class RingtoneCenter {
             return false;
         }
     }
+
+    /** GamepadCenter ring_random 共用：隨機播一首系統鈴聲（TYPE_RINGTONE 表；
+     *  無聲回 false）。任意線程可調。 */
+    public synchronized boolean playRandomRingtoneNow() {
+        try {
+            android.media.RingtoneManager manager =
+                    getCachedRingtoneManager(android.media.RingtoneManager.TYPE_RINGTONE);
+            android.database.Cursor cursor = manager.getCursor();
+            int count = 0;
+            try {
+                count = cursor.getCount();
+            } catch (Throwable ignored) {
+            }
+            if (count <= 0) return false;
+            android.net.Uri uri;
+            try {
+                uri = manager.getRingtoneUri(new java.util.Random().nextInt(count));
+            } catch (Exception e) {
+                return false;
+            }
+            if (uri == null) return false;
+            playRingtoneUri(uri);
+            return true;
+        } catch (Throwable t) {
+            Log.w(TAG, "playRandomRingtoneNow failed", t);
+            return false;
+        }
+    }
 }
 

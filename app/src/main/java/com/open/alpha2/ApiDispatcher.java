@@ -466,6 +466,14 @@ public final class ApiDispatcher {
                 return cameraApi.resolution(query);
             case "camera/zoom":
                 return cameraApi.zoom(query);
+            // -- 機端錄影 mp4（body 在 VideoCenter，經 CameraApi 薄 delegate；
+            // 有聲優先，搶唔到咪自動轉純畫面；用家撳停為止，不設時長上限）--
+            case "camera/video/start":
+                return cameraApi.videoStart(query);
+            case "camera/video/stop":
+                return cameraApi.videoStop();
+            case "camera/video/status":
+                return cameraApi.videoStatus();
             // -- Android 內置人臉追蹤（body 在 FaceTrackCenter，經 CameraApi 薄 delegate；
             // 純 framework android.media.FaceDetector，零額外依賴，見該類 javadoc）--
             case "face/track/start":
@@ -661,7 +669,8 @@ public final class ApiDispatcher {
      * Small namespace ("/api/system/...") for things not tied to the robot AIDL
      * surface itself.
      */
-    public HttpServer.ApiResponse handleSystemApi(String path, Map<String, String> query, String method, String body) {
+    public HttpServer.ApiResponse handleSystemApi(String path, Map<String, String> query, String method, String body,
+            Map<String, String> headers) {
         switch (path) {
             // 一次搜齊機器資料（lynx 年代 sys/* 七連發的 pure-direct 版，一個回包齊完，
             // 慢 query 各 1.5s 上限）。電池版本字串本機胸固件無此命令，如實缺席；
@@ -714,15 +723,15 @@ public final class ApiDispatcher {
                 return HttpServer.ApiResponse.ok(sb.toString());
             }
             // -- 實驗 tab 面板 token 認證（見 PanelAuth：opt-in，預設關＝全開；
-            // status/verify 永遠開放，set/clear 啟用中要 current 舊值） --
+            // status/verify 永遠開放，set/clear 啟用中要舊值證明（current 或 Bearer）） --
             case "auth/status":
                 return PanelAuth.status(appContext);
             case "auth/set":
-                return PanelAuth.set(appContext, query);
+                return PanelAuth.set(appContext, query, headers);
             case "auth/clear":
-                return PanelAuth.clear(appContext, query);
+                return PanelAuth.clear(appContext, query, headers);
             case "auth/verify":
-                return PanelAuth.verify(appContext, query);
+                return PanelAuth.verify(appContext, query, headers);
             // ---------------- 本地音樂播放 ----------------
             // "/api/system/music/..." - 播放機身 SD 卡裡面 (/sdcard/Music 等) 已有的
             // 音樂檔, 經由 MusicController (standard android.media.MediaPlayer,

@@ -184,6 +184,18 @@ public final class AudioCenter {
 
     public HttpServer.ApiResponse discoSet(Map<String, String> query) {
         boolean enabled = ApiValidator.requireBoolean(query, "enabled");
+        applyDiscoEnabled(enabled);
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + "}");
+    }
+
+    /** 映射共用：節奏燈（disco）單鍵 toggle。恒 true（prefs 寫入即算做咗）。 */
+    public synchronized boolean toggleDisco() {
+        boolean next = !isDiscoEnabled();
+        applyDiscoEnabled(next);
+        return true;
+    }
+
+    private void applyDiscoEnabled(boolean enabled) {
         boolean was = isDiscoEnabled();
         prefs().edit().putBoolean(PREF_DISCO_ENABLED, enabled).apply();
         if (enabled) {
@@ -192,7 +204,6 @@ public final class AudioCenter {
             if (was) discoStopsNow(); // 即停：直接掂驅動（下面排隊嗰 part 照做埋）。
             discoPushOff(); // 閂＝頭+眼即熄（排緊隊嘅拍會因開關已關而丟走，見下）
         }
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + "}");
     }
 
     // Disco 推燈獨立線程：Visualizer callback 只做數學＋留低最新色即走，
@@ -1300,6 +1311,8 @@ public final class AudioCenter {
     /** 目前正在播放的電台名 (Radio Browser 的 "name") - 和 currentRadioStationId 一起
      *  存, 純粹提供給 audio/radio/status 直接顯示用, 不用為了取得名稱再打一次 API。 */
     private volatile String currentRadioStationName;
+    /** 上次播過的電台（停咗都留低，radio_toggle 重播用；每次成功開播即覆蓋）。 */
+    private volatile org.json.JSONObject lastRadioStation;
 
     /** 播放一個電台的直播串流 - 和 playLocalMusicFile()/playRingtoneUri() 一樣的
      *  STREAM_MUSIC/prepareAsync()/auto-release 形狀, 但這裡 setDataSource() 收的
@@ -1359,6 +1372,7 @@ public final class AudioCenter {
             currentRadioPlayer = player;
             currentRadioStationId = station.optString("stationuuid");
             currentRadioStationName = station.optString("name");
+            lastRadioStation = station;
             player.prepareAsync();
         } catch (Exception e) {
             Log.w(TAG, "Failed to play radio stream " + url, e);
@@ -1934,6 +1948,13 @@ public final class AudioCenter {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + "}");
     }
 
+    /** 映射共用：播歌隨機動作單鍵 toggle。恒 true（prefs 寫入即算做咗）。 */
+    public synchronized boolean toggleFillerAction() {
+        boolean next = !isMusicFillerActionEnabled();
+        prefs().edit().putBoolean(PREF_MUSIC_FILLER_ACTION_ENABLED, next).apply();
+        return true;
+    }
+
     // -- FM/網絡電台 (經 Radio Browser API, radio-browser.info, 動態搜全
     // 世界公開電台 - 見 searchRadioStations()/resolveRadioStation() 的
     // javadoc, 這台機器不再內建任何寫死的電台清單) - "search" 對應
@@ -2008,6 +2029,34 @@ public final class AudioCenter {
     public HttpServer.ApiResponse radioStop() {
         stopRadioPlayback();
         return HttpServer.ApiResponse.okTrue();
+    }
+
+    /** 映射共用：電台單鍵 toggle（播緊即停，停緊即重播上次電台；無上次回 false）。 */
+    public synchronized boolean toggleRadio() {
+        try {
+            if (currentRadioPlayer != null) {
+                boolean playing = false;
+                try {
+                    playing = currentRadioPlayer.isPlaying();
+                } catch (Throwable ignored) {
+                }
+                if (playing) {
+                    stopRadioPlayback();
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "toggleRadio stop failed", t);
+        }
+        org.json.JSONObject last = lastRadioStation;
+        if (last == null) return false;
+        try {
+            playRadioStream(last);
+            return true;
+        } catch (Throwable t) {
+            Log.w(TAG, "toggleRadio replay failed", t);
+            return false;
+        }
     }
 
     public HttpServer.ApiResponse radioStatus() {

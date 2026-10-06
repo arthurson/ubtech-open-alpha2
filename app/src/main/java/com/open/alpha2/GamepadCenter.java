@@ -43,10 +43,12 @@ import java.util.Map;
  * 動作值格式：
  * none（忽略）／stop（停動作＋蹲下站起回位）／vol_up／vol_down／
  * music_play／music_next／music_prev／music_pause／music_resume／music_toggle／
- * music_stop／music_random（經 AudioCenter）／ring_phone／ring_stop／
- * ring:&lt;title&gt;（經 RingtoneCenter）／led_off／head:&lt;preset&gt;:&lt;color&gt;／
- * eye:&lt;preset&gt;:&lt;color&gt;／mouth:breathing:&lt;speedMs&gt;／mouth:off（經 LedCenter）／
- * camera_photo／face_start／face_stop／color_start／color_stop（經 CameraApi）／
+ * music_stop／music_random／radio_toggle／disco_toggle／filler_toggle（經 AudioCenter）／ring_phone／ring_stop／ring_random／
+ * ring:&lt;title&gt;（經 RingtoneCenter）／led_off／head:&lt;preset&gt;:&lt;color&gt;／head:random／
+ * eye:&lt;preset&gt;:&lt;color&gt;／eye:random／mouth:breathing:&lt;speedMs&gt;／mouth:off（經 LedCenter）／
+ * camera_photo／face_start／color_start（追蹤 toggle）／video_toggle（錄影 toggle）／
+ * sonar_toggle／pir_toggle／accel_toggle（傳感器 toggle）（經 CameraApi／VideoCenter／
+ * SonarCenter／LedCenter／DeviceStatus）／
  * servo&lt;1-20&gt;+／servo&lt;1-20&gt;-（單步 jog，步長 {@link #SERVO_JOG_STEP}，
  * 撳住連走）／action:&lt;fileId或中英文名或xxx.ubx&gt;（經 ActionDirect 搶佔式播放）
  *
@@ -154,11 +156,12 @@ public final class GamepadCenter {
     private final LedCenter ledCenter;
     private final SpeechCenter speechCenter;
     private final CameraApi cameraApi;
+    private final SonarCenter sonarCenter;
 
     public GamepadCenter(Context context, ActionDirect actionDirect, UbxApi ubxApi,
             UbxPlayer ubxPlayer, DeviceStatus deviceStatus, AudioCenter audioCenter,
             RingtoneCenter ringtoneCenter, LedCenter ledCenter,
-            SpeechCenter speechCenter, CameraApi cameraApi) {
+            SpeechCenter speechCenter, CameraApi cameraApi, SonarCenter sonarCenter) {
         this.appContext = context.getApplicationContext();
         this.actionDirect = actionDirect;
         this.ubxApi = ubxApi;
@@ -169,6 +172,7 @@ public final class GamepadCenter {
         this.ledCenter = ledCenter;
         this.speechCenter = speechCenter;
         this.cameraApi = cameraApi;
+        this.sonarCenter = sonarCenter;
         this.audioManager = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
     }
 
@@ -265,7 +269,7 @@ public final class GamepadCenter {
 
         m.put("4", "head:chase:4");
 
-        m.put("5", "head:dual:6");
+        m.put("5", "head:dual:3");
 
         m.put("6", "eye:flash:7");
 
@@ -470,12 +474,14 @@ public final class GamepadCenter {
     }
 
     /**
-     * 本地音樂功能鍵（映射動作值，經 AudioCenter；toggle＝播緊停、
-     * 停緊續、無歌播首首；random＝隨機一首）。
+     * 本地音樂／電台／播歌燈效功能鍵（映射動作值，經 AudioCenter；toggle＝播緊停、
+     * 停緊續、無歌播首首；random＝隨機一首；radio_toggle＝停／重播上次電台；
+     * disco_toggle＝節奏燈開關；filler_toggle＝播歌隨機動作開關）。
      */
     public static final String[] MUSIC_ACTIONS = {
             "music_play", "music_next", "music_prev", "music_pause", "music_resume",
-            "music_toggle", "music_stop", "music_random"
+            "music_toggle", "music_stop", "music_random",
+            "radio_toggle", "disco_toggle", "filler_toggle"
     };
 
 
@@ -507,6 +513,11 @@ public final class GamepadCenter {
             }
         }
         boolean head;
+        if ("random".equals(preset)) {
+            // head:random／eye:random（咀無）：每次執行即場抽效果＋色（見執行分支）。
+            if (!"head".equals(part) && !"eye".equals(part)) return false;
+            return parts.length == 2;
+        }
         if ("head".equals(part)) head = true;
         else if ("eye".equals(part)) head = false;
         else return false;
@@ -529,19 +540,27 @@ public final class GamepadCenter {
         }
     }
 
-    /** 相機／追蹤動作合法性：影相＋人臉／顏色追蹤開關（錄影後端無，不收）。 */
+    /** 相機動作合法性：影相＋人臉／顏色追蹤 toggle＋錄影 toggle（開／停已合併，一鍵足夠）。 */
     public static boolean isCameraAction(String a) {
         if (a == null) return false;
         String t = a.trim();
-        return "camera_photo".equals(t) || "face_start".equals(t) || "face_stop".equals(t)
-                || "color_start".equals(t) || "color_stop".equals(t);
+        return "camera_photo".equals(t) || "face_start".equals(t)
+                || "color_start".equals(t) || "video_toggle".equals(t);
     }
 
-    /** 鈴聲動作合法性：{@code ring_phone}／{@code ring_stop}／{@code ring:<title>}。 */
+    /** 傳感器 toggle 合法性：聲納／PIR／加速度計單鍵開關。 */
+    public static boolean isSensorAction(String a) {
+        if (a == null) return false;
+        String t = a.trim();
+        return "sonar_toggle".equals(t) || "pir_toggle".equals(t)
+                || "accel_toggle".equals(t);
+    }
+
+    /** 鈴聲動作合法性：{@code ring_phone}／{@code ring_stop}／{@code ring_random}／{@code ring:<title>}。 */
     public static boolean isRingAction(String a) {
         if (a == null) return false;
         String t = a.trim();
-        if ("ring_phone".equals(t) || "ring_stop".equals(t)) return true;
+        if ("ring_phone".equals(t) || "ring_stop".equals(t) || "ring_random".equals(t)) return true;
         if (!t.startsWith("ring:")) return false;
         String rest = t.substring(5).trim();
         return !rest.isEmpty() && !rest.contains("\n") && !rest.contains("\r");
@@ -556,8 +575,10 @@ public final class GamepadCenter {
     }
 
     /**
-     * 動作值合法性：none／stop／vol_up／vol_down／music_*／servo1-20±／
-     * action:&lt;非空&gt;。servo 步進覆蓋全部 20 軸（jogServo 通用）。
+     * 動作值合法性：none／stop／vol_up／vol_down／music_*／ring_*／led_*／led_off／
+     * camera_photo／face_start／color_start／video_toggle／sonar_toggle／
+     * pir_toggle／accel_toggle／servo1-20±／action:&lt;非空&gt;。
+     * servo 步進覆蓋全部 20 軸（jogServo 通用）。
      */
     public static boolean isValidAction(String action) {
         if (action == null) return false;
@@ -567,6 +588,7 @@ public final class GamepadCenter {
         if (isRingAction(a)) return true;
         if (isLedAction(a)) return true;
         if (isCameraAction(a)) return true;
+        if (isSensorAction(a)) return true;
         if ("led_off".equals(a)) return true;
         if (isServoJog(a)) return true;
         if (a.startsWith("action:")) {
@@ -651,6 +673,17 @@ public final class GamepadCenter {
                 if (ci < 0) continue;
                 String k = unquote(pair.substring(0, ci).trim());
                 String v = unquote(pair.substring(ci + 1).trim());
+                // 追蹤開／停合併遷移（face_stop→face_start toggle，color 同理；兩邊通用）。
+                if ("face_stop".equals(v)) v = "face_start";
+                else if ("color_stop".equals(v)) v = "color_start";
+                // dual 舊色碼修正（3=藍綠／4=紅綠／5=紅藍先有意義，其餘出嚟都係藍綠，
+                // 見 app-led.js DUAL_COLORS；兩邊通用，歸位做 3）。
+                String[] dp = v.split(":", -1);
+                if (dp.length == 3 && ("head".equals(dp[0]) || "eye".equals(dp[0]))
+                        && "dual".equals(dp[1]) && dp[2].length() == 1) {
+                    char dg = dp[2].charAt(0);
+                    if (dg < '3' || dg > '5') v = dp[0] + ":dual:3";
+                }
                 // 唔屬呢邊／舊版殘留（kb_* 等）一律掉，自動遷移。
                 if (isKnownKey(norm, k) && isValidAction(v)) {
                     // 新預設追溯：呢批鍵當年預設 none，而家有料——存住 none
@@ -1206,6 +1239,30 @@ public final class GamepadCenter {
                         return false;
                     }
                 }
+                if (a.equals("radio_toggle")) {
+                    try {
+                        return audioCenter.toggleRadio();
+                    } catch (Throwable t) {
+                        Log.w(TAG, "radio_toggle failed", t);
+                        return false;
+                    }
+                }
+                if (a.equals("disco_toggle")) {
+                    try {
+                        return audioCenter.toggleDisco();
+                    } catch (Throwable t) {
+                        Log.w(TAG, "disco_toggle failed", t);
+                        return false;
+                    }
+                }
+                if (a.equals("filler_toggle")) {
+                    try {
+                        return audioCenter.toggleFillerAction();
+                    } catch (Throwable t) {
+                        Log.w(TAG, "filler_toggle failed", t);
+                        return false;
+                    }
+                }
                 return false;
             }
             // 系統鈴聲 toggle（逐鍵：撳一下播，再撳一下停；ring_stop 直停＋清態）。
@@ -1220,6 +1277,9 @@ public final class GamepadCenter {
                     if (toggleFlip(side, key)) {
                         if ("ring_phone".equals(a)) {
                             return ringtoneCenter.playDefaultPhoneRingtoneNow();
+                        }
+                        if ("ring_random".equals(a)) {
+                            return ringtoneCenter.playRandomRingtoneNow();
                         }
                         return ringtoneCenter.playRingtoneTitleNow(a.substring(5).trim());
                     }
@@ -1242,7 +1302,7 @@ public final class GamepadCenter {
                 }
             }
             // 相機：影相直行；人臉／顏色追蹤讀真態 toggle（開緊即停，停緊即開，
-            // 兩邊互斥由 CameraApi 保證；錄影後端無，不收）。
+            // 兩邊互斥由 CameraApi 保證）；錄影 toggle（錄緊即停，閒置即錄）。
             if (isCameraAction(a)) {
                 if (cameraApi == null) return false;
                 try {
@@ -1252,17 +1312,36 @@ public final class GamepadCenter {
                     else if ("face_start".equals(a)) {
                         resp = cameraApi.isFaceTrackRunning()
                                 ? cameraApi.faceTrackStop() : cameraApi.faceTrackStart(empty);
-                    } else if ("face_stop".equals(a)) resp = cameraApi.faceTrackStop();
-                    else if ("color_start".equals(a)) {
+                    } else if ("color_start".equals(a)) {
                         resp = cameraApi.isColorTrackRunning()
                                 ? cameraApi.colorTrackStop() : cameraApi.colorTrackStart(empty);
-                    } else resp = cameraApi.colorTrackStop();
+                    } else if ("video_toggle".equals(a)) {
+                        return cameraApi.toggleVideoRecording();
+                    } else return false;
                     return resp != null && resp.status == 200
                             && resp.body != null && resp.body.contains("\"ok\":true");
                 } catch (Throwable t) {
                     Log.w(TAG, "camera action failed: " + a, t);
                     return false;
                 }
+            }
+            // 傳感器 toggle（讀真態翻轉；taken 照實）。
+            if (isSensorAction(a)) {
+                try {
+                    if ("sonar_toggle".equals(a)) {
+                        return sonarCenter != null && sonarCenter.toggleSonar();
+                    }
+                    if ("pir_toggle".equals(a)) {
+                        return ledCenter != null && ledCenter.togglePir();
+                    }
+                    if ("accel_toggle".equals(a)) {
+                        return deviceStatus != null && deviceStatus.toggleAccelerometer();
+                    }
+                } catch (Throwable t) {
+                    Log.w(TAG, "sensor action failed: " + a, t);
+                    return false;
+                }
+                return false;
             }
             // 頭／眼／咀 LED toggle（逐鍵：撳一下著效果，再撳一下熄嗰部位；
             // stop/off 值直行唔 flip）。
@@ -1272,6 +1351,22 @@ public final class GamepadCenter {
                     String[] parts = a.split(":", -1);
                     String which = parts[0];
                     String preset = parts[1];
+                    String effColor = null;
+                    // random：每次撳即場抽（效果去 stop，色 1-7；落 toggle 上／落照行）。
+                    if ("random".equals(preset)) {
+                        String[] pool = "head".equals(which) ? HEAD_PRESETS : EYE_PRESETS;
+                        java.util.List<String> opts = new java.util.ArrayList<String>();
+                        for (String p : pool) {
+                            if (!"stop".equals(p)) opts.add(p);
+                        }
+                        if (opts.isEmpty()) return false;
+                        java.util.Random rnd = new java.util.Random();
+                        preset = opts.get(rnd.nextInt(opts.size()));
+                        // dual 得 3 對色（3=藍綠／4=紅綠／5=紅藍，見 app-led.js DUAL_COLORS），其餘 7 色。
+                        int maxColor = "dual".equals(preset) ? 3 : 7;
+                        effColor = String.valueOf(("dual".equals(preset) ? 3 : 1)
+                                + rnd.nextInt(maxColor));
+                    }
                     boolean stopping = "stop".equals(preset) || "off".equals(preset);
                     if (!stopping && !toggleFlip(side, key)) {
                         java.util.Map<String, String> qoff = new java.util.HashMap<>();
@@ -1298,7 +1393,7 @@ public final class GamepadCenter {
                         boolean head = "head".equals(which);
                         q.put("preset", preset);
                         if (!"stop".equals(preset)) {
-                            q.put("color", parts[2].trim());
+                            q.put("color", effColor != null ? effColor : parts[2].trim());
                             q.put("brightness", "9");
                         }
                         resp = head ? ledCenter.ledHeadSet(q) : ledCenter.ledEyeSet(q);
@@ -1583,10 +1678,12 @@ public final class GamepadCenter {
         }
         if (!isValidAction(action)) {
             throw new IllegalArgumentException("parameter 'action' must be none/stop/vol_up/vol_down/"
-                    + "music_play/music_next/music_prev/music_pause/music_resume/music_toggle/music_stop/music_random/"
-                    + "ring_phone/ring_stop/ring:<title>/"
-                    + "head:<preset>:<color>/eye:<preset>:<color>/mouth:breathing:<speedMs>/mouth:off/led_off/"
-                    + "camera_photo/face_start/face_stop/color_start/color_stop/"
+                    + "music_play/music_next/music_prev/music_pause/music_resume/music_toggle/music_stop/music_random/radio_toggle/disco_toggle/filler_toggle/"
+                    + "ring_phone/ring_stop/ring_random/ring:<title>/"
+                    + "head:<preset>:<color>/head:random/eye:<preset>:<color>/eye:random/"
+                    + "mouth:breathing:<speedMs>/mouth:off/led_off/"
+                    + "camera_photo/face_start/color_start/video_toggle/"
+                    + "sonar_toggle/pir_toggle/accel_toggle/"
                     + "servo1-20+/servo1-20-/action:<id>, got: " + action);
         }
         Map<String, String> mapping = loadMapping(side);
@@ -2073,6 +2170,18 @@ public final class GamepadCenter {
     /** HID 重連用 proxy 緩存（connect 完唔關，留住等系統自己掉線重連都仲識路）。 */
     private volatile Object hidHostProxy;
 
+    /** 閂多餘 HID proxy（併發 connect 輸嗰個用；shutdown 嗰套保留原樣）。 */
+    private static void closeHidHostProxy(Object proxy) {
+        if (!(proxy instanceof android.bluetooth.BluetoothProfile)) return;
+        try {
+            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+            // HID_HOST=4（hidden 常量，直寫數字，見 connectResponse）。
+            if (adapter != null) adapter.closeProfileProxy(4,
+                    (android.bluetooth.BluetoothProfile) proxy);
+        } catch (Throwable ignored) {
+        }
+    }
+
     /**
      * gamepad/connect：對已綁定設備發起 HID 連接（bonded 但 input 列表無佢嗰陣用）。
      * HID_HOST 係 hidden API（API 22 無公開），經 reflection 行：
@@ -2086,6 +2195,8 @@ public final class GamepadCenter {
             throw new IllegalArgumentException(
                     "parameter 'address' must be a bluetooth MAC like AA:BB:CC:DD:EE:FF, got: " + address);
         }
+        // getRemoteDevice 舊 stack 只認大寫（細寫即掟 IllegalArgumentException）：驗完即轉大寫。
+        address = address.toUpperCase(java.util.Locale.US);
         final BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
         if (adapter == null) return HttpServer.ApiResponse.error("no bluetooth adapter");
         if (!adapter.isEnabled()) {
@@ -2111,6 +2222,12 @@ public final class GamepadCenter {
         } catch (Throwable ignored) {
         }
         Object proxy = hidHostProxy;
+        if (proxy == null) {
+            synchronized (this) {
+                // 雙重檢查：排緊隊嗰陣有人拿完即用佢個，唔各自拿（leak listener）。
+                proxy = hidHostProxy;
+            }
+        }
         if (proxy == null) {
             final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
             final Object[] holder = new Object[1];
@@ -2142,7 +2259,15 @@ public final class GamepadCenter {
             }
             proxy = holder[0];
             if (proxy == null) return HttpServer.ApiResponse.error("hid profile unavailable");
-            hidHostProxy = proxy;
+            synchronized (this) {
+                // CAS 認領：等緊嗰陣有人拿完即用佢個，自己呢個即閂（唔 leak）。
+                if (hidHostProxy != null) {
+                    closeHidHostProxy(proxy);
+                    proxy = hidHostProxy;
+                } else {
+                    hidHostProxy = proxy;
+                }
+            }
         }
         boolean started;
         try {
@@ -2151,6 +2276,8 @@ public final class GamepadCenter {
             Object r = m.invoke(proxy, dev);
             started = r instanceof Boolean && (Boolean) r;
         } catch (Throwable t) {
+            // proxy 可能已死（藍牙開關過）：掟咗緩存，下次重拿，唔使等 shutdown 先復原。
+            if (proxy == hidHostProxy) hidHostProxy = null;
             return HttpServer.ApiResponse.error("hid connect failed: " + t.getMessage());
         }
         EventBus.get().publish("gamepad_bt", "{\"event\":\"hid_connect\",\"address\":\""
@@ -2161,7 +2288,7 @@ public final class GamepadCenter {
     }
 
     /**
-     * gamepad/unpair：解除綁定（removeBond，hidden，reflection；同 connect 一樣寫法）。
+     * gamepad/unpair：解除綁定（連緊 HID 先斷線再 removeBond，hidden reflection）。
      * 未綁定即直接回 bonded:false；行唔到反射即回明確錯誤。
      */
     public HttpServer.ApiResponse unpairResponse(Map<String, String> query) {
@@ -2170,8 +2297,13 @@ public final class GamepadCenter {
             throw new IllegalArgumentException(
                     "parameter 'address' must be a bluetooth MAC like AA:BB:CC:DD:EE:FF, got: " + address);
         }
+        // getRemoteDevice 舊 stack 只認大寫（細寫即掟 IllegalArgumentException）：驗完即轉大寫。
+        address = address.toUpperCase(java.util.Locale.US);
         BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
         if (adapter == null) return HttpServer.ApiResponse.error("no bluetooth adapter");
+        if (!adapter.isEnabled()) {
+            return HttpServer.ApiResponse.error("bluetooth off, turn it on first (gamepad/bt?on=true)");
+        }
         BluetoothDevice dev;
         try {
             dev = adapter.getRemoteDevice(address);
@@ -2188,6 +2320,18 @@ public final class GamepadCenter {
                     + MainActivity.jsonSafe(dev.getAddress()) + "\"}");
         }
         boolean removed;
+        // 連緊 HID 嗰陣 removeBond 好多時回 false：先經緩存 proxy 斷 HID
+        //（best-effort，冇 proxy 就跳過），等半秒畀斷線落地先解綁。
+        try {
+            Object proxy = hidHostProxy;
+            if (proxy != null) {
+                java.lang.reflect.Method dm = proxy.getClass().getMethod("disconnect",
+                        android.bluetooth.BluetoothDevice.class);
+                dm.invoke(proxy, dev);
+                Thread.sleep(500);
+            }
+        } catch (Throwable ignored) {
+        }
         try {
             java.lang.reflect.Method m = dev.getClass().getMethod("removeBond");
             Object r = m.invoke(dev);
@@ -2208,6 +2352,8 @@ public final class GamepadCenter {
             throw new IllegalArgumentException(
                     "parameter 'address' must be a bluetooth MAC like AA:BB:CC:DD:EE:FF, got: " + address);
         }
+        // getRemoteDevice 舊 stack 只認大寫（細寫即掟 IllegalArgumentException）：驗完即轉大寫。
+        address = address.toUpperCase(java.util.Locale.US);
         BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
         if (adapter == null) return HttpServer.ApiResponse.error("no bluetooth adapter");
         if (!adapter.isEnabled()) {
@@ -2226,6 +2372,11 @@ public final class GamepadCenter {
         }
         if (bs == BluetoothDevice.BOND_BONDED) {
             return HttpServer.ApiResponse.ok("{\"ok\":true,\"bonded\":true,\"address\":\""
+                    + MainActivity.jsonSafe(dev.getAddress()) + "\"}");
+        }
+        if (bs == BluetoothDevice.BOND_BONDING) {
+            // 配對進行中：唔重打 createBond（會回 false 嚇親人），等 bond 事件／重掃確認。
+            return HttpServer.ApiResponse.ok("{\"ok\":true,\"bonded\":false,\"address\":\""
                     + MainActivity.jsonSafe(dev.getAddress()) + "\"}");
         }
         ensureBtReceiver();

@@ -171,6 +171,28 @@ public final class SonarCenter {
         return MainActivity.sentReadyResponse(sent, directChestReady());
     }
 
+    // 關掉之前記低的開機門檻（toggle 關→開還原用；預設 30，同出廠一致）。
+    private volatile int sonarLastOnThresholdCm = 30;
+
+    /** 映射／開關共用：聲納單鍵 toggle（開緊即關（distance=0），關緊即還原上次門檻）。
+     *  回 true＝胸口已收指令（taken 照實）。 */
+    public synchronized boolean toggleSonar() {
+        int cur = sonarThresholdCm;
+        int next;
+        if (cur > 0) {
+            sonarLastOnThresholdCm = cur;
+            next = 0;
+        } else {
+            next = sonarLastOnThresholdCm > 0 ? sonarLastOnThresholdCm : 30;
+        }
+        applySonarThreshold(next);
+        try {
+            return HardwareDirectManager.get(appContext).chest().configureSonar(next);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     // -- MCP tools (XiaozhiBridge callTool switch 轉調) --
 
     /** MCP tool 共用回包：對應 XiaozhiBridge callTool switch 那兩個 local

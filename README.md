@@ -28,9 +28,11 @@ spec 及 Swagger UI（見 [HTTP API](#http-api--http-接口)）。
   network can play actions, view the camera, listen to the mic, or upload
   firmware. Do not bridge it to the internet or run it on a shared LAN.
   The Experiment tab offers an opt-in panel token (`system/auth/*`): once
-  enabled, every `/api/*` (including reads) and `/upload/*` call needs a
-  `panel_token` (401 otherwise); only `system/auth/*`, static pages, `/ws`
-  and `/stream/*` stay open.
+  enabled, every `/api/*` (including reads), `/upload/*`, `/stream/*` and
+  `/ws` call needs `Authorization: Bearer <token>` (401 + `WWW-Authenticate`
+  otherwise); only `system/auth/*` and static pages stay open. `<img>`/WebSocket
+  clients that cannot set headers may use `?panel_token=` instead. The old
+  `?token=` alias is removed (it collided with the Xiaozhi OTA `token`).
 
 - 機械人：RK3288（僅 `armeabi-v7a`），Android 5.1.1（API 22）。
   APK 宣告 `minSdkVersion 19`、`targetSdkVersion 22`（刻意如此，不上架
@@ -42,8 +44,10 @@ spec 及 Swagger UI（見 [HTTP API](#http-api--http-接口)）。
 - ⚠️ **僅限可信內網**：預設沒有認證——同網段任何人都可以播放動作、查看
   相機、收聽咪高峰或上載韌體。切勿橋接至互聯網，亦不要放在共用大內網。
   實驗分頁提供自選面板口令（`system/auth/*`）：啟用後，所有 `/api/*`
-  （包括讀取操作）及 `/upload/*` 都必須帶上 `panel_token`（否則回 401）；
-  只有 `system/auth/*`、靜態頁、`/ws` 及 `/stream/*` 保持開放。
+  （包括讀取操作）、`/upload/*`、`/stream/*` 及 `/ws` 都必須帶上
+  `Authorization: Bearer <token>`（否則回 401＋`WWW-Authenticate`）；
+  只有 `system/auth/*` 及靜態頁保持開放。設不到 header 的 `<img>`／WebSocket
+  可用 `?panel_token=` 代替。舊 `?token=` 別名已移除（同小智 OTA `token` 撞名）。
 
 ## Build / install / 編譯／安裝
 

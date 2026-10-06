@@ -26,17 +26,17 @@ function chestUpload() {
   const reader = new FileReader();
   reader.onload = function(e) {
     const bytes = e.target.result;
-    // 實驗 tab 面板 token：啟用中 /upload/chest 要驗 panel_token（見 PanelAuth），
+    // 實驗 tab 面板 token：啟用中 /upload/chest 要驗（Bearer header 主，見 PanelAuth），
     // 同 api() 系列一樣由 localStorage 拿，不用經 Alpha2Api（upload 行 raw fetch）。
     let url = "/upload/chest?name=" + encodeURIComponent(file.name);
+    let upHeaders = {};
     try {
-      const pt = (typeof panelTokenGet === "function") ? panelTokenGet() : "";
-      if (pt) url += "&panel_token=" + encodeURIComponent(pt);
+      if (typeof panelAuthHeaders === "function") upHeaders = panelAuthHeaders();
     } catch (ign) {}
     fetch(url, {
       method: "POST",
       body: bytes,
-      headers: { "Content-Type": "application/octet-stream" }
+      headers: Object.assign({ "Content-Type": "application/octet-stream" }, upHeaders)
     }).then(function(res) { return res.json(); }).then(function(json) {
       if (json.ok) {
         if (status) status.textContent = "✅ 已上載到 " + (json.path || "/sdcard/AlphaII_CHEST_kernel.bin") + "，可按「開始升級」";

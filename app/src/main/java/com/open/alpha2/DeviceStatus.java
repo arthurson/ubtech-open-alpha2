@@ -75,7 +75,8 @@ public final class DeviceStatus implements SensorEventListener {
         try {
             BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
             if (adapter == null) {
-                return HttpServer.ApiResponse.ok("{\"ok\":true,\"available\":false}");
+                // 形狀同有 adapter 一致（enabled/name 恒在），免調用方逐鍵判空。
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"available\":false,\"enabled\":false,\"name\":\"\"}");
             }
             boolean enabled = adapter.isEnabled();
             String name = adapter.getName();
@@ -314,6 +315,27 @@ public final class DeviceStatus implements SensorEventListener {
     public HttpServer.ApiResponse accelerometerGet() {
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + accelerometerEnabled
                 + ",\"available\":" + (accelerometerSensor != null) + "}");
+    }
+
+    /** 映射共用：加速度計單鍵 toggle（同 accelerometerSet 同一主線程＋latch 寫法）。
+     *  回 true＝硬件在且已翻轉（開／關都算做咗，taken 照實）。 */
+    public boolean toggleAccelerometer() {
+        final boolean[] flipped = new boolean[1];
+        final CountDownLatch latch = new CountDownLatch(1);
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                setAccelerometerEnabled(!accelerometerEnabled);
+                flipped[0] = (accelerometerSensor != null);
+                latch.countDown();
+            }
+        });
+        try {
+            latch.await(2000, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return flipped[0];
     }
 
     // -- 健康狀態聚合 --

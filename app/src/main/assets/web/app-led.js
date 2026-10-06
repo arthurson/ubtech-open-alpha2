@@ -677,11 +677,10 @@ let perledPollSeq = 0; // cache-bust 計數（舊 response 唔好畀任何 cache
 function quietStateGet() {
   // 靜音通道：爛 response 唔彈 toast，寫 console（F12 先睇到；分頁已經無狀態行）。
   try {
-    const merged = (typeof withPanelToken === "function") ? withPanelToken() : null;
-    let qs = "_=" + (perledPollSeq++);
-    if (merged) qs += "&" + new URLSearchParams(merged).toString();
-    qs = "?" + qs;
-    return fetch(API + "alpha2/led/state/get" + qs).then(function (res) {
+    // 面板 token 行 Bearer header（見 PanelAuth；query 唔再放 token）。
+    const hdrs = (typeof panelAuthHeaders === "function") ? panelAuthHeaders() : {};
+    let qs = "?_=" + (perledPollSeq++);
+    return fetch(API + "alpha2/led/state/get" + qs, { headers: hdrs }).then(function (res) {
       return res.text().then(function (txt) {
         if (!txt) {
           console.warn("[perled] state/get 空 body，status=" + res.status);

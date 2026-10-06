@@ -9,7 +9,13 @@ let ws;
 let wsBootId = null; // server 每次起身派新 bootId（見 WebSocketServer.BOOT_ID）——
 function connectWs() { // 舊 tab（裝機嗰陣開住）斷線重連見到唔同即 reload 攞新 JS。
   const proto = location.protocol === "https:" ? "wss://" : "ws://";
-  ws = new WebSocket(proto + location.host + "/ws");
+  // 面板 token：WebSocket 設不到 header，鎖機時用 ?panel_token= query fallback（見 PanelAuth）。
+  let wsUrl = proto + location.host + "/ws";
+  try {
+    const pt = (typeof panelTokenGet === "function") ? panelTokenGet() : "";
+    if (pt) wsUrl += "?panel_token=" + encodeURIComponent(pt);
+  } catch (ign) {}
+  ws = new WebSocket(wsUrl);
 
   ws.onopen = function () {
     appendLog({ type: "connection", time: nowTimeStr(), data: "已連接 (WebSocket live)" });

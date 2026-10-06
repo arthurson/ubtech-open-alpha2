@@ -50,13 +50,15 @@ public class HttpServer implements Runnable {
      * ApiResponse to send back, same as ApiHandler.
      */
     public interface RawUploadHandler {
-        ApiResponse handle(String path, Map<String, String> query, byte[] body);
+        ApiResponse handle(String path, Map<String, String> query, byte[] body,
+                Map<String, String> headers);
     }
 
     /** Implemented by MainActivity to answer "/api/..." calls with a JSON (or plain) body. */
     public interface ApiHandler {
         /** Returns the raw response body; contentType should usually be "application/json". */
-        ApiResponse handle(String path, Map<String, String> query, String method, String body);
+        ApiResponse handle(String path, Map<String, String> query, String method, String body,
+                Map<String, String> headers);
     }
 
     /**
@@ -67,18 +69,39 @@ public class HttpServer implements Runnable {
      * "/ws", just without the WebSocket framing/handshake.
      */
     public interface StreamHandler {
-        void handle(String path, Map<String, String> query, java.net.Socket socket) throws IOException;
+        void handle(String path, Map<String, String> query, java.net.Socket socket,
+                Map<String, String> headers) throws IOException;
+    }
+
+    /**
+     * Gate for the "/ws" upgrade (HttpServer itself has no Context so it cannot
+     * consult PanelAuth directly — MainActivity provides the check, same
+     * requireAuth logic as /api/*; returns null to allow, 401 ApiResponse to
+     * reject with a plain-HTTP error before the 101 handshake).
+     * Browser WebSocket cannot set custom headers, so the check accepts the
+     * query {@code panel_token} fallback (see PanelAuth).
+     */
+    public interface WsAuthGate {
+        ApiResponse check(String path, Map<String, String> query, Map<String, String> headers);
     }
 
     public static final class ApiResponse {
         public final int status;
         public final String contentType;
         public final String body;
+        /** Extra response headers (e.g. WWW-Authenticate on 401); null = none. */
+        public final Map<String, String> headers;
 
         public ApiResponse(int status, String contentType, String body) {
+            this(status, contentType, body, null);
+        }
+
+        public ApiResponse(int status, String contentType, String body,
+                Map<String, String> headers) {
             this.status = status;
             this.contentType = contentType;
             this.body = body;
+            this.headers = headers;
         }
 
         public static ApiResponse ok(String json) {
@@ -108,9 +131,14 @@ public class HttpServer implements Runnable {
             return of(400, message);
         }
 
-        /** 面板 token 閘口用（見 PanelAuth）：未帶／帶錯 token 即 401，不是 400/500。 */
+        /** 面板 token 閘口用（見 PanelAuth）：未帶／帶錯 token 即 401，不是 400/500。
+         *  附 WWW-Authenticate: Bearer realm="panel"（標準 401 語義，curl／Swagger
+         *  先至知要帶 Authorization: Bearer）。 */
         public static ApiResponse unauthorized(String message) {
-            return of(401, message);
+            Map<String, String> h = new HashMap<String, String>();
+            h.put("WWW-Authenticate", "Bearer realm=\"panel\"");
+            return new ApiResponse(401, "application/json; charset=utf-8",
+                    JsonUtil.okFalse(String.valueOf(message)), h);
         }
 
         /** 轉義單一實現見 JsonUtil（舊 comment 擔心的循環已不存在：JsonUtil 零依賴）。 */
@@ -128,6 +156,13 @@ public class HttpServer implements Runnable {
     private volatile boolean running = false;
     private volatile IOException bindError;
     private final CountDownLatch bindLatch = new CountDownLatch(1);
+    /** /ws 升級前閘口（MainActivity 注入 PanelAuth 檢查；null＝不閘，向後兼容）。 */
+    private volatile WsAuthGate wsAuthGate;
+
+    /** 由 MainActivity 在 start() 前注入（見 PanelAuth.requireAuth，同 /api/* 同一邏輯）。 */
+    public void setWsAuthGate(WsAuthGate gate) {
+        this.wsAuthGate = gate;
+    }
 
     /**
      * TLS 已移除，只剩 plain HTTP。之前瀏覽器對自簽 cert 反覆拒絕，且 walkie-talkie
@@ -266,15 +301,6 @@ public class HttpServer implements Runnable {
         String connectionHeader = headers.get("connection");
         boolean clientWantsClose = connectionHeader != null && connectionHeader.equalsIgnoreCase("close");
 
-        // WebSocket upgrade goes to a completely separate framed protocol. rawIn is
-        // guaranteed to be positioned exactly at the first byte after the blank line
-        // terminating the headers, since nothing above touched a BufferedReader.
-        String upgrade = headers.get("upgrade");
-        if (upgrade != null && upgrade.equalsIgnoreCase("websocket")) {
-            WebSocketServer.handleUpgrade(socket, rawIn, headers);
-            return false; // WebSocketServer owns the socket lifecycle from here on.
-        }
-
         String path = fullPath;
         String queryString = "";
         int qIdx = fullPath.indexOf('?');
@@ -284,6 +310,30 @@ public class HttpServer implements Runnable {
         }
         Map<String, String> query = parseQuery(queryString);
 
+        // WebSocket upgrade goes to a completely separate framed protocol. rawIn is
+        // guaranteed to be positioned exactly at the first byte after the blank line
+        // terminating the headers, since nothing above touched a BufferedReader.
+        String upgrade = headers.get("upgrade");
+        if (upgrade != null && upgrade.equalsIgnoreCase("websocket")) {
+            if (wsAuthGate != null) {
+                ApiResponse gate;
+                try {
+                    gate = wsAuthGate.check(path, query, headers);
+                } catch (Exception e) {
+                    Log.e(TAG, "WS auth gate threw", e);
+                    gate = ApiResponse.error(String.valueOf(e.getMessage()));
+                }
+                if (gate != null) {
+                    Log.i(TAG, "WS rejected [" + gate.status + "]: " + path);
+                    OutputStream wsOut = socket.getOutputStream();
+                    writeResponse(wsOut, gate, false);
+                    return false;
+                }
+            }
+            WebSocketServer.handleUpgrade(socket, rawIn, headers);
+            return false; // WebSocketServer owns the socket lifecycle from here on.
+        }
+
         // Streaming responses (MJPEG camera feed) own the socket from here on, same
         // as the WebSocket upgrade above - no Content-Length response is possible
         // for a feed of unknown/infinite length, so this can't go through the normal
@@ -291,7 +341,7 @@ public class HttpServer implements Runnable {
         if (path.startsWith("/stream/") && streamHandler != null) {
             Log.i(TAG, "Stream request: " + method + " " + path);
             try {
-                streamHandler.handle(path.substring(8), query, socket);
+                streamHandler.handle(path.substring(8), query, socket, headers);
             } catch (IOException e) {
                 // Expected, routine noise, not a bug: fires every time a browser tab
                 // navigates away, refreshes, or is closed while an MJPEG/mic stream is
@@ -311,16 +361,29 @@ public class HttpServer implements Runnable {
 
         OutputStream out = socket.getOutputStream();
 
+        // CORS preflight：Bearer header 令跨域 /api 變 non-simple request，瀏覽器會先送
+        // OPTIONS 探路——之前無 header 所以唔使理，而家要回 200＋Allow-Headers，
+        // 否則第三方跨域 panel 加咗 Authorization 即全炒（同機面板係同域，無影響）。
+        if ("OPTIONS".equalsIgnoreCase(method)) {
+            Map<String, String> h = new HashMap<String, String>();
+            h.put("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+            h.put("Access-Control-Allow-Headers", "Authorization, Content-Type");
+            h.put("Access-Control-Max-Age", "86400");
+            writeResponse(out, new ApiResponse(200, "text/plain; charset=utf-8", "", h),
+                    !clientWantsClose);
+            return !clientWantsClose;
+        }
+
         if (path.startsWith("/upload/") && rawUploadHandler != null) {
             Log.i(TAG, "Upload request: " + method + " " + path + " (" + rawBody.length + " bytes)");
             ApiResponse resp;
             try {
-                resp = rawUploadHandler.handle(path.substring(8), query, rawBody);
+                resp = rawUploadHandler.handle(path.substring(8), query, rawBody, headers);
             } catch (Exception e) {
                 Log.e(TAG, "Upload handler threw", e);
                 resp = ApiResponse.error("Upload handler error: " + e.getMessage());
             }
-            writeResponse(out, resp.status, resp.contentType, resp.body.getBytes(StandardCharsets.UTF_8), !clientWantsClose);
+            writeResponse(out, resp, !clientWantsClose);
             return !clientWantsClose;
         }
 
@@ -331,7 +394,7 @@ public class HttpServer implements Runnable {
             Log.i(TAG, "API request: " + method + " " + path + (queryString.isEmpty() ? "" : "?" + redactQuery(queryString)));
             ApiResponse resp;
             try {
-                resp = apiHandler.handle(path.substring(5), query, method, body);
+                resp = apiHandler.handle(path.substring(5), query, method, body, headers);
                 String bodyLog = resp.body != null && resp.body.length() > 200
                         ? resp.body.substring(0, 200) + "…(" + resp.body.length() + "B)" : resp.body;
                 Log.i(TAG, "API response [" + resp.status + "]: " + path + " -> " + bodyLog);
@@ -343,7 +406,7 @@ public class HttpServer implements Runnable {
                 Log.e(TAG, "API handler error for " + path, e);
                 resp = ApiResponse.error(String.valueOf(e.getMessage()));
             }
-            writeResponse(out, resp.status, resp.contentType, resp.body.getBytes(StandardCharsets.UTF_8), !clientWantsClose);
+            writeResponse(out, resp, !clientWantsClose);
         } else {
             serveStatic(out, path, !clientWantsClose);
         }
@@ -475,6 +538,44 @@ public class HttpServer implements Runnable {
     private static void writeResponse(OutputStream out, int status, String contentType, byte[] body, boolean keepAlive)
             throws IOException {
         writeResponse(out, status, contentType, body, keepAlive, false);
+    }
+
+    /** ApiResponse 版：附帶 extra headers（401 自動補 WWW-Authenticate，防漏寫）。 */
+    static void writeResponse(OutputStream out, ApiResponse resp, boolean keepAlive)
+            throws IOException {
+        writeResponse(out, resp, keepAlive, false);
+    }
+
+    static void writeResponse(OutputStream out, ApiResponse resp, boolean keepAlive, boolean noCache)
+            throws IOException {
+        byte[] body = resp.body != null ? resp.body.getBytes(StandardCharsets.UTF_8) : new byte[0];
+        String statusText = STATUS_TEXT.get(resp.status);
+        if (statusText == null) statusText = "Error";
+        StringBuilder header = new StringBuilder();
+        header.append("HTTP/1.1 ").append(resp.status).append(' ').append(statusText).append("\r\n");
+        header.append("Content-Type: ").append(resp.contentType).append("\r\n");
+        header.append("Content-Length: ").append(body.length).append("\r\n");
+        header.append("Access-Control-Allow-Origin: *\r\n");
+        boolean hasWwwAuth = false;
+        if (resp.headers != null) {
+            for (Map.Entry<String, String> e : resp.headers.entrySet()) {
+                if (e.getKey() == null || e.getValue() == null) continue;
+                if ("WWW-Authenticate".equalsIgnoreCase(e.getKey())) hasWwwAuth = true;
+                header.append(e.getKey()).append(": ").append(e.getValue()).append("\r\n");
+            }
+        }
+        if (resp.status == 401 && !hasWwwAuth) {
+            header.append("WWW-Authenticate: Bearer realm=\"panel\"\r\n");
+        }
+        if (noCache) {
+            header.append("Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\n");
+            header.append("Pragma: no-cache\r\n");
+        }
+        header.append("Connection: ").append(keepAlive ? "keep-alive" : "close").append("\r\n");
+        header.append("\r\n");
+        out.write(header.toString().getBytes(StandardCharsets.ISO_8859_1));
+        out.write(body);
+        out.flush();
     }
 
     private static void writeResponse(OutputStream out, int status, String contentType, byte[] body, boolean keepAlive, boolean noCache)

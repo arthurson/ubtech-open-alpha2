@@ -1082,6 +1082,105 @@ public class CameraController {
         awaitQuietly(latch, timeoutMs, TimeUnit.MILLISECONDS);
     }
 
+    /** MediaRecorder 交接用：已開相機的 index（-1＝未開過）。 */
+    public int getOpenedIndex() {
+        return openedIndex;
+    }
+
+    /** MediaRecorder 交接用：預覽 SurfaceTexture（包成 Surface 做 setPreviewDisplay）。 */
+    public SurfaceTexture getPreviewSurfaceTexture() {
+        return dummyPreviewTexture;
+    }
+
+    /** beginRecorderHandoff 交出的相機＋紋理（VideoCenter 配 MediaRecorder 用）。 */
+    public static final class RecorderHandoff {
+        public final android.hardware.Camera camera;
+        public final SurfaceTexture previewTexture;
+        public final int width;
+        public final int height;
+        RecorderHandoff(android.hardware.Camera camera, SurfaceTexture previewTexture,
+                int width, int height) {
+            this.camera = camera;
+            this.previewTexture = previewTexture;
+            this.width = width;
+            this.height = height;
+        }
+    }
+
+    /**
+     * 錄影交接（上半）：相機線程上拆預覽回調＋unlock，交出 Camera＋SurfaceTexture
+     * 畀 VideoCenter 配 MediaRecorder。回 null＝失敗（相機未開／unlock 炸）。
+     * 交接期間 takePhoto／resolution 等調用方要自己擋（見 VideoCenter／CameraApi 守衛）；
+     * stopIfIdle 誤放靠 VideoCenter 掛住個 dummy listener 頂住（見 VideoCenter）。
+     */
+    public RecorderHandoff beginRecorderHandoff(long timeoutMs) {
+        startCameraThreadIfNeeded();
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<RecorderHandoff> out = new AtomicReference<>();
+        cameraHandler.post(new Runnable() {
+            @Override public void run() {
+                try {
+                    if (camera == null) return;
+                    try {
+                        camera.setPreviewCallbackWithBuffer(null);
+                    } catch (Throwable ignore) {
+                    }
+                    camera.unlock();
+                    out.set(new RecorderHandoff(camera, dummyPreviewTexture,
+                            previewWidth, previewHeight));
+                } catch (Throwable t) {
+                    Log.w(TAG, "beginRecorderHandoff failed", t);
+                } finally {
+                    latch.countDown();
+                }
+            }
+        });
+        awaitQuietly(latch, timeoutMs, TimeUnit.MILLISECONDS);
+        return out.get();
+    }
+
+    /**
+     * 錄影交接（下半）：lock＋停預覽＋重行 startPreviewLocked（掛返回調＋緩衝）。
+     * 還原失敗即直接放咗部相機（回 false；下次 start() 重開，錄影本身已完不受影響）。
+     */
+    public boolean endRecorderHandoff(long timeoutMs) {
+        if (cameraHandler == null) return false;
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicReference<Boolean> ok = new AtomicReference<>(false);
+        cameraHandler.post(new Runnable() {
+            @Override public void run() {
+                try {
+                    if (camera == null) return;
+                    try {
+                        camera.lock();
+                    } catch (Throwable t) {
+                        try {
+                            camera.reconnect();
+                        } catch (Throwable t2) {
+                            safeReleaseOnCameraThread();
+                            return;
+                        }
+                    }
+                    try {
+                        camera.stopPreview();
+                    } catch (Throwable ignore) {
+                    }
+                    try {
+                        startPreviewLocked();
+                        ok.set(true);
+                    } catch (Throwable t) {
+                        Log.w(TAG, "endRecorderHandoff re-preview failed", t);
+                        safeReleaseOnCameraThread();
+                    }
+                } finally {
+                    latch.countDown();
+                }
+            }
+        });
+        awaitQuietly(latch, timeoutMs, TimeUnit.MILLISECONDS);
+        return Boolean.TRUE.equals(ok.get());
+    }
+
     public void shutdown() {
         if (cameraHandler != null) {
             cameraHandler.post(new Runnable() {

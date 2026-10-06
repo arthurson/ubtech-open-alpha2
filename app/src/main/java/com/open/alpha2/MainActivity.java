@@ -174,6 +174,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         if (sonarCenter != null) sonarCenter.applySonarThreshold(distanceCm);
     }
     private CameraApi cameraApi;
+    private VideoCenter videoCenter;
     private VoskApi voskApi;
     private FaceTrackCenter faceTrackCenter;
     private ColorTrackCenter colorTrackCenter;
@@ -274,6 +275,10 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // sticky broadcast 註冊時機不敏感。
         deviceStatus.registerBatteryReceiver();
         cameraApi = new CameraApi(this, cameraController, ringtoneCenter);
+        // 機端錄影 mp4（MediaRecorder＋CameraController 交接；經 CameraApi 薄 delegate
+        // 暴露 camera/video/*，放 cameraApi 之後、dispatcher 之前）。
+        videoCenter = new VideoCenter(this, cameraController);
+        cameraApi.setVideoCenter(videoCenter);
         // Android 內置人臉追蹤（framework FaceDetector，零依賴；經 CameraApi 薄 delegate
         // 暴露 face/track/*，見 FaceTrackCenter javadoc）。要 ubxApi（servo cmd05）
         // ＋cameraController（預覽幀），放 cameraApi 之後、dispatcher 之前。
@@ -325,7 +330,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // BT 手柄／鍵盤包（要 actionDirect＋ubxApi＋deviceStatus，A 端物理鍵＋B 端
         // HTTP 共用同一套映射，見 GamepadCenter；放 dispatcher 之前）。
         gamepadCenter = new GamepadCenter(this, actionDirect, ubxApi, ubxPlayer, deviceStatus,
-                audioCenter, ringtoneCenter, ledCenter, speechCenter, cameraApi);
+                audioCenter, ringtoneCenter, ledCenter, speechCenter, cameraApi, sonarCenter);
         // dispatcher 包全部上面 controller (+speechCenter 做 Host；sensorState
         // 繼續經 this——TTS／sonar 全部轉交給對應 center；servo/sonar 直調
         // sonarCenter)。
@@ -373,12 +378,14 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
 
         httpServer = new HttpServer(getAssets(), new HttpServer.ApiHandler() {
             @Override
-            public HttpServer.ApiResponse handle(String path, Map<String, String> query, String method, String body) {
+            public HttpServer.ApiResponse handle(String path, Map<String, String> query, String method, String body,
+                    Map<String, String> headers) {
                 // 實驗 tab 面板 token 中央閘口（見 PanelAuth：opt-in，預設關＝全開；
-                // 啟用後整個面板上鎖：全部 /api/* 都要 token，僅 system/auth/*
-                //（解鎖入口）開放；靜態頁／ws／stream 不經這裡，維持開放）。
+                // 啟用後整個面板上鎖：全部 /api/* 都要 token（Bearer header 主，
+                // panel_token query 為 img／ws fallback），僅 system/auth/*
+                //（解鎖入口）開放；靜態頁不經這裡，維持開放；ws／stream 各自閘）。
                 if (!PanelAuth.isOpenApi(path)) {
-                    HttpServer.ApiResponse gate = PanelAuth.requireAuth(MainActivity.this, query);
+                    HttpServer.ApiResponse gate = PanelAuth.requireAuth(MainActivity.this, query, headers);
                     if (gate != null) return gate;
                 }
                 // "/api/alpha2/..." goes to the original Alpha2RobotApi dispatch
@@ -391,7 +398,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                     return apiDispatcher.handleApi(path.substring(7), query, method, body);
                 }
                 if (path.startsWith("system/")) {
-                    return apiDispatcher.handleSystemApi(path.substring(7), query, method, body);
+                    return apiDispatcher.handleSystemApi(path.substring(7), query, method, body, headers);
                 }
                 if (path.startsWith("xiaozhi/")) {
                     return xiaozhiBridge.handleXiaozhiApi(path.substring(8), query, method, body);
@@ -402,13 +409,24 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
             }
         }, new HttpServer.StreamHandler() {
             @Override
-            public void handle(String path, Map<String, String> query, java.net.Socket socket) throws java.io.IOException {
-                handleStream(path, query, socket);
+            public void handle(String path, Map<String, String> query, java.net.Socket socket,
+                    Map<String, String> headers) throws java.io.IOException {
+                handleStream(path, query, socket, headers);
             }
         }, new HttpServer.RawUploadHandler() {
             @Override
-            public HttpServer.ApiResponse handle(String path, Map<String, String> query, byte[] body) {
-                return handleUpload(path, query, body);
+            public HttpServer.ApiResponse handle(String path, Map<String, String> query, byte[] body,
+                    Map<String, String> headers) {
+                return handleUpload(path, query, body, headers);
+            }
+        });
+        // /ws 升級前閘口（瀏覽器 WebSocket 設不到 header，驗 Bearer 或 panel_token query；
+        // 未啟用即放行；靜態頁不經這裡）。
+        httpServer.setWsAuthGate(new HttpServer.WsAuthGate() {
+            @Override
+            public HttpServer.ApiResponse check(String path, Map<String, String> query,
+                    Map<String, String> headers) {
+                return PanelAuth.requireAuth(MainActivity.this, query, headers);
             }
         });
         httpServer.start();
@@ -1067,6 +1085,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         if (colorTrackCenter != null) {
             try { colorTrackCenter.shutdown(); } catch (Throwable ignored) {}
         }
+        if (videoCenter != null) {
+            try { videoCenter.stopIfRecording(); } catch (Throwable ignored) {}
+        }
         if (cameraController != null) cameraController.shutdown();
         if (audioController != null) audioController.shutdown();
         if (audioPlaybackController != null) audioPlaybackController.shutdown();
@@ -1150,10 +1171,11 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
      *  Playback must already be running (audio/play/start) - this does not implicitly
      *  start it, so a stray upload after the user has stopped talking doesn't
      *  re-open the speaker session on its own. */
-    private HttpServer.ApiResponse handleUpload(String path, Map<String, String> query, byte[] body) {
+    private HttpServer.ApiResponse handleUpload(String path, Map<String, String> query, byte[] body,
+            Map<String, String> headers) {
         // 整個面板上鎖：啟用中全部上載（chest／music／audio）都要 token
-        //（見 PanelAuth.requireAuth；未啟用即放行）。
-        HttpServer.ApiResponse gate = PanelAuth.requireAuth(this, query);
+        //（Bearer header 主，panel_token query 為 fallback；見 PanelAuth，未啟用即放行）。
+        HttpServer.ApiResponse gate = PanelAuth.requireAuth(this, query, headers);
         if (gate != null) return gate;
         if ("audio".equals(path)) {
             audioPlaybackController.enqueuePcm(body);
@@ -1171,7 +1193,14 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         return HttpServer.ApiResponse.error("Unknown upload path: " + path);
     }
 
-    private void handleStream(String path, Map<String, String> query, java.net.Socket socket) throws java.io.IOException {
+    private void handleStream(String path, Map<String, String> query, java.net.Socket socket,
+            Map<String, String> headers) throws java.io.IOException {
+        // 鎖機時串流都要驗（之前全開會漏相機／咪；<img>／fetch 帶 query fallback，見 PanelAuth）。
+        HttpServer.ApiResponse gate = PanelAuth.requireAuth(this, query, headers);
+        if (gate != null) {
+            HttpServer.writeResponse(socket.getOutputStream(), gate, false);
+            return;
+        }
         if ("camera".equals(path)) {
             cameraApi.handleCameraStream(socket);
         } else if ("mic".equals(path)) {

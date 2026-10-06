@@ -12,14 +12,17 @@ info:
     預設由 `HttpServer.PORT = 8888` 以純 HTTP 提供 (`http://<robot-ip>:8888/`)，同 WiFi 任何瀏覽器可直接訪問。
 
     所有 `/api/*` 回應皆為 `application/json; charset=utf-8` 的 `{ok: boolean, ...}` 形狀，失敗時帶
-    `error` 欄位。
+    `error` 欄位。401 一律附 `WWW-Authenticate: Bearer realm="panel"`。
 
     即時事件 (觸摸/ASR/電池/跌落/PIR 等) 經 `GET /ws` (RFC6455 WebSocket) 推送，非輪詢。
 
     實驗 tab 另有 opt-in 面板 token (`/api/system/auth/*`，見 PanelAuth.java)：預設關閉（全開）；
-啟用後成個面板上鎖——全部 `/api/*`（含讀操作、其他分頁、Blockly）同 `/upload/*`
-    要帶 `panel_token`，缺／錯回 401；淨 `system/auth/*`（解鎖入口）、靜態頁、
-    `/ws`、`/stream/*` 開放。Token 記喺瀏覽器 localStorage（同一個面板地址跨 tab 共用）。
+啟用後成個面板上鎖——全部 `/api/*`（含讀操作、其他分頁、Blockly）、全部 `/upload/*`、
+`/stream/*` 同 `/ws` 要帶認證（`Authorization: Bearer <token>` 主；設不到 header 的
+`<img>`／WebSocket 用 `?panel_token=` fallback），缺／錯回 401；淨 `system/auth/*`
+（解鎖入口）同靜態頁開放。Token 記喺瀏覽器 localStorage（同一個面板地址跨 tab 共用）。
+舊 `?token=` 別名已移除（同小智 ota `token` 撞名），curl 請用 `-H "Authorization: Bearer ..."`
+或 `?panel_token=`。
 
     '
   version: beta 7
@@ -3169,6 +3172,98 @@ paths:
                         type: integer
                         example: 100
       operationId: cameraZoom_get
+  /api/camera/video/start:
+    get:
+      tags:
+      - camera
+      summary: 開始機端錄影 mp4（有聲優先，搶唔到咪自動轉純畫面）
+      description: legacy Camera1＋MediaRecorder，640x480 H264，檔存 /sdcard/DCIM/Alpha2/alpha2_vid_*.mp4。用家撳停為止，不設時長上限；剩餘空間少過 50MB 即拒。錄影期間拍照／改解像度會被拒，MJPEG 訂閱者因無新幀超時自斷，人臉／顏色追蹤暫停收幀。
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: '{ok, recording, path, hasAudio}'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    recording:
+                      type: boolean
+                    path:
+                      type: string
+                    hasAudio:
+                      type: boolean
+      operationId: cameraVideoStart_get
+  /api/camera/video/stop:
+    get:
+      tags:
+      - camera
+      summary: 停止機端錄影（ finalize mp4 並回成品資訊）
+      description: 未錄緊即報錯；stop 失敗（爛檔）即刪檔回錯。成品經媒體掃描，相簿即見。
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: '{ok, recording, path, durationMs, bytes, hasAudio}'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    recording:
+                      type: boolean
+                    path:
+                      type: string
+                    durationMs:
+                      type: integer
+                    bytes:
+                      type: integer
+                    hasAudio:
+                      type: boolean
+      operationId: cameraVideoStop_get
+  /api/camera/video/status:
+    get:
+      tags:
+      - camera
+      summary: 查詢機端錄影狀態（錄緊回經過時間，閒置回上次成品）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: '{ok, recording, path, elapsedMs, hasAudio, lastPath, lastDurationMs, lastBytes, lastHasAudio}'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    recording:
+                      type: boolean
+      operationId: cameraVideoStatus_get
   /api/face/track/start:
     get:
       tags:
@@ -4758,7 +4853,7 @@ paths:
         in: query
         schema:
           type: string
-          description: 'none/stop/vol_up/vol_down/music_*6+random/ring_phone/ring_stop/ring:<title>/head:<preset>:<color>/eye:<preset>:<color>/mouth:breathing:<speedMs>/mouth:off/led_off/camera_photo/face_start/face_stop/color_start/color_stop/servo1-20+/servo1-20-/action:<id>'
+          description: 'none/stop/vol_up/vol_down/music_play/next/prev/pause/resume/toggle/stop/random/radio_toggle/disco_toggle/filler_toggle/ring_phone/ring_stop/ring_random/ring:<title>/head:<preset>:<color>/head:random/eye:<preset>:<color>/eye:random/mouth:breathing:<speedMs>/mouth:off/led_off/camera_photo/face_start/color_start/video_toggle/sonar_toggle/pir_toggle/accel_toggle/servo1-20+/servo1-20-/action:<id>'
         description: 映射動作（reset=1 時可省略；music_* 為本地音樂；servo 步進覆蓋全部 20 軸）
       - name: reset
         in: query
@@ -4941,7 +5036,7 @@ paths:
       tags:
       - gamepad
       summary: 配對指定 MAC（A 端直連 HID 用）
-      description: 先將手柄／鍵盤置於配對模式再調；已綁定即直接回 bonded:true；結果經 gamepad_bt 事件推。
+      description: 先將手柄／鍵盤置於配對模式再調；已綁定即直接回 bonded:true；配對緊回 ok:true bonded:false（等 bond 事件）；結果經 gamepad_bt 事件推。
       parameters:
       - name: address
         in: query
@@ -4971,7 +5066,7 @@ paths:
       tags:
       - gamepad
       summary: 對已綁定設備發起 HID 連接（bonded 但未連上時用）
-      description: 配對不等於連接——bonded 但手柄頁「已接設備」無佢嗰陣調；結果經 gamepad_bt 事件推，幾秒後重查 gamepad/status 驗證。
+      description: 配對不等於連接——bonded 但 gamepad/status devices 無佢嗰陣調；結果經 gamepad_bt 事件推，幾秒後重查 gamepad/status 驗證。
       parameters:
       - name: address
         in: query
@@ -5194,6 +5289,7 @@ paths:
       - system
       summary: 面板 token 是否已啟用（實驗 tab 認證；永遠開放）
       description: 只回 enabled，不洩露 token 本身。見 PanelAuth.java。
+      security: []
       responses:
         '200':
           description: 啟用狀態
@@ -5211,13 +5307,23 @@ paths:
     get:
       tags:
       - system
-      summary: 設定／更改面板 token（未啟用直接設；已啟用要 current 舊值）
-      description: 成功即啟用。token 格式 8–64 字元 A-Za-z0-9/-/_。見 PanelAuth.java。
+      summary: 設定／更改面板 token（未啟用直接設；已啟用要舊值證明）
+      description: 成功即啟用。token 格式 8–64 字元 A-Za-z0-9/-/_。新值經 query token（舊前端沿用）
+        或 panel_token 二選一；已啟用時舊值證明經 query current 或 Bearer header。見 PanelAuth.java。
+      security: []
       parameters:
       - name: token
         in: query
-        required: true
-        description: 新 token（8–64 字元 A-Za-z0-9/-/_）
+        required: false
+        description: 新 token（8–64 字元 A-Za-z0-9/-/_；同 panel_token 二選一，至少一個必填）
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 64
+      - name: panel_token
+        in: query
+        required: false
+        description: 新 token（同 token 二選一；/api 認證請行 Bearer header，呢度係新值本身）
         schema:
           type: string
           minLength: 8
@@ -5241,8 +5347,9 @@ paths:
     get:
       tags:
       - system
-      summary: 清除面板 token（停用認證；已啟用要 current 舊值）
-      description: 未啟用即冪等回 ok。見 PanelAuth.java。
+      summary: 清除面板 token（停用認證；已啟用要舊值證明）
+      description: 未啟用即冪等回 ok。舊值證明經 query current 或 Bearer header。見 PanelAuth.java。
+      security: []
       parameters:
       - $ref: '#/components/parameters/PanelCurrent'
       responses:
@@ -5264,7 +5371,8 @@ paths:
       tags:
       - system
       summary: 校驗候選 token（前端解鎖按鈕用；永遠回 200，結果在 valid）
-      description: 永遠開放，不觸發閘口。見 PanelAuth.java。
+      description: 永遠開放，不觸發閘口。候選經 Bearer header 或 query panel_token。見 PanelAuth.java。
+      security: []
       parameters:
       - $ref: '#/components/parameters/PanelToken'
       responses:
@@ -6094,7 +6202,7 @@ paths:
       tags:
       - upload
       summary: 上載胸口固件 256KB bin 至 /sdcard/AlphaII_CHEST_kernel.bin
-      description: 面板 token 啟用後要帶 panel_token query（401 即未解鎖），見 PanelAuth。
+      description: 面板 token 啟用後要認證（Bearer header 主；401 即未解鎖），見 PanelAuth。
       parameters:
       - $ref: '#/components/parameters/PanelToken'
       requestBody:
@@ -6130,7 +6238,10 @@ paths:
       tags:
       - stream
       summary: MJPEG 相機串流 (multipart/x-mixed-replace)
-      description: 每 part 為單張 JPEG，boundary 隨機，10 秒無幀自動斷開
+      description: 每 part 為單張 JPEG，boundary 隨機，10 秒無幀自動斷開。面板 token 啟用後要認證
+        （`<img>` 設不到 header，用 `?panel_token=` query；缺／錯回 401 JSON 後斷線）。
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
         '200':
           description: MJPEG 流
@@ -6139,6 +6250,12 @@ paths:
               schema:
                 type: string
                 format: binary
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
         '503':
           description: 相機不可用
           content:
@@ -6151,7 +6268,10 @@ paths:
       tags:
       - stream
       summary: 麥克風 WAV 分片串流 (multipart/mixed, boundary=opensdktestpanelaudio)
-      description: 需先取得 mic 擁有權 (releaseMicForAudioIo)，每 part 為獨立 WAV
+      description: 需先取得 mic 擁有權 (releaseMicForAudioIo)，每 part 為獨立 WAV。面板 token
+        啟用後要認證（fetch 請行 Bearer header，`?panel_token=` 照收；缺／錯回 401）。
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
         '200':
           description: 音頻流
@@ -6160,6 +6280,12 @@ paths:
               schema:
                 type: string
                 format: binary
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
       operationId: streamMic_get
   /ws:
     get:
@@ -6175,7 +6301,12 @@ paths:
 
         前端 `app-log.js` 與 `EventBus.java` 全量訂閱，無需輪詢。
 
+        面板 token 啟用後要認證（瀏覽器 WebSocket 設不到 header，用 `?panel_token=` query；
+        缺／錯回 401 後斷線，不做 101 升級）。
+
         '
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
       responses:
         '101':
           description: Switching Protocols
@@ -6183,12 +6314,19 @@ paths:
             text/plain:
               schema:
                 type: string
+        '401':
+          description: 面板 token 缺／錯（僅啟用後；回 JSON 後斷線）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
       operationId: ws_get
   /:
     get:
       tags:
       - core
       summary: 主控制面板 (assets/web/index.html)
+      security: []
       responses:
         '200':
           description: HTML
@@ -6202,6 +6340,7 @@ paths:
       tags:
       - core
       summary: Blockly 積木編程頁
+      security: []
       responses:
         '200':
           description: HTML
@@ -6223,7 +6362,8 @@ components:
       name: panel_token
       in: query
       required: false
-      description: 面板 token（實驗 tab 認證啟用後，受保護寫操作必填；未啟用可省略。受保護 endpoint 另收 token 別名，見 PanelAuth。）
+      description: 面板 token query fallback（只給設不到 header 的 `<img>`／WebSocket 用；/api／upload
+        請行 Bearer header，見 securitySchemes。舊 token 別名已移除，見 PanelAuth。）
       schema:
         type: string
         minLength: 8
@@ -6232,7 +6372,8 @@ components:
       name: current
       in: query
       required: false
-      description: 現有面板 token（auth/set 更改時、auth/clear 必填；首次設定免填）
+      description: 現有面板 token（auth/set 更改時、auth/clear 必填；首次設定免填。亦可用 Bearer header
+        代替，見 PanelAuth。）
       schema:
         type: string
         minLength: 8
@@ -6294,11 +6435,20 @@ components:
           type: string
           example: 'unknown endpoint: foo'
   securitySchemes:
-    none:
+    panelTokenBearer:
       type: http
       scheme: bearer
-      bearerFormat: none
-security: []
+      bearerFormat: panel_token
+      description: 面板 token 主傳遞（/api／upload 前端一律用此；401 附 WWW-Authenticate Bearer
+        realm panel。見 PanelAuth.java。）
+    panelTokenQuery:
+      type: apiKey
+      in: query
+      name: panel_token
+      description: 面板 token query fallback（只給設不到 header 的 `<img>`／WebSocket 用）。
+security:
+- panelTokenBearer: []
+- panelTokenQuery: []
 externalDocs:
   description: AIDL 完整參考 (17 interfaces, transaction id 驗證)
   url: ../docs/legacy-beta3/AIDL_REFERENCE_ALPHA2.md

@@ -623,6 +623,9 @@ public final class LedCenter {
     // 獨立於 pir/set 感應器硬件開關本身 - 預設關, 使用者要自己選開才會有 LED/聲反應,
     // 避免一開機就無啦啦閃紅燈/響鈴。
     private volatile boolean alpha2PirAlertEnabled = false;
+    // PIR 硬件開關自記態（胸口讀唔返，只能記最後一次設定；預設開——
+    // 同警示開關唔同，感應器本身出廠多數係開住，toggle 熄咗先會停事件）。
+    private volatile boolean pirEnabled = true;
 
     /** 由 pir/alert_enabled endpoint (pirAlertEnabledResponse) 轉調。 */
     public void setPirAlertEnabled(boolean enabled) {
@@ -715,7 +718,22 @@ public final class LedCenter {
     public HttpServer.ApiResponse pirSetResponse(Map<String, String> query) {
         boolean enabled = ApiValidator.requireBoolean(query, "on");
         boolean sent = HardwareDirectManager.get(appContext).chest().setPirEnabled(enabled);
+        if (sent) pirEnabled = enabled;
         return MainActivity.sentReadyResponse(sent, directChestReady());
+    }
+
+    /** 映射共用：PIR 硬件單鍵 toggle（讀自記態，見 pirEnabled）。
+     *  回 true＝已送達（taken 照實）；送唔出即態不變。 */
+    public synchronized boolean togglePir() {
+        boolean next = !pirEnabled;
+        boolean sent = false;
+        try {
+            sent = HardwareDirectManager.get(appContext).chest().setPirEnabled(next);
+        } catch (Throwable t) {
+            sent = false;
+        }
+        if (sent) pirEnabled = next;
+        return sent;
     }
 
     /** 獨立於 pir/set 這個感應器硬件開關本身, 純粹控制

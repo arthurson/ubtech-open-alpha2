@@ -465,6 +465,71 @@ function setRecordingLed(on) {
   }
 }
 
+// ---------------- Camera: 機端錄影 mp4 ----------------
+// 同上面瀏覽器 toggleRecording 唔同：呢個係機器人本機經 MediaRecorder 錄影，
+// 檔存 /sdcard/DCIM/Alpha2（相簿即見），經手柄映射 video_toggle 都撳到。
+// 錄緊嗰陣拍照／改解像度後端會拒（保編碼器），MJPEG 訂閱者會因無新幀超時自斷。
+let robotVideoRecording = false;
+
+function robotVideoSyncFab() {
+  const fab = document.getElementById("robotVideoFab");
+  if (fab) fab.classList.toggle("recording", robotVideoRecording);
+}
+
+function robotVideoHintDone(json) {
+  if (!json || !json.ok) return "";
+  const secs = Math.round((json.durationMs || 0) / 1000);
+  return "機錄完成 ✓ " + (json.path || "") + "（" + secs + "s，"
+    + (json.hasAudio ? "有聲" : "無聲") + "）";
+}
+
+async function robotVideoRefreshStatus() {
+  try {
+    const json = await Alpha2Api.cameraVideoStatus();
+    if (json && json.ok) {
+      robotVideoRecording = !!json.recording;
+      robotVideoSyncFab();
+      const hint = document.getElementById("cameraStatusHint");
+      if (hint) {
+        if (robotVideoRecording) {
+          hint.textContent = "機錄影中…" + (json.hasAudio ? "（有聲）" : "（無聲）");
+        } else if (json.lastPath) {
+          const secs = Math.round((json.lastDurationMs || 0) / 1000);
+          hint.textContent = "機錄上次：" + json.lastPath + "（" + secs + "s，"
+            + (json.lastHasAudio ? "有聲" : "無聲") + "）";
+        }
+      }
+    }
+  } catch (e) { /* ignore：狀態讀唔到唔騷擾 */ }
+}
+
+async function robotVideoToggle() {
+  const hint = document.getElementById("cameraStatusHint");
+  try {
+    if (robotVideoRecording) {
+      const json = await Alpha2Api.cameraVideoStop();
+      if (json && json.ok) {
+        robotVideoRecording = false;
+        robotVideoSyncFab();
+        if (hint) hint.textContent = robotVideoHintDone(json);
+      } else if (hint) {
+        hint.textContent = "機錄停止失敗：" + ((json && json.error) || "未知錯誤");
+      }
+    } else {
+      const json = await Alpha2Api.cameraVideoStart({});
+      if (json && json.ok && json.recording) {
+        robotVideoRecording = true;
+        robotVideoSyncFab();
+        if (hint) hint.textContent = "機錄影中…" + (json.hasAudio ? "（有聲）" : "（無聲）");
+      } else if (hint) {
+        hint.textContent = "機錄開始失敗：" + ((json && json.error) || "未知錯誤");
+      }
+    }
+  } catch (e) {
+    if (hint) hint.textContent = "機錄影失敗：" + e.message;
+  }
+}
+
 // ---------------- Camera crosshair: drag-to-aim head control (servo 19 pan / 20 tilt) ----
 //
 // The crosshair mark's position within the viewport maps linearly to the servo 19/20
@@ -776,7 +841,13 @@ function connectCameraStream() {
   }
   // 每次重建串流都需重套當前變焦（新 <img> 無舊 transform）
   try { applyCameraZoomCss(cameraZoom); } catch(e){}
-  img.src = "/stream/camera?t=" + Date.now();
+  // 面板 token：<img> 設不到 header，鎖機時用 ?panel_token= query fallback（見 PanelAuth）。
+  let camUrl = "/stream/camera?t=" + Date.now();
+  try {
+    const pt = (typeof panelTokenGet === "function") ? panelTokenGet() : "";
+    if (pt) camUrl += "&panel_token=" + encodeURIComponent(pt);
+  } catch (ign) {}
+  img.src = camUrl;
 }
 
 // DOMContentLoaded 單次初始化變焦與搖桿回中（不依賴 app-log.js 順序，自身亦可獨立起）

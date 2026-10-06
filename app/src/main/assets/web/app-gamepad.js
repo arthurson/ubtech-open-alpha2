@@ -42,10 +42,19 @@ var GAMEPAD_KB_GROUPS = [
 // 動作種類（servo 軸＋方向另有下拉拼出 servo<N>±；music 揀功能（含音量＋-）；
 // ring 揀鈴聲（系統預設電話鈴＋鈴聲名）；led 揀部位＋效果＋色；camera 揀影相／追蹤；
 // action 由動作下拉選）。
-var GAMEPAD_KINDS = ["none", "stop", "servo", "music", "ring", "led", "camera", "action"];
+var GAMEPAD_KINDS = ["none", "stop", "servo", "music", "ring", "led", "camera", "sensor", "action"];
+var GAMEPAD_KIND_KEYS = { none: "gamepad_kind_none", stop: "gamepad_kind_stop",
+  servo: "gamepad_kind_servo", music: "gamepad_kind_music", ring: "gamepad_kind_ring",
+  led: "gamepad_kind_led", camera: "gamepad_kind_camera", sensor: "gamepad_kind_sensor",
+  action: "gamepad_kind_action" };
 
-// 相機／追蹤（同後端 isCameraAction 對齊；錄影後端無，唔收）。
-var GAMEPAD_CAMERA_FNS = ["camera_photo", "face_start", "face_stop", "color_start", "color_stop"];
+// 相機（同後端 isCameraAction 對齊；追蹤開／停已合併，face_start／color_start 即 toggle）。
+var GAMEPAD_CAMERA_FNS = ["camera_photo", "face_start", "color_start", "video_toggle"];
+
+// 傳感器 toggle（同後端 isSensorAction 對齊；全部單鍵開關）。
+var GAMEPAD_SENSOR_FNS = ["sonar_toggle", "pir_toggle", "accel_toggle"];
+var GAMEPAD_SENSOR_FN_KEYS = { sonar_toggle: "gamepad_sen_sonar", pir_toggle: "gamepad_sen_pir",
+  accel_toggle: "gamepad_sen_accel" };
 
 // 頭／眼 LED 部位＋效果＋色（同後端 isLedAction 對齊；眼無 breathe；色 1紅2綠3藍4黃5紫6青7白）。
 var GAMEPAD_LED_PARTS = ["head", "eye"];
@@ -53,21 +62,28 @@ var GAMEPAD_LED_PRESETS = {
   head: ["long", "flash", "breathe", "chase", "dual", "stop"],
   eye: ["long", "flash", "chase", "dual", "stop"]
 };
-var GAMEPAD_LED_COLORS = [["1", "1紅"], ["2", "2綠"], ["3", "3藍"], ["4", "4黃"],
-  ["5", "5紫"], ["6", "6青"], ["7", "7白"]];
+var GAMEPAD_LED_COLOR_KEYS = [["1", "color_name_red"], ["2", "color_name_green"],
+  ["3", "color_name_blue"], ["4", "color_name_yellow"], ["5", "color_name_purple"],
+  ["6", "color_name_cyan"], ["7", "color_name_white"]];
 
-// 音樂／音量功能（同後端 MUSIC_ACTIONS＋vol_up／vol_down 對齊；toggle＝播緊停／
-// 停緊續／無歌播首首；random＝隨機一首）。
+// 音樂／音量／電台／燈效功能（同後端 MUSIC_ACTIONS＋vol_up／vol_down 對齊；toggle＝播緊停／
+// 停緊續／無歌播首首；random＝隨機一首；radio_toggle＝停／重播上次電台；
+// disco_toggle＝節奏燈開關；filler_toggle＝播歌隨機動作開關）。
 var GAMEPAD_MUSIC_FNS = ["music_play", "music_next", "music_prev", "music_pause", "music_resume",
-  "music_toggle", "music_stop", "music_random", "vol_up", "vol_down"];
+  "music_toggle", "music_stop", "music_random", "radio_toggle", "disco_toggle", "filler_toggle",
+  "vol_up", "vol_down"];
+var GAMEPAD_MUSIC_FN_KEYS = { music_play: "gamepad_mfn_play", music_next: "gamepad_mfn_next",
+  music_prev: "gamepad_mfn_prev", music_pause: "gamepad_mfn_pause", music_resume: "gamepad_mfn_resume",
+  music_toggle: "gamepad_mfn_toggle", music_stop: "gamepad_mfn_stop", music_random: "gamepad_mfn_random",
+  radio_toggle: "gamepad_mfn_radio", disco_toggle: "gamepad_mfn_disco", filler_toggle: "gamepad_mfn_filler",
+  vol_up: "gamepad_mfn_volup", vol_down: "gamepad_mfn_voldn" };
 
 // 動作 5 大類（sub→類映射；細 sub 名唔再逐個列）。
 // basic＝基本（移動／手勢／頭部），dance＝舞蹈，story＝寓言故事，
 // yoga＝瑜伽（站立平衡／伸展／踢腿動態），others＝其餘＋未分類。
 var GAMEPAD_ACTION_KINDS5 = ["basic", "dance", "story", "yoga", "others"];
-var GAMEPAD_ACTION_KIND_NAMES = {
-  basic: "基本", dance: "舞蹈", story: "故事", yoga: "瑜伽", others: "其他"
-};
+var GAMEPAD_ACTION_KIND_KEYS = { basic: "gamepad_act_basic", dance: "gamepad_act_dance",
+  story: "gamepad_act_story", yoga: "gamepad_act_yoga", others: "gamepad_act_others" };
 var GAMEPAD_ACTION_SUB2KIND = {
   "移動類": "basic", "手勢類": "basic", "頭部類": "basic",
   "兒童歌曲 / 卡通舞蹈": "dance", "流行 / 節奏舞蹈": "dance", "品牌 / 客製舞蹈": "dance",
@@ -353,8 +369,8 @@ var __gpActionsCache = null;
 var __gpActionCatCache = null;
 
 function gamepadActionDisplayName(a) {
-  var nm = (uiLang === "en" ? (a.nameEn || a.nameCn) : (a.nameCn || a.nameEn)) || a.id;
-  return nm + " (" + a.id + ")";
+  // 淨顯中／英文名，數字 id（14xxxxx／15xxxxx）唔顯示；存值照用 id，唔影響。
+  return (uiLang === "en" ? (a.nameEn || a.nameCn) : (a.nameCn || a.nameEn)) || a.id;
 }
 
 function gamepadLoadActions() {
@@ -404,7 +420,7 @@ function gamepadActionGroupOf(id) {
 function gamepadParseValue(v) {
   var out = { kind: "none", servoId: 20, servoDir: "+", musicFn: "music_play",
     ringSel: "ring_phone", ledPart: "head", ledPreset: "flash", ledColor: "1",
-    ledSpeed: "500", cameraFn: "camera_photo", actionId: "" };
+    ledSpeed: "500", cameraFn: "camera_photo", sensorFn: "sonar_toggle", actionId: "" };
   if (!v) return out;
   if (v === "none" || v === "stop") {
     out.kind = v;
@@ -415,12 +431,18 @@ function gamepadParseValue(v) {
     out.cameraFn = v;
     return out;
   }
-  if (v === "ring_phone" || v === "ring_stop" || v.indexOf("ring:") === 0) {
+  if (GAMEPAD_SENSOR_FNS.indexOf(v) !== -1) {
+    out.kind = "sensor";
+    out.sensorFn = v;
+    return out;
+  }
+  if (v === "ring_phone" || v === "ring_stop" || v === "ring_random" || v.indexOf("ring:") === 0) {
     out.kind = "ring";
     out.ringSel = v;
     return out;
   }
   if (v === "head:stop" || v === "eye:stop" || v === "mouth:off"
+      || v === "head:random" || v === "eye:random"
       || v.match(/^(head|eye):[a-z]+:[1-7]$/) || v.match(/^mouth:breathing:\d+$/)) {
     out.kind = "led";
     var lp = v.split(":");
@@ -450,46 +472,108 @@ function gamepadParseValue(v) {
   return out;
 }
 
-// 建舵機軸下拉（1-20）＋方向下拉（id 按邊分名前綴，兩區同名鍵唔撞）。
+// 建舵機單一下拉（#1+／#1-／#2+…#20- 共 40 格；id 按邊分名前綴，兩區同名鍵唔撞）。
 function gamepadBuildServoControls(side, k, parsed) {
   var wrap = document.createElement("span");
   wrap.id = "gpServoWrap_" + side + "_" + k;
   wrap.style.display = parsed.kind === "servo" ? "inline" : "none";
-  var axis = document.createElement("select");
-  axis.id = "gpServoAxis_" + side + "_" + k;
+  var sel = document.createElement("select");
+  sel.id = "gpServo_" + side + "_" + k;
+  var cur = "servo" + parsed.servoId + parsed.servoDir;
   for (var i = 1; i <= 20; i++) {
-    var o = document.createElement("option");
-    o.value = String(i);
-    o.textContent = "#" + i;
-    if (i === parsed.servoId) o.selected = true;
-    axis.appendChild(o);
+    ["+", "-"].forEach(function (d) {
+      var o = document.createElement("option");
+      o.value = "servo" + i + d;
+      o.textContent = "#" + i + d;
+      if (o.value === cur) o.selected = true;
+      sel.appendChild(o);
+    });
   }
-  var dir = document.createElement("select");
-  dir.id = "gpServoDir_" + side + "_" + k;
-  ["+", "-"].forEach(function (d) {
-    var o2 = document.createElement("option");
-    o2.value = d;
-    o2.textContent = d;
-    if (d === parsed.servoDir) o2.selected = true;
-    dir.appendChild(o2);
-  });
-  wrap.appendChild(axis);
-  wrap.appendChild(dir);
+  wrap.appendChild(sel);
   return wrap;
 }
 
-// 建 202 動作下拉（optgroup 分組；數據未到先放空，load 完補）。
+// 動作所屬大類（同 action tab 同一規則：按動作本身 type 分；緩存未到先用分類表 sub 頂住）。
+function gamepadActionKindOf(id) {
+  var acts = __gpActionsCache || [];
+  for (var i = 0; i < acts.length; i++) {
+    if (acts[i] && acts[i].id === id && typeof categoryOf === "function") {
+      return categoryOf(acts[i].type);
+    }
+  }
+  var sub = gamepadActionGroupOf(id);
+  return GAMEPAD_ACTION_SUB2KIND[sub] || "others";
+}
+
+// 建 202 動作級聯下拉（先大類、再入面動作；數據未到先得提示，load 完補）。
 function gamepadBuildActionSelect(side, k, parsed) {
+  var pfx = side + "_";
+  var wrap = document.createElement("span");
+  wrap.id = "gpActionWrap_" + pfx + k;
+  wrap.style.display = parsed.kind === "action" ? "inline" : "none";
+  var kindSel = document.createElement("select");
+  kindSel.id = "gpActionKind_" + pfx + k;
+  GAMEPAD_ACTION_KINDS5.forEach(function (g) {
+    var ko = document.createElement("option");
+    ko.value = g;
+    ko.textContent = t(GAMEPAD_ACTION_KIND_KEYS[g] || g);
+    kindSel.appendChild(ko);
+  });
   var sel = document.createElement("select");
-  sel.id = "gpActionSel_" + side + "_" + k;
+  sel.id = "gpActionSel_" + pfx + k;
   sel.style.maxWidth = "220px";
-  sel.style.display = parsed.kind === "action" ? "inline" : "none";
+  wrap.appendChild(kindSel);
+  wrap.appendChild(sel);
+  kindSel.onchange = (function (s, kk) {
+    return function () {
+      gamepadFillActionRow(s, kk, this.value, "");
+    };
+  })(side, k);
+  gamepadFillActionSelectEl(kindSel, sel, null, parsed.actionId);
+  return wrap;
+}
+
+// 填某行個動作下拉（cat 空即按現值自動判定大類；curId 唔喺類入面即補 (?) 粒）。
+function gamepadFillActionRow(side, k, cat, curId) {
+  var pfx = side + "_";
+  gamepadFillActionSelectEl(
+    document.getElementById("gpActionKind_" + pfx + k),
+    document.getElementById("gpActionSel_" + pfx + k), cat, curId);
+}
+
+// element 版（build 嗰陣未入 DOM，唔用 getElementById）。
+function gamepadFillActionSelectEl(kindSel, sel, cat, curId) {
+  if (!sel) return;
+  if (!cat) cat = (curId ? gamepadActionKindOf(curId) : GAMEPAD_ACTION_KINDS5[0]);
+  if (kindSel) kindSel.value = cat;
+  sel.innerHTML = "";
   var ph = document.createElement("option");
   ph.value = "";
   ph.textContent = "— " + t("gamepad_pick_action") + " —";
   sel.appendChild(ph);
-  gamepadFillActionSelect(sel, parsed.actionId);
-  return sel;
+  var acts = __gpActionsCache || [];
+  acts.forEach(function (a) {
+    if (gamepadActionKindOf(a.id) !== cat) return;
+    var o = document.createElement("option");
+    o.value = a.id;
+    o.textContent = gamepadActionDisplayName(a);
+    if (a.id === curId) o.selected = true;
+    sel.appendChild(o);
+  });
+  // 現值唔喺清單（刪咗的動作）：補一粒等用家睇到。
+  if (curId) {
+    var found = false;
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === curId) { found = true; break; }
+    }
+    if (!found) {
+      var miss = document.createElement("option");
+      miss.value = curId;
+      miss.textContent = curId + " (?)";
+      miss.selected = true;
+      sel.appendChild(miss);
+    }
+  }
 }
 
 // 鈴聲名緩存（audio/ringtones/list 活數據；同 action 清單一樣懶載）。
@@ -518,11 +602,11 @@ function gamepadBuildRingSelect(side, k, parsed) {
   sel.id = "gpRingSel_" + side + "_" + k;
   sel.style.maxWidth = "200px";
   sel.style.display = parsed.kind === "ring" ? "inline" : "none";
-  var fixed = [["ring_phone", "電話鈴聲"], ["ring_stop", "停鈴聲"]];
+  var fixed = [["ring_phone", "gamepad_ring_phone"], ["ring_stop", "gamepad_ring_stop"], ["ring_random", "gamepad_ring_random"]];
   fixed.forEach(function (f) {
     var o = document.createElement("option");
     o.value = f[0];
-    o.textContent = f[1];
+    o.textContent = t(f[1]);
     if (parsed.ringSel === f[0]) o.selected = true;
     sel.appendChild(o);
   });
@@ -567,16 +651,36 @@ function gamepadFillRingSelect(sel, cur) {
 }
 
 // 建 LED 三下拉（部位＋效果＋色；效果跟部位變，色 1紅2綠3藍4黃5紫6青7白）。
+// LED 色下拉（dual 照 LED tab 同一套：3=藍綠／4=紅綠／5=紅藍，其他 code 出嚟都係藍綠
+// 唔擺出嚟，見 app-led.js DUAL_COLORS；現值唔啱位即歸第一粒）。
+function gamepadFillLedColors(colorSel, dual, curVal) {
+  if (!colorSel) return;
+  colorSel.innerHTML = "";
+  var list = dual ? [["3", "gamepad_dual_bg"], ["4", "gamepad_dual_rg"], ["5", "gamepad_dual_rb"]]
+    : GAMEPAD_LED_COLOR_KEYS;
+  var want = String(curVal != null ? curVal : "1");
+  var hasWant = false;
+  list.forEach(function (c) { if (c[0] === want) hasWant = true; });
+  if (!hasWant) want = list[0][0];
+  list.forEach(function (c) {
+    var o = document.createElement("option");
+    o.value = c[0];
+    o.textContent = t(c[1]);
+    if (c[0] === want) o.selected = true;
+    colorSel.appendChild(o);
+  });
+}
+
 function gamepadBuildLedControls(side, k, parsed) {
   var wrap = document.createElement("span");
   wrap.id = "gpLedWrap_" + side + "_" + k;
   wrap.style.display = parsed.kind === "led" ? "inline" : "none";
   var part = document.createElement("select");
   part.id = "gpLedPart_" + side + "_" + k;
-  [["head", "頭"], ["eye", "眼"], ["mouth", "咀"]].forEach(function (p) {
+  [["head", "gamepad_led_head"], ["eye", "gamepad_led_eye"], ["mouth", "gamepad_led_mouth"]].forEach(function (p) {
     var o = document.createElement("option");
     o.value = p[0];
-    o.textContent = p[1];
+    o.textContent = t(p[1]);
     if (p[0] === parsed.ledPart) o.selected = true;
     part.appendChild(o);
   });
@@ -584,13 +688,7 @@ function gamepadBuildLedControls(side, k, parsed) {
   preset.id = "gpLedPreset_" + side + "_" + k;
   var color = document.createElement("select");
   color.id = "gpLedColor_" + side + "_" + k;
-  GAMEPAD_LED_COLORS.forEach(function (c) {
-    var o2 = document.createElement("option");
-    o2.value = c[0];
-    o2.textContent = c[1];
-    if (c[0] === parsed.ledColor) o2.selected = true;
-    color.appendChild(o2);
-  });
+  gamepadFillLedColors(color, false, parsed.ledColor);
   // 咀速（breathing 先用，100-1000ms，後端同驗）。
   var speed = document.createElement("input");
   speed.id = "gpLedSpeed_" + side + "_" + k;
@@ -603,16 +701,16 @@ function gamepadBuildLedControls(side, k, parsed) {
   speed.style.display = "none";
   var refill = function () {
     var isMouth = part.value === "mouth";
-    var list = isMouth ? ["breathing", "off"]
+    var list = isMouth ? [["breathing", "gamepad_led_breathing"], ["off", "gamepad_led_off"]]
       : (part.value === "eye"
-        ? ["long", "flash", "chase", "dual", "stop"]
-        : ["long", "flash", "breathe", "chase", "dual", "stop"]);
+        ? [["long", "gamepad_led_long"], ["flash", "gamepad_led_flash"], ["chase", "gamepad_led_chase"], ["dual", "gamepad_led_dual"], ["stop", "gamepad_led_stop"], ["random", "gamepad_led_random"]]
+        : [["long", "gamepad_led_long"], ["flash", "gamepad_led_flash"], ["breathe", "gamepad_led_breathe"], ["chase", "gamepad_led_chase"], ["dual", "gamepad_led_dual"], ["stop", "gamepad_led_stop"], ["random", "gamepad_led_random"]]);
     preset.innerHTML = "";
     list.forEach(function (p) {
       var o3 = document.createElement("option");
-      o3.value = p;
-      o3.textContent = p;
-      if (p === parsed.ledPreset) o3.selected = true;
+      o3.value = p[0];
+      o3.textContent = t(p[1]);
+      if (p[0] === parsed.ledPreset) o3.selected = true;
       preset.appendChild(o3);
     });
     syncLedExtras();
@@ -620,8 +718,11 @@ function gamepadBuildLedControls(side, k, parsed) {
   var syncLedExtras = function () {
     var isMouth = part.value === "mouth";
     var stopping = (!isMouth && preset.value === "stop") || (isMouth && preset.value === "off");
-    // 頭眼 stop 唔使色；咀 breathing 先使速，off 乜都唔使。
-    color.style.display = (!isMouth && !stopping) ? "inline" : "none";
+    var noColor = stopping || (!isMouth && preset.value === "random");
+    // dual 換 3 對色單，其餘換返 7 色（現值保留，唔啱位先歸一）。
+    gamepadFillLedColors(color, !isMouth && preset.value === "dual", color.value);
+    // 頭眼 stop／random 唔使色；咀 breathing 先使速，off 乜都唔使。
+    color.style.display = (!isMouth && !noColor) ? "inline" : "none";
     speed.style.display = (isMouth && preset.value === "breathing") ? "inline" : "none";
   };
   part.onchange = refill;
@@ -634,46 +735,6 @@ function gamepadBuildLedControls(side, k, parsed) {
   return wrap;
 }
 
-function gamepadFillActionSelect(sel, curId) {
-  var acts = __gpActionsCache || [];
-  if (!acts.length) return;
-  var byGroup = {};
-  acts.forEach(function (a) {
-    var sub = gamepadActionGroupOf(a.id);
-    var g = GAMEPAD_ACTION_SUB2KIND[sub] || "others";
-    (byGroup[g] = byGroup[g] || []).push(a);
-  });
-  GAMEPAD_ACTION_KINDS5.forEach(function (g) {
-    var list = byGroup[g];
-    if (!list || !list.length) return;
-    var og = document.createElement("optgroup");
-    og.label = GAMEPAD_ACTION_KIND_NAMES[g] || g;
-    list.forEach(function (a) {
-      var o = document.createElement("option");
-      o.value = a.id;
-      o.textContent = gamepadActionDisplayName(a);
-      if (a.id === curId) o.selected = true;
-      og.appendChild(o);
-    });
-    sel.appendChild(og);
-  });
-  // 現值唔喺清單（刪咗的動作）：補一粒等用家睇到。
-  if (curId) {
-    var found = false;
-    for (var i = 0; i < sel.options.length; i++) {
-      if (sel.options[i].value === curId) { found = true; break; }
-    }
-    if (!found) {
-      var miss = document.createElement("option");
-      miss.value = curId;
-      miss.textContent = curId + " (?)";
-      miss.selected = true;
-      sel.appendChild(miss);
-    }
-  }
-}
-
-// 兩邊緩存（status mapping.pad／kb；舊扁平包兼容當 pad）。
 function gamepadCacheSide(side, map) {
   var key = side === "kb" ? "__gpKbCache" : "__gpPadCache";
   try { window[key] = JSON.parse(JSON.stringify(map)); } catch (e) { window[key] = map; }
@@ -730,8 +791,8 @@ function gamepadRenderMapping(mapping) {
       for (var i = 0; i < sels.length; i++) {
         var k = sels[i].id.substring(("gpActionSel_" + side + "_").length);
         var cur = gamepadParseValue((side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k] || "none");
-        // 已有 options（畫嗰陣已有數據）即跳過。
-        if (sels[i].options.length <= 1) gamepadFillActionSelect(sels[i], cur.actionId);
+        // 得提示一粒（畫嗰陣數據未到）先補；多過一粒即已有嘢（用家啱揀緊都唔郁）。
+        if (sels[i].options.length <= 1) gamepadFillActionRow(side, k, null, cur.actionId);
       }
     });
   });
@@ -743,7 +804,7 @@ function gamepadRenderMapping(mapping) {
       for (var j = 0; j < rsels.length; j++) {
         var k2 = rsels[j].id.substring(("gpRingSel_" + side + "_").length);
         var cur2 = gamepadParseValue((side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k2] || "none");
-        if (rsels[j].options.length <= 2) gamepadFillRingSelect(rsels[j], cur2.ringSel);
+        if (rsels[j].options.length <= 3) gamepadFillRingSelect(rsels[j], cur2.ringSel);
       }
     });
   });
@@ -780,9 +841,7 @@ function gamepadRenderSideGrid(side, groups, map) {
       GAMEPAD_KINDS.forEach(function (c) {
         var opt = document.createElement("option");
         opt.value = c;
-        opt.textContent = c === "action" ? "action:…" : (c === "servo" ? "servo#±"
-          : (c === "music" ? "music♪" : (c === "ring" ? "ring🔔"
-          : (c === "led" ? "led💡" : (c === "camera" ? "camera📷" : c)))));
+        opt.textContent = t(GAMEPAD_KIND_KEYS[c] || c);
         if (c === parsed.kind) opt.selected = true;
         kind.appendChild(opt);
       });
@@ -790,17 +849,19 @@ function gamepadRenderSideGrid(side, groups, map) {
         return function () {
           var v = document.getElementById("gpSel_" + pfx + kk).value;
           var sw = document.getElementById("gpServoWrap_" + pfx + kk);
-          var as = document.getElementById("gpActionSel_" + pfx + kk);
+          var aw = document.getElementById("gpActionWrap_" + pfx + kk);
           var mu = document.getElementById("gpMusicSel_" + pfx + kk);
           var rg = document.getElementById("gpRingSel_" + pfx + kk);
           var lw = document.getElementById("gpLedWrap_" + pfx + kk);
           var cm = document.getElementById("gpCameraSel_" + pfx + kk);
+          var sn = document.getElementById("gpSensorSel_" + pfx + kk);
           if (sw) sw.style.display = v === "servo" ? "inline" : "none";
-          if (as) as.style.display = v === "action" ? "inline" : "none";
+          if (aw) aw.style.display = v === "action" ? "inline" : "none";
           if (mu) mu.style.display = v === "music" ? "inline" : "none";
           if (rg) rg.style.display = v === "ring" ? "inline" : "none";
           if (lw) lw.style.display = v === "led" ? "inline" : "none";
           if (cm) cm.style.display = v === "camera" ? "inline" : "none";
+          if (sn) sn.style.display = v === "sensor" ? "inline" : "none";
         };
       })(k);
       var servoWrap = gamepadBuildServoControls(side, k, parsed);
@@ -810,24 +871,33 @@ function gamepadRenderSideGrid(side, groups, map) {
       GAMEPAD_MUSIC_FNS.forEach(function (f) {
         var o = document.createElement("option");
         o.value = f;
-        // music_ 去頭顯功能名；vol_up/vol_down 原樣（音量＋/−）。
-        o.textContent = (f.indexOf("music_") === 0) ? f.substring(6) : f;
+        o.textContent = t(GAMEPAD_MUSIC_FN_KEYS[f] || f);
         if (f === parsed.musicFn) o.selected = true;
         musicSel.appendChild(o);
       });
-      var actionSel = gamepadBuildActionSelect(side, k, parsed);
+      var actionWrap = gamepadBuildActionSelect(side, k, parsed);
       var ringSel = gamepadBuildRingSelect(side, k, parsed);
       var ledWrap = gamepadBuildLedControls(side, k, parsed);
       var cameraSel = document.createElement("select");
       cameraSel.id = "gpCameraSel_" + pfx + k;
       cameraSel.style.display = parsed.kind === "camera" ? "inline" : "none";
-      [["camera_photo", "影相"], ["face_start", "人臉追開"], ["face_stop", "人臉追停"],
-       ["color_start", "顏色追開"], ["color_stop", "顏色追停"]].forEach(function (f) {
+      [["camera_photo", "gamepad_cam_photo"], ["face_start", "gamepad_cam_face"],
+       ["color_start", "gamepad_cam_color"], ["video_toggle", "gamepad_cam_video"]].forEach(function (f) {
         var o = document.createElement("option");
         o.value = f[0];
-        o.textContent = f[1];
+        o.textContent = t(f[1]);
         if (f[0] === parsed.cameraFn) o.selected = true;
         cameraSel.appendChild(o);
+      });
+      var sensorSel = document.createElement("select");
+      sensorSel.id = "gpSensorSel_" + pfx + k;
+      sensorSel.style.display = parsed.kind === "sensor" ? "inline" : "none";
+      GAMEPAD_SENSOR_FNS.forEach(function (f) {
+        var o = document.createElement("option");
+        o.value = f;
+        o.textContent = t(GAMEPAD_SENSOR_FN_KEYS[f] || f);
+        if (f === parsed.sensorFn) o.selected = true;
+        sensorSel.appendChild(o);
       });
       row.appendChild(label);
       row.appendChild(kind);
@@ -836,7 +906,8 @@ function gamepadRenderSideGrid(side, groups, map) {
       row.appendChild(ringSel);
       row.appendChild(ledWrap);
       row.appendChild(cameraSel);
-      row.appendChild(actionSel);
+      row.appendChild(sensorSel);
+      row.appendChild(actionWrap);
       wrap.appendChild(row);
     });
   });
@@ -849,9 +920,8 @@ function gamepadReadRowValue(side, k) {
   if (!kindEl) return null;
   var kind = kindEl.value;
   if (kind === "servo") {
-    var ax = document.getElementById("gpServoAxis_" + pfx + k);
-    var dr = document.getElementById("gpServoDir_" + pfx + k);
-    return "servo" + (ax ? ax.value : "20") + (dr ? dr.value : "+");
+    var sv = document.getElementById("gpServo_" + pfx + k);
+    return (sv && sv.value) ? sv.value : "servo20+";
   }
   if (kind === "music") {
     var mu = document.getElementById("gpMusicSel_" + pfx + k);
@@ -860,6 +930,10 @@ function gamepadReadRowValue(side, k) {
   if (kind === "camera") {
     var cm = document.getElementById("gpCameraSel_" + pfx + k);
     return (cm && cm.value) ? cm.value : "camera_photo";
+  }
+  if (kind === "sensor") {
+    var sn = document.getElementById("gpSensorSel_" + pfx + k);
+    return (sn && sn.value) ? sn.value : "sonar_toggle";
   }
   if (kind === "ring") {
     var rg = document.getElementById("gpRingSel_" + pfx + k);
@@ -881,6 +955,7 @@ function gamepadReadRowValue(side, k) {
       return "mouth:breathing:" + speed;
     }
     if (preset === "stop") return part + ":stop";
+    if (preset === "random") return part + ":random";
     var color = co ? co.value : "1";
     return part + ":" + preset + ":" + color;
   }

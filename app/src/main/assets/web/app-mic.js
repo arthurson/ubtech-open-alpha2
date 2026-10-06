@@ -170,7 +170,10 @@ function setListenLed(on) {
 async function runMicStreamLoop(signal) {
   const boundaryMarker = "--opensdktestpanelaudio";
   try {
-    const resp = await fetch("/stream/mic?t=" + Date.now(), { signal: signal });
+    // 面板 token 鎖機時要驗（Bearer header；見 PanelAuth。fetch 設到 header，
+    // 唔使用 query，唔入 URL／log）。
+    const micHdrs = (typeof panelAuthHeaders === "function") ? panelAuthHeaders() : {};
+    const resp = await fetch("/stream/mic?t=" + Date.now(), { signal: signal, headers: micHdrs });
     if (!resp.ok || !resp.body) {
       throw new Error("stream request failed: " + resp.status);
     }

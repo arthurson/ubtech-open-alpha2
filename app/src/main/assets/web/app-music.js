@@ -1006,12 +1006,13 @@ function musicUploadFiles(fileList) {
       statusEl.textContent = t("music_upload_uploading") + " (" + index + "/" + files.length + ") " + file.name;
     }
     clearError();
-    // 面板 token：啟用中 /upload/music 要驗 panel_token（見 PanelAuth，整個面板上鎖），
-    // 同 api() 系列一樣由 localStorage 拿（withPanelToken，全局，見 app-core.js）。
-    const q = (typeof withPanelToken === "function") ? withPanelToken({ name: file.name }) : { name: file.name };
-    fetch("/upload/music?" + new URLSearchParams(q).toString(), {
+    // 面板 token：啟用中 /upload/music 要驗（Bearer header 主，見 PanelAuth；同 api() 系列一樣
+    // 由 localStorage 拿，panelAuthHeaders 全局，見 app-core.js）。
+    const hdrs = (typeof panelAuthHeaders === "function") ? panelAuthHeaders() : {};
+    fetch("/upload/music?" + new URLSearchParams({ name: file.name }).toString(), {
       method: "POST",
       body: file,
+      headers: hdrs,
     }).then(function (res) {
       return res.json().catch(function () {
         return { ok: false, error: "invalid response (status " + res.status + ")" };

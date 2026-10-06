@@ -240,6 +240,21 @@ const Alpha2Api = (function() {
     return api('camera/take_photo_save', params);
   }
 
+  function cameraVideoStart(params) {
+    // 開始機端錄影 mp4（有聲優先，搶唔到咪自動轉純畫面）
+    return api('camera/video/start', params);
+  }
+
+  function cameraVideoStatus(params) {
+    // 查詢機端錄影狀態（錄緊回經過時間，閒置回上次成品）
+    return api('camera/video/status', params);
+  }
+
+  function cameraVideoStop(params) {
+    // 停止機端錄影（ finalize mp4 並回成品資訊）
+    return api('camera/video/stop', params);
+  }
+
   function cameraZoom(params) {
     if (params && params.zoom != null) assertRange(Number(params.zoom), 1.0, 5.0, 'zoom');
     // 設定或查詢相機數位變焦 x1-x5
@@ -890,12 +905,12 @@ const Alpha2Api = (function() {
   // ── stream ──────────────────────────────────────────────
   // ── system ──────────────────────────────────────────────
   function systemAuthClear(params) {
-    // 清除面板 token（停用認證；已啟用要 current 舊值）
+    // 清除面板 token（停用認證；已啟用要舊值證明）
     return sysApi('auth/clear', params);
   }
 
   function systemAuthSet(params) {
-    // 設定／更改面板 token（未啟用直接設；已啟用要 current 舊值）
+    // 設定／更改面板 token（未啟用直接設；已啟用要舊值證明）
     return sysApi('auth/set', params);
   }
 
@@ -1096,6 +1111,9 @@ const Alpha2Api = (function() {
     cameraSnapshotSave,
     cameraSupportedSizes,
     cameraTakePhotoSave,
+    cameraVideoStart,
+    cameraVideoStatus,
+    cameraVideoStop,
     cameraZoom,
     colorTrackConfig,
     colorTrackStart,

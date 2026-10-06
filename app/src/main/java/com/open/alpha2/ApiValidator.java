@@ -377,7 +377,7 @@ public final class ApiValidator {
     /** 實驗 tab 面板 token：8–64 字元 URL-safe（英數/-/_，見 PanelAuth）。 */
     public static void checkPanelTokenFormat(String token) {
         if (token == null) {
-            throw new IllegalArgumentException("missing required parameter: token");
+            throw new IllegalArgumentException("missing required parameter: token/panel_token");
         }
         String v = token.trim();
         if (v.length() < 8 || v.length() > 64 || !v.matches("[A-Za-z0-9\\-_]+")) {

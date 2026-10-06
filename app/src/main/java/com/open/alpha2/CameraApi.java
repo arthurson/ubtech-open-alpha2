@@ -18,6 +18,7 @@ public final class CameraApi {
     private final RingtoneCenter ringtoneCenter;
     private volatile FaceTrackCenter faceTrackCenter;
     private volatile ColorTrackCenter colorTrackCenter;
+    private volatile VideoCenter videoCenter;
 
     /** GamepadCenter 追蹤 toggle 共用：讀真態（唔經自記 flag，兩邊互斥都啱）。 */
     public boolean isFaceTrackRunning() {
@@ -94,6 +95,60 @@ public final class CameraApi {
         HttpServer.ApiResponse err = colorOrError();
         if (err != null) return err;
         return colorTrackCenter.config(query);
+    }
+
+    /** MainActivity 接線用：注入錄影中心（未注入時 camera/video/* 回清晰錯誤）。 */
+    public void setVideoCenter(VideoCenter center) {
+        this.videoCenter = center;
+    }
+
+    private HttpServer.ApiResponse videoOrError() {
+        if (videoCenter == null) {
+            return HttpServer.ApiResponse.error("video not initialised");
+        }
+        return null;
+    }
+
+    // -- 機端錄影 mp4（見 VideoCenter）：薄 delegate，不在這裡加 logic --
+    public HttpServer.ApiResponse videoStart(Map<String, String> query) {
+        HttpServer.ApiResponse err = videoOrError();
+        if (err != null) return err;
+        return videoCenter.start(query);
+    }
+
+    public HttpServer.ApiResponse videoStop() {
+        HttpServer.ApiResponse err = videoOrError();
+        if (err != null) return err;
+        return videoCenter.stop();
+    }
+
+    public HttpServer.ApiResponse videoStatus() {
+        HttpServer.ApiResponse err = videoOrError();
+        if (err != null) return err;
+        return videoCenter.status();
+    }
+
+    /** 錄影守衛共用：錄緊即真（拍照／改解像度調用方要先擋，否則打斷編碼器）。 */
+    public boolean isVideoRecording() {
+        try {
+            return videoCenter != null && videoCenter.isRecording();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** GamepadCenter 映射共用：錄影單鍵 toggle（錄緊即停，閒置即錄）。回 true＝已切換。 */
+    public boolean toggleVideoRecording() {
+        try {
+            if (videoCenter == null) return false;
+            HttpServer.ApiResponse resp = videoCenter.isRecording()
+                    ? videoCenter.stop()
+                    : videoCenter.start(new java.util.HashMap<String, String>());
+            return resp != null && resp.status == 200
+                    && resp.body != null && resp.body.contains("\"ok\":true");
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     // -- Android 內置人臉追蹤（見 FaceTrackCenter）：薄 delegate，不在這裡加 logic --
@@ -191,7 +246,12 @@ public final class CameraApi {
     // and returns whatever the most recent preview frame is, for callers that
     // want one still image rather than opening the stream. -----------------------
     public HttpServer.ApiResponse snapshot() {
+        if (isVideoRecording()) {
+            return HttpServer.ApiResponse.ok(
+                    "{\"ok\":false,\"error\":\"recording in progress, stop video first\"}");
+        }
         HttpServer.ApiResponse startErr = startCameraOrError();
+        if (startErr != null) return startErr;
         if (startErr != null) return startErr;
         settleCameraForSnapshot();
         CameraController.Frame frame = waitForFrame(cameraController, 3000);
@@ -206,6 +266,10 @@ public final class CameraApi {
     }
 
     public HttpServer.ApiResponse snapshotSave(Map<String, String> query) {
+        if (isVideoRecording()) {
+            return HttpServer.ApiResponse.ok(
+                    "{\"ok\":false,\"error\":\"recording in progress, stop video first\"}");
+        }
         // 齊 9 檔影相並存入 Android：可選 w/h，未提供則用當前 preview 解像度；存至 /sdcard/DCIM/Alpha2
         // 有給就要跟 spec 範圍驗。
         Integer wOpt = ApiValidator.optionalIntegerRange(query, "w", 1, 4208);
@@ -256,6 +320,10 @@ public final class CameraApi {
     }
 
     public HttpServer.ApiResponse takePhotoSave(Map<String, String> query) {
+        if (isVideoRecording()) {
+            return HttpServer.ApiResponse.ok(
+                    "{\"ok\":false,\"error\":\"recording in progress, stop video first\"}");
+        }
         // 真正單張拍攝（picture 尺寸，經 Camera.takePicture 完整 ISP），存入 Android
         // 若未指定，用最大 picture 尺寸 (見 openapi default w=4208 h=3120)。
         int reqW = ApiValidator.optionalIntRange(query, "w", 1, 4208, 4208);
@@ -368,6 +436,10 @@ public final class CameraApi {
     }
 
     public HttpServer.ApiResponse resolution(Map<String, String> query) {
+        if (isVideoRecording()) {
+            return HttpServer.ApiResponse.ok(
+                    "{\"ok\":false,\"error\":\"recording in progress, stop video first\"}");
+        }
         // 跟 spec（w 1-4208，h 1-3120）顯式驗。
         int w = ApiValidator.requireIntRange(query, "w", 1, 4208);
         int h = ApiValidator.requireIntRange(query, "h", 1, 3120);

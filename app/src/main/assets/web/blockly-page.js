@@ -20,11 +20,28 @@ function clearError() {
 window.addEventListener('error', function (e) { showError('JavaScript error', e.error || e.message); });
 window.addEventListener('unhandledrejection', function (e) { showError('Unhandled promise rejection', e.reason); });
 
-// 面板 token（見 PanelAuth.java＋app-core.js）：啟用後整個面板上鎖，Blockly
-// 頁都要帶 token。key 同 index.html 共用（localStorage "panel_token"，同一個
-// browser＋同一個面板地址跨 tab 共用），在實驗 tab 解鎖一次，這頁即用到。
+// 面板 token（見 PanelAuth.java＋app-core.js）：啟用後整個面板上鎖（/api＋upload＋stream＋ws
+// 都要驗）。key 同 index.html 共用（localStorage "panel_token"，同一個 browser＋同一個
+// 面板地址跨 tab 共用），在實驗 tab 解鎖一次，這頁即用到。
+// /api 行 Authorization: Bearer header（不入 URL）；<img>／WebSocket 先用 ?panel_token= fallback。
 function panelTokenGet() {
   try { return localStorage.getItem('panel_token') || ''; } catch (e) { return ''; }
+}
+function panelAuthHeaders(params) {
+  const tok = (params && params.panel_token) ? params.panel_token : panelTokenGet();
+  if (!tok) return {};
+  return { 'Authorization': 'Bearer ' + tok };
+}
+function stripPanelToken(params) {
+  if (!params) return params;
+  if (params.panel_token == null) return params;
+  const out = {};
+  for (const k in params) { if (k !== 'panel_token') out[k] = params[k]; }
+  return out;
+}
+function apiQuery(params) {
+  const clean = stripPanelToken(params);
+  return clean ? '?' + new URLSearchParams(clean).toString() : '';
 }
 function withPanelToken(params) {
   const tok = panelTokenGet();
@@ -35,12 +52,11 @@ function withPanelToken(params) {
   return out;
 }
 
-// 統一的 api() helper — 同 app-core.js 個版本行為一致 (GET + query string, 回傳 parsed JSON)。
+// 統一的 api() helper — 同 app-core.js 個版本行為一致 (Bearer header＋query string, 回傳 parsed JSON)。
 window.api = function (path, params) {
   clearError();
-  const merged = withPanelToken(params);
-  const qs = merged ? '?' + new URLSearchParams(merged).toString() : '';
-  return fetch(API + 'alpha2/' + path + qs).then(function (res) {
+  const qs = apiQuery(params);
+  return fetch(API + 'alpha2/' + path + qs, { headers: panelAuthHeaders(params) }).then(function (res) {
     return res.json().catch(function () {
       return { ok: false, error: 'invalid response (status ' + res.status + ')' };
     }).then(function (json) {
@@ -63,9 +79,8 @@ window.api = function (path, params) {
 function namespacedApi(prefix, label) {
   return function (path, params) {
     clearError();
-    const merged = withPanelToken(params);
-    const qs = merged ? '?' + new URLSearchParams(merged).toString() : '';
-    return fetch(API + prefix + path + qs).then(function (res) {
+    const qs = apiQuery(params);
+    return fetch(API + prefix + path + qs, { headers: panelAuthHeaders(params) }).then(function (res) {
       return res.json().catch(function () {
         return { ok: false, error: 'invalid response (status ' + res.status + ')' };
       }).then(function (json) {
@@ -97,8 +112,14 @@ function setWsStatus(connected) {
 
 function connectWs() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  // 面板 token：WebSocket 設不到 header，鎖機時用 ?panel_token= query fallback（見 PanelAuth）。
+  let wsUrl = proto + '//' + location.host + '/ws';
   try {
-    ws = new WebSocket(proto + '//' + location.host + '/ws');
+    const pt = panelTokenGet();
+    if (pt) wsUrl += '?panel_token=' + encodeURIComponent(pt);
+  } catch (e) {}
+  try {
+    ws = new WebSocket(wsUrl);
   } catch (e) {
     showError(t('page_ws_connect_failed'), e);
     scheduleReconnect();
