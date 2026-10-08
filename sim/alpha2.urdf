@@ -1,0 +1,272 @@
+<?xml version="1.0"?>
+<!-- Alpha2 full 20-DOF URDF (sim-ready, primitives, no external meshes)
+  來源:
+  - C:/Users/user/Desktop/alpha2/Alpha2_pc/Robot/alpha2.xml (ID/Axis/Offset/InitAngle)
+  - C:/Users/user/Desktop/alpha2/Alpha2_pc/Robot/alpha2.FBX (外觀mesh, pivot量link長用, 此檔先用box代替, 之後可換<mesh filename>)
+  - ubtech-open-alpha2-beta5/scripts/ubx_walk_humanize.py CAL限位 + HOME pose
+  - ubtech-open-alpha2-beta5/scripts/ubx_anatomy.py 關節中文名
+  - sdk-module/hardware-direct/.../DirectChestController.java cmd3[20B+time]/cmd5單軸
+  座標: x前 y左 z上, base_link=骨盆中心(離地約0.37m, spawn時自己抬高)
+  servo碼<->sim換算(要實機校方向):
+    rad = (servo - InitAngle) * pi/180 * SIGN
+    SIGN預設+1, 真機上+10步睇下郁啱定反, 反就該軸SIGN=-1
+  InitAngle(歸零位): [120,120,120,120,120,120,120,120,65,145,135,120,120,175,95,105,120,120,120,120]
+  CAL(servo限位): {1:(5,235),2:(50,210),3:(55,185),4:(5,235),5:(30,190),6:(55,185),7:(100,200),8:(20,220),9:(35,230),10:(35,215),11:(100,190),12:(40,140),13:(20,220),14:(10,205),15:(25,205),16:(50,140),17:(95,125),18:(95,125),19:(75,165),20:(105,155)}
+  sim2real注意: 全部clamp入CAL; 開場2s lead-in由HOME沉入首格; 發送間隔>=150ms, 唔好hammer胸板串口; trim(cmd12 EEPROM)唔好亂寫
+-->
+<robot name="alpha2">
+
+  <!-- ================= BASE / TORSO ================= -->
+  <link name="base_link">
+    <visual><origin xyz="0 0 0" rpy="0 0 0"/><geometry><box size="0.14 0.14 0.08"/></geometry><material name="blue"><color rgba="0.2 0.4 0.8 1"/></material></visual>
+    <collision><origin xyz="0 0 0" rpy="0 0 0"/><geometry><box size="0.14 0.14 0.08"/></geometry></collision>
+    <inertial><mass value="0.8"/><inertia ixx="0.00173" ixy="0" ixz="0" iyy="0.00173" iyz="0" izz="0.00261"/></inertial>
+  </link>
+
+  <joint name="waist_fixed" type="fixed">
+    <parent link="base_link"/><child link="torso_link"/><origin xyz="0 0 0.11" rpy="0 0 0"/>
+  </joint>
+
+  <link name="torso_link">
+    <visual><origin xyz="0 0 0" rpy="0 0 0"/><geometry><box size="0.15 0.20 0.22"/></geometry><material name="blue"/></visual>
+    <collision><origin xyz="0 0 0" rpy="0 0 0"/><geometry><box size="0.15 0.20 0.22"/></geometry></collision>
+    <inertial><mass value="1.0"/><inertia ixx="0.00737" ixy="0" ixz="0" iyy="0.00591" iyz="0" izz="0.00521"/></inertial>
+  </link>
+
+  <!-- ================= RIGHT ARM (ID 1,2,3,17) ================= -->
+  <!-- ID1 R肩上下 pitch Y, Init120 CAL5-235 -->
+  <joint name="j1_r_shoulder_pitch" type="revolute">
+    <parent link="torso_link"/><child link="r_shoulder_link"/><origin xyz="0 -0.10 0.08" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-2.0071" upper="2.0071" effort="4.0" velocity="6.0"/>
+    <dynamics damping="0.1" friction="0.05"/>
+  </joint>
+  <link name="r_shoulder_link">
+    <visual><origin xyz="0 0 -0.02" rpy="0 0 0"/><geometry><box size="0.05 0.05 0.04"/></geometry><material name="white"><color rgba="0.9 0.9 0.9 1"/></material></visual>
+    <collision><origin xyz="0 0 -0.02" rpy="0 0 0"/><geometry><box size="0.05 0.05 0.04"/></geometry></collision>
+    <inertial><mass value="0.08"/><inertia ixx="0.000028" ixy="0" ixz="0" iyy="0.000028" iyz="0" izz="0.000033"/></inertial>
+  </link>
+
+  <!-- ID2 R肩左右 roll X, Init120 CAL50-210 -->
+  <joint name="j2_r_shoulder_roll" type="revolute">
+    <parent link="r_shoulder_link"/><child link="r_upper_arm_link"/><origin xyz="0 0 -0.04" rpy="0 0 0"/><axis xyz="1 0 0"/>
+    <limit lower="-1.2217" upper="1.5708" effort="4.0" velocity="6.0"/>
+    <dynamics damping="0.1" friction="0.05"/>
+  </joint>
+  <link name="r_upper_arm_link">
+    <visual><origin xyz="0 0 -0.05" rpy="0 0 0"/><geometry><box size="0.05 0.05 0.10"/></geometry><material name="white"/></visual>
+    <collision><origin xyz="0 0 -0.05" rpy="0 0 0"/><geometry><box size="0.05 0.05 0.10"/></geometry></collision>
+    <inertial><mass value="0.15"/><inertia ixx="0.000156" ixy="0" ixz="0" iyy="0.000156" iyz="0" izz="0.000062"/></inertial>
+  </link>
+
+  <!-- ID3 R肘 pitch Y, Init120 CAL55-185 -->
+  <joint name="j3_r_elbow" type="revolute">
+    <parent link="r_upper_arm_link"/><child link="r_forearm_link"/><origin xyz="0 0 -0.10" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-1.1345" upper="1.1345" effort="4.0" velocity="6.0"/>
+    <dynamics damping="0.1" friction="0.05"/>
+  </joint>
+  <link name="r_forearm_link">
+    <visual><origin xyz="0 0 -0.05" rpy="0 0 0"/><geometry><box size="0.045 0.045 0.10"/></geometry><material name="white"/></visual>
+    <collision><origin xyz="0 0 -0.05" rpy="0 0 0"/><geometry><box size="0.045 0.045 0.10"/></geometry></collision>
+    <inertial><mass value="0.12"/><inertia ixx="0.00012" ixy="0" ixz="0" iyy="0.00012" iyz="0" izz="0.00004"/></inertial>
+  </link>
+
+  <!-- ID17 R指 pitch Y, Init120 CAL95-125 -->
+  <joint name="j17_r_finger" type="revolute">
+    <parent link="r_forearm_link"/><child link="r_hand_link"/><origin xyz="0 0 -0.10" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-0.4363" upper="0.0873" effort="0.5" velocity="6.0"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+  <link name="r_hand_link">
+    <visual><origin xyz="0 0 -0.03" rpy="0 0 0"/><geometry><box size="0.04 0.04 0.06"/></geometry><material name="white"/></visual>
+    <collision><origin xyz="0 0 -0.03" rpy="0 0 0"/><geometry><box size="0.04 0.04 0.06"/></geometry></collision>
+    <inertial><mass value="0.05"/><inertia ixx="0.000021" ixy="0" ixz="0" iyy="0.000021" iyz="0" izz="0.000013"/></inertial>
+  </link>
+
+  <!-- ================= LEFT ARM (ID 4,5,6,18) ================= -->
+  <joint name="j4_l_shoulder_pitch" type="revolute">
+    <parent link="torso_link"/><child link="l_shoulder_link"/><origin xyz="0 0.10 0.08" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-2.0071" upper="2.0071" effort="4.0" velocity="6.0"/>
+    <dynamics damping="0.1" friction="0.05"/>
+  </joint>
+  <link name="l_shoulder_link">
+    <visual><origin xyz="0 0 -0.02" rpy="0 0 0"/><geometry><box size="0.05 0.05 0.04"/></geometry><material name="white"/></visual>
+    <collision><origin xyz="0 0 -0.02" rpy="0 0 0"/><geometry><box size="0.05 0.05 0.04"/></geometry></collision>
+    <inertial><mass value="0.08"/><inertia ixx="0.000028" ixy="0" ixz="0" iyy="0.000028" iyz="0" izz="0.000033"/></inertial>
+  </link>
+
+  <joint name="j5_l_shoulder_roll" type="revolute">
+    <parent link="l_shoulder_link"/><child link="l_upper_arm_link"/><origin xyz="0 0 -0.04" rpy="0 0 0"/><axis xyz="1 0 0"/>
+    <limit lower="-1.5708" upper="1.2217" effort="4.0" velocity="6.0"/>
+    <dynamics damping="0.1" friction="0.05"/>
+  </joint>
+  <link name="l_upper_arm_link">
+    <visual><origin xyz="0 0 -0.05" rpy="0 0 0"/><geometry><box size="0.05 0.05 0.10"/></geometry><material name="white"/></visual>
+    <collision><origin xyz="0 0 -0.05" rpy="0 0 0"/><geometry><box size="0.05 0.05 0.10"/></geometry></collision>
+    <inertial><mass value="0.15"/><inertia ixx="0.000156" ixy="0" ixz="0" iyy="0.000156" iyz="0" izz="0.000062"/></inertial>
+  </link>
+
+  <joint name="j6_l_elbow" type="revolute">
+    <parent link="l_upper_arm_link"/><child link="l_forearm_link"/><origin xyz="0 0 -0.10" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-1.1345" upper="1.1345" effort="4.0" velocity="6.0"/>
+    <dynamics damping="0.1" friction="0.05"/>
+  </joint>
+  <link name="l_forearm_link">
+    <visual><origin xyz="0 0 -0.05" rpy="0 0 0"/><geometry><box size="0.045 0.045 0.10"/></geometry><material name="white"/></visual>
+    <collision><origin xyz="0 0 -0.05" rpy="0 0 0"/><geometry><box size="0.045 0.045 0.10"/></geometry></collision>
+    <inertial><mass value="0.12"/><inertia ixx="0.00012" ixy="0" ixz="0" iyy="0.00012" iyz="0" izz="0.00004"/></inertial>
+  </link>
+
+  <joint name="j18_l_finger" type="revolute">
+    <parent link="l_forearm_link"/><child link="l_hand_link"/><origin xyz="0 0 -0.10" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-0.4363" upper="0.0873" effort="0.5" velocity="6.0"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+  <link name="l_hand_link">
+    <visual><origin xyz="0 0 -0.03" rpy="0 0 0"/><geometry><box size="0.04 0.04 0.06"/></geometry><material name="white"/></visual>
+    <collision><origin xyz="0 0 -0.03" rpy="0 0 0"/><geometry><box size="0.04 0.04 0.06"/></geometry></collision>
+    <inertial><mass value="0.05"/><inertia ixx="0.000021" ixy="0" ixz="0" iyy="0.000021" iyz="0" izz="0.000013"/></inertial>
+  </link>
+
+  <!-- ================= RIGHT LEG (ID 7,8,9,10,11) ================= -->
+  <!-- ID7 R髖左右 roll X, Init120 CAL100-200 -->
+  <joint name="j7_r_hip_roll" type="revolute">
+    <parent link="base_link"/><child link="r_hip_link"/><origin xyz="0 -0.07 -0.02" rpy="0 0 0"/><axis xyz="1 0 0"/>
+    <limit lower="-0.3491" upper="1.3963" effort="12.0" velocity="5.0"/>
+    <dynamics damping="0.15" friction="0.08"/>
+  </joint>
+  <link name="r_hip_link">
+    <visual><origin xyz="0 0 -0.015" rpy="0 0 0"/><geometry><box size="0.07 0.07 0.03"/></geometry><material name="grey"><color rgba="0.5 0.5 0.5 1"/></material></visual>
+    <collision><origin xyz="0 0 -0.015" rpy="0 0 0"/><geometry><box size="0.07 0.07 0.03"/></geometry></collision>
+    <inertial><mass value="0.08"/><inertia ixx="0.000039" ixy="0" ixz="0" iyy="0.000039" iyz="0" izz="0.000065"/></inertial>
+  </link>
+
+  <!-- ID8 R髖上下 pitch Y, Init65 CAL20-220 -->
+  <joint name="j8_r_hip_pitch" type="revolute">
+    <parent link="r_hip_link"/><child link="r_thigh_link"/><origin xyz="0 0 -0.03" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-0.7854" upper="2.7053" effort="12.0" velocity="5.0"/>
+    <dynamics damping="0.15" friction="0.08"/>
+  </joint>
+  <link name="r_thigh_link">
+    <visual><origin xyz="0 0 -0.075" rpy="0 0 0"/><geometry><box size="0.07 0.07 0.15"/></geometry><material name="grey"/></visual>
+    <collision><origin xyz="0 0 -0.075" rpy="0 0 0"/><geometry><box size="0.07 0.07 0.15"/></geometry></collision>
+    <inertial><mass value="0.30"/><inertia ixx="0.00068" ixy="0" ixz="0" iyy="0.00068" iyz="0" izz="0.000245"/></inertial>
+  </link>
+
+  <!-- ID9 R膝 pitch Y, Init145 CAL35-230 -->
+  <joint name="j9_r_knee" type="revolute">
+    <parent link="r_thigh_link"/><child link="r_shank_link"/><origin xyz="0 0 -0.15" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-1.9199" upper="1.4835" effort="12.0" velocity="5.0"/>
+    <dynamics damping="0.15" friction="0.08"/>
+  </joint>
+  <link name="r_shank_link">
+    <visual><origin xyz="0 0 -0.075" rpy="0 0 0"/><geometry><box size="0.06 0.06 0.15"/></geometry><material name="grey"/></visual>
+    <collision><origin xyz="0 0 -0.075" rpy="0 0 0"/><geometry><box size="0.06 0.06 0.15"/></geometry></collision>
+    <inertial><mass value="0.25"/><inertia ixx="0.000544" ixy="0" ixz="0" iyy="0.000544" iyz="0" izz="0.00015"/></inertial>
+  </link>
+
+  <!-- ID10 R踝上下 pitch Y, Init135 CAL35-215 -->
+  <joint name="j10_r_ankle_pitch" type="revolute">
+    <parent link="r_shank_link"/><child link="r_ankle_link"/><origin xyz="0 0 -0.15" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-1.7453" upper="1.3963" effort="8.0" velocity="5.0"/>
+    <dynamics damping="0.12" friction="0.06"/>
+  </joint>
+  <link name="r_ankle_link">
+    <visual><origin xyz="0 0 -0.015" rpy="0 0 0"/><geometry><box size="0.05 0.05 0.03"/></geometry><material name="grey"/></visual>
+    <collision><origin xyz="0 0 -0.015" rpy="0 0 0"/><geometry><box size="0.05 0.05 0.03"/></geometry></collision>
+    <inertial><mass value="0.08"/><inertia ixx="0.000039" ixy="0" ixz="0" iyy="0.000039" iyz="0" izz="0.000065"/></inertial>
+  </link>
+
+  <!-- ID11 R踝左右 roll X, Init120 CAL100-190 -->
+  <joint name="j11_r_ankle_roll" type="revolute">
+    <parent link="r_ankle_link"/><child link="r_foot_link"/><origin xyz="0 0 -0.03" rpy="0 0 0"/><axis xyz="1 0 0"/>
+    <limit lower="-0.3491" upper="1.2217" effort="8.0" velocity="5.0"/>
+    <dynamics damping="0.12" friction="0.06"/>
+  </joint>
+  <link name="r_foot_link">
+    <visual><origin xyz="0.03 0 -0.025" rpy="0 0 0"/><geometry><box size="0.16 0.09 0.04"/></geometry><material name="black"><color rgba="0.15 0.15 0.15 1"/></material></visual>
+    <collision><origin xyz="0.03 0 -0.025" rpy="0 0 0"/><geometry><box size="0.16 0.09 0.04"/></geometry></collision>
+    <inertial><mass value="0.15"/><inertia ixx="0.000118" ixy="0" ixz="0" iyy="0.000257" iyz="0" izz="0.000326"/></inertial>
+  </link>
+
+  <!-- ================= LEFT LEG (ID 12,13,14,15,16) ================= -->
+  <joint name="j12_l_hip_roll" type="revolute">
+    <parent link="base_link"/><child link="l_hip_link"/><origin xyz="0 0.07 -0.02" rpy="0 0 0"/><axis xyz="1 0 0"/>
+    <limit lower="-1.3963" upper="0.3491" effort="12.0" velocity="5.0"/>
+    <dynamics damping="0.15" friction="0.08"/>
+  </joint>
+  <link name="l_hip_link">
+    <visual><origin xyz="0 0 -0.015" rpy="0 0 0"/><geometry><box size="0.07 0.07 0.03"/></geometry><material name="grey"/></visual>
+    <collision><origin xyz="0 0 -0.015" rpy="0 0 0"/><geometry><box size="0.07 0.07 0.03"/></geometry></collision>
+    <inertial><mass value="0.08"/><inertia ixx="0.000039" ixy="0" ixz="0" iyy="0.000039" iyz="0" izz="0.000065"/></inertial>
+  </link>
+
+  <joint name="j13_l_hip_pitch" type="revolute">
+    <parent link="l_hip_link"/><child link="l_thigh_link"/><origin xyz="0 0 -0.03" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-2.7053" upper="0.7854" effort="12.0" velocity="5.0"/>
+    <dynamics damping="0.15" friction="0.08"/>
+  </joint>
+  <link name="l_thigh_link">
+    <visual><origin xyz="0 0 -0.075" rpy="0 0 0"/><geometry><box size="0.07 0.07 0.15"/></geometry><material name="grey"/></visual>
+    <collision><origin xyz="0 0 -0.075" rpy="0 0 0"/><geometry><box size="0.07 0.07 0.15"/></geometry></collision>
+    <inertial><mass value="0.30"/><inertia ixx="0.00068" ixy="0" ixz="0" iyy="0.00068" iyz="0" izz="0.000245"/></inertial>
+  </link>
+
+  <joint name="j14_l_knee" type="revolute">
+    <parent link="l_thigh_link"/><child link="l_shank_link"/><origin xyz="0 0 -0.15" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-1.4835" upper="1.9199" effort="12.0" velocity="5.0"/>
+    <dynamics damping="0.15" friction="0.08"/>
+  </joint>
+  <link name="l_shank_link">
+    <visual><origin xyz="0 0 -0.075" rpy="0 0 0"/><geometry><box size="0.06 0.06 0.15"/></geometry><material name="grey"/></visual>
+    <collision><origin xyz="0 0 -0.075" rpy="0 0 0"/><geometry><box size="0.06 0.06 0.15"/></geometry></collision>
+    <inertial><mass value="0.25"/><inertia ixx="0.000544" ixy="0" ixz="0" iyy="0.000544" iyz="0" izz="0.00015"/></inertial>
+  </link>
+
+  <joint name="j15_l_ankle_pitch" type="revolute">
+    <parent link="l_shank_link"/><child link="l_ankle_link"/><origin xyz="0 0 -0.15" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-1.3963" upper="1.7453" effort="8.0" velocity="5.0"/>
+    <dynamics damping="0.12" friction="0.06"/>
+  </joint>
+  <link name="l_ankle_link">
+    <visual><origin xyz="0 0 -0.015" rpy="0 0 0"/><geometry><box size="0.05 0.05 0.03"/></geometry><material name="grey"/></visual>
+    <collision><origin xyz="0 0 -0.015" rpy="0 0 0"/><geometry><box size="0.05 0.05 0.03"/></geometry></collision>
+    <inertial><mass value="0.08"/><inertia ixx="0.000039" ixy="0" ixz="0" iyy="0.000039" iyz="0" izz="0.000065"/></inertial>
+  </link>
+
+  <joint name="j16_l_ankle_roll" type="revolute">
+    <parent link="l_ankle_link"/><child link="l_foot_link"/><origin xyz="0 0 -0.03" rpy="0 0 0"/><axis xyz="1 0 0"/>
+    <limit lower="-1.2217" upper="0.3491" effort="8.0" velocity="5.0"/>
+    <dynamics damping="0.12" friction="0.06"/>
+  </joint>
+  <link name="l_foot_link">
+    <visual><origin xyz="0.03 0 -0.025" rpy="0 0 0"/><geometry><box size="0.16 0.09 0.04"/></geometry><material name="black"/></visual>
+    <collision><origin xyz="0.03 0 -0.025" rpy="0 0 0"/><geometry><box size="0.16 0.09 0.04"/></geometry></collision>
+    <inertial><mass value="0.15"/><inertia ixx="0.000118" ixy="0" ixz="0" iyy="0.000257" iyz="0" izz="0.000326"/></inertial>
+  </link>
+
+  <!-- ================= HEAD (ID 19,20) ================= -->
+  <!-- ID19 頭左右 yaw Z, Init120 CAL75-165 -->
+  <joint name="j19_head_yaw" type="revolute">
+    <parent link="torso_link"/><child link="neck_link"/><origin xyz="0 0 0.12" rpy="0 0 0"/><axis xyz="0 0 1"/>
+    <limit lower="-0.7854" upper="0.7854" effort="1.5" velocity="6.0"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+  <link name="neck_link">
+    <visual><origin xyz="0 0 0.015" rpy="0 0 0"/><geometry><box size="0.04 0.04 0.03"/></geometry><material name="white"/></visual>
+    <collision><origin xyz="0 0 0.015" rpy="0 0 0"/><geometry><box size="0.04 0.04 0.03"/></geometry></collision>
+    <inertial><mass value="0.05"/><inertia ixx="0.00001" ixy="0" ixz="0" iyy="0.00001" iyz="0" izz="0.000013"/></inertial>
+  </link>
+
+  <!-- ID20 頭上下 pitch Y, Init120 CAL105-155 -->
+  <joint name="j20_head_pitch" type="revolute">
+    <parent link="neck_link"/><child link="head_link"/><origin xyz="0 0 0.03" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-0.2618" upper="0.6109" effort="1.5" velocity="6.0"/>
+    <dynamics damping="0.05" friction="0.02"/>
+  </joint>
+  <link name="head_link">
+    <visual><origin xyz="0 0 0.07" rpy="0 0 0"/><geometry><box size="0.11 0.11 0.12"/></geometry><material name="white"/></visual>
+    <collision><origin xyz="0 0 0.07" rpy="0 0 0"/><geometry><box size="0.11 0.11 0.12"/></geometry></collision>
+    <inertial><mass value="0.30"/><inertia ixx="0.000665" ixy="0" ixz="0" iyy="0.000665" iyz="0" izz="0.000605"/></inertial>
+  </link>
+
+</robot>

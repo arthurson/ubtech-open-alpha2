@@ -722,6 +722,22 @@ public final class LedCenter {
         return MainActivity.sentReadyResponse(sent, directChestReady());
     }
 
+    /** 面板入頁同步共用：讀 PIR 自記態（硬件讀唔返；pir/set 顯式寫即同步）。 */
+    public boolean isPirEnabled() {
+        return pirEnabled;
+    }
+
+    /** 面板入頁同步共用：讀警示反應開關。 */
+    public boolean isPirAlertEnabled() {
+        return alpha2PirAlertEnabled;
+    }
+
+    /** pir/get 本體：硬件開關自記態＋警示反應開關一次過回，免面板開兩次口。 */
+    public HttpServer.ApiResponse pirGetResponse() {
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + isPirEnabled()
+                + ",\"alertEnabled\":" + isPirAlertEnabled() + "}");
+    }
+
     /** 映射共用：PIR 硬件單鍵 toggle（讀自記態，見 pirEnabled）。
      *  回 true＝已送達（taken 照實）；送唔出即態不變。 */
     public synchronized boolean togglePir() {

@@ -473,6 +473,36 @@ public final class ActionDirect {
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
     }
 
+    /**
+     * 小智影相專用（B 方案：企直再影）——截停＋播回位企直，並等到播完（或超時）
+     * 先返，等調用方影嗰下唔郁。調用方已喺 MCP tool thread（唔係 ws read loop），
+     * block 幾秒無問題。超時／起唔到都照回（快門重要過姿勢），調用方直接影。
+     */
+    public boolean stopAndRecoverBlocking(long timeoutMs) {
+        stopActionWithRecovery();
+        long deadline = System.currentTimeMillis() + Math.max(1000, timeoutMs);
+        try {
+            // 回位動作起播有少少遲（parse＋起 thread），先等一陣，唔係會誤判已定。
+            Thread.sleep(300);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+        while (isPlaying() && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        boolean settled = !isPlaying();
+        if (!settled) {
+            Log.w(TAG, "stopAndRecoverBlocking: still playing after timeout");
+        }
+        return settled;
+    }
+
     // -- MCP tools (XiaozhiBridge callTool switch 轉調) --
 
     /** self.robot.list_actions 本體 (XiaozhiBridge 轉調)。純讀, 不碰硬件。 */

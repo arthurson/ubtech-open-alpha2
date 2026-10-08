@@ -377,6 +377,8 @@ public final class ApiDispatcher {
             // threshold state 經 sonarCenter 直調。
             case "servo/sonar":
                 return sonarCenter.servoSonarResponse(query);
+            case "servo/sonar/get":
+                return sonarCenter.servoSonarGet();
             case "servo/read":
                 return ubxApi.servoReadResponse(query);
             case "servo/read-all":
@@ -394,6 +396,8 @@ public final class ApiDispatcher {
                 return ledCenter.pirSetResponse(query);
             case "pir/alert_enabled":
                 return ledCenter.pirAlertEnabledResponse(query);
+            case "pir/get":
+                return ledCenter.pirGetResponse();
 
             // -- LEDs (5-mic hardware only path - server-side preset mapping) --------------
             // Colour/brightness/mode values are user-confirmed on real 5-mic hardware:
@@ -597,6 +601,13 @@ public final class ApiDispatcher {
                 return audioCenter.radioStop();
             case "audio/radio/status":
                 return audioCenter.radioStatus();
+            // -- 網絡電台收藏（機身 SharedPreferences 持久化，見 AudioCenter radioFavorites*） --
+            case "audio/radio/favorites/list":
+                return audioCenter.radioFavoritesList();
+            case "audio/radio/favorites/add":
+                return audioCenter.radioFavoritesAdd(query);
+            case "audio/radio/favorites/remove":
+                return audioCenter.radioFavoritesRemove(query);
 
             // -- Media volume (body 在 AudioCenter；薄 delegate，不要在這裡加 logic) --
             case "audio/volume/get":

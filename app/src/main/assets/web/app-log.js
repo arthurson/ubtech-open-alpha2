@@ -218,7 +218,8 @@ function appendLog(msg) {
   // 手柄事件直達手柄頁「最後按鍵」等即時位 (gamepad_key/bt/axis)，唔經 Log 先顯示。
   // app-gamepad.js 雖然排在這個檔案之前 load，但呢度係 WS message 到先 call，
   // 實質一定已定義；加 typeof 守衛防舊緩存頁。
-  if ((msg.type === "gamepad_key" || msg.type === "gamepad_bt" || msg.type === "gamepad_axis")
+  if ((msg.type === "gamepad_key" || msg.type === "gamepad_bt" || msg.type === "gamepad_axis"
+      || msg.type === "gamepad_state")
       && msg.data && typeof onGamepadKeyEvent === "function") {
     try { onGamepadKeyEvent(msg.type, msg.data); } catch (e) { /* ignore */ }
   }
@@ -267,6 +268,10 @@ window.addEventListener("DOMContentLoaded", function () {
   applyUiLanguage();
   refreshVolume();
   if (typeof gamepadInitPage === "function") gamepadInitPage();
+  // 掣淨識推唔識讀嗰幾組：入頁問返機身真態擺返個掣（mapping toggle 改過都會對返）。
+  if (typeof syncSonarUi === "function") syncSonarUi();
+  if (typeof syncPirUi === "function") syncPirUi();
+  if (typeof syncAccelToggle === "function") syncAccelToggle();
   connectWs();
   musicInit();
   if (typeof radioInit === "function") radioInit();

@@ -153,10 +153,12 @@ const I18N = {
   gamepad_kind_stop:   { zh: "停止", en: "Stop" },
   gamepad_kind_servo:  { zh: "舵機", en: "Servo" },
   gamepad_kind_music:  { zh: "音樂", en: "Music" },
+  gamepad_kind_radio:  { zh: "電台", en: "Radio" },
   gamepad_kind_ring:   { zh: "鈴聲", en: "Ringtone" },
   gamepad_kind_led:    { zh: "燈效", en: "LED" },
   gamepad_kind_camera: { zh: "相機", en: "Camera" },
   gamepad_kind_sensor: { zh: "傳感器", en: "Sensors" },
+  gamepad_kind_voice:  { zh: "語音", en: "Voice" },
   gamepad_kind_action: { zh: "動作", en: "Action" },
   gamepad_mfn_play:    { zh: "播放", en: "Play" },
   gamepad_mfn_next:    { zh: "下一首", en: "Next" },
@@ -171,9 +173,13 @@ const I18N = {
   gamepad_mfn_filler:  { zh: "隨機動作", en: "Shuffle moves" },
   gamepad_mfn_volup:   { zh: "音量+", en: "Vol+" },
   gamepad_mfn_voldn:   { zh: "音量-", en: "Vol-" },
+  gamepad_mfn_eq:      { zh: "等化器", en: "Equalizer" },
+  gamepad_pick_pack:   { zh: "選語言包", en: "Pick pack" },
   gamepad_ring_phone:  { zh: "電話鈴聲", en: "Phone ringtone" },
   gamepad_ring_stop:   { zh: "停鈴聲", en: "Stop ringtone" },
   gamepad_ring_random: { zh: "隨機鈴聲", en: "Random ringtone" },
+  gamepad_ring_type_phone: { zh: "電話", en: "Phone" },
+  gamepad_ring_type_notification: { zh: "通知", en: "Notifications" },
   gamepad_led_head:    { zh: "頭", en: "Head" },
   gamepad_led_eye:     { zh: "眼", en: "Eye" },
   gamepad_led_mouth:   { zh: "咀", en: "Mouth" },
@@ -193,6 +199,8 @@ const I18N = {
   gamepad_sen_sonar:   { zh: "聲納", en: "Sonar" },
   gamepad_sen_pir:     { zh: "PIR", en: "PIR" },
   gamepad_sen_accel:   { zh: "加速度", en: "Accelerometer" },
+  gamepad_voice_xiaozhi: { zh: "小智", en: "Xiaozhi" },
+  gamepad_voice_vosk:    { zh: "Vosk", en: "Vosk" },
   gamepad_act_basic:   { zh: "基本", en: "Basic" },
   gamepad_act_dance:   { zh: "跳舞", en: "Dance" },
   gamepad_act_story:   { zh: "故事", en: "Story" },
@@ -522,6 +530,12 @@ const I18N = {
   radio_playing_prefix:         { zh: "正在連接：",             en: "Connecting: " },
   radio_play_ok_prefix:         { zh: "已開始播放：",           en: "Playing: " },
   radio_stopped:                { zh: "已停止電台",             en: "Radio stopped" },
+  radio_fav_heading:            { zh: "⭐ 我的收藏",            en: "⭐ My Favorites" },
+  radio_fav_refresh_btn:        { zh: "🔄 重新整理",            en: "🔄 Refresh" },
+  radio_fav_empty_hint:         { zh: "未收藏任何電台，在下面搜尋結果按 ☆ 即可收藏", en: "No favorites yet — tap ☆ in the search results below to save one" },
+  radio_fav_count_suffix:       { zh: " 個收藏，點擊即播",      en: " saved — tap to play" },
+  radio_fav_add_btn:            { zh: "收藏此電台",             en: "Save to favorites" },
+  radio_fav_remove_btn:         { zh: "取消收藏",               en: "Remove from favorites" },
   arc_heading:                 { zh: "🌐 網上點歌",             en: "🌐 Pick Online Music" },
   arc_hint:                    { zh: "Internet Archive 免費音樂（現場／獨立／舊錄音），無需登入；搜尋經你的瀏覽器，播放經機械人。", en: "Free music from Internet Archive (live/indie/vintage), no login; search runs in your browser, playback on the robot." },
   arc_search_placeholder:      { zh: "搜尋歌名、歌手、樂隊…",    en: "Search song, artist or band…" },
@@ -675,6 +689,10 @@ function setUiLanguage(lang) {
   // （唔 rebuild，推桿位／開關狀態唔郁）。
   try {
     if (typeof musicEqApplyUiLanguage === "function") musicEqApplyUiLanguage();
+  } catch(e) {}
+  // 手柄映射表動態下拉一樣動態起，就地重標（唔 rebuild，未存改動保留，唔問後端）。
+  try {
+    if (typeof gamepadApplyUiLanguage === "function") gamepadApplyUiLanguage();
   } catch(e) {}
 }
 

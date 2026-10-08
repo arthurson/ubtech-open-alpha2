@@ -255,6 +255,11 @@ public final class DeviceStatus implements SensorEventListener {
 
     // -- SensorEventListener (accelerometer only - see setAccelerometerEnabled()) -------
     private long lastAccelLogMs = 0;
+    // WS 節流窗（實測呢部 gsensor ~100Hz 狂洗；逐幀 publish＝main thread JSON＋WS
+    // 直寫＋瀏覽器 DOM 齊塞，掣 event 排幾秒，ANR 死（見實機 InputDispatcher
+    // spent 2000ms＋ANR Killing logcat）。圖表 10Hz 足夠，用單調鐘量窗。
+    private long lastAccelPublishMs = 0;
+    private static final long ACCEL_PUBLISH_MIN_INTERVAL_MS = 100;
 
     @Override
     public void onSensorChanged(SensorEvent event) {
@@ -272,6 +277,10 @@ public final class DeviceStatus implements SensorEventListener {
         }
         // Published as-is (m/s^2, gravity-relative - see docs/capabilities.md). The
         // browser-side chart/UI is responsible for any smoothing/scaling it wants.
+        // 節流後先推（見上面 ANR 註解；用 elapsedRealtime，wall clock 會跳）。
+        long tick = android.os.SystemClock.elapsedRealtime();
+        if (tick - lastAccelPublishMs < ACCEL_PUBLISH_MIN_INTERVAL_MS) return;
+        lastAccelPublishMs = tick;
         EventBus.get().publish("accel", "{\"x\":" + event.values[0]
                 + ",\"y\":" + event.values[1]
                 + ",\"z\":" + event.values[2] + "}");
@@ -300,10 +309,17 @@ public final class DeviceStatus implements SensorEventListener {
                 latch.countDown();
             }
         });
+        boolean done;
         try {
-            latch.await(2000, TimeUnit.MILLISECONDS);
+            done = latch.await(2000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            done = false;
+        }
+        // 等唔到即 main thread 塞住：回 ok:false 等面板撥返掣，唔好呃人話開咗。
+        if (!done) {
+            return HttpServer.ApiResponse.ok(
+                    "{\"ok\":false,\"error\":\"main thread busy, try again\"}");
         }
         if (on && accelerometerSensor == null) {
             return HttpServer.ApiResponse.ok(
@@ -317,9 +333,34 @@ public final class DeviceStatus implements SensorEventListener {
                 + ",\"available\":" + (accelerometerSensor != null) + "}");
     }
 
+    /** 調用方係咪 main thread（mapping 物理掣係，HTTP worker 唔係）。 */
+    private static boolean onMainThread() {
+        try {
+            return android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 映射事件／面板共用：讀加速度計實際開關（自記態）。 */
+    public boolean isAccelerometerEnabled() {
+        return accelerometerEnabled;
+    }
+
     /** 映射共用：加速度計單鍵 toggle（同 accelerometerSet 同一主線程＋latch 寫法）。
-     *  回 true＝硬件在且已翻轉（開／關都算做咗，taken 照實）。 */
+     *  main thread 經物理掣入：post 即回 true，唔等 latch（等自己即 2 秒自塞，
+     *  taken 永遠 false 得嚟仲凍結掣事件，見 traces；狀態照翻）。
+     *  HTTP worker 照等（回值照實）。回 true＝硬件在且已翻轉（開／關都算做咗）。 */
     public boolean toggleAccelerometer() {
+        if (onMainThread()) {
+            mainHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    setAccelerometerEnabled(!accelerometerEnabled);
+                }
+            });
+            return accelerometerSensor != null;
+        }
         final boolean[] flipped = new boolean[1];
         final CountDownLatch latch = new CountDownLatch(1);
         mainHandler.post(new Runnable() {
@@ -330,11 +371,15 @@ public final class DeviceStatus implements SensorEventListener {
                 latch.countDown();
             }
         });
+        boolean done;
         try {
-            latch.await(2000, TimeUnit.MILLISECONDS);
+            done = latch.await(2000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            done = false;
         }
+        // 等唔到即 main thread 塞住：回 false 等 taken 照實，唔好呃人。
+        if (!done) return false;
         return flipped[0];
     }
 

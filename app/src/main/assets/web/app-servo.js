@@ -256,7 +256,10 @@ function configureSonar(v) {
   document.getElementById("sonarDistVal").textContent = distance + " cm";
   sonarThresholdCm = Number(distance);
   drawSonarChart();
-  return Alpha2Api.servoSonar({distance: distance});
+  return Alpha2Api.servoSonar({distance: distance}).then(function (json) {
+    if (!json || json.ok === false) return syncSonarUi();
+    return json;
+  }).catch(function () { return syncSonarUi(); });
 }
 
 // Toggle switch: off sends distance=0 (sonar disabled); on re-sends whatever the
@@ -265,19 +268,59 @@ function configureSonar(v) {
 function toggleSonar() {
   const on = document.getElementById("sonarToggle").checked;
   const distance = on ? document.getElementById("sonarDist").value : "0";
-  return Alpha2Api.servoSonar( { distance: distance });
+  return Alpha2Api.servoSonar( { distance: distance }).then(function (json) {
+    if (!json || json.ok === false) return syncSonarUi();
+    return json;
+  }).catch(function () { return syncSonarUi(); });
+}
+
+// 入頁同步：門檻讀返嚟擺 slider＋開關（0＝關；mapping toggle／別頁改過都會對返）。
+function syncSonarUi() {
+  return Alpha2Api.servoSonarGet().then(function (json) {
+    if (!json || !json.ok) return json;
+    let th = Number(json.thresholdCm);
+    if (!isFinite(th)) return json;
+    th = Math.max(0, Math.min(100, th));
+    const slider = document.getElementById("sonarDist");
+    const val = document.getElementById("sonarDistVal");
+    const toggle = document.getElementById("sonarToggle");
+    if (slider) slider.value = String(th);
+    if (val) val.textContent = th + " cm";
+    if (toggle) toggle.checked = th > 0;
+    try { sonarThresholdCm = th; } catch (e) {}
+    try { if (typeof drawSonarChart === "function") drawSonarChart(); } catch (e) {}
+    return json;
+  }).catch(function () { return null; });
 }
 
 // 真機已確認 cmd=72 開關生效，PIR 觸發正常。按 toggle 即送；結果看 API response ok/error，indicator 等 "alpha2_pir_state" WS event 先轉燈色。
 function alpha2SetPir() {
   const on = document.getElementById("alpha2Pir").checked;
-  return Alpha2Api.pirSet({on: on});
+  return Alpha2Api.pirSet({on: on}).then(function (json) {
+    if (!json || json.ok === false) return syncPirUi();
+    return json;
+  }).catch(function () { return syncPirUi(); });
 }
 
 // 獨立於 alpha2SetPir() 硬體開關 — 純開/關「偵測到人就閃紅燈/響鈴」警示反應，對應 MainActivity#setPirAlertEnabledAlpha2()。
 function alpha2SetPirAlertEnabled() {
   const on = document.getElementById("alpha2PirAlertEnabled").checked;
-  return Alpha2Api.pirAlertEnabled( { on: on });
+  return Alpha2Api.pirAlertEnabled( { on: on }).then(function (json) {
+    if (!json || json.ok === false) return syncPirUi();
+    return json;
+  }).catch(function () { return syncPirUi(); });
+}
+
+// 入頁同步：硬件開關自記態＋警示開關一次過擺返兩個掣（mapping toggle 改過都會對返）。
+function syncPirUi() {
+  return Alpha2Api.pirGet().then(function (json) {
+    if (!json || !json.ok) return json;
+    const hw = document.getElementById("alpha2Pir");
+    const al = document.getElementById("alpha2PirAlertEnabled");
+    if (hw) hw.checked = !!json.enabled;
+    if (al) al.checked = !!json.alertEnabled;
+    return json;
+  }).catch(function () { return null; });
 }
 
 // ---------------- Advanced Servo Angle Tuner (tab-advanced) ----------------

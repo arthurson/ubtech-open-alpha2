@@ -288,6 +288,10 @@ public final class XiaozhiBridge {
     private volatile String lastVisionResponse;
     // 最近一次成功影相嘅時間 (ms)——take_photo 去重窗用，見 takePhotoEnvelope。
     private volatile long lastPhotoAtMs = 0;
+    // take_photo 快門期間禁 TTS-start filler（見 capturePhoto）：企定先影，
+    // 影嗰幾秒就算小智緊接著講嘢都唔觸發新動作，影完清旗郁返。volatile，MCP
+    // tool thread 寫、ws 讀 thread（TtsStateListener）讀。
+    private volatile boolean suppressFillerForPhoto = false;
 
     // 小智 (XiaoZhi) AI 對話 - 獨立於機械人 AIDL 之外的 client-side WebSocket
     // 連線, 連出去 xiaozhi.me。單一 instance, 在 onCreate() 才建立 (要用
@@ -476,6 +480,24 @@ public final class XiaozhiBridge {
             Log.i(TAG, "mute LED " + (on ? "ON" : "OFF") + " -> " + MainActivity.directCode(sent).name());
         } catch (Throwable t) {
             Log.w(TAG, "sendChestMuteLedImage failed", t);
+        }
+    }
+
+    /** GamepadCenter 映射共用：小智連線單鍵 toggle（連緊即斷，閒置即起激活流程；
+     *  激活緊回 false）。同下面 connect／disconnect endpoint 同一套動作。 */
+    public synchronized boolean toggleConnection() {
+        try {
+            if (xiaozhiClient.isOpen()) {
+                teardownSession(true);
+                setChestMuteLed(false);
+                return true;
+            }
+            if (!xiaozhiActivationInFlight.compareAndSet(false, true)) return false;
+            xiaozhiActivationStatus.set(XiaozhiActivationStatus.checking());
+            launchActivationFlow();
+            return true;
+        } catch (Throwable t) {
+            return false;
         }
     }
 
@@ -1029,7 +1051,11 @@ public final class XiaozhiBridge {
                         // random 動作要同 tts 一齊發生，不是說完再做：在 "start"
                         // (開講那刻) 即觸發，等動作同說話同步。實際邏輯在
                         // AudioCenter.triggerRandomFillerAction()，播本地音樂都用同一個 helper。
-                        audioCenter.triggerRandomFillerAction();
+                        // 例外：take_photo 快門期間（capturePhoto 立咗旗）唔觸發，
+                        // 等影完先郁返，否則快門嗰下郁緊會鬆郁朦。
+                        if (!suppressFillerForPhoto) {
+                            audioCenter.triggerRandomFillerAction();
+                        }
                     } else if ("stop".equals(stateValue)) {
                         LedCenter.stopMouthLedForTts();
                         if (xiaozhiAutoMode.get()) {
@@ -1344,26 +1370,36 @@ public final class XiaozhiBridge {
         // 只影響下一次 start(), 不會影響目前正在使用的其他 session (見
         // CameraController 的 requestedWidth/Height javadoc)。
         cameraController.setRequestedResolution(XIAOZHI_PHOTO_WIDTH, XIAOZHI_PHOTO_HEIGHT);
-        CameraController.StartResult started = cameraController.start(8000);
-        if (started.error != null) {
-            throw new org.json.JSONException("camera start failed: " + started.error);
-        }
+        // B 方案（企直再影）：先截停＋等回位動作播完先開機影；成個 capture 期間
+        // 立旗禁 TTS-start filler（見上面 TtsStateListener），保證快門嗰下唔郁。
+        // 調用方已喺 MCP tool thread（唔係 ws read loop），block 十幾秒無問題；
+        // 超時都照影（快門重要過姿勢，見 ActionDirect.stopAndRecoverBlocking）。
+        suppressFillerForPhoto = true;
         try {
-            // 用 CameraController.takePhoto() (Camera1 takePicture()) 做真正單張拍攝——
-            // preview frame 沒有經過 HAL 完整單張 AE/AF/降噪 pipeline。
-            CameraController.PhotoResult r =
-                    cameraController.takePhoto(XIAOZHI_PHOTO_WIDTH, XIAOZHI_PHOTO_HEIGHT, 8000);
-            if (r.error != null) {
-                throw new org.json.JSONException("camera takePicture failed: " + r.error);
+            actionDirect.stopAndRecoverBlocking(12000);
+            CameraController.StartResult started = cameraController.start(8000);
+            if (started.error != null) {
+                throw new org.json.JSONException("camera start failed: " + started.error);
             }
-            if (r.jpeg == null) {
-                throw new org.json.JSONException("takePicture() returned no photo data");
+            try {
+                // 用 CameraController.takePhoto() (Camera1 takePicture()) 做真正單張拍攝——
+                // preview frame 沒有經過 HAL 完整單張 AE/AF/降噪 pipeline。
+                CameraController.PhotoResult r =
+                        cameraController.takePhoto(XIAOZHI_PHOTO_WIDTH, XIAOZHI_PHOTO_HEIGHT, 8000);
+                if (r.error != null) {
+                    throw new org.json.JSONException("camera takePicture failed: " + r.error);
+                }
+                if (r.jpeg == null) {
+                    throw new org.json.JSONException("takePicture() returned no photo data");
+                }
+                lastPhotoJpeg = r.jpeg;
+                Log.i("XiaozhiVision", "photo captured (" + r.jpeg.length + "B), cached for image_to_text");
+                return r.jpeg;
+            } finally {
+                cameraController.stopIfIdle();
             }
-            lastPhotoJpeg = r.jpeg;
-            Log.i("XiaozhiVision", "photo captured (" + r.jpeg.length + "B), cached for image_to_text");
-            return r.jpeg;
         } finally {
-            cameraController.stopIfIdle();
+            suppressFillerForPhoto = false;
         }
     }
 

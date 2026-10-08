@@ -663,6 +663,21 @@ const Alpha2Api = (function() {
   }
 
   // ── radio ──────────────────────────────────────────────
+  function audioRadioFavoritesAdd(params) {
+    // 收藏電台（已存在即補齊欄位）
+    return api('audio/radio/favorites/add', params);
+  }
+
+  function audioRadioFavoritesList(params) {
+    // 列出收藏電台（機身持久化）
+    return api('audio/radio/favorites/list', params);
+  }
+
+  function audioRadioFavoritesRemove(params) {
+    // 取消收藏電台（name 或 stationuuid 任一即可）
+    return api('audio/radio/favorites/remove', params);
+  }
+
   function audioRadioPlay(params) {
     // 按名稱播放電台 (經 resolveRadioStation)
     return api('audio/radio/play', params);
@@ -702,6 +717,11 @@ const Alpha2Api = (function() {
   function pirAlertEnabled(params) {
     // 開關 PIR 警示反應 (紅燈+鈴聲)
     return api('pir/alert_enabled', params);
+  }
+
+  function pirGet(params) {
+    // 查詢 PIR 硬件開關＋警示反應開關（面板入頁同步用；硬件讀唔返，係自記態）
+    return api('pir/get', params);
   }
 
   function pirSet(params) {
@@ -757,6 +777,11 @@ const Alpha2Api = (function() {
     if (params && params.distance != null) assertRange(Number(params.distance), 0, 100, 'distance');
     // 設定聲納觸發距離閾值 (chest_configureSonar, cmd 4 sub 10)
     return api('servo/sonar', params);
+  }
+
+  function servoSonarGet(params) {
+    // 查詢聲納觸發距離閾值（0＝關；面板入頁同步開關用）
+    return api('servo/sonar/get', params);
   }
 
   // ── speech ──────────────────────────────────────────────
@@ -1177,6 +1202,9 @@ const Alpha2Api = (function() {
     ledPadSet,
     ledStateGet,
     ledWifiSet,
+    audioRadioFavoritesAdd,
+    audioRadioFavoritesList,
+    audioRadioFavoritesRemove,
     audioRadioPlay,
     audioRadioPlayUrl,
     audioRadioSearch,
@@ -1185,6 +1213,7 @@ const Alpha2Api = (function() {
     accelerometerGet,
     accelerometerSet,
     pirAlertEnabled,
+    pirGet,
     pirSet,
     servoAll,
     servoAngle,
@@ -1194,6 +1223,7 @@ const Alpha2Api = (function() {
     servoRead,
     servoReadAll,
     servoSonar,
+    servoSonarGet,
     speechCurTtsEngine,
     speechCurTtsFollowVosk,
     speechCurTtsLang,

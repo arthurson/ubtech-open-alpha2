@@ -50,6 +50,11 @@ function toggleAccelerometer() {
       hint.textContent = json.error || t("accel_turn_on_failed_hint");
       return json;
     }
+    // 成功即跟後端 echo 對一次（同 mapping toggle／別頁改過都唔會唔啱）。
+    try {
+      const el = document.getElementById("accelToggle");
+      if (el && el.checked !== !!json.enabled) el.checked = !!json.enabled;
+    } catch (e) {}
     if (!on) {
       accelHistory = [];
       drawAccelChart();
@@ -62,6 +67,16 @@ function toggleAccelerometer() {
     }
     return json;
   });
+}
+
+// 入頁同步：讀返加速度計實際開關（mapping toggle 改過都會對返）。
+function syncAccelToggle() {
+  return Alpha2Api.accelerometerGet().then(function (json) {
+    if (!json || !json.ok) return json;
+    const el = document.getElementById("accelToggle");
+    if (el) el.checked = !!json.enabled;
+    return json;
+  }).catch(function () { return null; });
 }
 
 // Called from appendLog() whenever an "accel" WebSocket event arrives. Kept to plain

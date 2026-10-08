@@ -137,8 +137,31 @@ public final class CameraApi {
         }
     }
 
-    /** GamepadCenter 映射共用：錄影單鍵 toggle（錄緊即停，閒置即錄）。回 true＝已切換。 */
+    /** 調用方係咪 main thread（mapping 物理掣係，HTTP worker 唔係）。 */
+    private static boolean onMainThread() {
+        try {
+            return android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** GamepadCenter 映射共用：錄影單鍵 toggle（錄緊即停，閒置即錄）。
+     *  main thread 經物理掣入：放背景做（prepare／stop 會 block，ANR 死，見 traces），
+     *  回 true＝已接受。HTTP worker 照行同步版（回值照實）。 */
     public boolean toggleVideoRecording() {
+        if (onMainThread()) {
+            new Thread(new Runnable() {
+                @Override public void run() {
+                    toggleVideoRecordingSync();
+                }
+            }, "CameraVideoToggle").start();
+            return videoCenter != null;
+        }
+        return toggleVideoRecordingSync();
+    }
+
+    private boolean toggleVideoRecordingSync() {
         try {
             if (videoCenter == null) return false;
             HttpServer.ApiResponse resp = videoCenter.isRecording()

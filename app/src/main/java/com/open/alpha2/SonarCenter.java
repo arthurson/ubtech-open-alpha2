@@ -171,6 +171,11 @@ public final class SonarCenter {
         return MainActivity.sentReadyResponse(sent, directChestReady());
     }
 
+    /** 面板入頁同步共用：讀聲納門檻（0＝關；開關掣狀態即 threshold＞0）。 */
+    public HttpServer.ApiResponse servoSonarGet() {
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"thresholdCm\":" + getSonarThreshold() + "}");
+    }
+
     // 關掉之前記低的開機門檻（toggle 關→開還原用；預設 30，同出廠一致）。
     private volatile int sonarLastOnThresholdCm = 30;
 

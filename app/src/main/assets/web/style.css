@@ -1462,7 +1462,7 @@ button.eq-preset-sq.selected {
 }
 .radio-row {
   display: grid;
-  grid-template-columns: 28px 1fr auto;
+  grid-template-columns: 28px 1fr auto auto;
   align-items: center;
   gap: 8px;
   background: #f8fafc;
@@ -1502,6 +1502,25 @@ button.eq-preset-sq.selected {
   color: var(--accent);
   font-weight: 600;
 }
+.radio-fav-list {
+  max-height: 180px;
+  margin-top: 6px;
+  margin-bottom: 12px;
+}
+.radio-fav-btn {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.radio-fav-btn:hover { border-color: var(--accent); color: var(--accent); }
+.radio-fav-btn.active { color: #eab308; border-color: #eab308; }
+.radio-fav-remove { color: var(--muted); }
+.radio-fav-remove:hover { color: #dc2626; border-color: #dc2626; }
 
 /* ---------------- Responsive: phones / narrow viewports ---------------- */
 /* Tab bar scrolls horizontally (nowrap + overflow-x, see .tab-bar above)
@@ -1779,4 +1798,7 @@ button.eq-preset-sq.selected {
 .kb-zone-main { flex: 5 1 340px; min-width: 0; }
 .kb-zone-nav { flex: 2 1 130px; min-width: 0; }
 .kb-zone-num { flex: 2 1 130px; min-width: 0; }
+/* 右欄：媒體列置頂，導航＋數字區並排喺下（同闊對齊）。 */
+.kb-zone-right { flex: 4 1 260px; min-width: 0; display: flex; flex-direction: column; }
+.kb-zones-sub { display: flex; gap: 10px; flex-wrap: wrap; }
 

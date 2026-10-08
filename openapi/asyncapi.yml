@@ -73,6 +73,7 @@ components:
               - gamepad_axis
               - gamepad_bt
               - gamepad_key
+              - gamepad_state
               - gamepad_touch
               - gesture
               - grammar_error

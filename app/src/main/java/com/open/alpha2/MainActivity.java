@@ -330,7 +330,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // BT 手柄／鍵盤包（要 actionDirect＋ubxApi＋deviceStatus，A 端物理鍵＋B 端
         // HTTP 共用同一套映射，見 GamepadCenter；放 dispatcher 之前）。
         gamepadCenter = new GamepadCenter(this, actionDirect, ubxApi, ubxPlayer, deviceStatus,
-                audioCenter, ringtoneCenter, ledCenter, speechCenter, cameraApi, sonarCenter);
+                audioCenter, ringtoneCenter, ledCenter, speechCenter, cameraApi, sonarCenter,
+                xiaozhiBridge, voskApi);
         // dispatcher 包全部上面 controller (+speechCenter 做 Host；sensorState
         // 繼續經 this——TTS／sonar 全部轉交給對應 center；servo/sonar 直調
         // sonarCenter)。

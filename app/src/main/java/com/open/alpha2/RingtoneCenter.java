@@ -305,12 +305,26 @@ public final class RingtoneCenter {
     /** GamepadCenter 映射共用：按 title 播系統鈴聲（同 play_by_title 同一路
      *  title→Uri＋STREAM_MUSIC；搵唔到回 false）。任意線程可調。 */
     public synchronized boolean playRingtoneTitleNow(String title) {
+        return playRingtoneNow(null, title);
+    }
+
+    /** GamepadCenter 分表鈴聲共用：type phone／notification 分表搵，
+     *  null／其他即全表搵（舊式 ring: 相容）。搵唔到回 false。任意線程可調。 */
+    public synchronized boolean playRingtoneNow(String type, String title) {
         if (title == null || title.trim().isEmpty()) return false;
+        int rmType;
+        if ("phone".equals(type)) {
+            rmType = android.media.RingtoneManager.TYPE_RINGTONE;
+        } else if ("notification".equals(type)) {
+            rmType = android.media.RingtoneManager.TYPE_NOTIFICATION;
+        } else {
+            rmType = android.media.RingtoneManager.TYPE_ALL;
+        }
         android.net.Uri uri;
         try {
-            uri = findRingtoneByTitle(title.trim());
+            uri = findRingtoneByTitle(title.trim(), rmType);
         } catch (Exception e) {
-            Log.w(TAG, "playRingtoneTitleNow lookup failed", e);
+            Log.w(TAG, "playRingtoneNow lookup failed", e);
             return false;
         }
         if (uri == null) return false;

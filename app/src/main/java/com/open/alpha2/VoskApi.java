@@ -1,11 +1,15 @@
 package com.open.alpha2;
 
+import android.util.Log;
+
 import java.util.Map;
 
 /**
  * Vosk 離線 ASR endpoint 層：models/load/status/start/stop/unload/download/catalog。
  */
 public final class VoskApi {
+    private static final String TAG = "VoskApi";
+
     private final VoskController vosk;
     private final XiaozhiBridge xiaozhiBridge;
     private final SemanticCenter semanticCenter;
@@ -108,6 +112,184 @@ public final class VoskApi {
         if (need != null) return need;
         vosk.stopListening();
         return HttpServer.ApiResponse.okTrue();
+    }
+
+    /** 切包等待世代（新撳即 supersede 舊等緊嗰條，唔好堆二三十條 thread
+     *  一齊等把鎖，見 logcat Long monitor contention waiters=28）。 */
+    private final java.util.concurrent.atomic.AtomicInteger switchGen =
+            new java.util.concurrent.atomic.AtomicInteger(0);
+
+    /** 調用方係咪 main thread（mapping 物理掣係，HTTP worker 唔係）。 */
+    private static boolean onMainThread() {
+        try {
+            return android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** GamepadCenter 映射共用：Vosk 監聽單鍵 toggle（聽緊即停，閒置即搶咪開聽）。
+     *  main thread 經物理掣入：一律放背景，連 isListening() 讀鎖都唔掂
+     *  （等 background op 即 ANR 死，見 traces）；回 true＝已停／已接受。
+     *  HTTP worker 照行同步版（回值照實）。背景失敗只記 log＋status 睇到。 */
+    public boolean toggleListening() {
+        if (voskOrError() != null) return false;
+        if (onMainThread()) {
+            new Thread(new Runnable() {
+                @Override public void run() {
+                    toggleListeningSync();
+                }
+            }, "VoskToggle").start();
+            return true;
+        }
+        return toggleListeningSync();
+    }
+
+    private boolean toggleListeningSync() {
+        try {
+            boolean listening = false;
+            try {
+                listening = vosk.isListening();
+            } catch (Throwable ignored) {
+            }
+            if (listening) {
+                try {
+                    vosk.stopListening();
+                } catch (Throwable t) {
+                    return false;
+                }
+                return true;
+            }
+            startListeningAsync();
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 背景開聽（yield mic＋start；失敗 Log＋唔炸調用方）。 */
+    private void startListeningAsync() {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    xiaozhiBridge.yieldMicToVosk();
+                    String err = vosk.startListening();
+                    if (err != null) Log.w(TAG, "async startListening failed: " + err);
+                } catch (Throwable t) {
+                    Log.w(TAG, "async startListening failed", t);
+                }
+            }
+        }, "VoskStart").start();
+    }
+
+    /** GamepadCenter 映射共用：切指定語言包（聽緊同包即停；否則載入＋載好即開聽）。
+     *  main thread 經物理掣入：一律放背景，連 getModelId() 讀鎖都唔掂
+     *  （等 background op 即 ANR 死，見 traces）；回 true＝已停／已接受切包。
+     *  HTTP worker 照行同步版（回值照實）。 */
+    public boolean switchModel(String id) {
+        if (voskOrError() != null || id == null || id.trim().isEmpty()) return false;
+        final String tid = id.trim();
+        if (onMainThread()) {
+            new Thread(new Runnable() {
+                @Override public void run() {
+                    switchModelSync(tid);
+                }
+            }, "VoskSwitchMap").start();
+            return true;
+        }
+        return switchModelSync(tid);
+    }
+
+    private boolean switchModelSync(String tid) {
+        try {
+            String cur = null;
+            boolean listening = false;
+            try {
+                cur = vosk.getModelId();
+            } catch (Throwable ignored) {
+            }
+            try {
+                listening = vosk.isListening();
+            } catch (Throwable ignored) {
+            }
+            if (listening && tid.equals(cur)) {
+                try {
+                    vosk.stopListening();
+                } catch (Throwable t) {
+                    return false;
+                }
+                return true;
+            }
+            final String err = vosk.loadModel(tid);
+            if (err != null) {
+                // 載入緊嗰陣轉軚：打斷舊載入再載新嘅（唔係成堆 false 冇反應；
+                // unload 會令舊 bg thread 自己收，見 loadModel）。
+                boolean loading = false;
+                try {
+                    loading = vosk.getState() == VoskController.State.LOADING;
+                } catch (Throwable ignored) {
+                }
+                if (loading) {
+                    try {
+                        vosk.unload();
+                    } catch (Throwable ignored) {
+                    }
+                    String err2 = null;
+                    try {
+                        err2 = vosk.loadModel(tid);
+                    } catch (Throwable t) {
+                        return false;
+                    }
+                    if (err2 != null) return false;
+                } else {
+                    return false;
+                }
+            }
+            String mapped = VoskController.langOfModelId(tid);
+            if (mapped != null) {
+                try {
+                    semanticCenter.setDialogueLang(mapped);
+                } catch (Throwable ignored) {
+                }
+            }
+            final int gen = switchGen.incrementAndGet();
+            new Thread(new Runnable() {
+                @Override public void run() {
+                    // 等載好先開聽（load 幾秒到幾十秒；每秒望一次，最多等 60 秒；
+                    // 新撳 supersede 即走，唔堆 thread 等把鎖）。
+                    for (int i = 0; i < 60; i++) {
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                        if (gen != switchGen.get()) return;
+                        boolean ready = false;
+                        try {
+                            ready = !vosk.isListening()
+                                    && tid.equals(vosk.getModelId())
+                                    && vosk.getState() == VoskController.State.READY;
+                        } catch (Throwable ignored) {
+                        }
+                        if (ready) break;
+                        if (i == 59) return;
+                    }
+                    // 瞓醒再驗世代：期間有人撳過新包即收手，唔開舊嘢。
+                    if (gen != switchGen.get()) return;
+                    try {
+                        xiaozhiBridge.yieldMicToVosk();
+                        String e2 = vosk.startListening();
+                        if (e2 != null) Log.w(TAG, "async switch start failed: " + e2);
+                    } catch (Throwable t) {
+                        Log.w(TAG, "async switch start failed", t);
+                    }
+                }
+            }, "VoskSwitch").start();
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     public HttpServer.ApiResponse voskUnload() {

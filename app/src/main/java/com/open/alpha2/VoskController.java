@@ -92,6 +92,8 @@ public final class VoskController {
     private volatile State state = State.IDLE;
     private volatile String modelId;
     private volatile String lastError;
+    /** 載入緊邊個包（loadModel 起跑嗰陣記；轉軚／unload／落定清掉，供開工前檢查用）。 */
+    private volatile String loadingId;
 
     // -- 模型下載 (實驗 tab 下載卡，後端直落 zip＋unzip) --
     // 官方 small 模型 catalog（對照 alphacephei.com/vosk/models）：
@@ -378,11 +380,41 @@ public final class VoskController {
             setState(State.ERROR, null, "model not found on sdcard: " + id);
             return "model not found on sdcard: " + id;
         }
+        // OOM 熔斷：RK3288 得 1GB RAM，大包（如韓文 252MB）載入嗰陣俾 LMK 靜殺，
+        // logcat 乜都無（唔係 Java crash）。載入前驗夠唔夠位，唔夠即回清晰錯誤，
+        // 好過成個 App 突然死亡。舊 model 已先放（下面 stopLocked＋closeModelLocked），
+        // 呢度計 model 本體＋150MB 工作 headroom。
+        long needBytes = 150L * 1024 * 1024;
+        try {
+            for (VoskModelInfo m : scanModels()) {
+                if (id.equals(m.id)) {
+                    needBytes = m.sizeBytes + 150L * 1024 * 1024;
+                    break;
+                }
+            }
+            android.app.ActivityManager am = (android.app.ActivityManager)
+                    appContext.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am != null) {
+                android.app.ActivityManager.MemoryInfo mi =
+                        new android.app.ActivityManager.MemoryInfo();
+                am.getMemoryInfo(mi);
+                if (mi.availMem < needBytes) {
+                    String msg = "low memory, refuse to load " + id + " (need "
+                            + (needBytes / 1048576) + "MB, avail "
+                            + (mi.availMem / 1048576) + "MB)";
+                    setState(State.ERROR, null, msg);
+                    return msg;
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "loadModel memory check failed", t);
+        }
         synchronized (this) {
             if (state == State.LOADING) return "already loading";
             stopLocked();
             closeModelLocked();
             state = State.LOADING;
+            loadingId = id;
             lastError = null;
         }
         EventBus.get().publish("vosk_state",
@@ -390,12 +422,17 @@ public final class VoskController {
         new Thread(new Runnable() {
             @Override
             public void run() {
+                // 開工前再驗一次：轉軚／unload 過就唔好白白 mmap 幾百 MB
+                //（幾個大包一齊載入，邊個贏邊個輸睇彩數，見實測）。
+                synchronized (VoskController.this) {
+                    if (state != State.LOADING || !id.equals(loadingId)) return;
+                }
                 try {
                     Model m = new Model(path);
                     String grammar = buildGrammar(id);
                     synchronized (VoskController.this) {
-                        // 載入期間被 unload／load 過就丟掉這個
-                        if (state != State.LOADING) {
+                        // 載入期間被 unload／load 過就丟掉這個（認埋 id：慢嗰個後完成唔可以搶贏新包）。
+                        if (state != State.LOADING || !id.equals(loadingId)) {
                             try {
                                 m.close();
                             } catch (Throwable ignore) {
@@ -416,9 +453,11 @@ public final class VoskController {
                     Log.i(TAG, "model loaded: " + id
                             + (grammar != null ? " (grammar constrained)" : " (open vocab)"));
                     setState(State.READY, id, null);
+                    loadingId = null;
                 } catch (Throwable e) {
                     Log.w(TAG, "loadModel failed: " + id, e);
                     setState(State.ERROR, null, "load failed: " + e.getMessage());
+                    loadingId = null;
                 }
             }
         }, "VoskLoad").start();
@@ -490,6 +529,7 @@ public final class VoskController {
         closeModelLocked();
         state = State.IDLE;
         modelId = null;
+        loadingId = null;
         lastError = null;
         EventBus.get().publish("vosk_state", "{\"state\":\"idle\",\"model\":null}");
     }
@@ -514,6 +554,14 @@ public final class VoskController {
 
     // -- 聆聽 -----------------------------------------------------------------
 
+    /** start 進行中旗（construction 放鎖外嗰陣防 double-start；同 state 分開，
+     *  status API 形狀唔郁；stopLocked 會清，讀寫一律經鎖）。 */
+    private boolean starting = false;
+
+    /** native 重活互斥（Recognizer／Service construction＋Model.close 唔好一齊做；
+     *  同主 monitor 分開，唔揸住佢等幾十秒。拿鎖次序只做 main→audio 單向，唔死鎖。） */
+    private final Object audioInitLock = new Object();
+
     /**
      * 開始聆聽。return null＝已開始，否則是錯誤字串（model 未載入／已在聽／mic 開不到）。
      * 結果經 asr_partial（即時）／asr_result（成句，沿用舊管線：氣泡＋語意配對＋TTS）。
@@ -523,10 +571,22 @@ public final class VoskController {
         return startListeningLocked();
     }
 
-    /** 開始聆聽內部實作（完整問法文法）。必須在 synchronized 內／LISTENING 檢查之後 call。 */
-    private synchronized String startListeningLocked() {
-        if (state != State.READY || model == null) {
-            return state == State.LOADING ? "model loading, try later" : "load a model first";
+    /** 開始聆聽內部實作（完整問法文法）。慢 construction（mic check＋Recognizer
+     *  native＋Service＋AudioRecord open，忙咪嗰陣幾十秒）放鎖外，只用 audioInitLock
+     *  互斥，唔揸主 monitor（見 logcat AudioRecord.native_setup 60s＋waiters 堆積）；
+     *  落定先攞鎖驗旗＋assign。start 緊嗰陣再撳回 "starting, try later"。 */
+    private String startListeningLocked() {
+        final Model snapModel;
+        final String snapGrammar;
+        synchronized (this) {
+            if (state == State.LISTENING) return null;
+            if (state != State.READY || model == null) {
+                return state == State.LOADING ? "model loading, try later" : "load a model first";
+            }
+            if (starting) return "starting, try later";
+            starting = true;
+            snapModel = model;
+            snapGrammar = grammarJson;
         }
         // mic 預檢：部機不支援 16kHz capture 就不要開（開了都是垃圾/[unk]）。
         // 同 SpeechService 內部同一個參數（MONO／PCM16）。
@@ -535,39 +595,41 @@ public final class VoskController {
                     AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT);
             if (minBuf <= 0) {
+                endStarting();
                 return "mic does not support 16kHz mono PCM (minBuf=" + minBuf + ")";
             }
             Log.i(TAG, "mic 16kHz check ok, minBuf=" + minBuf);
         } catch (Throwable e) {
             Log.w(TAG, "mic check failed", e);
+            endStarting();
             return "mic check failed: " + e.getMessage();
         }
         Recognizer rec = null;
         SpeechService service = null;
-        String activeGrammar = grammarJson;
         try {
-            if (activeGrammar != null) {
-                Recognizer g;
-                try {
-                    g = new Recognizer(model, SAMPLE_RATE, activeGrammar);
-                } catch (Throwable e) {
-                    Log.w(TAG, "grammar recognizer failed, fallback open vocab", e);
-                    g = new Recognizer(model, SAMPLE_RATE);
+            synchronized (audioInitLock) {
+                if (snapGrammar != null) {
+                    Recognizer g;
+                    try {
+                        g = new Recognizer(snapModel, SAMPLE_RATE, snapGrammar);
+                    } catch (Throwable e) {
+                        Log.w(TAG, "grammar recognizer failed, fallback open vocab", e);
+                        g = new Recognizer(snapModel, SAMPLE_RATE);
+                    }
+                    rec = g;
+                } else {
+                    rec = new Recognizer(snapModel, SAMPLE_RATE);
                 }
-                rec = g;
-            } else {
-                rec = new Recognizer(model, SAMPLE_RATE);
-            }
-            // word 置信度：final JSON 先有 result/conf 陣列，先做到噪音閘
-            // (見 onVoskFinal；底噪幻聽通常低分，真人說話高分)。舊版 lib 無
-            // 呢個 method 就當無事 (fail-open，下面 avgWordConf 回 -1 照放行)。
-            try {
-                rec.setWords(true);
-            } catch (Throwable ignore) {
-            }
-            // endpointer 調校已移除：Recognizer 一律用 library 預設（之前跟 persist 偏好）。
-            service = new SpeechService(rec, SAMPLE_RATE);
-            service.startListening(new RecognitionListener() {
+                // word 置信度：final JSON 先有 result/conf 陣列，先做到噪音閘
+                // (見 onVoskFinal；底噪幻聽通常低分，真人說話高分)。舊版 lib 無
+                // 呢個 method 就當無事 (fail-open，下面 avgWordConf 回 -1 照放行)。
+                try {
+                    rec.setWords(true);
+                } catch (Throwable ignore) {
+                }
+                // endpointer 調校已移除：Recognizer 一律用 library 預設（之前跟 persist 偏好）。
+                service = new SpeechService(rec, SAMPLE_RATE);
+                service.startListening(new RecognitionListener() {
                 @Override
                 public void onPartialResult(String hypothesis) {
                     String text = transcript(hypothesis, "partial");
@@ -604,23 +666,24 @@ public final class VoskController {
                     stopListening();
                 }
             });
-            recognizer = rec;
-            speechService = service;
-            state = State.LISTENING;
-            lastError = null;
+            }
+            // 落定：攞鎖驗旗＋assign（中途有人停過／轉過態即收拾自己，唔 assign 殭屍）。
+            synchronized (this) {
+                if (!starting || state != State.READY) {
+                    starting = false;
+                    closeStartParts(service, rec);
+                    return "stopped";
+                }
+                recognizer = rec;
+                speechService = service;
+                state = State.LISTENING;
+                starting = false;
+                lastError = null;
+            }
         } catch (Throwable e) {
             Log.w(TAG, "startListening failed", e);
-            if (service != null) {
-                try {
-                    service.shutdown();
-                } catch (Throwable ignore) {
-                }
-            } else if (rec != null) {
-                try {
-                    rec.close();
-                } catch (Throwable ignore) {
-                }
-            }
+            closeStartParts(service, rec);
+            endStarting();
             return "mic start failed: " + e.getMessage();
         }
         EventBus.get().publish("vosk_state",
@@ -712,6 +775,7 @@ public final class VoskController {
     }
 
     private void stopLocked() {
+        starting = false;
         if (speechService != null) {
             try {
                 speechService.stop();
@@ -737,6 +801,32 @@ public final class VoskController {
         stopLocked();
         closeModelLocked();
         state = State.IDLE;
+        loadingId = null;
+    }
+
+    /** 起步失敗／中途被停嗰陣清 starting 旗（經鎖；stopLocked 嗰邊都會清）。 */
+    private void endStarting() {
+        try {
+            synchronized (this) {
+                starting = false;
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 收拾起步半成品（service 優先停，否則關 recognizer；同舊 catch 同一路）。 */
+    private static void closeStartParts(SpeechService service, Recognizer rec) {
+        if (service != null) {
+            try {
+                service.shutdown();
+            } catch (Throwable ignored) {
+            }
+        } else if (rec != null) {
+            try {
+                rec.close();
+            } catch (Throwable ignored) {
+            }
+        }
     }
 
     /** optText＋trim。空即回 null 唔發佈。partial 同 final 共用。 */

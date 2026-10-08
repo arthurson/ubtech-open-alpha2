@@ -26,6 +26,15 @@ public final class AudioCenter {
 
     private static final String PREF_MUSIC_FILLER_ACTION_ENABLED = "music_filler_action_enabled";
 
+    /** 本地音樂暫停旗標：pause 置 true，resume/play/stop/completion 置 false。
+     *  兩個 filler 循環都認呢個旗（見 startMusicFillerActionLoop/startSharedFillerLoop），
+     *  暫停期間唔再觸發隨機動作；music 專用觸發（triggerMusicFillerAction）喺 worker
+     *  thread 播之前會再驗一次，閂埋「pause 同 tick 撞車」嗰條罅。volatile，任一 thread 讀寫。 */
+    private volatile boolean localMusicPaused = false;
+    /** 網絡電台收藏：SharedPreferences 存 JSONArray 字串（含 name/country/stationuuid/url/url_resolved），上限見下。 */
+    private static final String PREF_RADIO_FAVORITES = "radio_favorites_json";
+    private static final int RADIO_FAVORITES_MAX = 100;
+
     private final Context appContext;
     private final UbxPlayer ubxPlayer;
     private final ActionDirect actionDirect;
@@ -169,8 +178,9 @@ public final class AudioCenter {
     // 成部機（無 ANR、adb 齊死，用嗰陣正常、開過之後隨時發作）。短命＋密 refresh＝
     // 穩態一樣，stall 嗰陣自然熄唔會凍結，驅動嗰邊亦無嘢累積。
 
-    /** Disco 開關 - prefs 持久化，預設關（同 filler 預設開唔同：燈亂閃預設唔著）。 */
-    private boolean isDiscoEnabled() {
+    /** Disco 開關 - prefs 持久化，預設關（同 filler 預設開唔同：燈亂閃預設唔著）。
+     *  映射事件共用讀態（public 純讀，寫經 discoSet／toggleDisco）。 */
+    public boolean isDiscoEnabled() {
         try {
             return prefs().getBoolean(PREF_DISCO_ENABLED, false);
         } catch (Throwable ignore) {
@@ -1079,7 +1089,8 @@ public final class AudioCenter {
      *  startMusicFillerActionLoop()、playLocalMusicFile() 一起用同一個讀法,
      *  用戶隨時可以在 UI 上切換, 不用讓正在播放的歌也要重新播放才生效 - 下一個
      *  loop tick (或下一次播歌) 就會反映新設定。*/
-    private boolean isMusicFillerActionEnabled() {
+    /** 映射事件共用讀態（public 純讀，寫經 fillerActionSet／toggleFillerAction）。 */
+    public boolean isMusicFillerActionEnabled() {
         return prefs().getBoolean(PREF_MUSIC_FILLER_ACTION_ENABLED, true);
     }
 
@@ -1088,9 +1099,10 @@ public final class AudioCenter {
             @Override
             public void run() {
                 synchronized (AudioCenter.this) {
-                    if (currentMusicPlayer != boundPlayer) {
-                        // 整首歌已經播完/被叫停/被第二首歌取代了 - 這個循環
-                        // 對應的播放已經不再有效, 不再重新 schedule, 自然結束。
+                    if (currentMusicPlayer != boundPlayer || localMusicPaused) {
+                        // 整首歌已經播完/被叫停/被第二首歌取代了，或者用戶按了暫停 -
+                        // 這個循環對應的播放已經不再有效（暫停由 resume 重啟新循環，
+                        // 見 localMusicResume），不再重新 schedule，自然結束。
                         return;
                     }
                 }
@@ -1099,7 +1111,7 @@ public final class AudioCenter {
                 // 關閉時只是跳過「動一下」這個動作, loop 本身仍然繼續 schedule
                 // 下去 (讓用戶隨時開啟都能立即恢復, 不用 stop/replay 那首歌)。
                 if (isMusicFillerActionEnabled()) {
-                    triggerRandomFillerAction();
+                    triggerMusicFillerAction();
                 }
                 synchronized (AudioCenter.this) {
                     if (currentMusicPlayer == boundPlayer && musicFillerActionLoop != null) {
@@ -1113,18 +1125,21 @@ public final class AudioCenter {
     }
 
     /** 停止 startMusicFillerActionLoop() 開始的循環 (如果有的話) - 供
-     *  stopLocalMusicPlaybackLocked() 呼叫, 也供 onCompletion/onError 這兩個
-     *  listener 呼叫 (整首歌自然播完/播壞都應該立即停止動作, 不用等到下一次
-     *  loop tick 才發現 currentMusicPlayer 已經不對才罷手)。 */
+     *  stopLocalMusicPlaybackLocked()/localMusicPause() 呼叫, 也供 onCompletion/onError
+     *  這兩個 listener 呼叫 (整首歌自然播完/播壞都應該立即停止動作, 不用等到下一次
+     *  loop tick 才發現 currentMusicPlayer 已經不對才罷手)。
+     *  淨停本地循環，共用循環由呼叫方按電台狀態決定（stop 時經 stopSharedFillerLoopIfIdle，
+     *  pause 時電台播緊要留返共用循環畀電台）。 */
     private void stopMusicFillerActionLoop() {
         if (musicFillerActionLoop != null) {
             mainHandler.removeCallbacks(musicFillerActionLoop);
             musicFillerActionLoop = null;
         }
-        stopSharedFillerLoop();
     }
 
-    // 共用隨機動作循環 — 本地與電台共用同一開關與同一節奏，兩者任一在播即觸發
+    // 共用隨機動作循環 — 本地與電台共用同一開關與同一節奏，兩者任一在播即觸發。
+    // 本地暫停（localMusicPaused）不算「在播」：淨係本地播緊（無暫停）或電台播緊先觸發，
+    // 否則自然結束（resume 會重啟，見 localMusicResume）。
     private Runnable sharedFillerLoop;
     private synchronized void startSharedFillerLoop() {
         if (sharedFillerLoop != null) return;
@@ -1132,11 +1147,16 @@ public final class AudioCenter {
             @Override
             public void run() {
                 boolean hasActivePlayer = false;
+                boolean radioActive = false;
                 synchronized (AudioCenter.this) {
-                    if (currentMusicPlayer != null || currentRadioPlayer != null) hasActivePlayer = true;
+                    radioActive = currentRadioPlayer != null;
+                    if ((currentMusicPlayer != null && !localMusicPaused) || radioActive) hasActivePlayer = true;
                 }
                 if (hasActivePlayer && isMusicFillerActionEnabled()) {
-                    triggerRandomFillerAction();
+                    // 淨本地在播先用可取消版（pause 同 tick 撞車都唔會播）；
+                    // 電台有份在播就沿用原本行為（電台無暫停概念）。
+                    if (!radioActive) triggerMusicFillerAction();
+                    else triggerRandomFillerAction();
                 }
                 synchronized (AudioCenter.this) {
                     // 用 this 而非 loop 變數，避免「variable loop might not have been initialized」編譯錯誤
@@ -1202,6 +1222,7 @@ public final class AudioCenter {
     }
 
     public synchronized void playLocalMusicFile(java.io.File file) {
+        localMusicPaused = false; // 新歌：上首 pause 嘅旗即清，循環照起
         discoPauseHold = false; // 新歌：上首 pause 嘅 hold 即清，幀到即推
         stopLocalMusicPlaybackLocked();
         // 共用播放器：播本地時停掉電台，避免兩路同時出聲；動作配樂亦停，免疊聲
@@ -1257,6 +1278,7 @@ public final class AudioCenter {
     }
 
     private void stopLocalMusicPlaybackLocked() {
+        localMusicPaused = false; // stop 即乾淨狀態，下首歌由頭嚟過
         stopMusicFillerActionLoop();
         stopSharedFillerLoopIfIdle();
         discoPushOffIfEnabled();
@@ -1275,6 +1297,7 @@ public final class AudioCenter {
     /** 本地音樂 OnCompletion/OnError 共用：停 filler loop、（電台沒有播先）放共用
      *  頻譜、release 那部 player、是 current 先清掉（之前兩個 listener 內逐字一樣）。 */
     private void releaseDoneMusicPlayerLocked(android.media.MediaPlayer mp) {
+        localMusicPaused = false; // 自然播完／出錯：唔係暫停，唔留旗
         stopMusicFillerActionLoop();
         stopSharedFillerLoopIfIdle();
         discoPushOffIfEnabled();
@@ -1573,6 +1596,22 @@ public final class AudioCenter {
         }, "XiaozhiAutoRandomAction").start();
     }
 
+    /** 本地音樂專用觸發：同 triggerRandomFillerAction 一樣開獨立 thread 播隨機動作，
+     *  但播之前（resolve 後、play 前各驗一次 localMusicPaused）——閂埋「filler tick
+     *  同用戶按 pause 撞車，中間先排到嘅動作喺企直之後又播返出嚟」嗰條罅。
+     *  電台/TTS 共用嗰條 triggerRandomFillerAction 唔用呢個（電台無暫停概念）。 */
+    private void triggerMusicFillerAction() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                if (localMusicPaused) return;
+                String randomId = actionDirect.resolveRandomActionId();
+                if (randomId == null || localMusicPaused) return;
+                actionDirect.playActionDirect(randomId);
+            }
+        }, "MusicFillerAction").start();
+    }
+
     /** 本地音樂 tab 的拖放上傳功能 - 瀏覽器把檔案內容原封不動 POST
      *  到這個 endpoint (?name=<原本檔名>), 寫入 LOCAL_MUSIC_DIR。檔名只做
      *  sanitizeUploadFilename() (去掉路徑分隔符/上層目錄嘗試), 不做內容檢查
@@ -1860,9 +1899,8 @@ public final class AudioCenter {
     }
 
     // 真・暫停/恢復 - MediaPlayer.pause() 之後播放位置一直記住, 之後 start()
-    // 就從那裡繼續, 不用從頭播放。注意: pause/resume 都不會動到 musicFillerActionLoop - 暫停期間那個 loop
-    // 仍在執行 (triggerRandomFillerAction() 有它自己「沒在播就不動」的
-    // 判斷), 沿用原本播歌期間的行為。
+    // 就從那裡繼續, 不用從頭播放。暫停語義同「⏹ 全部停止」嘅動作部分睇齊：
+    // 停 filler 循環＋截停兼播回位動作企返直；resume 先重啟循環再郁。
     public HttpServer.ApiResponse localMusicPause() {
         synchronized (this) {
             if (currentMusicPlayer == null) {
@@ -1877,7 +1915,9 @@ public final class AudioCenter {
                 return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
                         + MainActivity.jsonSafe(String.valueOf(e.getMessage())) + "\"}");
             }
+            pauseMusicFillerLocked();
         }
+        stopPausedMusicAction();
         return HttpServer.ApiResponse.okTrue();
     }
 
@@ -1893,8 +1933,42 @@ public final class AudioCenter {
                 return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\""
                         + MainActivity.jsonSafe(String.valueOf(e.getMessage())) + "\"}");
             }
+            resumeMusicFillerLocked();
         }
         return HttpServer.ApiResponse.okTrue();
+    }
+
+    /** pause 共用段（要持有 this 鎖）：先立 localMusicPaused 旗，停本地循環，
+     *  電台無播先停埋共用循環（電台播緊要留返畀電台）。in-flight 嘅 tick/worker
+     *  見旗即收，唔會再觸發新動作。 */
+    private void pauseMusicFillerLocked() {
+        localMusicPaused = true;
+        stopMusicFillerActionLoop();
+        if (currentRadioPlayer == null) {
+            stopSharedFillerLoop();
+        }
+    }
+
+    /** resume 共用段（要持有 this 鎖）：淨係之前 pause 過先重啟循環（唔係會疊多條
+     *  loop 一齊 tick），即刻郁一下，再排定時循環。 */
+    private void resumeMusicFillerLocked() {
+        if (!localMusicPaused) return;
+        localMusicPaused = false;
+        startMusicFillerActionLoop(currentMusicPlayer);
+        startSharedFillerLoop();
+        if (isMusicFillerActionEnabled()) {
+            triggerMusicFillerAction();
+        }
+    }
+
+    /** pause 後截停兼播回位動作企返直 — 同「⏹ 全部停止」嘅 action/stop 同語義
+     *  （見 ActionDirect.stopActionWithRecovery），fire-and-forget，失敗唔影響 pause 回 ok。 */
+    private void stopPausedMusicAction() {
+        try {
+            actionDirect.stopActionWithRecovery();
+        } catch (Throwable t) {
+            Log.w(TAG, "localMusicPause stopAction failed", t);
+        }
     }
 
     /** GamepadCenter／手柄映射共用：有載入即暫停（同 localMusicPause 同語義，
@@ -1905,11 +1979,13 @@ public final class AudioCenter {
             currentMusicPlayer.pause();
             discoPauseHold = true;
             discoPushOffIfEnabled();
-            return true;
         } catch (Exception e) {
             Log.w(TAG, "pauseLocalMusicNow failed", e);
             return false;
         }
+        pauseMusicFillerLocked();
+        stopPausedMusicAction();
+        return true;
     }
 
     /** GamepadCenter／手柄映射共用：播緊唔緊（MediaPlayer.isPlaying），
@@ -1929,11 +2005,12 @@ public final class AudioCenter {
         try {
             currentMusicPlayer.start();
             discoPauseHold = false;
-            return true;
         } catch (Exception e) {
             Log.w(TAG, "resumeLocalMusicNow failed", e);
             return false;
         }
+        resumeMusicFillerLocked();
+        return true;
     }
 
     // 「播歌隨機動作」開關 - 預設 true。
@@ -1953,6 +2030,42 @@ public final class AudioCenter {
         boolean next = !isMusicFillerActionEnabled();
         prefs().edit().putBoolean(PREF_MUSIC_FILLER_ACTION_ENABLED, next).apply();
         return true;
+    }
+
+    /** 映射共用：EQ preset 單鍵 toggle（已係該 preset 即返 normal，否則切過去＋開）。 */
+    public synchronized boolean toggleEqPreset(String preset) {
+        if (preset == null || !MusicEq.isPreset(preset)) return false;
+        String cur = eqPreset();
+        java.util.Map<String, String> q = new java.util.HashMap<>();
+        q.put("enabled", "true");
+        q.put("preset", cur.equals(preset) ? MusicEq.NORMAL : preset);
+        try {
+            musicEqSet(q);
+            return true;
+        } catch (Throwable t) {
+            Log.w(TAG, "toggleEqPreset failed", t);
+            return false;
+        }
+    }
+
+    /** 映射共用：播收藏電台（先按 stationuuid，唔啱再按 name 大小寫無關搵；
+     *  搵唔到回 false）。播到即順手記低做上次電台（radio_toggle 重播用）。 */
+    public synchronized boolean playFavoriteNow(String key) {
+        if (key == null || key.trim().isEmpty()) return false;
+        key = key.trim();
+        try {
+            for (org.json.JSONObject fav : loadRadioFavoritesLocked()) {
+                String uuid = fav.optString("stationuuid", "");
+                String name = fav.optString("name", "");
+                if (key.equals(uuid) || key.equalsIgnoreCase(name)) {
+                    playRadioStream(fav);
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "playFavoriteNow failed", t);
+        }
+        return false;
     }
 
     // -- FM/網絡電台 (經 Radio Browser API, radio-browser.info, 動態搜全
@@ -1976,8 +2089,12 @@ public final class AudioCenter {
             for (org.json.JSONObject s : found) {
                 if (!first) sb.append(",");
                 first = false;
+                // favorites/add 需要直播位址＋uuid 才能免搜尋直播，故一併回傳（ additive，不影響舊前端只讀 name/country）。
                 sb.append("{\"name\":\"").append(MainActivity.jsonSafe(s.optString("name")))
                         .append("\",\"country\":\"").append(MainActivity.jsonSafe(s.optString("country")))
+                        .append("\",\"stationuuid\":\"").append(MainActivity.jsonSafe(s.optString("stationuuid")))
+                        .append("\",\"url\":\"").append(MainActivity.jsonSafe(s.optString("url")))
+                        .append("\",\"url_resolved\":\"").append(MainActivity.jsonSafe(s.optString("url_resolved")))
                         .append("\"}");
             }
             sb.append("]}");
@@ -2065,9 +2182,169 @@ public final class AudioCenter {
             return HttpServer.ApiResponse.ok("{\"ok\":true,\"playing\":false}");
         }
         String currentName = currentRadioStationName;
+        boolean fav = isRadioFavorite(id, currentName == null ? "" : currentName);
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"playing\":true,\"id\":\""
                 + MainActivity.jsonSafe(id) + "\",\"name\":\""
-                + MainActivity.jsonSafe(currentName == null ? "" : currentName) + "\"}");
+                + MainActivity.jsonSafe(currentName == null ? "" : currentName)
+                + "\",\"favorite\":" + fav + "}");
+    }
+
+    // -- 網絡電台收藏 (favorites)：機身 SharedPreferences 持久化，多瀏覽器共用 --
+    // 動機：search 每次回 50 個隨機結果，下次再搜同一個詞未必再出現；常用台應一鍵直播、
+    // 免搜尋（尤其機械人無外網時，經 play_url 用收藏的 url_resolved 仍可播 http 台）。
+    // 形狀：JSONArray 字串，每項 {name*, country, stationuuid, url, url_resolved}；
+    // 去重：uuid 非空且相等即同一台，否則 name 大小寫無關相等即同一台（frontend- 臨時
+    // uuid 每次不同，靠 name 比對）；上限 RADIO_FAVORITES_MAX，超出丟最舊。
+
+    /** 讀出收藏（內部用，回傳可變 List，呼叫方自行同步；壞字串即當空並清掉）。 */
+    private synchronized java.util.List<org.json.JSONObject> loadRadioFavoritesLocked() {
+        java.util.List<org.json.JSONObject> out = new java.util.ArrayList<>();
+        String raw;
+        try {
+            raw = prefs().getString(PREF_RADIO_FAVORITES, "[]");
+        } catch (Throwable t) {
+            return out;
+        }
+        if (raw == null || raw.trim().isEmpty()) return out;
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray(raw);
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                String n = o.optString("name", "").trim();
+                if (n.isEmpty()) continue;
+                out.add(o);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "radio favorites parse failed, reset", e);
+            try {
+                prefs().edit().remove(PREF_RADIO_FAVORITES).apply();
+            } catch (Throwable ignored) {
+            }
+        }
+        return out;
+    }
+
+    private synchronized void saveRadioFavoritesLocked(java.util.List<org.json.JSONObject> list) {
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray();
+            int cap = Math.min(list.size(), RADIO_FAVORITES_MAX);
+            for (int i = 0; i < cap; i++) arr.put(list.get(i));
+            prefs().edit().putString(PREF_RADIO_FAVORITES, arr.toString()).apply();
+        } catch (Throwable t) {
+            Log.w(TAG, "radio favorites save failed", t);
+        }
+    }
+
+    private static boolean sameRadioStation(String uuidA, String nameA, String uuidB, String nameB) {
+        String a = uuidA == null ? "" : uuidA.trim();
+        String b = uuidB == null ? "" : uuidB.trim();
+        // frontend- 臨時 uuid 每次播放都不同，不可作身份比對，只靠 name。
+        boolean aTemp = a.startsWith("frontend-");
+        boolean bTemp = b.startsWith("frontend-");
+        if (!a.isEmpty() && !b.isEmpty() && !aTemp && !bTemp && a.equals(b)) return true;
+        String na = nameA == null ? "" : nameA.trim();
+        String nb = nameB == null ? "" : nameB.trim();
+        return !na.isEmpty() && na.equalsIgnoreCase(nb);
+    }
+
+    /** 目前播緊的台是否已收藏（供 radioStatus 回 favorite 旗）。 */
+    public synchronized boolean isRadioFavorite(String stationuuid, String name) {
+        java.util.List<org.json.JSONObject> favs = loadRadioFavoritesLocked();
+        for (org.json.JSONObject f : favs) {
+            if (sameRadioStation(stationuuid, name, f.optString("stationuuid"), f.optString("name"))) return true;
+        }
+        return false;
+    }
+
+    private static String radioFavoritesToJson(java.util.List<org.json.JSONObject> favs) {
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"favorites\":[");
+        boolean first = true;
+        for (org.json.JSONObject f : favs) {
+            if (!first) sb.append(",");
+            first = false;
+            sb.append("{\"name\":\"").append(MainActivity.jsonSafe(f.optString("name")))
+                    .append("\",\"country\":\"").append(MainActivity.jsonSafe(f.optString("country")))
+                    .append("\",\"stationuuid\":\"").append(MainActivity.jsonSafe(f.optString("stationuuid")))
+                    .append("\",\"url\":\"").append(MainActivity.jsonSafe(f.optString("url")))
+                    .append("\",\"url_resolved\":\"").append(MainActivity.jsonSafe(f.optString("url_resolved")))
+                    .append("\"}");
+        }
+        sb.append("]}");
+        return sb.toString();
+    }
+
+    public synchronized HttpServer.ApiResponse radioFavoritesList() {
+        return HttpServer.ApiResponse.ok(radioFavoritesToJson(loadRadioFavoritesLocked()));
+    }
+
+    public synchronized HttpServer.ApiResponse radioFavoritesAdd(Map<String, String> query) {
+        String name = ApiValidator.require(query, "name").trim();
+        if (name.isEmpty()) throw new IllegalArgumentException("missing required parameter: name");
+        String country = ApiValidator.optional(query, "country", "");
+        String stationuuid = ApiValidator.optional(query, "stationuuid", "");
+        String url = ApiValidator.optional(query, "url", "");
+        String urlResolved = ApiValidator.optional(query, "url_resolved", "");
+        java.util.List<org.json.JSONObject> favs = loadRadioFavoritesLocked();
+        org.json.JSONObject existing = null;
+        for (org.json.JSONObject f : favs) {
+            if (sameRadioStation(stationuuid, name, f.optString("stationuuid"), f.optString("name"))) {
+                existing = f;
+                break;
+            }
+        }
+        try {
+            if (existing != null) {
+                // 已收藏：補齊欄位（例如上次缺 url、今次有），保留原位。
+                existing.put("name", name);
+                if (!country.isEmpty()) existing.put("country", country);
+                if (!stationuuid.isEmpty()) existing.put("stationuuid", stationuuid);
+                if (!url.isEmpty()) existing.put("url", url);
+                if (!urlResolved.isEmpty()) existing.put("url_resolved", urlResolved);
+            } else {
+                org.json.JSONObject o = new org.json.JSONObject();
+                o.put("name", name);
+                o.put("country", country == null ? "" : country);
+                o.put("stationuuid", stationuuid == null ? "" : stationuuid);
+                o.put("url", url == null ? "" : url);
+                o.put("url_resolved", urlResolved == null ? "" : urlResolved);
+                favs.add(0, o);
+                while (favs.size() > RADIO_FAVORITES_MAX) favs.remove(favs.size() - 1);
+            }
+        } catch (Exception e) {
+            return HttpServer.ApiResponse.error("radio favorites add failed: " + e.getMessage());
+        }
+        saveRadioFavoritesLocked(favs);
+        return HttpServer.ApiResponse.ok(radioFavoritesToJson(favs));
+    }
+
+    public synchronized HttpServer.ApiResponse radioFavoritesRemove(Map<String, String> query) {
+        String name = ApiValidator.optionalNullable(query, "name");
+        String stationuuid = ApiValidator.optionalNullable(query, "stationuuid");
+        String n = name == null ? "" : name.trim();
+        String u = stationuuid == null ? "" : stationuuid.trim();
+        if (n.isEmpty() && u.isEmpty()) {
+            throw new IllegalArgumentException("missing required parameter: name or stationuuid");
+        }
+        java.util.List<org.json.JSONObject> favs = loadRadioFavoritesLocked();
+        java.util.Iterator<org.json.JSONObject> it = favs.iterator();
+        boolean removed = false;
+        while (it.hasNext()) {
+            org.json.JSONObject f = it.next();
+            // 任一命中即刪：uuid 精確相等，或 name 大小寫無關相等（frontend- 臨時
+            // uuid 每次不同，對唔上時靠 name 命中，免刪唔到）。
+            boolean uuidHit = !u.isEmpty() && u.equals(f.optString("stationuuid"));
+            boolean nameHit = !n.isEmpty() && n.equalsIgnoreCase(f.optString("name").trim());
+            if (uuidHit || nameHit) {
+                it.remove();
+                removed = true;
+            }
+        }
+        if (!removed) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"favorite not found\"}");
+        }
+        saveRadioFavoritesLocked(favs);
+        return HttpServer.ApiResponse.ok(radioFavoritesToJson(favs));
     }
 
     // -- MCP tools (XiaozhiBridge callTool switch 轉調；

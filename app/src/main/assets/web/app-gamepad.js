@@ -42,11 +42,14 @@ var GAMEPAD_KB_GROUPS = [
 // 動作種類（servo 軸＋方向另有下拉拼出 servo<N>±；music 揀功能（含音量＋-）；
 // ring 揀鈴聲（系統預設電話鈴＋鈴聲名）；led 揀部位＋效果＋色；camera 揀影相／追蹤；
 // action 由動作下拉選）。
-var GAMEPAD_KINDS = ["none", "stop", "servo", "music", "ring", "led", "camera", "sensor", "action"];
+var GAMEPAD_KINDS = ["none", "stop", "servo", "music", "radio", "ring", "led", "camera", "sensor", "voice", "action"];
 var GAMEPAD_KIND_KEYS = { none: "gamepad_kind_none", stop: "gamepad_kind_stop",
-  servo: "gamepad_kind_servo", music: "gamepad_kind_music", ring: "gamepad_kind_ring",
+  servo: "gamepad_kind_servo", music: "gamepad_kind_music", radio: "gamepad_kind_radio",
+  ring: "gamepad_kind_ring",
   led: "gamepad_kind_led", camera: "gamepad_kind_camera", sensor: "gamepad_kind_sensor",
-  action: "gamepad_kind_action" };
+  voice: "gamepad_kind_voice", action: "gamepad_kind_action" };
+var GAMEPAD_VOICE_FIXED = [["xiaozhi_toggle", "gamepad_voice_xiaozhi"],
+  ["vosk", "gamepad_voice_vosk"]];
 
 // 相機（同後端 isCameraAction 對齊；追蹤開／停已合併，face_start／color_start 即 toggle）。
 var GAMEPAD_CAMERA_FNS = ["camera_photo", "face_start", "color_start", "video_toggle"];
@@ -55,6 +58,21 @@ var GAMEPAD_CAMERA_FNS = ["camera_photo", "face_start", "color_start", "video_to
 var GAMEPAD_SENSOR_FNS = ["sonar_toggle", "pir_toggle", "accel_toggle"];
 var GAMEPAD_SENSOR_FN_KEYS = { sonar_toggle: "gamepad_sen_sonar", pir_toggle: "gamepad_sen_pir",
   accel_toggle: "gamepad_sen_accel" };
+
+// 轉語言原地重標用（值→i18n key；色碼另見 GAMEPAD_LED_COLOR_KEYS／dual 三對）。
+var GAMEPAD_CAM_FN_KEYS = { camera_photo: "gamepad_cam_photo", face_start: "gamepad_cam_face",
+  color_start: "gamepad_cam_color", video_toggle: "gamepad_cam_video" };
+var GAMEPAD_RING_FIXED_KEYS = { ring_phone: "gamepad_ring_phone", ring_stop: "gamepad_ring_stop",
+  ring_random: "gamepad_ring_random" };
+var GAMEPAD_RING_TYPE_KEYS = { phone: "gamepad_ring_type_phone",
+  notification: "gamepad_ring_type_notification" };
+var GAMEPAD_LED_PART_KEYS = { head: "gamepad_led_head", eye: "gamepad_led_eye",
+  mouth: "gamepad_led_mouth" };
+var GAMEPAD_LED_PRESET_KEYS = { long: "gamepad_led_long", flash: "gamepad_led_flash",
+  breathe: "gamepad_led_breathe", chase: "gamepad_led_chase", dual: "gamepad_led_dual",
+  stop: "gamepad_led_stop", off: "gamepad_led_off", breathing: "gamepad_led_breathing",
+  random: "gamepad_led_random" };
+var GAMEPAD_DUAL_KEYS = { 3: "gamepad_dual_bg", 4: "gamepad_dual_rg", 5: "gamepad_dual_rb" };
 
 // 頭／眼 LED 部位＋效果＋色（同後端 isLedAction 對齊；眼無 breathe；色 1紅2綠3藍4黃5紫6青7白）。
 var GAMEPAD_LED_PARTS = ["head", "eye"];
@@ -66,17 +84,93 @@ var GAMEPAD_LED_COLOR_KEYS = [["1", "color_name_red"], ["2", "color_name_green"]
   ["3", "color_name_blue"], ["4", "color_name_yellow"], ["5", "color_name_purple"],
   ["6", "color_name_cyan"], ["7", "color_name_white"]];
 
-// 音樂／音量／電台／燈效功能（同後端 MUSIC_ACTIONS＋vol_up／vol_down 對齊；toggle＝播緊停／
-// 停緊續／無歌播首首；random＝隨機一首；radio_toggle＝停／重播上次電台；
-// disco_toggle＝節奏燈開關；filler_toggle＝播歌隨機動作開關）。
+// 音樂／音量／燈效功能（同後端 MUSIC_ACTIONS＋vol_up／vol_down 對齊；toggle＝播緊停／
+// 停緊續／無歌播首首；random＝隨機一首；disco_toggle＝節奏燈開關；
+// filler_toggle＝播歌隨機動作開關；電台獨立成種，唔喺度）。
 var GAMEPAD_MUSIC_FNS = ["music_play", "music_next", "music_prev", "music_pause", "music_resume",
-  "music_toggle", "music_stop", "music_random", "radio_toggle", "disco_toggle", "filler_toggle",
+  "music_toggle", "music_stop", "music_random", "disco_toggle", "filler_toggle",
   "vol_up", "vol_down"];
 var GAMEPAD_MUSIC_FN_KEYS = { music_play: "gamepad_mfn_play", music_next: "gamepad_mfn_next",
   music_prev: "gamepad_mfn_prev", music_pause: "gamepad_mfn_pause", music_resume: "gamepad_mfn_resume",
   music_toggle: "gamepad_mfn_toggle", music_stop: "gamepad_mfn_stop", music_random: "gamepad_mfn_random",
-  radio_toggle: "gamepad_mfn_radio", disco_toggle: "gamepad_mfn_disco", filler_toggle: "gamepad_mfn_filler",
-  vol_up: "gamepad_mfn_volup", vol_down: "gamepad_mfn_voldn" };
+  disco_toggle: "gamepad_mfn_disco", filler_toggle: "gamepad_mfn_filler",
+  vol_up: "gamepad_mfn_volup", vol_down: "gamepad_mfn_voldn", "eq:": "gamepad_mfn_eq" };
+// 電台種（單 toggle，將來加preset台都喺度加）。
+var GAMEPAD_RADIO_FN_KEYS = { radio_toggle: "gamepad_mfn_radio" };
+
+// 收藏電台緩存（audio/radio/favorites/list 活數據：用戶成日加減，每次 render 重抓）。
+var __gpRadioFavsCache = null;
+
+function gamepadLoadRadioFavs(force) {
+  if (!force && __gpRadioFavsCache) return Promise.resolve(__gpRadioFavsCache);
+  return Alpha2Api.audioRadioFavoritesList().then(function (json) {
+    var out = [];
+    if (json && json.ok && json.favorites) {
+      json.favorites.forEach(function (f) {
+        if (f && f.name) out.push(f);
+      });
+    }
+    __gpRadioFavsCache = out;
+    return out;
+  }).catch(function () {
+    __gpRadioFavsCache = __gpRadioFavsCache || [];
+    return __gpRadioFavsCache;
+  });
+}
+
+// 建電台下拉（開關＋收藏；收藏單後到即補）。
+function gamepadBuildRadioSelect(side, k, parsed) {
+  var sel = document.createElement("select");
+  sel.id = "gpRadioSel_" + side + "_" + k;
+  sel.style.maxWidth = "220px";
+  sel.style.display = parsed.kind === "radio" ? "inline" : "none";
+  gamepadFillRadioSelect(sel, parsed.radioFn);
+  return sel;
+}
+
+// 填收藏（存值 radio:<uuid>；舊值唔喺度即補 (?)；無收藏即得開關）。
+function gamepadFillRadioSelect(sel, cur) {
+  if (!sel) return;
+  for (var i = sel.options.length - 1; i >= 0; i--) {
+    if (sel.options[i].value.indexOf("radio:") === 0) sel.remove(i);
+  }
+  // 舊 radio_toggle 存值：保留返粒（唔再主動提供，免無啦啦洗走人哋個值）。
+  if (cur === "radio_toggle") {
+    var leg = document.createElement("option");
+    leg.value = cur;
+    leg.textContent = t("gamepad_mfn_radio");
+    leg.selected = true;
+    sel.appendChild(leg);
+  }
+  var favs = __gpRadioFavsCache || [];
+  favs.forEach(function (f) {
+    var key = f.stationuuid || f.name;
+    var v = "radio:" + key;
+    var o = document.createElement("option");
+    o.value = v;
+    o.textContent = f.name;
+    if (v === cur) o.selected = true;
+    sel.appendChild(o);
+  });
+  if (cur && cur.indexOf("radio:") === 0) {
+    var found = false;
+    for (var j = 0; j < sel.options.length; j++) {
+      if (sel.options[j].value === cur) { found = true; break; }
+    }
+    if (!found) {
+      // 舊名式 radio:<名>但個名喺收藏入面：唔打 (?)，照播到。
+      var bare = cur.substring(6);
+      var known = false;
+      favs.forEach(function (f) { if (f.name === bare) known = true; });
+      var miss = document.createElement("option");
+      miss.value = cur;
+      miss.textContent = bare + (known ? "" : " (?)");
+      miss.selected = true;
+      sel.appendChild(miss);
+    }
+  }
+  sel.dataset.radioFilled = favs.length ? "1" : "";
+}
 
 // 動作 5 大類（sub→類映射；細 sub 名唔再逐個列）。
 // basic＝基本（移動／手勢／頭部），dance＝舞蹈，story＝寓言故事，
@@ -340,6 +434,9 @@ function onGamepadKeyEvent(type, data) {
     // A 端搖桿經呢度郁點。
     gamepadMoveNubs(Number(data.lx || 0), Number(data.ly || 0),
       Number(data.rx || 0), Number(data.ry || 0));
+  } else if (type === "gamepad_state") {
+    // 映射 toggle 做咗，機身即推新態：掣即時跟（唔使入版重讀）。
+    gamepadApplyToggleState(data);
   } else if (type === "gamepad_bt" && data.event) {
     // bond／scan_done 落 Event Log 之餘，順手將管理卡現狀拉新一次。
     if (data.event === "bond" || data.event === "scan_done" || data.event === "unbond") {
@@ -348,6 +445,41 @@ function onGamepadKeyEvent(type, data) {
       }
     }
   }
+}
+
+// 映射 toggle 新態直寫掣（gamepad_state 事件；同各頁入頁 sync 同一結論，唔經佢哋唔使等）。
+function gamepadApplyToggleState(d) {
+  if (!d || typeof d !== "object") return;
+  try {
+    if (d.domain === "sonar" && typeof d.thresholdCm === "number") {
+      var th = Math.max(0, Math.min(100, d.thresholdCm));
+      var slider = document.getElementById("sonarDist");
+      var val = document.getElementById("sonarDistVal");
+      var tg = document.getElementById("sonarToggle");
+      if (slider) slider.value = String(th);
+      if (val) val.textContent = th + " cm";
+      if (tg) tg.checked = th > 0;
+      try { sonarThresholdCm = th; } catch (e) {}
+      if (typeof drawSonarChart === "function") { try { drawSonarChart(); } catch (e) {} }
+    } else if (d.domain === "pir" && typeof d.enabled === "boolean") {
+      var hw = document.getElementById("alpha2Pir");
+      if (hw) hw.checked = d.enabled;
+    } else if (d.domain === "accel" && typeof d.enabled === "boolean") {
+      var ac = document.getElementById("accelToggle");
+      if (ac) ac.checked = d.enabled;
+    } else if (d.domain === "disco" && typeof d.enabled === "boolean") {
+      var dt = document.getElementById("musicDiscoToggle");
+      if (dt) dt.checked = d.enabled;
+      var dl = document.getElementById("musicDiscoStateLabel");
+      if (dl) dl.textContent = t(d.enabled ? "music_disco_on" : "music_disco_off");
+      try { musicDiscoEnabled = d.enabled; } catch (e) {}
+    } else if (d.domain === "filler" && typeof d.enabled === "boolean") {
+      var ft = document.getElementById("musicFillerToggle");
+      if (ft) ft.checked = d.enabled;
+      var fl = document.getElementById("musicFillerStateLabel");
+      if (fl) fl.textContent = t(d.enabled ? "music_filler_on" : "music_filler_off");
+    }
+  } catch (e) {}
 }
 
 function gamepadPair(address) {
@@ -367,6 +499,8 @@ function gamepadPair(address) {
 // 分組經 action_classification.json（靜態，同目錄 fetch）。
 var __gpActionsCache = null;
 var __gpActionCatCache = null;
+// id→動作對象（轉語言原地重標動作名用；填下拉嗰陣順手記）。
+var __gpActionById = {};
 
 function gamepadActionDisplayName(a) {
   // 淨顯中／英文名，數字 id（14xxxxx／15xxxxx）唔顯示；存值照用 id，唔影響。
@@ -415,12 +549,13 @@ function gamepadActionGroupOf(id) {
 }
 
 // 值拆解：none/stop 直回；music_*/vol_* 歸 music 種；
-// ring_phone/ring_stop/ring:<title> 歸 ring 種；head:/eye: 歸 led 種；
+// ring_phone/ring_stop/ring_random/ring:[phone:|notification:]<title> 歸 ring 種；head:/eye: 歸 led 種；
 // servo<N>± 拆轴向；action:<id> 拆 id。
 function gamepadParseValue(v) {
   var out = { kind: "none", servoId: 20, servoDir: "+", musicFn: "music_play",
     ringSel: "ring_phone", ledPart: "head", ledPreset: "flash", ledColor: "1",
-    ledSpeed: "500", cameraFn: "camera_photo", sensorFn: "sonar_toggle", actionId: "" };
+    ledSpeed: "500", cameraFn: "camera_photo", sensorFn: "sonar_toggle",
+    voiceFn: "xiaozhi_toggle", radioFn: "radio_toggle", eqPreset: "normal", actionId: "" };
   if (!v) return out;
   if (v === "none" || v === "stop") {
     out.kind = v;
@@ -452,9 +587,24 @@ function gamepadParseValue(v) {
     if (lp[0] === "mouth" && lp[1] === "breathing") out.ledSpeed = lp[2] || "500";
     return out;
   }
-  if (GAMEPAD_MUSIC_FNS.indexOf(v) !== -1) {
+  if (v === "radio_toggle" || v.indexOf("radio:") === 0) {
+    out.kind = "radio";
+    out.radioFn = v;
+    return out;
+  }
+  if (GAMEPAD_MUSIC_FNS.indexOf(v) !== -1 || v.indexOf("eq:") === 0) {
     out.kind = "music";
-    out.musicFn = v;
+    if (v.indexOf("eq:") === 0) {
+      out.musicFn = "eq:";
+      out.eqPreset = v.substring(3) || "normal";
+    } else {
+      out.musicFn = v;
+    }
+    return out;
+  }
+  if (v === "xiaozhi_toggle" || v === "vosk_toggle" || v.indexOf("vosk:") === 0) {
+    out.kind = "voice";
+    out.voiceFn = v;
     return out;
   }
   var m = v.match(/^servo(\d{1,2})([+-])$/);
@@ -542,6 +692,7 @@ function gamepadFillActionRow(side, k, cat, curId) {
 }
 
 // element 版（build 嗰陣未入 DOM，唔用 getElementById）。
+// dataset.actionFilled＝用有數據嗰次填過（late-fill 唔好數 options：miss 粒都計數）。
 function gamepadFillActionSelectEl(kindSel, sel, cat, curId) {
   if (!sel) return;
   if (!cat) cat = (curId ? gamepadActionKindOf(curId) : GAMEPAD_ACTION_KINDS5[0]);
@@ -553,6 +704,7 @@ function gamepadFillActionSelectEl(kindSel, sel, cat, curId) {
   sel.appendChild(ph);
   var acts = __gpActionsCache || [];
   acts.forEach(function (a) {
+    if (a && a.id) __gpActionById[a.id] = a;
     if (gamepadActionKindOf(a.id) !== cat) return;
     var o = document.createElement("option");
     o.value = a.id;
@@ -574,34 +726,63 @@ function gamepadFillActionSelectEl(kindSel, sel, cat, curId) {
       sel.appendChild(miss);
     }
   }
+  sel.dataset.actionFilled = acts.length ? "1" : "";
 }
 
-// 鈴聲名緩存（audio/ringtones/list 活數據；同 action 清單一樣懶載）。
-var __gpRingTitlesCache = null;
+// 鈴聲名緩存（分電話／通知兩表；audio/ringtones/list 活數據，同 action 清單一樣懶載）。
+var __gpRingTitlesCache = {};
 
-function gamepadLoadRingTitles() {
-  if (__gpRingTitlesCache) return Promise.resolve(__gpRingTitlesCache);
-  return Alpha2Api.audioRingtonesList().then(function (json) {
+// 值裡抽鈴聲表名（唔係鈴聲即回 phone；舊式 ring: 歸 phone 表搵名）。
+function gamepadRingTypeOf(v) {
+  if (v && v.indexOf("ring:notification:") === 0) return "notification";
+  return "phone";
+}
+
+// 值裡抽裸 title（fixed 三粒回 ""；舊式去 ring: 頭）。
+function gamepadRingBareTitle(v) {
+  if (!v) return "";
+  if (v.indexOf("ring:notification:") === 0) return v.substring("ring:notification:".length);
+  if (v.indexOf("ring:phone:") === 0) return v.substring("ring:phone:".length);
+  if (v.indexOf("ring:") === 0) return v.substring("ring:".length);
+  return "";
+}
+
+function gamepadLoadRingTitles(type) {
+  type = (type === "notification") ? "notification" : "phone";
+  if (__gpRingTitlesCache[type]) return Promise.resolve(__gpRingTitlesCache[type]);
+  var apiType = (type === "notification") ? "notification" : "ringtone";
+  return Alpha2Api.audioRingtonesList({ type: apiType }).then(function (json) {
     var out = [];
     if (json && json.ok && json.sounds) {
       json.sounds.forEach(function (s) {
         if (s && s.title) out.push(s.title);
       });
     }
-    __gpRingTitlesCache = out;
+    __gpRingTitlesCache[type] = out;
     return out;
   }).catch(function () {
-    __gpRingTitlesCache = __gpRingTitlesCache || [];
-    return __gpRingTitlesCache;
+    __gpRingTitlesCache[type] = __gpRingTitlesCache[type] || [];
+    return __gpRingTitlesCache[type];
   });
 }
 
-// 建鈴聲下拉（系統預設電話鈴＋鈴聲停＋名單；名單後到即補）。
+// 建鈴聲兩下拉（系統預設電話鈴＋鈴聲停＋隨機＋電話／通知表；名單後到即補）。
 function gamepadBuildRingSelect(side, k, parsed) {
+  var wrap = document.createElement("span");
+  wrap.id = "gpRingWrap_" + side + "_" + k;
+  wrap.style.display = parsed.kind === "ring" ? "inline" : "none";
+  var typeSel = document.createElement("select");
+  typeSel.id = "gpRingType_" + side + "_" + k;
+  [["phone", "gamepad_ring_type_phone"], ["notification", "gamepad_ring_type_notification"]].forEach(function (p) {
+    var to = document.createElement("option");
+    to.value = p[0];
+    to.textContent = t(p[1]);
+    if (p[0] === gamepadRingTypeOf(parsed.ringSel)) to.selected = true;
+    typeSel.appendChild(to);
+  });
   var sel = document.createElement("select");
   sel.id = "gpRingSel_" + side + "_" + k;
   sel.style.maxWidth = "200px";
-  sel.style.display = parsed.kind === "ring" ? "inline" : "none";
   var fixed = [["ring_phone", "gamepad_ring_phone"], ["ring_stop", "gamepad_ring_stop"], ["ring_random", "gamepad_ring_random"]];
   fixed.forEach(function (f) {
     var o = document.createElement("option");
@@ -610,25 +791,54 @@ function gamepadBuildRingSelect(side, k, parsed) {
     if (parsed.ringSel === f[0]) o.selected = true;
     sel.appendChild(o);
   });
-  gamepadFillRingSelect(sel, parsed.ringSel);
-  return sel;
+  wrap.appendChild(typeSel);
+  wrap.appendChild(sel);
+  typeSel.onchange = (function (s, kk) {
+    return function () {
+      var pfx2 = s + "_";
+      var sel2 = document.getElementById("gpRingSel_" + pfx2 + kk);
+      var curText = "";
+      if (sel2 && sel2.selectedIndex >= 0) curText = sel2.options[sel2.selectedIndex].text;
+      gamepadFillRingSelect(sel2, this.value, "");
+      // 同名優先跟過去新表（兩表撞名常見；fixed 三粒名唔會撞 title）。
+      if (sel2 && curText) {
+        for (var i = 0; i < sel2.options.length; i++) {
+          if (sel2.options[i].text === curText && sel2.options[i].value.indexOf("ring:") === 0) {
+            sel2.selectedIndex = i;
+            break;
+          }
+        }
+      }
+    };
+  })(side, k);
+  gamepadFillRingSelect(sel, gamepadRingTypeOf(parsed.ringSel), parsed.ringSel);
+  return wrap;
 }
 
-function gamepadFillRingSelect(sel, cur) {
-  var titles = __gpRingTitlesCache || [];
+function gamepadFillRingSelect(sel, type, cur) {
+  if (!sel) return;
+  type = (type === "notification") ? "notification" : "phone";
+  var prefix = (type === "notification") ? "ring:notification:" : "ring:phone:";
+  var titles = __gpRingTitlesCache[type] || [];
+  // 重填先清舊名單（fixed 三粒無冒號，保留；miss／舊值有冒號，一併清再補）。
+  for (var i = sel.options.length - 1; i >= 0; i--) {
+    if (sel.options[i].value.indexOf("ring:") === 0) sel.remove(i);
+  }
   if (!titles.length) {
-    // 名單未到：現值係 title 即補一粒等睇到（同 action 那個做法）。
+    // 名單未到：現值係鈴聲即補一粒等睇到（同 action 那個做法）。
     if (cur && cur.indexOf("ring:") === 0) {
       var miss = document.createElement("option");
       miss.value = cur;
-      miss.textContent = cur.substring(5);
+      miss.textContent = gamepadRingBareTitle(cur);
       miss.selected = true;
       sel.appendChild(miss);
     }
+    sel.dataset.ringType = type;
+    sel.dataset.ringFilled = "";
     return;
   }
   titles.forEach(function (title) {
-    var v = "ring:" + title;
+    var v = prefix + title;
     var o = document.createElement("option");
     o.value = v;
     o.textContent = title;
@@ -637,20 +847,24 @@ function gamepadFillRingSelect(sel, cur) {
   });
   if (cur && cur.indexOf("ring:") === 0) {
     var found = false;
-    for (var i = 0; i < sel.options.length; i++) {
-      if (sel.options[i].value === cur) { found = true; break; }
+    for (var j = 0; j < sel.options.length; j++) {
+      if (sel.options[j].value === cur) { found = true; break; }
     }
     if (!found) {
+      // 舊式 ring: 值但個名喺表入面（僅缺前綴）：唔打 (?)，照播到。
+      var bare = gamepadRingBareTitle(cur);
       var miss2 = document.createElement("option");
       miss2.value = cur;
-      miss2.textContent = cur.substring(5) + " (?)";
+      miss2.textContent = bare + (titles.indexOf(bare) === -1 ? " (?)" : "");
       miss2.selected = true;
       sel.appendChild(miss2);
     }
   }
+  sel.dataset.ringType = type;
+  sel.dataset.ringFilled = "1";
 }
 
-// 建 LED 三下拉（部位＋效果＋色；效果跟部位變，色 1紅2綠3藍4黃5紫6青7白）。
+// 建 LED 三下拉（部位＋效果＋色；效果跟部位變，dual 換 3 對色單，色名跟語言）。
 // LED 色下拉（dual 照 LED tab 同一套：3=藍綠／4=紅綠／5=紅藍，其他 code 出嚟都係藍綠
 // 唔擺出嚟，見 app-led.js DUAL_COLORS；現值唔啱位即歸第一粒）。
 function gamepadFillLedColors(colorSel, dual, curVal) {
@@ -791,12 +1005,12 @@ function gamepadRenderMapping(mapping) {
       for (var i = 0; i < sels.length; i++) {
         var k = sels[i].id.substring(("gpActionSel_" + side + "_").length);
         var cur = gamepadParseValue((side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k] || "none");
-        // 得提示一粒（畫嗰陣數據未到）先補；多過一粒即已有嘢（用家啱揀緊都唔郁）。
-        if (sels[i].options.length <= 1) gamepadFillActionRow(side, k, null, cur.actionId);
+        // 未用有數據填過即補（唔數 options：miss 粒都會令數目超標）。
+        if (!sels[i].dataset.actionFilled) gamepadFillActionRow(side, k, null, cur.actionId);
       }
     });
   });
-  gamepadLoadRingTitles().then(function () {
+  Promise.all([gamepadLoadRingTitles("phone"), gamepadLoadRingTitles("notification")]).then(function () {
     ["pad", "kb"].forEach(function (side) {
       var grid2 = document.getElementById(side === "kb" ? "gamepadMappingKbGrid" : "gamepadMappingPadGrid");
       if (!grid2) return;
@@ -804,7 +1018,37 @@ function gamepadRenderMapping(mapping) {
       for (var j = 0; j < rsels.length; j++) {
         var k2 = rsels[j].id.substring(("gpRingSel_" + side + "_").length);
         var cur2 = gamepadParseValue((side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k2] || "none");
-        if (rsels[j].options.length <= 3) gamepadFillRingSelect(rsels[j], cur2.ringSel);
+        var rt = gamepadRingTypeOf(cur2.ringSel);
+        // 表啱＋用有數據填過即跳過；表唔啱／未用數據填過即補。
+        if (rsels[j].dataset.ringType !== rt || !rsels[j].dataset.ringFilled) {
+          gamepadFillRingSelect(rsels[j], rt, cur2.ringSel);
+        }
+      }
+    });
+  });
+  // 包單部部機唔同，每次 render 重抓（唔用舊緩存）；淨係填得提示一粒嗰啲。
+  gamepadLoadVoskPacks(true).then(function () {
+    ["pad", "kb"].forEach(function (side) {
+      var grid3 = document.getElementById(side === "kb" ? "gamepadMappingKbGrid" : "gamepadMappingPadGrid");
+      if (!grid3) return;
+      var psels = grid3.querySelectorAll("select[id^='gpVoskPackSel_" + side + "_']");
+      for (var k3 = 0; k3 < psels.length; k3++) {
+        var k4 = psels[k3].id.substring(("gpVoskPackSel_" + side + "_").length);
+        var cur3 = gamepadParseValue((side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k4] || "none");
+        if (!psels[k3].dataset.voiceFilled) gamepadFillVoskPacks(psels[k3], cur3.voiceFn);
+      }
+    });
+  });
+  // 收藏成日加減，每次 render 重抓；淨係填得開關一粒嗰啲（有多粒即已有嘢／用家啱揀緊）。
+  gamepadLoadRadioFavs(true).then(function () {
+    ["pad", "kb"].forEach(function (side) {
+      var grid4 = document.getElementById(side === "kb" ? "gamepadMappingKbGrid" : "gamepadMappingPadGrid");
+      if (!grid4) return;
+      var fsels = grid4.querySelectorAll("select[id^='gpRadioSel_" + side + "_']");
+      for (var k5 = 0; k5 < fsels.length; k5++) {
+        var k6 = fsels[k5].id.substring(("gpRadioSel_" + side + "_").length);
+        var cur4 = gamepadParseValue((side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k6] || "none");
+        if (!fsels[k5].dataset.radioFilled) gamepadFillRadioSelect(fsels[k5], cur4.radioFn);
       }
     });
   });
@@ -815,6 +1059,119 @@ function gamepadRenderMapping(mapping) {
   if (kw) kw.style.display = gamepadMappingShown("kb") ? "block" : "none";
 }
 
+// 轉語言即時重標映射表（原地改字：未存改動保留，唔 rebuild，唔問後端）。
+// 鍵名／servo #N±／鈴聲名／(?) 項係語言無關，唔郁。
+function gamepadApplyUiLanguage() {
+  var grids = [document.getElementById("gamepadMappingPadGrid"),
+    document.getElementById("gamepadMappingKbGrid")];
+  for (var gi = 0; gi < grids.length; gi++) {
+    var grid = grids[gi];
+    if (!grid) continue;
+    var heads = grid.querySelectorAll("[data-grp]");
+    for (var hi = 0; hi < heads.length; hi++) {
+      var grp = heads[hi].getAttribute("data-grp");
+      if (grp) heads[hi].textContent = t("gamepad_group_" + grp);
+    }
+    var sels = grid.getElementsByTagName("select");
+    for (var si = 0; si < sels.length; si++) {
+      gamepadRelabelSelect(sels[si]);
+    }
+  }
+}
+
+function gamepadRelabelSelect(sel) {
+  if (!sel || !sel.id) return;
+  var id = sel.id;
+  var map = null;
+  if (id.indexOf("gpSel_") === 0) map = GAMEPAD_KIND_KEYS;
+  else if (id.indexOf("gpMusicSel_") === 0) map = GAMEPAD_MUSIC_FN_KEYS;
+  else if (id.indexOf("gpRadioSel_") === 0) map = GAMEPAD_RADIO_FN_KEYS;
+  else if (id.indexOf("gpEqSel_") === 0) {
+    // 存值 eq:<preset>：名跟音樂頁同一組。
+    for (var ei = 0; ei < sel.options.length; ei++) {
+      var ev = sel.options[ei].value;
+      if (ev === "eq:") {
+        sel.options[ei].text = t("gamepad_mfn_eq");
+      } else if (ev.indexOf("eq:") === 0) {
+        sel.options[ei].text = t("music_eq_preset_" + ev.substring(3));
+      }
+    }
+    return;
+  }
+  else if (id.indexOf("gpRingSel_") === 0) map = GAMEPAD_RING_FIXED_KEYS;
+  else if (id.indexOf("gpRingType_") === 0) map = GAMEPAD_RING_TYPE_KEYS;
+  else if (id.indexOf("gpLedPart_") === 0) map = GAMEPAD_LED_PART_KEYS;
+  else if (id.indexOf("gpLedPreset_") === 0) map = GAMEPAD_LED_PRESET_KEYS;
+  else if (id.indexOf("gpCameraSel_") === 0) map = GAMEPAD_CAM_FN_KEYS;
+  else if (id.indexOf("gpSensorSel_") === 0) map = GAMEPAD_SENSOR_FN_KEYS;
+  else if (id.indexOf("gpActionKind_") === 0) map = GAMEPAD_ACTION_KIND_KEYS;
+  if (id.indexOf("gpVoiceSel_") === 0) {
+    // 小智／Vosk 組名跟語言。
+    for (var vi = 0; vi < sel.options.length; vi++) {
+      var vk = gamepadVoiceFixedKey(sel.options[vi].value);
+      if (vk) sel.options[vi].text = t(vk);
+    }
+    return;
+  }
+  if (id.indexOf("gpVoskPackSel_") === 0) {
+    // 提示跟語言；包名就地用緩存重算（(?) 刪檔項唔郁）。
+    for (var pi2 = 0; pi2 < sel.options.length; pi2++) {
+      var pv = sel.options[pi2].value;
+      if (pv === "") {
+        sel.options[pi2].text = "— " + t("gamepad_pick_pack") + " —";
+        continue;
+      }
+      if (pv.indexOf("vosk:") === 0) {
+        var packs2 = __gpVoskPacksCache || [];
+        for (var qi = 0; qi < packs2.length; qi++) {
+          if (("vosk:" + packs2[qi].id) === pv) {
+            sel.options[pi2].text = gamepadVoskPackName(packs2[qi]);
+            break;
+          }
+        }
+      }
+    }
+    return;
+  }
+  if (map) {
+    for (var i = 0; i < sel.options.length; i++) {
+      var key = map[sel.options[i].value];
+      if (key) sel.options[i].text = t(key);
+    }
+    return;
+  }
+  if (id.indexOf("gpLedColor_") === 0) {
+    // 3 粒即 dual 三對，7 粒即普通七色。
+    var dual = sel.options.length === 3;
+    for (var j = 0; j < sel.options.length; j++) {
+      var val = sel.options[j].value;
+      var ck = dual ? GAMEPAD_DUAL_KEYS[val] : null;
+      if (!ck) {
+        for (var c = 0; c < GAMEPAD_LED_COLOR_KEYS.length; c++) {
+          if (GAMEPAD_LED_COLOR_KEYS[c][0] === val) {
+            ck = GAMEPAD_LED_COLOR_KEYS[c][1];
+            break;
+          }
+        }
+      }
+      if (ck) sel.options[j].text = t(ck);
+    }
+    return;
+  }
+  if (id.indexOf("gpActionSel_") === 0) {
+    for (var k = 0; k < sel.options.length; k++) {
+      var v = sel.options[k].value;
+      if (v === "") {
+        sel.options[k].text = "— " + t("gamepad_pick_action") + " —";
+      } else {
+        var a = __gpActionById[v];
+        if (a) sel.options[k].text = gamepadActionDisplayName(a);
+      }
+    }
+  }
+  // gpServo_（#N±）唔使理。
+}
+
 function gamepadRenderSideGrid(side, groups, map) {
   var wrap = document.getElementById(side === "kb" ? "gamepadMappingKbGrid" : "gamepadMappingPadGrid");
   if (!wrap) return;
@@ -822,6 +1179,7 @@ function gamepadRenderSideGrid(side, groups, map) {
   groups.forEach(function (grp) {
     var h = document.createElement("div");
     h.className = "servo-group-title";
+    h.setAttribute("data-grp", grp.title);
     h.textContent = t("gamepad_group_" + grp.title);
     wrap.appendChild(h);
     grp.keys.forEach(function (k) {
@@ -851,17 +1209,23 @@ function gamepadRenderSideGrid(side, groups, map) {
           var sw = document.getElementById("gpServoWrap_" + pfx + kk);
           var aw = document.getElementById("gpActionWrap_" + pfx + kk);
           var mu = document.getElementById("gpMusicSel_" + pfx + kk);
-          var rg = document.getElementById("gpRingSel_" + pfx + kk);
+          var eq = document.getElementById("gpEqSel_" + pfx + kk);
+          var ra = document.getElementById("gpRadioSel_" + pfx + kk);
+          var rg = document.getElementById("gpRingWrap_" + pfx + kk);
           var lw = document.getElementById("gpLedWrap_" + pfx + kk);
           var cm = document.getElementById("gpCameraSel_" + pfx + kk);
           var sn = document.getElementById("gpSensorSel_" + pfx + kk);
+          var vc = document.getElementById("gpVoiceWrap_" + pfx + kk);
           if (sw) sw.style.display = v === "servo" ? "inline" : "none";
           if (aw) aw.style.display = v === "action" ? "inline" : "none";
           if (mu) mu.style.display = v === "music" ? "inline" : "none";
+          if (eq) gamepadSyncMusicEq(side, kk);
+          if (ra) ra.style.display = v === "radio" ? "inline" : "none";
           if (rg) rg.style.display = v === "ring" ? "inline" : "none";
           if (lw) lw.style.display = v === "led" ? "inline" : "none";
           if (cm) cm.style.display = v === "camera" ? "inline" : "none";
           if (sn) sn.style.display = v === "sensor" ? "inline" : "none";
+          if (vc) vc.style.display = v === "voice" ? "inline" : "none";
         };
       })(k);
       var servoWrap = gamepadBuildServoControls(side, k, parsed);
@@ -875,8 +1239,30 @@ function gamepadRenderSideGrid(side, groups, map) {
         if (f === parsed.musicFn) o.selected = true;
         musicSel.appendChild(o);
       });
+      // 等化器入口（揀咗先行隔籬 eq 下拉；存值 eq:<preset>）。
+      var eqEntry = document.createElement("option");
+      eqEntry.value = "eq:";
+      eqEntry.textContent = t("gamepad_mfn_eq");
+      if (parsed.musicFn === "eq:") eqEntry.selected = true;
+      musicSel.appendChild(eqEntry);
+      musicSel.onchange = (function (s, kk) {
+        return function () {
+          gamepadSyncMusicEq(s, kk);
+        };
+      })(side, k);
+      // EQ presets（同音樂頁同一組名；存值 eq:<preset>）。
+      var eqSel = document.createElement("select");
+      eqSel.id = "gpEqSel_" + pfx + k;
+      eqSel.style.display = (parsed.kind === "music" && parsed.musicFn === "eq:") ? "inline" : "none";
+      ["normal", "classical", "dance", "rock", "jazz", "pop", "bass", "treble", "custom"].forEach(function (p) {
+        var oe = document.createElement("option");
+        oe.value = "eq:" + p;
+        oe.textContent = t("music_eq_preset_" + p);
+        if (p === parsed.eqPreset) oe.selected = true;
+        eqSel.appendChild(oe);
+      });
       var actionWrap = gamepadBuildActionSelect(side, k, parsed);
-      var ringSel = gamepadBuildRingSelect(side, k, parsed);
+      var ringWrap = gamepadBuildRingSelect(side, k, parsed);
       var ledWrap = gamepadBuildLedControls(side, k, parsed);
       var cameraSel = document.createElement("select");
       cameraSel.id = "gpCameraSel_" + pfx + k;
@@ -899,18 +1285,140 @@ function gamepadRenderSideGrid(side, groups, map) {
         if (f === parsed.sensorFn) o.selected = true;
         sensorSel.appendChild(o);
       });
+      var voiceSel = gamepadBuildVoiceSelect(side, k, parsed);
       row.appendChild(label);
       row.appendChild(kind);
       row.appendChild(servoWrap);
       row.appendChild(musicSel);
-      row.appendChild(ringSel);
+      row.appendChild(eqSel);
+      var radioSel = gamepadBuildRadioSelect(side, k, parsed);
+      row.appendChild(radioSel);
+      row.appendChild(ringWrap);
       row.appendChild(ledWrap);
       row.appendChild(cameraSel);
       row.appendChild(sensorSel);
+      row.appendChild(voiceSel);
       row.appendChild(actionWrap);
       wrap.appendChild(row);
     });
   });
+}
+
+// Vosk 語言包緩存（vosk/models 活數據：已裝包；同鈴聲名單一樣懶載）。
+var __gpVoskPacksCache = null;
+
+function gamepadLoadVoskPacks(force) {
+  if (!force && __gpVoskPacksCache) return Promise.resolve(__gpVoskPacksCache);
+  return Alpha2Api.voskModels().then(function (json) {
+    var out = [];
+    if (json && json.ok && json.models) {
+      json.models.forEach(function (m) {
+        if (m && m.id) out.push(m);
+      });
+    }
+    __gpVoskPacksCache = out;
+    return out;
+  }).catch(function () {
+    __gpVoskPacksCache = __gpVoskPacksCache || [];
+    return __gpVoskPacksCache;
+  });
+}
+
+function gamepadVoskPackName(m) {
+  return (uiLang === "en" ? (m.langEn || m.lang) : (m.lang || m.langEn)) || m.id;
+}
+
+// 建語音兩下拉（小智／Vosk 組＋該組語言包；包單後到即補；vosk_toggle 舊值歸 Vosk 組）。
+function gamepadBuildVoiceSelect(side, k, parsed) {
+  var wrap = document.createElement("span");
+  wrap.id = "gpVoiceWrap_" + side + "_" + k;
+  wrap.style.display = parsed.kind === "voice" ? "inline" : "none";
+  var sel = document.createElement("select");
+  sel.id = "gpVoiceSel_" + side + "_" + k;
+  var isVosk = parsed.voiceFn !== "xiaozhi_toggle";
+  GAMEPAD_VOICE_FIXED.forEach(function (f) {
+    var o = document.createElement("option");
+    o.value = f[0];
+    o.textContent = t(f[1]);
+    if ((isVosk && f[0] === "vosk") || (!isVosk && f[0] === parsed.voiceFn)) o.selected = true;
+    sel.appendChild(o);
+  });
+  var pack = document.createElement("select");
+  pack.id = "gpVoskPackSel_" + side + "_" + k;
+  pack.style.maxWidth = "220px";
+  wrap.appendChild(sel);
+  wrap.appendChild(pack);
+  sel.onchange = (function (s, kk) {
+    return function () {
+      gamepadSyncVoicePack(s, kk);
+    };
+  })(side, k);
+  gamepadFillVoskPacks(pack, isVosk ? parsed.voiceFn : "");
+  // build 嗰陣未入 DOM，直接設（入 DOM 後轉組經上面 onchange＋sync）。
+  pack.style.display = isVosk ? "inline" : "none";
+  return wrap;
+}
+
+// Vosk 組先出包單（小智組收起）。
+function gamepadSyncVoicePack(side, k) {
+  var pfx = side + "_";
+  var sel = document.getElementById("gpVoiceSel_" + pfx + k);
+  var pack = document.getElementById("gpVoskPackSel_" + pfx + k);
+  if (!pack) return;
+  var isVosk = !sel || sel.value !== "xiaozhi_toggle";
+  pack.style.display = isVosk ? "inline" : "none";
+}
+
+// 等化器下拉：music 種揀咗等化器入口先出，其他值一律收起。
+function gamepadSyncMusicEq(side, k) {
+  var pfx = side + "_";
+  var kd = document.getElementById("gpSel_" + pfx + k);
+  var mu = document.getElementById("gpMusicSel_" + pfx + k);
+  var eq = document.getElementById("gpEqSel_" + pfx + k);
+  if (!eq) return;
+  var showKind = !kd || kd.value === "music";
+  eq.style.display = (showKind && mu && mu.value === "eq:") ? "inline" : "none";
+}
+
+// fixed 兩粒重標用（值→i18n key；語言包名就地用緩存重算）。
+function gamepadVoiceFixedKey(v) {
+  for (var i = 0; i < GAMEPAD_VOICE_FIXED.length; i++) {
+    if (GAMEPAD_VOICE_FIXED[i][0] === v) return GAMEPAD_VOICE_FIXED[i][1];
+  }
+  return null;
+}
+
+// 填包單（提示＋已裝包；舊值唔喺度即補 (?)；無包即得提示）。
+function gamepadFillVoskPacks(sel, cur) {
+  if (!sel) return;
+  sel.innerHTML = "";
+  var ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = "— " + t("gamepad_pick_pack") + " —";
+  sel.appendChild(ph);
+  var packs = __gpVoskPacksCache || [];
+  packs.forEach(function (m) {
+    var v = "vosk:" + m.id;
+    var o = document.createElement("option");
+    o.value = v;
+    o.textContent = gamepadVoskPackName(m);
+    if (v === cur) o.selected = true;
+    sel.appendChild(o);
+  });
+  if (cur && cur.indexOf("vosk:") === 0) {
+    var found = false;
+    for (var j = 0; j < sel.options.length; j++) {
+      if (sel.options[j].value === cur) { found = true; break; }
+    }
+    if (!found) {
+      var miss = document.createElement("option");
+      miss.value = cur;
+      miss.textContent = cur.substring(5) + " (?)";
+      miss.selected = true;
+      sel.appendChild(miss);
+    }
+  }
+  sel.dataset.voiceFilled = packs.length ? "1" : "";
 }
 
 // 讀某行現時值（同舊逐行存同一拼法；action 未揀回 null 即成行跳過）。
@@ -925,7 +1433,18 @@ function gamepadReadRowValue(side, k) {
   }
   if (kind === "music") {
     var mu = document.getElementById("gpMusicSel_" + pfx + k);
-    return (mu && mu.value) ? mu.value : "music_play";
+    var muv = (mu && mu.value) ? mu.value : "music_play";
+    // 等化器入口：取值隔籬 eq 下拉。
+    if (muv === "eq:") {
+      var eq = document.getElementById("gpEqSel_" + pfx + k);
+      return (eq && eq.value) ? eq.value : "eq:normal";
+    }
+    return muv;
+  }
+  if (kind === "radio") {
+    var rd = document.getElementById("gpRadioSel_" + pfx + k);
+    // 收藏都無即空單：回 null 成行跳過，唔亂存。
+    return (rd && rd.value) ? rd.value : null;
   }
   if (kind === "camera") {
     var cm = document.getElementById("gpCameraSel_" + pfx + k);
@@ -934,6 +1453,14 @@ function gamepadReadRowValue(side, k) {
   if (kind === "sensor") {
     var sn = document.getElementById("gpSensorSel_" + pfx + k);
     return (sn && sn.value) ? sn.value : "sonar_toggle";
+  }
+  if (kind === "voice") {
+    var vc = document.getElementById("gpVoiceSel_" + pfx + k);
+    var vcv = (vc && vc.value) ? vc.value : "xiaozhi_toggle";
+    if (vcv !== "vosk") return vcv;
+    var pk = document.getElementById("gpVoskPackSel_" + pfx + k);
+    var pkv = (pk && pk.value) ? pk.value.trim() : "";
+    return pkv || "vosk_toggle";
   }
   if (kind === "ring") {
     var rg = document.getElementById("gpRingSel_" + pfx + k);
@@ -1048,6 +1575,11 @@ var GAMEPAD_KB_NAV = [
   [["del", "del", ""], ["end", "end", ""], ["pgdn", "pgdn", ""]],
   [["◀", "left", ""], ["▲", "up", ""], ["▼", "down", ""], ["▶", "right", ""]]
 ];
+// 媒體列（7 粒：播／停＋音量，置導航／數字區上面，全闊一行）。
+var GAMEPAD_KB_MEDIA = [
+  [["⏮", "media_prev", ""], ["▶⏸", "media_play", ""], ["⏭", "media_next", ""],
+   ["⏹", "media_stop", ""], ["🔇", "mute", ""], ["🔊", "vol_up", ""], ["🔉", "vol_down", ""]]
+];
 var GAMEPAD_KB_NUM = [
   [["7", "num_7", ""], ["8", "num_8", ""], ["9", "num_9", ""], ["/", "num_div", ""]],
   [["4", "num_4", ""], ["5", "num_5", ""], ["6", "num_6", ""], ["x", "num_mul", ""]],
@@ -1087,9 +1619,17 @@ function gamepadBuildKeyboardDiagram() {
   var num = document.createElement("div");
   num.className = "kb-zone-num";
   GAMEPAD_KB_NUM.forEach(function (row) { num.appendChild(gamepadKbRowEl(row)); });
+  // 右欄：媒體列置頂，導航＋數字區並排喺下（同闊對齊，唔壓住主區 F 行）。
+  var right = document.createElement("div");
+  right.className = "kb-zone-right";
+  GAMEPAD_KB_MEDIA.forEach(function (row) { right.appendChild(gamepadKbRowEl(row)); });
+  var sub = document.createElement("div");
+  sub.className = "kb-zones-sub";
+  sub.appendChild(nav);
+  sub.appendChild(num);
+  right.appendChild(sub);
   zones.appendChild(main);
-  zones.appendChild(nav);
-  zones.appendChild(num);
+  zones.appendChild(right);
   board.appendChild(zones);
 }
 

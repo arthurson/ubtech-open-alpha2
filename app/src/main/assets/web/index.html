@@ -784,6 +784,13 @@
   <section class="card" id="radioCard">
     <h2 data-i18n="radio_heading">📻 網絡電台</h2>
     <p class="hint"><a href="https://www.radio-browser.info/" target="_blank" rel="noopener">radio-browser.info</a> · <span data-i18n="radio_browser_hint">全球公開電台：搜尋即列出 50 個隨機結果，點擊名稱即播</span></p>
+    <div class="row" style="align-items:baseline">
+      <h3 data-i18n="radio_fav_heading" style="margin:0">⭐ 我的收藏</h3>
+      <span id="radioFavCount" class="hint" style="margin:0"></span>
+      <span style="flex:1"></span>
+      <button class="secondary" onclick="radioLoadFavorites()" data-i18n="radio_fav_refresh_btn">🔄 重新整理</button>
+    </div>
+    <div id="radioFavContainer" class="radio-list radio-fav-list"></div>
     <div class="row">
       <input id="radioSearchInput" placeholder="搜尋電台名稱、國家、標籤…" data-i18n="radio_search_placeholder" data-i18n-attr="placeholder" style="flex:1" onkeydown="radioOnSearchKeydown(event)">
       <button onclick="radioSearch()" data-i18n="radio_search_btn">🔍 搜尋</button>

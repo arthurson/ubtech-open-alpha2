@@ -44,11 +44,13 @@ import java.util.Map;
  * none（忽略）／stop（停動作＋蹲下站起回位）／vol_up／vol_down／
  * music_play／music_next／music_prev／music_pause／music_resume／music_toggle／
  * music_stop／music_random／radio_toggle／disco_toggle／filler_toggle（經 AudioCenter）／ring_phone／ring_stop／ring_random／
- * ring:&lt;title&gt;（經 RingtoneCenter）／led_off／head:&lt;preset&gt;:&lt;color&gt;／head:random／
+ * ring:&lt;title&gt;／ring:phone:&lt;title&gt;／ring:notification:&lt;title&gt;（經 RingtoneCenter）／led_off／head:&lt;preset&gt;:&lt;color&gt;／head:random／
  * eye:&lt;preset&gt;:&lt;color&gt;／eye:random／mouth:breathing:&lt;speedMs&gt;／mouth:off（經 LedCenter）／
  * camera_photo／face_start／color_start（追蹤 toggle）／video_toggle（錄影 toggle）／
  * sonar_toggle／pir_toggle／accel_toggle（傳感器 toggle）（經 CameraApi／VideoCenter／
- * SonarCenter／LedCenter／DeviceStatus）／
+ * SonarCenter／LedCenter／DeviceStatus）／xiaozhi_toggle（小智連線 toggle，經 XiaozhiBridge）／
+ * vosk_toggle／vosk:&lt;id&gt;（Vosk 監聽／切包 toggle，經 VoskApi）／eq:&lt;preset&gt;（EQ toggle，經 AudioCenter）／
+ * radio:&lt;uuid或名&gt;（收藏電台直播，經 AudioCenter）／
  * servo&lt;1-20&gt;+／servo&lt;1-20&gt;-（單步 jog，步長 {@link #SERVO_JOG_STEP}，
  * 撳住連走）／action:&lt;fileId或中英文名或xxx.ubx&gt;（經 ActionDirect 搶佔式播放）
  *
@@ -157,11 +159,14 @@ public final class GamepadCenter {
     private final SpeechCenter speechCenter;
     private final CameraApi cameraApi;
     private final SonarCenter sonarCenter;
+    private final XiaozhiBridge xiaozhiBridge;
+    private final VoskApi voskApi;
 
     public GamepadCenter(Context context, ActionDirect actionDirect, UbxApi ubxApi,
             UbxPlayer ubxPlayer, DeviceStatus deviceStatus, AudioCenter audioCenter,
             RingtoneCenter ringtoneCenter, LedCenter ledCenter,
-            SpeechCenter speechCenter, CameraApi cameraApi, SonarCenter sonarCenter) {
+            SpeechCenter speechCenter, CameraApi cameraApi, SonarCenter sonarCenter,
+            XiaozhiBridge xiaozhiBridge, VoskApi voskApi) {
         this.appContext = context.getApplicationContext();
         this.actionDirect = actionDirect;
         this.ubxApi = ubxApi;
@@ -173,6 +178,8 @@ public final class GamepadCenter {
         this.speechCenter = speechCenter;
         this.cameraApi = cameraApi;
         this.sonarCenter = sonarCenter;
+        this.xiaozhiBridge = xiaozhiBridge;
+        this.voskApi = voskApi;
         this.audioManager = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
     }
 
@@ -556,14 +563,77 @@ public final class GamepadCenter {
                 || "accel_toggle".equals(t);
     }
 
-    /** 鈴聲動作合法性：{@code ring_phone}／{@code ring_stop}／{@code ring_random}／{@code ring:<title>}。 */
-    public static boolean isRingAction(String a) {
+    /** 語音 toggle 合法性：小智連線／Vosk 監聽單鍵開關／Vosk 切指定語言包。 */
+    public static boolean isVoiceAction(String a) {
         if (a == null) return false;
         String t = a.trim();
-        if ("ring_phone".equals(t) || "ring_stop".equals(t) || "ring_random".equals(t)) return true;
-        if (!t.startsWith("ring:")) return false;
-        String rest = t.substring(5).trim();
-        return !rest.isEmpty() && !rest.contains("\n") && !rest.contains("\r");
+        if ("xiaozhi_toggle".equals(t) || "vosk_toggle".equals(t)) return true;
+        if (t.startsWith("vosk:")) {
+            String rest = t.substring(5).trim();
+            if (rest.isEmpty()) return false;
+            if (rest.contains("/") || rest.contains("\\") || rest.contains("..")) return false;
+            return true;
+        }
+        return false;
+    }
+
+    /** EQ preset toggle 合法性：eq:&lt;preset&gt;（同 musicEqSet 同一名單）。 */
+    public static boolean isEqAction(String a) {
+        if (a == null) return false;
+        String t = a.trim();
+        if (!t.startsWith("eq:")) return false;
+        return MusicEq.isPreset(t.substring(3).trim());
+    }
+
+    /** 收藏電台合法性：radio:&lt;uuid或名&gt;（名可含標點，禁換行；toggle 另見 music 種）。 */
+    public static boolean isRadioFavAction(String a) {
+        if (a == null) return false;
+        String t = a.trim();
+        if (!t.startsWith("radio:")) return false;
+        String rest = t.substring(6).trim();
+        if (rest.isEmpty() || rest.contains("\n") || rest.contains("\r")) return false;
+        return true;
+    }
+
+    /** 鈴聲動作合法性：{@code ring_phone}／{@code ring_stop}／{@code ring_random}／
+     *  {@code ring:<title>}（舊式，全表搵）／{@code ring:phone:<title>}／
+     *  {@code ring:notification:<title>}（分表搵）。 */
+    public static boolean isRingAction(String a) {
+        return ringTitleOf(a) != null
+                || "ring_phone".equals(a != null ? a.trim() : null)
+                || "ring_stop".equals(a != null ? a.trim() : null)
+                || "ring_random".equals(a != null ? a.trim() : null);
+    }
+
+    /** ring 動作拆 type（phone／notification／null＝舊式全表）。非法回 null。 */
+    public static String ringTypeOf(String a) {
+        if (a == null) return null;
+        String t = a.trim();
+        if (t.startsWith("ring:phone:")) return "phone";
+        if (t.startsWith("ring:notification:")) return "notification";
+        if (t.startsWith("ring:")) return null;
+        return null;
+    }
+
+    /** ring 動作拆 title（trim 後；空／有換行／唔係 ring 形即回 null）。 */
+    public static String ringTitleOf(String a) {
+        if (a == null) return null;
+        String t = a.trim();
+        String title;
+        if (t.startsWith("ring:phone:")) {
+            title = t.substring("ring:phone:".length());
+        } else if (t.startsWith("ring:notification:")) {
+            title = t.substring("ring:notification:".length());
+        } else if (t.startsWith("ring:")) {
+            title = t.substring("ring:".length());
+        } else {
+            return null;
+        }
+        title = title.trim();
+        if (title.isEmpty() || title.contains("\n") || title.contains("\r")) return null;
+        // 舊式要擋掉固定三個（佢哋唔係 title，上面 isRingAction 另行收）。
+        if (title.equals("phone") || title.equals("stop") || title.equals("random")) return null;
+        return title;
     }
 
     public static boolean isMusicAction(String a) {
@@ -577,7 +647,8 @@ public final class GamepadCenter {
     /**
      * 動作值合法性：none／stop／vol_up／vol_down／music_*／ring_*／led_*／led_off／
      * camera_photo／face_start／color_start／video_toggle／sonar_toggle／
-     * pir_toggle／accel_toggle／servo1-20±／action:&lt;非空&gt;。
+     * pir_toggle／accel_toggle／xiaozhi_toggle／vosk_toggle／vosk:&lt;id&gt;／
+     * eq:&lt;preset&gt;／radio:&lt;uuid或名&gt;／servo1-20±／action:&lt;非空&gt;。
      * servo 步進覆蓋全部 20 軸（jogServo 通用）。
      */
     public static boolean isValidAction(String action) {
@@ -589,6 +660,9 @@ public final class GamepadCenter {
         if (isLedAction(a)) return true;
         if (isCameraAction(a)) return true;
         if (isSensorAction(a)) return true;
+        if (isVoiceAction(a)) return true;
+        if (isEqAction(a)) return true;
+        if (isRadioFavAction(a)) return true;
         if ("led_off".equals(a)) return true;
         if (isServoJog(a)) return true;
         if (a.startsWith("action:")) {
@@ -1107,6 +1181,15 @@ public final class GamepadCenter {
         }
     }
 
+    /** toggle 類映射做咗即推新態（頁面掣即時跟，唔使入版重讀；只在成功嗰陣推）。 */
+    private void publishToggleState(String json) {
+        try {
+            EventBus.get().publish("gamepad_state", json);
+        } catch (Throwable t) {
+            Log.w(TAG, "publish state failed", t);
+        }
+    }
+
     private void publishKey(String key, boolean pressed, String source, String action, boolean taken) {
         // 放開（pressed=false）恆 taken:false——唔入 last，免「最後按鍵」永遠停喺 ↑✗。
         // 事件照推（B 端 hold 邏輯／除錯用），顯示層（gamepadLastText＋WS hook）
@@ -1249,7 +1332,13 @@ public final class GamepadCenter {
                 }
                 if (a.equals("disco_toggle")) {
                     try {
-                        return audioCenter.toggleDisco();
+                        if (audioCenter == null) return false;
+                        boolean ok = audioCenter.toggleDisco();
+                        if (ok) {
+                            publishToggleState("{\"domain\":\"disco\",\"enabled\":"
+                                    + audioCenter.isDiscoEnabled() + "}");
+                        }
+                        return ok;
                     } catch (Throwable t) {
                         Log.w(TAG, "disco_toggle failed", t);
                         return false;
@@ -1257,7 +1346,13 @@ public final class GamepadCenter {
                 }
                 if (a.equals("filler_toggle")) {
                     try {
-                        return audioCenter.toggleFillerAction();
+                        if (audioCenter == null) return false;
+                        boolean ok = audioCenter.toggleFillerAction();
+                        if (ok) {
+                            publishToggleState("{\"domain\":\"filler\",\"enabled\":"
+                                    + audioCenter.isMusicFillerActionEnabled() + "}");
+                        }
+                        return ok;
                     } catch (Throwable t) {
                         Log.w(TAG, "filler_toggle failed", t);
                         return false;
@@ -1265,7 +1360,8 @@ public final class GamepadCenter {
                 }
                 return false;
             }
-            // 系統鈴聲 toggle（逐鍵：撳一下播，再撳一下停；ring_stop 直停＋清態）。
+            // 系統鈴聲 toggle（逐鍵：撳一下播，再撳一下停；ring_stop 直停＋清態；
+            // ring_random 唔 toggle：每次撳都播首新嘅）。
             if (isRingAction(a)) {
                 if (ringtoneCenter == null) return false;
                 try {
@@ -1274,6 +1370,9 @@ public final class GamepadCenter {
                         toggleClear();
                         return true;
                     }
+                    if ("ring_random".equals(a)) {
+                        return ringtoneCenter.playRandomRingtoneNow();
+                    }
                     if (toggleFlip(side, key)) {
                         if ("ring_phone".equals(a)) {
                             return ringtoneCenter.playDefaultPhoneRingtoneNow();
@@ -1281,7 +1380,8 @@ public final class GamepadCenter {
                         if ("ring_random".equals(a)) {
                             return ringtoneCenter.playRandomRingtoneNow();
                         }
-                        return ringtoneCenter.playRingtoneTitleNow(a.substring(5).trim());
+                        // ring:phone:／ring:notification: 分表搵，舊式 ring: 全表搵。
+                        return ringtoneCenter.playRingtoneNow(ringTypeOf(a), ringTitleOf(a));
                     }
                     ringtoneCenter.stopRingtonePlayback();
                     return true;
@@ -1308,8 +1408,23 @@ public final class GamepadCenter {
                 try {
                     java.util.Map<String, String> empty = new java.util.HashMap<>();
                     HttpServer.ApiResponse resp;
-                    if ("camera_photo".equals(a)) resp = cameraApi.takePhotoSave(empty);
-                    else if ("face_start".equals(a)) {
+                    if ("camera_photo".equals(a)) {
+                        // takePicture 前後幾秒等（AE 收斂＋AF），main thread 經映射撳鍵會
+                        // ANR 死（同 vosk switch 一例，見 traces）：放背景做，回 true＝已接受。
+                        // 成品落 DCIM，失敗 Log＋唔炸調用方。
+                        new Thread(new Runnable() {
+                            @Override public void run() {
+                                try {
+                                    java.util.Map<String, String> q =
+                                            new java.util.HashMap<String, String>();
+                                    cameraApi.takePhotoSave(q);
+                                } catch (Throwable t) {
+                                    Log.w(TAG, "async camera_photo failed", t);
+                                }
+                            }
+                        }, "GamepadPhoto").start();
+                        return true;
+                    } else if ("face_start".equals(a)) {
                         resp = cameraApi.isFaceTrackRunning()
                                 ? cameraApi.faceTrackStop() : cameraApi.faceTrackStart(empty);
                     } else if ("color_start".equals(a)) {
@@ -1325,17 +1440,35 @@ public final class GamepadCenter {
                     return false;
                 }
             }
-            // 傳感器 toggle（讀真態翻轉；taken 照實）。
+            // 傳感器 toggle（讀真態翻轉；taken 照實；做咗即推新態畀頁面掣跟）。
             if (isSensorAction(a)) {
                 try {
                     if ("sonar_toggle".equals(a)) {
-                        return sonarCenter != null && sonarCenter.toggleSonar();
+                        if (sonarCenter == null) return false;
+                        boolean ok = sonarCenter.toggleSonar();
+                        if (ok) {
+                            publishToggleState("{\"domain\":\"sonar\",\"thresholdCm\":"
+                                    + sonarCenter.getSonarThreshold() + "}");
+                        }
+                        return ok;
                     }
                     if ("pir_toggle".equals(a)) {
-                        return ledCenter != null && ledCenter.togglePir();
+                        if (ledCenter == null) return false;
+                        boolean ok = ledCenter.togglePir();
+                        if (ok) {
+                            publishToggleState("{\"domain\":\"pir\",\"enabled\":"
+                                    + ledCenter.isPirEnabled() + "}");
+                        }
+                        return ok;
                     }
                     if ("accel_toggle".equals(a)) {
-                        return deviceStatus != null && deviceStatus.toggleAccelerometer();
+                        if (deviceStatus == null) return false;
+                        boolean ok = deviceStatus.toggleAccelerometer();
+                        if (ok) {
+                            publishToggleState("{\"domain\":\"accel\",\"enabled\":"
+                                    + deviceStatus.isAccelerometerEnabled() + "}");
+                        }
+                        return ok;
                     }
                 } catch (Throwable t) {
                     Log.w(TAG, "sensor action failed: " + a, t);
@@ -1343,8 +1476,47 @@ public final class GamepadCenter {
                 }
                 return false;
             }
+            // 語音 toggle（小智連線／Vosk 監聽／Vosk 切包；taken 照實）。
+            if (isVoiceAction(a)) {
+                try {
+                    if ("xiaozhi_toggle".equals(a)) {
+                        return xiaozhiBridge != null && xiaozhiBridge.toggleConnection();
+                    }
+                    if ("vosk_toggle".equals(a)) {
+                        return voskApi != null && voskApi.toggleListening();
+                    }
+                    if (a.startsWith("vosk:")) {
+                        if (voskApi == null) return false;
+                        return voskApi.switchModel(a.substring(5).trim());
+                    }
+                } catch (Throwable t) {
+                    Log.w(TAG, "voice action failed: " + a, t);
+                    return false;
+                }
+                return false;
+            }
+            // EQ preset toggle（已係該 preset 即返 normal；taken 照實）。
+            if (isEqAction(a)) {
+                try {
+                    if (audioCenter == null) return false;
+                    return audioCenter.toggleEqPreset(a.substring(3).trim());
+                } catch (Throwable t) {
+                    Log.w(TAG, "eq action failed: " + a, t);
+                    return false;
+                }
+            }
+            // 收藏電台（按 uuid／名搵；taken 照實）。
+            if (isRadioFavAction(a)) {
+                try {
+                    if (audioCenter == null) return false;
+                    return audioCenter.playFavoriteNow(a.substring(6).trim());
+                } catch (Throwable t) {
+                    Log.w(TAG, "radio fav failed: " + a, t);
+                    return false;
+                }
+            }
             // 頭／眼／咀 LED toggle（逐鍵：撳一下著效果，再撳一下熄嗰部位；
-            // stop/off 值直行唔 flip）。
+            // stop/off 值直行唔 flip；random 都唔 flip：每次撳都即抽新嘅）。
             if (isLedAction(a)) {
                 if (ledCenter == null) return false;
                 try {
@@ -1352,7 +1524,9 @@ public final class GamepadCenter {
                     String which = parts[0];
                     String preset = parts[1];
                     String effColor = null;
-                    // random：每次撳即場抽（效果去 stop，色 1-7；落 toggle 上／落照行）。
+                    // random 唔經 toggle（每次撳都即抽新嘅，唔會撳多下熄燈）。
+                    boolean noFlip = "random".equals(preset);
+                    // random：每次撳即場抽（效果去 stop，dual 色跟 3/4/5；唔經 flip）。
                     if ("random".equals(preset)) {
                         String[] pool = "head".equals(which) ? HEAD_PRESETS : EYE_PRESETS;
                         java.util.List<String> opts = new java.util.ArrayList<String>();
@@ -1368,7 +1542,7 @@ public final class GamepadCenter {
                                 + rnd.nextInt(maxColor));
                     }
                     boolean stopping = "stop".equals(preset) || "off".equals(preset);
-                    if (!stopping && !toggleFlip(side, key)) {
+                    if (!stopping && !noFlip && !toggleFlip(side, key)) {
                         java.util.Map<String, String> qoff = new java.util.HashMap<>();
                         HttpServer.ApiResponse respOff;
                         if ("mouth".equals(which)) {
@@ -1679,11 +1853,12 @@ public final class GamepadCenter {
         if (!isValidAction(action)) {
             throw new IllegalArgumentException("parameter 'action' must be none/stop/vol_up/vol_down/"
                     + "music_play/music_next/music_prev/music_pause/music_resume/music_toggle/music_stop/music_random/radio_toggle/disco_toggle/filler_toggle/"
-                    + "ring_phone/ring_stop/ring_random/ring:<title>/"
+                    + "ring_phone/ring_stop/ring_random/ring:<title>/ring:phone:<title>/ring:notification:<title>/"
                     + "head:<preset>:<color>/head:random/eye:<preset>:<color>/eye:random/"
                     + "mouth:breathing:<speedMs>/mouth:off/led_off/"
                     + "camera_photo/face_start/color_start/video_toggle/"
                     + "sonar_toggle/pir_toggle/accel_toggle/"
+                    + "xiaozhi_toggle/vosk_toggle/vosk:<id>/eq:<preset>/radio:<uuid或名>/"
                     + "servo1-20+/servo1-20-/action:<id>, got: " + action);
         }
         Map<String, String> mapping = loadMapping(side);

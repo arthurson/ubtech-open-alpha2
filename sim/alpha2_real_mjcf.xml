@@ -1,0 +1,221 @@
+<?xml version='1.0' encoding='us-ascii'?>
+<mujoco model="alpha2">
+  <default>
+    <default class="robot">
+      <default class="motor">
+        <joint />
+        <motor />
+      </default>
+      <default class="visual">
+        <geom material="visualgeom" contype="0" conaffinity="0" group="2" />
+      </default>
+      <default class="collision">
+        <geom material="collision_material" condim="3" contype="0" conaffinity="1" priority="1" group="1" solref="0.005 1" solimp="0.99 0.999 1e-05" friction="1 0.01 0.01" />
+      </default>
+    </default>
+  </default>
+
+  <compiler angle="radian" />
+
+  <asset>
+    <material name="blue" rgba="0.2 0.4 0.8 1" />
+    <material name="white" rgba="0.9 0.9 0.9 1" />
+    <material name="grey" rgba="0.5 0.5 0.5 1" />
+    <material name="black" rgba="0.15 0.15 0.15 1" />
+    <material name="default_material" rgba="0.7 0.7 0.7 1" />
+    <material name="collision_material" rgba="1.0 0.28 0.1 0.9" />
+  </asset>
+
+  <worldbody>
+    <light directional="true" diffuse=".8 .8 .8" pos="0 0 5" dir="0 0 -1" />
+    <geom name="floor" type="plane" size="5 5 0.1" pos="0 0 0" rgba=".9 .9 .9 1" />
+    <body name="base_link" pos="0.00000000 0.00000000 0.22525000" quat="1 0 0 0" childclass="robot">
+      <freejoint name="floating_base" />
+      <geom name="base_link_collision" pos="0.00000 0.00000 0.00000" quat="1.0 0.0 0.0 0.0" type="box" size="0.0371 0.0371 0.0212" class="collision" />
+      <geom name="base_link_visual" pos="0.00000 0.00000 0.00000" quat="1.0 0.0 0.0 0.0" material="blue" type="box" size="0.0371 0.0371 0.0212" class="visual" contype="0" conaffinity="0" />
+      <body name="torso_link" pos="0.00000 0.00000 0.05830" quat="1.0 0.0 0.0 0.0">
+        <inertial pos="0 0 0" mass="0.4861" diaginertia="0.001006 0.0008068 0.0007113" />
+        <geom name="torso_link_collision" pos="0.00000 0.00000 0.00000" quat="1.0 0.0 0.0 0.0" type="box" size="0.03975 0.053 0.0583" class="collision" />
+        <geom name="torso_link_visual" pos="0.00000 0.00000 0.00000" quat="1.0 0.0 0.0 0.0" material="blue" type="box" size="0.03975 0.053 0.0583" class="visual" contype="0" conaffinity="0" />
+        <body name="r_shoulder_link" pos="0.00000 -0.05300 0.04240" quat="1.0 0.0 0.0 0.0">
+          <joint name="j1_r_shoulder_pitch" type="hinge" ref="0.0" class="motor" range="-2.0071 2.0071" axis="0 1 0" armature="0.0008" damping="0.01" />
+          <inertial pos="0 0 0" mass="0.0389" diaginertia="3.8e-06 3.8e-06 4.5e-06" />
+          <geom name="r_shoulder_link_collision" pos="0.00000 0.00000 -0.01060" quat="1.0 0.0 0.0 0.0" type="box" size="0.01325 0.01325 0.0106" class="collision" />
+          <geom name="r_shoulder_link_visual" pos="0.00000 0.00000 -0.01060" quat="1.0 0.0 0.0 0.0" material="white" type="box" size="0.01325 0.01325 0.0106" class="visual" contype="0" conaffinity="0" />
+          <body name="r_upper_arm_link" pos="0.00000 0.00000 -0.02120" quat="1.0 0.0 0.0 0.0">
+            <joint name="j2_r_shoulder_roll" type="hinge" ref="0.0" class="motor" range="-1.2217 1.5708" axis="1 0 0" armature="0.0008" damping="0.01" />
+            <inertial pos="0 0 0" mass="0.0730" diaginertia="2.13e-05 2.13e-05 8.6e-06" />
+            <geom name="r_upper_arm_link_collision" pos="0.00000 0.00000 -0.02650" quat="1.0 0.0 0.0 0.0" type="box" size="0.01325 0.01325 0.0265" class="collision" />
+            <geom name="r_upper_arm_link_visual" pos="0.00000 0.00000 -0.02650" quat="1.0 0.0 0.0 0.0" material="white" type="box" size="0.01325 0.01325 0.0265" class="visual" contype="0" conaffinity="0" />
+            <body name="r_forearm_link" pos="0.00000 0.00000 -0.05300" quat="1.0 0.0 0.0 0.0">
+              <joint name="j3_r_elbow" type="hinge" ref="0.0" class="motor" range="-1.1345 1.1345" axis="0 1 0" armature="0.0008" damping="0.01" />
+              <inertial pos="0 0 0" mass="0.0584" diaginertia="1.64e-05 1.64e-05 5.6e-06" />
+              <geom name="r_forearm_link_collision" pos="0.00000 0.00000 -0.02650" quat="1.0 0.0 0.0 0.0" type="box" size="0.011925 0.011925 0.0265" class="collision" />
+              <geom name="r_forearm_link_visual" pos="0.00000 0.00000 -0.02650" quat="1.0 0.0 0.0 0.0" material="white" type="box" size="0.011925 0.011925 0.0265" class="visual" contype="0" conaffinity="0" />
+              <body name="r_hand_link" pos="0.00000 0.00000 -0.05300" quat="1.0 0.0 0.0 0.0">
+                <joint name="j17_r_finger" type="hinge" ref="0.0" class="motor" range="-0.4363 0.0873" axis="0 1 0" armature="0.0001" damping="0.002" />
+                <inertial pos="0 0 0" mass="0.0243" diaginertia="3e-06 3e-06 1.8e-06" />
+                <geom name="r_hand_link_collision" pos="0.00000 0.00000 -0.01590" quat="1.0 0.0 0.0 0.0" type="box" size="0.0106 0.0106 0.0159" class="collision" />
+                <geom name="r_hand_link_visual" pos="0.00000 0.00000 -0.01590" quat="1.0 0.0 0.0 0.0" material="white" type="box" size="0.0106 0.0106 0.0159" class="visual" contype="0" conaffinity="0" />
+              </body>
+            </body>
+          </body>
+        </body>
+        <body name="l_shoulder_link" pos="0.00000 0.05300 0.04240" quat="1.0 0.0 0.0 0.0">
+          <joint name="j4_l_shoulder_pitch" type="hinge" ref="0.0" class="motor" range="-2.0071 2.0071" axis="0 1 0" armature="0.0008" damping="0.01" />
+          <inertial pos="0 0 0" mass="0.0389" diaginertia="3.8e-06 3.8e-06 4.5e-06" />
+          <geom name="l_shoulder_link_collision" pos="0.00000 0.00000 -0.01060" quat="1.0 0.0 0.0 0.0" type="box" size="0.01325 0.01325 0.0106" class="collision" />
+          <geom name="l_shoulder_link_visual" pos="0.00000 0.00000 -0.01060" quat="1.0 0.0 0.0 0.0" material="white" type="box" size="0.01325 0.01325 0.0106" class="visual" contype="0" conaffinity="0" />
+          <body name="l_upper_arm_link" pos="0.00000 0.00000 -0.02120" quat="1.0 0.0 0.0 0.0">
+            <joint name="j5_l_shoulder_roll" type="hinge" ref="0.0" class="motor" range="-1.5708 1.2217" axis="1 0 0" armature="0.0008" damping="0.01" />
+            <inertial pos="0 0 0" mass="0.0730" diaginertia="2.13e-05 2.13e-05 8.6e-06" />
+            <geom name="l_upper_arm_link_collision" pos="0.00000 0.00000 -0.02650" quat="1.0 0.0 0.0 0.0" type="box" size="0.01325 0.01325 0.0265" class="collision" />
+            <geom name="l_upper_arm_link_visual" pos="0.00000 0.00000 -0.02650" quat="1.0 0.0 0.0 0.0" material="white" type="box" size="0.01325 0.01325 0.0265" class="visual" contype="0" conaffinity="0" />
+            <body name="l_forearm_link" pos="0.00000 0.00000 -0.05300" quat="1.0 0.0 0.0 0.0">
+              <joint name="j6_l_elbow" type="hinge" ref="0.0" class="motor" range="-1.1345 1.1345" axis="0 1 0" armature="0.0008" damping="0.01" />
+              <inertial pos="0 0 0" mass="0.0584" diaginertia="1.64e-05 1.64e-05 5.6e-06" />
+              <geom name="l_forearm_link_collision" pos="0.00000 0.00000 -0.02650" quat="1.0 0.0 0.0 0.0" type="box" size="0.011925 0.011925 0.0265" class="collision" />
+              <geom name="l_forearm_link_visual" pos="0.00000 0.00000 -0.02650" quat="1.0 0.0 0.0 0.0" material="white" type="box" size="0.011925 0.011925 0.0265" class="visual" contype="0" conaffinity="0" />
+              <body name="l_hand_link" pos="0.00000 0.00000 -0.05300" quat="1.0 0.0 0.0 0.0">
+                <joint name="j18_l_finger" type="hinge" ref="0.0" class="motor" range="-0.4363 0.0873" axis="0 1 0" armature="0.0001" damping="0.002" />
+                <inertial pos="0 0 0" mass="0.0243" diaginertia="3e-06 3e-06 1.8e-06" />
+                <geom name="l_hand_link_collision" pos="0.00000 0.00000 -0.01590" quat="1.0 0.0 0.0 0.0" type="box" size="0.0106 0.0106 0.0159" class="collision" />
+                <geom name="l_hand_link_visual" pos="0.00000 0.00000 -0.01590" quat="1.0 0.0 0.0 0.0" material="white" type="box" size="0.0106 0.0106 0.0159" class="visual" contype="0" conaffinity="0" />
+              </body>
+            </body>
+          </body>
+        </body>
+        <body name="neck_link" pos="0.00000 0.00000 0.06360" quat="1.0 0.0 0.0 0.0">
+          <joint name="j19_head_yaw" type="hinge" ref="0.0" class="motor" range="-0.7854 0.7854" axis="0 0 1" armature="0.0003" damping="0.005" />
+          <inertial pos="0 0 0" mass="0.0243" diaginertia="1.4e-06 1.4e-06 1.8e-06" />
+          <geom name="neck_link_collision" pos="0.00000 0.00000 0.00795" quat="1.0 0.0 0.0 0.0" type="box" size="0.0106 0.0106 0.00795" class="collision" />
+          <geom name="neck_link_visual" pos="0.00000 0.00000 0.00795" quat="1.0 0.0 0.0 0.0" material="white" type="box" size="0.0106 0.0106 0.00795" class="visual" contype="0" conaffinity="0" />
+          <body name="head_link" pos="0.00000 0.00000 0.01590" quat="1.0 0.0 0.0 0.0">
+            <joint name="j20_head_pitch" type="hinge" ref="0.0" class="motor" range="-0.2618 0.6109" axis="0 1 0" armature="0.0003" damping="0.005" />
+            <inertial pos="0 0 0" mass="0.1458" diaginertia="9.05e-05 9.05e-05 8.26e-05" />
+            <geom name="head_link_collision" pos="0.00000 0.00000 0.03710" quat="1.0 0.0 0.0 0.0" type="box" size="0.02915 0.02915 0.0318" class="collision" />
+            <geom name="head_link_visual" pos="0.00000 0.00000 0.03710" quat="1.0 0.0 0.0 0.0" material="white" type="box" size="0.02915 0.02915 0.0318" class="visual" contype="0" conaffinity="0" />
+          <geom name="cue_eye_l" type="box" pos="0.030 0.014 0.075" size="0.003 0.005 0.006" rgba="1 1 1 1" contype="0" conaffinity="0" /><geom name="cue_eye_r" type="box" pos="0.030 -0.014 0.075" size="0.003 0.005 0.006" rgba="1 1 1 1" contype="0" conaffinity="0" /></body>
+        </body>
+      <geom name="cue_chest" type="box" pos="0.041 0 0.03" size="0.003 0.02 0.012" rgba="0 0.9 1 1" contype="0" conaffinity="0" /><geom name="cue_back" type="box" pos="-0.041 0 0.03" size="0.003 0.02 0.012" rgba="1 0.2 0.2 1" contype="0" conaffinity="0" /></body>
+      <body name="r_hip_link" pos="0.00000 -0.03710 -0.01060" quat="1.0 0.0 0.0 0.0">
+        <joint name="j7_r_hip_roll" type="hinge" ref="0.0" class="motor" range="-0.3491 1.3963" axis="1 0 0" armature="0.002" damping="0.05" />
+        <inertial pos="0 0 0" mass="0.0389" diaginertia="5.3e-06 5.3e-06 8.9e-06" />
+        <geom name="r_hip_link_collision" pos="0.00000 0.00000 -0.00795" quat="1.0 0.0 0.0 0.0" type="box" size="0.01855 0.01855 0.00795" class="collision" />
+        <geom name="r_hip_link_visual" pos="0.00000 0.00000 -0.00795" quat="1.0 0.0 0.0 0.0" material="grey" type="box" size="0.01855 0.01855 0.00795" class="visual" contype="0" conaffinity="0" />
+        <body name="r_thigh_link" pos="0.00000 0.00000 -0.01590" quat="1.0 0.0 0.0 0.0">
+          <joint name="j8_r_hip_pitch" type="hinge" ref="0.0" class="motor" range="-0.7854 2.7053" axis="0 1 0" armature="0.002" damping="0.05" />
+          <inertial pos="0 0 0" mass="0.1458" diaginertia="9.35e-05 9.35e-05 3.35e-05" />
+          <geom name="r_thigh_link_collision" pos="0.00000 0.00000 -0.03975" quat="1.0 0.0 0.0 0.0" type="box" size="0.01855 0.01855 0.03975" class="collision" />
+          <geom name="r_thigh_link_visual" pos="0.00000 0.00000 -0.03975" quat="1.0 0.0 0.0 0.0" material="grey" type="box" size="0.01855 0.01855 0.03975" class="visual" contype="0" conaffinity="0" />
+          <body name="r_shank_link" pos="0.00000 0.00000 -0.07950" quat="1.0 0.0 0.0 0.0">
+            <joint name="j9_r_knee" type="hinge" ref="0.0" class="motor" range="-1.9199 1.4835" axis="0 1 0" armature="0.002" damping="0.05" />
+            <inertial pos="0 0 0" mass="0.1216" diaginertia="7.43e-05 7.43e-05 2.04e-05" />
+            <geom name="r_shank_link_collision" pos="0.00000 0.00000 -0.03975" quat="1.0 0.0 0.0 0.0" type="box" size="0.0159 0.0159 0.03975" class="collision" />
+            <geom name="r_shank_link_visual" pos="0.00000 0.00000 -0.03975" quat="1.0 0.0 0.0 0.0" material="grey" type="box" size="0.0159 0.0159 0.03975" class="visual" contype="0" conaffinity="0" />
+            <body name="r_ankle_link" pos="0.00000 0.00000 -0.07950" quat="1.0 0.0 0.0 0.0">
+              <joint name="j10_r_ankle_pitch" type="hinge" ref="0.0" class="motor" range="-1.7453 1.3963" axis="0 1 0" armature="0.002" damping="0.05" />
+              <inertial pos="0 0 0" mass="0.0389" diaginertia="3.2e-06 3.2e-06 4.5e-06" />
+              <geom name="r_ankle_link_collision" pos="0.00000 0.00000 -0.00795" quat="1.0 0.0 0.0 0.0" type="box" size="0.01325 0.01325 0.00795" class="collision" />
+              <geom name="r_ankle_link_visual" pos="0.00000 0.00000 -0.00795" quat="1.0 0.0 0.0 0.0" material="grey" type="box" size="0.01325 0.01325 0.00795" class="visual" contype="0" conaffinity="0" />
+              <body name="r_foot_link" pos="0.00000 0.00000 -0.01590" quat="1.0 0.0 0.0 0.0">
+                <joint name="j11_r_ankle_roll" type="hinge" ref="0.0" class="motor" range="-0.3491 1.2217" axis="1 0 0" armature="0.002" damping="0.05" />
+                <inertial pos="0 0 0" mass="0.0730" diaginertia="1.65e-05 4.64e-05 5.75e-05" />
+                <geom name="r_foot_link_collision" pos="0.01590 0.00000 -0.01325" quat="1.0 0.0 0.0 0.0" type="box" size="0.0424 0.02385 0.0106" class="collision" solref="0.02 1" solimp="0.9 0.95 0.001" />
+                <geom name="r_foot_link_visual" pos="0.01590 0.00000 -0.01325" quat="1.0 0.0 0.0 0.0" material="black" type="box" size="0.0424 0.02385 0.0106" class="visual" contype="0" conaffinity="0" />
+              <geom name="cue_toe_r" type="box" pos="0.052 0 -0.013" size="0.008 0.024 0.011" rgba="0.15 0.15 0.15 1" contype="0" conaffinity="0" /></body>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="l_hip_link" pos="0.00000 0.03710 -0.01060" quat="1.0 0.0 0.0 0.0">
+        <joint name="j12_l_hip_roll" type="hinge" ref="0.0" class="motor" range="-1.3963 0.3491" axis="1 0 0" armature="0.002" damping="0.05" />
+        <inertial pos="0 0 0" mass="0.0389" diaginertia="5.3e-06 5.3e-06 8.9e-06" />
+        <geom name="l_hip_link_collision" pos="0.00000 0.00000 -0.00795" quat="1.0 0.0 0.0 0.0" type="box" size="0.01855 0.01855 0.00795" class="collision" />
+        <geom name="l_hip_link_visual" pos="0.00000 0.00000 -0.00795" quat="1.0 0.0 0.0 0.0" material="grey" type="box" size="0.01855 0.01855 0.00795" class="visual" contype="0" conaffinity="0" />
+        <body name="l_thigh_link" pos="0.00000 0.00000 -0.01590" quat="1.0 0.0 0.0 0.0">
+          <joint name="j13_l_hip_pitch" type="hinge" ref="0.0" class="motor" range="-2.7053 0.7854" axis="0 1 0" armature="0.002" damping="0.05" />
+          <inertial pos="0 0 0" mass="0.1458" diaginertia="9.35e-05 9.35e-05 3.35e-05" />
+          <geom name="l_thigh_link_collision" pos="0.00000 0.00000 -0.03975" quat="1.0 0.0 0.0 0.0" type="box" size="0.01855 0.01855 0.03975" class="collision" />
+          <geom name="l_thigh_link_visual" pos="0.00000 0.00000 -0.03975" quat="1.0 0.0 0.0 0.0" material="grey" type="box" size="0.01855 0.01855 0.03975" class="visual" contype="0" conaffinity="0" />
+          <body name="l_shank_link" pos="0.00000 0.00000 -0.07950" quat="1.0 0.0 0.0 0.0">
+            <joint name="j14_l_knee" type="hinge" ref="0.0" class="motor" range="-1.4835 1.9199" axis="0 1 0" armature="0.002" damping="0.05" />
+            <inertial pos="0 0 0" mass="0.1216" diaginertia="7.43e-05 7.43e-05 2.04e-05" />
+            <geom name="l_shank_link_collision" pos="0.00000 0.00000 -0.03975" quat="1.0 0.0 0.0 0.0" type="box" size="0.0159 0.0159 0.03975" class="collision" />
+            <geom name="l_shank_link_visual" pos="0.00000 0.00000 -0.03975" quat="1.0 0.0 0.0 0.0" material="grey" type="box" size="0.0159 0.0159 0.03975" class="visual" contype="0" conaffinity="0" />
+            <body name="l_ankle_link" pos="0.00000 0.00000 -0.07950" quat="1.0 0.0 0.0 0.0">
+              <joint name="j15_l_ankle_pitch" type="hinge" ref="0.0" class="motor" range="-1.3963 1.7453" axis="0 1 0" armature="0.002" damping="0.05" />
+              <inertial pos="0 0 0" mass="0.0389" diaginertia="3.2e-06 3.2e-06 4.5e-06" />
+              <geom name="l_ankle_link_collision" pos="0.00000 0.00000 -0.00795" quat="1.0 0.0 0.0 0.0" type="box" size="0.01325 0.01325 0.00795" class="collision" />
+              <geom name="l_ankle_link_visual" pos="0.00000 0.00000 -0.00795" quat="1.0 0.0 0.0 0.0" material="grey" type="box" size="0.01325 0.01325 0.00795" class="visual" contype="0" conaffinity="0" />
+              <body name="l_foot_link" pos="0.00000 0.00000 -0.01590" quat="1.0 0.0 0.0 0.0">
+                <joint name="j16_l_ankle_roll" type="hinge" ref="0.0" class="motor" range="-1.2217 0.3491" axis="1 0 0" armature="0.002" damping="0.05" />
+                <inertial pos="0 0 0" mass="0.0730" diaginertia="1.65e-05 4.64e-05 5.75e-05" />
+                <geom name="l_foot_link_collision" pos="0.01590 0.00000 -0.01325" quat="1.0 0.0 0.0 0.0" type="box" size="0.0424 0.02385 0.0106" class="collision" solref="0.02 1" solimp="0.9 0.95 0.001" />
+                <geom name="l_foot_link_visual" pos="0.01590 0.00000 -0.01325" quat="1.0 0.0 0.0 0.0" material="black" type="box" size="0.0424 0.02385 0.0106" class="visual" contype="0" conaffinity="0" />
+              <geom name="cue_toe_l" type="box" pos="0.052 0 -0.013" size="0.008 0.024 0.011" rgba="0.15 0.15 0.15 1" contype="0" conaffinity="0" /></body>
+            </body>
+          </body>
+        </body>
+      </body>
+      <site name="base_link_site" pos="0 0 0" quat="1 0 0 0" />
+      <camera name="front_camera" mode="track" fovy="90.0" quat="4.329780281177467e-17 4.329780281177467e-17 0.7071067811865476 0.7071067811865476" pos="0.0 2.0 0.5" />
+      <camera name="side_camera" mode="track" fovy="90.0" quat="-0.5 -0.5 0.5000000000000001 0.5000000000000001" pos="-2.0 0.0 0.5" />
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor name="j1_r_shoulder_pitch_ctrl" joint="j1_r_shoulder_pitch" class="motor" />
+    <motor name="j2_r_shoulder_roll_ctrl" joint="j2_r_shoulder_roll" class="motor" />
+    <motor name="j3_r_elbow_ctrl" joint="j3_r_elbow" class="motor" />
+    <motor name="j17_r_finger_ctrl" joint="j17_r_finger" class="motor" />
+    <motor name="j4_l_shoulder_pitch_ctrl" joint="j4_l_shoulder_pitch" class="motor" />
+    <motor name="j5_l_shoulder_roll_ctrl" joint="j5_l_shoulder_roll" class="motor" />
+    <motor name="j6_l_elbow_ctrl" joint="j6_l_elbow" class="motor" />
+    <motor name="j18_l_finger_ctrl" joint="j18_l_finger" class="motor" />
+    <motor name="j19_head_yaw_ctrl" joint="j19_head_yaw" class="motor" />
+    <motor name="j20_head_pitch_ctrl" joint="j20_head_pitch" class="motor" />
+    <motor name="j7_r_hip_roll_ctrl" joint="j7_r_hip_roll" class="motor" />
+    <motor name="j8_r_hip_pitch_ctrl" joint="j8_r_hip_pitch" class="motor" />
+    <motor name="j9_r_knee_ctrl" joint="j9_r_knee" class="motor" />
+    <motor name="j10_r_ankle_pitch_ctrl" joint="j10_r_ankle_pitch" class="motor" />
+    <motor name="j11_r_ankle_roll_ctrl" joint="j11_r_ankle_roll" class="motor" />
+    <motor name="j12_l_hip_roll_ctrl" joint="j12_l_hip_roll" class="motor" />
+    <motor name="j13_l_hip_pitch_ctrl" joint="j13_l_hip_pitch" class="motor" />
+    <motor name="j14_l_knee_ctrl" joint="j14_l_knee" class="motor" />
+    <motor name="j15_l_ankle_pitch_ctrl" joint="j15_l_ankle_pitch" class="motor" />
+    <motor name="j16_l_ankle_roll_ctrl" joint="j16_l_ankle_roll" class="motor" />
+  </actuator>
+
+  <contact>
+    <exclude body1="base_link" body2="torso_link" />
+    <exclude body1="torso_link" body2="r_shoulder_link" />
+    <exclude body1="r_shoulder_link" body2="r_upper_arm_link" />
+    <exclude body1="r_upper_arm_link" body2="r_forearm_link" />
+    <exclude body1="r_forearm_link" body2="r_hand_link" />
+    <exclude body1="torso_link" body2="l_shoulder_link" />
+    <exclude body1="l_shoulder_link" body2="l_upper_arm_link" />
+    <exclude body1="l_upper_arm_link" body2="l_forearm_link" />
+    <exclude body1="l_forearm_link" body2="l_hand_link" />
+    <exclude body1="base_link" body2="r_hip_link" />
+    <exclude body1="r_hip_link" body2="r_thigh_link" />
+    <exclude body1="r_thigh_link" body2="r_shank_link" />
+    <exclude body1="r_shank_link" body2="r_ankle_link" />
+    <exclude body1="r_ankle_link" body2="r_foot_link" />
+    <exclude body1="base_link" body2="l_hip_link" />
+    <exclude body1="l_hip_link" body2="l_thigh_link" />
+    <exclude body1="l_thigh_link" body2="l_shank_link" />
+    <exclude body1="l_shank_link" body2="l_ankle_link" />
+    <exclude body1="l_ankle_link" body2="l_foot_link" />
+    <exclude body1="torso_link" body2="neck_link" />
+    <exclude body1="neck_link" body2="head_link" />
+  </contact>
+
+  <sensor>
+    <framepos name="base_link_site_pos" objtype="site" objname="base_link_site" />
+    <framequat name="base_link_site_quat" objtype="site" objname="base_link_site" />
+    <framelinvel name="base_link_site_linvel" objtype="site" objname="base_link_site" />
+    <frameangvel name="base_link_site_angvel" objtype="site" objname="base_link_site" />
+    <velocimeter name="base_link_site_vel" site="base_link_site" />
+  </sensor>
+</mujoco>
