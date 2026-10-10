@@ -200,7 +200,7 @@ function updateFpsBadge() {
     return;
   }
   const feat = document.getElementById("featureEnabled");
-  if (feat && !feat.checked) {
+  if ((feat && !feat.checked) || window.cameraPadViewOn) {
     badge.classList.remove("on");
     return;
   }
@@ -564,7 +564,8 @@ function setKnobPosition(nx, ny) {
 
 function updateCrosshairVisibility() {
   const els = cameraElements();
-  const shouldShow = cameraLiveRunning && els.crosshairToggle && els.crosshairToggle.checked;
+  const shouldShow = cameraLiveRunning && els.crosshairToggle && els.crosshairToggle.checked
+    && !window.cameraPadViewOn;
   if (els.crosshairPad) {
     els.crosshairPad.classList.toggle("active", shouldShow);
   }

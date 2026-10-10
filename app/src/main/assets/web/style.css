@@ -1802,3 +1802,12 @@ button.eq-preset-sq.selected {
 .kb-zone-right { flex: 4 1 260px; min-width: 0; display: flex; flex-direction: column; }
 .kb-zones-sub { display: flex; gap: 10px; flex-wrap: wrap; }
 
+/* 相機頁手柄視圖：22 粒 pad 鍵畫喺 viewport 內 canvas（圖形掣，非 HTML）。
+   收埋預設 display:none，開視圖經 inline style 出；touch-action:none 免撳住變捲頁。 */
+.camera-pad-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  z-index: 7; touch-action: none; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none; /* 長按唔彈 callout＋唔震（JS 另有 touchstart 非被動攔截） */
+}
+
+

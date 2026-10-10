@@ -46,7 +46,7 @@ import java.util.Map;
  * music_stop／music_random／radio_toggle／disco_toggle／filler_toggle（經 AudioCenter）／ring_phone／ring_stop／ring_random／
  * ring:&lt;title&gt;／ring:phone:&lt;title&gt;／ring:notification:&lt;title&gt;（經 RingtoneCenter）／led_off／head:&lt;preset&gt;:&lt;color&gt;／head:random／
  * eye:&lt;preset&gt;:&lt;color&gt;／eye:random／mouth:breathing:&lt;speedMs&gt;／mouth:off（經 LedCenter）／
- * camera_photo／face_start／color_start（追蹤 toggle）／video_toggle（錄影 toggle）／
+ * camera_photo／face_toggle／color_toggle（追蹤 toggle）／video_toggle（錄影 toggle）／
  * sonar_toggle／pir_toggle／accel_toggle（傳感器 toggle）（經 CameraApi／VideoCenter／
  * SonarCenter／LedCenter／DeviceStatus）／xiaozhi_toggle（小智連線 toggle，經 XiaozhiBridge）／
  * vosk_toggle／vosk:&lt;id&gt;（Vosk 監聽／切包 toggle，經 VoskApi）／eq:&lt;preset&gt;（EQ toggle，經 AudioCenter）／
@@ -181,6 +181,7 @@ public final class GamepadCenter {
         this.xiaozhiBridge = xiaozhiBridge;
         this.voskApi = voskApi;
         this.audioManager = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
+        startRefPosePoll();
     }
 
     private SharedPreferences prefs() {
@@ -235,249 +236,94 @@ public final class GamepadCenter {
         return inputGetResponse();
     }
 
-    // -- 預設映射（分邊；同名鍵獨立值） --------------------------------------
-    // pad 邊：up/down/left/right＝步態；a＝停止，b＝鼓掌，x/y＝揮手；
-    // start＝停止，select＝蹲下站起回位；l1/r1＝頭 yaw jog，l2/r2＝頭 pitch jog。
-    // kb 邊：方向＋w/s/d＝步態；a/space/enter＝停止；b＝鼓掌，x/y＝揮手；
-    // vol＝音量；其餘一律 none（用家自己配）。
+    // -- 預設映射（分邊；同名鍵獨立值；user snapshot as factory default，
+    // 烘於 2026-10-10：reset／新裝機回呢套；舊機已存值唔受影響） ------------
     public static Map<String, String> defaultPadMapping() {
         Map<String, String> m = new LinkedHashMap<>();
         for (String k : PAD_KEYS) m.put(k, "none");
         m.put("up", "action:1508999860568");
         m.put("down", "action:1510818256622");
-        m.put("left", "action:1464835936035");
-        m.put("right", "action:1464835936033");
-        m.put("a", "stop");
-        m.put("b", "action:1509000232878");
-        m.put("x", "action:1464835936017");
-        m.put("y", "action:1464835936018");
-        m.put("start", "stop");
-        m.put("select", "action:1510818174706");
-        m.put("l1", "servo20-");
-        m.put("r1", "servo20+");
-        m.put("l2", "servo19-");
-        m.put("r2", "servo19+");
+        m.put("left", "action:1464835936046");
+        m.put("right", "action:1464835936040");
+        m.put("a", "servo20+");
+        m.put("b", "servo19+");
+        m.put("x", "servo19-");
+        m.put("y", "servo20-");
+        m.put("start", "action:1510818174706");
+        m.put("select", "action:1514366181328");
+        m.put("l1", "action:1464835936018");
+        m.put("r1", "action:1464835936017");
+        m.put("l2", "action:1464835936047");
+        m.put("r2", "action:1464835936041");
+        m.put("lx_neg", "servo5+");
+        m.put("lx_pos", "servo5-");
+        m.put("ly_neg", "servo4+");
+        m.put("ly_pos", "servo4-");
+        m.put("rx_neg", "servo2+");
+        m.put("rx_pos", "servo2-");
+        m.put("ry_neg", "servo1-");
+        m.put("ry_pos", "servo1+");
         return m;
     }
 
     public static Map<String, String> defaultKbMapping() {
-
-        // user snapshot as factory default (2026-10); yoga_random removed -> none.
-
         Map<String, String> m = new LinkedHashMap<>();
-
-        m.put("0", "mouth:breathing:100");
-
-        m.put("1", "head:long:1");
-
-        m.put("2", "head:flash:2");
-
-        m.put("3", "head:breathe:5");
-
-        m.put("4", "head:chase:4");
-
-        m.put("5", "head:dual:3");
-
-        m.put("6", "eye:flash:7");
-
-        m.put("7", "eye:chase:6");
-
-        m.put("8", "eye:chase:5");
-
-        m.put("9", "eye:dual:4");
-
-        m.put("a", "servo2-");
-
-        m.put("alt", "none");
-
-        m.put("b", "servo20+");
-
-        m.put("backslash", "none");
-
-        m.put("backspace", "none");
-
-        m.put("c", "action:1509007823124");
-
-        m.put("caps", "none");
-
-        m.put("comma", "servo4-");
-
-        m.put("ctrl", "none");
-
-        m.put("d", "servo2+");
-
-        m.put("del", "none");
-
-        m.put("down", "action:1510818256622");
-
-        m.put("e", "action:1510818336833");
-
-        m.put("end", "none");
-
-        m.put("enter", "stop");
-
-        m.put("equals", "none");
-
-        m.put("esc", "none");
-
-        m.put("f", "servo19+");
-
-        m.put("f1", "ring:Andromeda");
-
-        m.put("f10", "ring:Springy Jalopy");
-
-        m.put("f11", "ring:Twirl Away");
-
-        m.put("f12", "ring:World");
-
-        m.put("f2", "ring:Bentley Dubs");
-
-        m.put("f3", "ring:Carina");
-
-        m.put("f4", "ring:Don' Mess Wiv It");
-
-        m.put("f5", "ring:Gimme Mo' Town");
-
-        m.put("f6", "ring:Love Flute");
-
-        m.put("f7", "ring:New Player");
-
-        m.put("f8", "ring:Pegasus");
-
-        m.put("f9", "ring:Romancing The Tone");
-
-        m.put("g", "action:1464835936013");
-
-        m.put("grave", "none");
-
-        m.put("h", "servo19-");
-
-        m.put("home", "none");
-
-        m.put("i", "servo4+");
-
-        m.put("ins", "none");
-
-        m.put("j", "servo5-");
-
-        m.put("k", "action:1464835936018");
-
-        m.put("l", "servo5+");
-
-        m.put("lbracket", "none");
-
-        m.put("left", "action:1464835936046");
-
-        m.put("m", "action:1510818054178");
-
-        m.put("media_next", "music_next");
-
-        m.put("media_play", "music_toggle");
-
-        m.put("media_prev", "music_prev");
-
-        m.put("media_stop", "music_stop");
-
-        m.put("menu", "none");
-
-        m.put("minus", "none");
-
-        m.put("mute", "none");
-
-        m.put("n", "action:1464835936012");
-
-        m.put("num_0", "none");
-
-        m.put("num_1", "none");
-
-        m.put("num_2", "none");
-
-        m.put("num_3", "none");
-
-        m.put("num_4", "none");
-
-        m.put("num_5", "none");
-
-        m.put("num_6", "none");
-
-        m.put("num_7", "none");
-
-        m.put("num_8", "none");
-
-        m.put("num_9", "none");
-
-        m.put("num_add", "none");
-
-        m.put("num_div", "none");
-
-        m.put("num_dot", "none");
-
-        m.put("num_enter", "none");
-
-        m.put("num_mul", "none");
-
-        m.put("num_sub", "none");
-
-        m.put("o", "servo6-");
-
-        m.put("p", "none");
-
-        m.put("pause", "none");
-
-        m.put("period", "servo6+");
-
-        m.put("pgdn", "none");
-
-        m.put("pgup", "none");
-
-        m.put("print", "none");
-
-        m.put("q", "servo3+");
-
-        m.put("quote", "none");
-
-        m.put("r", "action:1464835936090");
-
-        m.put("rbracket", "none");
-
-        m.put("right", "action:1464835936040");
-
-        m.put("s", "action:1464835936017");
-
-        m.put("scroll", "none");
-
-        m.put("semicolon", "none");
-
-        m.put("shift", "none");
-
-        m.put("slash", "none");
-
-        m.put("space", "stop");
-
-        m.put("t", "servo20-");
-
-        m.put("tab", "none");
-
-        m.put("u", "action:1510818386847");
-
+        for (String k : KB_KEYS) m.put(k, "none");
         m.put("up", "action:1508999860568");
-
-        m.put("v", "action:1464835936087");
-
-        m.put("vol_down", "vol_down");
-
+        m.put("down", "action:1510818256622");
+        m.put("left", "action:1464835936040");
+        m.put("right", "action:1464835936035");
+        m.put("a", "servo17-");
+        m.put("b", "servo20+");
+        m.put("x", "servo3-");
+        m.put("c", "servo1+");
+        m.put("d", "servo1-");
+        m.put("e", "servo2+");
+        m.put("f", "servo19+");
+        m.put("h", "servo19-");
+        m.put("i", "servo5+");
+        m.put("j", "servo4+");
+        m.put("k", "servo6-");
+        m.put("l", "servo18+");
+        m.put("m", "servo4-");
+        m.put("o", "action:1510818054178");
+        m.put("q", "action:1509007823124");
+        m.put("s", "servo3+");
+        m.put("t", "servo20-");
+        m.put("u", "servo5-");
+        m.put("w", "servo2-");
+        m.put("z", "servo17+");
+        m.put("1", "xiaozhi_toggle");
+        m.put("2", "vosk:vosk-model-small-cn-0.22");
+        m.put("3", "vosk:vosk-model-small-en-us-0.15");
+        m.put("4", "vosk:vosk-model-small-ja-0.22");
+        m.put("5", "radio:fbdf80cd-cb85-45ea-b028-8a43d794d22b");
+        m.put("6", "radio:67bb21a5-2933-48f4-9b96-a8cab6cc6c81");
+        m.put("7", "sonar_toggle");
+        m.put("8", "pir_toggle");
+        m.put("9", "accel_toggle");
+        m.put("space", "stop");
+        m.put("enter", "stop");
         m.put("vol_up", "vol_up");
-
-        m.put("w", "servo1-");
-
-        m.put("x", "servo1+");
-
-        m.put("y", "action:1464835936092");
-
-        m.put("z", "servo3-");
-
+        m.put("vol_down", "vol_down");
+        m.put("media_play", "music_toggle");
+        m.put("media_next", "music_next");
+        m.put("media_prev", "music_prev");
+        m.put("media_stop", "music_stop");
+        m.put("comma", "servo6+");
+        m.put("period", "servo18-");
+        m.put("f2", "disco_toggle");
+        m.put("f3", "filler_toggle");
+        m.put("f4", "ring_random");
+        m.put("f5", "ring_random");
+        m.put("f6", "head:random");
+        m.put("f7", "eye:random");
+        m.put("f8", "mouth:breathing:150");
+        m.put("f9", "face_toggle");
+        m.put("f10", "color_toggle");
+        m.put("f11", "pir_toggle");
+        m.put("f12", "accel_toggle");
         return m;
-
     }
 
     /**
@@ -547,12 +393,14 @@ public final class GamepadCenter {
         }
     }
 
-    /** 相機動作合法性：影相＋人臉／顏色追蹤 toggle＋錄影 toggle（開／停已合併，一鍵足夠）。 */
+    /** 相機動作合法性：影相＋人臉／顏色追蹤 toggle＋錄影 toggle（開／停已合併，一鍵足夠）。
+     *  face_start／color_start 係舊名，別名保留（讀入即遷移見 loadMapping）。 */
     public static boolean isCameraAction(String a) {
         if (a == null) return false;
         String t = a.trim();
-        return "camera_photo".equals(t) || "face_start".equals(t)
-                || "color_start".equals(t) || "video_toggle".equals(t);
+        return "camera_photo".equals(t) || "face_toggle".equals(t)
+                || "color_toggle".equals(t) || "video_toggle".equals(t)
+                || "face_start".equals(t) || "color_start".equals(t);
     }
 
     /** 傳感器 toggle 合法性：聲納／PIR／加速度計單鍵開關。 */
@@ -646,7 +494,7 @@ public final class GamepadCenter {
 
     /**
      * 動作值合法性：none／stop／vol_up／vol_down／music_*／ring_*／led_*／led_off／
-     * camera_photo／face_start／color_start／video_toggle／sonar_toggle／
+     * camera_photo／face_toggle／color_toggle／video_toggle／sonar_toggle／
      * pir_toggle／accel_toggle／xiaozhi_toggle／vosk_toggle／vosk:&lt;id&gt;／
      * eq:&lt;preset&gt;／radio:&lt;uuid或名&gt;／servo1-20±／action:&lt;非空&gt;。
      * servo 步進覆蓋全部 20 軸（jogServo 通用）。
@@ -747,9 +595,9 @@ public final class GamepadCenter {
                 if (ci < 0) continue;
                 String k = unquote(pair.substring(0, ci).trim());
                 String v = unquote(pair.substring(ci + 1).trim());
-                // 追蹤開／停合併遷移（face_stop→face_start toggle，color 同理；兩邊通用）。
-                if ("face_stop".equals(v)) v = "face_start";
-                else if ("color_stop".equals(v)) v = "color_start";
+                // 追蹤 toggle 正名遷移（face_stop／face_start→face_toggle，color 同理；兩邊通用）。
+                if ("face_stop".equals(v) || "face_start".equals(v)) v = "face_toggle";
+                else if ("color_stop".equals(v) || "color_start".equals(v)) v = "color_toggle";
                 // dual 舊色碼修正（3=藍綠／4=紅綠／5=紅藍先有意義，其餘出嚟都係藍綠，
                 // 見 app-led.js DUAL_COLORS；兩邊通用，歸位做 3）。
                 String[] dp = v.split(":", -1);
@@ -1021,8 +869,8 @@ public final class GamepadCenter {
         }
         String action = mappedActionOf(norm, logical);
         boolean taken = executeAction(norm, logical, action);
-        // 撳住 servo jog 即排連走（首步上面已行，跟住每 120ms 一步）。
-        if (taken && isServoJog(action)) startServoRepeat(norm, logical, action);
+        // 撳住 servo jog 即排連走（首步上面已行，跟住每 120ms 一步；掣全速）。
+        if (taken && isServoJog(action)) startServoRepeat(norm, logical, action, 1f);
         publishKey(logical, true, "robot", action, taken);
         return true;
     }
@@ -1243,6 +1091,7 @@ public final class GamepadCenter {
             // 各路獨立 try（邊路炸唔阻其他路），taken 跟動作主體。
             if (a.equals("stop")) {
                 UbxErrorCode.API_ERROR_CODE code = actionDirect.stopActionWithRecovery();
+                noteActionStarted();
                 try {
                     if (speechCenter != null) speechCenter.stopAllSpeechPlayback();
                 } catch (Throwable t) {
@@ -1424,12 +1273,22 @@ public final class GamepadCenter {
                             }
                         }, "GamepadPhoto").start();
                         return true;
-                    } else if ("face_start".equals(a)) {
+                    } else if ("face_toggle".equals(a) || "face_start".equals(a)) {
                         resp = cameraApi.isFaceTrackRunning()
                                 ? cameraApi.faceTrackStop() : cameraApi.faceTrackStart(empty);
-                    } else if ("color_start".equals(a)) {
+                        // 讀真態推（開人臉即停顏色，CameraApi 保證互斥；HTTP 相機頁經
+                        // gamepad_state 即跟，唔使等輪詢）。
+                        publishToggleState("{\"domain\":\"facetrack\",\"running\":"
+                                + cameraApi.isFaceTrackRunning() + "}");
+                        publishToggleState("{\"domain\":\"colortrack\",\"running\":"
+                                + cameraApi.isColorTrackRunning() + "}");
+                    } else if ("color_toggle".equals(a) || "color_start".equals(a)) {
                         resp = cameraApi.isColorTrackRunning()
                                 ? cameraApi.colorTrackStop() : cameraApi.colorTrackStart(empty);
+                        publishToggleState("{\"domain\":\"colortrack\",\"running\":"
+                                + cameraApi.isColorTrackRunning() + "}");
+                        publishToggleState("{\"domain\":\"facetrack\",\"running\":"
+                                + cameraApi.isFaceTrackRunning() + "}");
                     } else if ("video_toggle".equals(a)) {
                         return cameraApi.toggleVideoRecording();
                     } else return false;
@@ -1463,10 +1322,13 @@ public final class GamepadCenter {
                     }
                     if ("accel_toggle".equals(a)) {
                         if (deviceStatus == null) return false;
+                        // toggleAccelerometer 主線程係 post 非同步翻（等 latch 即自塞死，
+                        // 見 DeviceStatus）：即時讀返係舊態，HTTP 掣永遠慢一拍——推預測態
+                        //（同翻轉一對一；硬件唔在 ok=false 唔推）。
+                        boolean target = !deviceStatus.isAccelerometerEnabled();
                         boolean ok = deviceStatus.toggleAccelerometer();
                         if (ok) {
-                            publishToggleState("{\"domain\":\"accel\",\"enabled\":"
-                                    + deviceStatus.isAccelerometerEnabled() + "}");
+                            publishToggleState("{\"domain\":\"accel\",\"enabled\":" + target + "}");
                         }
                         return ok;
                     }
@@ -1583,8 +1445,10 @@ public final class GamepadCenter {
                 String name = a.substring(7).trim();
                 if (name.isEmpty()) return false;
                 // 真返回值：缺文件／胸口唔通即 false，面板 taken 照實顯示。
-                return actionDirect.playActionDirect(name)
+                boolean ok = actionDirect.playActionDirect(name)
                         == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+                if (ok) noteActionStarted();
+                return ok;
             }
         } catch (Throwable t) {
             Log.w(TAG, "executeAction failed: " + action, t);
@@ -1628,18 +1492,21 @@ public final class GamepadCenter {
             java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
     private final Map<String, java.util.concurrent.ScheduledFuture<?>> servoRepeaters =
             new LinkedHashMap<>();
+    // 連走偏轉量（tag→0..1；掣 1.0 全速，搖桿跟手指；repeat tick 即時讀，見下）。
+    private final Map<String, Float> servoRepeatDefl = new LinkedHashMap<>();
     private static final long SERVO_REPEAT_MS = 120;
     // 連走封頂 40 格（約 5 秒）：放開事件丟失（斷網／USB 跌）都唔會無限走，
     // 同 GestureCenter 音量連發 20 格封頂同例。
     private static final int SERVO_REPEAT_MAX_TICKS = 40;
 
-    private synchronized void startServoRepeat(String side, String key, String action) {
+    /** 撳住連走（defl 偏轉 0..1：掣傳 1.0 全速，搖桿傳當刻偏轉跟速）。 */
+    private synchronized void startServoRepeat(String side, String key, String action, float defl) {
         stopServoRepeat(side, key);
         final int id;
-        final int delta;
+        final int baseDelta;
         try {
             id = Integer.parseInt(action.substring(5, action.length() - 1));
-            delta = action.endsWith("+") ? SERVO_JOG_STEP : -SERVO_JOG_STEP;
+            baseDelta = action.endsWith("+") ? SERVO_JOG_STEP : -SERVO_JOG_STEP;
         } catch (Throwable t) {
             Log.w(TAG, "startServoRepeat parse failed: " + action, t);
             return;
@@ -1648,6 +1515,7 @@ public final class GamepadCenter {
             final String tag = side + ":" + key;
             final String fside = side;
             final String fkey = key;
+            servoRepeatDefl.put(tag, Math.max(0f, Math.min(1f, defl)));
             final int[] ticks = new int[1];
             final int[] stillFails = new int[1];
             java.util.concurrent.ScheduledFuture<?> f = servoRepeatPool.scheduleAtFixedRate(
@@ -1657,6 +1525,9 @@ public final class GamepadCenter {
                                 stopServoRepeat(fside, fkey);
                                 return;
                             }
+                            // 偏轉跟速：步長按當刻偏轉量縮放（半推慢行，推盡全速 8°）。
+                            int step = Math.max(1, Math.round(SERVO_JOG_STEP * repeatDeflOf(fside, fkey)));
+                            int delta = baseDelta > 0 ? step : -step;
                             // 到頂／送唔出連續 3 次即自己停（唔再頂住限位嗌）。
                             if (jogServo(id, delta)) {
                                 stillFails[0] = 0;
@@ -1672,11 +1543,24 @@ public final class GamepadCenter {
         }
     }
 
+    private synchronized float repeatDeflOf(String side, String key) {
+        Float fd = servoRepeatDefl.get(side + ":" + key);
+        return fd == null ? 1f : fd;
+    }
+
+    /** 搖桿偏轉跟速（連走緊先有用；無排緊即 no-op，唔留垃圾）。 */
+    private synchronized void updateServoRepeatDefl(String side, String key, float defl) {
+        if (servoRepeaters.containsKey(side + ":" + key)) {
+            servoRepeatDefl.put(side + ":" + key, Math.max(0f, Math.min(1f, defl)));
+        }
+    }
+
     /** 停該鍵連走；回 true＝之前真有排緊（release 的 taken 照呢個實數）。 */
     private synchronized boolean stopServoRepeat(String side, String key) {
         try {
             java.util.concurrent.ScheduledFuture<?> f =
                     servoRepeaters.remove(side + ":" + key);
+            servoRepeatDefl.remove(side + ":" + key);
             if (f != null) {
                 f.cancel(false);
                 return true;
@@ -1856,7 +1740,7 @@ public final class GamepadCenter {
                     + "ring_phone/ring_stop/ring_random/ring:<title>/ring:phone:<title>/ring:notification:<title>/"
                     + "head:<preset>:<color>/head:random/eye:<preset>:<color>/eye:random/"
                     + "mouth:breathing:<speedMs>/mouth:off/led_off/"
-                    + "camera_photo/face_start/color_start/video_toggle/"
+                    + "camera_photo/face_toggle/color_toggle/video_toggle/"
                     + "sonar_toggle/pir_toggle/accel_toggle/"
                     + "xiaozhi_toggle/vosk_toggle/vosk:<id>/eq:<preset>/radio:<uuid或名>/"
                     + "servo1-20+/servo1-20-/action:<id>, got: " + action);
@@ -1916,7 +1800,7 @@ public final class GamepadCenter {
         // 放開：停連走＋不上動作（避免按住連發播兩次），但事件照記、前端燈照跟。
         if (pressed) {
             taken = executeAction(side, key, mapped);
-            if (taken && isServoJog(mapped)) startServoRepeat(side, key, mapped);
+            if (taken && isServoJog(mapped)) startServoRepeat(side, key, mapped, 1f);
         } else {
             taken = stopServoRepeat(side, key);
         }
@@ -1953,6 +1837,17 @@ public final class GamepadCenter {
     /** 搖桿方向沿態（dirKey→撳緊；回中即刪，下次再出先重發）。 */
     private final Map<String, Boolean> stickActive = new LinkedHashMap<>();
 
+    // -- 搖桿回中（郁過嘅舵機返動作尾位）----------------------------------------
+    // 回中位＝最後播完嘅動作尾姿（poseBoxed merge；未知軸唔郁，唔係一律 120）。
+    // 世代閘：回中任務排嗰陣記 gen，之後郁過（新沿／legacy 郁）即舊任務作廢。
+    private final Integer[] refPose = new Integer[20];
+    private volatile boolean refPrevPlaying = false;
+    private volatile java.util.concurrent.ScheduledFuture<?> refPollFuture;
+    private final java.util.Set<Integer> legacyTouched = new java.util.LinkedHashSet<>();
+    private long axisGen = 0;
+    // 各軸今次最大偏轉（回中速度跟佢：慢去慢返快去快返；返完清）。
+    private final java.util.Map<String, Float> axisLastDefl = new java.util.LinkedHashMap<>();
+
     /** pad 映射短緩存（axis 高頻，唔每幀 parse；config/set 即失效）。 */
     private Map<String, String> cachedPadMap;
     private long cachedPadMapAt = 0;
@@ -1978,12 +1873,194 @@ public final class GamepadCenter {
         return v != null && !"none".equals(v);
     }
 
+    // -- 動作尾位＋回中 helpers ------------------------------------------------
+    /** 動作尾位常駐輕輪詢（250ms 睇 isPlaying 真→假；播完 400ms 後收尾）。 */
+    private void startRefPosePoll() {
+        try {
+            refPollFuture = servoRepeatPool.scheduleAtFixedRate(new Runnable() {
+                @Override public void run() { refPosePollTick(); }
+            }, 1000, 250, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (Throwable t) {
+            Log.w(TAG, "ref poll start failed", t);
+        }
+    }
+
+    private void refPosePollTick() {
+        try {
+            boolean playing = false;
+            try {
+                playing = actionDirect != null && actionDirect.isPlaying();
+            } catch (Throwable ignored) {
+            }
+            if (refPrevPlaying && !playing) {
+                try {
+                    servoRepeatPool.schedule(new Runnable() {
+                        @Override public void run() { snapshotRefPose(); }
+                    }, 400, java.util.concurrent.TimeUnit.MILLISECONDS);
+                } catch (Throwable t) {
+                    snapshotRefPose();
+                }
+            }
+            refPrevPlaying = playing;
+        } catch (Throwable t) {
+            Log.w(TAG, "ref poll tick failed", t);
+        }
+    }
+
+    /** 動作尾姿收尾（播緊即重武裝等下次；只 merge 已知軸）。 */
+    private void snapshotRefPose() {
+        try {
+            if (actionDirect != null) {
+                boolean playing = false;
+                try { playing = actionDirect.isPlaying(); } catch (Throwable ignored) { }
+                if (playing) {
+                    refPrevPlaying = true;
+                    return;
+                }
+            }
+            Integer[] boxed = null;
+            try { boxed = ubxPlayer == null ? null : ubxPlayer.poseBoxed(); } catch (Throwable ignored) { }
+            if (boxed == null) return;
+            int n = 0;
+            synchronized (this) {
+                for (int i = 0; i < 20 && i < boxed.length; i++) {
+                    if (boxed[i] != null) { refPose[i] = boxed[i]; n++; }
+                }
+            }
+            Log.i(TAG, "ref pose snapshot: " + n + "/20 known");
+        } catch (Throwable t) {
+            Log.w(TAG, "ref snapshot failed", t);
+        }
+    }
+
+    /** 手柄播／停動作起手即武裝（短動作唔夠一次 poll 都捉到）。 */
+    public void noteActionStarted() {
+        refPrevPlaying = true;
+    }
+
+    private synchronized long axisGenNow() { return axisGen; }
+
+    private static String axisOfDir(String dirKey) {
+        if (dirKey == null) return null;
+        if (dirKey.startsWith("lx_")) return "lx";
+        if (dirKey.startsWith("ly_")) return "ly";
+        if (dirKey.startsWith("rx_")) return "rx";
+        if (dirKey.startsWith("ry_")) return "ry";
+        return null;
+    }
+
+    private boolean axisSettled(String axis) {
+        if (axis == null) return false;
+        synchronized (this) {
+            return !Boolean.TRUE.equals(stickActive.get(axis + "_neg"))
+                    && !Boolean.TRUE.equals(stickActive.get(axis + "_pos"));
+        }
+    }
+
+    private static Integer servoIdOfAction(String a) {
+        if (a == null) return null;
+        String t = a.trim();
+        if (!isServoJog(t)) return null;
+        try {
+            return Integer.parseInt(t.substring(5, t.length() - 1));
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /** 某軸回中：該軸配咗嘅 servo 掣返動作尾位（世代閘＋pool 非同步，唔塞掣事件）。
+     *  legacy 19/20 唔經呢度（行下面全中分支，免打孖送）。 */
+    private void maybeRecenterAxis(String dirKey, Map<String, String> padMap) {
+        String axis = axisOfDir(dirKey);
+        if (axis == null || !axisSettled(axis)) return;
+        Integer id = null;
+        try {
+            String mapped = padMap != null ? padMap.get(dirKey) : null;
+            id = servoIdOfAction(mapped);
+        } catch (Throwable ignored) {
+        }
+        if (id == null) return;
+        java.util.Map<String, java.util.List<Integer>> perAxis =
+                new java.util.LinkedHashMap<>();
+        java.util.List<Integer> ids = new java.util.ArrayList<>();
+        ids.add(id);
+        perAxis.put(axis, ids);
+        recenterAsync(axisGenNow(), perAxis);
+    }
+
+    private void recenterAsync(final long g,
+            final java.util.Map<String, java.util.List<Integer>> perAxis) {
+        final java.util.Map<String, Integer> steps = new java.util.LinkedHashMap<>();
+        synchronized (this) {
+            for (String axis : perAxis.keySet()) {
+                Float d = axisLastDefl.remove(axis);
+                float defl = d == null ? 1f : d;
+                steps.put(axis, Math.max(1, Math.round(SERVO_JOG_STEP * defl)));
+            }
+        }
+        try {
+            servoRepeatPool.execute(new Runnable() {
+                @Override public void run() {
+                    if (g != axisGenNow()) return;
+                    for (java.util.Map.Entry<String, java.util.List<Integer>> e : perAxis.entrySet()) {
+                        Integer st = steps.get(e.getKey());
+                        int step = st == null ? SERVO_JOG_STEP : st;
+                        for (Integer id : e.getValue()) recenterServo(id, step);
+                    }
+                }
+            });
+        } catch (Throwable t) {
+            Log.w(TAG, "recenter post failed", t);
+        }
+    }
+
+    /** 單軸返尾位（未知即唔郁；clamp；19/20 順手更 axisPose）。
+     *  時間按去程速度折返（step/120ms）：慢去慢返，快去快返。 */
+    private void recenterServo(int id, int step) {
+        if (id < 1 || id > 20) return;
+        Integer target;
+        synchronized (this) {
+            target = refPose[id - 1];
+        }
+        if (target == null) return;
+        try {
+            int clamped = ApiValidator.clampServoAngle(id, target);
+            Integer cur = commandedAngle(id);
+            if (cur == null && (id == 19 || id == 20)) {
+                cur = id == 19 ? axisPose19 : axisPose20;
+            }
+            int timeMs = SERVO_JOG_TIME_MS;
+            if (cur != null) {
+                int dist = Math.abs(clamped - cur);
+                if (dist == 0) return;
+                double perSec = Math.max(1, step) / 0.12;
+                timeMs = (int) Math.max(120, Math.min(5000, Math.round(dist / perSec * 1000)));
+            }
+            if (ubxApi.servoSendOneCode(id, clamped, timeMs)
+                    == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+                if (id == 19) axisPose19 = clamped;
+                if (id == 20) axisPose20 = clamped;
+                Log.i(TAG, "axis recenter #" + id + " -> " + clamped + " in " + timeMs + "ms");
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "recenter failed #" + id, t);
+        }
+    }
+
+    /** 軸偏轉 max 追蹤（郁緊先記；回零唔洗，recenter 嗰陣 consume）。 */
+    private void updateAxisDefl(String axis, float v) {
+        float m = Math.min(1f, Math.abs(v));
+        if (m < AXIS_DEADZONE) return;
+        Float old = axisLastDefl.get(axis);
+        if (old == null || m > old) axisLastDefl.put(axis, m);
+    }
+
     /**
      * 單柄向沿處理：出沿（未撳→撳過半）即行映射（servo 值撳住連走），
      * 回中即停＋記放開事件。回 true＝呢下有嘢做咗（taken）。
      */
     private boolean handleStickDir(String dirKey, boolean active,
-            Map<String, String> padMap, String source) {
+            Map<String, String> padMap, String source, float defl) {
         boolean wasActive;
         synchronized (this) {
             wasActive = Boolean.TRUE.equals(stickActive.get(dirKey));
@@ -1991,13 +2068,19 @@ public final class GamepadCenter {
         if (active && !wasActive) {
             synchronized (this) {
                 stickActive.put(dirKey, Boolean.TRUE);
+                axisGen++;
             }
             String mapped = padMap != null ? padMap.get(dirKey) : null;
             if (mapped == null || "none".equals(mapped)) return false;
             boolean taken = executeAction(SIDE_PAD, dirKey, mapped);
-            if (taken && isServoJog(mapped)) startServoRepeat(SIDE_PAD, dirKey, mapped);
+            if (taken && isServoJog(mapped)) startServoRepeat(SIDE_PAD, dirKey, mapped, defl);
             publishKey(dirKey, true, source, mapped, taken);
             return taken;
+        }
+        if (active && wasActive) {
+            // 撳住唔放偏轉變：連走步長即時跟手指（半推即慢，見 repeat tick）。
+            updateServoRepeatDefl(SIDE_PAD, dirKey, defl);
+            return false;
         }
         if (!active && wasActive) {
             synchronized (this) {
@@ -2006,6 +2089,7 @@ public final class GamepadCenter {
             boolean stopped = stopServoRepeat(SIDE_PAD, dirKey);
             String mapped = padMap != null ? padMap.get(dirKey) : null;
             publishKey(dirKey, false, source, mapped != null ? mapped : "none", stopped);
+            maybeRecenterAxis(dirKey, padMap);
             return stopped;
         }
         return false;
@@ -2021,15 +2105,19 @@ public final class GamepadCenter {
     private synchronized boolean applyAxis(float lx, float ly, float rx, float ry, String source) {
         long now = android.os.SystemClock.elapsedRealtime();
         Map<String, String> padMap = padMappingCached();
+        updateAxisDefl("lx", lx);
+        updateAxisDefl("ly", ly);
+        updateAxisDefl("rx", rx);
+        updateAxisDefl("ry", ry);
         boolean fired = false;
-        fired |= handleStickDir("lx_neg", lx < -STICK_MAP_THRESHOLD, padMap, source);
-        fired |= handleStickDir("lx_pos", lx > STICK_MAP_THRESHOLD, padMap, source);
-        fired |= handleStickDir("ly_neg", ly < -STICK_MAP_THRESHOLD, padMap, source);
-        fired |= handleStickDir("ly_pos", ly > STICK_MAP_THRESHOLD, padMap, source);
-        fired |= handleStickDir("rx_neg", rx < -STICK_MAP_THRESHOLD, padMap, source);
-        fired |= handleStickDir("rx_pos", rx > STICK_MAP_THRESHOLD, padMap, source);
-        fired |= handleStickDir("ry_neg", ry < -STICK_MAP_THRESHOLD, padMap, source);
-        fired |= handleStickDir("ry_pos", ry > STICK_MAP_THRESHOLD, padMap, source);
+        fired |= handleStickDir("lx_neg", lx < -STICK_MAP_THRESHOLD, padMap, source, Math.min(1f, Math.abs(lx)));
+        fired |= handleStickDir("lx_pos", lx > STICK_MAP_THRESHOLD, padMap, source, Math.min(1f, Math.abs(lx)));
+        fired |= handleStickDir("ly_neg", ly < -STICK_MAP_THRESHOLD, padMap, source, Math.min(1f, Math.abs(ly)));
+        fired |= handleStickDir("ly_pos", ly > STICK_MAP_THRESHOLD, padMap, source, Math.min(1f, Math.abs(ly)));
+        fired |= handleStickDir("rx_neg", rx < -STICK_MAP_THRESHOLD, padMap, source, Math.min(1f, Math.abs(rx)));
+        fired |= handleStickDir("rx_pos", rx > STICK_MAP_THRESHOLD, padMap, source, Math.min(1f, Math.abs(rx)));
+        fired |= handleStickDir("ry_neg", ry < -STICK_MAP_THRESHOLD, padMap, source, Math.min(1f, Math.abs(ry)));
+        fired |= handleStickDir("ry_pos", ry > STICK_MAP_THRESHOLD, padMap, source, Math.min(1f, Math.abs(ry)));
         // legacy 轉頭：該軸兩向都未配先行（配咗就讓路，等連走／映射做）。
         float useRx = rx;
         float useRy = ry;
@@ -2037,6 +2125,30 @@ public final class GamepadCenter {
         if (isMappedDir(padMap, "ry_neg") || isMappedDir(padMap, "ry_pos")) useRy = 0f;
         float dzRx = Math.abs(useRx) < AXIS_DEADZONE ? 0f : useRx;
         float dzRy = Math.abs(useRy) < AXIS_DEADZONE ? 0f : useRy;
+        if (dzRx != 0f || dzRy != 0f) {
+            if (dzRx != 0f) legacyTouched.add(20);
+            if (dzRy != 0f) legacyTouched.add(19);
+            axisGen++;
+        }
+        // legacy 回中：全中＋無沿郁緊＋郁過→返尾位（唔經下面節流，
+        // release 零位撞節流會 return false 跳過）。
+        if (Math.abs(rx) < AXIS_DEADZONE && Math.abs(ry) < AXIS_DEADZONE
+                && stickActive.isEmpty() && !legacyTouched.isEmpty()) {
+            final long g = axisGen;
+            java.util.Map<String, java.util.List<Integer>> perAxis =
+                    new java.util.LinkedHashMap<>();
+            if (legacyTouched.remove(Integer.valueOf(20))) {
+                java.util.List<Integer> l = new java.util.ArrayList<>();
+                l.add(20);
+                perAxis.put("rx", l);
+            }
+            if (legacyTouched.remove(Integer.valueOf(19))) {
+                java.util.List<Integer> l = new java.util.ArrayList<>();
+                l.add(19);
+                perAxis.put("ry", l);
+            }
+            if (!perAxis.isEmpty()) recenterAsync(g, perAxis);
+        }
         if (now - lastAxisMs < AXIS_MIN_INTERVAL_MS) return false;
         lastAxisMs = now;
         // 沿事件上面已即時推；呢度節流後先推連續量（免高頻 Motion／脚本洗 WS＋Event Log）。

@@ -51,8 +51,8 @@ var GAMEPAD_KIND_KEYS = { none: "gamepad_kind_none", stop: "gamepad_kind_stop",
 var GAMEPAD_VOICE_FIXED = [["xiaozhi_toggle", "gamepad_voice_xiaozhi"],
   ["vosk", "gamepad_voice_vosk"]];
 
-// 相機（同後端 isCameraAction 對齊；追蹤開／停已合併，face_start／color_start 即 toggle）。
-var GAMEPAD_CAMERA_FNS = ["camera_photo", "face_start", "color_start", "video_toggle"];
+// 相機（同後端 isCameraAction 對齊；追蹤係 toggle：face_toggle／color_toggle）。
+var GAMEPAD_CAMERA_FNS = ["camera_photo", "face_toggle", "color_toggle", "video_toggle"];
 
 // 傳感器 toggle（同後端 isSensorAction 對齊；全部單鍵開關）。
 var GAMEPAD_SENSOR_FNS = ["sonar_toggle", "pir_toggle", "accel_toggle"];
@@ -60,8 +60,8 @@ var GAMEPAD_SENSOR_FN_KEYS = { sonar_toggle: "gamepad_sen_sonar", pir_toggle: "g
   accel_toggle: "gamepad_sen_accel" };
 
 // 轉語言原地重標用（值→i18n key；色碼另見 GAMEPAD_LED_COLOR_KEYS／dual 三對）。
-var GAMEPAD_CAM_FN_KEYS = { camera_photo: "gamepad_cam_photo", face_start: "gamepad_cam_face",
-  color_start: "gamepad_cam_color", video_toggle: "gamepad_cam_video" };
+var GAMEPAD_CAM_FN_KEYS = { camera_photo: "gamepad_cam_photo", face_toggle: "gamepad_cam_face",
+  color_toggle: "gamepad_cam_color", video_toggle: "gamepad_cam_video" };
 var GAMEPAD_RING_FIXED_KEYS = { ring_phone: "gamepad_ring_phone", ring_stop: "gamepad_ring_stop",
   ring_random: "gamepad_ring_random" };
 var GAMEPAD_RING_TYPE_KEYS = { phone: "gamepad_ring_type_phone",
@@ -434,6 +434,7 @@ function onGamepadKeyEvent(type, data) {
     // A 端搖桿經呢度郁點。
     gamepadMoveNubs(Number(data.lx || 0), Number(data.ly || 0),
       Number(data.rx || 0), Number(data.ry || 0));
+    try { cameraPadMirrorAxis(data); } catch (e) {}
   } else if (type === "gamepad_state") {
     // 映射 toggle 做咗，機身即推新態：掣即時跟（唔使入版重讀）。
     gamepadApplyToggleState(data);
@@ -478,6 +479,28 @@ function gamepadApplyToggleState(d) {
       if (ft) ft.checked = d.enabled;
       var fl = document.getElementById("musicFillerStateLabel");
       if (fl) fl.textContent = t(d.enabled ? "music_filler_on" : "music_filler_off");
+    } else if (d.domain === "facetrack" && typeof d.running === "boolean") {
+      try { faceTrackRunning = d.running; } catch (e) {}
+      var ftg = document.getElementById("faceTrackToggle");
+      if (ftg) ftg.checked = d.running;
+      if (d.running) {
+        try { faceTrackStartPolling(); } catch (e) {}
+        try { faceTrackRefreshStatus(); } catch (e) {}
+      } else {
+        try { faceTrackStopPolling(); } catch (e) {}
+        try { faceTrackRenderBox({ running: false }); } catch (e) {}
+      }
+    } else if (d.domain === "colortrack" && typeof d.running === "boolean") {
+      try { colorTrackRunning = d.running; } catch (e) {}
+      var ctg = document.getElementById("colorTrackToggle");
+      if (ctg) ctg.checked = d.running;
+      if (d.running) {
+        try { colorTrackStartPolling(); } catch (e) {}
+        try { colorTrackRefreshStatus(); } catch (e) {}
+      } else {
+        try { colorTrackStopPolling(); } catch (e) {}
+        try { colorTrackRenderBox({ running: false }); } catch (e) {}
+      }
     }
   } catch (e) {}
 }
@@ -1077,6 +1100,7 @@ function gamepadApplyUiLanguage() {
       gamepadRelabelSelect(sels[si]);
     }
   }
+  try { cameraPadRelabel(); } catch (e) {}
 }
 
 function gamepadRelabelSelect(sel) {
@@ -1267,8 +1291,8 @@ function gamepadRenderSideGrid(side, groups, map) {
       var cameraSel = document.createElement("select");
       cameraSel.id = "gpCameraSel_" + pfx + k;
       cameraSel.style.display = parsed.kind === "camera" ? "inline" : "none";
-      [["camera_photo", "gamepad_cam_photo"], ["face_start", "gamepad_cam_face"],
-       ["color_start", "gamepad_cam_color"], ["video_toggle", "gamepad_cam_video"]].forEach(function (f) {
+      [["camera_photo", "gamepad_cam_photo"], ["face_toggle", "gamepad_cam_face"],
+       ["color_toggle", "gamepad_cam_color"], ["video_toggle", "gamepad_cam_video"]].forEach(function (f) {
         var o = document.createElement("option");
         o.value = f[0];
         o.textContent = t(f[1]);
@@ -1522,6 +1546,10 @@ function gamepadSaveAll(side) {
   return chain.then(function () {
     if (st) st.textContent = "";
     return gamepadRefresh();
+  }).then(function () {
+    try {
+      if (cameraPadViewOn && typeof cameraPadRefresh === "function") cameraPadRefresh();
+    } catch (e) {}
   }).catch(function (err) {
     if (st) st.textContent = t("gamepad_read_failed") + ": " + err.message;
   });
@@ -1532,6 +1560,10 @@ function gamepadResetMapping(side) {
   return Alpha2Api.gamepadConfigSet({ side: side, reset: "1" }).then(function (json) {
     if (json && json.ok && json.mapping) gamepadCacheSide(side, json.mapping);
     return gamepadRefresh();
+  }).then(function () {
+    try {
+      if (side === "pad" && cameraPadViewOn && typeof cameraPadRefresh === "function") cameraPadRefresh();
+    } catch (e) {}
   });
 }
 
@@ -1663,6 +1695,10 @@ function gamepadLightLogical(logical, on, action) {
     caps[i].classList.remove("lit-free");
     if (lit) caps[i].classList.add(css);
   }
+  try {
+    __cameraPadLit[logical] = lit ? true : false;
+    if (cameraPadViewOn) cameraPadDraw();
+  } catch (e) {}
   var rows = document.querySelectorAll('[data-maprow="' + logical + '"]');
   for (var j = 0; j < rows.length; j++) {
     var side = rows[j].getAttribute("data-mapside");
@@ -1685,6 +1721,612 @@ function gamepadMoveNubs(lx, ly, rx, ry) {
   if (rn) {
     rn.style.left = (19 + Math.max(-1, Math.min(1, rx || 0)) * 14) + "px";
     rn.style.top = (19 + Math.max(-1, Math.min(1, ry || 0)) * 14) + "px";
+  }
+}
+
+
+// ---------------- 相機頁手柄視圖（pad 鍵＋雙搖桿，viewport 內 canvas 圖形） ----------------
+// 鍵定義跟手柄設定（映射快照 __cameraPadMap；掣面只出鍵名，唔出動作字）。
+// 掣：撳落經 gamepad/key down／放手 up（同物理掣同一條 executeAction＋toggle 語義；
+// servo jog 撳住後端連走、放手停；taken:false 閃紅＋狀態行寫✗）。
+// 搖桿：拖曳偏轉，經 gamepad/axis 注入 lx/ly/rx/ry（同真柄同一條 applyAxis：配咗向
+// 行映射出沿＋連走，未配右桿 legacy 轉頭 19/20）；偏轉中 200ms 連發保 legacy 步進，
+// 放手回中即送 0 停；下面讀數條即時見偏轉量。
+// 版面跟 X360：搖桿左右下（放手自動回中）／十字掣左中（一體 plus 搖桿式，
+// 唔使離掣碌臂轉向）／ABXY 右中（A 下 B 右，四粒獨立）／start-select 中下／
+// L1L2 左上 R1R2 右上；多點觸控（pointerId→掣／桿／十字）可兩手齊用。
+// 同功能鍵 2選1：兩邊開關互斥，同一時間最多一邊著（見 cameraFeatureToggle）。
+var cameraPadViewOn = false;
+var __cameraPadMap = {};
+var __cameraPadShapes = [];
+var __cameraPadDown = {};
+var __cameraPadLit = {};
+var __cameraPadNo = {};
+var __cameraPadPtr = {};
+var __cameraPadBound = false;
+// 搖桿態（dx/dy −1..1，右＋下＋；held＝手指撳緊；本機偏轉經 axis 送，物理柄經 WS 回聲鏡像）。
+var __campadStickL = { dx: 0, dy: 0, held: false };
+var __campadStickR = { dx: 0, dy: 0, held: false };
+var __campadMirror = { lx: 0, ly: 0, rx: 0, ry: 0 };
+var __campadAxisSentAt = 0;
+var __campadAxisTimer = null;
+
+// 功能鍵開關：開即閂手柄（2選1；閂就由得佢，兩邊可齊熄）。
+function cameraFeatureToggle() {
+  var f = document.getElementById("featureEnabled");
+  if (f && f.checked) {
+    var tg = document.getElementById("cameraPadToggle");
+    if (tg) tg.checked = false;
+    cameraPadViewOn = false;
+    var cv = document.getElementById("cameraPadCanvas");
+    if (cv) cv.style.display = "none";
+    try { cameraPadReleaseAll(); } catch (e) {}
+  }
+  try { updateCrosshairVisibility(); } catch (e) {}
+}
+
+function cameraPadToggleView() {
+  var tg = document.getElementById("cameraPadToggle");
+  cameraPadViewOn = !!(tg && tg.checked);
+  if (cameraPadViewOn) {
+    var f = document.getElementById("featureEnabled");
+    if (f) f.checked = false;
+  }
+  var cv = document.getElementById("cameraPadCanvas");
+  if (cv) cv.style.display = cameraPadViewOn ? "block" : "none";
+  try { updateCrosshairVisibility(); } catch (e) {}
+  if (cameraPadViewOn) { cameraPadBind(); cameraPadRefresh(); }
+  else {
+    // 閂視圖即放晒撳住嘅掣＋回中搖桿（servo jog／轉頭唔好留低一直走）。
+    try { cameraPadReleaseAll(); } catch (e) {}
+  }
+}
+
+function cameraPadReleaseAll() {
+  for (var k in __cameraPadDown) {
+    if (__cameraPadDown[k]) {
+      __cameraPadDown[k] = false;
+      __cameraPadLit[k] = false;
+      try {
+        Alpha2Api.gamepadKey({ side: "pad", key: k, action: "up", source: "campad" }).catch(function () {});
+      } catch (e) {}
+    }
+  }
+  __cameraPadPtr = {};
+  campadStickReset(__campadStickL);
+  campadStickReset(__campadStickR);
+  campadAxisSend(true);
+  cameraPadDraw();
+}
+
+function cameraPadBind() {
+  if (__cameraPadBound) return;
+  var cv = document.getElementById("cameraPadCanvas");
+  if (!cv || !cv.addEventListener) return;
+  __cameraPadBound = true;
+  cv.addEventListener("pointerdown", cameraPadOnDown);
+  cv.addEventListener("pointermove", cameraPadOnMove);
+  cv.addEventListener("pointerup", cameraPadOnUp);
+  cv.addEventListener("pointercancel", cameraPadOnUp);
+  cv.addEventListener("pointerleave", cameraPadOnUp);
+  cv.addEventListener("lostpointercapture", cameraPadOnUp);
+  cv.addEventListener("contextmenu", function (e) { try { e.preventDefault(); } catch (x) {} });
+  // 長按消震：舊 WebView／部分手機瀏覽器 pointerdown preventDefault 擋唔住長按震動＋
+  // callout，touchstart／touchmove 非被動再攔一次——但只攔食中掣／桿／十字嘅觸點，
+  // 空白位放行（dblclick 全屏＋一般觸控靠佢；viewport oncontextmenu 本來已擋 menu）。
+  try {
+    cv.addEventListener("touchstart", function (e) {
+      try {
+        var t = e.touches && e.touches[0];
+        if (t && cameraPadViewOn && campadTouchHits(t.clientX, t.clientY)) e.preventDefault();
+      } catch (x) {}
+    }, { passive: false });
+    cv.addEventListener("touchmove", function (e) { try { e.preventDefault(); } catch (x) {} }, { passive: false });
+  } catch (e) {}
+  try {
+    window.addEventListener("resize", function () {
+      if (cameraPadViewOn) cameraPadDraw();
+    });
+    // 視窗失焦（來電／通知／切 app）即放晒：唔係手指唔喺度，up 事件永遠唔到，
+    // servo 會走到 40 格封頂。
+    window.addEventListener("blur", function () {
+      if (cameraPadViewOn) { try { cameraPadReleaseAll(); } catch (e2) {} }
+    });
+  } catch (e) {}
+}
+
+function cameraPadPos(e) {
+  var cv = document.getElementById("cameraPadCanvas");
+  var r = cv.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function cameraPadOnDown(e) {
+  if (!cameraPadViewOn) return;
+  var p = null;
+  try { p = cameraPadPos(e); } catch (x) { return; }
+  // 中掣先算數：食中先 preventDefault，食唔中（空白位）放行——dblclick 全屏靠佢
+  // （preventDefault 會殺 click 合成，之前一律攔即係雙擊永遠唔到 viewport）。
+  var consumed = false;
+  // 搖桿區優先（範圍大，掣唔會疊佢，見版面 audit）。
+  var st = cameraPadStickAt(p.x, p.y);
+  if (st) {
+    // 第二隻手指撳同一支唔認（認咗先放手會早收，郁緊嗰隻變孤兒；唔認最多佢無反應）。
+    if (!st.st.held) {
+      try { if (e.pointerId != null) __cameraPadPtr[e.pointerId] = { stick: st }; } catch (x) {}
+      campadStickGrab(st, p.x, p.y);
+    }
+    consumed = true;
+  } else {
+    var dir = campadDpadDir(p.x, p.y);
+    if (dir) {
+      try { if (e.pointerId != null) __cameraPadPtr[e.pointerId] = { dpad: true, dir: dir }; } catch (x) {}
+      cameraPadPress(dir, true);
+      consumed = true;
+    } else {
+      var k = cameraPadHit(p.x, p.y);
+      if (k) {
+        try { if (e.pointerId != null) __cameraPadPtr[e.pointerId] = { key: k }; } catch (x) {}
+        cameraPadPress(k, true);
+        consumed = true;
+      }
+    }
+  }
+  if (consumed && e) {
+    try { e.preventDefault(); } catch (x) {}
+    // 顯式 capture：手指跣出 canvas／出窗都好，up／cancel 照派返嚟（唔靠隱式，
+    // 唔係放手事件唔見，菇＋servo 一齊留喺偏位）。
+    try {
+      var cv = document.getElementById("cameraPadCanvas");
+      if (cv && cv.setPointerCapture && e.pointerId != null) cv.setPointerCapture(e.pointerId);
+    } catch (x) {}
+  }
+}
+
+function cameraPadOnMove(e) {
+  if (!cameraPadViewOn) return;
+  var hold = null;
+  try { hold = (e && e.pointerId != null) ? __cameraPadPtr[e.pointerId] : null; } catch (x) {}
+  if (!hold || (!hold.stick && !hold.dpad)) return;
+  if (e) { try { e.preventDefault(); } catch (x) {} }
+  var p = null;
+  try { p = cameraPadPos(e); } catch (x) { return; }
+  if (hold.stick) {
+    campadStickGrab(hold.stick, p.x, p.y);
+    return;
+  }
+  // 十字搖桿式：手指唔使離掣，碌去邊臂轉邊臂（舊臂 up、新臂 down）。
+  var nd = campadDpadDir(p.x, p.y);
+  if (nd !== hold.dir) {
+    if (hold.dir) cameraPadPress(hold.dir, false);
+    hold.dir = nd;
+    if (nd) cameraPadPress(nd, true);
+  }
+}
+
+function cameraPadOnUp(e) {
+  var hold = null;
+  try {
+    if (e && e.pointerId != null && __cameraPadPtr[e.pointerId]) {
+      hold = __cameraPadPtr[e.pointerId];
+      delete __cameraPadPtr[e.pointerId];
+    }
+    var cv = document.getElementById("cameraPadCanvas");
+    if (cv && cv.releasePointerCapture && e && e.pointerId != null) {
+      try { cv.releasePointerCapture(e.pointerId); } catch (x2) {}
+    }
+  } catch (x) {}
+  if (!hold) return;
+  // 搖桿放手：回中＋即送 0（force 過節流）＋即重畫（唔畫菇視覺留喺偏位，
+  // 就係「唔識自己回中」）。
+  if (hold.stick) {
+    campadStickReset(hold.stick.st);
+    campadAxisSend(true);
+    cameraPadDraw();
+  }
+  else if (hold.dpad) { if (hold.dir) cameraPadPress(hold.dir, false); }
+  else if (hold.key) cameraPadPress(hold.key, false);
+}
+
+// ---- 搖桿 ----
+
+function campadStickDefs(W, H) {
+  var S = Math.min(W * 0.75, H);
+  return [
+    { id: "L", st: __campadStickL, x: W * 0.10, y: H * 0.80, R: S * 0.115, nub: S * 0.05 },
+    { id: "R", st: __campadStickR, x: W * 0.90, y: H * 0.80, R: S * 0.115, nub: S * 0.05 }
+  ];
+}
+
+function cameraPadStickAt(x, y) {
+  var cv = document.getElementById("cameraPadCanvas");
+  if (!cv) return null;
+  var W = cv.clientWidth || 480, H = cv.clientHeight || 360;
+  var defs = campadStickDefs(W, H);
+  for (var i = 0; i < defs.length; i++) {
+    var dx = x - defs[i].x, dy = y - defs[i].y;
+    if (dx * dx + dy * dy <= defs[i].R * defs[i].R) return defs[i];
+  }
+  return null;
+}
+
+// 手指位置轉偏轉（出底盤即 clamp 圓邊；即時送 axis）。
+function campadStickGrab(def, x, y) {
+  var dx = (x - def.x) / def.R, dy = (y - def.y) / def.R;
+  var len = Math.sqrt(dx * dx + dy * dy);
+  if (len > 1) { dx /= len; dy /= len; }
+  def.st.dx = Math.round(dx * 100) / 100;
+  def.st.dy = Math.round(dy * 100) / 100;
+  def.st.held = true;
+  campadAxisSend(false);
+  campadAxisRepeat();
+  cameraPadDraw();
+}
+
+function campadStickReset(st) {
+  st.dx = 0; st.dy = 0; st.held = false;
+}
+
+// 偏轉中連發（legacy 轉頭逐次步進，唔發即停；200ms 過後端 150ms 節流）。
+function campadAxisRepeat() {
+  if (__campadAxisTimer) return;
+  __campadAxisTimer = setInterval(function () {
+    var moving = __campadStickL.held || __campadStickR.held;
+    if (!moving || !cameraPadViewOn) {
+      clearInterval(__campadAxisTimer);
+      __campadAxisTimer = null;
+      return;
+    }
+    campadAxisSend(false);
+  }, 200);
+}
+
+function campadAxisSend(force) {
+  var now = Date.now();
+  if (!force && now - __campadAxisSentAt < 80) return;
+  __campadAxisSentAt = now;
+  try {
+    Alpha2Api.gamepadAxis({ lx: __campadStickL.dx, ly: __campadStickL.dy,
+      rx: __campadStickR.dx, ry: __campadStickR.dy, source: "campad" }).catch(function () {});
+  } catch (e) {}
+}
+
+// 物理柄回聲鏡像（無撳緊嗰支先跟；自己注入嘅回聲值一樣，changed 閘擋重畫）。
+// 例外：source=campad 嘅回聲一律唔跟——放手送嘅 0 可能撞後端 150ms 節流被
+// drop，跟住舊偏轉值回聲遲到會將已回中嘅菇推返出去留喺度（就係間中唔回中）。
+// 本機 dx/dy 先係真相；物理柄（source robot 等）照跟。
+function cameraPadMirrorAxis(d) {
+  if (!cameraPadViewOn || !d) return;
+  try { if (d.source === "campad") return; } catch (e) {}
+  var changed = false;
+  var pairs = [["lx", __campadStickL], ["ly", __campadStickL], ["rx", __campadStickR], ["ry", __campadStickR]];
+  for (var i = 0; i < pairs.length; i++) {
+    var v = Number(d[pairs[i][0]]);
+    if (!isFinite(v)) continue;
+    v = Math.max(-1, Math.min(1, Math.round(v * 100) / 100));
+    if (!pairs[i][1].held && __campadMirror[pairs[i][0]] !== v) {
+      __campadMirror[pairs[i][0]] = v;
+      changed = true;
+    }
+  }
+  if (changed) cameraPadDraw();
+}
+
+// touchstart 消震用命中測試（掣／桿／十字臂中任一即食中）。
+function campadTouchHits(cx, cy) {
+  try {
+    var cv = document.getElementById("cameraPadCanvas");
+    if (!cv) return false;
+    var r = cv.getBoundingClientRect();
+    var x = cx - r.left, y = cy - r.top;
+    if (cameraPadStickAt(x, y)) return true;
+    if (campadDpadDir(x, y)) return true;
+    if (cameraPadHit(x, y)) return true;
+  } catch (e) {}
+  return false;
+}
+
+function cameraPadHit(x, y) {
+  for (var i = __cameraPadShapes.length - 1; i >= 0; i--) {
+    var sh = __cameraPadShapes[i];
+    if (sh.kind === "c") {
+      var dx = x - sh.x, dy = y - sh.y;
+      if (dx * dx + dy * dy <= sh.r * sh.r) return sh.key;
+    } else if (x >= sh.x && x <= sh.x + sh.w && y >= sh.y && y <= sh.y + sh.h) {
+      return sh.key;
+    }
+  }
+  return null;
+}
+
+// 十字幾何（版面定，draw／hit／slide 共用；中軸死區＝pivot）。
+var __campadDpad = { cx: 0, cy: 0, L: 0, r: 0, dead: 0 };
+
+// 版面（X360：搖桿左右下（放手自動回中）／十字掣左中（一體 plus 形，手指可碌臂轉向）／
+// ABXY 右中 A 下 B 右／start-select 中下／L1L2 左上 R1R2 右上；全部相對 W／H）。
+function cameraPadLayout(W, H) {
+  var S = Math.min(W * 0.75, H);
+  var dcx = W * 0.135, dcy = H * 0.45, L = S * 0.115, r = S * 0.055;
+  __campadDpad = { cx: dcx, cy: dcy, L: L, r: r, dead: r * 0.6 };
+  var shapes = [];
+  function circle(key, cx, cy, cr) {
+    shapes.push({ key: key, kind: "c", x: cx, y: cy, r: cr });
+  }
+  function rect(key, cx, cy, w, h) {
+    shapes.push({ key: key, kind: "r", x: cx - w / 2, y: cy - h / 2, w: w, h: h });
+  }
+  var bcx = W * 0.865, bcy = H * 0.45;
+  circle("y", bcx, bcy - L, r); circle("a", bcx, bcy + L, r);
+  circle("x", bcx - L, bcy, r); circle("b", bcx + L, bcy, r);
+  var sw = S * 0.12, sh = S * 0.062;
+  rect("select", W * 0.43, H * 0.90, sw, sh);
+  rect("start", W * 0.57, H * 0.90, sw, sh);
+  var tw = S * 0.12, th = S * 0.06;
+  rect("l1", W * 0.06, H * 0.075, tw, th);
+  rect("l2", W * 0.06, H * 0.185, tw, th);
+  rect("r1", W * 0.94, H * 0.075, tw, th);
+  rect("r2", W * 0.94, H * 0.185, tw, th);
+  return shapes;
+}
+
+// 十字解向（臂上先有向：中軸死區／角罅／出界回 null；供 down／slide／消震命中）。
+function campadDpadDir(x, y) {
+  var g = __campadDpad;
+  if (!g || !g.r) return null;
+  var dx = x - g.cx, dy = y - g.cy;
+  var adx = Math.abs(dx), ady = Math.abs(dy);
+  if (Math.max(adx, ady) > g.L + g.r) return null;
+  if (Math.min(adx, ady) > g.r) return null;
+  if (Math.max(adx, ady) < g.dead) return null;
+  return adx > ady ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+}
+
+function campadRoundRect(ctx, x, y, w, h, rad) {
+  try {
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, w, h, rad); return; }
+  } catch (e) {}
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+}
+
+function campadFmtAxis(v) {
+  var r = Math.round(v * 100) / 100;
+  return (r < 0 ? "−" : "+") + Math.abs(r).toFixed(2);
+}
+
+// 畫：掣（鍵名置中，有映射實色、none dim、撳住藍、taken 閃紅）＋搖桿（底盤＋
+// 菇＋L／R 標）＋底讀數條（搖桿 live 偏轉量／撳住 servo 限位 min-max）。
+function cameraPadDraw() {
+  var cv = document.getElementById("cameraPadCanvas");
+  if (!cv || !cameraPadViewOn) return;
+  var W = cv.clientWidth || 480, H = cv.clientHeight || 360;
+  var dpr = 1;
+  try { dpr = window.devicePixelRatio || 1; } catch (e) {}
+  var pw = Math.max(1, Math.round(W * dpr)), ph = Math.max(1, Math.round(H * dpr));
+  if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+  var ctx = null;
+  try { ctx = cv.getContext("2d"); } catch (e) { return; }
+  if (!ctx) return;
+  try { ctx.setTransform(dpr, 0, 0, dpr, 0, 0); } catch (e) {}
+  ctx.clearRect(0, 0, W, H);
+  __cameraPadShapes = cameraPadLayout(W, H);
+  var now = Date.now();
+  for (var i = 0; i < __cameraPadShapes.length; i++) {
+    drawCampadShape(ctx, __cameraPadShapes[i], now);
+  }
+  // 十字掣（一體 plus 形；著臂圓形高亮蓋面）。
+  drawCampadCross(ctx, W, H, now);
+  var defs = campadStickDefs(W, H);
+  for (var s = 0; s < defs.length; s++) {
+    drawCampadStick(ctx, defs[s]);
+  }
+  drawCampadReadout(ctx, W, H);
+}
+
+// 十字掣本體（12 頂點 plus 形；臂＝圓心±L、半闊 r、梢 L+r，同解向幾何一致）。
+function drawCampadCross(ctx, W, H, now) {
+  var g = __campadDpad;
+  if (!g || !g.r) return;
+  var cx = g.cx, cy = g.cy, L = g.L, r = g.r, T = L + r;
+  var map = __cameraPadMap;
+  function mapped(k) { var v = map[k]; return v && v !== "none"; }
+  var anyMapped = mapped("up") || mapped("down") || mapped("left") || mapped("right");
+  ctx.beginPath();
+  ctx.moveTo(cx - r, cy - T);
+  ctx.lineTo(cx + r, cy - T);
+  ctx.lineTo(cx + r, cy - r);
+  ctx.lineTo(cx + T, cy - r);
+  ctx.lineTo(cx + T, cy + r);
+  ctx.lineTo(cx + r, cy + r);
+  ctx.lineTo(cx + r, cy + T);
+  ctx.lineTo(cx - r, cy + T);
+  ctx.lineTo(cx - r, cy + r);
+  ctx.lineTo(cx - T, cy + r);
+  ctx.lineTo(cx - T, cy - r);
+  ctx.lineTo(cx - r, cy - r);
+  ctx.closePath();
+  ctx.fillStyle = anyMapped ? "rgba(20,22,28,0.72)" : "rgba(20,22,28,0.42)";
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(255,255,255,0.45)";
+  ctx.stroke();
+  // 著臂高亮（藍；taken:false 閃紅）。
+  var arms = [["up", cx, cy - L], ["down", cx, cy + L], ["left", cx - L, cy], ["right", cx + L, cy]];
+  for (var i = 0; i < arms.length; i++) {
+    var k = arms[i][0];
+    var lit = !!__cameraPadLit[k];
+    var bad = __cameraPadNo[k] && (now - __cameraPadNo[k] < 700);
+    if (lit || bad) {
+      ctx.beginPath();
+      ctx.arc(arms[i][1], arms[i][2], r, 0, Math.PI * 2);
+      ctx.fillStyle = bad ? "rgba(220,38,38,0.88)" : "rgba(37,99,235,0.9)";
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.stroke();
+    }
+  }
+  // 臂名（無映射 dim）。
+  var labels = [["up", "▲", cx, cy - L], ["down", "▼", cx, cy + L],
+    ["left", "◀", cx - L, cy], ["right", "▶", cx + L, cy]];
+  var kfs = Math.max(10, Math.min(19, r * 0.62));
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  try { ctx.font = "700 " + Math.round(kfs) + "px sans-serif"; } catch (e) {}
+  for (var j = 0; j < labels.length; j++) {
+    ctx.fillStyle = (mapped(labels[j][0]) || __cameraPadLit[labels[j][0]])
+      ? "#ffffff" : "rgba(255,255,255,0.55)";
+    ctx.fillText(labels[j][1], labels[j][2], labels[j][3]);
+  }
+}
+
+function drawCampadShape(ctx, sh, now) {
+  var v = __cameraPadMap[sh.key] || "none";
+  var none = (!v || v === "none");
+  var lit = !!__cameraPadLit[sh.key];
+  var bad = __cameraPadNo[sh.key] && (now - __cameraPadNo[sh.key] < 700);
+  ctx.beginPath();
+  var cx, cy;
+  if (sh.kind === "c") {
+    ctx.arc(sh.x, sh.y, sh.r, 0, Math.PI * 2);
+    cx = sh.x; cy = sh.y;
+  } else {
+    campadRoundRect(ctx, sh.x, sh.y, sh.w, sh.h, Math.min(sh.w, sh.h) * 0.3);
+    cx = sh.x + sh.w / 2; cy = sh.y + sh.h / 2;
+  }
+  ctx.fillStyle = bad ? "rgba(220,38,38,0.88)"
+    : lit ? "rgba(37,99,235,0.9)"
+    : none ? "rgba(20,22,28,0.42)" : "rgba(20,22,28,0.72)";
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = (lit || bad) ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.45)";
+  ctx.stroke();
+  var baseR = sh.kind === "c" ? sh.r : Math.min(sh.w, sh.h) / 2;
+  var kfs = Math.max(10, Math.min(19, baseR * 0.62));
+  ctx.fillStyle = (none && !lit) ? "rgba(255,255,255,0.55)" : "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  try { ctx.font = "700 " + Math.round(kfs) + "px sans-serif"; } catch (e) {}
+  ctx.fillText(cameraPadKeyShort(sh.key), cx, cy);
+}
+
+function drawCampadStick(ctx, def) {
+  var st = def.st;
+  var mx = def.id === "L" ? __campadMirror.lx : __campadMirror.rx;
+  var my = def.id === "L" ? __campadMirror.ly : __campadMirror.ry;
+  var dx = st.held ? st.dx : mx, dy = st.held ? st.dy : my;
+  ctx.beginPath();
+  ctx.arc(def.x, def.y, def.R, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(20,22,28,0.55)";
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = st.held ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.45)";
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(def.x - def.R, def.y); ctx.lineTo(def.x + def.R, def.y);
+  ctx.moveTo(def.x, def.y - def.R); ctx.lineTo(def.x, def.y + def.R);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.stroke();
+  var nx = def.x + dx * (def.R - def.nub), ny = def.y + dy * (def.R - def.nub);
+  ctx.beginPath();
+  ctx.arc(nx, ny, def.nub, 0, Math.PI * 2);
+  ctx.fillStyle = st.held ? "rgba(37,99,235,0.92)" : "rgba(160,165,175,0.85)";
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(255,255,255,0.7)";
+  ctx.stroke();
+  try { ctx.font = "700 11px sans-serif"; } catch (e) {}
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(def.id, def.x, def.y - def.R - 9);
+}
+
+function drawCampadReadout(ctx, W, H) {
+  var parts = [];
+  if (__campadStickL.held || Math.abs(__campadStickL.dx) > 0.005 || Math.abs(__campadStickL.dy) > 0.005) {
+    parts.push("LX " + campadFmtAxis(__campadStickL.dx) + " LY " + campadFmtAxis(__campadStickL.dy));
+  }
+  if (__campadStickR.held || Math.abs(__campadStickR.dx) > 0.005 || Math.abs(__campadStickR.dy) > 0.005) {
+    parts.push("RX " + campadFmtAxis(__campadStickR.dx) + " RY " + campadFmtAxis(__campadStickR.dy));
+  }
+  for (var k in __cameraPadDown) {
+    if (!__cameraPadDown[k]) continue;
+    var m = (__cameraPadMap[k] || "").match(/^servo(\d{1,2})([+-])$/);
+    if (!m) continue;
+    var id = parseInt(m[1], 10);
+    var cal = null;
+    try { cal = SERVO_CALIBRATION[id]; } catch (e) {}
+    parts.push("#" + id + (cal ? " [" + cal.min + "-" + cal.max + "]" : ""));
+  }
+  if (!parts.length) return;
+  var txt = parts.join("   ");
+  try { ctx.font = "11px sans-serif"; } catch (e) {}
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  var tw = 0;
+  try { tw = ctx.measureText(txt).width; } catch (e) { tw = txt.length * 7; }
+  var bx = W / 2 - tw / 2 - 8, by = 8, bw = tw + 16, bh = 18;
+  ctx.beginPath();
+  if (ctx.roundRect) { try { ctx.roundRect(bx, by, bw, bh, 9); } catch (e) { ctx.rect(bx, by, bw, bh); } }
+  else ctx.rect(bx, by, bw, bh);
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(txt, W / 2, by + bh / 2);
+}
+
+// canvas 掣短鍵名（▲▼◀▶／大寫）。
+function cameraPadKeyShort(k) {
+  if (k === "up") return "▲";
+  if (k === "down") return "▼";
+  if (k === "left") return "◀";
+  if (k === "right") return "▶";
+  return String(k).toUpperCase();
+}
+
+function cameraPadRefresh() {
+  var cv = document.getElementById("cameraPadCanvas");
+  if (!cv) return Promise.resolve(null);
+  return Alpha2Api.gamepadConfigGet({ side: "pad" }).then(function (json) {
+    var map = (json && json.mapping) || gamepadCachedSide("pad");
+    try { gamepadCacheSide("pad", map); } catch (e) {}
+    __cameraPadMap = map;
+    cameraPadDraw();
+    return map;
+  }).catch(function () {
+    __cameraPadMap = gamepadCachedSide("pad");
+    cameraPadDraw();
+    return null;
+  });
+}
+
+function cameraPadPress(k, isDown) {
+  if (isDown) {
+    if (__cameraPadDown[k]) return;
+    __cameraPadDown[k] = true;
+    __cameraPadLit[k] = true;
+    cameraPadDraw();
+    Alpha2Api.gamepadKey({ side: "pad", key: k, action: "down", source: "campad" }).then(function (json) {
+      if (json && json.taken === false) {
+        __cameraPadNo[k] = Date.now();
+        cameraPadDraw();
+        var hint = document.getElementById("cameraStatusHint");
+        if (hint) hint.textContent = cameraPadKeyShort(k) + " → " + (json.action || "-") + " " + t("gamepad_taken_no");
+        setTimeout(function () { cameraPadDraw(); }, 750);
+      }
+    }).catch(function () {
+      __cameraPadDown[k] = false;
+      __cameraPadLit[k] = false;
+      cameraPadDraw();
+    });
+  } else {
+    if (!__cameraPadDown[k]) return;
+    __cameraPadDown[k] = false;
+    __cameraPadLit[k] = false;
+    cameraPadDraw();
+    Alpha2Api.gamepadKey({ side: "pad", key: k, action: "up", source: "campad" }).catch(function () {});
   }
 }
 

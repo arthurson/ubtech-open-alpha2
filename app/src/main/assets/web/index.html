@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Open Alpha2</title>
-<link rel="stylesheet" href="style.css?v=20261001a">
+<link rel="stylesheet" href="style.css?v=20261001e">
 </head>
 <body>
 
@@ -537,7 +537,13 @@
       <button id="cameraToggleBtn" onclick="toggleCameraLive()">▶</button>
       <label class="switch-label"><span data-i18n="camera_feature_key">功能鍵</span>
         <span class="toggle-switch">
-          <input type="checkbox" id="featureEnabled" checked>
+          <input type="checkbox" id="featureEnabled" checked onchange="cameraFeatureToggle()">
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+      <label class="switch-label"><span data-i18n="camera_pad_label">手柄</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="cameraPadToggle" onchange="cameraPadToggleView()">
           <span class="toggle-track"></span>
         </span>
       </label>
@@ -608,6 +614,9 @@
       <div id="faceTrackBox" class="face-track-box"></div>
       <!-- 顏色追蹤框：後端 color/track/status 回同一形狀 fx/fy/fw/fh，畫橙框（同人臉追蹤互斥，唔會齊出） -->
       <div id="colorTrackBox" class="color-track-box"></div>
+      <!-- 手柄視圖：22 粒 pad 鍵全畫喺呢塊 canvas（圖形化，唔係 HTML 掣；定義跟手柄映射，
+           經 gamepad/key 注入，見 app-gamepad.js cameraPad*；同功能鍵 overlay 互斥） -->
+      <canvas id="cameraPadCanvas" class="camera-pad-canvas" style="display:none"></canvas>
       <span class="camera-kbd-hint" id="cameraKbdHint"></span>
     </div>
     <p class="hint" id="cameraZoomHint" data-i18n="camera_zoom_hint" style="text-align:center">數位變焦 x1–x5（硬件支援時為硬件變焦，否則為軟件裁切；串流由前端即時縮放，拍照存檔由後端裁切）</p>
@@ -1143,16 +1152,16 @@
        3. 中間檔案之間沒有排序依賴（function hoisting），保持原 section 順序方便對照。
      尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
      所以全部 <script src> 一定要行完先到那個 inline script。 -->
-<script src="app-core.js?v=20261001a"></script>
+<script src="app-core.js?v=20261001c"></script>
 <script src="api-client.js?v=20261001a"></script>
 <script src="app-status.js?v=20261001a"></script>
 <script src="app-actions.js?v=20261001a"></script>
 <script src="app-speech.js?v=20261001a"></script>
 <script src="app-vosk.js?v=20261001a"></script>
 <script src="app-servo.js?v=20261001a"></script>
-<script src="app-gamepad.js?v=20261001a"></script>
+<script src="app-gamepad.js?v=20261001j"></script>
 <script src="app-led.js?v=20261001a"></script>
-<script src="app-camera.js?v=20261001a"></script>
+<script src="app-camera.js?v=20261001b"></script>
 <script src="app-xiaozhi.js?v=20261001a"></script>
 <script src="app-music.js?v=20261001a"></script>
 <script src="app-radio.js?v=20261001a"></script>

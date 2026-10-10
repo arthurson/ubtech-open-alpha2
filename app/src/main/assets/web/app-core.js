@@ -361,6 +361,7 @@ const I18N = {
   // -- camera tab --
   camera_heading:        { zh: "相機",             en: "Camera" },
   camera_feature_key:    { zh: "功能鍵",           en: "Feature Key" },
+  camera_pad_label:       { zh: "手柄",             en: "Gamepad" },
   face_track_label:      { zh: "人臉追蹤",         en: "Face Tracking" },
   color_track_label:     { zh: "顏色追蹤",         en: "Color Tracking" },
   color_name_red:        { zh: "紅",               en: "Red" },
