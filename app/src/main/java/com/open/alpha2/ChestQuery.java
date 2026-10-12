@@ -66,6 +66,23 @@ public final class ChestQuery {
     private volatile CountDownLatch absAngleLatch;
     private volatile int absAngleExpectId = -1;
     private volatile Integer absAngleValue = null;
+    // 單舵機回讀角度 (cmd 23 / 0x17) latch。PC 工具「讀角度 6」同款問法
+    // （官方 flag 在 0x06／0x17 之間切，問法同 0x06 鏡像）：查詢
+    // f8 8f 08 00 00 17 <id> <sum> ed；預期回覆
+    // f8 8f 0b 00 00 17 00 <id> <hi> <lo> <sum> ed（BE16，同 servo/one 同單位）。
+    // 未實測：回覆形狀／讀會唔會鬆舵機／有無短 error 幀，一律先按 0x06 處理，
+    // 實測後補。只認領等待中那顆 id。
+    private volatile CountDownLatch backAngleLatch;
+    private volatile int backAngleExpectId = -1;
+    private volatile Integer backAngleValue = null;
+    // 改舵機 ID (cmd 10 / 0x0a) latch。查詢
+    // f8 8f 09 05 00 0a <舊id> <新id> <sum> ed；預期回覆
+    // payload [10, status, ...]（status 0 = OK，同 cmd12/升級 ACK 同一套語義）。
+    // 只認領等待中那次（單發唔重試，見 modifyServoId）。
+    private volatile CountDownLatch modifyIdLatch;
+    private volatile int modifyIdExpectOld = -1;
+    private volatile int modifyIdExpectNew = -1;
+    private volatile Boolean modifyIdOk = null;
 
     public ChestQuery(Context context, RobotStub robot) {
         this.appContext = context.getApplicationContext();
@@ -154,6 +171,34 @@ public final class ChestQuery {
             }
             return false;
         }
+        // 回讀角度回覆 latch (cmd 23 / 0x17)。只認領等待中那顆 id，
+        // 其他交還（return false）。同 0x06 一樣放版本 fallback 之前——
+        // plen=5 回覆一樣會被舊 fallback 誤食。
+        if (backAngleLatch != null && backAngleLatch.getCount() > 0
+                && plen >= 5 && payload[0] == 23) {
+            int rid = payload[2] & 0xFF;
+            if (rid == backAngleExpectId) {
+                if (payload[1] == 0) {
+                    int hi = payload[3] & 0xFF, lo = payload[4] & 0xFF;
+                    backAngleValue = (hi << 8) | lo;
+                    backAngleLatch.countDown();
+                    return true;
+                }
+            }
+            return false;
+        }
+        // modify servo id reply latch (cmd 10). Claim only while waiting.
+        // Shape unverified: treat as [10, status, ...] (status 0 = OK), same as cmd12.
+        if (modifyIdLatch != null && modifyIdLatch.getCount() > 0
+                && plen >= 2 && (payload[0] & 0xFF) == 10) {
+            if (payload[1] == 0) {
+                modifyIdOk = Boolean.TRUE;
+            } else {
+                modifyIdOk = Boolean.FALSE;
+            }
+            modifyIdLatch.countDown();
+            return true;
+        }
         // 版本 latch：完整帧优先（isVersionFrame 认 F8 8F），否则按 payload fallback
         if (chestVersionLatch != null && chestVersionLatch.getCount() > 0) {
             boolean isVer = isVersionFrame(frame, frame.length, RobotWire.CHEST_READ_VERSION);
@@ -191,6 +236,12 @@ public final class ChestQuery {
         trimExpectId = -1;
         absAngleLatch = null;
         absAngleExpectId = -1;
+        backAngleLatch = null;
+        backAngleExpectId = -1;
+        modifyIdLatch = null;
+        modifyIdExpectOld = -1;
+        modifyIdExpectNew = -1;
+        modifyIdOk = null;
     }
 
     /** 最後一次版本回覆原幀 (拷貝，可 null)，供升級超時診斷 log 用。 */
@@ -519,6 +570,58 @@ public final class ChestQuery {
     }
 
     /**
+     * 單舵機回讀角度 (cmd 23 / 0x17)，PC 工具「讀角度 6」同款問法。
+     * 發送 f8 8f 08 00 00 17 &lt;id&gt; &lt;sum&gt; ed（00 00 頭原幀，同 0x06
+     * 一字不差只換 cmd byte；0x06 用呢個形實測得，0x17 未驗證過），阻塞等回覆
+     * f8 8f 0b 00 00 17 00 &lt;id&gt; &lt;hi&gt; &lt;lo&gt; &lt;sum&gt; ed
+     *（BE16 unsigned，同 servo/one 同單位；跟 0x06 一樣唔保證）。
+     * 注意：0x17 讀會唔會鬆舵機（0x06 會）未知——首版純讀唔寫回，實測睇住部機先。
+     * @return 即時角度；null = 超時（回覆形狀／短 error 幀如與 0x06 不同，logcat 有原幀可對）。
+     * 此方法已保證不在主 thread。
+     */
+    public Integer queryServoBackAngle(int id, long timeoutMs) {
+        if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return null;
+        if (!chestReady()) {
+            Log.w(TAG, "queryServoBackAngle: chest not ready (pure-direct)");
+            return null;
+        }
+        CountDownLatch latch = new CountDownLatch(1);
+        backAngleExpectId = id;
+        backAngleValue = null;
+        backAngleLatch = latch;
+        boolean sent;
+        try {
+            int sum = (8 + 23 + id) & 0xFF;
+            byte[] frame = new byte[]{(byte) 0xF8, (byte) 0x8F, 0x08, 0x00, 0x00,
+                    (byte) 23, (byte) id, (byte) sum, (byte) 0xED};
+            sent = HardwareDirectManager.get(appContext).chest().sendRaw(frame);
+        } catch (Exception e) {
+            Log.w(TAG, "queryServoBackAngle send failed", e);
+            backAngleLatch = null;
+            return null;
+        }
+        Log.d(TAG, "queryServoBackAngle send id=" + id + " -> " + sent);
+        if (!sent) {
+            backAngleLatch = null;
+            return null;
+        }
+        try {
+            boolean ok = latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+            if (!ok) {
+                Log.w(TAG, "queryServoBackAngle timeout id=" + id + " " + timeoutMs + "ms");
+                return null;
+            }
+            Log.d(TAG, "queryServoBackAngle id=" + id + " value=" + backAngleValue);
+            return backAngleValue;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            backAngleLatch = null;
+        }
+    }
+
+    /**
      * 寫舵機 trim/偏差 (cmd 12)，官方 PC tuner 同款。
      * 發送 f8 8f 0a 05 00 0c &lt;id&gt; &lt;hi&gt; &lt;lo&gt; &lt;sum&gt; ed，
      * 阻塞等 MCU 回覆。
@@ -572,6 +675,56 @@ public final class ChestQuery {
      * 同 isVersionFrame 的掃描邏輯, 認標準 F8 8F 長式幀的 cmd byte (i+5)。
      * 已剝頭只剩 payload 的情況由外層 fallback (payload[0]==55) 覆蓋。
      */
+    /**
+     * Modify servo ID (cmd 10, payload [oldId][newId]).
+     * Wire frame: F8 8F 09 05 00 0A old new SUM ED (SUM includes LEN).
+     * Single shot, no retry: if the first send succeeded but the ACK was lost,
+     * a retry would address a stale old ID. Caller reports timeout as unknown.
+     * @return TRUE = MCU ACK OK; FALSE = MCU NAK; null = timeout/send fail.
+     */
+    public Boolean modifyServoId(int oldId, int newId, long timeoutMs) {
+        if (oldId < ApiValidator.SERVO_ID_MIN || oldId > ApiValidator.SERVO_ID_MAX) return null;
+        if (newId < ApiValidator.SERVO_ID_MIN || newId > ApiValidator.SERVO_ID_MAX) return null;
+        if (!chestReady()) {
+            android.util.Log.w(TAG, "modifyServoId: chest not ready (pure-direct)");
+            return null;
+        }
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        modifyIdExpectOld = oldId;
+        modifyIdExpectNew = newId;
+        modifyIdOk = null;
+        modifyIdLatch = latch;
+        boolean sent;
+        try {
+            sent = com.ubtechinc.alpha.hardware.HardwareDirectManager.get(appContext).chest()
+                    .modifyServoId((byte) oldId, (byte) newId);
+        } catch (Exception e) {
+            android.util.Log.w(TAG, "modifyServoId send failed", e);
+            modifyIdLatch = null;
+            return null;
+        }
+        android.util.Log.i(TAG, "modifyServoId send " + oldId + "->" + newId + " -> " + sent);
+        if (!sent) {
+            modifyIdLatch = null;
+            return null;
+        }
+        try {
+            boolean ok = latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+            if (!ok) {
+                android.util.Log.w(TAG, "modifyServoId timeout " + oldId + "->" + newId);
+                return null;
+            }
+            android.util.Log.i(TAG, "modifyServoId " + oldId + "->" + newId + " ack=" + modifyIdOk);
+            if (modifyIdOk == null) return null;
+            return modifyIdOk;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            modifyIdLatch = null;
+        }
+    }
+
     private static boolean isUuidFrame(byte[] bytes, int len) {
         if (bytes == null || len < 8) return false;
         int n = Math.min(len, bytes.length);

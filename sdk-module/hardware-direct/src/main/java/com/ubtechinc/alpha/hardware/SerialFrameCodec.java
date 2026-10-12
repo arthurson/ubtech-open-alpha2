@@ -52,34 +52,53 @@ public final class SerialFrameCodec {
      * @param param 可為 null/空
      */
     public static byte[] encode(byte cmd, byte[] param) {
+        return encodeWith(FRAME_SRC, FRAME_DST, cmd, param);
+    }
+
+    /**
+     * 升級幀編碼（官方 upgrade APK Alpha2SerialProtocol 同款，逐 byte 對過反彙編）：
+     * F8 8F LEN ID INDEX CMD PARAM SUM ED，LEN=7+plen，
+     * SUM=(LEN+ID+INDEX+CMD+ΣPARAM)&0xFF。官方請求一律 ID=1＋INDEX 1..127 滾動
+     * （getUnusedIndex；0 永不用），回覆按 (id,cmd,index) 配對。
+     * servo/LED 等 LAP 流量繼續用 encode() (05 00)，唔好混用——之前升級誤用
+     * 05 00（ID=5 INDEX=0）行咗 LAP parser，MCU 回乜都當成功，先有假 success。
+     */
+    public static byte[] encodeUpgrade(byte id, byte index, byte cmd, byte[] param) {
+        return encodeWith(id, index, cmd, param);
+    }
+
+    private static byte[] encodeWith(byte id, byte index, byte cmd, byte[] param) {
         int plen = param == null ? 0 : param.length;
         // LEN 係單 byte（LEN=7+plen，總幀長=LEN+1）：plen>248 會 wrap 整壞解碼，
         // 快啲掟錯好過送隻壞幀落 MCU。
         if (plen > 248) throw new IllegalArgumentException("param too long: " + plen + " (max 248)");
         int len = 7 + plen; // LEN = 7 + PARAM字節數（總幀長 = LEN+1）
-        byte[] frame = new byte[3 + 2 + 1 + plen + 1 + 1]; // F8 8F LEN SRC DST CMD PARAM SUM ED
+        byte[] frame = new byte[3 + 2 + 1 + plen + 1 + 1]; // F8 8F LEN ID INDEX CMD PARAM SUM ED
         int i = 0;
         frame[i++] = FRAME_HEAD_0;
         frame[i++] = FRAME_HEAD_1;
         frame[i++] = (byte) (len & 0xFF);
-        frame[i++] = FRAME_SRC;
-        frame[i++] = FRAME_DST;
+        frame[i++] = id;
+        frame[i++] = index;
         frame[i++] = cmd;
         if (plen > 0) {
             System.arraycopy(param, 0, frame, i, plen);
             i += plen;
         }
-        // checksum = (LEN + SRC + DST + CMD + ΣPARAM) & 0xFF
-        frame[i++] = (byte) checksum(len, FRAME_SRC, FRAME_DST, cmd, param == null ? new byte[0] : param, 0, plen);
+        // checksum = (LEN + ID + INDEX + CMD + ΣPARAM) & 0xFF
+        frame[i++] = (byte) checksum(len, id, index, cmd, param == null ? new byte[0] : param, 0, plen);
         frame[i++] = FRAME_TAIL;
         return frame;
     }
 
     /**
      * 嘗試從緩衝區解一幀，返回 {frameBytes, consumed}，不夠一幀返回 null。
-     * 長式優先（F8 8F LEN SRC DST CMD ... SUM ED，總長 LEN+1；SRC/DST 認
-     * 05 00（官方 App／MCU 回覆）或 00 00（MCU 主動事件／舊手寫幀））；
+     * 長式優先（F8 8F LEN ID INDEX CMD ... SUM ED，總長 LEN+1；ID/INDEX 認
+     * 05 00（LAP：官方 App／MCU 回覆）或 00 00（MCU 主動事件／舊手寫幀）
+     * 或 01 NN（升級協議：ID=1＋INDEX 回聲，見 ChestUpgrade））；
      * 長式對不上時回退認舊短式（F8 8F LEN CMD ... SUM ED），保證都能解。
+     * 注意：只加咗 ID==1 呢格（INDEX 任意，靠尾 ED＋checksum 把關；cmd==0x01
+     * 嘅短式幀本系統唔存在，誤判風險同舊版同級）。
      */
     public static DecodeResult tryDecode(byte[] buf, int offset, int available) {
         if (available < 5) return null;
@@ -90,9 +109,10 @@ public final class SerialFrameCodec {
         if (start < 0) return null;
         if (start + 4 >= offset + available) return null;
         int len = buf[start+2] & 0xFF;
-        // 長式優先：SRC DST 頭（05 00 官方式／00 00 事件式）
-        if (buf[start+4] == 0 && (buf[start+3] == FRAME_SRC || buf[start+3] == EVENT_SRC)) {
-            int total = len + 1; // F8 8F LEN(3) + SRC DST CMD PARAM(len-7) SUM ED = len+1
+        // 長式優先：ID INDEX 頭（05 00 LAP／00 00 事件／01 NN 升級）
+        if ((buf[start+4] == 0 && (buf[start+3] == FRAME_SRC || buf[start+3] == EVENT_SRC))
+                || buf[start+3] == 0x01) {
+            int total = len + 1; // F8 8F LEN(3) + ID INDEX CMD PARAM(len-7) SUM ED = len+1
             if (total < 8) return new DecodeResult(null, (start - offset) + 1);
             if (start + total > offset + available) return null;
             if (buf[start + total - 1] != FRAME_TAIL) {

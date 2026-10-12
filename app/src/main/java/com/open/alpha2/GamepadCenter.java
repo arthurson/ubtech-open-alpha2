@@ -51,7 +51,7 @@ import java.util.Map;
  * SonarCenter／LedCenter／DeviceStatus）／xiaozhi_toggle（小智連線 toggle，經 XiaozhiBridge）／
  * vosk_toggle／vosk:&lt;id&gt;（Vosk 監聽／切包 toggle，經 VoskApi）／eq:&lt;preset&gt;（EQ toggle，經 AudioCenter）／
  * radio:&lt;uuid或名&gt;（收藏電台直播，經 AudioCenter）／
- * servo&lt;1-20&gt;+／servo&lt;1-20&gt;-（單步 jog，步長 {@link #SERVO_JOG_STEP}，
+ * servo&lt;1-22&gt;+／servo&lt;1-22&gt;-（單步 jog，步長 {@link #SERVO_JOG_STEP}，
  * 撳住連走）／action:&lt;fileId或中英文名或xxx.ubx&gt;（經 ActionDirect 搶佔式播放）
  *
  * 搖桿連續量（gamepad/axis）：rx→20 號頭 yaw，ry→19 號頭 pitch，
@@ -496,8 +496,8 @@ public final class GamepadCenter {
      * 動作值合法性：none／stop／vol_up／vol_down／music_*／ring_*／led_*／led_off／
      * camera_photo／face_toggle／color_toggle／video_toggle／sonar_toggle／
      * pir_toggle／accel_toggle／xiaozhi_toggle／vosk_toggle／vosk:&lt;id&gt;／
-     * eq:&lt;preset&gt;／radio:&lt;uuid或名&gt;／servo1-20±／action:&lt;非空&gt;。
-     * servo 步進覆蓋全部 20 軸（jogServo 通用）。
+     * eq:&lt;preset&gt;／radio:&lt;uuid或名&gt;／servo1-22±／action:&lt;非空&gt;。
+     * servo 步進覆蓋全部 22 軸（jogServo 通用）。
      */
     public static boolean isValidAction(String action) {
         if (action == null) return false;
@@ -522,7 +522,7 @@ public final class GamepadCenter {
         return false;
     }
 
-    /** servo&lt;1-20&gt;± 形（如 servo20+）：軸號＋方向一次驗。 */
+    /** servo&lt;1-22&gt;± 形（如 servo20+）：軸號＋方向一次驗。 */
     public static boolean isServoJog(String a) {
         if (a == null || a.length() < 7) return false;
         if (!a.startsWith("servo")) return false;
@@ -1743,7 +1743,7 @@ public final class GamepadCenter {
                     + "camera_photo/face_toggle/color_toggle/video_toggle/"
                     + "sonar_toggle/pir_toggle/accel_toggle/"
                     + "xiaozhi_toggle/vosk_toggle/vosk:<id>/eq:<preset>/radio:<uuid或名>/"
-                    + "servo1-20+/servo1-20-/action:<id>, got: " + action);
+                    + "servo1-22+/servo1-22-/action:<id>, got: " + action);
         }
         Map<String, String> mapping = loadMapping(side);
         mapping.put(key, action);

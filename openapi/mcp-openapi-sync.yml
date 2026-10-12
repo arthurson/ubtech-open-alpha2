@@ -84,7 +84,7 @@ mappings:
       - mcp: id
         openapi: id
         required: true
-        desc: Servo id (1-20).
+        desc: Servo id (1-22).
       - mcp: angle
         openapi: angle
         required: true
@@ -100,13 +100,14 @@ mappings:
     openapi: /api/servo/all
     method: GET
     description: >-
-      Move all 20 servos at once to a full-body pose. angles must have exactly 20
-      comma-separated integers, one per servo id in order.
+      Move all servos at once to a full-body pose. angles must have exactly 20
+      (servos 1-20) or 22 (servos 1-22) comma-separated integers, one per servo
+      id in order.
     params:
       - mcp: angles
         openapi: angles
         required: true
-        desc: 20 comma-separated angle values, e.g. "0,0,0,...".
+        desc: 20 or 22 comma-separated angle values, e.g. "0,0,0,...".
       - mcp: time_ms
         openapi: time
         required: false

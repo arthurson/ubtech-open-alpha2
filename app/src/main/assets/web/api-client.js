@@ -266,14 +266,14 @@ const Alpha2Api = (function() {
     if (params && params.trackIntervalMs != null) assertRange(Number(params.trackIntervalMs), 100, 3000, 'trackIntervalMs');
     if (params && params.stepDeg != null) assertRange(Number(params.stepDeg), 1, 30, 'stepDeg');
     if (params && params.deadband != null) assertRange(Number(params.deadband), 0, 0.5, 'deadband');
-    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2000, 'timeMs');
+    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2200, 'timeMs');
     if (params && params.hMin != null) assertRange(Number(params.hMin), 0, 360, 'hMin');
     if (params && params.hMax != null) assertRange(Number(params.hMax), 0, 360, 'hMax');
     if (params && params.sMin != null) assertRange(Number(params.sMin), 0, 1, 'sMin');
     if (params && params.sMax != null) assertRange(Number(params.sMax), 0, 1, 'sMax');
     if (params && params.vMin != null) assertRange(Number(params.vMin), 0, 1, 'vMin');
     if (params && params.vMax != null) assertRange(Number(params.vMax), 0, 1, 'vMax');
-    if (params && params.minPixels != null) assertRange(Number(params.minPixels), 10, 20000, 'minPixels');
+    if (params && params.minPixels != null) assertRange(Number(params.minPixels), 10, 22000, 'minPixels');
     if (params && params.turnDb != null) assertRange(Number(params.turnDb), 0, 0.8, 'turnDb');
     if (params && params.closeCoverage != null) assertRange(Number(params.closeCoverage), 0.02, 0.6, 'closeCoverage');
     // 更新顏色追蹤參數（不啟停；啟動中亦可即時調）
@@ -285,14 +285,14 @@ const Alpha2Api = (function() {
     if (params && params.trackIntervalMs != null) assertRange(Number(params.trackIntervalMs), 100, 3000, 'trackIntervalMs');
     if (params && params.stepDeg != null) assertRange(Number(params.stepDeg), 1, 30, 'stepDeg');
     if (params && params.deadband != null) assertRange(Number(params.deadband), 0, 0.5, 'deadband');
-    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2000, 'timeMs');
+    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2200, 'timeMs');
     if (params && params.hMin != null) assertRange(Number(params.hMin), 0, 360, 'hMin');
     if (params && params.hMax != null) assertRange(Number(params.hMax), 0, 360, 'hMax');
     if (params && params.sMin != null) assertRange(Number(params.sMin), 0, 1, 'sMin');
     if (params && params.sMax != null) assertRange(Number(params.sMax), 0, 1, 'sMax');
     if (params && params.vMin != null) assertRange(Number(params.vMin), 0, 1, 'vMin');
     if (params && params.vMax != null) assertRange(Number(params.vMax), 0, 1, 'vMax');
-    if (params && params.minPixels != null) assertRange(Number(params.minPixels), 10, 20000, 'minPixels');
+    if (params && params.minPixels != null) assertRange(Number(params.minPixels), 10, 22000, 'minPixels');
     if (params && params.turnDb != null) assertRange(Number(params.turnDb), 0, 0.8, 'turnDb');
     if (params && params.closeCoverage != null) assertRange(Number(params.closeCoverage), 0.02, 0.6, 'closeCoverage');
     // 開始純 Java 顏色追蹤（HSV 閾值＋最大 blob＋頭部 19/20 跟色）
@@ -314,7 +314,7 @@ const Alpha2Api = (function() {
     if (params && params.trackIntervalMs != null) assertRange(Number(params.trackIntervalMs), 100, 3000, 'trackIntervalMs');
     if (params && params.stepDeg != null) assertRange(Number(params.stepDeg), 1, 30, 'stepDeg');
     if (params && params.deadband != null) assertRange(Number(params.deadband), 0, 0.5, 'deadband');
-    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2000, 'timeMs');
+    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2200, 'timeMs');
     if (params && params.maxFaces != null) assertRange(Number(params.maxFaces), 1, 5, 'maxFaces');
     // 更新人臉追蹤參數（不啟停；啟動中亦可即時調）
     return api('face/track/config', params);
@@ -330,7 +330,7 @@ const Alpha2Api = (function() {
     if (params && params.trackIntervalMs != null) assertRange(Number(params.trackIntervalMs), 100, 3000, 'trackIntervalMs');
     if (params && params.stepDeg != null) assertRange(Number(params.stepDeg), 1, 30, 'stepDeg');
     if (params && params.deadband != null) assertRange(Number(params.deadband), 0, 0.5, 'deadband');
-    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2000, 'timeMs');
+    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2200, 'timeMs');
     if (params && params.maxFaces != null) assertRange(Number(params.maxFaces), 1, 5, 'maxFaces');
     // 開始 Android 內置人臉追蹤（FaceDetector＋頭部 19/20 跟人）
     return api('face/track/start', params);
@@ -358,7 +358,7 @@ const Alpha2Api = (function() {
   }
 
   function chestPage(params) {
-    if (params && params.page != null) assertRange(Number(params.page), 0, 2047, 'page');
+    if (params && params.page != null) assertRange(Number(params.page), 0, 2247, 'page');
     // 讀取指定頁的 128B hex (除錯用)
     return api('chest/page', params);
   }
@@ -374,7 +374,7 @@ const Alpha2Api = (function() {
   }
 
   function chestUpgradeResume(params) {
-    if (params && params.from != null) assertRange(Number(params.from), 0, 2047, 'from');
+    if (params && params.from != null) assertRange(Number(params.from), 0, 2247, 'from');
     // 從指定頁恢復升級
     return api('chest/upgrade/resume', params);
   }
@@ -434,7 +434,7 @@ const Alpha2Api = (function() {
   }
 
   function directServoOne(params) {
-    if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
+    if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
     if (params && params.angle != null) assertRange(Number(params.angle), 0, 255, 'angle');
     if (params && params.time != null) assertRange(Number(params.time), 20, 32767, 'time');
     // 單舵機直驅 (localServices.chestSetSingle, 預設 time=500)
@@ -732,29 +732,47 @@ const Alpha2Api = (function() {
   // ── servo ──────────────────────────────────────────────
   function servoAll(params) {
     if (params && params.time != null) assertRange(Number(params.time), 20, 32767, 'time');
-    // 同時控制 20 顆舵機
+    // 同時控制全部舵機（20 或 22 顆）
     return api('servo/all', params);
   }
 
   function servoAngle(params) {
-    if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
+    if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
     // 實際讀取單顆舵機絕對角度（胸 cmd6 live query）
     return api('servo/angle', params);
   }
 
   function servoAngleAll(params) {
-    // 連讀 20 軸絕對角度，每粒即寫回上力（100ms 間隔）
+    // 連讀 22 軸絕對角度，每粒即寫回上力（100ms 間隔）
     return api('servo/angle-all', params);
   }
 
   function servoAngleRestore(params) {
-    if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
+    if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
     // 讀單顆舵機絕對角度並即寫回上力（原子操作）
     return api('servo/angle-restore', params);
   }
 
+  function servoBackAngle(params) {
+    if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
+    // 實際讀取單顆舵機回讀角度（胸 cmd23/0x17 live query，PC 工具「讀角度 6」同款）
+    return api('servo/back-angle', params);
+  }
+
+  function servoBackAngleAll(params) {
+    // 連讀 20 軸回讀角度（cmd23/0x17，無間隔，純讀唔寫回）
+    return api('servo/back-angle-all', params);
+  }
+
+  function servoModifyId(params) {
+    if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
+    if (params && params.newId != null) assertRange(Number(params.newId), 1, 22, 'newId');
+    // 修改單顆舵機 ID（胸 cmd10，payload [舊id][新id]，掉電保持）
+    return api('servo/modify-id', params);
+  }
+
   function servoOne(params) {
-    if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
+    if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
     if (params && params.angle != null) assertRange(Number(params.angle), 0, 255, 'angle');
     if (params && params.time != null) assertRange(Number(params.time), 20, 32767, 'time');
     if (params && params.trim != null) assertRange(Number(params.trim), -1000, 1000, 'trim');
@@ -763,13 +781,13 @@ const Alpha2Api = (function() {
   }
 
   function servoRead(params) {
-    if (params && params.id != null) assertRange(Number(params.id), 1, 20, 'id');
+    if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
     // 實際讀取單顆舵機 trim（胸 cmd13 live query，官方 tuner 同款）
     return api('servo/read', params);
   }
 
   function servoReadAll(params) {
-    // 逐顆實際讀取全部 20 軸 trim（tuner 掃描 offset 用，官方節奏約十幾 ms 一粒）
+    // 逐顆實際讀取全部 22 軸 trim（tuner 掃描 offset 用，官方節奏約十幾 ms 一粒）
     return api('servo/read-all', params);
   }
 
@@ -1219,6 +1237,9 @@ const Alpha2Api = (function() {
     servoAngle,
     servoAngleAll,
     servoAngleRestore,
+    servoBackAngle,
+    servoBackAngleAll,
+    servoModifyId,
     servoOne,
     servoRead,
     servoReadAll,

@@ -98,9 +98,9 @@ public final class McpToolsGenerated {
             {
                 JSONObject p = new JSONObject();
                 p.put("type", "integer");
-                p.put("description", "Servo id (1-20).");
+                p.put("description", "Servo id (1-22).");
                 p.put("minimum", 1);
-                p.put("maximum", 20);
+                p.put("maximum", 22);
                 props.put("id", p);
             }
             {
@@ -130,14 +130,14 @@ public final class McpToolsGenerated {
         {
             JSONObject t = new JSONObject();
             t.put("name", "self.robot.servo_set_all");
-            t.put("description", "Move all 20 servos at once to a full-body pose. angles must have exactly 20 comma-separated integers, one per servo id in order.");
+            t.put("description", "Move all servos at once to a full-body pose. angles must have exactly 20 (servos 1-20) or 22 (servos 1-22) comma-separated integers, one per servo id in order.");
             JSONObject s = new JSONObject();
             s.put("type", "object");
             JSONObject props = new JSONObject();
             {
                 JSONObject p = new JSONObject();
                 p.put("type", "string");
-                p.put("description", "20 comma-separated angle values, e.g. \"0,0,0,...\".");
+                p.put("description", "20 or 22 comma-separated angle values, e.g. \"0,0,0,...\".");
                 props.put("angles", p);
             }
             {

@@ -134,7 +134,7 @@ paths:
       tags:
       - core
       summary: 觸發胸口升級 (讀 /sdcard/AlphaII_CHEST_kernel.bin, 48/49/50 協議)
-      description: 面板 token 啟用後要帶 panel_token（401 即未解鎖），見 PanelAuth。
+      description: 面板 token 啟用後要帶 panel_token（401 即未解鎖），見 PanelAuth。啟動前硬驗固件檔（唔存在／唔係 262144 全鏡像或 1..114688 小鏡像即 ok:false，唔會照燒）。
       parameters:
       - $ref: '#/components/parameters/PanelToken'
       responses:
@@ -166,7 +166,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
         '200':
-          description: 進度 JSON (由 getChestUpgradeStatusJson 提供)
+          description: 進度 JSON (由 getChestUpgradeStatusJson 提供；另帶 fileExists／fileSizeBytes／filePages／wantSizeBytes／smallMaxBytes 機上固件檔資訊，前端升級前驗檔用)
           content:
             application/json:
               schema:
@@ -185,9 +185,9 @@ paths:
         schema:
           type: integer
           minimum: 0
-          maximum: 2047
+          maximum: 2247
           default: 0
-        description: 起始頁 index (262144B firmware / 128B page = 2048 頁, 0-2047)
+        description: 起始頁 index（128B 一頁；全鏡像 0-2047，小鏡像 0..頁數-1）
       responses:
         '200':
           description: 已恢復
@@ -236,8 +236,8 @@ paths:
         schema:
           type: integer
           minimum: 0
-          maximum: 2047
-        description: 頁 index (262144B firmware / 128B page = 2048 頁, 0-2047)
+          maximum: 2247
+        description: 頁 index（128B 一頁；全鏡像 0-2047，小鏡像 0..頁數-1）
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -801,7 +801,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 20
+          maximum: 22
       - name: angle
         in: query
         required: true
@@ -1868,7 +1868,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 20
+          maximum: 22
       - name: angle
         in: query
         required: true
@@ -1925,15 +1925,15 @@ paths:
     get:
       tags:
       - servo
-      summary: 同時控制 20 顆舵機
+      summary: 同時控制全部舵機（20 或 22 顆）
       parameters:
       - name: angles
         in: query
         required: true
         schema:
           type: string
-          example: 90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90
-        description: 20 個逗號分隔角度
+          example: 90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90
+        description: 20（舵機 1-20）或 22（舵機 1-22）個逗號分隔角度；20 相容舊客戶端只動 1-20，22 前 20 走 cmd3、21/22 各補一發 cmd05
       - name: time
         in: query
         schema:
@@ -1970,7 +1970,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 20
+          maximum: 22
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -2008,7 +2008,7 @@ paths:
     get:
       tags:
       - servo
-      summary: 逐顆實際讀取全部 20 軸 trim（tuner 掃描 offset 用，官方節奏約十幾 ms 一粒）
+      summary: 逐顆實際讀取全部 22 軸 trim（tuner 掃描 offset 用，官方節奏約十幾 ms 一粒）
       parameters:
       - $ref: '#/components/parameters/PanelToken'
       responses:
@@ -2019,7 +2019,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
         '200':
-          description: 20 軸 trim 原值；讀不到那顆記 null 並列入 failed
+          description: 22 軸 trim 原值；讀不到那顆記 null 並列入 failed
           content:
             application/json:
               schema:
@@ -2052,7 +2052,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 20
+          maximum: 22
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -2091,7 +2091,7 @@ paths:
         schema:
           type: integer
           minimum: 1
-          maximum: 20
+          maximum: 22
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -2124,8 +2124,8 @@ paths:
     get:
       tags:
       - servo
-      summary: 連讀 20 軸絕對角度，每粒即寫回上力（100ms 間隔）
-      description: 逐顆 cmd6 實際讀取＋即 servo/one 寫回同位（讀會鬆開那顆，寫回即上力；單粒已證實無鬆無動，20 連讀實測中）。讀不到那顆記 null 並列入 failed，且不寫回
+      summary: 連讀 22 軸絕對角度，每粒即寫回上力（100ms 間隔）
+      description: 逐顆 cmd6 實際讀取＋即 servo/one 寫回同位（讀會鬆開那顆，寫回即上力；單粒已證實無鬆無動，22 連讀實測中）。讀不到那顆記 null 並列入 failed，且不寫回
       parameters:
       - $ref: '#/components/parameters/PanelToken'
       responses:
@@ -2136,7 +2136,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
         '200':
-          description: 20 軸即時角度＋逐顆有無寫回；讀不到那顆記 null
+          description: 22 軸即時角度＋逐顆有無寫回；讀不到那顆記 null
           content:
             application/json:
               schema:
@@ -2162,6 +2162,131 @@ paths:
                       items:
                         type: integer
       operationId: servoAngleAll_get
+  /api/servo/back-angle:
+    get:
+      tags:
+      - servo
+      summary: 實際讀取單顆舵機回讀角度（胸 cmd23/0x17 live query，PC 工具「讀角度 6」同款）
+      description: 發 f8 8f 08 00 00 17 <id> 讀即時角度（同 servo/one 同單位；跟 0x06 同級，未驗證誤差）。注意不是 servo/read 那個 trim/偏差。讀不到（超時）報 ok:false。0x17 會唔會鬆舵機未知——呢個 endpoint 純讀唔寫回，實測中
+      parameters:
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 22
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 回讀角度實際讀取值（或讀失敗）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    id:
+                      type: integer
+                    angle:
+                      type: integer
+                      description: 即時回讀角度（成功先有）
+                    error:
+                      type: string
+      operationId: servoBackAngle_get
+  /api/servo/back-angle-all:
+    get:
+      tags:
+      - servo
+      summary: 連讀 20 軸回讀角度（cmd23/0x17，無間隔，純讀唔寫回）
+      description: 逐顆 cmd23 實際讀取，一次過 20 粒（無間隔、唔重試、不寫回；實測 230ms 全中）。讀不到那顆記 null 並列入 failed
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 20 軸即時回讀角度；讀不到那顆記 null
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    live:
+                      type: boolean
+                      description: 恆 true（即時讀數）
+                    angles:
+                      type: array
+                      items:
+                        type: integer
+                        nullable: true
+                    failed:
+                      type: array
+                      items:
+                        type: integer
+      operationId: servoBackAngleAll_get
+  /api/servo/modify-id:
+    get:
+      tags:
+      - servo
+      summary: 修改單顆舵機 ID（胸 cmd10，payload [舊id][新id]，掉電保持）
+      description: 發 f8 8f 09 05 00 0a <id> <newId> 經胸板轉發 servo 碼 205 寫入舵機 EEPROM。單發唔重試（首發成功但 ACK 丟失時重試會用舊 ID 打空）。超時報 ok:false（已送出但無回覆，請用新 ID 試動驗證）。同一 bus 唔可以有兩粒同 ID
+      parameters:
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 22
+        description: 現時舵機 ID（舊）
+      - name: newId
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 22
+        description: 目標舵機 ID（新，必須同舊唔同）
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 結果（含 ack；超時請用新 ID 試動驗證）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    id:
+                      type: integer
+                    newId:
+                      type: integer
+                    ack:
+                      type: boolean
+                    error:
+                      type: string
+      operationId: servoModifyId_get
   /api/servo/sonar:
     get:
       tags:
@@ -3351,7 +3476,7 @@ paths:
         schema:
           type: integer
           minimum: 20
-          maximum: 2000
+          maximum: 2200
         description: 單步舵機執行時間 ms（預設 400）
       - name: maxFaces
         in: query
@@ -3477,7 +3602,7 @@ paths:
         schema:
           type: integer
           minimum: 20
-          maximum: 2000
+          maximum: 2200
       - name: maxFaces
         in: query
         schema:
@@ -3574,7 +3699,7 @@ paths:
         schema:
           type: integer
           minimum: 20
-          maximum: 2000
+          maximum: 2200
         description: 單步舵機執行時間 ms（預設 400）
       - name: headFollow
         in: query
@@ -3628,7 +3753,7 @@ paths:
         schema:
           type: integer
           minimum: 10
-          maximum: 20000
+          maximum: 22000
         description: 最小色塊像素（160x120 圖上計，預設 80；細過即當掃唔到，去雜訊）
       - name: walkFollow
         in: query
@@ -3771,7 +3896,7 @@ paths:
         schema:
           type: integer
           minimum: 20
-          maximum: 2000
+          maximum: 2200
       - name: headFollow
         in: query
         schema:
@@ -3817,7 +3942,7 @@ paths:
         schema:
           type: integer
           minimum: 10
-          maximum: 20000
+          maximum: 22000
       - name: walkFollow
         in: query
         schema:
@@ -5049,8 +5174,8 @@ paths:
         in: query
         schema:
           type: string
-          description: 'none/stop/vol_up/vol_down/music_play/next/prev/pause/resume/toggle/stop/random/radio_toggle/disco_toggle/filler_toggle/ring_phone/ring_stop/ring_random/ring:<title>/ring:phone:<title>/ring:notification:<title>/head:<preset>:<color>/head:random/eye:<preset>:<color>/eye:random/mouth:breathing:<speedMs>/mouth:off/led_off/camera_photo/face_toggle/color_toggle/video_toggle/sonar_toggle/pir_toggle/accel_toggle/xiaozhi_toggle/vosk_toggle/vosk:<id>/eq:<preset>/radio:<uuid或名>/servo1-20+/servo1-20-/action:<id>'
-        description: 映射動作（reset=1 時可省略；music_* 為本地音樂；servo 步進覆蓋全部 20 軸）
+          description: 'none/stop/vol_up/vol_down/music_play/next/prev/pause/resume/toggle/stop/random/radio_toggle/disco_toggle/filler_toggle/ring_phone/ring_stop/ring_random/ring:<title>/ring:phone:<title>/ring:notification:<title>/head:<preset>:<color>/head:random/eye:<preset>:<color>/eye:random/mouth:breathing:<speedMs>/mouth:off/led_off/camera_photo/face_toggle/color_toggle/video_toggle/sonar_toggle/pir_toggle/accel_toggle/xiaozhi_toggle/vosk_toggle/vosk:<id>/eq:<preset>/radio:<uuid或名>/servo1-22+/servo1-22-/action:<id>'
+        description: 映射動作（reset=1 時可省略；music_* 為本地音樂；servo 步進覆蓋全部 22 軸）
       - name: reset
         in: query
         schema:
@@ -6397,8 +6522,8 @@ paths:
     post:
       tags:
       - upload
-      summary: 上載胸口固件 256KB bin 至 /sdcard/AlphaII_CHEST_kernel.bin
-      description: 面板 token 啟用後要認證（Bearer header 主；401 即未解鎖），見 PanelAuth。
+      summary: 上載胸口固件（256KB 全鏡像或 ≤114688 bytes 小鏡像）至 /sdcard/AlphaII_CHEST_kernel.bin
+      description: 面板 token 啟用後要認證（Bearer header 主；401 即未解鎖），見 PanelAuth。大小閘：262144 或 1..114688 bytes 先收，其他即 400 唔寫入。
       parameters:
       - $ref: '#/components/parameters/PanelToken'
       requestBody:

@@ -142,6 +142,25 @@ public final class SerialFrameCodecTest {
         isNull(SerialFrameCodec.tryDecode(hex("00 11 22 33 44 55"), 0, 6), "decode no-head");
         isNull(SerialFrameCodec.tryDecode(hex("f8 8f 08"), 0, 3), "decode too-short");
 
+        // -- 升級幀 (官方 upgrade APK 同款 ID=1＋INDEX)：encodeUpgrade --
+        // 48 START（fileLen 108360，小鏡像）：11+1+1+48+0+1+167+72=301→0x2D
+        eqBytes(hex("f8 8f 0b 01 01 30 00 01 a7 48 2d ed"),
+                SerialFrameCodec.encodeUpgrade((byte) 1, (byte) 1, (byte) 48,
+                        hex("00 01 a7 48")),
+                "encodeUpgrade start");
+        // 49 page 回覆 [01 idx7 01]：8+1+7+49+1=66=0x42。
+        // 呢隻舊版解唔到（ID!=05/00 跌落短式誤解）——假 success 幫兇，釘死佢。
+        byte[] upgReply = hex("f8 8f 08 01 07 31 01 42 ed");
+        SerialFrameCodec.DecodeResult ur = SerialFrameCodec.tryDecode(upgReply, 0, upgReply.length);
+        eqBytes(upgReply, ur.frame, "decode upgrade reply");
+        eq(9, ur.consumed, "decode upgrade reply consumed");
+        // 升級 round-trip（ID/INDEX 照帶返出嚟）
+        byte[] upg = SerialFrameCodec.encodeUpgrade((byte) 1, (byte) 5, (byte) 50,
+                hex("00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f"));
+        SerialFrameCodec.DecodeResult ut = SerialFrameCodec.tryDecode(upg, 0, upg.length);
+        eqBytes(upg, ut.frame, "upgrade roundtrip frame");
+        eq(upg.length, ut.consumed, "upgrade roundtrip consumed");
+
         // -- toHex --
         eq("f8 8f", SerialFrameCodec.toHex(hex("f8 8f")), "toHex basic");
         eq("null", SerialFrameCodec.toHex(null), "toHex null");

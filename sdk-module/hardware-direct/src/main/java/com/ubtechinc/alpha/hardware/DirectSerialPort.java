@@ -260,6 +260,26 @@ public final class DirectSerialPort {
         }
     }
 
+    /** 升級幀直發（官方 upgrade APK 同款 ID/INDEX 頭，見 SerialFrameCodec.encodeUpgrade；
+     *  servo/LED 等 LAP 流量行上面 send()，唔好混用）。 */
+    public synchronized boolean sendUpgrade(byte id, byte index, byte cmd, byte[] param) {
+        OutputStream out = output;
+        if (!isAvailable() || out == null) return false;
+        try {
+            byte[] frame = SerialFrameCodec.encodeUpgrade(id, index, cmd, param);
+            out.write(frame);
+            out.flush();
+            Log.d(TAG, "TX-UPG(" + openedPath + ") " + SerialFrameCodec.toHex(frame));
+            return true;
+        } catch (IOException e) {
+            Log.w(TAG, "sendUpgrade failed: " + e.getMessage());
+            return false;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "sendUpgrade rejected (" + e.getMessage() + ")");
+            return false;
+        }
+    }
+
     /** 透傳原始幀 (繞過 encode)，用於 set_uuid/version fallback 等手寫長式幀 */
     public synchronized boolean sendRaw(byte[] rawFrame) {
         OutputStream out = output;

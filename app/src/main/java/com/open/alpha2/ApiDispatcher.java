@@ -390,6 +390,13 @@ public final class ApiDispatcher {
                 return ubxApi.servoAngleRestoreResponse(query);
             case "servo/angle-all":
                 return ubxApi.servoAngleAllResponse();
+            // 回讀角度實際讀取 (cmd 23 / 0x17，PC 工具「讀角度 6」同款；純讀唔寫回，實測中)。
+            case "servo/back-angle":
+                return ubxApi.servoBackAngleResponse(query);
+            case "servo/back-angle-all":
+                return ubxApi.servoBackAngleAllResponse();
+            case "servo/modify-id":
+                return ubxApi.servoModifyIdResponse(query);
 
             // -- PIR (body 在 LedCenter；薄 delegate，不要在這裡加 logic) --
             case "pir/set":
@@ -724,7 +731,7 @@ public final class ApiDispatcher {
                 sb.append("\"servo\":{\"poseKnown\":").append(pose != null);
                 if (pose != null) {
                     sb.append(",\"angles\":[");
-                    for (int i = 0; i < 20; i++) {
+                    for (int i = 0; i < pose.length; i++) {
                         if (i > 0) sb.append(',');
                         sb.append(pose[i]);
                     }

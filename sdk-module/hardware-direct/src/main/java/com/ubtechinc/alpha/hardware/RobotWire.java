@@ -37,6 +37,8 @@ public final class RobotWire {
     public static final byte CHEST_CMD_WRITE_TRIM = 12;
     /** 群舵機播放幀：a.m 私有發送原文 cmd 3 [20軸byte + short time]（smali 實證，勿與 52 混用）。 */
     public static final byte CHEST_CMD_SENDMOTOR = 3;
+    /** 修改舵機 ID/cmd10（DirectChestController.modifyServoId，payload [舊id][新id]，servo 碼 205）。 */
+    public static final byte CHEST_CMD_MODIFY_SERVO_ID = 10;
     public static final byte CHEST_READ_SID_EEPROM = 55;
     public static final byte CHEST_POWER_SAVE = 64;
 

@@ -226,7 +226,7 @@ public final class UbxApi {
                 + ",\"known\":" + (commanded != null) + "}");
     }
 
-    /** 20 連讀粒間隔 100ms（servoReadAll／servoAngleAll 逐字一樣；被打斷回 false 給 caller break）。 */
+    /** 22 連讀粒間隔 100ms（servoReadAll／servoAngleAll 逐字一樣；被打斷回 false 給 caller break）。 */
     private static boolean sleepBetweenServos() {
         try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
         return true;
@@ -240,26 +240,26 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoReadAllResponse() {
-        // 20 連讀 trim（官方 tuner 節奏：逐顆約十幾 ms 間隔）。
+        // 22 連讀 trim（官方 tuner 節奏：逐顆約十幾 ms 間隔）。
         // trims[i] = 該軸 chest 存住的偏差原值，讀不到那顆記 null 並列入 failed。
         // 注意：這裡不是絕對角度，不要拿去填 angle 輸入格。
         // 逐顆之間一律等 100ms（成功失敗都等）。
-        Integer[] trims = new Integer[20];
+        Integer[] trims = new Integer[ApiValidator.SERVO_COUNT];
         StringBuilder failed = new StringBuilder("[");
         boolean firstFail = true;
-        for (int i = 1; i <= 20; i++) {
+        for (int i = 1; i <= ApiValidator.SERVO_COUNT; i++) {
             Integer v = readServoLive(i);
             trims[i - 1] = v;
             if (v == null) {
                 firstFail = appendFailed(failed, firstFail, i);
             }
-            if (i < 20) {
+            if (i < ApiValidator.SERVO_COUNT) {
                 if (!sleepBetweenServos()) break;
             }
         }
         failed.append(']');
         StringBuilder sb = new StringBuilder("{\"ok\":true,\"live\":true,\"trims\":[");
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < ApiValidator.SERVO_COUNT; i++) {
             if (i > 0) sb.append(',');
             sb.append(trims[i] != null ? trims[i] : "null");
         }
@@ -300,16 +300,79 @@ public final class UbxApi {
                 + ",\"angle\":" + angle + ",\"restored\":" + restored + "}");
     }
 
+    public HttpServer.ApiResponse servoBackAngleResponse(Map<String, String> query) {
+        // 單舵機回讀角度實際讀取 (cmd 23 / 0x17，PC 工具「讀角度 6」同款)。
+        // 同 servo/one 同單位。注意不是 servo/read 那個 trim/偏差。
+        // 讀不到（超時）如實報 ok:false，不編 0。
+        // 注意：0x17 讀會唔會鬆力未知（0x06 會）——首版純讀唔寫回，實測睇住部機先。
+        int idInt = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
+        Integer angle = readServoBackLive(idInt);
+        if (angle == null) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + idInt
+                    + ",\"error\":\"no feedback (timeout)\"}");
+        }
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + idInt
+                + ",\"angle\":" + angle + "}");
+    }
+
+    public HttpServer.ApiResponse servoModifyIdResponse(java.util.Map<String, String> query) {
+        int id = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
+        int newId = ApiValidator.requireIntRange(query, "newId", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
+        if (id == newId) {
+            throw new IllegalArgumentException("parameter 'newId' must differ from 'id', got: " + newId);
+        }
+        if (chestQuery == null || !directChestReady()) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + id
+                    + ",\"newId\":" + newId + ",\"error\":\"direct not ready\"}");
+        }
+        Boolean ack = chestQuery.modifyServoId(id, newId, 800);
+        if (ack != null && ack) {
+            return HttpServer.ApiResponse.ok("{\"ok\":true,\"id\":" + id + ",\"newId\":" + newId + ",\"ack\":true}");
+        }
+        if (ack != null) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + id + ",\"newId\":" + newId
+                    + ",\"ack\":false,\"error\":\"servo NAK (no feedback for id " + id + ")\"}");
+        }
+        return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + id + ",\"newId\":" + newId
+                + ",\"error\":\"timeout (sent, no chest ack; verify by moving new ID)\"}");
+    }
+
+    public HttpServer.ApiResponse servoBackAngleAllResponse() {
+        // 20 連讀回讀角度 (cmd 23 / 0x17)：逐顆單發、無間隔、唔重試、唔寫回。
+        // 實測 20 粒 230ms 全中（16 有數＋5/6/17/18 短 error 幀），唔使等。
+        // 21/22 固件未支援，唔讀。讀不到那顆記 null 入 failed。
+        // 讀取時請固定好機械人（0x17 會唔會鬆力未知，首版純讀）。
+        final int n = 20;
+        Integer[] angles = new Integer[n];
+        StringBuilder failed = new StringBuilder("[");
+        boolean firstFail = true;
+        for (int i = 1; i <= n; i++) {
+            Integer v = (chestQuery == null) ? null : chestQuery.queryServoBackAngle(i, 250);
+            angles[i - 1] = v;
+            if (v == null) {
+                firstFail = appendFailed(failed, firstFail, i);
+            }
+        }
+        failed.append(']');
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"live\":true,\"angles\":[");
+        for (int i = 0; i < n; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(angles[i] != null ? angles[i] : "null");
+        }
+        sb.append("],\"failed\":").append(failed).append('}');
+        return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
     public HttpServer.ApiResponse servoAngleAllResponse() {
-        // 20 連讀＋逐顆即寫回（每粒讀寫原子，粒與粒之間隔 100ms）。
+        // 22 連讀＋逐顆即寫回（每粒讀寫原子，粒與粒之間隔 100ms）。
         // 背景：純連讀（不寫回）已被兩部機證實會逐顆弄垮出力；但單粒讀＋即寫回
         // 已證實無鬆無動，故連讀版都是同一個原子操作逐顆做。讀不到那顆不寫回、
         // 記 null 入 failed。未知能否全程站穩——實測中。
-        Integer[] angles = new Integer[20];
-        boolean[] restored = new boolean[20];
+        Integer[] angles = new Integer[ApiValidator.SERVO_COUNT];
+        boolean[] restored = new boolean[ApiValidator.SERVO_COUNT];
         StringBuilder failed = new StringBuilder("[");
         boolean firstFail = true;
-        for (int i = 1; i <= 20; i++) {
+        for (int i = 1; i <= ApiValidator.SERVO_COUNT; i++) {
             Integer v = readServoAbsLive(i);
             angles[i - 1] = v;
             if (v == null) {
@@ -318,18 +381,18 @@ public final class UbxApi {
                 restored[i - 1] = servoSendOneCode(i, v, 20)
                         == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
             }
-            if (i < 20) {
+            if (i < ApiValidator.SERVO_COUNT) {
                 if (!sleepBetweenServos()) break;
             }
         }
         failed.append(']');
         StringBuilder sb = new StringBuilder("{\"ok\":true,\"live\":true,\"angles\":[");
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < ApiValidator.SERVO_COUNT; i++) {
             if (i > 0) sb.append(',');
             sb.append(angles[i] != null ? angles[i] : "null");
         }
         sb.append("],\"restored\":[");
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < ApiValidator.SERVO_COUNT; i++) {
             if (i > 0) sb.append(',');
             sb.append(restored[i]);
         }
@@ -344,6 +407,16 @@ public final class UbxApi {
     private Integer readServoAbsLive(final int id) {
         return retryServoLive(100, new ServoRetry<Integer>() {
             @Override public Integer attempt() { return chestQuery.queryServoAbsAngle(id, 250); }
+        });
+    }
+
+    /**
+     * 帶重試的單粒回讀角度實際讀取（cmd 23 / 0x17，3 次 × 250ms；重試之間隔
+     * 100ms，同連讀同級，不要密 hammer 胸板）。
+     */
+    private Integer readServoBackLive(final int id) {
+        return retryServoLive(100, new ServoRetry<Integer>() {
+            @Override public Integer attempt() { return chestQuery.queryServoBackAngle(id, 250); }
         });
     }
 

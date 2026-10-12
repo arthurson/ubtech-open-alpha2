@@ -211,24 +211,24 @@ const I18N = {
   gamepad_dual_rb:     { zh: "紅藍", en: "Red-Blue" },
 
   // -- servo tab --
-  servo_heading:         { zh: "舵機 (Servos, 1–20)", en: "Servos (1–20)" },
+  servo_heading:         { zh: "舵機 (Servos, 1–22)", en: "Servos (1–22)" },
   servo_hint:            { zh: "拖動滑桿, 放手即送出, 自動限制在安全範圍內。", en: "Drag a slider and release to send — values are auto-clamped to a safe range." },
   servo_time_label:      { zh: "時間(ms)：",       en: "Time (ms):" },
   servo_reset_btn:       { zh: "全部回到原位",     en: "Reset All to Home" },
   servo_read_all_btn:    { zh: "📖 讀取全部",       en: "📖 Read all" },
-  servo_read_hint:       { zh: "讀指定一顆或一次過讀全部舵機即時角度（讀完即寫回上力），顯示在對應行右邊；讀不到顯示 -。全部約 6 秒，讀取時請固定好機械人。",
-                           en: "Reads one or all live servo angles (written straight back to restore torque) into their rows; unreadable joints show -. All takes ~6s; keep the robot secured." },
+  servo_read_hint:       { zh: "讀指定一顆或一次過讀全部舵機即時角度（0x17 純讀，唔寫回），顯示在對應行右邊；讀不到顯示 -。全部約 1 秒，讀取時請固定好機械人。",
+                           en: "Reads one or all live servo angles (0x17 read-only, no write-back) into their rows; unreadable joints show -. All takes ~1s; keep the robot secured." },
   servo_reading_hint:    { zh: "讀取中…",             en: "Reading…" },
   servo_read_done:       { zh: "✅ 已更新",            en: "✅ Updated" },
   servo_read_failed_prefix: { zh: "❌ 讀取失敗：",     en: "❌ Read failed: " },
   servo_tuner_heading:   { zh: "🔧 舵機角度調整", en: "🔧 Servo Angle Tuner" },
-  servo_tuner_hint:      { zh: "獨立於舵機分頁的進階微調器 — 直接修改 20 顆 servo 角度，±1° 精調，一鍵讀取全部目前角度。與原廠 1.0.0.4 校準工具相同佈局（1-20 對應肩/肘/髖/膝/踝/手/頭）。長按 ±1 連發時已禁用系統複製選單。", en: "Standalone tuner — tune 20 servos directly, ±1° fine-tune, one-click read. Matches factory 1.0.0.4 layout (1-20: shoulder/elbow/hip/knee/ankle/hand/head). Long-press ±1 repeats, copy menu disabled." },
+  servo_tuner_hint:      { zh: "獨立於舵機分頁的進階微調器 — 直接修改 22 顆 servo 角度，±1° 精調，一鍵讀取全部目前角度。與原廠 1.0.0.4 校準工具相同佈局（1-20 對應肩/肘/髖/膝/踝/手/頭，21-22 為擴展）。長按 ±1 連發時已禁用系統複製選單。", en: "Standalone tuner — tune 22 servos directly, ±1° fine-tune, one-click read. Matches factory 1.0.0.4 layout (1-20: shoulder/elbow/hip/knee/ankle/hand/head, 21-22 extra). Long-press ±1 repeats, copy menu disabled." },
   servo_tuner_standby:   { zh: "復位+掃描",         en: "reset+scan" },
   servo_tuner_calibrate: { zh: "校准",               en: "Calibrate" },
   servo_tuner_angle:     { zh: "角度",               en: "Angle" },
   servo_tuner_offset:    { zh: "偏移",               en: "Offset" },
   servo_tuner_range:     { zh: "範圍",               en: "Range" },
-  servo_tuner_disabled_hint: { zh: "開啟後才顯示 20ch 微調器（長按 ±1 連發，offset 即時計算，已禁用長按選單）", en: "Turn on to show 20ch tuner (long-press ±1 repeats, offset live, copy menu disabled)" },
+  servo_tuner_disabled_hint: { zh: "開啟後才顯示 22ch 微調器（長按 ±1 連發，offset 即時計算，已禁用長按選單）", en: "Turn on to show 22ch tuner (long-press ±1 repeats, offset live, copy menu disabled)" },
   servo_tuner_backup:        { zh: "備份 offset",       en: "Backup offsets" },
   servo_tuner_restore:       { zh: "還原 offset",       en: "Restore offsets" },
   servo_tuner_backup_done:   { zh: "已備份 offset",       en: "Backed up offsets" },
@@ -239,12 +239,12 @@ const I18N = {
   servo_tuner_restore_readerr: { zh: "：讀檔失敗",       en: ": file read error" },
   servo_tuner_restore_detail: { zh: "（offset {off}；逐一在輸入格按 Enter 才會送到舵機）", en: "({off} offsets; press Enter per row to send to servos)" },
   servo_tuner_backup_fail:   { zh: "備份失敗",           en: "Backup failed" },
-  servo_tuner_unscanned:     { zh: "（{n}/20 未讀）…",   en: "({n}/20 unread)…" },
+  servo_tuner_unscanned:     { zh: "（{n}/22 未讀）…",   en: "({n}/22 unread)…" },
 
   // adv tuner 動態狀態字。
   servo_tuner_ready:         { zh: "tuner {v} 就緒（加減/輸入僅變動角度；校准先成組寫 EEPROM）", en: "tuner {v} ready (+/- and input move only; Calibrate writes EEPROM)" },
-  servo_tuner_read_all:      { zh: "一鍵實際讀取全部 trim 1-20（約幾秒）…", en: "Reading all 20 trims (a few seconds)…" },
-  servo_tuner_read_done:     { zh: "實際讀取完成 {ok}/20",   en: "Read done {ok}/20" },
+  servo_tuner_read_all:      { zh: "一鍵實際讀取全部 trim 1-22（約幾秒）…", en: "Reading all 22 trims (a few seconds)…" },
+  servo_tuner_read_done:     { zh: "實際讀取完成 {ok}/22",   en: "Read done {ok}/22" },
   servo_tuner_read_fails:    { zh: "，無回授：{ids}",   en: ", no feedback: {ids}" },
   servo_tuner_read_fail:     { zh: "#{id} 讀失敗",       en: "#{id} read failed" },
   servo_tuner_read_err:      { zh: "讀取錯誤：{e}",      en: "Read error: {e}" },
@@ -560,15 +560,34 @@ const I18N = {
   uuid_preview_hint_short:   { zh: "預覽新 QR（未寫入 EEPROM）",
                                 en: "Previewing new QR (not yet written to EEPROM)" },
   uuid_preview_invalid:      { zh: "❌ 格式不正確（1-31 字元，英數/-/_）", en: "❌ Invalid format (1-31 chars, alnum/-/_)" },
+  servo_id_heading:         { zh: "🔢 更改舵機 ID", en: "🔢 Change Servo ID" },
+  servo_id_disabled_hint:  { zh: "開啟先會顯示更改舵機 ID 功能", en: "Turn on to show the servo ID changer" },
+  servo_id_hint:            { zh: "胸板命令 10 [舊 ID][新 ID]，經舵機碼 205 寫入舵機 EEPROM，掉電保持。同一 bus 唔可以有兩粒同 ID；改完去舵機頁試郁新 ID 驗證。",
+                               en: "Chest cmd 10 [old ID][new ID], written to servo EEPROM via servo code 205, persists across power cycles. No two servos on the same bus may share an ID; verify by moving the new ID in the Servo tab afterwards." },
+  servo_id_old_label:       { zh: "舊 ID：", en: "Old ID:" },
+  servo_id_new_label:       { zh: "新 ID：", en: "New ID:" },
+  servo_id_change_btn:      { zh: "✏️ 更改 ID", en: "✏️ Change ID" },
+  servo_id_confirm:         { zh: "確定將舵機 #{id} 改為 #{newId}？寫入舵機 EEPROM 掉電保持，同一 bus 唔可以有兩粒同 ID！", en: "Change servo #{id} to #{newId}? Written to servo EEPROM (persists); no two servos on one bus may share an ID!" },
+  servo_id_same_error:      { zh: "❌ 新舊 ID 唔可以相同", en: "❌ Old and new IDs must differ" },
+  servo_id_range_error:     { zh: "❌ ID 必須係 1–22", en: "❌ IDs must be 1–22" },
+  servo_id_sending:         { zh: "送出中 #{id}→#{newId}…", en: "Sending #{id}→#{newId}…" },
+  servo_id_done:            { zh: "✅ 已將 #{id} 改為 #{newId}，去舵機頁試郁新 ID 驗證", en: "✅ Changed #{id} to #{newId} — verify by moving the new ID in the Servo tab" },
+  servo_id_fail_prefix:     { zh: "❌ 更改失敗：", en: "❌ Change failed: " },
 
   // -- chest firmware --
   chest_title:           { zh: "胸板固件",         en: "Chest Firmware" },
   chest_hint_disabled:   { zh: "開啟後顯示胸板固件版本與升級", en: "Enable to show chest firmware version and upgrade" },
   chest_current_version: { zh: "當前版本：",       en: "Current version:" },
   chest_btn_current:     { zh: "當前版本",         en: "Current Version" },
-  chest_hint_upload:     { zh: "選擇 256KB 的 ALPHA2Q-CHEST-*.bin，先上傳到 /sdcard/AlphaII_CHEST_kernel.bin，再按升級：", en: "Select 256KB ALPHA2Q-CHEST-*.bin, upload to /sdcard/AlphaII_CHEST_kernel.bin, then upgrade:" },
+  chest_hint_upload:     { zh: "選擇 256KB 全鏡像或 ≤112KB 小鏡像（ALPHA2Q-CHEST-*.bin），先上傳到 /sdcard/AlphaII_CHEST_kernel.bin，再按升級：", en: "Select a 256KB full image or ≤112KB small image (ALPHA2Q-CHEST-*.bin), upload to /sdcard/AlphaII_CHEST_kernel.bin, then upgrade:" },
   chest_btn_upload:      { zh: "上傳",             en: "Upload" },
   chest_btn_upgrade:     { zh: "開始升級",         en: "Start Upgrade" },
+  chest_upload_bad_size: { zh: "❌ 檔案唔啱 size（要 256KB 全鏡像或 1..114688 bytes 小鏡像，宜家 {n} bytes），未上載", en: "❌ Wrong file size (need 256KB full image or 1..114688-byte small image, got {n} bytes), not uploaded" },
+  chest_file_missing:    { zh: "機上未有固件檔，請先上載 .bin（256KB 全鏡像或小鏡像）", en: "No firmware file on robot yet — upload a .bin first (256KB full image or small image)" },
+  chest_file_bad:        { zh: "❌ 機上固件唔啱（{n} bytes，要 262144 或 1..114688），請重新上載", en: "❌ Firmware on robot is wrong ({n} bytes, need 262144 or 1..114688) — re-upload" },
+  chest_file_ok:         { zh: "機上固件 ✅ {n} bytes（{p} 頁），可按「開始升級」", en: "Firmware on robot ✅ {n} bytes ({p} pages) — press Start Upgrade" },
+  chest_upgrade_confirm: { zh: "確定燒錄胸板固件？中途斷電／重啟會變磚！電量需 ≥50%，全程約 1–2 分鐘（小鏡像快啲），唔好掂機械人。燒完要成部機斷電重開先生效（淨 reboot Android 唔夠）。", en: "Flash chest firmware? Power loss/reboot mid-flash will brick it! Battery must be ≥50%, ~1–2 min (small image is faster), don't touch the robot. After success, fully power-cycle the robot to apply (Android reboot alone is NOT enough)." },
+  chest_upgrade_done_power: { zh: "✅ 燒錄完成！而成部機斷電重開先生效：長按電源鍵閂機，等燈全滅 10 秒再開，唔好淨係 reboot。", en: "✅ Flash done! Fully power-cycle to apply: long-press power to shut down, wait 10s after all lights out, then power on. Plain reboot is NOT enough." },
 
   // -- 實驗 tab 面板 token 認證（見 PanelAuth.java，後端 system/auth/*） --
   panel_auth_heading:    { zh: "🔐 面板認證",      en: "🔐 Panel Token" },
@@ -769,10 +788,12 @@ const SERVO_CALIBRATION = {
   18: { min: 95,  max: 125, home: 120 },
   19: { min: 75,  max: 165, home: 120 },
   20: { min: 105, max: 155, home: 120 },
+  21: { min: 5,   max: 235, home: 120 },
+  22: { min: 5,   max: 235, home: 120 },
 };
 
 /** Clamps a value into [min,max] for the given servo id; returns the raw value unchanged
- *  if the id isn't in the calibration table (shouldn't happen for 1-20). */
+ *  if the id isn't in the calibration table (shouldn't happen for 1-22). */
 function clampServoAngle(id, value) {
   const cal = SERVO_CALIBRATION[id];
   if (!cal) return value;
@@ -801,6 +822,8 @@ const SERVO_NAMES = {
   18: { zh: "左指",     en: "L Hand" },
   19: { zh: "頭左右",   en: "Head Yaw" },
   20: { zh: "頭上下",   en: "Head Pitch" },
+  21: { zh: "擴展21",    en: "Extra 21" },
+  22: { zh: "擴展22",    en: "Extra 22" },
 };
 
 /** 取回一個 servo 的顯示名, 跟主 UI 語言 (uiLang)。 */
@@ -819,6 +842,7 @@ const SERVO_GROUPS = [
   { key: "left-arm",   label: "左手", labelEn: "L Arm",     icon: "💪", ids: [4, 5, 6, 18] },
   { key: "right-leg",  label: "右腳", labelEn: "R Leg",     icon: "🦵", ids: [7, 8, 9, 10, 11] },
   { key: "left-leg",   label: "左腳", labelEn: "L Leg",     icon: "🦵", ids: [12, 13, 14, 15, 16] },
+  { key: "extra",      label: "擴展", labelEn: "Extra",     icon: "🧩", ids: [21, 22] },
 ];
 
 // ---------------- Global error surface ----------------

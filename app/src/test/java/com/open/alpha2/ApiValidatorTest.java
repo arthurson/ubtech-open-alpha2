@@ -205,7 +205,11 @@ public final class ApiValidatorTest {
         int[] angles = ApiValidator.requireAngles20(q("angles", "90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90"));
         eq(20, angles.length, "angles20.len");
         eq(90, angles[0], "angles20.first");
+        int[] angles22 = ApiValidator.requireAngles20(q("angles", "90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90"));
+        eq(22, angles22.length, "angles22.len");
+        eq(90, angles22[21], "angles22.last");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireAngles20(q("angles", "1,2,3")); } }, "angles20.short");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireAngles20(q("angles", "90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90")); } }, "angles21.bad");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireAngles20(q()); } }, "angles20.missing");
 
         // ── 舵機校準 clamp（同 app-core.js SERVO_CALIBRATION 一字不差；
@@ -215,6 +219,14 @@ public final class ApiValidatorTest {
         eq(65, ApiValidator.servoCalHome(8), "cal.home8");
         eq(105, ApiValidator.servoCalMin(20), "cal.min20");
         eq(155, ApiValidator.servoCalMax(20), "cal.max20");
+        eq(5, ApiValidator.servoCalMin(21), "cal.min21");
+        eq(235, ApiValidator.servoCalMax(21), "cal.max21");
+        eq(5, ApiValidator.servoCalMin(22), "cal.min22");
+        eq(235, ApiValidator.servoCalMax(22), "cal.max22");
+        eq(120, ApiValidator.servoCalHome(21), "cal.home21");
+        eq(120, ApiValidator.servoCalHome(22), "cal.home22");
+        eq(22, ApiValidator.SERVO_COUNT, "servo.count");
+        eq(22, ApiValidator.SERVO_ID_MAX, "servo.idmax");
         eq(125, ApiValidator.clampServoAngle(17, 200), "clamp.17high");
         eq(95, ApiValidator.clampServoAngle(17, 0), "clamp.17low");
         eq(120, ApiValidator.clampServoAngle(17, 120), "clamp.17mid");

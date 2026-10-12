@@ -9,6 +9,8 @@ function chestToggle() {
   const on = !!(enabled && enabled.checked);
   if (body) body.style.display = on ? "block" : "none";
   if (hint) hint.style.display = on ? "none" : "block";
+  // 開卡即 show 版本＋機上固件檔狀態，一眼睇到燒唔燒得。
+  if (on) { chestCheck(); chestFileInfo(); }
 }
 
 function chestUpload() {
@@ -19,8 +21,11 @@ function chestUpload() {
     return;
   }
   const file = input.files[0];
-  if (file.size !== 256 * 1024) {
-    if (status) status.textContent = "檔案大小不正確，應該是 256KB (目前 " + file.size + " bytes)";
+  // 上載前先驗：256KB 全鏡像或 1..114688 小鏡像先收（同 ChestUpgrade.isAcceptedFirmwareSize 一致；
+  // 後端同升級啟動都會再驗，唔好嘥時間推上去等 400）。
+  if (!chestSizeOk(file.size, null)) {
+    if (status) status.textContent = t("chest_upload_bad_size", { n: file.size });
+    return;
   }
   if (status) status.textContent = "上載中 " + file.name + " (" + file.size + " bytes)…";
   const reader = new FileReader();
@@ -39,7 +44,8 @@ function chestUpload() {
       headers: Object.assign({ "Content-Type": "application/octet-stream" }, upHeaders)
     }).then(function(res) { return res.json(); }).then(function(json) {
       if (json.ok) {
-        if (status) status.textContent = "✅ 已上載到 " + (json.path || "/sdcard/AlphaII_CHEST_kernel.bin") + "，可按「開始升級」";
+        // 上載完即驗機上檔（存在＋合法大小：全鏡像或小鏡像），得先畀升級；結果直寫狀態行。
+        chestFileInfo();
       } else {
         if (status) status.textContent = "❌ 上載失敗: " + (json.error || JSON.stringify(json));
       }
@@ -61,15 +67,53 @@ function chestCheck() {
   });
 }
 
+// 固件大小閘（同 ChestUpgrade.isAcceptedFirmwareSize 一致）：256KB 全鏡像或
+// 1..小鏡像上限。限值跟 status 行嚟（舊後端無 smallMaxBytes 就跌回 114688）。
+function chestSizeOk(n, s) {
+  const want = (s && Number(s.wantSizeBytes)) || 262144;
+  const smallMax = (s && Number(s.smallMaxBytes)) || 114688;
+  return n === want || (n > 0 && n <= smallMax);
+}
+
+// 查機上固件檔（存在＋合法大小：全鏡像或小鏡像），結果寫狀態行；回 true＝燒得。
+function chestFileInfo() {
+  const status = document.getElementById("chestUploadStatus");
+  return Alpha2Api.chestUpgradeStatus().then(function(s) {
+    if (!s || s.ok === false) return false;
+    if (!s.fileExists) {
+      if (status) status.textContent = t("chest_file_missing");
+      return false;
+    }
+    if (!chestSizeOk(Number(s.fileSizeBytes), s)) {
+      if (status) status.textContent = t("chest_file_bad", { n: s.fileSizeBytes });
+      return false;
+    }
+    if (status) status.textContent = t("chest_file_ok", { n: s.fileSizeBytes, p: s.filePages });
+    return true;
+  }).catch(function() { return false; });
+}
+
 function chestUpgrade() {
   const status = document.getElementById("chestUploadStatus");
   const wrap = document.getElementById("chestProgressWrap");
   const bar = document.getElementById("chestProgressBar");
   const txt = document.getElementById("chestProgressText");
-  if (status) status.textContent = "開始升級…";
-  if (wrap) wrap.style.display = "block";
-  if (bar) bar.style.width = "0%";
-  if (txt) txt.textContent = "0%";
+  // 燒之前先驗機上檔，唔啱（狀態行已講明原因）即停；啱先二次確認（變磚警告）再燒。
+  chestFileInfo().then(function(ok) {
+    if (!ok) return;
+    if (!confirm(t("chest_upgrade_confirm"))) return;
+    if (status) status.textContent = "開始升級…";
+    if (wrap) wrap.style.display = "block";
+    if (bar) bar.style.width = "0%";
+    if (txt) txt.textContent = "0%";
+    startChestUpgradePoll();
+  });
+}
+
+function startChestUpgradePoll() {
+  const status = document.getElementById("chestUploadStatus");
+  const bar = document.getElementById("chestProgressBar");
+  const txt = document.getElementById("chestProgressText");
   Alpha2Api.chestUpgrade().then(function(json) {
     if (!json.ok) { if (status) status.textContent = "❌ " + (json.error || "啟動失敗"); return; }
     if (status) status.textContent = "升級中…請勿斷電 (需 ~2 分鐘)";
@@ -81,7 +125,7 @@ function chestUpgrade() {
         if (!s.inProgress) {
           clearInterval(timer);
           if (s.status && s.status.indexOf("success") !== -1) {
-            if (status) status.textContent = "✅ 升級完成，請重啟機械人";
+            if (status) status.textContent = t("chest_upgrade_done_power");
           } else if (p === 100) {
             if (status) status.textContent = "✅ 完成";
           } else {

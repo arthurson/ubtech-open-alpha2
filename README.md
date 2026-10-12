@@ -114,10 +114,10 @@ Bilingual (EN/繁中), live updates over WebSocket, no refresh needed:
 - 動作——動作清單及分類分頁、播放／停止、變速（0.5／0.67／1／1.5／2 倍）。
   動作名粒粒跟分類轉色（先跟子分類色，無就跟大分類色）。
   （動作包下載在實驗分頁。）
-- Servo — 20 joints individually or all at once, live command-pose display,
+- Servo — 22 joints individually or all at once, live command-pose display,
   single-servo and read-all live angle read-back (`servo/angle`,
   `servo/angle-all` / `servo/read-all`).
-- 舵機——20 軸逐顆或全組控制、即時指令位姿顯示、經 `servo/angle` 讀回單顆
+- 舵機——22 軸逐顆或全組控制、即時指令位姿顯示、經 `servo/angle` 讀回單顆
   舵機角度，另有 `servo/angle-all`／`servo/read-all` 一次過讀全部。
 - Gamepad — BT gamepad/keyboard in two modes sharing one key mapping
   (`gamepad/*`): A = HID paired straight to the robot (BT on/scan/pair from
@@ -128,7 +128,7 @@ Bilingual (EN/繁中), live updates over WebSocket, no refresh needed:
   值）：頁面開藍牙／只列 HID 的掃描／配對／主動連接／解除綁定，離線可用；
   撳鍵即執行，右搖桿轉頭 19／20 號；滑鼠類直吞；直連手柄／直連鍵盤開關分開，
   熄邊只記唔做。手柄圖／全鍵盤圖即時亮燈，映射表分兩區；`gamepad/key`／
-  `gamepad/axis` 後端保留畀脚本直調。動作值支援 20 軸 `servo1-20±` 步進
+  `gamepad/axis` 後端保留畀脚本直調。動作值支援 22 軸 `servo1-22±` 步進
   （撳住連走、放手停，40 格封頂；跟 servo tab 同一套校準大小值，
   到頂唔送幀兼自己停）、本地音樂功能鍵（含隨機歌）／
   隨機瑜伽／系統鈴聲（名／預設電話鈴）／頭眼咀 LED／三燈全熄／影相＋人臉顏色
@@ -182,12 +182,12 @@ Bilingual (EN/繁中), live updates over WebSocket, no refresh needed:
 - Experiment (Advanced) — panel auth token, boot-voice mode (off /
   auto-connect Xiaozhi / auto-listen Vosk), resource downloads (Vosk model
   catalog, 202-action pack, Google TTS APK — one at a time via
-  `DownloadGate`), 20ch servo angle tuner with offset backup/restore, robot
+   `DownloadGate`), 22ch servo angle tuner with offset backup/restore, robot
   ID changer (query/copy/QR preview/EEPROM write), chest firmware
   upgrade, version link. Event log is a permanent card below the tabs.
 - 實驗（進階）——面板認證口令、開機語音模式（全部手動／開機連小智／開機
   用 Vosk）、資源下載（Vosk 模型目錄、202 招動作包、Google TTS APK——經
-  `DownloadGate` 一次只准一樣）、20ch 舵機角度微調器（offset 備份／還原）、
+   `DownloadGate` 一次只准一樣）、22ch 舵機角度微調器（offset 備份／還原）、
   機械人 ID 變更器（查詢／複製／QR 預覽／寫入 EEPROM）、胸板韌體升級、
   版本連結。事件 Log 係分頁下方常駐卡片。
 - Blockly (`blockly.html`, standalone page) — visual programming with 12

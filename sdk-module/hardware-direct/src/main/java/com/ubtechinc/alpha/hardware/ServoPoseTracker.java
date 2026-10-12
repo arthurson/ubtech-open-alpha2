@@ -15,25 +15,25 @@ package com.ubtechinc.alpha.hardware;
  * 不可编造。</p>
  */
 public final class ServoPoseTracker {
-    private final int[] pose = new int[20];
+    private final int[] pose = new int[22];
     private volatile boolean known = false;
     // 2026-09-08 新增：逐軸 known 旗（servoAngleAllResponse 命令位姿榜用）。
     // 背景：全量 known 要等一次 servo/all 全發，開機後好耐都未知；但單軸
     // servo/one 成功即代表嗰一軸肯定喺命令位（±1° 誤差內），逐軸記低，
     // 使個榜儘快有嘢睇——依然零 wire，依然唔保證其他軸（跳舞／重啟後過時）。
-    private final boolean[] knownIdx = new boolean[20];
+    private final boolean[] knownIdx = new boolean[22];
 
-    /** 记录一次成功的 cmd3 发送（20 轴全量）。 */
-    public synchronized void update(int[] angles20) {
-        if (angles20 == null || angles20.length != 20) return;
-        System.arraycopy(angles20, 0, pose, 0, 20);
-        java.util.Arrays.fill(knownIdx, true);
+    /** 记录一次成功的 cmd3 发送（20 軸舊全量或 22 軸全量；20 只更新前 20 軸，21/22 保持原值）。 */
+    public synchronized void update(int[] angles) {
+        if (angles == null || (angles.length != 20 && angles.length != 22)) return;
+        System.arraycopy(angles, 0, pose, 0, angles.length);
+        for (int i = 0; i < angles.length; i++) knownIdx[i] = true;
         known = true;
     }
 
     /** 记录一次成功的 cmd05 单发（只 mark 嗰一軸 known，其餘唔郁）。 */
     public synchronized void updateOne(int id, int angle) {
-        if (id < 1 || id > 20) return;
+        if (id < 1 || id > 22) return;
         pose[id - 1] = angle;
         knownIdx[id - 1] = true;
     }
@@ -45,8 +45,8 @@ public final class ServoPoseTracker {
 
     /** 逐軸版 snapshot：未知嗰軸回 null（servoAngleAllResponse 直接用嚟填榜）。 */
     public synchronized Integer[] snapshotBoxed() {
-        Integer[] out = new Integer[20];
-        for (int i = 0; i < 20; i++) {
+        Integer[] out = new Integer[22];
+        for (int i = 0; i < 22; i++) {
             out[i] = knownIdx[i] ? Integer.valueOf(pose[i]) : null;
         }
         return out;

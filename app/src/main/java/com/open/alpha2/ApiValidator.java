@@ -35,12 +35,14 @@ public final class ApiValidator {
     private ApiValidator() {}
 
     /** servo 範圍單一來源（同 openapi spec／MCP schema／McpToolsGenerated 約束一致）：
-     *  id 1-20、angle 0-255、time 20-32767ms。之前 UbxApi／ApiDispatcher／
+     *  id 1-22、angle 0-255、time 20-32767ms。之前 UbxApi／ApiDispatcher／
      *  XiaozhiBridge 各寫裸 literal，改漏一處即前後端驗證不一致，收斂到這裡。 */
     public static final int SERVO_ID_MIN = 1;
-    public static final int SERVO_ID_MAX = 20;
+    public static final int SERVO_ID_MAX = 22;
     /** 全機舵機粒數（servo/all CSV 長度、loop 上限）。 */
-    public static final int SERVO_COUNT = 20;
+    public static final int SERVO_COUNT = 22;
+    /** 舊 20 軸 CSV 長度（servo/all 向後兼容：20＝只動 1-20，22＝全動）。 */
+    public static final int SERVO_COUNT_LEGACY = 20;
     public static final int SERVO_ANGLE_MIN = 0;
     public static final int SERVO_ANGLE_MAX = 255;
     public static final int SERVO_TIME_MIN_MS = 20;
@@ -52,13 +54,16 @@ public final class ApiValidator {
      *  index 0＝1 號舵機；未知軸回 0-255 wire 範圍（fail-safe）。 */
     private static final int[] SERVO_CAL_MIN = {
             5, 50, 55, 5, 30, 55, 100, 20, 35, 35,
-            100, 40, 20, 10, 25, 50, 95, 95, 75, 105};
+            100, 40, 20, 10, 25, 50, 95, 95, 75, 105,
+            5, 5};
     private static final int[] SERVO_CAL_MAX = {
             235, 210, 185, 235, 190, 185, 200, 220, 230, 215,
-            190, 140, 220, 205, 205, 140, 125, 125, 165, 155};
+            190, 140, 220, 205, 205, 140, 125, 125, 165, 155,
+            235, 235};
     private static final int[] SERVO_CAL_HOME = {
             120, 120, 120, 120, 120, 120, 120, 65, 145, 140,
-            120, 120, 175, 95, 100, 120, 120, 120, 120, 120};
+            120, 120, 175, 95, 100, 120, 120, 120, 120, 120,
+            120, 120};
 
     public static int servoCalMin(int id) {
         if (id < SERVO_ID_MIN || id > SERVO_ID_MAX) return SERVO_ANGLE_MIN;
@@ -411,11 +416,12 @@ public final class ApiValidator {
     public static int[] requireAngles20(Map<String, String> q) {
         String csv = require(q, "angles");
         String[] parts = csv.split(",");
-        if (parts.length != SERVO_COUNT) {
-            throw new IllegalArgumentException("parameter 'angles' must have exactly " + SERVO_COUNT + " comma-separated values, got " + parts.length);
+        // 向後兼容：20（只動 1-20）或 22（全動）都收；其它長度即 400。
+        if (parts.length != SERVO_COUNT && parts.length != SERVO_COUNT_LEGACY) {
+            throw new IllegalArgumentException("parameter 'angles' must have exactly " + SERVO_COUNT_LEGACY + " or " + SERVO_COUNT + " comma-separated values, got " + parts.length);
         }
-        int[] out = new int[SERVO_COUNT];
-        for (int i = 0; i < SERVO_COUNT; i++) {
+        int[] out = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
             // 逐顆 0-255（同 spec/MCP schema；同 servo/one 一致，防靜默截 byte wrap 落舵機）。
             int v;
             try {

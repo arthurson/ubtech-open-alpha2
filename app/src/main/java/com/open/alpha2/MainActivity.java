@@ -724,8 +724,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 try { onPirStateReceived(pirTriggered); } catch (Throwable t) { Log.w(TAG, "onPirStateReceived failed", t); }
             }
         }
-        // 优先处理升级 ACK (48/49/50)，交給 ChestUpgrade 認領。
-        if (chestUpgrade.onAckFrame(payload, plen)) return;
+        // 优先处理升级 ACK (48/49/50)，交給 ChestUpgrade 認領
+        // （傳埋原始幀取回聲 index；呢行以外解析區一字不動）。
+        if (chestUpgrade.onAckFrame(frame, payload, plen)) return;
         // 版本/UUID 回覆 latch 交給 ChestQuery 認領 (升級 ACK 上面已優先處理)。
         if (chestQuery.onFrame(frame, payload, plen)) return;
     }

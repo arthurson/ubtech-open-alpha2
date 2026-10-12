@@ -213,7 +213,7 @@ public final class XiaozhiBridge {
 
     /** self.robot.servo_set_one 本體。
      *  pure-direct: 经 /dev/ttyS1 直发。
-     *  同 servo/one HTTP 一套範圍（id 1-20、angle 0-255、
+     *  同 servo/one HTTP 一套範圍（id 1-22、angle 0-255、
      *  time 20-32767），不合即報錯，不靜默 clamp。 */
     private SonarCenter.McpResult mcpServoSetOne(org.json.JSONObject arguments) {
         int mcpId = arguments.optInt("id", -1);
@@ -240,15 +240,15 @@ public final class XiaozhiBridge {
     private SonarCenter.McpResult mcpServoSetAll(org.json.JSONObject arguments) {
         String anglesCsv = arguments.optString("angles", "");
         if (anglesCsv.isEmpty()) {
-            return SonarCenter.McpResult.err("angles is required (20 comma-separated integers)");
+            return SonarCenter.McpResult.err("angles is required (20 or 22 comma-separated integers)");
         }
         String[] parts = anglesCsv.split(",");
-        // 要恰好 20 個、逐個 0-255，不合直接報錯。
-        if (parts.length != ApiValidator.SERVO_COUNT) {
-            return SonarCenter.McpResult.err("angles must have exactly " + ApiValidator.SERVO_COUNT + " comma-separated values, got " + parts.length);
+        // 兼容 20（只動 1-20）或 22（全動）、逐個 0-255，不合直接報錯。
+        if (parts.length != ApiValidator.SERVO_COUNT && parts.length != ApiValidator.SERVO_COUNT_LEGACY) {
+            return SonarCenter.McpResult.err("angles must have exactly " + ApiValidator.SERVO_COUNT_LEGACY + " or " + ApiValidator.SERVO_COUNT + " comma-separated values, got " + parts.length);
         }
-        int[] angles = new int[ApiValidator.SERVO_COUNT];
-        for (int i = 0; i < ApiValidator.SERVO_COUNT; i++) {
+        int[] angles = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
             int av;
             try {
                 av = Integer.parseInt(parts[i].trim());

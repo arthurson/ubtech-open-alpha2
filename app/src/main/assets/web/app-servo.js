@@ -167,9 +167,8 @@ function buildServoGrid() {
   }, "servoAngleVal_");
 }
 
-/** 一次過讀全部 20 軸即時角度（servo/angle-all：後端逐顆讀即寫回，約 6 秒），
- *  填入每行右邊讀數格。讀不到那顆顯示 -。讀取時請固定好機械人。讀數中按鈕
- *  disable 防連按。 */
+/** 一次過讀全部 20 軸即時角度（servo/back-angle-all：cmd 0x17 純讀，
+ *  唔等唔寫回，約半秒），填入每行右邊讀數格。讀不到那顆顯示 -。 */
 function servoReadAllAngles() {
   const rows = document.querySelectorAll("#tab-servo [onclick^='servoRead']");
   const status = document.getElementById("servoReadStatus");
@@ -178,8 +177,12 @@ function servoReadAllAngles() {
     const cell = document.getElementById("servoAngleVal_" + i);
     if (cell) cell.textContent = "…";
   }
+  for (let i = 21; i <= 22; i++) {
+    const cell = document.getElementById("servoAngleVal_" + i);
+    if (cell) cell.textContent = "-";
+  }
   if (status) status.textContent = t("servo_reading_hint");
-  return Alpha2Api.servoAngleAll().then(function (res) {
+  return Alpha2Api.servoBackAngleAll().then(function (res) {
     rows.forEach(function (b) { b.disabled = false; });
     if (!res || !res.ok || !res.angles) {
       if (status) status.textContent = t("servo_read_failed_prefix") + (res && res.error ? res.error : "?");
@@ -215,7 +218,7 @@ const SERVO_RESET_ACTION_ID = "1510818174706";
 
 function resetServoGrid() {
   const homes = [];
-  for (let i = 1; i <= 20; i++) {
+  for (let i = 1; i <= 22; i++) {
     const cal = SERVO_CALIBRATION[i];
     homes.push(cal.home);
     const slider = document.getElementById("servoSlider_" + i);
@@ -225,13 +228,13 @@ function resetServoGrid() {
     const advInp = document.getElementById("advServoVal_" + i);
     if (advInp) advInp.value = cal.home;
   }
-  // 直接寫入原廠截圖角度（1:120 2:120 3:120 4:120 5:120 6:120 7:120 8:65 9:145 10:140 11:120 12:120 13:175 14:95 15:100 16:120 17:120 18:120 19:120 20:120），而非播放動作
+  // 直接寫入原廠截圖角度（1:120 2:120 3:120 4:120 5:120 6:120 7:120 8:65 9:145 10:140 11:120 12:120 13:175 14:95 15:100 16:120 17:120 18:120 19:120 20:120 21:120 22:120），而非播放動作
   return Alpha2Api.servoAll({angles: homes.join(","), time: servoTime()});
 }
 
 function servoAll() {
   const angles = [];
-  for (let i = 1; i <= 20; i++) {
+  for (let i = 1; i <= 22; i++) {
     const slider = document.getElementById("servoSlider_" + i);
     const cal = SERVO_CALIBRATION[i];
     const raw = slider ? parseInt(slider.value, 10) : cal.home;
@@ -335,7 +338,8 @@ function buildAdvTuner() {
     {key:'right-arm', label:'右手', labelEn:'R Arm', icon:'💪', ids:[1,2,3,17]},
     {key:'left-arm', label:'左手', labelEn:'L Arm', icon:'💪', ids:[4,5,6,18]},
     {key:'right-leg', label:'右腳', labelEn:'R Leg', icon:'🦵', ids:[7,8,9,10,11]},
-    {key:'left-leg', label:'左腳', labelEn:'L Leg', icon:'🦵', ids:[12,13,14,15,16]}
+    {key:'left-leg', label:'左腳', labelEn:'L Leg', icon:'🦵', ids:[12,13,14,15,16]},
+    {key:'extra', label:'擴展', labelEn:'Extra', icon:'🧩', ids:[21,22]}
   ];
   groups.forEach(function(g){
     const groupEl = document.createElement("div");
@@ -375,12 +379,12 @@ function buildAdvTuner() {
   const statusEl = document.getElementById("advTunerStatus");
   if (statusEl) statusEl.textContent = t("servo_tuner_ready", { v: "0906l" });
 }
-// 校准按鈕（官方「校准」同款）——將 20 格有效 trim 順序寫入 chest EEPROM（掉電保持）。格內無數／未掃描 skip 並報告；每粒附帶送本身角度（time=100，已在位不會動）。
+// 校准按鈕（官方「校准」同款）——將 22 格有效 trim 順序寫入 chest EEPROM（掉電保持）。格內無數／未掃描 skip 並報告；每粒附帶送本身角度（time=100，已在位不會動）。
 function advCalibrateAll() {
   const statusEl = document.getElementById("advTunerStatus");
   const jobs = [];
   const skipped = [];
-  for (let i = 1; i <= 20; i++) {
+  for (let i = 1; i <= 22; i++) {
     const el = document.getElementById("advServoOff_" + i);
     const t = el ? parseInt(el.textContent, 10) : NaN;
     if (isNaN(t) || !advTrimScanned[i]) { skipped.push(i); continue; }
@@ -518,12 +522,12 @@ function advTunerReadAll() {
   const statusEl = document.getElementById("advTunerStatus");
   statusEl.textContent = t("servo_tuner_read_all");
   return Alpha2Api.servoReadAll().then(function(json){
-    if (!json.ok || !json.live || !json.trims || json.trims.length !== 20) {
-      statusEl.textContent = t("servo_tuner_read_fail", { id: "1-20" }) + advErrSuffix(json.error);
+    if (!json.ok || !json.live || !json.trims || json.trims.length !== 22) {
+      statusEl.textContent = t("servo_tuner_read_fail", { id: "1-22" }) + advErrSuffix(json.error);
       return json;
     }
     let okCount = 0;
-    for (let i = 1; i <= 20; i++) {
+    for (let i = 1; i <= 22; i++) {
       const v = json.trims[i - 1];
       if (v === null || v === undefined) {
         document.getElementById("advServoOff_" + i).textContent = t("servo_tuner_no_feedback");
@@ -541,7 +545,7 @@ function advTunerReadAll() {
 function advTunerReset() {
   // 復位 = 成組回home，動完自動重新掃描 trim（chest 存值不受動角度影響）。格設「…」等掃，不填計出來的數；兼清 scanned 旗 — 填 0 會寫入 EEPROM 覆蓋掉出廠 trim。
   const homes = [];
-  for (let i = 1; i <= 20; i++) {
+  for (let i = 1; i <= 22; i++) {
     const cal = SERVO_CALIBRATION[i];
     homes.push(cal.home);
     const inp = document.getElementById("advServoVal_" + i);
@@ -566,7 +570,7 @@ function advTunerReset() {
 function _advPerformBackupNow() {
   // 僅備份 offsets（角度格是即時目標，寫下 file 無用）。讀失敗記 null；有效性經 advTrimScanned 判。
   const offsets = {};
-  for (let i = 1; i <= 20; i++) {
+  for (let i = 1; i <= 22; i++) {
     if (!advTrimScanned[i]) { offsets[i] = null; continue; }
     const offEl = document.getElementById("advServoOff_" + i);
     const rawTxt = offEl ? offEl.textContent.trim() : "";
@@ -595,7 +599,7 @@ function advBackup() {
   // 必須先掃一次 offset，否則沒有結果：檢測仍顯示 "-" 的格子
   let needScan = false;
   let unscanned = 0;
-  for (let i = 1; i <= 20; i++) {
+  for (let i = 1; i <= 22; i++) {
     const offEl = document.getElementById("advServoOff_" + i);
     const txt = offEl ? offEl.textContent.trim() : "-";
     // "-"（新頁）/"…"（準備後等掃）先自動掃；數字（pending 或存值）同「讀失敗」
@@ -632,7 +636,7 @@ function advImport(input) {
         offsets = data;
       }
       let countOff = 0;
-      for (let i = 1; i <= 20; i++) {
+      for (let i = 1; i <= 22; i++) {
         const k = String(i);
         // offsets: restore display
         let raw = null;
@@ -664,9 +668,49 @@ function advImport(input) {
     }
   };
   reader.onerror = function() {
-    if (statusEl) statusEl.textContent = t("servo_tuner_restore_fail") + t("servo_tuner_restore_readerr");
+    if (statusEl) status.textContent = t("servo_tuner_restore_fail") + t("servo_tuner_restore_readerr");
     try { input.value = ""; } catch(e) {}
   };
   reader.readAsText(file);
 }
 
+// ---------------- Change servo ID card (tab-advanced) ----------------
+// Chest cmd 10 MODIFY_ID [old][new] (servo code 205), servo EEPROM persistent.
+// Same collapsible pattern as uuidCardToggle/chestToggle: default collapsed,
+// no localStorage, reopened collapsed on every page load.
+function servoIdCardToggle() {
+  const enabled = document.getElementById("servoIdCardEnabled");
+  const body = document.getElementById("servoIdCardBody");
+  const hint = document.getElementById("servoIdCardDisabledHint");
+  const on = !!(enabled && enabled.checked);
+  if (body) body.style.display = on ? "block" : "none";
+  if (hint) hint.style.display = on ? "none" : "block";
+}
+
+function servoModifyId() {
+  const oldEl = document.getElementById("servoIdOld");
+  const newEl = document.getElementById("servoIdNew");
+  const status = document.getElementById("servoIdStatus");
+  const id = oldEl ? parseInt(oldEl.value, 10) : NaN;
+  const newId = newEl ? parseInt(newEl.value, 10) : NaN;
+  if (isNaN(id) || isNaN(newId) || id < 1 || id > 22 || newId < 1 || newId > 22) {
+    if (status) status.textContent = t("servo_id_range_error");
+    return Promise.resolve();
+  }
+  if (id === newId) {
+    if (status) status.textContent = t("servo_id_same_error");
+    return Promise.resolve();
+  }
+  if (!confirm(t("servo_id_confirm", { id: id, newId: newId }))) return Promise.resolve();
+  if (status) status.textContent = t("servo_id_sending", { id: id, newId: newId });
+  return Alpha2Api.servoModifyId({ id: id, newId: newId }).then(function (json) {
+    if (json && json.ok) {
+      if (status) status.textContent = t("servo_id_done", { id: id, newId: newId });
+    } else {
+      if (status) status.textContent = t("servo_id_fail_prefix") + ((json && (json.error || JSON.stringify(json))) || "?");
+    }
+    return json;
+  }).catch(function (e) {
+    if (status) status.textContent = t("servo_id_fail_prefix") + (e && e.message ? e.message : e);
+  });
+}

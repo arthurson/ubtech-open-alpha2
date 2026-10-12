@@ -42,7 +42,7 @@ public final class DirectChestController {
 
     /** 單舵機：用本 package 的 DeveloperPacketData 打包，保持與原廠完全一致 */
     public boolean setSingleServo(byte id, int angle, short time) {
-        if (id < 1 || id > 20) return false;
+        if (id < 1 || id > 22) return false;
         // 角度單位同 servo/one 一致（0-255；MCP schema 同 spec 上限）：唔鉗位直接
         // 截 byte 會 wrap 猛扯。time 照舊下限 20，上限跟 spec 32767。
         angle = clampAngle(angle);
@@ -58,26 +58,34 @@ public final class DirectChestController {
     /**
      * 群舵機播放幀（跳舞/.ubx）：cmd 3 [20軸byte + short time]，a.m 原文。
      * 注意：setAllServos 的 cmd 52 係另一用途，保持不動，播放一律走此方法。
+     * 兼容 20 或 22 軸：22 時前 20 走 cmd3，21/22 各補一發 cmd05（同 time）。
      */
-    public boolean playAllServos(int[] angles20, short time) {
-        if (angles20 == null || angles20.length != 20) return false;
+    public boolean playAllServos(int[] angles, short time) {
+        if (angles == null || (angles.length != 20 && angles.length != 22)) return false;
         time = clampTime(time);
+        int[] first20 = angles.length == 20 ? angles : java.util.Arrays.copyOf(angles, 20);
         DeveloperPacketData p = new DeveloperPacketData(22);
-        for (int a : angles20) {
+        for (int a : first20) {
             p.putByte((byte) clampByte(a));
         }
         p.putShort_(time);
-        return port.send(RobotWire.CHEST_CMD_SENDMOTOR, p.getBuffer());
+        boolean ok = port.send(RobotWire.CHEST_CMD_SENDMOTOR, p.getBuffer());
+        if (angles.length == 22) {
+            boolean ok21 = setSingleServo((byte) 21, angles[20], time);
+            boolean ok22 = setSingleServo((byte) 22, angles[21], time);
+            return ok && ok21 && ok22;
+        }
+        return ok;
     }
 
     /**
-     * 全舵機 20 個角度。注意：cmd 52 有 ACK 但舵机不动（旧实测），故播放/全组
+     * 全舵機 20/22 個角度。注意：cmd 52 有 ACK 但舵机不动（旧实测），故播放/全組
      * 位姿一律走 cmd 3（dance 通道，a.m 私有发送原文）。單舵機微調則走 cmd 5
      *（setSingleServo，2026-09-06 官方 PC tuner 實測可郁，用戶目視確認）。
      * 位姿追踪见 {@link ServoPoseTracker}。
      */
-    public boolean setAllServos(int[] angles20, short time) {
-        return playAllServos(angles20, time);
+    public boolean setAllServos(int[] angles, short time) {
+        return playAllServos(angles, time);
     }
 
     /** 聲納配置：1.1.7.3 正確值為 subCmd=10, 距離 cm（byte 範圍，超限鉗 0-255 防 wrap） */
@@ -97,7 +105,7 @@ public final class DirectChestController {
 
     /** 讀舵機角度 (cmd 13) - 回幀走 OnFrameListener 解析 */
     public boolean readServo(byte servoId) {
-        if (servoId < 1 || servoId > 20) return false;
+        if (servoId < 1 || servoId > 22) return false;
         return port.send(RobotWire.CHEST_CMD_READ_SERVO, new byte[]{servoId});
     }
 
@@ -109,11 +117,22 @@ public final class DirectChestController {
      * chest EEPROM——亂寫會改出廠校準，調用方須經用戶明確寫入動作先好 call。
      */
     public boolean writeServoTrim(byte servoId, int trim) {
-        if (servoId < 1 || servoId > 20) return false;
+        if (servoId < 1 || servoId > 22) return false;
         if (trim < -32768) trim = -32768;
         if (trim > 32767) trim = 32767;
         byte[] p = new byte[]{(byte) servoId, (byte) ((trim >> 8) & 0xFF), (byte) (trim & 0xFF)};
         return port.send(RobotWire.CHEST_CMD_WRITE_TRIM, p);
+    }
+
+    /**
+     * 修改舵機 ID (cmd 10, payload [舊id][新id]，胸板再經 servo 碼 205 轉發落 bus)。
+     * 寫入舵機 EEPROM 掉電保持——調用方須經用戶明確寫入動作先好 call。
+     * 注意：同一 bus 上唔可以有兩粒同 ID，改之前確保目標新 ID 無被佔用。
+     */
+    public boolean modifyServoId(byte oldId, byte newId) {
+        if (oldId < 1 || oldId > 22) return false;
+        if (newId < 1 || newId > 22) return false;
+        return port.send(RobotWire.CHEST_CMD_MODIFY_SERVO_ID, new byte[]{oldId, newId});
     }
 
     /** 讀胸板固件版本 cmd 51 */
@@ -130,19 +149,24 @@ public final class DirectChestController {
         return port.send(RobotWire.CHEST_READ_SID_EEPROM, null);
     }
 
+    /** 官方升級請求 ID（upgrade APK Alpha2SerialProtocol 请求一律 ID=1；
+     *  05 係 LAP 頭，升級誤用會令 MCU 回 NAK——之前假 success 即咁嚟）。 */
+    public static final byte UPGRADE_ID = 1;
+
     /** 開始升級 chest：cmd 48 + 4B fileLen 大端（fileLen 必須 >0，負數編出嚟
-     *  MCU 會當巨文件，有變磚風險，直接拒）。 */
-    public boolean startUpdate(int fileLen) {
+     *  MCU 會當巨文件，有變磚風險，直接拒）。index 須 1..127（官方 getUnusedIndex
+     *  從不用 0，ChestUpgrade 滾動分配）。 */
+    public boolean startUpdate(int fileLen, int index) {
         if (fileLen <= 0) return false;
         byte[] p = new byte[4];
         p[0] = (byte) ((fileLen >> 24) & 0xFF);
         p[1] = (byte) ((fileLen >> 16) & 0xFF);
         p[2] = (byte) ((fileLen >> 8) & 0xFF);
         p[3] = (byte) (fileLen & 0xFF);
-        return port.send(RobotWire.CHES_CMD_START_UPDATE, p);
+        return port.sendUpgrade(UPGRADE_ID, (byte) index, RobotWire.CHES_CMD_START_UPDATE, p);
     }
 
-    public boolean updatePage(byte[] pageData, int pageLen) {
+    public boolean updatePage(byte[] pageData, int pageLen, int index) {
         // pageLen 無檢查會 NegativeArraySize/OOM/arraycopy 越界，壞包直落 MCU。
         if (pageData == null || pageLen < 0 || pageLen > pageData.length) return false;
         if (pageLen == 0) return false;
@@ -150,12 +174,12 @@ public final class DirectChestController {
         p[0] = (byte) ((pageLen >> 8) & 0xFF);
         p[1] = (byte) (pageLen & 0xFF);
         System.arraycopy(pageData, 0, p, 2, pageLen);
-        return port.send(RobotWire.CHES_CMD_UPDATE_PAGE, p);
+        return port.sendUpgrade(UPGRADE_ID, (byte) index, RobotWire.CHES_CMD_UPDATE_PAGE, p);
     }
 
-    public boolean endUpdate(byte[] md5_16) {
+    public boolean endUpdate(byte[] md5_16, int index) {
         if (md5_16 == null || md5_16.length != 16) return false;
-        return port.send(RobotWire.CHES_CMD_UPDATE_END, md5_16);
+        return port.sendUpgrade(UPGRADE_ID, (byte) index, RobotWire.CHES_CMD_UPDATE_END, md5_16);
     }
 
     /** 原始幀透傳（debug/serial/send、set_uuid、version fallback 用）。pure-direct 下取代 robot.chest_sendRawData。 */

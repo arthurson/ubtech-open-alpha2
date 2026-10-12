@@ -200,7 +200,7 @@
   <!-- ============ TAB: SERVO ============ -->
   <div id="tab-servo" class="tab-page">
     <section class="card">
-      <h2 data-i18n="servo_heading">舵機 (Servos, 1–20)</h2>
+      <h2 data-i18n="servo_heading">舵機 (Servos, 1–22)</h2>
       <p class="hint" data-i18n="servo_hint">拖動滑桿, 放手即送出, 自動限制在安全範圍內。</p>
       <div class="row">
         <label data-i18n="servo_time_label">時間(ms)：</label>
@@ -211,7 +211,7 @@
         <button onclick="servoReadAllAngles()" data-i18n="servo_read_all_btn">📖 讀取全部</button>
         <span id="servoReadStatus" class="hint"></span>
       </div>
-      <p class="hint" data-i18n="servo_read_hint">讀指定一顆或一次過讀全部舵機即時角度（讀完即寫回上力），顯示在對應行右邊；讀不到顯示 -。全部約 6 秒，讀取時請固定好機械人。</p>
+      <p class="hint" data-i18n="servo_read_hint">讀指定一顆或一次過讀全部舵機即時角度（0x17 純讀，唔寫回），顯示在對應行右邊；讀不到顯示 -。全部約 1 秒，讀取時請固定好機械人。</p>
       <div id="servoGroups"></div>
     </section>
   </div>
@@ -1033,7 +1033,7 @@
 
     <section class="card" oncontextmenu="return false" style="-webkit-touch-callout:none;-webkit-user-select:none;user-select:none">
       <div class="row" style="justify-content:space-between;align-items:center">
-        <h2 style="margin:0" data-i18n="servo_tuner_heading">🔧 Servo Angle Tuner (20ch)</h2>
+        <h2 style="margin:0" data-i18n="servo_tuner_heading">🔧 Servo Angle Tuner (22ch)</h2>
         <label class="switch-label">
           <span class="toggle-switch">
             <input type="checkbox" id="advTunerEnabled" onchange="advTunerToggle()">
@@ -1041,9 +1041,9 @@
           </span>
         </label>
       </div>
-      <p id="advTunerDisabledHint" class="hint" data-i18n="servo_tuner_disabled_hint">開啟後才顯示 20ch 微調器（長按 ±1 連發，offset 即時計算，已禁用長按選單）</p>
+      <p id="advTunerDisabledHint" class="hint" data-i18n="servo_tuner_disabled_hint">開啟後才顯示 22ch 微調器（長按 ±1 連發，offset 即時計算，已禁用長按選單）</p>
       <div id="advTunerBody" style="display:none" oncontextmenu="return false">
-        <p class="hint" data-i18n="servo_tuner_hint">獨立於舵機分頁的進階微調器 — 直接修改 20 顆 servo 角度，±1° 精調，一鍵讀取全部目前角度。與原廠 1.0.0.4 校準工具相同佈局（1-20 對應肩/肘/髖/膝/踝/手/頭）。長按 ±1 連發時已禁用系統複製選單。</p>
+        <p class="hint" data-i18n="servo_tuner_hint">獨立於舵機分頁的進階微調器 — 直接修改 22 顆 servo 角度，±1° 精調，一鍵讀取全部目前角度。與原廠 1.0.0.4 校準工具相同佈局（1-20 對應肩/肘/髖/膝/踝/手/頭，21-22 為擴展）。長按 ±1 連發時已禁用系統複製選單。</p>
         <div class="row">
           <button onclick="advTunerReset()" class="secondary" data-i18n="servo_tuner_standby">復位+掃描</button>
           <button onclick="advCalibrateAll()" class="danger-btn" style="background:#dc2626;color:white" data-i18n="servo_tuner_calibrate">校准</button>
@@ -1055,6 +1055,30 @@
         </div>
         <div id="advServoTunerGrid" class="servo-tuner-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px" oncontextmenu="return false"></div>
         <p id="advTunerStatus" class="hint"></p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0" data-i18n="servo_id_heading">🔢 更改舵機 ID</h2>
+        <label class="switch-label">
+          <span class="toggle-switch">
+            <input type="checkbox" id="servoIdCardEnabled" onchange="servoIdCardToggle()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
+      <p id="servoIdCardDisabledHint" class="hint" data-i18n="servo_id_disabled_hint">開啟先會顯示更改舵機 ID 功能</p>
+      <div id="servoIdCardBody" style="display:none">
+        <p class="hint" data-i18n="servo_id_hint">胸板命令 10 [舊 ID][新 ID]，經舵機碼 205 寫入舵機 EEPROM，掉電保持。同一 bus 唔可以有兩粒同 ID；改完去舵機頁試郁新 ID 驗證。</p>
+        <div class="row">
+          <label data-i18n="servo_id_old_label">舊 ID：</label>
+          <input id="servoIdOld" type="number" min="1" max="22" value="1" style="width:70px">
+          <label data-i18n="servo_id_new_label" style="margin-left:8px">新 ID：</label>
+          <input id="servoIdNew" type="number" min="1" max="22" value="2" style="width:70px">
+          <button class="danger-btn" onclick="servoModifyId()" data-i18n="servo_id_change_btn">✏️ 更改 ID</button>
+        </div>
+        <p id="servoIdStatus" class="hint"></p>
       </div>
     </section>
 
@@ -1105,7 +1129,7 @@
           <span class="hint" data-i18n="chest_current_version">当前版本：</span><span id="chestVersionText" class="hint" style="font-weight:bold"></span>
           <button class="secondary" onclick="chestCheck()" style="margin-left:12px" data-i18n="chest_btn_current">当前版本</button>
         </div>
-        <p class="hint" style="margin-top:10px" data-i18n="chest_hint_upload">选择 256KB 的 ALPHA2Q-CHEST-*.bin，先上传到 /sdcard/AlphaII_CHEST_kernel.bin，再按升级：</p>
+        <p class="hint" style="margin-top:10px" data-i18n="chest_hint_upload">选择 256KB 全镜像或 ≤112KB 小镜像（ALPHA2Q-CHEST-*.bin），先上传到 /sdcard/AlphaII_CHEST_kernel.bin，再按升级：</p>
         <div class="row" style="align-items:center">
           <input type="file" id="chestBinFile" accept=".bin">
           <button onclick="chestUpload()" data-i18n="chest_btn_upload">上传</button>
@@ -1152,13 +1176,13 @@
        3. 中間檔案之間沒有排序依賴（function hoisting），保持原 section 順序方便對照。
      尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
      所以全部 <script src> 一定要行完先到那個 inline script。 -->
-<script src="app-core.js?v=20261001c"></script>
-<script src="api-client.js?v=20261001a"></script>
+<script src="app-core.js?v=20261001f"></script>
+<script src="api-client.js?v=20261001d"></script>
 <script src="app-status.js?v=20261001a"></script>
 <script src="app-actions.js?v=20261001a"></script>
 <script src="app-speech.js?v=20261001a"></script>
 <script src="app-vosk.js?v=20261001a"></script>
-<script src="app-servo.js?v=20261001a"></script>
+<script src="app-servo.js?v=20261001d"></script>
 <script src="app-gamepad.js?v=20261001j"></script>
 <script src="app-led.js?v=20261001a"></script>
 <script src="app-camera.js?v=20261001b"></script>
@@ -1169,7 +1193,7 @@
 <script src="app-mic.js?v=20261001a"></script>
 <script src="app-accel.js?v=20261001a"></script>
 <script src="app-qr.js?v=20261001a"></script>
-<script src="app-chest.js?v=20261001a"></script>
+<script src="app-chest.js?v=20261001c"></script>
 <script src="app-actions-pack.js?v=20261001a"></script>
 <script src="app-apk.js?v=20261001a"></script>
 <script src="app-log.js?v=20261001a"></script>
