@@ -493,8 +493,8 @@ public class HttpServer implements Runnable {
         }
         // body 上限：len 來自客戶端 Content-Length，不設限會 OOM。正常 body
         // 最大是 /upload/audio walkie-talkie PCM chunk (幾十 KB)，32MB 留有餘裕。
-        // 胸固件上載得 256KB，給 1MB（/upload/chest 專用上限；
-        // handleChestUpload 自己都會再驗一次）。
+        // 胸固件只收 ≤112KB app 小鏡像；仍給 1MB（/upload/chest 專用上限），等誤傳嘅 256KB 全鏡像
+        // 都能去到 handleChestUpload 攞明確 400 原因，唔好喺呢度靜靜斷線。
         final int maxBody = path.startsWith("/upload/chest") ? (1024 * 1024) : (32 * 1024 * 1024);
         if (len < 0 || len > maxBody) {
             Log.w(TAG, "Rejecting request with Content-Length=" + len + " (limit " + maxBody + ")");

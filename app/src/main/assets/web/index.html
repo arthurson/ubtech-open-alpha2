@@ -278,7 +278,7 @@
           <div><div class="gp-stick"><div class="gp-nub" id="gpnub-r"></div></div><div class="gp-stick-label">R</div></div>
         </div>
       </div>
-      <p class="hint" data-i18n="gamepad_pad_card_hint">直連手柄按鍵即時亮燈（經 WebSocket）；右搖桿郁點。默认映射：十字步態，A 停止。</p>
+      <p class="hint" data-i18n="gamepad_pad_card_hint">直連手柄按鍵即時亮燈（經 WebSocket）；右搖桿郁點。默認映射：十字步態，A 停止。</p>
       <div class="row">
         <span data-i18n="gamepad_last_label">最後按鍵：</span>
         <span id="gamepadLastOut" class="device-value">-</span>
@@ -1068,17 +1068,45 @@
           </span>
         </label>
       </div>
-      <p id="servoIdCardDisabledHint" class="hint" data-i18n="servo_id_disabled_hint">開啟先會顯示更改舵機 ID 功能</p>
+      <p id="servoIdCardDisabledHint" class="hint" data-i18n="servo_id_disabled_hint">啟用後才會顯示更改舵機 ID 功能</p>
       <div id="servoIdCardBody" style="display:none">
-        <p class="hint" data-i18n="servo_id_hint">胸板命令 10 [舊 ID][新 ID]，經舵機碼 205 寫入舵機 EEPROM，掉電保持。同一 bus 唔可以有兩粒同 ID；改完去舵機頁試郁新 ID 驗證。</p>
+        <p class="hint" data-i18n="servo_id_hint">透過胸板命令 10 [舊 ID][新 ID]，經舵機碼 205 寫入舵機 EEPROM，掉電保持。同一總線不可有兩顆相同 ID；完成後請至舵機頁面試動新 ID 驗證。</p>
         <div class="row">
           <label data-i18n="servo_id_old_label">舊 ID：</label>
-          <input id="servoIdOld" type="number" min="1" max="22" value="1" style="width:70px">
+          <input id="servoIdOld" type="number" min="1" max="22" value="1" style="width:70px" oninput="servoIdBusUpdate()">
           <label data-i18n="servo_id_new_label" style="margin-left:8px">新 ID：</label>
-          <input id="servoIdNew" type="number" min="1" max="22" value="2" style="width:70px">
+          <input id="servoIdNew" type="number" min="1" max="22" value="1" style="width:70px" oninput="servoIdBusUpdate()">
+        <p class="hint" data-i18n="servo_id_bus_hint">⚠️ 胸板左右兩個舵機接口不可混插：1,2,3,7,8,9,10,11,17,19,20,21 僅可連接右側接口；4,5,6,12,13,14,15,16,18,22 僅可連接左側接口——接錯一側將無法識別。若新 ID 與舊 ID 分屬不同側，更改後須先拔線改插，否則將立即失去連接！只能在斷電情況下接駁舵機，通電後不可插拔，否則會燒板！</p>
+        <p id="servoIdBusInfo" class="hint"></p>
           <button class="danger-btn" onclick="servoModifyId()" data-i18n="servo_id_change_btn">✏️ 更改 ID</button>
         </div>
         <p id="servoIdStatus" class="hint"></p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0" data-i18n="servo_fw_heading">🔌 舵機固件版本</h2>
+        <label class="switch-label">
+          <span class="toggle-switch">
+            <input type="checkbox" id="servoFwCardEnabled" onchange="servoFwCardToggle()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
+      <p id="servoFwCardDisabledHint" class="hint" data-i18n="servo_fw_disabled_hint">啟用後才會顯示舵機固件版本功能</p>
+      <div id="servoFwCardBody" style="display:none">
+        <p class="hint" data-i18n="servo_fw_hint">透過胸板命令 14 逐顆讀取韌體版本，只讀取、不寫入。版本格式尚未完全驗證，僅供參考。全部約需十幾秒。</p>
+        <div class="row" style="gap:12px">
+          <span class="hint" data-i18n="servo_fw_legend_8kg">🔵 8kg（2,3,5,6,17,18,19,20）</span>
+          <span class="hint" data-i18n="servo_fw_legend_20kg">🟠 20kg（1,4,7–16）</span>
+          <span class="hint" data-i18n="servo_fw_legend_unknown">⚪ 21–22 擴展（未知）</span>
+        </div>
+        <div class="row">
+          <button onclick="servoFwReadAll()" data-i18n="servo_fw_read_all_btn">📖 一鍵讀取全部 1–22</button>
+          <span id="servoFwStatus" class="hint"></span>
+        </div>
+        <div id="servoFwGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px"></div>
       </div>
     </section>
 
@@ -1123,17 +1151,15 @@
           </span>
         </label>
       </div>
-      <p id="chestCardDisabledHint" class="hint" data-i18n="chest_hint_disabled">开启后显示胸板固件版本与升级</p>
+      <p id="chestCardDisabledHint" class="hint" data-i18n="chest_hint_disabled">開啟後顯示胸板固件版本與升級</p>
       <div id="chestCardBody" style="display:none">
         <div class="row" style="align-items:center">
-          <span class="hint" data-i18n="chest_current_version">当前版本：</span><span id="chestVersionText" class="hint" style="font-weight:bold"></span>
-          <button class="secondary" onclick="chestCheck()" style="margin-left:12px" data-i18n="chest_btn_current">当前版本</button>
+          <span class="hint" data-i18n="chest_current_version">當前版本：</span><span id="chestVersionText" class="hint" style="font-weight:bold"></span>
         </div>
-        <p class="hint" style="margin-top:10px" data-i18n="chest_hint_upload">选择 256KB 全镜像或 ≤112KB 小镜像（ALPHA2Q-CHEST-*.bin），先上传到 /sdcard/AlphaII_CHEST_kernel.bin，再按升级：</p>
+        <p class="hint" style="margin-top:10px" data-i18n="chest_hint_upload">選擇 ≤112KB 的 app 小鏡像（4 字節對齊；256KB 完整鏡像包含 bootloader，不適用），選擇後將自動上傳至 /sdcard/AlphaII_CHEST_kernel.bin，再按「開始升級」：</p>
         <div class="row" style="align-items:center">
-          <input type="file" id="chestBinFile" accept=".bin">
-          <button onclick="chestUpload()" data-i18n="chest_btn_upload">上传</button>
-          <button class="secondary" onclick="chestUpgrade()" style="margin-left:8px" data-i18n="chest_btn_upgrade">开始升级</button>
+          <input type="file" id="chestBinFile" accept=".bin" onchange="chestUpload()">
+          <button class="secondary" onclick="chestUpgrade()" style="margin-left:8px" data-i18n="chest_btn_upgrade">開始升級</button>
         </div>
         <p id="chestUploadStatus" class="hint"></p>
         <div id="chestProgressWrap" style="display:none; margin-top:6px">

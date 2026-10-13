@@ -83,6 +83,19 @@ public final class ChestQuery {
     private volatile int modifyIdExpectOld = -1;
     private volatile int modifyIdExpectNew = -1;
     private volatile Boolean modifyIdOk = null;
+    // Motor firmware version read (cmd 14 / 0x0e) latch. Query
+    // f8 8f 08 05 00 0e <id> <sum> ed; reply shape UNVERIFIED
+    // (first real-device read will show raw bytes in logcat + API rawHex).
+    // Claim any payload[0]==14 while waiting and keep the raw payload.
+    private volatile CountDownLatch motorVerLatch;
+    private volatile int motorVerExpectId = -1;
+    private volatile byte[] motorVerPayload = null;
+    // Motor hardware info read (cmd 33 / 0x21) latch. Query
+    // f8 8f 08 05 00 21 <id> <sum> ed; reply shape UNVERIFIED.
+    // Claim any payload[0]==33 while waiting and keep the raw payload.
+    private volatile CountDownLatch motorHwLatch;
+    private volatile int motorHwExpectId = -1;
+    private volatile byte[] motorHwPayload = null;
 
     public ChestQuery(Context context, RobotStub robot) {
         this.appContext = context.getApplicationContext();
@@ -187,6 +200,22 @@ public final class ChestQuery {
             }
             return false;
         }
+        // motor firmware version reply latch (cmd 14). Claim only while waiting;
+        // shape unverified so keep raw payload (copy) for the API layer to parse.
+        if (motorVerLatch != null && motorVerLatch.getCount() > 0
+                && plen >= 1 && (payload[0] & 0xFF) == 14) {
+            motorVerPayload = java.util.Arrays.copyOf(payload, plen);
+            motorVerLatch.countDown();
+            return true;
+        }
+        // motor hardware info reply latch (cmd 33). Claim only while waiting;
+        // shape unverified so keep raw payload (copy) for the API layer.
+        if (motorHwLatch != null && motorHwLatch.getCount() > 0
+                && plen >= 1 && (payload[0] & 0xFF) == 33) {
+            motorHwPayload = java.util.Arrays.copyOf(payload, plen);
+            motorHwLatch.countDown();
+            return true;
+        }
         // modify servo id reply latch (cmd 10). Claim only while waiting.
         // Shape unverified: treat as [10, status, ...] (status 0 = OK), same as cmd12.
         if (modifyIdLatch != null && modifyIdLatch.getCount() > 0
@@ -242,6 +271,12 @@ public final class ChestQuery {
         modifyIdExpectOld = -1;
         modifyIdExpectNew = -1;
         modifyIdOk = null;
+        motorVerLatch = null;
+        motorVerExpectId = -1;
+        motorVerPayload = null;
+        motorHwLatch = null;
+        motorHwExpectId = -1;
+        motorHwPayload = null;
     }
 
     /** 最後一次版本回覆原幀 (拷貝，可 null)，供升級超時診斷 log 用。 */
@@ -722,6 +757,105 @@ public final class ChestQuery {
             return null;
         } finally {
             modifyIdLatch = null;
+        }
+    }
+
+    /**
+     * Read single servo firmware version (cmd 14, payload [id]).
+     * Pure read, touches no EEPROM. Reply shape is UNVERIFIED - this method
+     * returns the raw reply payload (copy) and lets the caller parse/display
+     * rawHex + best-effort ASCII. First real-device reads should be checked
+     * against logcat RX frames before trusting the parsed string.
+     * @return raw reply payload (payload[0]==14), or null on timeout/send fail.
+     */
+    public byte[] queryMotorVersionRaw(int id, long timeoutMs) {
+        if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return null;
+        if (!chestReady()) {
+            android.util.Log.w(TAG, "queryMotorVersionRaw: chest not ready (pure-direct)");
+            return null;
+        }
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        motorVerExpectId = id;
+        motorVerPayload = null;
+        motorVerLatch = latch;
+        boolean sent;
+        try {
+            sent = com.ubtechinc.alpha.hardware.HardwareDirectManager.get(appContext).chest()
+                    .readMotorVersion((byte) id);
+        } catch (Exception e) {
+            android.util.Log.w(TAG, "queryMotorVersionRaw send failed", e);
+            motorVerLatch = null;
+            return null;
+        }
+        android.util.Log.i(TAG, "queryMotorVersionRaw send id=" + id + " -> " + sent);
+        if (!sent) {
+            motorVerLatch = null;
+            return null;
+        }
+        try {
+            boolean ok = latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+            if (!ok) {
+                android.util.Log.w(TAG, "queryMotorVersionRaw timeout id=" + id);
+                return null;
+            }
+            byte[] got = motorVerPayload;
+            android.util.Log.i(TAG, "queryMotorVersionRaw id=" + id
+                    + " raw=" + (got != null ? MainActivity.toHex(got, got.length) : "null"));
+            return got != null ? java.util.Arrays.copyOf(got, got.length) : null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            motorVerLatch = null;
+        }
+    }
+
+    /**
+     * Read single servo hardware info (cmd 33, payload [id]).
+     * Pure read, touches no EEPROM. Reply shape is UNVERIFIED - this method
+     * returns the raw reply payload (copy) and lets the caller parse/display
+     * rawHex + best-effort ASCII.
+     * @return raw reply payload (payload[0]==33), or null on timeout/send fail.
+     */
+    public byte[] queryMotorHardwareRaw(int id, long timeoutMs) {
+        if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return null;
+        if (!chestReady()) {
+            android.util.Log.w(TAG, "queryMotorHardwareRaw: chest not ready (pure-direct)");
+            return null;
+        }
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        motorHwExpectId = id;
+        motorHwPayload = null;
+        motorHwLatch = latch;
+        boolean sent;
+        try {
+            sent = com.ubtechinc.alpha.hardware.HardwareDirectManager.get(appContext).chest()
+                    .readMotorHardware((byte) id);
+        } catch (Exception e) {
+            android.util.Log.w(TAG, "queryMotorHardwareRaw send failed", e);
+            motorHwLatch = null;
+            return null;
+        }
+        android.util.Log.i(TAG, "queryMotorHardwareRaw send id=" + id + " -> " + sent);
+        if (!sent) {
+            motorHwLatch = null;
+            return null;
+        }
+        try {
+            boolean ok = latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+            if (!ok) {
+                android.util.Log.w(TAG, "queryMotorHardwareRaw timeout id=" + id);
+                return null;
+            }
+            byte[] got = motorHwPayload;
+            android.util.Log.i(TAG, "queryMotorHardwareRaw id=" + id
+                    + " raw=" + (got != null ? MainActivity.toHex(got, got.length) : "null"));
+            return got != null ? java.util.Arrays.copyOf(got, got.length) : null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            motorHwLatch = null;
         }
     }
 

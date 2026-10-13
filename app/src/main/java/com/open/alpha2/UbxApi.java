@@ -337,6 +337,275 @@ public final class UbxApi {
                 + ",\"error\":\"timeout (sent, no chest ack; verify by moving new ID)\"}");
     }
 
+    /**
+     * Best-effort parse of a cmd14 reply payload into a version string.
+     * Layout is UNVERIFIED (first real-device reads decide): skip payload[0]
+     * (cmd echo), trim trailing 0x00, then longest printable ASCII run.
+     * Returns null when nothing string-like is found (caller still has rawHex).
+     */
+    static String parseMotorVersion(byte[] payload) {
+        if (payload == null || payload.length < 2) return null;
+        int n = payload.length;
+        int end = n;
+        while (end > 1 && payload[end - 1] == 0) end--;
+        if (end <= 1) return null;
+        int bestStart = -1, bestLen = 0, curStart = -1;
+        for (int i = 1; i <= end; i++) {
+            boolean printable = i < end && (payload[i] & 0xFF) >= 0x20 && (payload[i] & 0xFF) <= 0x7E;
+            if (printable) {
+                if (curStart == -1) curStart = i;
+            } else if (curStart != -1) {
+                if (i - curStart > bestLen) { bestLen = i - curStart; bestStart = curStart; }
+                curStart = -1;
+            }
+        }
+        // Single stray printable bytes (e.g. #1 sample "0e 00 01 30 17 04 06"
+        // where 0x30='0' is likely binary, not text) must not become fake
+        // versions: require at least 2 consecutive printable chars.
+        if (bestLen < 2) return null;
+        try {
+            return new String(payload, bestStart, bestLen, java.nio.charset.StandardCharsets.US_ASCII).trim();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** cmd14 short error frame [0e, 01, id] = servo no feedback (same convention
+     *  as cmd13 read / cmd12 trim error frames; seen on 5/6 faulty, 17/18 finger,
+     *  21/22 absent servos). Real-device verified 2026-10-12. */
+    static boolean isMotorVersionError(byte[] payload) {
+        return payload != null && payload.length == 3 && (payload[0] & 0xFF) == 14 && payload[1] == 1;
+    }
+
+    /** Servo model from version-field byte0 (user-confirmed ground truth,
+     *  real-device 2026-10-13: all 8kg servos reply B0=0x53, all 20kg B0=0x30).
+     *  8kg = [2,3,5,6,17,18,19,20]; 20kg = [1,4,7-16]; 21/22 unknown (absent).
+     *  Returns "8kg"/"20kg", or null when undecodable (incl. error frames). */
+    static String motorModel(byte[] payload) {
+        if (payload == null || payload.length < 4 || isMotorVersionError(payload)) return null;
+        int b0 = payload[3] & 0xFF;
+        if (b0 == 0x53) return "8kg";
+        if (b0 == 0x30) return "20kg";
+        return null;
+    }
+
+    /** Hex of the version field (bytes after cmd/status/id), shown until the
+     *  4-byte layout (e.g. "30 17 04 06") is decoded against official data. */
+    static String motorVersionFieldHex(byte[] payload) {
+        if (payload == null || payload.length < 4) return null;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 3; i < payload.length; i++) {
+            if (i > 3) sb.append(' ');
+            int v = payload[i] & 0xFF;
+            sb.append(Character.forDigit((v >>> 4) & 0xF, 16)).append(Character.forDigit(v & 0xF, 16));
+        }
+        return sb.toString();
+    }
+
+    static String toHexBytes(byte[] b) {
+        if (b == null) return "";
+        StringBuilder sb = new StringBuilder(b.length * 3);
+        for (int i = 0; i < b.length; i++) {
+            if (i > 0) sb.append(' ');
+            int v = b[i] & 0xFF;
+            sb.append(Character.forDigit((v >>> 4) & 0xF, 16)).append(Character.forDigit(v & 0xF, 16));
+        }
+        return sb.toString();
+    }
+
+    public HttpServer.ApiResponse servoVersionResponse(java.util.Map<String, String> query) {
+        // Single servo firmware version (chest cmd14 live query, pure read).
+        // Reply layout unverified: response carries both parsed version (best
+        // effort, may be null) and rawHex (authoritative until verified).
+        int idInt = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
+        byte[] raw = (chestQuery == null) ? null : chestQuery.queryMotorVersionRaw(idInt, 500);
+        if (raw == null) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + idInt
+                    + ",\"error\":\"no feedback (timeout)\"}");
+        }
+        if (isMotorVersionError(raw)) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + idInt
+                    + ",\"rawHex\":\"" + toHexBytes(raw) + "\""
+                    + ",\"error\":\"no feedback (servo error frame - faulty/disconnected servo)\"}");
+        }
+        String ver = parseMotorVersion(raw);
+        if (ver == null || ver.isEmpty()) ver = motorVersionFieldHex(raw);
+        String model = motorModel(raw);
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"id\":" + idInt);
+        sb.append(",\"rawHex\":\"").append(toHexBytes(raw)).append("\"");
+        sb.append(",\"model\":").append(model != null ? ("\"" + model + "\"") : "null");
+        if (ver != null && !ver.isEmpty()) sb.append(",\"version\":\"").append(MainActivity.jsonSafe(ver)).append("\"");
+        else sb.append(",\"version\":null");
+        sb.append('}');
+        return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    public HttpServer.ApiResponse servoVersionAllResponse() {
+        // One-click read of all 22 servo firmware versions (cmd14, pure read).
+        // First pass single attempt per servo (500ms) with 100ms gaps, then one
+        // retry pass over failed ids only; persistent failures go into failed
+        // with null slots (same shape as servo/read-all).
+        String[] versions = new String[ApiValidator.SERVO_COUNT];
+        String[] raws = new String[ApiValidator.SERVO_COUNT];
+        String[] models = new String[ApiValidator.SERVO_COUNT];
+        StringBuilder failed = new StringBuilder("[");
+        boolean firstFail = true;
+        for (int i = 1; i <= ApiValidator.SERVO_COUNT; i++) {
+            byte[] raw = (chestQuery == null) ? null : chestQuery.queryMotorVersionRaw(i, 500);
+            if (raw == null || isMotorVersionError(raw)) {
+                versions[i - 1] = null;
+                raws[i - 1] = raw != null ? toHexBytes(raw) : null;
+                if (!firstFail) failed.append(',');
+                failed.append(i);
+                firstFail = false;
+            } else {
+                String ver = parseMotorVersion(raw);
+                versions[i - 1] = (ver != null && !ver.isEmpty()) ? ver : motorVersionFieldHex(raw);
+                raws[i - 1] = toHexBytes(raw);
+                models[i - 1] = motorModel(raw);
+            }
+            if (i < ApiValidator.SERVO_COUNT) {
+                if (!sleepBetweenServos()) break;
+            }
+        }
+            // One retry pass over failed ids only (servo bus reads are flaky:
+            // 12/13/14/16 answered one scan and error-framed the next, real-device
+            // 2026-10-13). Keeps the common all-good case at single-pass speed.
+            java.util.ArrayList<Integer> retryIds = new java.util.ArrayList<Integer>();
+            for (int i = 1; i <= ApiValidator.SERVO_COUNT; i++) {
+                if (versions[i - 1] == null) retryIds.add(i);
+            }
+            if (!retryIds.isEmpty()) {
+                try { Thread.sleep(300); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                for (int id : retryIds) {
+                    if (Thread.currentThread().isInterrupted()) break;
+                    byte[] raw = (chestQuery == null) ? null : chestQuery.queryMotorVersionRaw(id, 500);
+                    if (raw != null && !isMotorVersionError(raw)) {
+                        String v2 = parseMotorVersion(raw);
+                        versions[id - 1] = (v2 != null && !v2.isEmpty()) ? v2 : motorVersionFieldHex(raw);
+                        raws[id - 1] = toHexBytes(raw);
+                        models[id - 1] = motorModel(raw);
+                    }
+                }
+                failed = new StringBuilder("[");
+                firstFail = true;
+                for (int i = 1; i <= ApiValidator.SERVO_COUNT; i++) {
+                    if (versions[i - 1] == null) {
+                        if (!firstFail) failed.append(',');
+                        failed.append(i);
+                        firstFail = false;
+                    }
+                }
+            }
+        failed.append(']');
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"versions\":[");
+        for (int i = 0; i < ApiValidator.SERVO_COUNT; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(versions[i] != null ? ("\"" + MainActivity.jsonSafe(versions[i]) + "\"") : "null");
+        }
+        sb.append("],\"rawHex\":[");
+        for (int i = 0; i < ApiValidator.SERVO_COUNT; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(raws[i] != null ? ("\"" + raws[i] + "\"") : "null");
+        }
+        sb.append("],\"models\":[");
+        for (int i = 0; i < ApiValidator.SERVO_COUNT; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(models[i] != null ? ("\"" + models[i] + "\"") : "null");
+        }
+        sb.append("],\"failed\":").append(failed).append('}');
+        return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    public HttpServer.ApiResponse servoHardwareResponse(java.util.Map<String, String> query) {
+        // Single servo hardware info (chest cmd33 live query, pure read).
+        // Reply layout unverified: hw is best-effort (may be null), rawHex authoritative.
+        int idInt = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
+        byte[] raw = (chestQuery == null) ? null : chestQuery.queryMotorHardwareRaw(idInt, 500);
+        if (raw == null) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + idInt
+                    + ",\"error\":\"no feedback (timeout)\"}");
+        }
+        if (raw.length == 3 && raw[1] == 1) {
+            return HttpServer.ApiResponse.ok("{\"ok\":false,\"id\":" + idInt
+                    + ",\"rawHex\":\"" + toHexBytes(raw) + "\""
+                    + ",\"error\":\"no feedback (servo error frame - unsupported or faulty servo)\"}");
+        }
+        String hw = parseMotorVersion(raw);
+        if (hw == null || hw.isEmpty()) hw = motorVersionFieldHex(raw);
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"id\":" + idInt);
+        sb.append(",\"rawHex\":\"").append(toHexBytes(raw)).append("\"");
+        if (hw != null && !hw.isEmpty()) sb.append(",\"hw\":\"").append(MainActivity.jsonSafe(hw)).append("\"");
+        else sb.append(",\"hw\":null");
+        sb.append('}');
+        return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    public HttpServer.ApiResponse servoHardwareAllResponse() {
+        // One-click read of all 22 servo hardware infos (cmd33, pure read).
+        // First pass single attempt per servo (500ms) with 100ms gaps, then one
+        // retry pass over failed ids only.
+        String[] hws = new String[ApiValidator.SERVO_COUNT];
+        String[] raws = new String[ApiValidator.SERVO_COUNT];
+        StringBuilder failed = new StringBuilder("[");
+        boolean firstFail = true;
+        for (int i = 1; i <= ApiValidator.SERVO_COUNT; i++) {
+            byte[] raw = (chestQuery == null) ? null : chestQuery.queryMotorHardwareRaw(i, 500);
+            if (raw == null) {
+                hws[i - 1] = null;
+                raws[i - 1] = null;
+                if (!firstFail) failed.append(',');
+                failed.append(i);
+                firstFail = false;
+            } else {
+                String hw = parseMotorVersion(raw);
+                hws[i - 1] = (hw != null && !hw.isEmpty()) ? hw : motorVersionFieldHex(raw);
+                raws[i - 1] = toHexBytes(raw);
+            }
+            if (i < ApiValidator.SERVO_COUNT) {
+                if (!sleepBetweenServos()) break;
+            }
+        }
+        java.util.ArrayList<Integer> retryIds = new java.util.ArrayList<Integer>();
+        for (int i = 1; i <= ApiValidator.SERVO_COUNT; i++) {
+            if (hws[i - 1] == null) retryIds.add(i);
+        }
+        if (!retryIds.isEmpty()) {
+            try { Thread.sleep(300); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            for (int id : retryIds) {
+                if (Thread.currentThread().isInterrupted()) break;
+                byte[] raw = (chestQuery == null) ? null : chestQuery.queryMotorHardwareRaw(id, 500);
+                if (raw != null) {
+                    String hw = parseMotorVersion(raw);
+                    hws[id - 1] = (hw != null && !hw.isEmpty()) ? hw : motorVersionFieldHex(raw);
+                    raws[id - 1] = toHexBytes(raw);
+                }
+            }
+            failed = new StringBuilder("[");
+            firstFail = true;
+            for (int i = 1; i <= ApiValidator.SERVO_COUNT; i++) {
+                if (hws[i - 1] == null) {
+                    if (!firstFail) failed.append(',');
+                    failed.append(i);
+                    firstFail = false;
+                }
+            }
+        }
+        failed.append(']');
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"hws\":[");
+        for (int i = 0; i < ApiValidator.SERVO_COUNT; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(hws[i] != null ? ("\"" + MainActivity.jsonSafe(hws[i]) + "\"") : "null");
+        }
+        sb.append("],\"rawHex\":[");
+        for (int i = 0; i < ApiValidator.SERVO_COUNT; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(raws[i] != null ? ("\"" + raws[i] + "\"") : "null");
+        }
+        sb.append("],\"failed\":").append(failed).append('}');
+        return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
     public HttpServer.ApiResponse servoBackAngleAllResponse() {
         // 20 連讀回讀角度 (cmd 23 / 0x17)：逐顆單發、無間隔、唔重試、唔寫回。
         // 實測 20 粒 230ms 全中（16 有數＋5/6/17/18 短 error 幀），唔使等。

@@ -27,16 +27,29 @@ public final class ChestUpgrade {
 
     /** 升級用固件檔（上載／燒錄同一路徑，見 handleChestUpload／startChestUpgradeFrom）。 */
     public static final String FIRMWARE_PATH = "/sdcard/AlphaII_CHEST_kernel.bin";
-    /** 完整 flash 鏡像大小（2048 頁 × 128B；上載閘＋啟動檢查同一數值，唔啱即拒，唔好燒半檔變磚）。 */
+    /** 完整 flash 鏡像大小（256KB，含 bootloader）。app staging 更新只寫 app 區、唔會更新 bootloader，
+     *  所以呢種鏡像一律拒收；常量只用嚟識別並畀出明確錯誤訊息。 */
     public static final long FIRMWARE_SIZE = 262144L;
     /** V352 staging app-update 小鏡像上限（0x0801F000..0x0803B000 共 0x1C000＝114688 bytes；此值或以下走 staging 更新，超限 MCU 經 48 回覆拒收）。 */
     public static final long FIRMWARE_SMALL_MAX = 0x1C000L;
     public static final int FIRMWARE_PAGES = 2048;
     public static final int PAGE_SIZE = 128;
 
-    /** 合法固件大小：256KB 全鏡像，或 1..114688 bytes 小鏡像（見 FIRMWARE_SMALL_MAX）。 */
+    /** 合法固件大小：只收 app 小鏡像 1..114688 bytes（見 FIRMWARE_SMALL_MAX），而且要係 4 嘅倍數：
+     *  MCU 按 word 寫 staging，END 睇「最後 24 byte」有冇 ChestLar2s，唔係 4 倍數會令尾巴視窗移位而被拒
+     *  （bytes staged but NOT applied）。256KB 全鏡像含 bootloader，staging 更新食唔到，唔收。 */
     public static boolean isAcceptedFirmwareSize(long len) {
-        return len == FIRMWARE_SIZE || (len > 0 && len <= FIRMWARE_SMALL_MAX);
+        return len > 0 && len <= FIRMWARE_SMALL_MAX && (len & 3) == 0;
+    }
+
+    /** 固件大小不合時嘅明確原因（null＝合法）。上載同升級啟動共用。 */
+    public static String firmwareSizeError(long len) {
+        if (isAcceptedFirmwareSize(len)) return null;
+        if (len == FIRMWARE_SIZE) {
+            return "256KB full image contains the bootloader; app update cannot flash it. "
+                + "Use the app-only small image (1.." + FIRMWARE_SMALL_MAX + " bytes, multiple of 4, ending with the ChestLar2s tag)";
+        }
+        return "bad firmware size (" + len + " bytes), need 1.." + FIRMWARE_SMALL_MAX + " bytes and a multiple of 4 (app-only small image)";
     }
 
     // 胸口升級狀態 (48/49/50 協議，見 ag_chess/com/ubtechinc/h/a/a$b.java)
@@ -346,9 +359,13 @@ public final class ChestUpgrade {
         if (chestUpgradeInProgress) return "already running";
         java.io.File f = new java.io.File(FIRMWARE_PATH);
         if (!f.exists()) return "file not found: " + FIRMWARE_PATH;
-        // 硬驗大小：256KB 全鏡像或 1..114688 小鏡像先收；其他（adb 誤 push／上載損毀）直接拒，唔好照燒（會變磚）。
-        if (!isAcceptedFirmwareSize(f.length())) {
-            return "bad firmware size (" + f.length() + " bytes), need 262144 or 1.." + FIRMWARE_SMALL_MAX;
+        // 硬驗大小：只收 4 byte 對齊嘅 1..114688 app 小鏡像；256KB 全鏡像（含 bootloader）同其他
+        // （adb 誤 push／上載損毀）直接拒，唔好照燒。
+        String sizeErr = firmwareSizeError(f.length());
+        if (sizeErr != null) return sizeErr;
+        // staging 更新：48 START 會擦 staging 並重設寫入指標＋MD5，續傳必然 END MD5 失敗，直接拒。
+        if (startPage > 0) {
+            return "resume unsupported for staging update (START erases staging); use startPage=0";
         }
         if (!isPowerEnoughForUpgrade()) {
             int pct = getBatteryPercentForUpgrade();
@@ -384,7 +401,6 @@ public final class ChestUpgrade {
             + ",\"fileExists\":" + fileExists
             + ",\"fileSizeBytes\":" + fileSize
             + ",\"filePages\":" + ((fileSize + PAGE_SIZE - 1) / PAGE_SIZE)
-            + ",\"wantSizeBytes\":" + FIRMWARE_SIZE
             + ",\"smallMaxBytes\":" + FIRMWARE_SMALL_MAX + "}";
     }
 
@@ -405,16 +421,18 @@ public final class ChestUpgrade {
         } catch (Exception e) { return HttpServer.ApiResponse.error(String.valueOf(e.getMessage())); }
     }
 
-    /** 胸板固件上載 - 接收 256KB 全鏡像或 1..114688 小鏡像（ALPHA2Q-CHEST-*.bin），寫入 /sdcard/AlphaII_CHEST_kernel.bin。 */
+    /** 胸板固件上載 - 只接收 1..114688 bytes（4 byte 對齊）app 小鏡像，寫入 /sdcard/AlphaII_CHEST_kernel.bin；256KB 全鏡像（含 bootloader）會被拒。 */
     public HttpServer.ApiResponse handleChestUpload(Map<String, String> query, byte[] body) {
         if (body == null || body.length == 0) {
             return HttpServer.ApiResponse.badRequest("empty file body");
         }
         // 大小不合直接 400 不寫入（壞 bin 留在這裡、下次升級拿錯檔即變磚；
         // 下次升級拿錯檔即變磚；magic 無文件記載不驗，靠升級時 MCU ACK 把關）。
-        // V352 app-update 小鏡像：1..114688 bytes（staging 0x0801F000..0x0803B000）；舊 256KB 全鏡像仍接受。
-        if (!isAcceptedFirmwareSize(body.length)) {
-            return HttpServer.ApiResponse.badRequest("chest firmware must be " + FIRMWARE_SIZE + " bytes or 1.." + FIRMWARE_SMALL_MAX + " bytes, got " + body.length);
+        // V352 app-update 小鏡像：1..114688 bytes、4 byte 對齊（staging 0x0801F000..0x0803B000）；
+        // 256KB 全鏡像含 bootloader，app 更新食唔到，直接拒。
+        String sizeErr = firmwareSizeError(body.length);
+        if (sizeErr != null) {
+            return HttpServer.ApiResponse.badRequest(sizeErr);
         }
         try {
             java.io.File dest = new java.io.File(FIRMWARE_PATH);

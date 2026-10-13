@@ -764,6 +764,17 @@ const Alpha2Api = (function() {
     return api('servo/back-angle-all', params);
   }
 
+  function servoHardware(params) {
+    if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
+    // 讀單顆舵機硬件資訊（胸 cmd33 live query，純讀）
+    return api('servo/hardware', params);
+  }
+
+  function servoHardwareAll(params) {
+    // 一鍵讀全部 22 軸舵機硬件資訊（cmd33，純讀）
+    return api('servo/hardware-all', params);
+  }
+
   function servoModifyId(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
     if (params && params.newId != null) assertRange(Number(params.newId), 1, 22, 'newId');
@@ -800,6 +811,17 @@ const Alpha2Api = (function() {
   function servoSonarGet(params) {
     // 查詢聲納觸發距離閾值（0＝關；面板入頁同步開關用）
     return api('servo/sonar/get', params);
+  }
+
+  function servoVersion(params) {
+    if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
+    // 讀單顆舵機韌體版本（胸 cmd14 live query，純讀）
+    return api('servo/version', params);
+  }
+
+  function servoVersionAll(params) {
+    // 一鍵讀全部 22 軸舵機韌體版本（cmd14，純讀）
+    return api('servo/version-all', params);
   }
 
   // ── speech ──────────────────────────────────────────────
@@ -1239,12 +1261,16 @@ const Alpha2Api = (function() {
     servoAngleRestore,
     servoBackAngle,
     servoBackAngleAll,
+    servoHardware,
+    servoHardwareAll,
     servoModifyId,
     servoOne,
     servoRead,
     servoReadAll,
     servoSonar,
     servoSonarGet,
+    servoVersion,
+    servoVersionAll,
     speechCurTtsEngine,
     speechCurTtsFollowVosk,
     speechCurTtsLang,

@@ -39,6 +39,10 @@ public final class RobotWire {
     public static final byte CHEST_CMD_SENDMOTOR = 3;
     /** 修改舵機 ID/cmd10（DirectChestController.modifyServoId，payload [舊id][新id]，servo 碼 205）。 */
     public static final byte CHEST_CMD_MODIFY_SERVO_ID = 10;
+    /** 讀舵機韌體版本/cmd14（DirectChestController.readMotorVersion，payload [id]，胸板經 FC CF 轉發 servo 碼 1）。 */
+    public static final byte CHEST_CMD_READ_MOTOR_VERSION = 14;
+    /** 讀舵機硬件資訊/cmd33（DirectChestController.readMotorHardware，payload [id]，servo 碼 18）。 */
+    public static final byte CHEST_CMD_READ_MOTOR_HARDWARE = 33;
     public static final byte CHEST_READ_SID_EEPROM = 55;
     public static final byte CHEST_POWER_SAVE = 64;
 

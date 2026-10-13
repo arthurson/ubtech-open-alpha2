@@ -397,6 +397,14 @@ public final class ApiDispatcher {
                 return ubxApi.servoBackAngleAllResponse();
             case "servo/modify-id":
                 return ubxApi.servoModifyIdResponse(query);
+            case "servo/version":
+                return ubxApi.servoVersionResponse(query);
+            case "servo/version-all":
+                return ubxApi.servoVersionAllResponse();
+            case "servo/hardware":
+                return ubxApi.servoHardwareResponse(query);
+            case "servo/hardware-all":
+                return ubxApi.servoHardwareAllResponse();
 
             // -- PIR (body 在 LedCenter；薄 delegate，不要在這裡加 logic) --
             case "pir/set":

@@ -685,6 +685,34 @@ function servoIdCardToggle() {
   const on = !!(enabled && enabled.checked);
   if (body) body.style.display = on ? "block" : "none";
   if (hint) hint.style.display = on ? "none" : "block";
+  if (on) servoIdBusUpdate();
+}
+
+// Chest servo bus sides (user-confirmed wiring: wrong side = unrecognised).
+// Right port: head 19,20 / right arm 1,2,3,17 / right leg 7-11 / 21.
+// Left port: left arm 4,5,6,18 / left leg 12-16 / 22.
+const SERVO_BUS_RIGHT = [1, 2, 3, 7, 8, 9, 10, 11, 17, 19, 20, 21];
+const SERVO_BUS_LEFT = [4, 5, 6, 12, 13, 14, 15, 16, 18, 22];
+function servoBusSideOf(id) {
+  if (SERVO_BUS_RIGHT.indexOf(id) !== -1) return "right";
+  if (SERVO_BUS_LEFT.indexOf(id) !== -1) return "left";
+  return "";
+}
+function servoBusSideName(side) {
+  if (side === "right") return t("servo_id_bus_right");
+  if (side === "left") return t("servo_id_bus_left");
+  return "?";
+}
+function servoIdBusUpdate() {
+  const info = document.getElementById("servoIdBusInfo");
+  if (!info) return;
+  const id = parseInt((document.getElementById("servoIdOld") || {}).value, 10);
+  const newId = parseInt((document.getElementById("servoIdNew") || {}).value, 10);
+  const sOld = servoBusSideOf(id), sNew = servoBusSideOf(newId);
+  if (!sOld || !sNew) { info.textContent = ""; return; }
+  let msg = t("servo_id_bus_info", { sideOld: servoBusSideName(sOld), sideNew: servoBusSideName(sNew) });
+  if (sOld !== sNew) msg += " \u2014 " + t("servo_id_bus_cross", { sideNew: servoBusSideName(sNew) });
+  info.textContent = msg;
 }
 
 function servoModifyId() {
@@ -701,7 +729,10 @@ function servoModifyId() {
     if (status) status.textContent = t("servo_id_same_error");
     return Promise.resolve();
   }
-  if (!confirm(t("servo_id_confirm", { id: id, newId: newId }))) return Promise.resolve();
+  const sOld = servoBusSideOf(id), sNew = servoBusSideOf(newId);
+  let confirmMsg = t("servo_id_confirm", { id: id, newId: newId });
+  if (sOld && sNew && sOld !== sNew) confirmMsg += "\n" + t("servo_id_bus_cross", { sideNew: servoBusSideName(sNew) });
+  if (!confirm(confirmMsg)) return Promise.resolve();
   if (status) status.textContent = t("servo_id_sending", { id: id, newId: newId });
   return Alpha2Api.servoModifyId({ id: id, newId: newId }).then(function (json) {
     if (json && json.ok) {
@@ -712,5 +743,84 @@ function servoModifyId() {
     return json;
   }).catch(function (e) {
     if (status) status.textContent = t("servo_id_fail_prefix") + (e && e.message ? e.message : e);
+  });
+}
+
+// ---------------- Servo firmware version card (tab-advanced) ----------------
+// Chest cmd 14 READ_MOTOR_VERSION, pure read. Reply layout UNVERIFIED:
+// rows show parsed version (may be missing) plus raw hex (authoritative).
+// Same collapsible pattern as servoIdCardToggle: default collapsed.
+function servoFwCardToggle() {
+  const enabled = document.getElementById("servoFwCardEnabled");
+  const body = document.getElementById("servoFwCardBody");
+  const hint = document.getElementById("servoFwCardDisabledHint");
+  const on = !!(enabled && enabled.checked);
+  if (body) body.style.display = on ? "block" : "none";
+  if (hint) hint.style.display = on ? "none" : "block";
+  if (on) servoFwBuildGrid();
+}
+
+// Servo torque groups (user-confirmed hardware fact:
+// 8kg = [2,3,5,6,17,18,19,20], 20kg = [1,4,7-16], 21/22 = extra/unknown).
+// Colours: 8kg blue, 20kg orange, unknown default grey.
+const SERVO_TORQUE_8KG = [2, 3, 5, 6, 17, 18, 19, 20];
+const SERVO_TORQUE_20KG = [1, 4, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+function servoTorqueOf(id) {
+  if (SERVO_TORQUE_8KG.indexOf(id) !== -1) return "8kg";
+  if (SERVO_TORQUE_20KG.indexOf(id) !== -1) return "20kg";
+  return "";
+}
+function servoTorqueColor(id) {
+  const m = servoTorqueOf(id);
+  if (m === "8kg") return "#2563eb";
+  if (m === "20kg") return "#d97706";
+  return "#6b7280";
+}
+
+function servoFwBuildGrid() {
+  const grid = document.getElementById("servoFwGrid");
+  if (!grid) return;
+  if (grid.children.length === 22) return;
+  grid.innerHTML = "";
+  for (let i = 1; i <= 22; i++) {
+    const cell = document.createElement("div");
+    cell.style.cssText = "border:1px solid " + servoTorqueColor(i) + ";border-radius:8px;padding:8px;background:" + servoTorqueColor(i) + ";color:#fff";
+    cell.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-weight:600;font-size:13px;color:#fff"><span>#' + i + '</span><span id="servoFwVer_' + i + '"></span></div>';
+    grid.appendChild(cell);
+  }
+}
+
+function servoFwSetRow(i, ver) {
+  const vEl = document.getElementById("servoFwVer_" + i);
+  if (vEl) vEl.textContent = (ver === null || ver === undefined || ver === "") ? t("servo_fw_unreadable") : ver;
+}
+
+function servoFwReadAll() {
+  const status = document.getElementById("servoFwStatus");
+  servoFwBuildGrid();
+  for (let i = 1; i <= 22; i++) {
+    const vEl = document.getElementById("servoFwVer_" + i);
+    if (vEl) vEl.textContent = "…";
+  }
+  if (status) status.textContent = t("servo_fw_reading");
+  return Alpha2Api.servoVersionAll().then(function (res) {
+    if (!res || !res.ok || !res.versions) {
+      if (status) status.textContent = t("servo_fw_fail_prefix") + (res && res.error ? res.error : "?");
+      return res;
+    }
+    const failed = res.failed || [];
+    for (let i = 1; i <= 22; i++) {
+      servoFwSetRow(i, res.versions[i - 1]);
+    }
+    if (status) {
+      status.textContent = failed.length
+        ? t("servo_fw_done") + (uiLang === "en"
+            ? " (unreadable: " + failed.join(",") + ")"
+            : "（無法讀取：" + failed.join(",") + "）")
+        : t("servo_fw_done");
+    }
+    return res;
+  }).catch(function (e) {
+    if (status) status.textContent = t("servo_fw_fail_prefix") + (e && e.message ? e.message : e);
   });
 }

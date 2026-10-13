@@ -134,7 +134,7 @@ paths:
       tags:
       - core
       summary: 觸發胸口升級 (讀 /sdcard/AlphaII_CHEST_kernel.bin, 48/49/50 協議)
-      description: 面板 token 啟用後要帶 panel_token（401 即未解鎖），見 PanelAuth。啟動前硬驗固件檔（唔存在／唔係 262144 全鏡像或 1..114688 小鏡像即 ok:false，唔會照燒）。
+      description: 面板 token 啟用後要帶 panel_token（401 即未解鎖），見 PanelAuth。啟動前硬驗固件檔（唔存在／唔係 1..114688 bytes 且 4 byte 對齊嘅 app 小鏡像即 ok:false，唔會照燒；256KB 全鏡像含 bootloader，app 更新食唔到，一律拒收）。
       parameters:
       - $ref: '#/components/parameters/PanelToken'
       responses:
@@ -166,7 +166,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
         '200':
-          description: 進度 JSON (由 getChestUpgradeStatusJson 提供；另帶 fileExists／fileSizeBytes／filePages／wantSizeBytes／smallMaxBytes 機上固件檔資訊，前端升級前驗檔用)
+          description: 進度 JSON (由 getChestUpgradeStatusJson 提供；另帶 fileExists／fileSizeBytes／filePages／smallMaxBytes 機上固件檔資訊，前端升級前驗檔用)
           content:
             application/json:
               schema:
@@ -2287,6 +2287,178 @@ paths:
                     error:
                       type: string
       operationId: servoModifyId_get
+  /api/servo/version:
+    get:
+      tags:
+      - servo
+      summary: 讀單顆舵機韌體版本（胸 cmd14 live query，純讀）
+      description: 發 f8 8f 08 05 00 0e <id> 讀舵機韌體版本（胸板經 FC CF 轉發 servo 碼 1）。回覆格式未實測：version 係盡力解析（可 null），rawHex 先係準（請對 logcat RX 原幀核對）。讀不到（超時）報 ok:false
+      parameters:
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 22
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 舵機韌體版本（或讀失敗）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    id:
+                      type: integer
+                    version:
+                      type: string
+                      nullable: true
+                      description: 版本欄原文 hex（格式未解，B0=0x53/0x30 分別對 8kg/20kg；可 null）
+                    model:
+                      type: string
+                      nullable: true
+                      description: 舵機型號（B0 解：8kg/20kg；21/22 無回授故 null）
+                    rawHex:
+                      type: string
+                      description: 回覆 payload 原文 hex（以此為準）
+                    error:
+                      type: string
+      operationId: servoVersion_get
+  /api/servo/version-all:
+    get:
+      tags:
+      - servo
+      summary: 一鍵讀全部 22 軸舵機韌體版本（cmd14，純讀）
+      description: 逐顆 cmd14 實際讀取（每粒 500ms 單次，粒間隔 100ms；約十幾秒）。讀不到那顆記 null 並列入 failed。version 盡力解析，rawHex 先係準
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 22 軸韌體版本；讀不到那顆記 null
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    versions:
+                      type: array
+                      items:
+                        type: string
+                        nullable: true
+                    rawHex:
+                      type: array
+                      items:
+                        type: string
+                        nullable: true
+                    models:
+                      type: array
+                      items:
+                        type: string
+                        nullable: true
+                      description: 每軸型號 8kg/20kg（B0 解；無回授軸 null）
+                    failed:
+                      type: array
+                      items:
+                        type: integer
+      operationId: servoVersionAll_get
+  /api/servo/hardware:
+    get:
+      tags:
+      - servo
+      summary: 讀單顆舵機硬件資訊（胸 cmd33 live query，純讀）
+      description: 發 f8 8f 08 05 00 21 <id> 讀舵機硬件資訊（servo 碼 18）。回覆格式未實測：hw 係盡力解析（可 null），rawHex 先係準。讀不到（超時）報 ok:false
+      parameters:
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 22
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 舵機硬件資訊（或讀失敗）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    id:
+                      type: integer
+                    hw:
+                      type: string
+                      nullable: true
+                    rawHex:
+                      type: string
+                    error:
+                      type: string
+      operationId: servoHardware_get
+  /api/servo/hardware-all:
+    get:
+      tags:
+      - servo
+      summary: 一鍵讀全部 22 軸舵機硬件資訊（cmd33，純讀）
+      description: 逐顆 cmd33 實際讀取（每粒 500ms，粒間隔 100ms；失敗隔 300ms 再掃一次）。讀不到那顆記 null 並列入 failed
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 22 軸硬件資訊；讀不到那顆記 null
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    hws:
+                      type: array
+                      items:
+                        type: string
+                        nullable: true
+                    rawHex:
+                      type: array
+                      items:
+                        type: string
+                        nullable: true
+                    failed:
+                      type: array
+                      items:
+                        type: integer
+      operationId: servoHardwareAll_get
   /api/servo/sonar:
     get:
       tags:
@@ -6522,8 +6694,8 @@ paths:
     post:
       tags:
       - upload
-      summary: 上載胸口固件（256KB 全鏡像或 ≤114688 bytes 小鏡像）至 /sdcard/AlphaII_CHEST_kernel.bin
-      description: 面板 token 啟用後要認證（Bearer header 主；401 即未解鎖），見 PanelAuth。大小閘：262144 或 1..114688 bytes 先收，其他即 400 唔寫入。
+      summary: 上載胸口固件（≤114688 bytes、4 byte 對齊嘅 app 小鏡像；256KB 全鏡像會被拒）至 /sdcard/AlphaII_CHEST_kernel.bin
+      description: 面板 token 啟用後要認證（Bearer header 主；401 即未解鎖），見 PanelAuth。大小閘：1..114688 bytes 且 4 byte 對齊先收，其他（包括 262144 全鏡像）即 400 唔寫入。
       parameters:
       - $ref: '#/components/parameters/PanelToken'
       requestBody:

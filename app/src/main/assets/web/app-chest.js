@@ -9,7 +9,7 @@ function chestToggle() {
   const on = !!(enabled && enabled.checked);
   if (body) body.style.display = on ? "block" : "none";
   if (hint) hint.style.display = on ? "none" : "block";
-  // 開卡即 show 版本＋機上固件檔狀態，一眼睇到燒唔燒得。
+  // 開啟卡片即顯示版本與設備固件文件狀態，一眼即可確認是否可以升級。
   if (on) { chestCheck(); chestFileInfo(); }
 }
 
@@ -17,17 +17,17 @@ function chestUpload() {
   const input = document.getElementById("chestBinFile");
   const status = document.getElementById("chestUploadStatus");
   if (!input || !input.files || input.files.length === 0) {
-    if (status) status.textContent = "請先選擇一個 .bin 檔案";
+    if (status) status.textContent = "請先選擇一個 .bin 文件";
     return;
   }
   const file = input.files[0];
-  // 上載前先驗：256KB 全鏡像或 1..114688 小鏡像先收（同 ChestUpgrade.isAcceptedFirmwareSize 一致；
-  // 後端同升級啟動都會再驗，唔好嘥時間推上去等 400）。
+  // 上傳前先檢查：僅接受 1..114688 且 4 字節對齊的 app 小鏡像（與 ChestUpgrade.isAcceptedFirmwareSize 一致；
+  // 後端與升級啟動時會再次驗證，避免浪費時間上傳後才收到 400 錯誤）。
   if (!chestSizeOk(file.size, null)) {
     if (status) status.textContent = t("chest_upload_bad_size", { n: file.size });
     return;
   }
-  if (status) status.textContent = "上載中 " + file.name + " (" + file.size + " bytes)…";
+  if (status) status.textContent = "上傳中 " + file.name + " (" + file.size + " 字節)…";
   const reader = new FileReader();
   reader.onload = function(e) {
     const bytes = e.target.result;
@@ -44,16 +44,16 @@ function chestUpload() {
       headers: Object.assign({ "Content-Type": "application/octet-stream" }, upHeaders)
     }).then(function(res) { return res.json(); }).then(function(json) {
       if (json.ok) {
-        // 上載完即驗機上檔（存在＋合法大小：全鏡像或小鏡像），得先畀升級；結果直寫狀態行。
+        // 上傳完成後即檢查設備上的文件（是否存在＋大小是否合法），通過後才允許升級；結果直接寫入狀態行。
         chestFileInfo();
       } else {
-        if (status) status.textContent = "❌ 上載失敗: " + (json.error || JSON.stringify(json));
+        if (status) status.textContent = "❌ 上傳失敗：" + (json.error || JSON.stringify(json));
       }
     }).catch(function(err) {
-      if (status) status.textContent = "❌ 上載錯誤: " + err.message;
+      if (status) status.textContent = "❌ 上傳錯誤：" + err.message;
     });
   };
-  reader.onerror = function() { if (status) status.textContent = "讀取檔案失敗"; };
+  reader.onerror = function() { if (status) status.textContent = "讀取文件失敗"; };
   reader.readAsArrayBuffer(file);
 }
 
@@ -67,15 +67,15 @@ function chestCheck() {
   });
 }
 
-// 固件大小閘（同 ChestUpgrade.isAcceptedFirmwareSize 一致）：256KB 全鏡像或
-// 1..小鏡像上限。限值跟 status 行嚟（舊後端無 smallMaxBytes 就跌回 114688）。
+// 固件大小閘（同 ChestUpgrade.isAcceptedFirmwareSize 一致）：只收 app 小鏡像
+// 1..小鏡像上限且 4 byte 對齊；256KB 全鏡像含 bootloader，app 更新食唔到，唔收。
+// 限值跟 status 行嚟（舊後端無 smallMaxBytes 就跌回 114688）。
 function chestSizeOk(n, s) {
-  const want = (s && Number(s.wantSizeBytes)) || 262144;
   const smallMax = (s && Number(s.smallMaxBytes)) || 114688;
-  return n === want || (n > 0 && n <= smallMax);
+  return n > 0 && n <= smallMax && n % 4 === 0;
 }
 
-// 查機上固件檔（存在＋合法大小：全鏡像或小鏡像），結果寫狀態行；回 true＝燒得。
+// 查詢設備上的固件文件（是否存在＋大小是否合法），結果寫入狀態行；返回 true 表示可以升級。
 function chestFileInfo() {
   const status = document.getElementById("chestUploadStatus");
   return Alpha2Api.chestUpgradeStatus().then(function(s) {
@@ -98,7 +98,7 @@ function chestUpgrade() {
   const wrap = document.getElementById("chestProgressWrap");
   const bar = document.getElementById("chestProgressBar");
   const txt = document.getElementById("chestProgressText");
-  // 燒之前先驗機上檔，唔啱（狀態行已講明原因）即停；啱先二次確認（變磚警告）再燒。
+  // 升級前先檢查設備上的文件，不符合要求（原因已顯示於狀態行）則停止；通過後再二次確認（變磚警告）才開始燒錄。
   chestFileInfo().then(function(ok) {
     if (!ok) return;
     if (!confirm(t("chest_upgrade_confirm"))) return;
@@ -116,7 +116,7 @@ function startChestUpgradePoll() {
   const txt = document.getElementById("chestProgressText");
   Alpha2Api.chestUpgrade().then(function(json) {
     if (!json.ok) { if (status) status.textContent = "❌ " + (json.error || "啟動失敗"); return; }
-    if (status) status.textContent = "升級中…請勿斷電 (需 ~2 分鐘)";
+    if (status) status.textContent = "升級中…請勿斷電（約需 1–2 分鐘）";
     const timer = setInterval(function() {
       Alpha2Api.chestUpgradeStatus().then(function(s) {
         const p = s.progress || 0;

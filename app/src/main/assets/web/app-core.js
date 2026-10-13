@@ -561,33 +561,50 @@ const I18N = {
                                 en: "Previewing new QR (not yet written to EEPROM)" },
   uuid_preview_invalid:      { zh: "❌ 格式不正確（1-31 字元，英數/-/_）", en: "❌ Invalid format (1-31 chars, alnum/-/_)" },
   servo_id_heading:         { zh: "🔢 更改舵機 ID", en: "🔢 Change Servo ID" },
-  servo_id_disabled_hint:  { zh: "開啟先會顯示更改舵機 ID 功能", en: "Turn on to show the servo ID changer" },
-  servo_id_hint:            { zh: "胸板命令 10 [舊 ID][新 ID]，經舵機碼 205 寫入舵機 EEPROM，掉電保持。同一 bus 唔可以有兩粒同 ID；改完去舵機頁試郁新 ID 驗證。",
+  servo_id_disabled_hint:  { zh: "啟用後才會顯示更改舵機 ID 功能", en: "Turn on to show the servo ID changer" },
+  servo_id_hint:            { zh: "透過胸板命令 10 [舊 ID][新 ID]，經舵機碼 205 寫入舵機 EEPROM，掉電保持。同一總線不可有兩顆相同 ID；完成後請至舵機頁面試動新 ID 驗證。",
                                en: "Chest cmd 10 [old ID][new ID], written to servo EEPROM via servo code 205, persists across power cycles. No two servos on the same bus may share an ID; verify by moving the new ID in the Servo tab afterwards." },
+  servo_id_bus_hint:      { zh: "⚠️ 胸板左右兩個舵機接口不可混插：1,2,3,7,8,9,10,11,17,19,20,21 僅可連接右側接口；4,5,6,12,13,14,15,16,18,22 僅可連接左側接口——接錯一側將無法識別。若新 ID 與舊 ID 分屬不同側，更改後須先拔線改插，否則將立即失去連接！只能在斷電情況下接駁舵機，通電後不可插拔，否則會燒板！",
+                               en: "⚠️ The chest left/right servo ports are not interchangeable: IDs 1,2,3,7,8,9,10,11,17,19,20,21 must use the right port; IDs 4,5,6,12,13,14,15,16,18,22 must use the left port — the wrong side is not recognised. If the new ID is on the other side, move the plug after the change or contact is lost immediately! Only connect or disconnect servos while powered off — never plug or unplug while powered on, or the board will burn!" },
+  servo_id_bus_right:      { zh: "右側接口", en: "right port" },
+  servo_id_bus_left:       { zh: "左側接口", en: "left port" },
+  servo_id_bus_info:       { zh: "舊 ID 屬於{sideOld}，新 ID 屬於{sideNew}", en: "Old ID: {sideOld}, new ID: {sideNew}" },
+  servo_id_bus_cross:      { zh: "⚠️ 跨側更改！完成後請將連接線改插至{sideNew}，否則將失去連接", en: "⚠️ Cross-side! Move the plug to the {sideNew} afterwards or contact is lost" },
+
   servo_id_old_label:       { zh: "舊 ID：", en: "Old ID:" },
   servo_id_new_label:       { zh: "新 ID：", en: "New ID:" },
   servo_id_change_btn:      { zh: "✏️ 更改 ID", en: "✏️ Change ID" },
-  servo_id_confirm:         { zh: "確定將舵機 #{id} 改為 #{newId}？寫入舵機 EEPROM 掉電保持，同一 bus 唔可以有兩粒同 ID！", en: "Change servo #{id} to #{newId}? Written to servo EEPROM (persists); no two servos on one bus may share an ID!" },
-  servo_id_same_error:      { zh: "❌ 新舊 ID 唔可以相同", en: "❌ Old and new IDs must differ" },
-  servo_id_range_error:     { zh: "❌ ID 必須係 1–22", en: "❌ IDs must be 1–22" },
-  servo_id_sending:         { zh: "送出中 #{id}→#{newId}…", en: "Sending #{id}→#{newId}…" },
-  servo_id_done:            { zh: "✅ 已將 #{id} 改為 #{newId}，去舵機頁試郁新 ID 驗證", en: "✅ Changed #{id} to #{newId} — verify by moving the new ID in the Servo tab" },
+  servo_id_confirm:         { zh: "確定將舵機 #{id} 改為 #{newId}？將寫入舵機 EEPROM（掉電保持），同一總線不可有兩顆相同 ID！", en: "Change servo #{id} to #{newId}? Written to servo EEPROM (persists); no two servos on one bus may share an ID!" },
+  servo_id_same_error:      { zh: "❌ 新舊 ID 不可相同", en: "❌ Old and new IDs must differ" },
+  servo_id_range_error:     { zh: "❌ ID 必須為 1–22", en: "❌ IDs must be 1–22" },
+  servo_id_sending:         { zh: "正在傳送 #{id}→#{newId}…", en: "Sending #{id}→#{newId}…" },
+  servo_id_done:            { zh: "✅ 已將 #{id} 改為 #{newId}，請至舵機頁面試動新 ID 驗證", en: "✅ Changed #{id} to #{newId} — verify by moving the new ID in the Servo tab" },
   servo_id_fail_prefix:     { zh: "❌ 更改失敗：", en: "❌ Change failed: " },
+  servo_fw_heading:         { zh: "🔌 舵機固件版本", en: "🔌 Servo Firmware" },
+  servo_fw_disabled_hint:  { zh: "啟用後才會顯示舵機固件版本功能", en: "Turn on to show servo firmware versions" },
+  servo_fw_hint:            { zh: "透過胸板命令 14 逐顆讀取韌體版本，只讀取、不寫入。版本格式尚未完全驗證，僅供參考。全部約需十幾秒。",
+                               en: "Reads each servo firmware version via chest command 14, read-only. The version format is not fully verified \u2014 for reference only. Reading all takes ~10+ seconds." },
+  servo_fw_read_all_btn:    { zh: "📖 一鍵讀取全部 1–22", en: "📖 Read all 1–22" },
+  servo_fw_reading:         { zh: "讀取中…（約需十幾秒，請勿觸碰機械人）", en: "Reading… (~10+s, please do not touch the robot)" },
+  servo_fw_done:            { zh: "✅ 已更新", en: "✅ Updated" },
+  servo_fw_unreadable:      { zh: "無法讀取", en: "Unreadable" },
+  servo_fw_fail_prefix:     { zh: "❌ 讀取失敗：", en: "❌ Read failed: " },
+  servo_fw_legend_8kg:      { zh: "🔵 8kg（2,3,5,6,17,18,19,20）", en: "🔵 8kg (2,3,5,6,17,18,19,20)" },
+  servo_fw_legend_20kg:     { zh: "🟠 20kg（1,4,7–16）", en: "🟠 20kg (1,4,7–16)" },
+  servo_fw_legend_unknown:  { zh: "⚪ 21–22 擴展（未知）", en: "⚪ 21–22 extra (unknown)" },
 
   // -- chest firmware --
   chest_title:           { zh: "胸板固件",         en: "Chest Firmware" },
   chest_hint_disabled:   { zh: "開啟後顯示胸板固件版本與升級", en: "Enable to show chest firmware version and upgrade" },
   chest_current_version: { zh: "當前版本：",       en: "Current version:" },
-  chest_btn_current:     { zh: "當前版本",         en: "Current Version" },
-  chest_hint_upload:     { zh: "選擇 256KB 全鏡像或 ≤112KB 小鏡像（ALPHA2Q-CHEST-*.bin），先上傳到 /sdcard/AlphaII_CHEST_kernel.bin，再按升級：", en: "Select a 256KB full image or ≤112KB small image (ALPHA2Q-CHEST-*.bin), upload to /sdcard/AlphaII_CHEST_kernel.bin, then upgrade:" },
-  chest_btn_upload:      { zh: "上傳",             en: "Upload" },
+  chest_hint_upload:     { zh: "選擇 ≤112KB 的 app 小鏡像（4 字節對齊；256KB 完整鏡像包含 bootloader，不適用），選擇後將自動上傳至 /sdcard/AlphaII_CHEST_kernel.bin，再按「開始升級」：", en: "Select an app-only small image (≤112KB, 4-byte aligned; a 256KB full image contains the bootloader and is not supported). It will be uploaded automatically to /sdcard/AlphaII_CHEST_kernel.bin, then press Start Upgrade:" },
   chest_btn_upgrade:     { zh: "開始升級",         en: "Start Upgrade" },
-  chest_upload_bad_size: { zh: "❌ 檔案唔啱 size（要 256KB 全鏡像或 1..114688 bytes 小鏡像，宜家 {n} bytes），未上載", en: "❌ Wrong file size (need 256KB full image or 1..114688-byte small image, got {n} bytes), not uploaded" },
-  chest_file_missing:    { zh: "機上未有固件檔，請先上載 .bin（256KB 全鏡像或小鏡像）", en: "No firmware file on robot yet — upload a .bin first (256KB full image or small image)" },
-  chest_file_bad:        { zh: "❌ 機上固件唔啱（{n} bytes，要 262144 或 1..114688），請重新上載", en: "❌ Firmware on robot is wrong ({n} bytes, need 262144 or 1..114688) — re-upload" },
-  chest_file_ok:         { zh: "機上固件 ✅ {n} bytes（{p} 頁），可按「開始升級」", en: "Firmware on robot ✅ {n} bytes ({p} pages) — press Start Upgrade" },
-  chest_upgrade_confirm: { zh: "確定燒錄胸板固件？中途斷電／重啟會變磚！電量需 ≥50%，全程約 1–2 分鐘（小鏡像快啲），唔好掂機械人。燒完要成部機斷電重開先生效（淨 reboot Android 唔夠）。", en: "Flash chest firmware? Power loss/reboot mid-flash will brick it! Battery must be ≥50%, ~1–2 min (small image is faster), don't touch the robot. After success, fully power-cycle the robot to apply (Android reboot alone is NOT enough)." },
-  chest_upgrade_done_power: { zh: "✅ 燒錄完成！而成部機斷電重開先生效：長按電源鍵閂機，等燈全滅 10 秒再開，唔好淨係 reboot。", en: "✅ Flash done! Fully power-cycle to apply: long-press power to shut down, wait 10s after all lights out, then power on. Plain reboot is NOT enough." },
+  chest_upload_bad_size: { zh: "❌ 文件大小不符合要求（需要 1..114688 字節且為 4 字節對齊的 app 小鏡像；256KB 完整鏡像不適用，當前為 {n} 字節），尚未上傳", en: "❌ Invalid file size (an app-only small image of 1..114688 bytes with 4-byte alignment is required; 256KB full image is not supported; got {n} bytes), not uploaded" },
+  chest_file_missing:    { zh: "設備上尚無固件文件，請先上傳 .bin（app 小鏡像）", en: "No firmware file on the robot yet — please upload a .bin first (app-only small image)" },
+  chest_file_bad:        { zh: "❌ 設備上的固件不正確（{n} 字節，要求 1..114688 且為 4 字節對齊；256KB 完整鏡像不適用），請重新上傳", en: "❌ Firmware on the robot is invalid ({n} bytes; 1..114688 bytes with 4-byte alignment is required; 256KB full image is not supported) — please re-upload" },
+  chest_file_ok:         { zh: "設備上的固件 ✅ {n} 字節（{p} 頁），可以按「開始升級」", en: "Firmware on the robot ✅ {n} bytes ({p} pages) — press Start Upgrade" },
+  chest_upgrade_confirm: { zh: "確定要燒錄胸板固件嗎？中途斷電或重啟會導致變磚！電量須 ≥50%，全程約 1–2 分鐘（小鏡像速度較快），請勿觸碰機器人。完成後必須將整機斷電重啟才會生效（僅重啟 Android 系統無效）。", en: "Flash the chest firmware? Power loss or reboot during flashing will brick the device! Battery must be ≥50%, about 1–2 minutes (small image is faster). Do not touch the robot. After success, fully power-cycle the robot to apply (rebooting Android alone is NOT enough)." },
+  chest_upgrade_done_power: { zh: "✅ 燒錄完成！必須將整機斷電重啟才會生效：長按電源鍵關機，待指示燈全部熄滅 10 秒後再開機，僅重啟系統無效。", en: "✅ Flash completed! You must fully power-cycle to apply: long-press the power button to shut down, wait 10 seconds after all lights go out, then power on. Reboot alone is NOT enough." },
 
   // -- 實驗 tab 面板 token 認證（見 PanelAuth.java，後端 system/auth/*） --
   panel_auth_heading:    { zh: "🔐 面板認證",      en: "🔐 Panel Token" },
@@ -697,6 +714,8 @@ function setUiLanguage(lang) {
   try {
     if (typeof actionsPackApplyUiLanguage === "function") actionsPackApplyUiLanguage();
   } catch(e) {}
+  // 舵機 ID 卡左右接口提示行一樣動態起（跟輸入＋語言），轉語言即重畫（唔使再撳）。
+  try { if (typeof servoIdBusUpdate === "function") servoIdBusUpdate(); } catch(e) {}
   // TTS 跟隨狀態行一樣動態起，重畫一次就轉語言（不用再問後端）。
   try {
     if (typeof ttsFollowApplyUiLanguage === "function") ttsFollowApplyUiLanguage();

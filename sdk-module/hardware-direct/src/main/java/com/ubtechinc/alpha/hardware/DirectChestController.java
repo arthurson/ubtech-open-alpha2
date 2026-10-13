@@ -135,6 +135,26 @@ public final class DirectChestController {
         return port.send(RobotWire.CHEST_CMD_MODIFY_SERVO_ID, new byte[]{oldId, newId});
     }
 
+    /**
+     * 讀舵機韌體版本 (cmd 14, payload [id])。胸板經 FC CF 頭轉發 servo 碼 1 落 bus，
+     * 回覆經 OnFrameListener 以 cmd=14 幀送回，由 ChestQuery 認領／解析。
+     * 純讀，唔寫任何 EEPROM。
+     */
+    public boolean readMotorVersion(byte servoId) {
+        if (servoId < 1 || servoId > 22) return false;
+        return port.send(RobotWire.CHEST_CMD_READ_MOTOR_VERSION, new byte[]{servoId});
+    }
+
+    /**
+     * 讀舵機硬件資訊 (cmd 33, payload [id]，servo 碼 18)。
+     * 回覆經 OnFrameListener 以 cmd=33 幀送回，由 ChestQuery 認領／解析。
+     * 純讀，唔寫任何 EEPROM。
+     */
+    public boolean readMotorHardware(byte servoId) {
+        if (servoId < 1 || servoId > 22) return false;
+        return port.send(RobotWire.CHEST_CMD_READ_MOTOR_HARDWARE, new byte[]{servoId});
+    }
+
     /** 讀胸板固件版本 cmd 51 */
     public boolean readVersion() {
         return port.send(RobotWire.CHEST_READ_VERSION, null);
