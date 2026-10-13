@@ -43,6 +43,12 @@ public final class RobotWire {
     public static final byte CHEST_CMD_READ_MOTOR_VERSION = 14;
     /** 讀舵機硬件資訊/cmd33（DirectChestController.readMotorHardware，payload [id]，servo 碼 18）。 */
     public static final byte CHEST_CMD_READ_MOTOR_HARDWARE = 33;
+    /** 舵機韌體升級開始/cmd16（DirectChestController.startMotorUpdate，payload [id][len BE32]，推斷見 ServoUpgrade）。 */
+    public static final byte CHEST_CMD_UPGRADE_MOTOR_START = 16;
+    /** 舵機韌體升級資料頁/cmd17（DirectChestController.updateMotorPage，payload [id][0x01][seqHi][seqLo][64B]）。 */
+    public static final byte CHEST_CMD_UPGRADE_MOTOR_PAGE = 17;
+    /** 舵機韌體升級結果上行碼 134 [status][id]（status 0 = 成功）。 */
+    public static final int CHEST_EVENT_MOTOR_UPGRADE = 134;
     public static final byte CHEST_READ_SID_EEPROM = 55;
     public static final byte CHEST_POWER_SAVE = 64;
 

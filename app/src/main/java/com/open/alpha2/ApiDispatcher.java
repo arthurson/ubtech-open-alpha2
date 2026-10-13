@@ -42,6 +42,7 @@ public final class ApiDispatcher {
     private final UbxApi ubxApi;
     private final ChestQuery chestQuery;
     private final ChestUpgrade chestUpgrade;
+    private final ServoUpgrade servoUpgrade;
     private final TtsCenter ttsCenter;
     private final VoskApi voskApi;
     private final LedCenter ledCenter;
@@ -64,7 +65,7 @@ public final class ApiDispatcher {
 
     public ApiDispatcher(Context context, Host host, XiaozhiBridge.HostState sensorState,
             ActionDirect actionDirect, UbxApi ubxApi, ChestQuery chestQuery,
-            ChestUpgrade chestUpgrade, TtsCenter ttsCenter, VoskApi voskApi,
+            ChestUpgrade chestUpgrade, ServoUpgrade servoUpgrade, TtsCenter ttsCenter, VoskApi voskApi,
             LedCenter ledCenter, SemanticCenter semanticCenter, DeviceStatus deviceStatus,
             CameraApi cameraApi, AudioCenter audioCenter, RingtoneCenter ringtoneCenter,
             MicCenter micCenter, RobotStub robot,
@@ -79,6 +80,7 @@ public final class ApiDispatcher {
         this.ubxApi = ubxApi;
         this.chestQuery = chestQuery;
         this.chestUpgrade = chestUpgrade;
+        this.servoUpgrade = servoUpgrade;
         this.ttsCenter = ttsCenter;
         this.voskApi = voskApi;
         this.ledCenter = ledCenter;
@@ -405,6 +407,14 @@ public final class ApiDispatcher {
                 return ubxApi.servoHardwareResponse(query);
             case "servo/hardware-all":
                 return ubxApi.servoHardwareAllResponse();
+            // -- 舵機韌體升級（body 在 ServoUpgrade；薄 delegate，不要在這裡加 logic）--
+            case "servo/upgrade":
+                return servoUpgrade.servoUpgradeResponse(query);
+            case "servo/upgrade/status":
+                return servoUpgrade.servoUpgradeStatusResponse();
+            case "servo/upgrade/abort":
+                servoUpgrade.abort();
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"aborted\":true}");
 
             // -- PIR (body 在 LedCenter；薄 delegate，不要在這裡加 logic) --
             case "pir/set":

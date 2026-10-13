@@ -137,6 +137,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
 
     private ChestQuery chestQuery;
     private ChestUpgrade chestUpgrade;
+    private ServoUpgrade servoUpgrade;
 
     /** PIR 事件 static 縫 (RobotEventReceiver／onDirectChestFrame 入口，簽名不變)：
      *  轉交 SonarCenter；sInstance／sonarCenter 任一
@@ -337,7 +338,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // sonarCenter)。
         // 放最尾——要等齊所有 collaborator (上面 speechCenter 最遲)。
         apiDispatcher = new ApiDispatcher(this, speechCenter, this, actionDirect, ubxApi, chestQuery,
-                chestUpgrade, ttsCenter, voskApi, ledCenter, semanticCenter, deviceStatus,
+                chestUpgrade, servoUpgrade, ttsCenter, voskApi, ledCenter, semanticCenter, deviceStatus,
                 cameraApi, audioCenter, ringtoneCenter, micCenter, robot, grammarCenter,
                 ubxPlayer, musicController, localServices, sonarCenter, actionsPackController,
                 apkDownloadController, gamepadCenter);
@@ -615,6 +616,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         apkDownloadController = new ApkDownloadController(this);
         ubxApi = new UbxApi(this, ubxPlayer, actionDirect, chestQuery);
         chestUpgrade = new ChestUpgrade(this, chestQuery);
+        servoUpgrade = new ServoUpgrade(this, chestQuery);
         // (ringtoneCenter/ledCenter 已在 onCreate 頭段建好，見上面。)
         audioCenter = new AudioCenter(this, ubxPlayer, actionDirect, mainHandler, ledCenter);
         EventBus.get().publish("authorize", "{\"code\":1,\"info\":\"have offline authority\"}");
@@ -727,6 +729,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 优先处理升级 ACK (48/49/50)，交給 ChestUpgrade 認領
         // （傳埋原始幀取回聲 index；呢行以外解析區一字不動）。
         if (chestUpgrade.onAckFrame(frame, payload, plen)) return;
+        // 舵機升級 16/17 ACK＋134 結果交給 ServoUpgrade 認領（ChestQuery 版本 fallback 之前）。
+        if (servoUpgrade != null && servoUpgrade.onFrame(frame, payload, plen)) return;
         // 版本/UUID 回覆 latch 交給 ChestQuery 認領 (升級 ACK 上面已優先處理)。
         if (chestQuery.onFrame(frame, payload, plen)) return;
     }
@@ -1191,6 +1195,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 靠這個字面抽 upload 路由，一改即誤報 missing）。
         if ("chest".equals(path)) {
             return chestUpgrade.handleChestUpload(query, body);
+        }
+        if ("servo-fw".equals(path)) {
+            return servoUpgrade.handleServoFwUpload(query, body);
         }
         return HttpServer.ApiResponse.error("Unknown upload path: " + path);
     }

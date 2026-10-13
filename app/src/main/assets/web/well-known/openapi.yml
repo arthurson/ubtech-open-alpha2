@@ -2459,6 +2459,78 @@ paths:
                       items:
                         type: integer
       operationId: servoHardwareAll_get
+  /api/servo/upgrade:
+    get:
+      tags:
+      - servo
+      summary: 燒錄單顆舵機韌體（胸 cmd16/17，上行 134 回報；高危）
+      description: 流程 16 START([id][len BE32]，推斷格式）→ 17×112 頁（[id][01][seq][64B]）→ 等上行 134。硬閘：機上固件必須恰好 7168 bytes、電量 ≥50%、一次一粒。中途斷電／中止可能變磚；推斷格式若遭 chest 拒收則未燒錄直接失敗
+      parameters:
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 22
+        description: 目標舵機 ID（燒錄前請確認型號同固件匹配）
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 已啟動（後續經 status 輪詢＋servo_upgrade_done 事件）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: servoUpgrade_get
+  /api/servo/upgrade/status:
+    get:
+      tags:
+      - servo
+      summary: 查詢舵機韌體升級進度
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 進度 JSON（state/progress/page/total/id/fileExists/fileSizeBytes）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: servoUpgradeStatus_get
+  /api/servo/upgrade/abort:
+    get:
+      tags:
+      - servo
+      summary: 中止舵機韌體升級（只停後續頁，已寫入不回滾）
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 已中止
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: servoUpgradeAbort_get
   /api/servo/sonar:
     get:
       tags:
@@ -6726,6 +6798,42 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
       operationId: uploadChest_post
+  /upload/servo-fw:
+    post:
+      tags:
+      - upload
+      summary: 上載舵機固件（必須恰好 7168 bytes 無 bootloader app 鏡像）至 /sdcard/AlphaII_SERVO_fw.bin
+      description: 面板 token 啟用後要認證（Bearer header 主；401 即未解鎖），見 PanelAuth。大小硬閘：恰好 7168 bytes 先收，其他即 400 唔寫入。
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: 已寫入
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    path:
+                      type: string
+                    sizeBytes:
+                      type: integer
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+      operationId: uploadServoFw_post
   /stream/camera:
     get:
       tags:

@@ -757,7 +757,7 @@ function servoFwCardToggle() {
   const on = !!(enabled && enabled.checked);
   if (body) body.style.display = on ? "block" : "none";
   if (hint) hint.style.display = on ? "none" : "block";
-  if (on) servoFwBuildGrid();
+  if (on) { servoFwBuildGrid(); servoUpFileInfo(); }
 }
 
 // Servo torque groups (user-confirmed hardware fact:
@@ -822,5 +822,120 @@ function servoFwReadAll() {
     return res;
   }).catch(function (e) {
     if (status) status.textContent = t("servo_fw_fail_prefix") + (e && e.message ? e.message : e);
+  });
+}
+
+// ---------------- Servo firmware upgrade card (tab-advanced) ----------------
+// Flow: pick 7168B .bin -> upload to /upload/servo-fw -> double confirm ->
+// servo/upgrade?id= -> poll servo/upgrade/status. Same collapsible pattern,
+// default collapsed. File gate (exactly 7168B) enforced client AND server.
+
+function servoUpFileInfo() {
+  const status = document.getElementById("servoUpFileStatus");
+  return Alpha2Api.servoUpgradeStatus().then(function (s) {
+    if (!s || s.ok === false) return false;
+    if (!s.fileExists) {
+      if (status) status.textContent = t("servo_up_file_missing");
+      return false;
+    }
+    if (Number(s.fileSizeBytes) !== 7168) {
+      if (status) status.textContent = t("servo_up_file_bad", { n: s.fileSizeBytes });
+      return false;
+    }
+    if (status) status.textContent = t("servo_up_file_ok", { n: s.fileSizeBytes });
+    return true;
+  }).catch(function () { return false; });
+}
+
+function servoUpUpload() {
+  const input = document.getElementById("servoUpFile");
+  const status = document.getElementById("servoUpFileStatus");
+  if (!input || !input.files || input.files.length === 0) {
+    if (status) status.textContent = t("servo_up_no_file");
+    return;
+  }
+  const file = input.files[0];
+  if (file.size !== 7168) {
+    if (status) status.textContent = t("servo_up_bad_size", { n: file.size });
+    return;
+  }
+  if (status) status.textContent = t("servo_up_uploading");
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const bytes = e.target.result;
+    let upHeaders = {};
+    try {
+      if (typeof panelAuthHeaders === "function") upHeaders = panelAuthHeaders();
+    } catch (ign) {}
+    fetch("/upload/servo-fw?name=" + encodeURIComponent(file.name), {
+      method: "POST",
+      body: bytes,
+      headers: Object.assign({ "Content-Type": "application/octet-stream" }, upHeaders)
+    }).then(function (res) { return res.json(); }).then(function (json) {
+      if (json.ok) {
+        servoUpFileInfo();
+      } else {
+        if (status) status.textContent = t("servo_up_fail_prefix") + (json.error || JSON.stringify(json));
+      }
+    }).catch(function (err) {
+      if (status) status.textContent = t("servo_up_fail_prefix") + err.message;
+    });
+  };
+  reader.onerror = function () { if (status) status.textContent = t("servo_up_fail_prefix") + "read file"; };
+  reader.readAsArrayBuffer(file);
+}
+
+function servoUpStart() {
+  const status = document.getElementById("servoUpStatus");
+  const idEl = document.getElementById("servoUpId");
+  const id = idEl ? parseInt(idEl.value, 10) : NaN;
+  if (isNaN(id) || id < 1 || id > 22) {
+    if (status) status.textContent = t("servo_id_range_error");
+    return Promise.resolve();
+  }
+  servoUpFileInfo().then(function (ok) {
+    if (!ok) return;
+    if (!confirm(t("servo_up_confirm1", { id: id }))) return;
+    if (!confirm(t("servo_up_confirm2", { id: id }))) return;
+    if (status) status.textContent = t("servo_up_started", { id: id });
+    const wrap = document.getElementById("servoUpProgressWrap");
+    const bar = document.getElementById("servoUpProgressBar");
+    const txt = document.getElementById("servoUpProgressText");
+    if (wrap) wrap.style.display = "block";
+    if (bar) bar.style.width = "0%";
+    if (txt) txt.textContent = "0%";
+    Alpha2Api.servoUpgrade({ id: id }).then(function (json) {
+      if (!json.ok) {
+        if (status) status.textContent = t("servo_up_fail_prefix") + (json.error || "start failed");
+        return;
+      }
+      const timer = setInterval(function () {
+        Alpha2Api.servoUpgradeStatus().then(function (s) {
+          const p = s.progress || 0;
+          if (bar) bar.style.width = p + "%";
+          if (txt) txt.textContent = p + "% (" + (s.currentPage || 0) + "/" + (s.totalPages || 0) + ") " + (s.status || "");
+          if (!s.inProgress) {
+            clearInterval(timer);
+            if (s.status && s.status.indexOf("success") !== -1) {
+              if (status) status.textContent = t("servo_up_done_ok", { id: id });
+            } else {
+              if (status) status.textContent = t("servo_up_fail_prefix") + (s.status || "");
+            }
+          }
+        }).catch(function () {});
+      }, 500);
+    }).catch(function (err) {
+      if (status) status.textContent = t("servo_up_fail_prefix") + err.message;
+    });
+  });
+}
+
+function servoUpAbort() {
+  const status = document.getElementById("servoUpStatus");
+  return Alpha2Api.servoUpgradeAbort().then(function (json) {
+    if (status) status.textContent = t("servo_up_abort_btn") + (json.ok ? " OK" : ": " + (json.error || ""));
+    return json;
+  }).catch(function (err) {
+    if (status) status.textContent = t("servo_up_fail_prefix") + err.message;
   });
 }

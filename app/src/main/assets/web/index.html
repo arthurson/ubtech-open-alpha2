@@ -1086,7 +1086,7 @@
 
     <section class="card">
       <div class="row" style="justify-content:space-between;align-items:center">
-        <h2 style="margin:0" data-i18n="servo_fw_heading">🔌 舵機固件版本</h2>
+        <h2 style="margin:0" data-i18n="servo_fw_heading">🔌 舵機固件</h2>
         <label class="switch-label">
           <span class="toggle-switch">
             <input type="checkbox" id="servoFwCardEnabled" onchange="servoFwCardToggle()">
@@ -1094,12 +1094,12 @@
           </span>
         </label>
       </div>
-      <p id="servoFwCardDisabledHint" class="hint" data-i18n="servo_fw_disabled_hint">啟用後才會顯示舵機固件版本功能</p>
+      <p id="servoFwCardDisabledHint" class="hint" data-i18n="servo_fw_disabled_hint">啟用後才會顯示舵機固件功能</p>
       <div id="servoFwCardBody" style="display:none">
         <p class="hint" data-i18n="servo_fw_hint">透過胸板命令 14 逐顆讀取韌體版本，只讀取、不寫入。版本格式尚未完全驗證，僅供參考。全部約需十幾秒。</p>
         <div class="row" style="gap:12px">
           <span class="hint" data-i18n="servo_fw_legend_8kg">🔵 8kg（2,3,5,6,17,18,19,20）</span>
-          <span class="hint" data-i18n="servo_fw_legend_20kg">🟠 20kg（1,4,7–16）</span>
+          <span class="hint" data-i18n="servo_fw_legend_20kg">🟠 20kg（1,4,7,8,9,10,11,12,13,14,15,16）</span>
           <span class="hint" data-i18n="servo_fw_legend_unknown">⚪ 21–22 擴展（未知）</span>
         </div>
         <div class="row">
@@ -1107,6 +1107,27 @@
           <span id="servoFwStatus" class="hint"></span>
         </div>
         <div id="servoFwGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px"></div>
+        <hr style="margin:14px 0">
+        <h3 style="margin:0" data-i18n="servo_up_heading">🔥 舵機固件升級</h3>
+        <p class="hint" data-i18n="servo_up_hint">高危操作，可能變磚。流程：上載恰好 7168 bytes 無 bootloader 固件 → 雙重確認 → 經胸板命令 16/17 逐頁燒錄（112 頁）→ 等上行 134 結果。燒錄期間請勿斷電、請勿觸碰機械人。</p>
+        <div class="row">
+          <label data-i18n="servo_up_id_label">舵機 ID：</label>
+          <input id="servoUpId" type="number" min="1" max="22" value="1" style="width:70px">
+          <input type="file" id="servoUpFile" accept=".bin">
+          <button onclick="servoUpUpload()" data-i18n="servo_up_upload_btn">上載</button>
+        </div>
+        <p id="servoUpFileStatus" class="hint"></p>
+        <div class="row">
+          <button class="danger-btn" onclick="servoUpStart()" data-i18n="servo_up_start_btn">開始升級</button>
+          <button class="secondary" onclick="servoUpAbort()" data-i18n="servo_up_abort_btn">中止</button>
+        </div>
+        <div id="servoUpProgressWrap" style="display:none; margin-top:6px">
+          <div style="background:#eee;height:12px;border-radius:6px;overflow:hidden">
+            <div id="servoUpProgressBar" style="height:100%;width:0%;background:#dc2626;transition:width 0.3s"></div>
+          </div>
+          <span id="servoUpProgressText" class="hint"></span>
+        </div>
+        <p id="servoUpStatus" class="hint"></p>
       </div>
     </section>
 

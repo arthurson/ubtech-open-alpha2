@@ -155,6 +155,42 @@ public final class DirectChestController {
         return port.send(RobotWire.CHEST_CMD_READ_MOTOR_HARDWARE, new byte[]{servoId});
     }
 
+    /**
+     * 開始舵機韌體升級 (cmd 16, payload [id][len BE32])。payload 格式係推斷
+     * （見 ServoUpgrade：胸板 cmd48 同款 [len BE32]＋全部舵機命令 id 行頭），
+     * 官方 upgrade APK 無舵機升級實現，真機未驗證。
+     * 注意：START 之後 chest／servo 可能已入升級態，調用方須成個流程跟到底。
+     */
+    public boolean startMotorUpdate(byte servoId, int fileLen) {
+        if (servoId < 1 || servoId > 22) return false;
+        if (fileLen <= 0) return false;
+        byte[] p = new byte[5];
+        p[0] = servoId;
+        p[1] = (byte) ((fileLen >> 24) & 0xFF);
+        p[2] = (byte) ((fileLen >> 16) & 0xFF);
+        p[3] = (byte) ((fileLen >> 8) & 0xFF);
+        p[4] = (byte) (fileLen & 0xFF);
+        return port.send(RobotWire.CHEST_CMD_UPGRADE_MOTOR_START, p);
+    }
+
+    /**
+     * 舵機韌體升級資料頁 (cmd 17, payload [id][0x01][seqHi][seqLo][64B])。
+     * 64B 頁對應舵機 bootloader 嘅 64-byte flash 頁（112 頁＝7168B app 區，
+     * 白牌 mega8 反彙編實證）；bank 1＝寫頁（2 保留，見 ServoUpgrade）。
+     * data 不足 64B 時調用方先補零（doc 話補零至 68 byte）。
+     */
+    public boolean updateMotorPage(byte servoId, int seq, byte[] data64) {
+        if (servoId < 1 || servoId > 22) return false;
+        if (data64 == null || data64.length > 64 || seq < 0 || seq > 0xFFFF) return false;
+        byte[] p = new byte[68];
+        p[0] = servoId;
+        p[1] = 0x01;
+        p[2] = (byte) ((seq >> 8) & 0xFF);
+        p[3] = (byte) (seq & 0xFF);
+        System.arraycopy(data64, 0, p, 4, data64.length);
+        return port.send(RobotWire.CHEST_CMD_UPGRADE_MOTOR_PAGE, p);
+    }
+
     /** 讀胸板固件版本 cmd 51 */
     public boolean readVersion() {
         return port.send(RobotWire.CHEST_READ_VERSION, null);

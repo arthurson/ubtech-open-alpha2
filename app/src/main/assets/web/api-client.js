@@ -813,6 +813,22 @@ const Alpha2Api = (function() {
     return api('servo/sonar/get', params);
   }
 
+  function servoUpgrade(params) {
+    if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
+    // 燒錄單顆舵機韌體（胸 cmd16/17，上行 134 回報；高危）
+    return api('servo/upgrade', params);
+  }
+
+  function servoUpgradeAbort(params) {
+    // 中止舵機韌體升級（只停後續頁，已寫入不回滾）
+    return api('servo/upgrade/abort', params);
+  }
+
+  function servoUpgradeStatus(params) {
+    // 查詢舵機韌體升級進度
+    return api('servo/upgrade/status', params);
+  }
+
   function servoVersion(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
     // 讀單顆舵機韌體版本（胸 cmd14 live query，純讀）
@@ -1269,6 +1285,9 @@ const Alpha2Api = (function() {
     servoReadAll,
     servoSonar,
     servoSonarGet,
+    servoUpgrade,
+    servoUpgradeAbort,
+    servoUpgradeStatus,
     servoVersion,
     servoVersionAll,
     speechCurTtsEngine,
