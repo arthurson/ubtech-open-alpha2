@@ -528,7 +528,7 @@ const Alpha2Api = (function() {
   function gamepadConfigSet(params) {
     if (params && params.side != null) assertEnum(params.side, ['pad', 'kb'], 'side');
     if (params && params.reset != null) assertEnum(params.reset, ['0', '1', 'true', 'false'], 'reset');
-    // 改單鍵映射（或 reset=1 回該邊預設）
+    // 改單鍵映射（一鍵多功能：action 可換行分隔多個，順序執行；或 reset=1 回該邊預設）
     return api('gamepad/config/set', params);
   }
 

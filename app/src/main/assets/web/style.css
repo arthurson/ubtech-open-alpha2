@@ -1734,6 +1734,22 @@ button.eq-preset-sq.selected {
 }
 .gprow-free span:first-child { color: #ffffff; }
 
+/* One-key multi-action rows: outer key block + indented sub-rows. */
+.gp-keyrow {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}
+.gp-subrow {
+  margin-left: 12px;
+  padding: 4px 6px;
+  border-left: 2px solid var(--border);
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* ---------------- Keyboard visual (full live keyboard) ----------------
    JS 生成全鍵盤（見 app-gamepad.js gamepadBuildKeyboardDiagram），.lit 亮燈，
    驅動同上三路。寬鍵用 flex-grow 拉闊。 */

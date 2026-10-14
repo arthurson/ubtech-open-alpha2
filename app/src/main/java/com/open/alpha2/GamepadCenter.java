@@ -53,6 +53,9 @@ import java.util.Map;
  * radio:&lt;uuid或名&gt;（收藏電台直播，經 AudioCenter）／
  * servo&lt;1-22&gt;+／servo&lt;1-22&gt;-（單步 jog，步長 {@link #SERVO_JOG_STEP}，
  * 撳住連走）／action:&lt;fileId或中英文名或xxx.ubx&gt;（經 ActionDirect 搶佔式播放）
+ * 一鍵多功能：單鍵值可換行分隔多達 {@link #MAX_ACTIONS_PER_KEY} 個動作，
+ * 撳一下一次過順序做晒（servo 段撳住各自連走、放手一次過停；ring／led toggle
+ * 逐段獨立計，免同鍵兩段互消）。
  *
  * 搖桿連續量（gamepad/axis）：rx→20 號頭 yaw，ry→19 號頭 pitch，
  * 死區＋150ms 節流＋增量速度式（不跳變），見 {@link #axisResponse}。
@@ -498,10 +501,13 @@ public final class GamepadCenter {
      * pir_toggle／accel_toggle／xiaozhi_toggle／vosk_toggle／vosk:&lt;id&gt;／
      * eq:&lt;preset&gt;／radio:&lt;uuid或名&gt;／servo1-22±／action:&lt;非空&gt;。
      * servo 步進覆蓋全部 22 軸（jogServo 通用）。
+     * 單個動作唔可以含換行（一鍵多功能用換行分隔，見 splitMultiAction）。
      */
     public static boolean isValidAction(String action) {
         if (action == null) return false;
+        if (action.indexOf('\n') >= 0 || action.indexOf('\r') >= 0) return false;
         String a = action.trim();
+        if (a.isEmpty()) return false;
         if (a.equals("none") || a.equals("stop") || a.equals("vol_up") || a.equals("vol_down")) return true;
         if (isMusicAction(a)) return true;
         if (isRingAction(a)) return true;
@@ -520,6 +526,82 @@ public final class GamepadCenter {
             return true;
         }
         return false;
+    }
+
+    /** 一鍵多功能上限（每鍵最多 N 個動作，防洗版；順序執行）。 */
+    public static final int MAX_ACTIONS_PER_KEY = 6;
+
+    /**
+     * 一鍵多功能拆解：換行分隔（"\n"／"\r\n"），逐段 trim＋去空。
+     * 換行係唯一分隔符（ring 標題／電台名可含 ; | , 等，唯獨唔可以含換行，
+     * 見 isRadioFavAction／ringTitleOf，所以唔會誤切）。
+     * 無換行即回單元素；null／全空即回空 list。
+     */
+    public static java.util.List<String> splitMultiAction(String action) {
+        java.util.List<String> out = new java.util.ArrayList<String>();
+        if (action == null) return out;
+        String norm = action.replace("\r\n", "\n").replace('\r', '\n');
+        for (String part : norm.split("\n", -1)) {
+            String t = part.trim();
+            if (!t.isEmpty()) out.add(t);
+        }
+        return out;
+    }
+
+    /** 一鍵多功能合併（canonical：trim 後用 "\n" 接）。 */
+    public static String joinMultiAction(java.util.List<String> parts) {
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (String p : parts) {
+            if (p == null) continue;
+            String t = p.trim();
+            if (t.isEmpty()) continue;
+            if (!first) sb.append('\n');
+            first = false;
+            sb.append(t);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 一鍵多功能合法性：拆後 1..MAX 個，每個都係合法單動作。
+     * 舊單值照樣合法（拆後 1 個）。
+     */
+    public static boolean isValidMultiAction(String action) {
+        java.util.List<String> parts = splitMultiAction(action);
+        if (parts.isEmpty() || parts.size() > MAX_ACTIONS_PER_KEY) return false;
+        for (String p : parts) {
+            if (!isValidAction(p)) return false;
+        }
+        return true;
+    }
+
+    /** 該映射值有無嘢做（任一段非 none 即有；全 none／空即無）。 */
+    public static boolean isMappedValue(String v) {
+        java.util.List<String> parts = splitMultiAction(v);
+        for (String p : parts) {
+            if (!"none".equals(p)) return true;
+        }
+        return false;
+    }
+
+    /** 該多值入面全部 servo jog 段（順序，同輸入順序一致）。 */
+    public static java.util.List<String> servoJogParts(String multi) {
+        java.util.List<String> out = new java.util.ArrayList<String>();
+        for (String p : splitMultiAction(multi)) {
+            if (isServoJog(p)) out.add(p);
+        }
+        return out;
+    }
+
+    /** 該多值入面全部 servo 軸號（recenter 用；非法即跳過）。 */
+    public static java.util.List<Integer> servoIdsOfMulti(String multi) {
+        java.util.List<Integer> out = new java.util.ArrayList<Integer>();
+        for (String p : splitMultiAction(multi)) {
+            Integer id = servoIdOfAction(p);
+            if (id != null) out.add(id);
+        }
+        return out;
     }
 
     /** servo&lt;1-22&gt;± 形（如 servo20+）：軸號＋方向一次驗。 */
@@ -595,19 +677,30 @@ public final class GamepadCenter {
                 if (ci < 0) continue;
                 String k = unquote(pair.substring(0, ci).trim());
                 String v = unquote(pair.substring(ci + 1).trim());
-                // 追蹤 toggle 正名遷移（face_stop／face_start→face_toggle，color 同理；兩邊通用）。
-                if ("face_stop".equals(v) || "face_start".equals(v)) v = "face_toggle";
-                else if ("color_stop".equals(v) || "color_start".equals(v)) v = "color_toggle";
-                // dual 舊色碼修正（3=藍綠／4=紅綠／5=紅藍先有意義，其餘出嚟都係藍綠，
-                // 見 app-led.js DUAL_COLORS；兩邊通用，歸位做 3）。
-                String[] dp = v.split(":", -1);
-                if (dp.length == 3 && ("head".equals(dp[0]) || "eye".equals(dp[0]))
-                        && "dual".equals(dp[1]) && dp[2].length() == 1) {
-                    char dg = dp[2].charAt(0);
-                    if (dg < '3' || dg > '5') v = dp[0] + ":dual:3";
+                // 一鍵多功能：逐段做遷移＋修正（單值即一段，邏輯一致）。
+                java.util.List<String> parts = splitMultiAction(v);
+                java.util.List<String> fixed = new java.util.ArrayList<String>();
+                for (String pv : parts) {
+                    // 追蹤 toggle 正名遷移（face_stop／face_start→face_toggle，color 同理；兩邊通用）。
+                    if ("face_stop".equals(pv) || "face_start".equals(pv)) pv = "face_toggle";
+                    else if ("color_stop".equals(pv) || "color_start".equals(pv)) pv = "color_toggle";
+                    // dual 舊色碼修正（3=藍綠／4=紅綠／5=紅藍先有意義，其餘出嚟都係藍綠，
+                    // 見 app-led.js DUAL_COLORS；兩邊通用，歸位做 3）。
+                    String[] dp = pv.split(":", -1);
+                    if (dp.length == 3 && ("head".equals(dp[0]) || "eye".equals(dp[0]))
+                            && "dual".equals(dp[1]) && dp[2].length() == 1) {
+                        char dg = dp[2].charAt(0);
+                        if (dg < '3' || dg > '5') pv = dp[0] + ":dual:3";
+                    }
+                    fixed.add(pv);
                 }
+                // 上限收緊（如 8→3）舊存檔超長唔好成個掉，截斷保留前面。
+                if (fixed.size() > MAX_ACTIONS_PER_KEY) {
+                    fixed = fixed.subList(0, MAX_ACTIONS_PER_KEY);
+                }
+                v = joinMultiAction(fixed);
                 // 唔屬呢邊／舊版殘留（kb_* 等）一律掉，自動遷移。
-                if (isKnownKey(norm, k) && isValidAction(v)) {
+                if (isKnownKey(norm, k) && isValidMultiAction(v)) {
                     // 新預設追溯：呢批鍵當年預設 none，而家有料——存住 none
                     // 即係用家冇掂過，跟新預設；改過嘅保留。
                     if (SIDE_KB.equals(norm) && "none".equals(v)
@@ -708,10 +801,13 @@ public final class GamepadCenter {
         StringBuilder sb = new StringBuilder("{");
         boolean first = true;
         for (Map.Entry<String, String> e : mapping.entrySet()) {
-            if (!isKnownKey(norm, e.getKey()) || !isValidAction(e.getValue())) continue;
+            if (!isKnownKey(norm, e.getKey())) continue;
+            // canonical：逐段 trim＋換行重接（去多餘空行／空格，免存垃圾）。
+            String canon = joinMultiAction(splitMultiAction(e.getValue()));
+            if (!isValidMultiAction(canon)) continue;
             if (!first) sb.append(',');
             first = false;
-            sb.append(quote(e.getKey())).append(':').append(quote(e.getValue()));
+            sb.append(quote(e.getKey())).append(':').append(quote(canon));
         }
         sb.append('}');
         android.content.SharedPreferences.Editor ed = prefs().edit();
@@ -869,8 +965,9 @@ public final class GamepadCenter {
         }
         String action = mappedActionOf(norm, logical);
         boolean taken = executeAction(norm, logical, action);
-        // 撳住 servo jog 即排連走（首步上面已行，跟住每 120ms 一步；掣全速）。
-        if (taken && isServoJog(action)) startServoRepeat(norm, logical, action, 1f);
+        // 撳住 servo jog 即排連走（首步上面已行，跟住每 120ms 一步；掣全速；
+        // 一鍵多功能入面有幾多 servo 段就排幾多條，放手一次過停）。
+        if (taken && !servoJogParts(action).isEmpty()) startServoRepeats(norm, logical, action, 1f);
         publishKey(logical, true, "robot", action, taken);
         return true;
     }
@@ -1076,12 +1173,55 @@ public final class GamepadCenter {
         return now;
     }
 
+    /**
+     * 一鍵多功能 toggle 態：idx==0 沿用舊 tag（side:key，舊單鍵態保留，
+     * 加第二個動作唔會 reset 第一個）；idx&gt;0 用 side:key#index 獨立計，
+     * 免同一按內兩次 flip 互相打消（兩個 toggle 會一齊開／一齊閂）。
+     */
+    private synchronized boolean toggleFlipMulti(String side, String key, int idx) {
+        String tag = (idx <= 0) ? (side + ":" + key) : (side + ":" + key + "#" + idx);
+        boolean now = !Boolean.TRUE.equals(toggleStates.get(tag));
+        if (now) toggleStates.put(tag, Boolean.TRUE);
+        else toggleStates.remove(tag);
+        return now;
+    }
+
     private synchronized void toggleClear() {
         toggleStates.clear();
     }
 
-    /** 執行單個映射動作（按鍵單發＋axis jog 共用）。回 true＝已處理。 */
+    /**
+     * 執行一鍵映射（單／多通用，一次過順序做晒）。
+     * multi 係換行分隔多動作（見 splitMultiAction）；全 none／空即回 true（無嘢做）。
+     * taken＝全部非 none 段都成功先 true（任一段失敗即 false，等面板打✗）。
+     * servo 首步喺各段即行，連走由調用方經 startServoRepeats 續行（見下）。
+     */
     private boolean executeAction(String side, String key, String action) {
+        java.util.List<String> parts = splitMultiAction(action);
+        if (parts.isEmpty()) return true;
+        boolean anyReal = false;
+        for (String p : parts) {
+            if (!"none".equals(p)) { anyReal = true; break; }
+        }
+        if (!anyReal) return true;
+        boolean allOk = true;
+        for (int i = 0; i < parts.size(); i++) {
+            String p = parts.get(i);
+            if ("none".equals(p)) continue;
+            boolean ok;
+            try {
+                ok = executeSingleAction(side, key, p, i);
+            } catch (Throwable t) {
+                Log.w(TAG, "executeMulti part failed: " + p, t);
+                ok = false;
+            }
+            if (!ok) allOk = false;
+        }
+        return allOk;
+    }
+
+    /** 執行單個映射動作（按鍵單發＋axis jog 共用）。回 true＝已處理。 */
+    private boolean executeSingleAction(String side, String key, String action, int idx) {
         if (action == null) return false;
         String a = action.trim();
         try {
@@ -1222,7 +1362,7 @@ public final class GamepadCenter {
                     if ("ring_random".equals(a)) {
                         return ringtoneCenter.playRandomRingtoneNow();
                     }
-                    if (toggleFlip(side, key)) {
+                    if (toggleFlipMulti(side, key, idx)) {
                         if ("ring_phone".equals(a)) {
                             return ringtoneCenter.playDefaultPhoneRingtoneNow();
                         }
@@ -1404,7 +1544,7 @@ public final class GamepadCenter {
                                 + rnd.nextInt(maxColor));
                     }
                     boolean stopping = "stop".equals(preset) || "off".equals(preset);
-                    if (!stopping && !noFlip && !toggleFlip(side, key)) {
+                    if (!stopping && !noFlip && !toggleFlipMulti(side, key, idx)) {
                         java.util.Map<String, String> qoff = new java.util.HashMap<>();
                         HttpServer.ApiResponse respOff;
                         if ("mouth".equals(which)) {
@@ -1501,20 +1641,51 @@ public final class GamepadCenter {
 
     /** 撳住連走（defl 偏轉 0..1：掣傳 1.0 全速，搖桿傳當刻偏轉跟速）。 */
     private synchronized void startServoRepeat(String side, String key, String action, float defl) {
+        // 單值舊路（多值經下面 startServoRepeats 逐段排；呢度留住畀舊調用／單 servo）。
+        java.util.List<String> parts = splitMultiAction(action);
+        if (parts.size() > 1) {
+            startServoRepeats(side, key, action, defl);
+            return;
+        }
         stopServoRepeat(side, key);
         final int id;
         final int baseDelta;
         try {
-            id = Integer.parseInt(action.substring(5, action.length() - 1));
-            baseDelta = action.endsWith("+") ? SERVO_JOG_STEP : -SERVO_JOG_STEP;
+            String single = parts.isEmpty() ? action : parts.get(0);
+            id = Integer.parseInt(single.substring(5, single.length() - 1));
+            baseDelta = single.endsWith("+") ? SERVO_JOG_STEP : -SERVO_JOG_STEP;
         } catch (Throwable t) {
             Log.w(TAG, "startServoRepeat parse failed: " + action, t);
             return;
         }
+        startServoRepeatTag(side + ":" + key, id, baseDelta, defl);
+    }
+
+    /**
+     * 一鍵多功能連走：多值入面每個 servo 段各排一條 repeat（tag＝side:key／side:key#index，
+     * 首段沿用舊 tag 兼容單鍵；放手經 stopServoRepeat 一次過停晒）。
+     */
+    private synchronized void startServoRepeats(String side, String key, String multi, float defl) {
+        stopServoRepeat(side, key);
+        java.util.List<String> parts = splitMultiAction(multi);
+        for (int i = 0; i < parts.size(); i++) {
+            String p = parts.get(i);
+            if (!isServoJog(p)) continue;
+            try {
+                int id = Integer.parseInt(p.substring(5, p.length() - 1));
+                int baseDelta = p.endsWith("+") ? SERVO_JOG_STEP : -SERVO_JOG_STEP;
+                String tag = (i == 0) ? (side + ":" + key) : (side + ":" + key + "#" + i);
+                startServoRepeatTag(tag, id, baseDelta, defl);
+            } catch (Throwable t) {
+                Log.w(TAG, "startServoRepeats parse failed: " + p, t);
+            }
+        }
+    }
+
+    /** 單條 repeat（tag 已定；tick 讀自己 tag 嘅偏轉量）。 */
+    private synchronized void startServoRepeatTag(final String tag, final int id,
+            final int baseDelta, float defl) {
         try {
-            final String tag = side + ":" + key;
-            final String fside = side;
-            final String fkey = key;
             servoRepeatDefl.put(tag, Math.max(0f, Math.min(1f, defl)));
             final int[] ticks = new int[1];
             final int[] stillFails = new int[1];
@@ -1522,18 +1693,18 @@ public final class GamepadCenter {
                     new Runnable() {
                         @Override public void run() {
                             if (++ticks[0] > SERVO_REPEAT_MAX_TICKS) {
-                                stopServoRepeat(fside, fkey);
+                                stopServoRepeatTag(tag);
                                 return;
                             }
                             // 偏轉跟速：步長按當刻偏轉量縮放（半推慢行，推盡全速 8°）。
-                            int step = Math.max(1, Math.round(SERVO_JOG_STEP * repeatDeflOf(fside, fkey)));
+                            int step = Math.max(1, Math.round(SERVO_JOG_STEP * repeatDeflOfTag(tag)));
                             int delta = baseDelta > 0 ? step : -step;
                             // 到頂／送唔出連續 3 次即自己停（唔再頂住限位嗌）。
                             if (jogServo(id, delta)) {
                                 stillFails[0] = 0;
                             } else if (++stillFails[0] >= 3) {
                                 Log.i(TAG, "servo repeat auto-stop at limit: " + tag);
-                                stopServoRepeat(fside, fkey);
+                                stopServoRepeatTag(tag);
                             }
                         }
                     }, SERVO_REPEAT_MS, SERVO_REPEAT_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
@@ -1548,27 +1719,61 @@ public final class GamepadCenter {
         return fd == null ? 1f : fd;
     }
 
-    /** 搖桿偏轉跟速（連走緊先有用；無排緊即 no-op，唔留垃圾）。 */
-    private synchronized void updateServoRepeatDefl(String side, String key, float defl) {
-        if (servoRepeaters.containsKey(side + ":" + key)) {
-            servoRepeatDefl.put(side + ":" + key, Math.max(0f, Math.min(1f, defl)));
-        }
+    private synchronized float repeatDeflOfTag(String tag) {
+        Float fd = servoRepeatDefl.get(tag);
+        return fd == null ? 1f : fd;
     }
 
-    /** 停該鍵連走；回 true＝之前真有排緊（release 的 taken 照呢個實數）。 */
+    /** 搖桿偏轉跟速（連走緊先有用；無排緊即 no-op，唔留垃圾；多 servo 一齊跟）。 */
+    private synchronized void updateServoRepeatDefl(String side, String key, float defl) {
+        String base = side + ":" + key;
+        float v = Math.max(0f, Math.min(1f, defl));
+        boolean any = false;
+        for (String tag : new java.util.ArrayList<String>(servoRepeaters.keySet())) {
+            if (tag.equals(base) || tag.startsWith(base + "#")) {
+                servoRepeatDefl.put(tag, v);
+                any = true;
+            }
+        }
+        // 舊單 tag 兼容（上面已包，此分支留空，免漏）。
+        if (!any) { /* no-op */ }
+    }
+
+    /** 停該鍵全部連走（含多功能 #index 條）；回 true＝之前真有排緊。 */
     private synchronized boolean stopServoRepeat(String side, String key) {
         try {
-            java.util.concurrent.ScheduledFuture<?> f =
-                    servoRepeaters.remove(side + ":" + key);
-            servoRepeatDefl.remove(side + ":" + key);
-            if (f != null) {
-                f.cancel(false);
-                return true;
+            String base = side + ":" + key;
+            java.util.List<String> tags = new java.util.ArrayList<String>();
+            for (String tag : servoRepeaters.keySet()) {
+                if (tag.equals(base) || tag.startsWith(base + "#")) tags.add(tag);
             }
+            boolean any = false;
+            for (String tag : tags) {
+                java.util.concurrent.ScheduledFuture<?> f = servoRepeaters.remove(tag);
+                servoRepeatDefl.remove(tag);
+                if (f != null) {
+                    try { f.cancel(false); } catch (Throwable ignored) {}
+                    any = true;
+                }
+            }
+            return any;
         } catch (Throwable t) {
             Log.w(TAG, "stopServoRepeat failed", t);
         }
         return false;
+    }
+
+    /** 停單條 repeat（tick 自停用；外面放手用上面 prefix 版）。 */
+    private synchronized void stopServoRepeatTag(String tag) {
+        try {
+            java.util.concurrent.ScheduledFuture<?> f = servoRepeaters.remove(tag);
+            servoRepeatDefl.remove(tag);
+            if (f != null) {
+                try { f.cancel(false); } catch (Throwable ignored) {}
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "stopServoRepeatTag failed", t);
+        }
     }
 
     /**
@@ -1705,7 +1910,7 @@ public final class GamepadCenter {
                 + "\",\"mapping\":" + mappingJson(loadMapping(side)) + "}");
     }
 
-    /** gamepad/config/set：side＋key＋action 單鍵改（reset=1 回該邊預設）。 */
+    /** gamepad/config/set：side＋key＋action 單鍵改（一鍵多功能：action 可換行分隔多個，順序執行；reset=1 回該邊預設）。 */
     public HttpServer.ApiResponse configSetResponse(Map<String, String> query) {
         String side = normalizeSide(query.get("side"));
         String reset = query.get("reset");
@@ -1728,14 +1933,16 @@ public final class GamepadCenter {
             throw new IllegalArgumentException("missing required parameter: action");
         }
         key = key.trim();
-        action = action.trim();
+        // canonical：逐段 trim＋換行重接（前後空格／多餘空行唔存）。
+        action = joinMultiAction(splitMultiAction(action));
         if (!isKnownKey(side, key)) {
             String[] all = SIDE_KB.equals(side) ? KB_KEYS : PAD_KEYS;
             throw new IllegalArgumentException("parameter 'key' (side=" + side + ") must be one of "
                     + java.util.Arrays.toString(all) + ", got: " + key);
         }
-        if (!isValidAction(action)) {
-            throw new IllegalArgumentException("parameter 'action' must be none/stop/vol_up/vol_down/"
+        if (!isValidMultiAction(action)) {
+            throw new IllegalArgumentException("parameter 'action' must be single action or newline-separated multi (max "
+                    + MAX_ACTIONS_PER_KEY + "): none/stop/vol_up/vol_down/"
                     + "music_play/music_next/music_prev/music_pause/music_resume/music_toggle/music_stop/music_random/radio_toggle/disco_toggle/filler_toggle/"
                     + "ring_phone/ring_stop/ring_random/ring:<title>/ring:phone:<title>/ring:notification:<title>/"
                     + "head:<preset>:<color>/head:random/eye:<preset>:<color>/eye:random/"
@@ -1800,7 +2007,7 @@ public final class GamepadCenter {
         // 放開：停連走＋不上動作（避免按住連發播兩次），但事件照記、前端燈照跟。
         if (pressed) {
             taken = executeAction(side, key, mapped);
-            if (taken && isServoJog(mapped)) startServoRepeat(side, key, mapped, 1f);
+            if (taken && !servoJogParts(mapped).isEmpty()) startServoRepeats(side, key, mapped, 1f);
         } else {
             taken = stopServoRepeat(side, key);
         }
@@ -1870,7 +2077,7 @@ public final class GamepadCenter {
     private static boolean isMappedDir(Map<String, String> padMap, String dirKey) {
         if (padMap == null) return false;
         String v = padMap.get(dirKey);
-        return v != null && !"none".equals(v);
+        return isMappedValue(v);
     }
 
     // -- 動作尾位＋回中 helpers ------------------------------------------------
@@ -1969,21 +2176,20 @@ public final class GamepadCenter {
     }
 
     /** 某軸回中：該軸配咗嘅 servo 掣返動作尾位（世代閘＋pool 非同步，唔塞掣事件）。
-     *  legacy 19/20 唔經呢度（行下面全中分支，免打孖送）。 */
+     *  legacy 19/20 唔經呢度（行下面全中分支，免打孖送）。
+     *  一鍵多功能：該向有多個 servo 段即全部回中。 */
     private void maybeRecenterAxis(String dirKey, Map<String, String> padMap) {
         String axis = axisOfDir(dirKey);
         if (axis == null || !axisSettled(axis)) return;
-        Integer id = null;
+        java.util.List<Integer> ids = null;
         try {
             String mapped = padMap != null ? padMap.get(dirKey) : null;
-            id = servoIdOfAction(mapped);
+            ids = servoIdsOfMulti(mapped);
         } catch (Throwable ignored) {
         }
-        if (id == null) return;
+        if (ids == null || ids.isEmpty()) return;
         java.util.Map<String, java.util.List<Integer>> perAxis =
                 new java.util.LinkedHashMap<>();
-        java.util.List<Integer> ids = new java.util.ArrayList<>();
-        ids.add(id);
         perAxis.put(axis, ids);
         recenterAsync(axisGenNow(), perAxis);
     }
@@ -2071,9 +2277,9 @@ public final class GamepadCenter {
                 axisGen++;
             }
             String mapped = padMap != null ? padMap.get(dirKey) : null;
-            if (mapped == null || "none".equals(mapped)) return false;
+            if (!isMappedValue(mapped)) return false;
             boolean taken = executeAction(SIDE_PAD, dirKey, mapped);
-            if (taken && isServoJog(mapped)) startServoRepeat(SIDE_PAD, dirKey, mapped, defl);
+            if (taken && !servoJogParts(mapped).isEmpty()) startServoRepeats(SIDE_PAD, dirKey, mapped, defl);
             publishKey(dirKey, true, source, mapped, taken);
             return taken;
         }

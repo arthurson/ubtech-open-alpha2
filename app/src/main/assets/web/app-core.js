@@ -144,9 +144,11 @@ const I18N = {
   gamepad_mapping_pad_heading: { zh: "🎮 手柄映射", en: "🎮 Gamepad mapping" },
   gamepad_mapping_kb_heading:  { zh: "⌨️ 鍵盤映射", en: "⌨️ Keyboard mapping" },
   gamepad_mapping_show_pad:    { zh: "映射表", en: "Mapping" },
+  gamepad_add_btn:           { zh: "+", en: "+" },
+  gamepad_rm_btn:            { zh: "x", en: "x" },
   gamepad_mapping_show_kb:     { zh: "映射表", en: "Mapping" },
-  gamepad_mapping_pad_hint:    { zh: "同名鍵兩邊獨立值；改完即存機器人（重啟保留）。", en: "Same names hold separate values per side. Saved on robot." },
-  gamepad_mapping_kb_hint:     { zh: "同名鍵兩邊獨立值；改完即存機器人（重啟保留）。", en: "Same names hold separate values per side. Saved on robot." },
+  gamepad_mapping_pad_hint:    { zh: "同名鍵兩邊獨立值；每鍵按 + 可加多個動作（一次過順序做晒）；改完即存機器人（重啟保留）。", en: "Same names hold separate values per side. Press + per key for multi-action (run in order). Saved on robot." },
+  gamepad_mapping_kb_hint:     { zh: "同名鍵兩邊獨立值；每鍵按 + 可加多個動作（一次過順序做晒）；改完即存機器人（重啟保留）。", en: "Same names hold separate values per side. Press + per key for multi-action (run in order). Saved on robot." },
 
   // -- gamepad 映射行下拉（種類＋各值，中英齊，免版面又中又英） --
   gamepad_kind_none:   { zh: "無動作", en: "None" },

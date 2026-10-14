@@ -42,6 +42,7 @@ var GAMEPAD_KB_GROUPS = [
 // 動作種類（servo 軸＋方向另有下拉拼出 servo<N>±；music 揀功能（含音量＋-）；
 // ring 揀鈴聲（系統預設電話鈴＋鈴聲名）；led 揀部位＋效果＋色；camera 揀影相／追蹤；
 // action 由動作下拉選）。
+var GAMEPAD_MAX_PER_KEY = 6;
 var GAMEPAD_KINDS = ["none", "stop", "servo", "music", "radio", "ring", "led", "camera", "sensor", "voice", "action"];
 var GAMEPAD_KIND_KEYS = { none: "gamepad_kind_none", stop: "gamepad_kind_stop",
   servo: "gamepad_kind_servo", music: "gamepad_kind_music", radio: "gamepad_kind_radio",
@@ -50,6 +51,39 @@ var GAMEPAD_KIND_KEYS = { none: "gamepad_kind_none", stop: "gamepad_kind_stop",
   voice: "gamepad_kind_voice", action: "gamepad_kind_action" };
 var GAMEPAD_VOICE_FIXED = [["xiaozhi_toggle", "gamepad_voice_xiaozhi"],
   ["vosk", "gamepad_voice_vosk"]];
+
+// Multi-action helpers: one key holds up to GAMEPAD_MAX_PER_KEY actions,
+// stored newline-separated (same as backend GamepadCenter).
+function gamepadSplitMulti(v) {
+  if (v == null) return ["none"];
+  var parts = String(v).split(/\r\n|\r|\n/);
+  var out = [];
+  for (var i = 0; i < parts.length; i++) {
+    var s = parts[i].replace(/^\s+|\s+$/g, "");
+    if (s) out.push(s);
+  }
+  if (!out.length) return ["none"];
+  return out;
+}
+function gamepadJoinMulti(list) {
+  var out = [];
+  for (var i = 0; i < list.length; i++) {
+    var s = list[i] == null ? "" : String(list[i]).replace(/^\s+|\s+$/g, "");
+    if (s) out.push(s);
+  }
+  return out.join("\n");
+}
+function gamepadSubId(base, side, k, idx) {
+  return base + "_" + side + "_" + k + "__" + idx;
+}
+function gamepadParseSubKeyId(id, prefix) {
+  var rest = id.substring(prefix.length);
+  var sep = rest.lastIndexOf("__");
+  if (sep < 0) return { key: rest, idx: 0 };
+  var idx = parseInt(rest.substring(sep + 2), 10);
+  if (!isFinite(idx)) idx = 0;
+  return { key: rest.substring(0, sep), idx: idx };
+}
 
 // 相機（同後端 isCameraAction 對齊；追蹤係 toggle：face_toggle／color_toggle）。
 var GAMEPAD_CAMERA_FNS = ["camera_photo", "face_toggle", "color_toggle", "video_toggle"];
@@ -119,9 +153,9 @@ function gamepadLoadRadioFavs(force) {
 }
 
 // 建電台下拉（開關＋收藏；收藏單後到即補）。
-function gamepadBuildRadioSelect(side, k, parsed) {
+function gamepadBuildRadioSelect(side, k, idx, parsed) {
   var sel = document.createElement("select");
-  sel.id = "gpRadioSel_" + side + "_" + k;
+  sel.id = gamepadSubId("gpRadioSel", side, k, idx);
   sel.style.maxWidth = "220px";
   sel.style.display = parsed.kind === "radio" ? "inline" : "none";
   gamepadFillRadioSelect(sel, parsed.radioFn);
@@ -406,8 +440,10 @@ function gamepadLastText(d) {
   if (!d || typeof d !== "object" || !d.key) return "-";
   var k = d.key;
   var arrow = (d.pressed === false) ? " ↑" : " ↓";
+  var act = d.action || "-";
+  try { act = String(act).split(/\r\n|\r|\n/).join(" + "); } catch (e) {}
   var s = (k === "unmapped" && d.code != null ? (k + "(" + d.code + ")") : k)
-    + arrow + " → " + (d.action || "-") + " [" + (d.source || "-") + "]"
+    + arrow + " → " + act + " [" + (d.source || "-") + "]"
     + (d.taken === true ? " ✓" : (d.taken === false ? " " + t("gamepad_taken_no") : ""));
   return s;
 }
@@ -646,12 +682,12 @@ function gamepadParseValue(v) {
 }
 
 // 建舵機單一下拉（#1+／#1-／#2+…#22- 共 44 格；id 按邊分名前綴，兩區同名鍵唔撞）。
-function gamepadBuildServoControls(side, k, parsed) {
+function gamepadBuildServoControls(side, k, idx, parsed) {
   var wrap = document.createElement("span");
-  wrap.id = "gpServoWrap_" + side + "_" + k;
+  wrap.id = gamepadSubId("gpServoWrap", side, k, idx);
   wrap.style.display = parsed.kind === "servo" ? "inline" : "none";
   var sel = document.createElement("select");
-  sel.id = "gpServo_" + side + "_" + k;
+  sel.id = gamepadSubId("gpServo", side, k, idx);
   var cur = "servo" + parsed.servoId + parsed.servoDir;
   for (var i = 1; i <= 22; i++) {
     ["+", "-"].forEach(function (d) {
@@ -679,13 +715,12 @@ function gamepadActionKindOf(id) {
 }
 
 // 建 202 動作級聯下拉（先大類、再入面動作；數據未到先得提示，load 完補）。
-function gamepadBuildActionSelect(side, k, parsed) {
-  var pfx = side + "_";
+function gamepadBuildActionSelect(side, k, idx, parsed) {
   var wrap = document.createElement("span");
-  wrap.id = "gpActionWrap_" + pfx + k;
+  wrap.id = gamepadSubId("gpActionWrap", side, k, idx);
   wrap.style.display = parsed.kind === "action" ? "inline" : "none";
   var kindSel = document.createElement("select");
-  kindSel.id = "gpActionKind_" + pfx + k;
+  kindSel.id = gamepadSubId("gpActionKind", side, k, idx);
   GAMEPAD_ACTION_KINDS5.forEach(function (g) {
     var ko = document.createElement("option");
     ko.value = g;
@@ -693,25 +728,25 @@ function gamepadBuildActionSelect(side, k, parsed) {
     kindSel.appendChild(ko);
   });
   var sel = document.createElement("select");
-  sel.id = "gpActionSel_" + pfx + k;
+  sel.id = gamepadSubId("gpActionSel", side, k, idx);
   sel.style.maxWidth = "220px";
   wrap.appendChild(kindSel);
   wrap.appendChild(sel);
-  kindSel.onchange = (function (s, kk) {
+  kindSel.onchange = (function (s, kk, ii) {
     return function () {
-      gamepadFillActionRow(s, kk, this.value, "");
+      gamepadFillActionRow(s, kk, ii, this.value, "");
     };
-  })(side, k);
+  })(side, k, idx);
   gamepadFillActionSelectEl(kindSel, sel, null, parsed.actionId);
   return wrap;
 }
 
 // 填某行個動作下拉（cat 空即按現值自動判定大類；curId 唔喺類入面即補 (?) 粒）。
-function gamepadFillActionRow(side, k, cat, curId) {
-  var pfx = side + "_";
+function gamepadFillActionRow(side, k, idx, cat, curId) {
+  if (idx == null) idx = 0;
   gamepadFillActionSelectEl(
-    document.getElementById("gpActionKind_" + pfx + k),
-    document.getElementById("gpActionSel_" + pfx + k), cat, curId);
+    document.getElementById(gamepadSubId("gpActionKind", side, k, idx)),
+    document.getElementById(gamepadSubId("gpActionSel", side, k, idx)), cat, curId);
 }
 
 // element 版（build 嗰陣未入 DOM，唔用 getElementById）。
@@ -790,12 +825,12 @@ function gamepadLoadRingTitles(type) {
 }
 
 // 建鈴聲兩下拉（系統預設電話鈴＋鈴聲停＋隨機＋電話／通知表；名單後到即補）。
-function gamepadBuildRingSelect(side, k, parsed) {
+function gamepadBuildRingSelect(side, k, idx, parsed) {
   var wrap = document.createElement("span");
-  wrap.id = "gpRingWrap_" + side + "_" + k;
+  wrap.id = gamepadSubId("gpRingWrap", side, k, idx);
   wrap.style.display = parsed.kind === "ring" ? "inline" : "none";
   var typeSel = document.createElement("select");
-  typeSel.id = "gpRingType_" + side + "_" + k;
+  typeSel.id = gamepadSubId("gpRingType", side, k, idx);
   [["phone", "gamepad_ring_type_phone"], ["notification", "gamepad_ring_type_notification"]].forEach(function (p) {
     var to = document.createElement("option");
     to.value = p[0];
@@ -804,7 +839,7 @@ function gamepadBuildRingSelect(side, k, parsed) {
     typeSel.appendChild(to);
   });
   var sel = document.createElement("select");
-  sel.id = "gpRingSel_" + side + "_" + k;
+  sel.id = gamepadSubId("gpRingSel", side, k, idx);
   sel.style.maxWidth = "200px";
   var fixed = [["ring_phone", "gamepad_ring_phone"], ["ring_stop", "gamepad_ring_stop"], ["ring_random", "gamepad_ring_random"]];
   fixed.forEach(function (f) {
@@ -816,10 +851,9 @@ function gamepadBuildRingSelect(side, k, parsed) {
   });
   wrap.appendChild(typeSel);
   wrap.appendChild(sel);
-  typeSel.onchange = (function (s, kk) {
+  typeSel.onchange = (function (s, kk, ii) {
     return function () {
-      var pfx2 = s + "_";
-      var sel2 = document.getElementById("gpRingSel_" + pfx2 + kk);
+      var sel2 = document.getElementById(gamepadSubId("gpRingSel", s, kk, ii));
       var curText = "";
       if (sel2 && sel2.selectedIndex >= 0) curText = sel2.options[sel2.selectedIndex].text;
       gamepadFillRingSelect(sel2, this.value, "");
@@ -833,7 +867,7 @@ function gamepadBuildRingSelect(side, k, parsed) {
         }
       }
     };
-  })(side, k);
+  })(side, k, idx);
   gamepadFillRingSelect(sel, gamepadRingTypeOf(parsed.ringSel), parsed.ringSel);
   return wrap;
 }
@@ -908,12 +942,12 @@ function gamepadFillLedColors(colorSel, dual, curVal) {
   });
 }
 
-function gamepadBuildLedControls(side, k, parsed) {
+function gamepadBuildLedControls(side, k, idx, parsed) {
   var wrap = document.createElement("span");
-  wrap.id = "gpLedWrap_" + side + "_" + k;
+  wrap.id = gamepadSubId("gpLedWrap", side, k, idx);
   wrap.style.display = parsed.kind === "led" ? "inline" : "none";
   var part = document.createElement("select");
-  part.id = "gpLedPart_" + side + "_" + k;
+  part.id = gamepadSubId("gpLedPart", side, k, idx);
   [["head", "gamepad_led_head"], ["eye", "gamepad_led_eye"], ["mouth", "gamepad_led_mouth"]].forEach(function (p) {
     var o = document.createElement("option");
     o.value = p[0];
@@ -922,13 +956,13 @@ function gamepadBuildLedControls(side, k, parsed) {
     part.appendChild(o);
   });
   var preset = document.createElement("select");
-  preset.id = "gpLedPreset_" + side + "_" + k;
+  preset.id = gamepadSubId("gpLedPreset", side, k, idx);
   var color = document.createElement("select");
-  color.id = "gpLedColor_" + side + "_" + k;
+  color.id = gamepadSubId("gpLedColor", side, k, idx);
   gamepadFillLedColors(color, false, parsed.ledColor);
   // 咀速（breathing 先用，100-1000ms，後端同驗）。
   var speed = document.createElement("input");
-  speed.id = "gpLedSpeed_" + side + "_" + k;
+  speed.id = gamepadSubId("gpLedSpeed", side, k, idx);
   speed.type = "number";
   speed.min = "100";
   speed.max = "1000";
@@ -1026,10 +1060,12 @@ function gamepadRenderMapping(mapping) {
       if (!grid) return;
       var sels = grid.querySelectorAll("select[id^='gpActionSel_" + side + "_']");
       for (var i = 0; i < sels.length; i++) {
-        var k = sels[i].id.substring(("gpActionSel_" + side + "_").length);
-        var cur = gamepadParseValue((side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k] || "none");
-        // 未用有數據填過即補（唔數 options：miss 粒都會令數目超標）。
-        if (!sels[i].dataset.actionFilled) gamepadFillActionRow(side, k, null, cur.actionId);
+        var parsed = gamepadParseSubKeyId(sels[i].id, "gpActionSel_" + side + "_");
+        var k = parsed.key;
+        var stored = (side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k] || "none";
+        var parts = gamepadSplitMulti(stored);
+        var cur = gamepadParseValue(parts[parsed.idx] || "none");
+        if (!sels[i].dataset.actionFilled) gamepadFillActionRow(side, k, parsed.idx, null, cur.actionId);
       }
     });
   });
@@ -1039,8 +1075,11 @@ function gamepadRenderMapping(mapping) {
       if (!grid2) return;
       var rsels = grid2.querySelectorAll("select[id^='gpRingSel_" + side + "_']");
       for (var j = 0; j < rsels.length; j++) {
-        var k2 = rsels[j].id.substring(("gpRingSel_" + side + "_").length);
-        var cur2 = gamepadParseValue((side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k2] || "none");
+        var parsed2 = gamepadParseSubKeyId(rsels[j].id, "gpRingSel_" + side + "_");
+        var k2 = parsed2.key;
+        var stored2 = (side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k2] || "none";
+        var parts2 = gamepadSplitMulti(stored2);
+        var cur2 = gamepadParseValue(parts2[parsed2.idx] || "none");
         var rt = gamepadRingTypeOf(cur2.ringSel);
         // 表啱＋用有數據填過即跳過；表唔啱／未用數據填過即補。
         if (rsels[j].dataset.ringType !== rt || !rsels[j].dataset.ringFilled) {
@@ -1056,8 +1095,11 @@ function gamepadRenderMapping(mapping) {
       if (!grid3) return;
       var psels = grid3.querySelectorAll("select[id^='gpVoskPackSel_" + side + "_']");
       for (var k3 = 0; k3 < psels.length; k3++) {
-        var k4 = psels[k3].id.substring(("gpVoskPackSel_" + side + "_").length);
-        var cur3 = gamepadParseValue((side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k4] || "none");
+        var parsed4 = gamepadParseSubKeyId(psels[k3].id, "gpVoskPackSel_" + side + "_");
+        var k4 = parsed4.key;
+        var stored3 = (side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k4] || "none";
+        var parts3 = gamepadSplitMulti(stored3);
+        var cur3 = gamepadParseValue(parts3[parsed4.idx] || "none");
         if (!psels[k3].dataset.voiceFilled) gamepadFillVoskPacks(psels[k3], cur3.voiceFn);
       }
     });
@@ -1069,8 +1111,11 @@ function gamepadRenderMapping(mapping) {
       if (!grid4) return;
       var fsels = grid4.querySelectorAll("select[id^='gpRadioSel_" + side + "_']");
       for (var k5 = 0; k5 < fsels.length; k5++) {
-        var k6 = fsels[k5].id.substring(("gpRadioSel_" + side + "_").length);
-        var cur4 = gamepadParseValue((side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k6] || "none");
+        var parsed6 = gamepadParseSubKeyId(fsels[k5].id, "gpRadioSel_" + side + "_");
+        var k6 = parsed6.key;
+        var stored4 = (side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[k6] || "none";
+        var parts4 = gamepadSplitMulti(stored4);
+        var cur4 = gamepadParseValue(parts4[parsed6.idx] || "none");
         if (!fsels[k5].dataset.radioFilled) gamepadFillRadioSelect(fsels[k5], cur4.radioFn);
       }
     });
@@ -1196,6 +1241,257 @@ function gamepadRelabelSelect(sel) {
   // gpServo_（#N±）唔使理。
 }
 
+function gamepadSyncMappingRowBtns(side, k) {
+  var cont = document.getElementById("gpSubs_" + side + "_" + k);
+  if (!cont) return;
+  var rows = cont.querySelectorAll("[data-subrow]");
+  var n = rows.length;
+  for (var i = 0; i < rows.length; i++) {
+    var x = rows[i].querySelector("[data-rmbtn]");
+    if (x) x.style.display = "inline";
+    var badge = rows[i].querySelector("[data-idxbadge]");
+    if (badge) badge.textContent = n > 1 ? ("#" + (i + 1)) : "";
+  }
+  var add = cont.querySelector("[data-addbtn='" + side + ":" + k + "']");
+  if (add) {
+    add.disabled = n >= GAMEPAD_MAX_PER_KEY;
+    add.title = n >= GAMEPAD_MAX_PER_KEY ? ("max " + GAMEPAD_MAX_PER_KEY) : "+";
+  }
+}
+
+function gamepadClearSubRowToNone(side, k, idx) {
+  var kindEl = document.getElementById(gamepadSubId("gpSel", side, k, idx));
+  if (!kindEl) return;
+  kindEl.value = "none";
+  try {
+    if (typeof kindEl.onchange === "function") kindEl.onchange();
+  } catch (e) {}
+}
+
+function gamepadRemoveMappingRow(side, k, idx) {
+  var cont = document.getElementById("gpSubs_" + side + "_" + k);
+  if (!cont) return;
+  var rows = cont.querySelectorAll("[data-subrow]");
+  if (rows.length <= 1) {
+    var only = rows.length ? parseInt(rows[0].getAttribute("data-idx"), 10) : idx;
+    if (!isFinite(only)) only = 0;
+    gamepadClearSubRowToNone(side, k, only);
+    return;
+  }
+  var pos = -1;
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].getAttribute("data-idx")) === String(idx)) { pos = i; break; }
+  }
+  if (pos < 0) return;
+  var wasFirst = (pos === 0);
+  cont.removeChild(rows[pos]);
+  if (wasFirst) {
+    var first = cont.querySelector("[data-subrow]");
+    if (first) {
+      var sp = first.querySelector("[data-spacer]");
+      if (sp) {
+        var label = document.createElement("span");
+        label.style.minWidth = "90px";
+        label.style.fontWeight = "bold";
+        label.textContent = gamepadKeyLabel(k);
+        label.setAttribute("data-label", "1");
+        first.replaceChild(label, sp);
+      }
+      if (!first.querySelector("[data-addbtn]")) {
+        var addBtn = document.createElement("button");
+        addBtn.className = "secondary";
+        addBtn.textContent = "+";
+        addBtn.setAttribute("data-addbtn", side + ":" + k);
+        addBtn.onclick = (function (s, kk) {
+          return function () { gamepadAddMappingRow(s, kk); };
+        })(side, k);
+        var ph = first.querySelector("[data-addph]");
+        if (ph) first.replaceChild(addBtn, ph);
+        else {
+          var ref = first.querySelector("[data-idxbadge]");
+          if (ref) first.insertBefore(addBtn, ref);
+          else first.insertBefore(addBtn, first.firstChild ? first.firstChild.nextSibling : null);
+        }
+      }
+    }
+  }
+  gamepadSyncMappingRowBtns(side, k);
+}
+
+function gamepadAddMappingRow(side, k) {
+  var cont = document.getElementById("gpSubs_" + side + "_" + k);
+  if (!cont) return;
+  var rows = cont.querySelectorAll("[data-subrow]");
+  if (rows.length >= GAMEPAD_MAX_PER_KEY) return;
+  var maxIdx = -1;
+  for (var i = 0; i < rows.length; i++) {
+    var ii = parseInt(rows[i].getAttribute("data-idx"), 10);
+    if (isFinite(ii) && ii > maxIdx) maxIdx = ii;
+  }
+  var next = maxIdx + 1;
+  var parsed = gamepadParseValue("none");
+  cont.appendChild(gamepadBuildMappingSubRow(side, k, next, parsed, false));
+  gamepadSyncMappingRowBtns(side, k);
+}
+
+function gamepadBuildMappingSubRow(side, k, idx, parsed, isFirst) {
+  if (isFirst == null) isFirst = (idx === 0);
+  var sub = document.createElement("div");
+  sub.className = "row gp-subrow";
+  sub.style.alignItems = "center";
+  sub.setAttribute("data-subrow", "1");
+  sub.setAttribute("data-idx", String(idx));
+  var lead;
+  if (isFirst) {
+    lead = document.createElement("span");
+    lead.style.minWidth = "90px";
+    lead.style.fontWeight = "bold";
+    lead.textContent = gamepadKeyLabel(k);
+    lead.setAttribute("data-label", "1");
+  } else {
+    lead = document.createElement("span");
+    lead.style.minWidth = "90px";
+    lead.setAttribute("data-spacer", "1");
+  }
+  var badge = document.createElement("span");
+  badge.setAttribute("data-idxbadge", "1");
+  badge.style.minWidth = "28px";
+  badge.style.opacity = "0.6";
+  badge.textContent = "";
+  var kind = document.createElement("select");
+  kind.id = gamepadSubId("gpSel", side, k, idx);
+  GAMEPAD_KINDS.forEach(function (c) {
+    var opt = document.createElement("option");
+    opt.value = c;
+    opt.textContent = t(GAMEPAD_KIND_KEYS[c] || c);
+    if (c === parsed.kind) opt.selected = true;
+    kind.appendChild(opt);
+  });
+  kind.onchange = (function (s, kk, ii) {
+    return function () {
+      var v = document.getElementById(gamepadSubId("gpSel", s, kk, ii)).value;
+      var sw = document.getElementById(gamepadSubId("gpServoWrap", s, kk, ii));
+      var aw = document.getElementById(gamepadSubId("gpActionWrap", s, kk, ii));
+      var mu = document.getElementById(gamepadSubId("gpMusicSel", s, kk, ii));
+      var ra = document.getElementById(gamepadSubId("gpRadioSel", s, kk, ii));
+      var rg = document.getElementById(gamepadSubId("gpRingWrap", s, kk, ii));
+      var lw = document.getElementById(gamepadSubId("gpLedWrap", s, kk, ii));
+      var cm = document.getElementById(gamepadSubId("gpCameraSel", s, kk, ii));
+      var sn = document.getElementById(gamepadSubId("gpSensorSel", s, kk, ii));
+      var vc = document.getElementById(gamepadSubId("gpVoiceWrap", s, kk, ii));
+      if (sw) sw.style.display = v === "servo" ? "inline" : "none";
+      if (aw) aw.style.display = v === "action" ? "inline" : "none";
+      if (mu) mu.style.display = v === "music" ? "inline" : "none";
+      if (true) gamepadSyncMusicEq(s, kk, ii);
+      if (ra) ra.style.display = v === "radio" ? "inline" : "none";
+      if (rg) rg.style.display = v === "ring" ? "inline" : "none";
+      if (lw) lw.style.display = v === "led" ? "inline" : "none";
+      if (cm) cm.style.display = v === "camera" ? "inline" : "none";
+      if (sn) sn.style.display = v === "sensor" ? "inline" : "none";
+      if (vc) vc.style.display = v === "voice" ? "inline" : "none";
+    };
+  })(side, k, idx);
+  var servoWrap = gamepadBuildServoControls(side, k, idx, parsed);
+  var musicSel = document.createElement("select");
+  musicSel.id = gamepadSubId("gpMusicSel", side, k, idx);
+  musicSel.style.display = parsed.kind === "music" ? "inline" : "none";
+  GAMEPAD_MUSIC_FNS.forEach(function (f) {
+    var o = document.createElement("option");
+    o.value = f;
+    o.textContent = t(GAMEPAD_MUSIC_FN_KEYS[f] || f);
+    if (f === parsed.musicFn) o.selected = true;
+    musicSel.appendChild(o);
+  });
+  var eqEntry2 = document.createElement("option");
+  eqEntry2.value = "eq:";
+  eqEntry2.textContent = t("gamepad_mfn_eq");
+  if (parsed.musicFn === "eq:") eqEntry2.selected = true;
+  musicSel.appendChild(eqEntry2);
+  musicSel.onchange = (function (s, kk, ii) {
+    return function () {
+      gamepadSyncMusicEq(s, kk, ii);
+    };
+  })(side, k, idx);
+  var eqSel = document.createElement("select");
+  eqSel.id = gamepadSubId("gpEqSel", side, k, idx);
+  eqSel.style.display = (parsed.kind === "music" && parsed.musicFn === "eq:") ? "inline" : "none";
+  ["normal", "classical", "dance", "rock", "jazz", "pop", "bass", "treble", "custom"].forEach(function (p) {
+    var oe = document.createElement("option");
+    oe.value = "eq:" + p;
+    oe.textContent = t("music_eq_preset_" + p);
+    if (p === parsed.eqPreset) oe.selected = true;
+    eqSel.appendChild(oe);
+  });
+  var actionWrap = gamepadBuildActionSelect(side, k, idx, parsed);
+  var ringWrap = gamepadBuildRingSelect(side, k, idx, parsed);
+  var ledWrap = gamepadBuildLedControls(side, k, idx, parsed);
+  var cameraSel = document.createElement("select");
+  cameraSel.id = gamepadSubId("gpCameraSel", side, k, idx);
+  cameraSel.style.display = parsed.kind === "camera" ? "inline" : "none";
+  [["camera_photo", "gamepad_cam_photo"], ["face_toggle", "gamepad_cam_face"],
+   ["color_toggle", "gamepad_cam_color"], ["video_toggle", "gamepad_cam_video"]].forEach(function (f) {
+    var o2 = document.createElement("option");
+    o2.value = f[0];
+    o2.textContent = t(f[1]);
+    if (f[0] === parsed.cameraFn) o2.selected = true;
+    cameraSel.appendChild(o2);
+  });
+  var sensorSel = document.createElement("select");
+  sensorSel.id = gamepadSubId("gpSensorSel", side, k, idx);
+  sensorSel.style.display = parsed.kind === "sensor" ? "inline" : "none";
+  GAMEPAD_SENSOR_FNS.forEach(function (f2) {
+    var o3 = document.createElement("option");
+    o3.value = f2;
+    o3.textContent = t(GAMEPAD_SENSOR_FN_KEYS[f2] || f2);
+    if (f2 === parsed.sensorFn) o3.selected = true;
+    sensorSel.appendChild(o3);
+  });
+  var voiceWrap = gamepadBuildVoiceSelect(side, k, idx, parsed);
+  var radioSel = gamepadBuildRadioSelect(side, k, idx, parsed);
+  var rm = document.createElement("button");
+  rm.className = "secondary";
+  rm.setAttribute("data-rmbtn", "1");
+  rm.textContent = "x";
+  rm.title = "x";
+  rm.onclick = (function (s, kk, ii) {
+    return function () { gamepadRemoveMappingRow(s, kk, ii); };
+  })(side, k, idx);
+  sub.appendChild(lead);
+  if (isFirst) {
+    var addBtn = document.createElement("button");
+    addBtn.className = "secondary";
+    addBtn.textContent = "+";
+    addBtn.setAttribute("data-addbtn", side + ":" + k);
+    addBtn.onclick = (function (s, kk) {
+      return function () { gamepadAddMappingRow(s, kk); };
+    })(side, k);
+    sub.appendChild(addBtn);
+  } else {
+    var addPh = document.createElement("button");
+    addPh.className = "secondary";
+    addPh.textContent = "+";
+    addPh.setAttribute("data-addph", "1");
+    addPh.disabled = true;
+    addPh.tabIndex = -1;
+    addPh.style.visibility = "hidden";
+    sub.appendChild(addPh);
+  }
+  sub.appendChild(badge);
+  sub.appendChild(kind);
+  sub.appendChild(servoWrap);
+  sub.appendChild(musicSel);
+  sub.appendChild(eqSel);
+  sub.appendChild(radioSel);
+  sub.appendChild(ringWrap);
+  sub.appendChild(ledWrap);
+  sub.appendChild(cameraSel);
+  sub.appendChild(sensorSel);
+  sub.appendChild(voiceWrap);
+  sub.appendChild(actionWrap);
+  sub.appendChild(rm);
+  return sub;
+}
+
 function gamepadRenderSideGrid(side, groups, map) {
   var wrap = document.getElementById(side === "kb" ? "gamepadMappingKbGrid" : "gamepadMappingPadGrid");
   if (!wrap) return;
@@ -1207,123 +1503,22 @@ function gamepadRenderSideGrid(side, groups, map) {
     h.textContent = t("gamepad_group_" + grp.title);
     wrap.appendChild(h);
     grp.keys.forEach(function (k) {
-      var parsed = gamepadParseValue(map[k] || "none");
+      var stored = (map && map[k]) || "none";
+      var multiParts = gamepadSplitMulti(stored);
+      if (multiParts.length > GAMEPAD_MAX_PER_KEY) multiParts = multiParts.slice(0, GAMEPAD_MAX_PER_KEY);
       var row = document.createElement("div");
-      row.className = "row";
-      row.style.alignItems = "center";
+      row.className = "gp-keyrow";
       row.setAttribute("data-maprow", k);
       row.setAttribute("data-mapside", side);
-      var label = document.createElement("span");
-      label.style.minWidth = "90px";
-      label.style.fontWeight = "bold";
-      label.textContent = gamepadKeyLabel(k);
-      var pfx = side + "_";
-      var kind = document.createElement("select");
-      kind.id = "gpSel_" + pfx + k;
-      GAMEPAD_KINDS.forEach(function (c) {
-        var opt = document.createElement("option");
-        opt.value = c;
-        opt.textContent = t(GAMEPAD_KIND_KEYS[c] || c);
-        if (c === parsed.kind) opt.selected = true;
-        kind.appendChild(opt);
-      });
-      kind.onchange = (function (kk) {
-        return function () {
-          var v = document.getElementById("gpSel_" + pfx + kk).value;
-          var sw = document.getElementById("gpServoWrap_" + pfx + kk);
-          var aw = document.getElementById("gpActionWrap_" + pfx + kk);
-          var mu = document.getElementById("gpMusicSel_" + pfx + kk);
-          var eq = document.getElementById("gpEqSel_" + pfx + kk);
-          var ra = document.getElementById("gpRadioSel_" + pfx + kk);
-          var rg = document.getElementById("gpRingWrap_" + pfx + kk);
-          var lw = document.getElementById("gpLedWrap_" + pfx + kk);
-          var cm = document.getElementById("gpCameraSel_" + pfx + kk);
-          var sn = document.getElementById("gpSensorSel_" + pfx + kk);
-          var vc = document.getElementById("gpVoiceWrap_" + pfx + kk);
-          if (sw) sw.style.display = v === "servo" ? "inline" : "none";
-          if (aw) aw.style.display = v === "action" ? "inline" : "none";
-          if (mu) mu.style.display = v === "music" ? "inline" : "none";
-          if (eq) gamepadSyncMusicEq(side, kk);
-          if (ra) ra.style.display = v === "radio" ? "inline" : "none";
-          if (rg) rg.style.display = v === "ring" ? "inline" : "none";
-          if (lw) lw.style.display = v === "led" ? "inline" : "none";
-          if (cm) cm.style.display = v === "camera" ? "inline" : "none";
-          if (sn) sn.style.display = v === "sensor" ? "inline" : "none";
-          if (vc) vc.style.display = v === "voice" ? "inline" : "none";
-        };
-      })(k);
-      var servoWrap = gamepadBuildServoControls(side, k, parsed);
-      var musicSel = document.createElement("select");
-      musicSel.id = "gpMusicSel_" + pfx + k;
-      musicSel.style.display = parsed.kind === "music" ? "inline" : "none";
-      GAMEPAD_MUSIC_FNS.forEach(function (f) {
-        var o = document.createElement("option");
-        o.value = f;
-        o.textContent = t(GAMEPAD_MUSIC_FN_KEYS[f] || f);
-        if (f === parsed.musicFn) o.selected = true;
-        musicSel.appendChild(o);
-      });
-      // 等化器入口（揀咗先行隔籬 eq 下拉；存值 eq:<preset>）。
-      var eqEntry = document.createElement("option");
-      eqEntry.value = "eq:";
-      eqEntry.textContent = t("gamepad_mfn_eq");
-      if (parsed.musicFn === "eq:") eqEntry.selected = true;
-      musicSel.appendChild(eqEntry);
-      musicSel.onchange = (function (s, kk) {
-        return function () {
-          gamepadSyncMusicEq(s, kk);
-        };
-      })(side, k);
-      // EQ presets（同音樂頁同一組名；存值 eq:<preset>）。
-      var eqSel = document.createElement("select");
-      eqSel.id = "gpEqSel_" + pfx + k;
-      eqSel.style.display = (parsed.kind === "music" && parsed.musicFn === "eq:") ? "inline" : "none";
-      ["normal", "classical", "dance", "rock", "jazz", "pop", "bass", "treble", "custom"].forEach(function (p) {
-        var oe = document.createElement("option");
-        oe.value = "eq:" + p;
-        oe.textContent = t("music_eq_preset_" + p);
-        if (p === parsed.eqPreset) oe.selected = true;
-        eqSel.appendChild(oe);
-      });
-      var actionWrap = gamepadBuildActionSelect(side, k, parsed);
-      var ringWrap = gamepadBuildRingSelect(side, k, parsed);
-      var ledWrap = gamepadBuildLedControls(side, k, parsed);
-      var cameraSel = document.createElement("select");
-      cameraSel.id = "gpCameraSel_" + pfx + k;
-      cameraSel.style.display = parsed.kind === "camera" ? "inline" : "none";
-      [["camera_photo", "gamepad_cam_photo"], ["face_toggle", "gamepad_cam_face"],
-       ["color_toggle", "gamepad_cam_color"], ["video_toggle", "gamepad_cam_video"]].forEach(function (f) {
-        var o = document.createElement("option");
-        o.value = f[0];
-        o.textContent = t(f[1]);
-        if (f[0] === parsed.cameraFn) o.selected = true;
-        cameraSel.appendChild(o);
-      });
-      var sensorSel = document.createElement("select");
-      sensorSel.id = "gpSensorSel_" + pfx + k;
-      sensorSel.style.display = parsed.kind === "sensor" ? "inline" : "none";
-      GAMEPAD_SENSOR_FNS.forEach(function (f) {
-        var o = document.createElement("option");
-        o.value = f;
-        o.textContent = t(GAMEPAD_SENSOR_FN_KEYS[f] || f);
-        if (f === parsed.sensorFn) o.selected = true;
-        sensorSel.appendChild(o);
-      });
-      var voiceSel = gamepadBuildVoiceSelect(side, k, parsed);
-      row.appendChild(label);
-      row.appendChild(kind);
-      row.appendChild(servoWrap);
-      row.appendChild(musicSel);
-      row.appendChild(eqSel);
-      var radioSel = gamepadBuildRadioSelect(side, k, parsed);
-      row.appendChild(radioSel);
-      row.appendChild(ringWrap);
-      row.appendChild(ledWrap);
-      row.appendChild(cameraSel);
-      row.appendChild(sensorSel);
-      row.appendChild(voiceSel);
-      row.appendChild(actionWrap);
+      var subs = document.createElement("div");
+      subs.id = "gpSubs_" + side + "_" + k;
+      row.appendChild(subs);
       wrap.appendChild(row);
+      for (var mi = 0; mi < multiParts.length; mi++) {
+        var parsed = gamepadParseValue(multiParts[mi]);
+        subs.appendChild(gamepadBuildMappingSubRow(side, k, mi, parsed, mi === 0));
+      }
+      gamepadSyncMappingRowBtns(side, k);
     });
   });
 }
@@ -1353,12 +1548,12 @@ function gamepadVoskPackName(m) {
 }
 
 // 建語音兩下拉（小智／Vosk 組＋該組語言包；包單後到即補；vosk_toggle 舊值歸 Vosk 組）。
-function gamepadBuildVoiceSelect(side, k, parsed) {
+function gamepadBuildVoiceSelect(side, k, idx, parsed) {
   var wrap = document.createElement("span");
-  wrap.id = "gpVoiceWrap_" + side + "_" + k;
+  wrap.id = gamepadSubId("gpVoiceWrap", side, k, idx);
   wrap.style.display = parsed.kind === "voice" ? "inline" : "none";
   var sel = document.createElement("select");
-  sel.id = "gpVoiceSel_" + side + "_" + k;
+  sel.id = gamepadSubId("gpVoiceSel", side, k, idx);
   var isVosk = parsed.voiceFn !== "xiaozhi_toggle";
   GAMEPAD_VOICE_FIXED.forEach(function (f) {
     var o = document.createElement("option");
@@ -1368,15 +1563,15 @@ function gamepadBuildVoiceSelect(side, k, parsed) {
     sel.appendChild(o);
   });
   var pack = document.createElement("select");
-  pack.id = "gpVoskPackSel_" + side + "_" + k;
+  pack.id = gamepadSubId("gpVoskPackSel", side, k, idx);
   pack.style.maxWidth = "220px";
   wrap.appendChild(sel);
   wrap.appendChild(pack);
-  sel.onchange = (function (s, kk) {
+  sel.onchange = (function (s, kk, ii) {
     return function () {
-      gamepadSyncVoicePack(s, kk);
+      gamepadSyncVoicePack(s, kk, ii);
     };
-  })(side, k);
+  })(side, k, idx);
   gamepadFillVoskPacks(pack, isVosk ? parsed.voiceFn : "");
   // build 嗰陣未入 DOM，直接設（入 DOM 後轉組經上面 onchange＋sync）。
   pack.style.display = isVosk ? "inline" : "none";
@@ -1384,21 +1579,21 @@ function gamepadBuildVoiceSelect(side, k, parsed) {
 }
 
 // Vosk 組先出包單（小智組收起）。
-function gamepadSyncVoicePack(side, k) {
-  var pfx = side + "_";
-  var sel = document.getElementById("gpVoiceSel_" + pfx + k);
-  var pack = document.getElementById("gpVoskPackSel_" + pfx + k);
+function gamepadSyncVoicePack(side, k, idx) {
+  if (idx == null) idx = 0;
+  var sel = document.getElementById(gamepadSubId("gpVoiceSel", side, k, idx));
+  var pack = document.getElementById(gamepadSubId("gpVoskPackSel", side, k, idx));
   if (!pack) return;
   var isVosk = !sel || sel.value !== "xiaozhi_toggle";
   pack.style.display = isVosk ? "inline" : "none";
 }
 
 // 等化器下拉：music 種揀咗等化器入口先出，其他值一律收起。
-function gamepadSyncMusicEq(side, k) {
-  var pfx = side + "_";
-  var kd = document.getElementById("gpSel_" + pfx + k);
-  var mu = document.getElementById("gpMusicSel_" + pfx + k);
-  var eq = document.getElementById("gpEqSel_" + pfx + k);
+function gamepadSyncMusicEq(side, k, idx) {
+  if (idx == null) idx = 0;
+  var kd = document.getElementById(gamepadSubId("gpSel", side, k, idx));
+  var mu = document.getElementById(gamepadSubId("gpMusicSel", side, k, idx));
+  var eq = document.getElementById(gamepadSubId("gpEqSel", side, k, idx));
   if (!eq) return;
   var showKind = !kd || kd.value === "music";
   eq.style.display = (showKind && mu && mu.value === "eq:") ? "inline" : "none";
@@ -1445,57 +1640,57 @@ function gamepadFillVoskPacks(sel, cur) {
   sel.dataset.voiceFilled = packs.length ? "1" : "";
 }
 
-// 讀某行現時值（同舊逐行存同一拼法；action 未揀回 null 即成行跳過）。
-function gamepadReadRowValue(side, k) {
-  var pfx = side + "_";
-  var kindEl = document.getElementById("gpSel_" + pfx + k);
+// 讀某子行現時值（同舊逐行存同一拼法；action 未揀回 null 即該子行跳過）。
+function gamepadReadSubRowValue(side, k, idx) {
+  if (idx == null) idx = 0;
+  var kindEl = document.getElementById(gamepadSubId("gpSel", side, k, idx));
   if (!kindEl) return null;
   var kind = kindEl.value;
   if (kind === "servo") {
-    var sv = document.getElementById("gpServo_" + pfx + k);
+    var sv = document.getElementById(gamepadSubId("gpServo", side, k, idx));
     return (sv && sv.value) ? sv.value : "servo20+";
   }
   if (kind === "music") {
-    var mu = document.getElementById("gpMusicSel_" + pfx + k);
+    var mu = document.getElementById(gamepadSubId("gpMusicSel", side, k, idx));
     var muv = (mu && mu.value) ? mu.value : "music_play";
     // 等化器入口：取值隔籬 eq 下拉。
     if (muv === "eq:") {
-      var eq = document.getElementById("gpEqSel_" + pfx + k);
+      var eq = document.getElementById(gamepadSubId("gpEqSel", side, k, idx));
       return (eq && eq.value) ? eq.value : "eq:normal";
     }
     return muv;
   }
   if (kind === "radio") {
-    var rd = document.getElementById("gpRadioSel_" + pfx + k);
+    var rd = document.getElementById(gamepadSubId("gpRadioSel", side, k, idx));
     // 收藏都無即空單：回 null 成行跳過，唔亂存。
     return (rd && rd.value) ? rd.value : null;
   }
   if (kind === "camera") {
-    var cm = document.getElementById("gpCameraSel_" + pfx + k);
+    var cm = document.getElementById(gamepadSubId("gpCameraSel", side, k, idx));
     return (cm && cm.value) ? cm.value : "camera_photo";
   }
   if (kind === "sensor") {
-    var sn = document.getElementById("gpSensorSel_" + pfx + k);
+    var sn = document.getElementById(gamepadSubId("gpSensorSel", side, k, idx));
     return (sn && sn.value) ? sn.value : "sonar_toggle";
   }
   if (kind === "voice") {
-    var vc = document.getElementById("gpVoiceSel_" + pfx + k);
+    var vc = document.getElementById(gamepadSubId("gpVoiceSel", side, k, idx));
     var vcv = (vc && vc.value) ? vc.value : "xiaozhi_toggle";
     if (vcv !== "vosk") return vcv;
-    var pk = document.getElementById("gpVoskPackSel_" + pfx + k);
+    var pk = document.getElementById(gamepadSubId("gpVoskPackSel", side, k, idx));
     var pkv = (pk && pk.value) ? pk.value.trim() : "";
     return pkv || "vosk_toggle";
   }
   if (kind === "ring") {
-    var rg = document.getElementById("gpRingSel_" + pfx + k);
+    var rg = document.getElementById(gamepadSubId("gpRingSel", side, k, idx));
     var rv = rg ? (rg.value || "").trim() : "";
     return rv || null;
   }
   if (kind === "led") {
-    var lp = document.getElementById("gpLedPart_" + pfx + k);
-    var pr = document.getElementById("gpLedPreset_" + pfx + k);
-    var co = document.getElementById("gpLedColor_" + pfx + k);
-    var sp = document.getElementById("gpLedSpeed_" + pfx + k);
+    var lp = document.getElementById(gamepadSubId("gpLedPart", side, k, idx));
+    var pr = document.getElementById(gamepadSubId("gpLedPreset", side, k, idx));
+    var co = document.getElementById(gamepadSubId("gpLedColor", side, k, idx));
+    var sp = document.getElementById(gamepadSubId("gpLedSpeed", side, k, idx));
     var part = lp ? lp.value : "head";
     var preset = pr ? pr.value : "flash";
     if (part === "mouth") {
@@ -1511,11 +1706,41 @@ function gamepadReadRowValue(side, k) {
     return part + ":" + preset + ":" + color;
   }
   if (kind === "action") {
-    var as = document.getElementById("gpActionSel_" + pfx + k);
+    var as = document.getElementById(gamepadSubId("gpActionSel", side, k, idx));
     var id = as ? (as.value || "").trim() : "";
     return id ? ("action:" + id) : null;
   }
   return kind;
+}
+
+// 讀某鍵全量值（一鍵多功能：全部子行換行接起；子行 null 即跳過；
+// 全跳過回 null 唔存；全 none 回單個 none）。
+function gamepadReadKeyValue(side, k) {
+  var cont = document.getElementById("gpSubs_" + side + "_" + k);
+  var vals = [];
+  if (cont) {
+    var rows = cont.querySelectorAll("[data-subrow]");
+    for (var i = 0; i < rows.length; i++) {
+      var ii = parseInt(rows[i].getAttribute("data-idx"), 10);
+      if (!isFinite(ii)) ii = i;
+      var v = gamepadReadSubRowValue(side, k, ii);
+      if (v !== null) vals.push(v);
+    }
+  } else {
+    var single = gamepadReadSubRowValue(side, k, 0);
+    if (single === null) return null;
+    vals.push(single);
+  }
+  if (!vals.length) return null;
+  var allNone = true;
+  for (var j = 0; j < vals.length; j++) {
+    if (vals[j] !== "none") { allNone = false; break; }
+  }
+  if (allNone) return "none";
+  return gamepadJoinMulti(vals);
+}
+function gamepadReadRowValue(side, k) {
+  return gamepadReadKeyValue(side, k);
 }
 
 // 成區一次過存：只送同緩存唔同的行，一個掣搞掂（取代逐行存）。
@@ -1526,8 +1751,11 @@ function gamepadSaveAll(side) {
   var jobs = [];
   groups.forEach(function (grp) {
     grp.keys.forEach(function (k) {
-      var v = gamepadReadRowValue(side, k);
-      if (v === null || v === cache[k]) return;
+      var v = gamepadReadKeyValue(side, k);
+      var cached = cache[k] || "none";
+      var normV = v == null ? null : gamepadJoinMulti(gamepadSplitMulti(v));
+      var normC = gamepadJoinMulti(gamepadSplitMulti(cached));
+      if (v === null || normV === normC) return;
       jobs.push({ key: k, action: v });
     });
   });
@@ -1680,7 +1908,7 @@ function gamepadKeyLabel(k) {
 function gamepadLightLogical(logical, on, action) {
   if (!logical) return;
   var lit = !!on;
-  var mapped = lit && action && action !== "none";
+  var mapped = lit && action && gamepadSplitMulti(action).some(function (p) { return p !== "none"; });
   var css = mapped ? "lit" : "lit-free";
   var cssRow = mapped ? "gprow-lit" : "gprow-free";
   var g = document.getElementById("gpcap-" + logical);
@@ -1703,7 +1931,8 @@ function gamepadLightLogical(logical, on, action) {
   for (var j = 0; j < rows.length; j++) {
     var side = rows[j].getAttribute("data-mapside");
     var cur = (side === "kb" ? gamepadCachedSide("kb") : gamepadCachedSide("pad"))[logical];
-    var rowCls = (lit && cur && cur !== "none") ? "gprow-lit" : "gprow-free";
+    var curMapped = cur && gamepadSplitMulti(cur).some(function (p) { return p !== "none"; });
+    var rowCls = (lit && curMapped) ? "gprow-lit" : "gprow-free";
     rows[j].classList.remove("gprow-lit");
     rows[j].classList.remove("gprow-free");
     if (lit) rows[j].classList.add(rowCls);
@@ -2253,12 +2482,15 @@ function drawCampadReadout(ctx, W, H) {
   }
   for (var k in __cameraPadDown) {
     if (!__cameraPadDown[k]) continue;
-    var m = (__cameraPadMap[k] || "").match(/^servo(\d{1,2})([+-])$/);
-    if (!m) continue;
-    var id = parseInt(m[1], 10);
-    var cal = null;
-    try { cal = SERVO_CALIBRATION[id]; } catch (e) {}
-    parts.push("#" + id + (cal ? " [" + cal.min + "-" + cal.max + "]" : ""));
+    var multi = gamepadSplitMulti(__cameraPadMap[k] || "none");
+    for (var mi2 = 0; mi2 < multi.length; mi2++) {
+      var m = (multi[mi2] || "").match(/^servo(\d{1,2})([+-])$/);
+      if (!m) continue;
+      var id = parseInt(m[1], 10);
+      var cal = null;
+      try { cal = SERVO_CALIBRATION[id]; } catch (e) {}
+      parts.push("#" + id + (cal ? " [" + cal.min + "-" + cal.max + "]" : ""));
+    }
   }
   if (!parts.length) return;
   var txt = parts.join("   ");
