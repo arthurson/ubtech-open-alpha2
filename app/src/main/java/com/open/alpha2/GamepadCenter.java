@@ -1840,7 +1840,7 @@ public final class GamepadCenter {
     // -- 搖桿回中（郁過嘅舵機返動作尾位）----------------------------------------
     // 回中位＝最後播完嘅動作尾姿（poseBoxed merge；未知軸唔郁，唔係一律 120）。
     // 世代閘：回中任務排嗰陣記 gen，之後郁過（新沿／legacy 郁）即舊任務作廢。
-    private final Integer[] refPose = new Integer[20];
+    private final Integer[] refPose = new Integer[22];
     private volatile boolean refPrevPlaying = false;
     private volatile java.util.concurrent.ScheduledFuture<?> refPollFuture;
     private final java.util.Set<Integer> legacyTouched = new java.util.LinkedHashSet<>();
@@ -1923,11 +1923,11 @@ public final class GamepadCenter {
             if (boxed == null) return;
             int n = 0;
             synchronized (this) {
-                for (int i = 0; i < 20 && i < boxed.length; i++) {
+                for (int i = 0; i < 22 && i < boxed.length; i++) {
                     if (boxed[i] != null) { refPose[i] = boxed[i]; n++; }
                 }
             }
-            Log.i(TAG, "ref pose snapshot: " + n + "/20 known");
+            Log.i(TAG, "ref pose snapshot: " + n + "/22 known");
         } catch (Throwable t) {
             Log.w(TAG, "ref snapshot failed", t);
         }
@@ -2017,7 +2017,7 @@ public final class GamepadCenter {
     /** 單軸返尾位（未知即唔郁；clamp；19/20 順手更 axisPose）。
      *  時間按去程速度折返（step/120ms）：慢去慢返，快去快返。 */
     private void recenterServo(int id, int step) {
-        if (id < 1 || id > 20) return;
+        if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return;
         Integer target;
         synchronized (this) {
             target = refPose[id - 1];

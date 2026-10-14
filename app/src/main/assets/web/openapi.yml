@@ -2205,8 +2205,8 @@ paths:
     get:
       tags:
       - servo
-      summary: 連讀 20 軸回讀角度（cmd23/0x17，無間隔，純讀唔寫回）
-      description: 逐顆 cmd23 實際讀取，一次過 20 粒（無間隔、唔重試、不寫回；實測 230ms 全中）。讀不到那顆記 null 並列入 failed
+      summary: 連讀 22 軸回讀角度（cmd23/0x17，無間隔，純讀唔寫回）
+      description: 逐顆 cmd23 實際讀取，一次過 22 粒（無間隔、唔重試、不寫回；實測 20 粒 230ms 全中，21/22 真機證實有回授）。讀不到那顆記 null 並列入 failed
       parameters:
       - $ref: '#/components/parameters/PanelToken'
       responses:
@@ -2217,7 +2217,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
         '200':
-          description: 20 軸即時回讀角度；讀不到那顆記 null
+          description: 22 軸即時回讀角度；讀不到那顆記 null
           content:
             application/json:
               schema:

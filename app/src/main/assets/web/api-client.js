@@ -760,7 +760,7 @@ const Alpha2Api = (function() {
   }
 
   function servoBackAngleAll(params) {
-    // 連讀 20 軸回讀角度（cmd23/0x17，無間隔，純讀唔寫回）
+    // 連讀 22 軸回讀角度（cmd23/0x17，無間隔，純讀唔寫回）
     return api('servo/back-angle-all', params);
   }
 

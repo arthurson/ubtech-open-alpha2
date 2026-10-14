@@ -167,19 +167,15 @@ function buildServoGrid() {
   }, "servoAngleVal_");
 }
 
-/** 一次過讀全部 20 軸即時角度（servo/back-angle-all：cmd 0x17 純讀，
+/** 一次過讀全部 22 軸即時角度（servo/back-angle-all：cmd 0x17 純讀，
  *  唔等唔寫回，約半秒），填入每行右邊讀數格。讀不到那顆顯示 -。 */
 function servoReadAllAngles() {
   const rows = document.querySelectorAll("#tab-servo [onclick^='servoRead']");
   const status = document.getElementById("servoReadStatus");
   rows.forEach(function (b) { b.disabled = true; });
-  for (let i = 1; i <= 20; i++) {
+  for (let i = 1; i <= 22; i++) {
     const cell = document.getElementById("servoAngleVal_" + i);
     if (cell) cell.textContent = "…";
-  }
-  for (let i = 21; i <= 22; i++) {
-    const cell = document.getElementById("servoAngleVal_" + i);
-    if (cell) cell.textContent = "-";
   }
   if (status) status.textContent = t("servo_reading_hint");
   return Alpha2Api.servoBackAngleAll().then(function (res) {
@@ -189,7 +185,7 @@ function servoReadAllAngles() {
       return res;
     }
     const failed = res.failed || [];
-    for (let i = 1; i <= 20; i++) {
+    for (let i = 1; i <= 22; i++) {
       const cell = document.getElementById("servoAngleVal_" + i);
       if (!cell) continue;
       const v = res.angles[i - 1];

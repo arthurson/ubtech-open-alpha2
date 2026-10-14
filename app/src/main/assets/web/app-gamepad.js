@@ -633,7 +633,7 @@ function gamepadParseValue(v) {
   var m = v.match(/^servo(\d{1,2})([+-])$/);
   if (m) {
     out.kind = "servo";
-    out.servoId = Math.max(1, Math.min(20, parseInt(m[1], 10) || 20));
+    out.servoId = Math.max(1, Math.min(22, parseInt(m[1], 10) || 22));
     out.servoDir = m[2];
     return out;
   }
@@ -645,7 +645,7 @@ function gamepadParseValue(v) {
   return out;
 }
 
-// 建舵機單一下拉（#1+／#1-／#2+…#20- 共 40 格；id 按邊分名前綴，兩區同名鍵唔撞）。
+// 建舵機單一下拉（#1+／#1-／#2+…#22- 共 44 格；id 按邊分名前綴，兩區同名鍵唔撞）。
 function gamepadBuildServoControls(side, k, parsed) {
   var wrap = document.createElement("span");
   wrap.id = "gpServoWrap_" + side + "_" + k;
@@ -653,7 +653,7 @@ function gamepadBuildServoControls(side, k, parsed) {
   var sel = document.createElement("select");
   sel.id = "gpServo_" + side + "_" + k;
   var cur = "servo" + parsed.servoId + parsed.servoDir;
-  for (var i = 1; i <= 20; i++) {
+  for (var i = 1; i <= 22; i++) {
     ["+", "-"].forEach(function (d) {
       var o = document.createElement("option");
       o.value = "servo" + i + d;

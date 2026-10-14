@@ -607,11 +607,12 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoBackAngleAllResponse() {
-        // 20 連讀回讀角度 (cmd 23 / 0x17)：逐顆單發、無間隔、唔重試、唔寫回。
-        // 實測 20 粒 230ms 全中（16 有數＋5/6/17/18 短 error 幀），唔使等。
-        // 21/22 固件未支援，唔讀。讀不到那顆記 null 入 failed。
+        // 22 連讀回讀角度 (cmd 23 / 0x17)：逐顆單發、無間隔、唔重試、唔寫回。
+        // 實測 20 粒 230ms 全中（16 有數＋5/6/17/18 短 error 幀），唔使等；
+        // 真機 2026-10-14 證實 21/22 都有回授（51/5），故連 21/22 一齊讀。
+        // 讀不到那顆記 null 入 failed。
         // 讀取時請固定好機械人（0x17 會唔會鬆力未知，首版純讀）。
-        final int n = 20;
+        final int n = ApiValidator.SERVO_COUNT;
         Integer[] angles = new Integer[n];
         StringBuilder failed = new StringBuilder("[");
         boolean firstFail = true;

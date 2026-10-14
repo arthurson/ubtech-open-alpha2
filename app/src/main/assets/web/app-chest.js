@@ -13,9 +13,18 @@ function chestToggle() {
   if (on) { chestCheck(); chestFileInfo(); }
 }
 
+// 今次頁面 session 上載過嘅固件（{name, size}；Reload 即清零）。
+// 「開始升級」閘：無呢個即使用家撳升級都唔畀過——機上舊檔唔會自動沿用
+// （之前個 bug：舊檔留喺機上，唔揀 file 都升到，燒錯舊鏡像）。
+var chestFreshUpload = null;
+// 最近一次 chestUpgradeStatus 回包（chestFileInfo 存低，升級前對 size 用）。
+var chestLastStatus = null;
+
 function chestUpload() {
   const input = document.getElementById("chestBinFile");
   const status = document.getElementById("chestUploadStatus");
+  // 揀咗新檔即舊憑證作廢，等呢次上載成功先再簽發。
+  chestFreshUpload = null;
   if (!input || !input.files || input.files.length === 0) {
     if (status) status.textContent = "請先選擇一個 .bin 文件";
     return;
@@ -44,7 +53,9 @@ function chestUpload() {
       headers: Object.assign({ "Content-Type": "application/octet-stream" }, upHeaders)
     }).then(function(res) { return res.json(); }).then(function(json) {
       if (json.ok) {
-        // 上傳完成後即檢查設備上的文件（是否存在＋大小是否合法），通過後才允許升級；結果直接寫入狀態行。
+        // 上載成功先簽發今次 session 憑證（記低名＋size，升級前會同機上檔對數），
+        // 再檢查設備上的文件；結果直接寫入狀態行。
+        chestFreshUpload = { name: file.name, size: file.size };
         chestFileInfo();
       } else {
         if (status) status.textContent = "❌ 上傳失敗：" + (json.error || JSON.stringify(json));
@@ -76,9 +87,11 @@ function chestSizeOk(n, s) {
 }
 
 // 查詢設備上的固件文件（是否存在＋大小是否合法），結果寫入狀態行；返回 true 表示可以升級。
+// 機上檔就算合法，無今次 session 上載憑證都當舊檔處理（顯示 stale 唔畀過）。
 function chestFileInfo() {
   const status = document.getElementById("chestUploadStatus");
   return Alpha2Api.chestUpgradeStatus().then(function(s) {
+    chestLastStatus = s;
     if (!s || s.ok === false) return false;
     if (!s.fileExists) {
       if (status) status.textContent = t("chest_file_missing");
@@ -86,6 +99,10 @@ function chestFileInfo() {
     }
     if (!chestSizeOk(Number(s.fileSizeBytes), s)) {
       if (status) status.textContent = t("chest_file_bad", { n: s.fileSizeBytes });
+      return false;
+    }
+    if (!chestFreshUpload) {
+      if (status) status.textContent = t("chest_file_stale", { n: s.fileSizeBytes, p: s.filePages });
       return false;
     }
     if (status) status.textContent = t("chest_file_ok", { n: s.fileSizeBytes, p: s.filePages });
@@ -98,9 +115,19 @@ function chestUpgrade() {
   const wrap = document.getElementById("chestProgressWrap");
   const bar = document.getElementById("chestProgressBar");
   const txt = document.getElementById("chestProgressText");
-  // 升級前先檢查設備上的文件，不符合要求（原因已顯示於狀態行）則停止；通過後再二次確認（變磚警告）才開始燒錄。
+  // 第一閘：今次 session 未上載過即停（唔會自動沿用機上舊檔）；原因寫狀態行。
+  if (!chestFreshUpload) {
+    if (status) status.textContent = t("chest_need_fresh_upload");
+    return;
+  }
+  // 第二閘：檢查設備上的文件，不符合要求（原因已顯示於狀態行）則停止；
+  // 另對 size（另一 tab 覆蓋過機上檔即對唔上）；通過後再二次確認（變磚警告）才開始燒錄。
   chestFileInfo().then(function(ok) {
     if (!ok) return;
+    if (chestLastStatus && Number(chestLastStatus.fileSizeBytes) !== Number(chestFreshUpload.size)) {
+      if (status) status.textContent = t("chest_file_mismatch", { n: chestLastStatus.fileSizeBytes, m: chestFreshUpload.size });
+      return;
+    }
     if (!confirm(t("chest_upgrade_confirm"))) return;
     if (status) status.textContent = "開始升級…";
     if (wrap) wrap.style.display = "block";
