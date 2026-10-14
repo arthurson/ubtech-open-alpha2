@@ -1,67 +1,82 @@
-# OpenAPI 1+2 簡化方案
+# OpenAPI 1+2 simplification
 
-本目錄為 `open-alpha2` 的 OpenAPI 單一真相源，實作「1+2」輕量簡化：
+> Language: English (this file) | [繁體中文](README_zh-Hant.md)
 
-## 1. 後端輕量校驗層 (零依賴)
+This directory is the single source of truth for `open-alpha2`'s OpenAPI,
+implementing the lightweight "1+2" simplification:
+
+## 1. Backend lightweight validation layer (zero dependencies)
 
 `app/src/main/java/com/open/alpha2/ApiValidator.java`
 
-- 封裝 `require()` / `queryOrDefault()` / `Integer.parseInt()` / `enum` / `range` 檢查
-- 對應 `openapi/open-alpha2-openapi.yml` 的 `parameters` 定義
-- 例：舊 `Byte.parseByte(require(query,"id"))` → 新 `ApiValidator.requireIntRange(query,"id",1,20)`
-- 拋 `IllegalArgumentException` 交外層統一轉 `{ok:false,error:...}`，保持原有行為
+- Wraps `require()` / `queryOrDefault()` / `Integer.parseInt()` / `enum` / `range` checks
+- Mirrors the `parameters` definitions in `openapi/open-alpha2-openapi.yml`
+- Example: old `Byte.parseByte(require(query,"id"))` → new `ApiValidator.requireIntRange(query,"id",1,22)`
+- Throws `IllegalArgumentException`, converted by the outer layer into `{ok:false,error:...}` — behaviour unchanged
 
-用法：`MainActivity.java` 內 `handleApi()` / `handleSystemApi()` / `handleDirectApi()` / `handleXiaozhiApi()` 的全部 `case` 一律經 `ApiValidator.*` 取參，無需改 `HttpServer`（`IllegalArgumentException` 由外層統一轉 `400 {ok:false,error}`）。
+Usage: every `case` in `MainActivity.java`'s `handleApi()` / `handleSystemApi()` /
+`handleDirectApi()` / `handleXiaozhiApi()` (plus `handleUpload()` / `handleStream()`)
+must read parameters via `ApiValidator.*` — no changes to `HttpServer` needed
+(`IllegalArgumentException` is converted to `400 {ok:false,error}` by the outer layer).
 
-## 2. 前端 Typed JS Client (自動生成)
+## 2. Frontend typed JS client (auto-generated)
 
-- 源：`openapi/open-alpha2-openapi.yml`
-- 生成器：`scripts/generate-api-client.py` → `app/src/main/assets/web/api-client.js`
-- 內容：`Alpha2Api.servoOne({id,angle,time})` 等 152 個 typed wrapper，內建 `assertEnum` / `assertRange`（鏡像後端校驗）
-- 路由：按 OpenAPI path 前綴自動揀 caller——`api()`（`/api/alpha2/*`）、`sysApi()`（`/api/system/*`）、`directApi()`（`/api/direct/*`）、`xiaozhiApi()`（`/api/xiaozhi/*`）；直接用 `api('system/...')` 會 404，`scripts/check-api-client-routes.py` 會擋
-- 依賴：`app-core.js` 的 `api()`（`index.html` 緊接其後載入；`blockly.html` 用 `blockly-page.js` 提供嘅同名 helper，一樣要載喺 `api-client.js` 之前）
+- Source: `openapi/open-alpha2-openapi.yml`
+- Generator: `scripts/generate-api-client.py` → `app/src/main/assets/web/api-client.js`
+- Contents: 199 typed wrappers like `Alpha2Api.servoOne({id,angle,time})` with built-in
+  `assertEnum` / `assertRange` (mirroring the backend validation)
+- Routing: the caller is picked automatically from the OpenAPI path prefix — `api()`
+  (`/api/alpha2/*`), `sysApi()` (`/api/system/*`), `directApi()` (`/api/direct/*`),
+  `xiaozhiApi()` (`/api/xiaozhi/*`); calling `api('system/...')` directly 404s and
+  `scripts/check-api-client-routes.py` blocks it
+- Dependency: `api()` from `app-core.js` (loaded immediately before in `index.html`;
+  `blockly.html` uses the same-named helper from `blockly-page.js`, which must likewise
+  load before `api-client.js`)
 
 ```js
-// 舊
+// old
 api("servo/one", {id:1, angle:90, time:1000})
 
-// 新 (型別檢查 + 自動文件)
+// new (type checks + self-documenting)
 Alpha2Api.servoOne({id:1, angle:90, time:1000})
-Alpha2Api.speechTts({text:"你好", engine:"android"})
+Alpha2Api.speechTts({text:"hello", engine:"android"})
 Alpha2Api.ledHeadSet({color:1, brightness:9, preset:"breathe"})
 ```
 
-再生：
+Regenerate:
 
 ```bash
 python scripts/generate-api-client.py
 ```
 
-## 2+ MCP 對齊（全部自動生成）
+## 2+ MCP alignment (all auto-generated)
 
-`openapi/mcp-openapi-sync.yml`（v2）係 MCP 聲明源：22 個 tool（`self.robot.*` /
-`self.sensors.*` / `self.camera.*` / `self.media.*`）嘅 `description`、alias
-（`time_ms→time`、`enabled→on`、`distance_cm→distance`、`speed_ms→speed`）、
-MCP 版 `required`、MCP 獨有參數（`take_photo.question`、`image_to_text.uuid`）、
-刻意唔暴露嘅 spec 參數（`exclude`：servo `trim`、speech `engine/voice/lang`）。
-參數約束（`type/enum/minimum/maximum/default`）一律繼承
-`open-alpha2-openapi.yml` 對應 path，與 `ApiValidator` 同一套規則。
+`openapi/mcp-openapi-sync.yml` (v2) is the MCP declaration source: the `description`,
+aliases (`time_ms→time`, `enabled→on`, `distance_cm→distance`, `speed_ms→speed`),
+MCP-side `required`, MCP-only parameters (`take_photo.question`, `image_to_text.uuid`)
+and deliberately unexposed spec parameters (`exclude`: servo `trim`, speech
+`engine/voice/lang`) for all 22 tools (`self.robot.*` / `self.sensors.*` /
+`self.camera.*` / `self.media.*`). Parameter constraints
+(`type/enum/minimum/maximum/default`) are always inherited from the matching path in
+`open-alpha2-openapi.yml` — the same rules as `ApiValidator`.
 
 ```bash
-python scripts/generate-mcp-tools.py          # 寫 app/.../McpToolsGenerated.java
-python scripts/generate-mcp-tools.py --check  # CI 用：drift 即 fail
+python scripts/generate-mcp-tools.py          # writes app/.../McpToolsGenerated.java
+python scripts/generate-mcp-tools.py --check  # for CI: drift fails the build
 ```
 
-`XiaozhiBridge.xiaozhiMcpBridge().listTools()` 只調用
-`McpToolsGenerated.buildTools()` 再做 enable/disable 過濾，不再手寫
-`inputSchema`；`callTool()` 分發維持手寫（fuzzy match／硬件直驅無法由 spec 推導）。
-spec 加參數而 sync 未表態（加白名單或加 `exclude`）會生成失敗，逼兩邊對齊。
+`XiaozhiBridge.xiaozhiMcpBridge().listTools()` only calls
+`McpToolsGenerated.buildTools()` and then applies the enable/disable filter — no more
+hand-written `inputSchema`; `callTool()` dispatch stays hand-written (fuzzy match /
+hardware-direct calls cannot be derived from the spec).
+A spec parameter the sync file is silent about (neither whitelisted nor `exclude`d)
+fails generation, forcing both sides to stay aligned.
 
-## 驗證
+## Verify
 
 ```bash
 python -c "import yaml; yaml.safe_load(open('openapi/open-alpha2-openapi.yml'))"
-python scripts/generate-api-client.py  # 152 functions
+python scripts/generate-api-client.py  # 199 functions
 ```
 
 License: GPL-3.0-only (https://github.com/arthurson/ubtech-open-alpha2)
