@@ -90,11 +90,11 @@ const I18N = {
   gamepad_devices_label:   { zh: "機器人端已接（A 端直連）：", en: "Robot-side devices (direct):" },
   gamepad_last_label:      { zh: "最後按鍵：", en: "Last key:" },
   gamepad_pad_card_heading: { zh: "🎮 手柄", en: "🎮 Gamepad" },
-  gamepad_pad_card_hint:    { zh: "直連手柄按鍵即時亮燈（經 WebSocket）；右搖桿郁點。預設映射：十字步態，A 停止。",
-                             en: "Direct pad presses light up live (via WebSocket); right stick moves the dot. Defaults: D-pad gaits, A stops." },
+  gamepad_pad_card_hint:    { zh: "直連手柄按鍵即時亮燈（經 WebSocket）；圖上掣可直接撳，搖桿可拖。預設映射：十字步態，A 停止。",
+                             en: "Direct pad presses light up live (via WebSocket); on-screen buttons are pressable, sticks draggable. Defaults: D-pad gaits, A stops." },
   gamepad_kb_card_heading: { zh: "⌨️ 鍵盤", en: "⌨️ Keyboard" },
-  gamepad_kb_card_hint:    { zh: "直連鍵盤按鍵即時亮燈（經 WebSocket）；字母數字原樣＋控制鍵全覆蓋可映射，a/b/x/y 同手柄同名但獨立值。",
-                             en: "Direct keyboard presses light up live (via WebSocket); letters/digits as-is + control keys all mappable; a/b/x/y share names with pad but hold own values." },
+  gamepad_kb_card_hint:    { zh: "直連鍵盤按鍵即時亮燈（經 WebSocket）；圖上鍵可直接撳。字母數字原樣＋控制鍵全覆蓋可映射，a/b/x/y 同手柄同名但獨立值。",
+                             en: "Direct keyboard presses light up live (via WebSocket); on-screen keys are pressable. Letters/digits as-is + control keys all mappable; a/b/x/y share names with pad but hold own values." },
   gamepad_reset_btn:       { zh: "↩ 回預設", en: "↩ Defaults" },
   gamepad_save_all_btn:    { zh: "💾 存全部", en: "💾 Save all" },
   gamepad_saving:          { zh: "儲存中…", en: "Saving…" },
@@ -137,6 +137,8 @@ const I18N = {
   gamepad_group_fn:        { zh: "功能鍵 F1–F12", en: "Function F1–F12" },
   gamepad_pick_action:     { zh: "選動作", en: "Pick action" },
   gamepad_pick_action_first: { zh: "先喺下拉選一個動作再存", en: "Pick an action from the list first" },
+  gamepad_fullscreen_btn:      { zh: "⛶ 全屏", en: "⛶ Fullscreen" },
+  gamepad_exit_fullscreen_btn: { zh: "✕ 退出全屏", en: "✕ Exit fullscreen" },
   gamepad_input_pad_toggle:  { zh: "直連手柄", en: "Direct gamepad" },
   gamepad_input_kb_toggle:  { zh: "直連鍵盤", en: "Direct keyboard" },
   gamepad_input_hint:       { zh: "開＝該邊直連撳鍵即郁（預設雙開）；熄＝該邊一律只記錄唔執行（防誤觸）。",
@@ -648,6 +650,28 @@ const I18N = {
   panel_pw_show:         { zh: "顯示輸入",         en: "Show input" },
   panel_pw_hide:         { zh: "隱藏輸入",         en: "Hide input" },
 
+  // -- 群控鏡像（實驗 tab 新卡，見 app-group.js；開總開關先展開，Mirror 掣在內） --
+  group_heading:         { zh: "👯 群控鏡像",      en: "👯 Group Mirror" },
+  group_card_disabled_hint: { zh: "開啟後才會顯示群控鏡像設定", en: "Turn on to show group mirror settings" },
+  group_mirror_label:    { zh: "開＝自動搜尋＋跟隨，關＝停止", en: "On = auto-find + follow, Off = stop" },
+  group_hint:            { zh: "開啟後會自動搜尋同一網段內的機械人，完成後在本機執行的操作，其他機械人將同步執行（動作／舵機／LED／語音／音樂等）；查詢、韌體升級、下載、ID 寫入、拍照及錄影不會跟隨。關閉即停止。",
+                             en: "When enabled, robots on the same subnet are discovered automatically; operations performed on this robot are then mirrored to the followers (actions / servos / LEDs / speech / music, etc.). Queries, firmware upgrades, downloads, ID writes, photo and video capture are never mirrored. Turning it off stops mirroring." },
+  group_subnet_label:    { zh: "子網：",           en: "Subnet:" },
+  group_subnet_placeholder: { zh: "例如 192.168.1.", en: "e.g. 192.168.1." },
+  group_manual_placeholder: { zh: "手動新增（如設有口令）：192.168.1.105 token",
+                              en: "Add manually (token if set): 192.168.1.105 token" },
+  group_manual_add_btn:  { zh: "加入",             en: "Add" },
+  group_status_on:       { zh: "開（跟隨 {n} 部）", en: "On ({n} followers)" },
+  group_status_off:      { zh: "關",               en: "Off" },
+  group_scan_invalid:    { zh: "請輸入子網，例如 192.168.1.", en: "Please enter a subnet, e.g. 192.168.1." },
+  group_scanning:        { zh: "正在掃描 {subnet}0/24…（{done}/254，已找到 {found} 部）",
+                             en: "Scanning {subnet}0/24… ({done}/254, {found} found)" },
+  group_scan_found:      { zh: "已找到 {n} 部機械人", en: "Found {n} robot(s)" },
+  group_scan_failed:     { zh: "搜尋失敗：{err}",  en: "Scan failed: {err}" },
+  group_empty_list:      { zh: "跟隨名單為空——開啟鏡像後將自動搜尋",
+                             en: "Follower list is empty — turning the mirror on will auto-scan" },
+  group_checking:        { zh: "正在檢測…",        en: "Checking…" },
+
   // -- event log --
   event_log_heading:     { zh: "即時事件 Log (WebSocket)", en: "Live Event Log (WebSocket)" },
   clear_log_btn:         { zh: "清空 Log",         en: "Clear Log" },
@@ -746,6 +770,10 @@ function setUiLanguage(lang) {
   // APK 狀態行一樣動態起，重畫一次就轉語言（不用再問後端）。
   try {
     if (typeof apkApplyUiLanguage === "function") apkApplyUiLanguage();
+  } catch(e) {}
+  // 群控鏡像狀態字一樣動態起，重畫一次就轉語言（不用再問後端）。
+  try {
+    if (typeof groupApplyUiLanguage === "function") groupApplyUiLanguage();
   } catch(e) {}
   // 音樂 EQ preset 藍掣＋播放中行隨機動作／節奏燈狀態字一樣動態起，就地重標
   // （唔 rebuild，推桿位／開關狀態唔郁）。
@@ -917,6 +945,9 @@ window.addEventListener("unhandledrejection", function (e) {
 
 function api(path, params) {
   clearError();
+  // 鏡像模式（群控 tab，見 app-group.js）：開咗掣就將呢次寫入同步去跟隨名單，其他機同做。
+  // fire-and-forget，跟隨失敗靜默略過，本機回傳唔變。typeof guard 保證 app-group.js 未 load 都唔爆。
+  try { if (typeof mirrorFanout === "function") mirrorFanout("alpha2", path, params); } catch (e) {}
   const qs = apiQuery(params);
   return fetch(API + "alpha2/" + path + qs, { headers: panelAuthHeaders(params) }).then(function (res) {
     return res.json().catch(function (e) {
@@ -951,6 +982,7 @@ function hwApi(path, params) {
 // api('system/...') 會打去 /api/alpha2/system/... 而 404, 不要這麼做。
 function sysApi(path, params) {
   clearError();
+  try { if (typeof mirrorFanout === "function") mirrorFanout("system", path, params); } catch (e) {}
   const qs = apiQuery(params);
   return fetch(API + "system/" + path + qs, { headers: panelAuthHeaders(params) }).then(function (res) {
     return res.json().catch(function (e) {
@@ -969,6 +1001,7 @@ function sysApi(path, params) {
 
 function directApi(path, params) {
   clearError();
+  try { if (typeof mirrorFanout === "function") mirrorFanout("direct", path, params); } catch (e) {}
   const qs = apiQuery(params);
   return fetch(API + "direct/" + path + qs, { headers: panelAuthHeaders(params) }).then(function (res) {
     return res.json().catch(function (e) {

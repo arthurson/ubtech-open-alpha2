@@ -100,5 +100,8 @@
 <script src="blockly-page.js"></script>
 <!-- 型別化 API client (同 index.html 一樣, 一定要在提供 window.api 的 blockly-page.js 之後載入) -->
 <script src="api-client.js"></script>
+<!-- 群控鏡像 (同 index.html 一樣; blockly.html 冇群控 tab，淨載 mirrorFanout＋scan helper，
+     等積木 Run 嗰陣寫入類 call 都會同步去跟隨名單；top-level 淨 function＋listener，安全) -->
+<script src="app-group.js?v=20261001a"></script>
 </body>
 </html>

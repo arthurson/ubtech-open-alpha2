@@ -31,6 +31,8 @@
 // backend 前綴邏輯。
 function xiaozhiApi(path, params) {
   clearError();
+  // 鏡像模式（群控 tab，見 app-group.js）：小智連線／文字等寫入都會同步去跟隨名單。
+  try { if (typeof mirrorFanout === "function") mirrorFanout("xiaozhi", path, params); } catch (e) {}
   // 實驗 tab 面板 token：同 api()/sysApi() 一樣行 Authorization: Bearer header
   //（panelAuthHeaders＋apiQuery 住 app-core.js；boot_voice/set 啟用中要驗，不帶即 401）。
   // ota_config/set 個業務 token 照行 query——同 header panel token 唔同 key，不會撞（見 PanelAuth）。

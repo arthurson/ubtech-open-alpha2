@@ -1613,8 +1613,8 @@ button.eq-preset-sq.selected {
 
 /* ---------------- Gamepad visual (hardwaretester-style live pad) ----------------
    純 CSS 手柄示意：十字／ABXY／肩鍵／雙搖桿，.lit 即亮燈（亮燈經 app-gamepad.js
-   三路驅動：瀏覽器 Gamepad API 輪詢本地即亮、瀏覽器按鍵、B 端 WS 回聲＋A 端
-   物理鍵 WS）。 */
+   WS 回聲＋A 端物理鍵 WS）。圖上掣可直接撳（pointerdown 經 gamepad/key down/up
+   注入，同物理掣同一條；搖桿拖曳經 gamepad/axis，見 gamepadBindDiagrams）。 */
 .gp-pad {
   background: #ffffff;
   border: 1px solid var(--border);
@@ -1623,6 +1623,7 @@ button.eq-preset-sq.selected {
   color: var(--text);
   user-select: none;
   max-width: 560px;
+  position: relative; /* 圖內 ✕ 退出掣定位用 */
 }
 .gp-shoulders {
   display: flex;
@@ -1639,6 +1640,9 @@ button.eq-preset-sq.selected {
   border-radius: 8px;
   padding: 4px 0;
   border: 1px solid var(--border);
+  cursor: pointer;
+  touch-action: none;
+  -webkit-touch-callout: none;
 }
 .gp-main {
   display: flex;
@@ -1663,7 +1667,11 @@ button.eq-preset-sq.selected {
   border-radius: 8px;
   min-width: 30px;
   min-height: 30px;
+  cursor: pointer;
+  touch-action: none;
+  -webkit-touch-callout: none;
 }
+.gp-btn:active, .gp-sh:active { filter: brightness(0.92); }
 .gp-dpad .gp-btn { border-radius: 6px; }
 .gp-abxy {
   display: grid;
@@ -1696,7 +1704,11 @@ button.eq-preset-sq.selected {
   background: #eef1f6;
   border-radius: 50%;
   border: 1px solid var(--border);
+  cursor: grab;
+  touch-action: none;
+  -webkit-touch-callout: none;
 }
+.gp-stick:active { cursor: grabbing; }
 .gp-nub {
   position: absolute;
   width: 26px;
@@ -1752,7 +1764,8 @@ button.eq-preset-sq.selected {
 
 /* ---------------- Keyboard visual (full live keyboard) ----------------
    JS 生成全鍵盤（見 app-gamepad.js gamepadBuildKeyboardDiagram），.lit 亮燈，
-   驅動同上三路。寬鍵用 flex-grow 拉闊。 */
+   驅動同手柄圖（WS 回聲）。圖上鍵可直接撳（pointerdown 經 gamepad/key side=kb
+   注入，見 gamepadBindDiagrams）。寬鍵用 flex-grow 拉闊。 */
 .kb-board {
   background: #ffffff;
   border: 1px solid var(--border);
@@ -1760,6 +1773,7 @@ button.eq-preset-sq.selected {
   padding: 10px;
   user-select: none;
   max-width: 720px;
+  position: relative; /* 圖內 ✕ 退出掣定位用 */
 }
 .kb-row {
   display: flex;
@@ -1780,7 +1794,11 @@ button.eq-preset-sq.selected {
   padding: 7px 0;
   white-space: nowrap;
   overflow: hidden;
+  cursor: pointer;
+  touch-action: none;
+  -webkit-touch-callout: none;
 }
+.kb-key:active { filter: brightness(0.92); }
 .kb-key.wide { flex-grow: 2.2; }
 .kb-key.wider { flex-grow: 3.2; }
 .kb-key.space { flex-grow: 8; }
@@ -1817,6 +1835,208 @@ button.eq-preset-sq.selected {
 /* 右欄：媒體列置頂，導航＋數字區並排喺下（同闊對齊）。 */
 .kb-zone-right { flex: 4 1 260px; min-width: 0; display: flex; flex-direction: column; }
 .kb-zones-sub { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ---------------- Gamepad fullscreen（淨張圖，唔包其他） ----------------
+   全屏對象係張圖本身（#gpPadDiagram／#kbBoardDiagram，見 gamepadToggleFullscreen）：
+   貼滿上下左右（100vw×100dvh、無圓角無邊），唔碌。
+   做法跟相機手柄 canvas（cameraPadLayout 按 W/H 比例排）：全屏下所有大細用
+   vmin／dvh 比例單位，版面自己就返任何屏幕（直／橫），唔靠 JS transform 硬縮。
+   Native Fullscreen API 有即用，無（舊 WebView／iOS）即跌落 .gp-fs-fallback
+   （fixed 蓋版，一樣貼滿）。圖內右上角 ✕ 掣全屏先現身（手機無 Esc 照出到）。 */
+.gp-pad:fullscreen, .gp-pad:-webkit-full-screen,
+.kb-board:fullscreen, .kb-board:-webkit-full-screen,
+.gp-pad.gp-fs-fallback, .kb-board.gp-fs-fallback {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-sizing: border-box;
+  overflow: hidden; /* 版面保证唔超，唔使碌 */
+}
+/* 舊機 fallback：fixed 蓋版（body 加 .gp-fs-open 鎖底層捲動）。 */
+.gp-pad.gp-fs-fallback, .kb-board.gp-fs-fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+body.gp-fs-open { overflow: hidden; }
+/* 圖內 ✕ 退出掣：平時收起，全屏／fallback 先現身。 */
+.gp-fs-exit { display: none; }
+.gp-pad:fullscreen .gp-fs-exit, .gp-pad:-webkit-full-screen .gp-fs-exit,
+.kb-board:fullscreen .gp-fs-exit, .kb-board:-webkit-full-screen .gp-fs-exit,
+.gp-pad.gp-fs-fallback .gp-fs-exit, .kb-board.gp-fs-fallback .gp-fs-exit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  font-size: 18px;
+  z-index: 10;
+  opacity: 0.85;
+}
+/* 全屏手柄圖：flex 直排撐滿高——肩鍵頂、主區撐開置中、搖桿底。
+   十字／ABXY 格仔用 vmin（跟短邊），直／橫一律唔超闊唔超高；
+   搖桿／菇同理（nub 點位跟實際尺寸計，見 gamepadMoveNubOne）。 */
+.gp-pad:fullscreen, .gp-pad:-webkit-full-screen, .gp-pad.gp-fs-fallback {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  padding-top: max(8px, env(safe-area-inset-top));
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  padding-left: max(8px, env(safe-area-inset-left));
+  padding-right: max(8px, env(safe-area-inset-right));
+}
+.gp-pad:fullscreen .gp-shoulders, .gp-pad:-webkit-full-screen .gp-shoulders,
+.gp-pad.gp-fs-fallback .gp-shoulders {
+  flex: none;
+  margin-bottom: 4px;
+}
+.gp-pad:fullscreen .gp-main, .gp-pad:-webkit-full-screen .gp-main,
+.gp-pad.gp-fs-fallback .gp-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+}
+.gp-pad:fullscreen .gp-dpad, .gp-pad:-webkit-full-screen .gp-dpad,
+.gp-pad.gp-fs-fallback .gp-dpad,
+.gp-pad:fullscreen .gp-abxy, .gp-pad:-webkit-full-screen .gp-abxy,
+.gp-pad.gp-fs-fallback .gp-abxy {
+  grid-template-columns: repeat(3, 40px);
+  grid-template-rows: repeat(3, 40px);
+  grid-template-columns: repeat(3, min(56px, 10.5vmin));
+  grid-template-rows: repeat(3, min(56px, 10.5vmin));
+  gap: 4px;
+  flex: none;
+}
+.gp-pad:fullscreen .gp-dpad .gp-btn, .gp-pad:-webkit-full-screen .gp-dpad .gp-btn,
+.gp-pad.gp-fs-fallback .gp-dpad .gp-btn,
+.gp-pad:fullscreen .gp-abxy .gp-btn, .gp-pad:-webkit-full-screen .gp-abxy .gp-btn,
+.gp-pad.gp-fs-fallback .gp-abxy .gp-btn {
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  font-size: 16px;
+}
+.gp-pad:fullscreen .gp-mid, .gp-pad:-webkit-full-screen .gp-mid,
+.gp-pad.gp-fs-fallback .gp-mid {
+  flex: none;
+  gap: 6px;
+}
+.gp-pad:fullscreen .gp-mid .gp-btn, .gp-pad:-webkit-full-screen .gp-mid .gp-btn,
+.gp-pad.gp-fs-fallback .gp-mid .gp-btn {
+  min-width: 0;
+  min-height: 0;
+  font-size: 11px;
+}
+.gp-pad:fullscreen .gp-sh, .gp-pad:-webkit-full-screen .gp-sh,
+.gp-pad.gp-fs-fallback .gp-sh {
+  font-size: 14px;
+  padding: 8px 0;
+}
+.gp-pad:fullscreen .gp-sticks, .gp-pad:-webkit-full-screen .gp-sticks,
+.gp-pad.gp-fs-fallback .gp-sticks {
+  flex: none;
+  margin-top: 4px;
+}
+.gp-pad:fullscreen .gp-stick, .gp-pad:-webkit-full-screen .gp-stick,
+.gp-pad.gp-fs-fallback .gp-stick {
+  width: 80px;
+  height: 80px;
+  width: min(104px, 24vmin);
+  height: min(104px, 24vmin);
+}
+.gp-pad:fullscreen .gp-nub, .gp-pad:-webkit-full-screen .gp-nub,
+.gp-pad.gp-fs-fallback .gp-nub {
+  width: 32px;
+  height: 32px;
+  width: min(42px, 10vmin);
+  height: min(42px, 10vmin);
+}
+/* 全屏鍵盤圖：撐滿成版高，唔留白唔超版。
+   層層 flex 直排傳落去（board→zones→各區→row），每列 row flex:1 平分該區高度，
+   鍵 stretch 跟行高——數學上保證啱啱填滿，唔使碌（直／橫／旋轉一律）。
+   右欄媒體列固定細粒，其餘先平分。 */
+.kb-board:fullscreen, .kb-board:-webkit-full-screen, .kb-board.gp-fs-fallback {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  padding-top: max(8px, env(safe-area-inset-top));
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  padding-left: max(8px, env(safe-area-inset-left));
+  padding-right: max(8px, env(safe-area-inset-right));
+}
+.kb-board:fullscreen .kb-zones, .kb-board:-webkit-full-screen .kb-zones,
+.kb-board.gp-fs-fallback .kb-zones {
+  margin: 0;
+  width: 100%;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: stretch;
+}
+.kb-board:fullscreen .kb-zone-main, .kb-board:-webkit-full-screen .kb-zone-main,
+.kb-board.gp-fs-fallback .kb-zone-main,
+.kb-board:fullscreen .kb-zone-right, .kb-board:-webkit-full-screen .kb-zone-right,
+.kb-board.gp-fs-fallback .kb-zone-right,
+.kb-board:fullscreen .kb-zone-nav, .kb-board:-webkit-full-screen .kb-zone-nav,
+.kb-board.gp-fs-fallback .kb-zone-nav,
+.kb-board:fullscreen .kb-zone-num, .kb-board:-webkit-full-screen .kb-zone-num,
+.kb-board.gp-fs-fallback .kb-zone-num {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  min-width: 0;
+}
+.kb-board:fullscreen .kb-zones-sub, .kb-board:-webkit-full-screen .kb-zones-sub,
+.kb-board.gp-fs-fallback .kb-zones-sub {
+  gap: 4px;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+.kb-board:fullscreen .kb-row, .kb-board:-webkit-full-screen .kb-row,
+.kb-board.gp-fs-fallback .kb-row {
+  gap: 2px;
+  margin-bottom: 0;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.kb-board:fullscreen .kb-key, .kb-board:-webkit-full-screen .kb-key,
+.kb-board.gp-fs-fallback .kb-key {
+  font-size: 14px;
+  font-size: min(20px, 4vmin);
+  padding: 0;
+  min-height: 0;
+  height: auto;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 右欄媒體列唔參與平分：固定 32px 高。 */
+.kb-board:fullscreen .kb-zone-right > .kb-row,
+.kb-board:-webkit-full-screen .kb-zone-right > .kb-row,
+.kb-board.gp-fs-fallback .kb-zone-right > .kb-row {
+  flex: none;
+}
+.kb-board:fullscreen .kb-zone-right > .kb-row .kb-key,
+.kb-board:-webkit-full-screen .kb-zone-right > .kb-row .kb-key,
+.kb-board.gp-fs-fallback .kb-zone-right > .kb-row .kb-key {
+  height: 32px;
+  flex: none;
+}
 
 /* 相機頁手柄視圖：22 粒 pad 鍵畫喺 viewport 內 canvas（圖形掣，非 HTML）。
    收埋預設 display:none，開視圖經 inline style 出；touch-action:none 免撳住變捲頁。 */

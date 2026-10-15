@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Open Alpha2</title>
-<link rel="stylesheet" href="style.css?v=20261001e">
+<link rel="stylesheet" href="style.css?v=20261001f">
 </head>
 <body>
 
@@ -248,8 +248,9 @@
             <span class="toggle-track"></span>
           </span>
         </label>
+        <button class="secondary" id="gamepadPadFsBtn" onclick="gamepadToggleFullscreen('pad')" data-i18n="gamepad_fullscreen_btn">⛶ 全屏</button>
       </div>
-      <!-- 手柄示意（hardwaretester 風即時亮燈：直連手柄按鍵經 WebSocket 亮） -->
+      <!-- 手柄示意（hardwaretester 風即時亮燈：直連手柄按鍵經 WebSocket 亮；圖上掣可直接撳，搖桿可拖，見 gamepadBindDiagrams） -->
       <div class="gp-pad" id="gpPadDiagram">
         <div class="gp-shoulders">
           <div class="gp-sh" id="gpcap-l2">L2</div>
@@ -278,7 +279,7 @@
           <div><div class="gp-stick"><div class="gp-nub" id="gpnub-r"></div></div><div class="gp-stick-label">R</div></div>
         </div>
       </div>
-      <p class="hint" data-i18n="gamepad_pad_card_hint">直連手柄按鍵即時亮燈（經 WebSocket）；右搖桿郁點。默認映射：十字步態，A 停止。</p>
+      <p class="hint" data-i18n="gamepad_pad_card_hint">直連手柄按鍵即時亮燈（經 WebSocket）；圖上掣可直接撳，搖桿可拖。默認映射：十字步態，A 停止。</p>
       <div class="row">
         <span data-i18n="gamepad_last_label">最後按鍵：</span>
         <span id="gamepadLastOut" class="device-value">-</span>
@@ -311,10 +312,11 @@
             <span class="toggle-track"></span>
           </span>
         </label>
+        <button class="secondary" id="gamepadKbFsBtn" onclick="gamepadToggleFullscreen('kb')" data-i18n="gamepad_fullscreen_btn">⛶ 全屏</button>
       </div>
-      <!-- 全鍵盤示意（JS 生成，直連鍵盤撳鍵即時亮燈，見 gamepadBuildKeyboardDiagram） -->
+      <!-- 全鍵盤示意（JS 生成，直連鍵盤撳鍵即時亮燈＋圖上鍵可直接撳，見 gamepadBuildKeyboardDiagram／gamepadBindDiagrams） -->
       <div class="kb-board" id="kbBoardDiagram"></div>
-      <p class="hint" data-i18n="gamepad_kb_card_hint">直連鍵盤按鍵即時亮燈（經 WebSocket）；字母數字原樣＋控制鍵全覆蓋可映射，a/b/x/y 同手柄同名但獨立值。</p>
+      <p class="hint" data-i18n="gamepad_kb_card_hint">直連鍵盤按鍵即時亮燈（經 WebSocket）；圖上鍵可直接撳。字母數字原樣＋控制鍵全覆蓋可映射，a/b/x/y 同手柄同名但獨立值。</p>
       <div class="row">
         <span data-i18n="gamepad_last_label">最後按鍵：</span>
         <span id="gamepadKbLastOut" class="device-value">-</span>
@@ -1031,6 +1033,46 @@
       </div>
     </section>
 
+    <!-- ============ 群控鏡像（實驗 tab 新卡，資源下載卡下面） ============ -->
+    <!-- 純前端 fan-out：瀏覽器直接 fetch 每部機 :8888（後端已開 CORS *），唔經本機轉發，
+         所以唔使改 Java／OpenAPI。前提：全部機同一個 Wi-Fi。 -->
+    <!-- 同其他進階卡一致寫法：預設收起，總開關（groupCardEnabled）揭開先顯示內容，
+         每次入頁預設關閉，不記狀態；入面嘅 Mirror 掣狀態獨立記喺 localStorage。 -->
+    <section class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0" data-i18n="group_heading">👯 群控鏡像</h2>
+        <label class="switch-label">
+          <span class="toggle-switch">
+            <input type="checkbox" id="groupCardEnabled" onchange="groupCardToggle()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
+      <p id="groupCardDisabledHint" class="hint" data-i18n="group_card_disabled_hint">開啟後才會顯示群控鏡像設定</p>
+      <div id="groupCardBody" style="display:none">
+      <div class="row">
+        <label class="switch-label"><span data-i18n="group_mirror_label">開＝自動搜尋＋跟隨，關＝停止</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="mirrorToggle" onchange="mirrorToggle()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+        <span id="mirrorStatus" class="hint"></span>
+      </div>
+      <p class="hint" data-i18n="group_hint">開啟後會自動搜尋同一網段內的機械人，完成後在本機執行的操作，其他機械人將同步執行（動作／舵機／LED／語音／音樂等）；查詢、韌體升級、下載、ID 寫入、拍照及錄影不會跟隨。關閉即停止。</p>
+      <div class="row">
+        <label data-i18n="group_subnet_label">子網：</label>
+        <input id="groupSubnet" placeholder="例如 192.168.1." data-i18n="group_subnet_placeholder" data-i18n-attr="placeholder" style="width:130px">
+        <span id="groupScanStatus" class="hint"></span>
+      </div>
+      <div class="row">
+        <input id="groupManual" placeholder="手動新增（如設有口令）：192.168.1.105 token" data-i18n="group_manual_placeholder" data-i18n-attr="placeholder" style="flex:1">
+        <button class="secondary" onclick="groupManualAdd()" data-i18n="group_manual_add_btn">加入</button>
+      </div>
+      <div id="groupRobotList" class="chip-list">-</div>
+      </div>
+    </section>
+
     <section class="card" oncontextmenu="return false" style="-webkit-touch-callout:none;-webkit-user-select:none;user-select:none">
       <div class="row" style="justify-content:space-between;align-items:center">
         <h2 style="margin:0" data-i18n="servo_tuner_heading">🔧 Servo Angle Tuner (22ch)</h2>
@@ -1073,9 +1115,55 @@
         <p class="hint" data-i18n="servo_id_hint">透過胸板命令 10 [舊 ID][新 ID]，經舵機碼 205 寫入舵機 EEPROM，掉電保持。同一總線不可有兩顆相同 ID；完成後請至舵機頁面試動新 ID 驗證。</p>
         <div class="row">
           <label data-i18n="servo_id_old_label">舊 ID：</label>
-          <input id="servoIdOld" type="number" min="1" max="22" value="1" style="width:70px" oninput="servoIdBusUpdate()">
+          <select id="servoIdOld" style="width:70px" onchange="servoIdBusUpdate()" oninput="servoIdBusUpdate()">
+            <option value="1" selected>1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="13">13</option>
+            <option value="14">14</option>
+            <option value="15">15</option>
+            <option value="16">16</option>
+            <option value="17">17</option>
+            <option value="18">18</option>
+            <option value="19">19</option>
+            <option value="20">20</option>
+            <option value="21">21</option>
+            <option value="22">22</option>
+          </select>
           <label data-i18n="servo_id_new_label" style="margin-left:8px">新 ID：</label>
-          <input id="servoIdNew" type="number" min="1" max="22" value="1" style="width:70px" oninput="servoIdBusUpdate()">
+          <select id="servoIdNew" style="width:70px" onchange="servoIdBusUpdate()" oninput="servoIdBusUpdate()">
+            <option value="1" selected>1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="13">13</option>
+            <option value="14">14</option>
+            <option value="15">15</option>
+            <option value="16">16</option>
+            <option value="17">17</option>
+            <option value="18">18</option>
+            <option value="19">19</option>
+            <option value="20">20</option>
+            <option value="21">21</option>
+            <option value="22">22</option>
+          </select>
         <p class="hint" data-i18n="servo_id_bus_hint">⚠️ 胸板左右兩個舵機接口不可混插：1,2,3,7,8,9,10,11,17,19,20,21 僅可連接右側接口；4,5,6,12,13,14,15,16,18,22 僅可連接左側接口——接錯一側將無法識別。若新 ID 與舊 ID 分屬不同側，更改後須先拔線改插，否則將立即失去連接！只能在斷電情況下接駁舵機，通電後不可插拔，否則會燒板！</p>
         <p id="servoIdBusInfo" class="hint"></p>
           <button class="danger-btn" onclick="servoModifyId()" data-i18n="servo_id_change_btn">✏️ 更改 ID</button>
@@ -1223,20 +1311,21 @@
        3. 中間檔案之間沒有排序依賴（function hoisting），保持原 section 順序方便對照。
      尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
      所以全部 <script src> 一定要行完先到那個 inline script。 -->
-<script src="app-core.js?v=20261001f"></script>
+<script src="app-core.js?v=20261001g"></script>
 <script src="api-client.js?v=20261001d"></script>
 <script src="app-status.js?v=20261001a"></script>
 <script src="app-actions.js?v=20261001a"></script>
 <script src="app-speech.js?v=20261001a"></script>
 <script src="app-vosk.js?v=20261001a"></script>
 <script src="app-servo.js?v=20261001d"></script>
-<script src="app-gamepad.js?v=20261001j"></script>
+<script src="app-gamepad.js?v=20261001n"></script>
 <script src="app-led.js?v=20261001a"></script>
 <script src="app-camera.js?v=20261001b"></script>
 <script src="app-xiaozhi.js?v=20261001a"></script>
 <script src="app-music.js?v=20261001a"></script>
 <script src="app-radio.js?v=20261001a"></script>
 <script src="app-archive.js?v=20261001a"></script>
+<script src="app-group.js?v=20261001a"></script>
 <script src="app-mic.js?v=20261001a"></script>
 <script src="app-accel.js?v=20261001a"></script>
 <script src="app-qr.js?v=20261001a"></script>

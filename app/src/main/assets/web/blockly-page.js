@@ -55,6 +55,8 @@ function withPanelToken(params) {
 // 統一的 api() helper — 同 app-core.js 個版本行為一致 (Bearer header＋query string, 回傳 parsed JSON)。
 window.api = function (path, params) {
   clearError();
+  // 鏡像模式（群控 tab 主頁定義，localStorage 同源共用，blockly.html 照跟；未開主頁都唔爆）。
+  try { if (typeof mirrorFanout === "function") mirrorFanout("alpha2", path, params); } catch (e) {}
   const qs = apiQuery(params);
   return fetch(API + 'alpha2/' + path + qs, { headers: panelAuthHeaders(params) }).then(function (res) {
     return res.json().catch(function () {
@@ -79,6 +81,8 @@ window.api = function (path, params) {
 function namespacedApi(prefix, label) {
   return function (path, params) {
     clearError();
+    // 鏡像模式（見上；prefix 係 "system/" 之類，掹走尾 slash 先傳）。
+    try { if (typeof mirrorFanout === "function") mirrorFanout(prefix.replace(/\/$/, ""), path, params); } catch (e) {}
     const qs = apiQuery(params);
     return fetch(API + prefix + path + qs, { headers: panelAuthHeaders(params) }).then(function (res) {
       return res.json().catch(function () {

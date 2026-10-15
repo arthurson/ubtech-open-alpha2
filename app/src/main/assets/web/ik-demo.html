@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alpha2 手臂 IK 試玩（XYZ → 舵機）</title>
+<style>
+  body{font-family:system-ui,"Microsoft JhengHei",sans-serif;max-width:760px;margin:0 auto;padding:12px;background:#f6f6f8;color:#222}
+  h1{font-size:20px} h2{font-size:16px;margin:18px 0 6px}
+  .card{background:#fff;border:1px solid #ddd;border-radius:10px;padding:12px;margin:10px 0}
+  label{display:block;margin:8px 0 2px;font-size:14px}
+  input[type=range]{width:100%}
+  input[type=text]{width:100%;box-sizing:border-box;padding:6px;font-size:14px}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:140px}
+  button{padding:8px 14px;font-size:15px;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;margin:4px 4px 4px 0}
+  button.primary{background:#2563eb;color:#fff;border-color:#2563eb}
+  button:disabled{opacity:.5}
+  #log{background:#111;color:#0f0;font-size:12px;padding:8px;border-radius:8px;height:150px;overflow-y:auto;white-space:pre-wrap}
+  .warn{color:#b45309;font-weight:bold}.ok{color:#15803d}.bad{color:#dc2626}
+  canvas{width:100%;background:#fff;border:1px solid #ddd;border-radius:8px}
+  .mono{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<h1>🦾 Alpha2 手臂 IK 試玩 <small style="font-size:12px" id="modeTag"></small></h1>
+<p>拖 XYZ slider → 即計 IK → <b>送出</b>經 HTTP 鬱 <code>/api/servo/one</code> 落部機。只郁一隻手，腳唔郁。部機要坐定／企定。</p>
+
+<div class="card" id="connCard">
+<h2>1. 連線</h2>
+<div class="row">
+<div><label>機械人 IP（同 Wi-Fi；上機模式唔使填）</label><input type="text" id="ip" placeholder="192.168.1.123"></div>
+<div><label>面板 token（無開就唔填）</label><input type="text" id="token" placeholder=""></div>
+</div>
+<button onclick="testConn()">🔗 測試連線</button>
+<span id="connStat"></span>
+</div>
+
+<div class="card">
+<h2>2. 目標（base_link 座標，cm；x 前、y 左、z 上）</h2>
+<div>
+<button onclick="setArm('R')" id="btnR" class="primary">右手</button><button onclick="setArm('L')" id="btnL">左手</button>
+</div>
+<label>X 前後：<span id="xv" class="mono"></span> cm</label><input type="range" id="tx" min="-5" max="15" step="0.5" value="12">
+<label>Y 左右：<span id="yv" class="mono"></span> cm</label><input type="range" id="ty" min="-15" max="15" step="0.5" value="-10">
+<label>Z 上下：<span id="zv" class="mono"></span> cm</label><input type="range" id="tz" min="-15" max="10" step="0.5" value="0">
+<label>郁嘅時間：<span id="tv" class="mono"></span> ms</label><input type="range" id="tt" min="200" max="2000" step="100" value="800">
+<div id="ikStat" class="mono"></div>
+<canvas id="cv" width="700" height="260"></canvas>
+</div>
+
+<div class="card">
+<h2>3. 落機（即時跟隨，唔使撳掣）</h2>
+<button class="primary" id="liveBtn" onclick="toggleLive()">⏸ 停跟隨</button>
+<button onclick="goHome()">🏠 回中</button>
+<button onclick="readBack()">📥 讀返角度</button>
+<div id="svStat" class="mono"></div>
+</div>
+
+<div class="card"><h2>Log</h2><div id="log"></div></div>
+<p><a href="index.html">← 返控制面板</a>（呢頁 rebuild 後會喺 <code>/ik-demo.html</code> 一齊上機）</p>
+
+<script>
+// ---- 參數：由 alpha2_description URDF + config/servo_map.yaml 抄出嚟 ----
+// q(rad) = radians(servo + offset)；servo = degrees(q) - offset，再 clamp。
+var ARMS = {
+  R: { ids:[1,2,3], S:[0.00853421,-0.0751493,0.0823553],
+       axes:[[0,1,0],[1,0,0],[0,-1,0]],
+       o1:[-0.000936512,-0.000282395,-0.000471802],
+       o2:[0.000452387,-0.00483327,-0.0579653],
+       ow:[-0.00276682,0.000360121,-0.0558557], tip:[0,0.012449,-0.038605],
+       qlim:[[-2.18166,1.8326],[-2.79253,0],[-1.0472,1.22173]],
+       off:[-130,-210,-115], srg:[[5,235],[50,210],[55,185]],
+       seed:[-10,-90,5], defT:[12,-10,0] },
+  L: { ids:[4,5,6], S:[0.00852983,0.0751493,0.0810614],
+       axes:[[0,-1,0],[1,0,0],[0,1,0]],
+       o1:[-0.000932146,0.000282394,0.000822052],
+       o2:[0.000452416,0.00483327,-0.0579653],
+       ow:[-0.0241628,-0.000360123,-0.0559338], tip:[0.021396,-0.012449,-0.038527],
+       qlim:[[-1.8326,2.18166],[0,2.79253],[-1.39626,0.87266]],
+       off:[-110,-30,-135], srg:[[5,235],[30,190],[55,185]],
+       seed:[10,90,-15], defT:[12,10,0] }
+};
+var arm = 'R';
+var curQ = null;   // seed，拖完會記住（連續郁唔會跳）
+var lastServo = null;
+var lastErr = 1e9, lastT = null; // 測試用：求解目標同殘差（內部全精度）
+var lastGood = null, lastSafe = false; // 最後驗過安全嘅位（slider 只會停呢啲位）
+
+function $(id){return document.getElementById(id);}
+function log(s){var el=$('log');el.textContent+=s+'\n';el.scrollTop=el.scrollHeight;}
+function load(){try{$('ip').value=localStorage.getItem('ik_ip')||'';$('token').value=localStorage.getItem('ik_tok')||'';}catch(e){}}
+function save(){try{localStorage.setItem('ik_ip',$('ip').value.trim());localStorage.setItem('ik_tok',$('token').value.trim());}catch(e){}}
+
+// ---- 3x3 數學 ----
+function rotAxis(ax,q){var n=Math.hypot(ax[0],ax[1],ax[2]);var x=ax[0]/n,y=ax[1]/n,z=ax[2]/n;
+  var c=Math.cos(q),s=Math.sin(q),C=1-c;
+  return [[c+x*x*C,x*y*C-z*s,x*z*C+y*s],[y*x*C+z*s,c+y*y*C,y*z*C-x*s],[z*x*C-y*s,z*y*C+x*s,c+z*z*C]];}
+function mDot(R,v){return [R[0][0]*v[0]+R[0][1]*v[1]+R[0][2]*v[2],R[1][0]*v[0]+R[1][1]*v[1]+R[1][2]*v[2],R[2][0]*v[0]+R[2][1]*v[1]+R[2][2]*v[2]];}
+function mMul(A,B){var C=[[0,0,0],[0,0,0],[0,0,0]];for(var i=0;i<3;i++)for(var j=0;j<3;j++){var s=0;for(var k=0;k<3;k++)s+=A[i][k]*B[k][j];C[i][j]=s;}return C;}
+function vAdd(a,b){return [a[0]+b[0],a[1]+b[1],a[2]+b[2]];}
+function vSub(a,b){return [a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+
+function fk(P,q){ // 回 [tip, elbow]
+  var R=[[1,0,0],[0,1,0],[0,0,1]];
+  var p=[P.S[0]+R[0][0]*P.o1[0]+R[0][1]*P.o1[1]+R[0][2]*P.o1[2],
+         P.S[1]+R[1][0]*P.o1[0]+R[1][1]*P.o1[1]+R[1][2]*P.o1[2],
+         P.S[2]+R[2][0]*P.o1[0]+R[2][1]*P.o1[1]+R[2][2]*P.o1[2]];
+  R=mMul(R,rotAxis(P.axes[0],q[0]));
+  p=vAdd(p,mDot(R,P.o2)); R=mMul(R,rotAxis(P.axes[1],q[1]));
+  var elbow=p.slice();
+  p=vAdd(p,mDot(R,P.ow)); R=mMul(R,rotAxis(P.axes[2],q[2]));
+  return [vAdd(p,mDot(R,P.tip)), elbow];
+}
+function solveIK(P,t,q0){
+  var q=q0.slice(),lam=0.03,n=200,err=1e9,tip=null;
+  for(var it=0;it<n;it++){
+    var r=fk(P,q); tip=r[0]; var e=vSub(t,tip);
+    err=Math.hypot(e[0],e[1],e[2]);
+    if(err<5e-4) return {q:q,ok:true,it:it,err:err};
+    var h=1e-6,J=[[0,0,0],[0,0,0],[0,0,0]];
+    for(var j=0;j<3;j++){var qq=q.slice();qq[j]+=h;var pj=fk(P,qq)[0];
+      J[0][j]=(pj[0]-tip[0])/h;J[1][j]=(pj[1]-tip[1])/h;J[2][j]=(pj[2]-tip[2])/h;}
+    // DLS: dq = J'(JJ'+l2I)^-1 e
+    var A=[[0,0,0],[0,0,0],[0,0,0]];
+    for(var a=0;a<3;a++)for(var b=0;b<3;b++){var s=0;for(var k=0;k<3;k++)s+=J[a][k]*J[b][k];A[a][b]=s+(a===b?lam*lam:0);}
+    var det=A[0][0]*(A[1][1]*A[2][2]-A[1][2]*A[2][1])-A[0][1]*(A[1][0]*A[2][2]-A[1][2]*A[2][0])+A[0][2]*(A[1][0]*A[2][1]-A[1][1]*A[2][0]);
+    if(Math.abs(det)<1e-12) return {q:q,ok:false,it:it,err:err};
+    var inv=[[(A[1][1]*A[2][2]-A[1][2]*A[2][1])/det,(A[0][2]*A[2][1]-A[0][1]*A[2][2])/det,(A[0][1]*A[1][2]-A[0][2]*A[1][1])/det],
+             [(A[1][2]*A[2][0]-A[1][0]*A[2][2])/det,(A[0][0]*A[2][2]-A[0][2]*A[2][0])/det,(A[0][2]*A[1][0]-A[0][0]*A[1][2])/det],
+             [(A[1][0]*A[2][1]-A[1][1]*A[2][0])/det,(A[0][2]*A[1][0]-A[0][0]*A[1][2])/det,(A[0][0]*A[1][1]-A[0][1]*A[1][0])/det]];
+    var y=[inv[0][0]*e[0]+inv[0][1]*e[1]+inv[0][2]*e[2],inv[1][0]*e[0]+inv[1][1]*e[1]+inv[1][2]*e[2],inv[2][0]*e[0]+inv[2][1]*e[1]+inv[2][2]*e[2]];
+    for(var m=0;m<3;m++){var d=J[0][m]*y[0]+J[1][m]*y[1]+J[2][m]*y[2];
+      d=Math.max(-0.3,Math.min(0.3,d));q[m]+=d;
+      var L=(P.qlimS||P.qlim)[m];q[m]=Math.max(L[0],Math.min(L[1],q[m]));}
+  }
+  return {q:q,ok:false,it:n,err:err};
+}
+function qToServo(P,q){
+  var out=[];
+  for(var i=0;i<3;i++){var s=Math.round(q[i]*180/Math.PI-P.off[i]);
+    s=Math.max(P.srg[i][0],Math.min(P.srg[i][1],s));out.push(s);}
+  return out;
+}
+
+// ---- 安全線：由 base_link/head mesh 實測尺寸 + 可到達圖定 ----
+// 身 x[-42,53] y[±57] z[-16,105]mm；頭 z~95-135mm。目標盒喺胸前+25mm 外、
+// 頭下；再夾入以肩為心 50-145mm 殼（臂展~153mm）。點扭都唔出得街。
+var SAFE = {
+  rMin:0.050, rMax:0.145,
+  torso:{x:[-0.057,0.068], y:[-0.072,0.072], z:[-0.031,0.120]}, // 身+15mm（驗手肘用）
+  qMargin:0.01 // solver 關節 limit 內收少少，唔好長期騎住機械極限郁
+};
+// 各手範圍（右肘得 70°、左肘等效 80°，右手實心區細啲；數值由可到達圖驗過）
+ARMS.R.xRg=[0.11,0.14]; ARMS.R.yRg=[-0.15,-0.13]; ARMS.R.zRg=[0.00,0.035]; ARMS.R.defT=[11,-13,3];
+ARMS.L.xRg=[0.08,0.14]; ARMS.L.yRg=[0.07,0.16];   ARMS.L.zRg=[-0.02,0.07]; ARMS.L.defT=[11,13,3];
+Object.keys(ARMS).forEach(function(k){var P=ARMS[k];
+  P.qlimS=P.qlim.map(function(l){return [l[0]+SAFE.qMargin,l[1]-SAFE.qMargin];});});
+function inTorso(p){var b=SAFE.torso;
+  return p[0]>b.x[0]&&p[0]<b.x[1]&&p[1]>b.y[0]&&p[1]<b.y[1]&&p[2]>b.z[0]&&p[2]<b.z[1];}
+function boxClamp(P,t){
+  return [Math.max(P.xRg[0],Math.min(P.xRg[1],t[0])),
+          Math.max(P.yRg[0],Math.min(P.yRg[1],t[1])),
+          Math.max(P.zRg[0],Math.min(P.zRg[1],t[2]))];
+}
+function clampTarget(P,t){
+  t=boxClamp(P,t);
+  var d=[t[0]-P.S[0],t[1]-P.S[1],t[2]-P.S[2]],n=Math.hypot(d[0],d[1],d[2]);
+  var nc=Math.max(SAFE.rMin,Math.min(SAFE.rMax,n));
+  if(n>1e-9&&nc!==n){var k=nc/n;t=[P.S[0]+d[0]*k,P.S[1]+d[1]*k,P.S[2]+d[2]*k];}
+  return boxClamp(P,t); // 最尾一定係 box 入面（胸前安全）；超臂展少少就靠誤差閘鎖掣
+}
+function solveIKmulti(P,t,q0){
+  // 多 seed 避開跌入 limit 牆嘅分支；留最好誤差嗰個（連續郁靠 curQ seed）
+  var seeds=[q0, P.seed.map(function(d){return d*Math.PI/180;}), [0,0,0]];
+  var best=null;
+  for(var s=0;s<seeds.length;s++){var r=solveIK(P,t,seeds[s]);
+    if(!best||r.err<best.err) best=r;
+    if(best.ok&&best.err<5e-4) break;}
+  return best;
+}
+
+// ---- UI ----
+function setArm(a){arm=a;var P=ARMS[a];curQ=null;lastGood=null;lastSafe=false;
+  $('btnR').className=a==='R'?'primary':'';$('btnL').className=a==='L'?'primary':'';
+  $('tx').min=P.xRg[0]*100;$('tx').max=P.xRg[1]*100;
+  $('ty').min=P.yRg[0]*100;$('ty').max=P.yRg[1]*100;
+  $('tz').min=P.zRg[0]*100;$('tz').max=P.zRg[1]*100;
+  $('tx').value=P.defT[0];$('ty').value=P.defT[1];$('tz').value=P.defT[2];
+  update();
+}
+function target(){return [$('tx').value/100,$('ty').value/100,$('tz').value/100];}
+function update(){
+  var P=ARMS[arm];
+  $('tv').textContent=$('tt').value;
+  if(!curQ) curQ=P.seed.map(function(d){return d*Math.PI/180;});
+  var t=clampTarget(P,target());
+  // 寫返夾好嘅值入 slider：畫面見到嘅永遠係安全線入面嗰個
+  $('tx').value=(t[0]*100).toFixed(1);$('ty').value=(t[1]*100).toFixed(1);$('tz').value=(t[2]*100).toFixed(1);
+  $('xv').textContent=$('tx').value;$('yv').textContent=$('ty').value;$('zv').textContent=$('tz').value;
+  var r=solveIKmulti(P,t,curQ);
+  lastT=t; lastErr=r.err;
+  var fkR=fk(P,r.q),elb=fkR[1];
+  var servo=qToServo(P,r.q);
+  // 三重閘：解得準 + 手肘唔入身 + 關節留 margin（solver 已內收）
+  var elbowBad=inTorso(elb);
+  var safe=r.ok&&r.err<2e-3&&!elbowBad;
+  if(safe){
+    // 安全先記：slider 見到嘅永遠係安全位；即時跟隨即送
+    curQ=r.q; lastServo=servo; lastGood={t:t.slice(),q:r.q.slice(),servo:servo.slice()}; lastSafe=true;
+    maybeSend();
+  }else if(lastGood){
+    // 去唔到：slider 彈返上一個安全點，部機唔郁
+    curQ=lastGood.q.slice(); lastServo=lastGood.servo.slice(); lastSafe=false;
+    t=lastGood.t;
+    $('tx').value=(t[0]*100).toFixed(1);$('ty').value=(t[1]*100).toFixed(1);$('tz').value=(t[2]*100).toFixed(1);
+    $('xv').textContent=$('tx').value;$('yv').textContent=$('ty').value;$('zv').textContent=$('tz').value;
+    servo=lastGood.servo;
+  }else{ lastSafe=false; }
+  var qd=(safe?r.q:curQ).map(function(v){return (v*180/Math.PI).toFixed(1);});
+  var h='<span class="'+(safe?'ok':'bad')+'">'+(safe?'✅ 安全，即送':'⛔ 去唔到，已彈返安全位（差 '+(lastErr*1000).toFixed(1)+'mm'+(elbowBad?'＋手肘入身':'')+'）')+'</span> '
+    +'q=['+qd.join(', ')+']° 舵機['+servo.join(', ')+']#'+P.ids.join('/');
+  $('ikStat').innerHTML=h;
+  $('svStat').textContent=(safe?'已送/待送：':'安全位：')+P.ids.map(function(id,i){return id+'號='+servo[i];}).join('  ')+'  time='+$('tt').value+'ms';
+  draw(P,t);
+}
+// ---- 即時跟隨：拖 slider 部機即郁（300ms 節流，唔 hammer 胸板）----
+var liveOn=true, lastSendMs=0, holdUntil=0; var LIVE_MS=300;
+function toggleLive(){liveOn=!liveOn;
+  $('liveBtn').textContent=liveOn?'⏸ 停跟隨':'▶ 即時跟隨';
+  $('liveBtn').className=liveOn?'primary':'';
+  log(liveOn?'即時跟隨開':'即時跟隨停（部機唔再跟，只預覽）');}
+function liveSend(force){
+  if(!liveOn||!lastSafe||!lastGood) return;
+  var now=Date.now();
+  if(now<holdUntil) return;
+  if(!force&&now-lastSendMs<LIVE_MS) return;
+  lastSendMs=now;
+  var P=ARMS[arm],s=lastGood.servo;
+  var time=Math.max(100,Math.min(1000,parseInt($('tt').value,10)||300));
+  var qs='/api/servo/one?id=';
+  get(qs+P.ids[0]+'&angle='+s[0]+'&time='+time).catch(function(e){log('送失敗：'+e);});
+  get(qs+P.ids[1]+'&angle='+s[1]+'&time='+time).catch(function(e){log('送失敗：'+e);});
+  get(qs+P.ids[2]+'&angle='+s[2]+'&time='+time).catch(function(e){log('送失敗：'+e);});
+  var d=new Date();
+  $('svStat').textContent='已送 '+d.toTimeString().slice(0,8)+'：'+P.ids.map(function(id,i){return id+'號='+s[i];}).join('  ');
+}
+function maybeSend(){liveSend(false);}
+function draw(P,t){
+  var cv=$('cv'),g=cv.getContext('2d');g.clearRect(0,0,cv.width,cv.height);
+  var r=fk(P,curQ),tip=r[0],elb=r[1],S=P.S;
+  function side(p){return [20+(p[0]+0.08)*2600, 130-(p[2]-0.0)*2600];}
+  function top(p){return [380+(p[0]+0.08)*2600, 130-(p[1])*2600];}
+  g.strokeStyle='#ccc';g.strokeRect(0,0,350,260);g.strokeRect(350,0,350,260);
+  g.fillStyle='#000';g.fillText('側視 X-Z',8,14);g.fillText('頂視 X-Y',358,14);
+  var pts=[[S,elb,tip]];
+  var a=side(S),b=side(elb),c=side(tip),d=side(t);
+  g.strokeStyle='#2563eb';g.lineWidth=3;g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(b[0],b[1]);g.lineTo(c[0],c[1]);g.stroke();
+  g.fillStyle='#888';[a,b].forEach(function(p){g.beginPath();g.arc(p[0],p[1],4,0,7);g.fill();});
+  g.fillStyle='#16a34a';g.beginPath();g.arc(c[0],c[1],5,0,7);g.fill();
+  g.strokeStyle='#dc2626';g.lineWidth=2;g.beginPath();g.moveTo(d[0]-7,d[1]);g.lineTo(d[0]+7,d[1]);g.moveTo(d[0],d[1]-7);g.lineTo(d[0],d[1]+7);g.stroke();
+  var a2=top(S),b2=top(elb),c2=top(tip),d2=top(t);
+  g.strokeStyle='#2563eb';g.lineWidth=3;g.beginPath();g.moveTo(a2[0],a2[1]);g.lineTo(b2[0],b2[1]);g.lineTo(c2[0],c2[1]);g.stroke();
+  g.fillStyle='#16a34a';g.beginPath();g.arc(c2[0],c2[1],5,0,7);g.fill();
+  g.strokeStyle='#dc2626';g.lineWidth=2;g.beginPath();g.moveTo(d2[0]-7,d2[1]);g.lineTo(d2[0]+7,d2[1]);g.moveTo(d2[0],d2[1]-7);g.lineTo(d2[0],d2[1]+7);g.stroke();
+}
+
+// ---- HTTP（上機模式用同源相對路徑，唔使填 IP；file:// 先要填 IP）----
+var SAME_ORIGIN = (location.protocol.indexOf('http') === 0 && !!location.hostname);
+function base(){
+  if(SAME_ORIGIN) return location.origin; // http://<robot-ip>:8888/ik-demo.html 直打，唔經出面連線
+  var ip=$('ip').value.trim();if(!ip){log('⛔ 先填機械人 IP');return null;}save();return 'http://'+ip+':8888';
+}
+function tok(){var t=$('token').value.trim();return t?('&panel_token='+encodeURIComponent(t)):'';}
+function get(path){
+  var b=base();if(!b) return Promise.reject('no ip');
+  return fetch(b+path+tok()).then(function(r){return r.json();});
+}
+function testConn(){
+  get('/api/accelerometer/get').then(function(j){$('connStat').textContent=JSON.stringify(j);log('連線：'+JSON.stringify(j));})
+    .catch(function(e){$('connStat').textContent='失敗：'+e;log('連線失敗：'+e+'（同 Wi-Fi？IP 啱？）');});
+}
+function sendOne(id,angle,time){
+  return get('/api/servo/one?id='+id+'&angle='+angle+'&time='+time).then(function(j){log('#'+id+'→'+angle+': '+JSON.stringify(j));return j;});
+}
+function goHome(){
+  var P=ARMS[arm],time=parseInt($('tt').value,10)||800;
+  curQ=P.seed.map(function(d){return d*Math.PI/180;}); // seed 即 home 附近
+  lastGood=null; lastSafe=false;
+  holdUntil=Date.now()+time+200; // 回中有排郁，呢段時間唔跟 slider，唔打架
+  log('回中：'+P.ids.join('/')+'=120');
+  sendOne(P.ids[0],120,time).then(function(){return sendOne(P.ids[1],120,time);})
+    .then(function(){return sendOne(P.ids[2],120,time);}).then(update);
+}
+function readBack(){
+  get('/api/servo/back-angle-all').then(function(j){
+    log('讀返：'+JSON.stringify(j).slice(0,300));
+    if(j && j.angles){var P=ARMS[arm];
+      var a=j.angles;
+      $('svStat').textContent='實測：'+P.ids.map(function(id){return id+'號='+(a[id-1]===null?'null':a[id-1]);}).join('  ');}
+  }).catch(function(e){log('讀返失敗：'+e);});
+}
+['tx','ty','tz','tt'].forEach(function(id){$(id).addEventListener('input',update);});
+['tx','ty','tz'].forEach(function(id){$(id).addEventListener('change',function(){liveSend(true);});}); // 放手即送準數
+load();setArm('R');
+if(SAME_ORIGIN){$('modeTag').textContent='（上機模式：直打，唔使填 IP）';$('connCard').style.display='none';}
+else{$('modeTag').textContent='（直開呢個檔就得，唔使重裝 APK）';}
+log('就緒。'+(SAME_ORIGIN?'上機模式：一拖即郁。':'先填 IP → 測試連線 → 一拖即郁。')+'去唔到嘅位會自動彈返，17/18手指鎖120唔郁。');
+</script>
+</body>
+</html>

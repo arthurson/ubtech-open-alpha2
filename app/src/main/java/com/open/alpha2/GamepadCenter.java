@@ -1193,7 +1193,8 @@ public final class GamepadCenter {
     /**
      * 執行一鍵映射（單／多通用，一次過順序做晒）。
      * multi 係換行分隔多動作（見 splitMultiAction）；全 none／空即回 true（無嘢做）。
-     * taken＝全部非 none 段都成功先 true（任一段失敗即 false，等面板打✗）。
+     * taken＝全部非 none 段都成功先 true（任一段失敗即 false，等面板打✗；
+     * servo jog 到頂箝住唔郁都當成功，唔打紅，見 executeSingleAction）。
      * servo 首步喺各段即行，連走由調用方經 startServoRepeats 續行（見下）。
      */
     private boolean executeAction(String side, String key, String action) {
@@ -1270,6 +1271,9 @@ public final class GamepadCenter {
             if (isServoJog(a)) {
                 int id = Integer.parseInt(a.substring(5, a.length() - 1));
                 int delta = a.endsWith("+") ? SERVO_JOG_STEP : -SERVO_JOG_STEP;
+                // 到頂唔送幀都當成功（唔打紅✗，同 repeat「唔再頂住限位嗌」同哲學）；
+                // 真送唔出先回 false 打紅。
+                if (isServoJogAtLimit(id, delta)) return true;
                 return jogServo(id, delta);
             }
             // 本地音樂功能鍵（無歌／無載入即 false，taken 照實）。
@@ -1792,7 +1796,10 @@ public final class GamepadCenter {
         return null;
     }
 
-    private synchronized boolean jogServo(int id, int delta) {
+    /** jog 起步位＋箝位目標（同 jogServo 同一套算法，抽出嚟等到頂檢查共用；
+     *  回 null＝id 非法，唔會發生，調用方已驗）。
+     */
+    private synchronized int[] jogPlan(int id, int delta) {
         int base = ApiValidator.servoCalHome(id);
         Integer commanded = commandedAngle(id);
         if (commanded != null) {
@@ -1803,6 +1810,21 @@ public final class GamepadCenter {
             base = axisPose20;
         }
         int target = ApiValidator.clampServoAngle(id, base + delta);
+        return new int[]{base, target};
+    }
+
+    /** 該 jog 方向係咪已經到頂（箝完等於起步位）——到頂係正常行程盡頭，
+     *  唔係失敗，調用方應該當成功（唔打紅✗），等連走自己停。
+     */
+    private synchronized boolean isServoJogAtLimit(int id, int delta) {
+        int[] plan = jogPlan(id, delta);
+        return plan[0] == plan[1];
+    }
+
+    private synchronized boolean jogServo(int id, int delta) {
+        int[] plan = jogPlan(id, delta);
+        int base = plan[0];
+        int target = plan[1];
         if (target == base) return false;
         boolean sent = false;
         try {
@@ -1966,6 +1988,33 @@ public final class GamepadCenter {
         return configGetResponse(query);
     }
 
+    // -- down/up 反轉閘（快 tap 撳一下變長撳專用）------------------------------
+    // 每個 HTTP request 行自己條 thread（newCachedThreadPool）：快 tap 嗰陣
+    // down（行 chest serial，慢）同 up（純 memory stop，快）可以重疊——up 先做完
+    // （無嘢停），down 做完先排 repeat → 之後再無事件，repeat 走足 40 格（~5 秒）。
+    // 解：每鍵記 down 開工同最近 up（單調 nanoTime，唔怕 wall clock 跳）；
+    // down 排完 repeat 即驗——處理期間有 up 到過即刻停返。
+    // tap-tap-hold 唔受影響（第二次 downStart 新過上次 up）；非 servo 掣無 repeat，
+    // 驗都唔使驗。物理直連鍵行 UI 單 thread，本身唔會重疊，唔使經呢度。
+    private final Map<String, Long> keyDownStartNanos = new LinkedHashMap<>();
+    private final Map<String, Long> keyLastUpNanos = new LinkedHashMap<>();
+
+    private synchronized void noteKeyDownStart(String hk) {
+        keyDownStartNanos.put(hk, System.nanoTime());
+    }
+
+    private synchronized void noteKeyUp(String hk) {
+        keyLastUpNanos.put(hk, System.nanoTime());
+    }
+
+    /** 該 down 處理期間有無 up 到過（有即回 true，調用方即停啱啱排嘅 repeat）。 */
+    private synchronized boolean keyUpLandedDuring(String hk) {
+        Long down = keyDownStartNanos.get(hk);
+        Long up = keyLastUpNanos.get(hk);
+        keyDownStartNanos.remove(hk);
+        return down != null && up != null && up.longValue() > down.longValue();
+    }
+
     /** gamepad/key：注入按鍵（side 唔帶就按 source 猜：keyboard→kb，其餘 pad）。 */
     public HttpServer.ApiResponse keyResponse(Map<String, String> query) {
         String key = ApiValidator.require(query, "key");
@@ -2004,11 +2053,18 @@ public final class GamepadCenter {
         }
         String mapped = mappedActionOf(side, key);
         boolean taken = false;
+        String hk = side + ":" + key;
         // 放開：停連走＋不上動作（避免按住連發播兩次），但事件照記、前端燈照跟。
         if (pressed) {
+            noteKeyDownStart(hk);
             taken = executeAction(side, key, mapped);
-            if (taken && !servoJogParts(mapped).isEmpty()) startServoRepeats(side, key, mapped, 1f);
+            if (taken && !servoJogParts(mapped).isEmpty()) {
+                startServoRepeats(side, key, mapped, 1f);
+                // 快 tap 反轉：上行 serial 期間 up 已到過→即停，唔好變長撳。
+                if (keyUpLandedDuring(hk)) stopServoRepeat(side, key);
+            }
         } else {
+            noteKeyUp(hk);
             taken = stopServoRepeat(side, key);
         }
         publishKey(key, pressed, source, mapped, taken);
