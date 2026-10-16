@@ -251,8 +251,9 @@ public final class ChestUpgrade {
      *  固件側機制（V352 靜態分析實證）：48 擦暫存區 0x0801F000（上限 0x1C000，拒收回 1/2）；
      *  49 逐 word 寫入＋讀回驗證＋餵 MD5；50 對 MD5，並睇最後 24 byte——有 `ChestLar2s`
      *  即寫旗標 0x5AA55AA5 到 0x0803B000，bootloader 下次上電先搬去 app 區。
-     *  所以燒完必須成部機斷電重開先會生效，淨 reboot Android（胸板一路有電）係唔夠嘅；
-     *  面板成功提示已寫明呢點（chest_upgrade_done_power）。 */
+     *  所以燒完必須斷電重開先會寫入固件，僅 reboot Android（胸板一路有電）不足以生效；
+     *  重啟後電源鍵指示燈將依序顯示藍色 → 紅色 → 綠色，綠燈持續亮起即表示更新完成，
+     *  方可再次關機並重新開機；面板成功提示已寫明此流程（chest_upgrade_done_power）。 */
     private void doChestUpgradeFrom(final java.io.File file, final int startPage) {
         final int fileLen = (int) file.length();
         final int totalPages = (fileLen + 127) / 128;

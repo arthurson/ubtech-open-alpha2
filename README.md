@@ -312,8 +312,11 @@ open-alpha2/
 - Chest `cmd6` live reads momentarily relax that servo (firmware behaviour);
   use `servo/angle-restore` (read + write-back in one backend call) when the
   joint must stay loaded. Chest firmware upgrade only flashes the session's
-  freshly uploaded image and needs two manual power cycles to apply
-  (rebooting Android alone is not enough).
+  freshly uploaded image. After flashing, power off and power on again to
+  start writing the firmware: the power button LED changes blue → red →
+  green in sequence, and a steady green means the update is complete, after
+  which you may power off and power on again (rebooting Android alone is
+  not enough).
 - Spoken conversation follows the original "speak, wait 200 ms, move"
   timing; loud sound-effect actions skip the spoken reply so the two don't
   fight over the speaker.
