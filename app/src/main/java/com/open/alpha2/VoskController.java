@@ -850,9 +850,7 @@ public final class VoskController {
     }
 
     private static String escape(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r");
+        return JsonUtil.esc(s);
     }
 
     // -- 模型下載＋自動 unzip -------------------------------------------------

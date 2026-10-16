@@ -525,8 +525,6 @@ public final class ActionsPackController {
     }
 
     private static String escape(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r");
+        return JsonUtil.esc(s);
     }
 }

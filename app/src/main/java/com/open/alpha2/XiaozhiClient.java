@@ -211,6 +211,7 @@ public class XiaozhiClient {
 
             NetLog.out("xiaozhi-ws", wsUrl);
             Socket rawSocket = new Socket(url.host, url.port);
+            socket = rawSocket; // 先登記，TLS 包裝失敗時 closeQuietly() 先關得到
             rawSocket.setTcpNoDelay(true);
             if (url.secure) {
                 // 用 XiaozhiTrustAllSsl 的 factory 代替
@@ -1044,9 +1045,7 @@ public class XiaozhiClient {
     }
 
     private static String jsonEscape(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r");
+        return JsonUtil.esc(s);
     }
 }
 

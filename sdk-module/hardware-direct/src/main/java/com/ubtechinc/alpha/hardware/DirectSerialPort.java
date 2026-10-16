@@ -85,8 +85,6 @@ public final class DirectSerialPort {
     }
 
     public void addListener(OnFrameListener l) { listeners.add(l); }
-    public void removeListener(OnFrameListener l) { listeners.remove(l); }
-    public String getOpenedPath() { return openedPath; }
 
     public synchronized boolean open() {
         if (running.get()) return true;

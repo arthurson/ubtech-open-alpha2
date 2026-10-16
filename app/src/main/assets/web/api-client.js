@@ -9,7 +9,6 @@
 // mirroring ApiValidator.java on the server side.
 
 const Alpha2Api = (function() {
-  function qs(params) { return params ? '?' + new URLSearchParams(params).toString() : ''; }
   function assertEnum(val, allowed, key) { if (val != null && !allowed.includes(val)) throw new Error(key + ' must be one of ' + allowed.join(',')); }
   // 2026-09-09：數字 enum（ubx/speed 0.5/0.67/…）用數值比對＋後端同款 0.001 容差——
   // URL/query 來的是字串，嚴格 includes 會誤殺 "1" 之類合法值。

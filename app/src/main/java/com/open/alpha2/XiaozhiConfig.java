@@ -106,14 +106,6 @@ public final class XiaozhiConfig {
                 customEnabled ? p.getString(PREF_XIAOZHI_TOKEN_OVERRIDE, "") : "");
     }
 
-    public boolean isOtaCustomEnabled() {
-        try {
-            return prefs().getBoolean(PREF_XIAOZHI_OTA_CUSTOM_ENABLED, false);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     /** 開機語音模式（off/xiaozhi/vosk），帶舊 boolean 遷移，未存過一律 off。 */
     public String getBootVoiceMode() {
         try {

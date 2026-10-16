@@ -1165,14 +1165,6 @@ public final class GamepadCenter {
     // 全停清掉； natural 播完之類外面郁過要撳兩次先啱返位，認了）。
     private final Map<String, Boolean> toggleStates = new LinkedHashMap<>();
 
-    private synchronized boolean toggleFlip(String side, String key) {
-        String tag = side + ":" + key;
-        boolean now = !Boolean.TRUE.equals(toggleStates.get(tag));
-        if (now) toggleStates.put(tag, Boolean.TRUE);
-        else toggleStates.remove(tag);
-        return now;
-    }
-
     /**
      * 一鍵多功能 toggle 態：idx==0 沿用舊 tag（side:key，舊單鍵態保留，
      * 加第二個動作唔會 reset 第一個）；idx&gt;0 用 side:key#index 獨立計，
@@ -1716,11 +1708,6 @@ public final class GamepadCenter {
         } catch (Throwable t) {
             Log.w(TAG, "startServoRepeat failed", t);
         }
-    }
-
-    private synchronized float repeatDeflOf(String side, String key) {
-        Float fd = servoRepeatDefl.get(side + ":" + key);
-        return fd == null ? 1f : fd;
     }
 
     private synchronized float repeatDeflOfTag(String tag) {

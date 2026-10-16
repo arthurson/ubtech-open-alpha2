@@ -1082,16 +1082,6 @@ public class CameraController {
         awaitQuietly(latch, timeoutMs, TimeUnit.MILLISECONDS);
     }
 
-    /** MediaRecorder 交接用：已開相機的 index（-1＝未開過）。 */
-    public int getOpenedIndex() {
-        return openedIndex;
-    }
-
-    /** MediaRecorder 交接用：預覽 SurfaceTexture（包成 Surface 做 setPreviewDisplay）。 */
-    public SurfaceTexture getPreviewSurfaceTexture() {
-        return dummyPreviewTexture;
-    }
-
     /** beginRecorderHandoff 交出的相機＋紋理（VideoCenter 配 MediaRecorder 用）。 */
     public static final class RecorderHandoff {
         public final android.hardware.Camera camera;

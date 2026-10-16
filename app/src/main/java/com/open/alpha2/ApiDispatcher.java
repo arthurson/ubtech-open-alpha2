@@ -130,7 +130,7 @@ public final class ApiDispatcher {
         String prefix = kind == null || kind.isEmpty() ? "unknown endpoint: "
                 : "unknown " + kind + " endpoint: ";
         return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
-                "{\"ok\":false,\"error\":\"" + prefix + path + "\"}");
+                "{\"ok\":false,\"error\":\"" + JsonUtil.esc(prefix + path) + "\"}");
     }
 
     /**

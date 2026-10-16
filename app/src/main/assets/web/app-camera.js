@@ -483,26 +483,6 @@ function robotVideoHintDone(json) {
     + (json.hasAudio ? "有聲" : "無聲") + "）";
 }
 
-async function robotVideoRefreshStatus() {
-  try {
-    const json = await Alpha2Api.cameraVideoStatus();
-    if (json && json.ok) {
-      robotVideoRecording = !!json.recording;
-      robotVideoSyncFab();
-      const hint = document.getElementById("cameraStatusHint");
-      if (hint) {
-        if (robotVideoRecording) {
-          hint.textContent = "機錄影中…" + (json.hasAudio ? "（有聲）" : "（無聲）");
-        } else if (json.lastPath) {
-          const secs = Math.round((json.lastDurationMs || 0) / 1000);
-          hint.textContent = "機錄上次：" + json.lastPath + "（" + secs + "s，"
-            + (json.lastHasAudio ? "有聲" : "無聲") + "）";
-        }
-      }
-    }
-  } catch (e) { /* ignore：狀態讀唔到唔騷擾 */ }
-}
-
 async function robotVideoToggle() {
   const hint = document.getElementById("cameraStatusHint");
   try {
@@ -733,7 +713,6 @@ function setupCrosshairIfNeeded() {
                                 // deliberately moderate value avoids the head snapping
                                 // to a hard endstop on every tap.
   const heldArrowKeys = new Set();
-  let arrowRepeatTimer = null;
 
   function arrowKeysToAxis() {
     let nx = 0, ny = 0;

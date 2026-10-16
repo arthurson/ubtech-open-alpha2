@@ -136,6 +136,8 @@ public class HttpServer implements Runnable {
          *  先至知要帶 Authorization: Bearer）。 */
         public static ApiResponse unauthorized(String message) {
             Map<String, String> h = new HashMap<String, String>();
+            // "panel" = PanelAuth.AUTH_REALM（HttpServer 要留喺 test-apivalidator
+            // 編譯清單，唔可以反向依賴 PanelAuth→MainActivity，改 realm 記得兩邊同步）。
             h.put("WWW-Authenticate", "Bearer realm=\"panel\"");
             return new ApiResponse(401, "application/json; charset=utf-8",
                     JsonUtil.okFalse(String.valueOf(message)), h);

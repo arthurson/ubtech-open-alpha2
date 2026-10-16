@@ -64,7 +64,6 @@
   // 顏色分辨基本/跳舞/故事/瑜伽), CATEGORY dropdown 亦都要重新在 block 度顯示
   // 給用家自己選 (以前靠拖哪個 toolbox 子分類來預設 CATEGORY 這招不再適用, 因為
   // toolbox 已經沒有了那些子分類)。
-  const ACTION_CATEGORY_COLOUR = null; // 保留這個 const 名做 no-op, 下面不再用來查色
 
   // 子分類清單: 跟 blockly-actions-data.js 的 ALPHA_ACTION_SUBCATEGORIES 一致
   // (每個 main 分類之下的 sub 分類, 例如 basic 底下有 移動類/手勢類/頭部類/
@@ -417,23 +416,6 @@
   // 實際的 SERVO_NAMES / SERVO_GROUPS / SERVO_CALIBRATION 資料在獨立檔案
   // blockly-servo-data.js 定義 (同 app-core.js 保持一致, 見該檔頭註解), 這裡僅讀
   // window.ALPHA_SERVO_* 來用, 不重複定義一份會出錯的副本。
-  // 2026-08 更新: 伺服 toolbox 由「總分類 -> 5 個部位子分類 (各自顏色)」的 nested
-  // tree 改做扁平化 —— 一按「伺服」就即刻見完所有伺服 block, 不再逐層展開先見到。
-  // 跟著這個改動, 伺服 block 不應該再跟部位轉色, 固定用 clr.servo 就夠。
-  // servoGroupColour() 僅保留做 no-op fallback (永遠回傳 clr.servo), 避免要
-  // 改完所有 call 過這個 function 的地方。
-  function servoGroups() {
-    return (window.ALPHA_SERVO_GROUPS && window.ALPHA_SERVO_GROUPS.length) ? window.ALPHA_SERVO_GROUPS : [
-      { key: 'head', label: t('servo_group_head') },
-      { key: 'right-arm', label: t('servo_group_right_arm') },
-      { key: 'left-arm', label: t('servo_group_left_arm') },
-      { key: 'right-leg', label: t('servo_group_right_leg') },
-      { key: 'left-leg', label: t('servo_group_left_leg') },
-    ];
-  }
-  function servoGroupColour(key) {
-    return clr.servo;
-  }
   function servoHomeAngle(id) {
     const cal = window.ALPHA_SERVO_CALIBRATION && window.ALPHA_SERVO_CALIBRATION[Number(id)];
     return cal ? cal.home : 120;

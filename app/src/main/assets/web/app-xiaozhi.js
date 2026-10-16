@@ -176,11 +176,6 @@ function xiaozhiShowActivationCode(code) {
   }
 }
 
-/** 配對碼只經對話界面顯示；留兩個 no-op stub 防舊快取頁面 ReferenceError。 */
-
-function xiaozhiShowActivationModal() { /* 配對碼只經對話界面顯示 */ }
-function xiaozhiHideActivationModal() { /* 見上 */ }
-
 function xiaozhiHideActivationCode() {
   const els = xiaozhiElements();
   if (els.activationBox) els.activationBox.style.display = "none";

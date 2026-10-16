@@ -59,11 +59,4 @@ public final class HardwareDirectManager {
         }
     }
 
-    /** 便捷：舵機直驅發送（pure-direct，無 binder 回退，失敗直接返回 false）。
-     *  2026-09-09：查胸板自己，唔好查「任一板」（頭板獨活嗰陣胸發送必 false，
-     *  早啲回 false 好過落到 send 先死）。 */
-    public boolean chestSendSingle(byte id, int angle, short time) {
-        if (!chest.isAvailable()) return false;
-        return chest.setSingleServo(id, angle, time);
-    }
 }

@@ -90,7 +90,6 @@ lines.append("// Provides typed wrappers with local enum/range validation before
 lines.append("// mirroring ApiValidator.java on the server side.")
 lines.append("")
 lines.append("const Alpha2Api = (function() {")
-lines.append("  function qs(params) { return params ? '?' + new URLSearchParams(params).toString() : ''; }")
 lines.append("  function assertEnum(val, allowed, key) { if (val != null && !allowed.includes(val)) throw new Error(key + ' must be one of ' + allowed.join(',')); }")
 lines.append("  // 2026-09-09：數字 enum（ubx/speed 0.5/0.67/…）用數值比對＋後端同款 0.001 容差——")
 lines.append("  // URL/query 來的是字串，嚴格 includes 會誤殺 \"1\" 之類合法值。")

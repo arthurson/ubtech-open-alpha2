@@ -165,21 +165,3 @@ function startChestUpgradePoll() {
   }).catch(function(err){ if (status) status.textContent = "❌ " + err.message; });
 }
 
-// 自動刷新進度（若升級在後台進行，事件推送）
-if (typeof EventBus !== "undefined" && EventBus.subscribe) {
-  // 兼容舊版 EventBus：若支援則訂閱，否則靠輪詢
-  try {
-    EventBus.subscribe(function(evt){
-      if (evt && evt.type === "chest_upgrade_progress") {
-        try {
-          const d = JSON.parse(evt.data);
-          const bar = document.getElementById("chestProgressBar");
-          const txt = document.getElementById("chestProgressText");
-          if (bar && d.progress!=null) bar.style.width = d.progress+"%";
-          if (txt) txt.textContent = (d.progress||0)+"%";
-        } catch(e){}
-      }
-    });
-  } catch(e){}
-}
-

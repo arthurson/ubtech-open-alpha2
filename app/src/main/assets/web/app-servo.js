@@ -207,11 +207,6 @@ function servoReadAllAngles() {
 
 /** 「全部回到原位」直接寫入原廠角度 (servoAll)，sliders 顯示值歸 home；實際擺位以寫入為準，
  *  這個 card 純手動微調，不是位置 single source of truth。 */
-// STOP_RECOVERY_ACTION_ID_HINT: 「蹲下站起」(id 1510818174706) - 同
-// MainActivity.java 的 STOP_RECOVERY_ACTION_ID 一致, 兩處各自維護一份常量
-// (前端 JS 同後端 Java 沒有共用常量的機制), 改當時要兩邊一齊改。
-const SERVO_RESET_ACTION_ID = "1510818174706";
-
 function resetServoGrid() {
   const homes = [];
   for (let i = 1; i <= 22; i++) {

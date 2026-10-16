@@ -98,11 +98,6 @@ public final class DirectChestController {
         return port.send((byte) 72, new byte[]{(byte) (enabled ? 1 : 0)});
     }
 
-    /** 省電模式 */
-    public boolean setPowerSave(boolean enable) {
-        return port.send(RobotWire.CHEST_POWER_SAVE, new byte[]{(byte) (enable ? 1 : 0)});
-    }
-
     /** 讀舵機角度 (cmd 13) - 回幀走 OnFrameListener 解析 */
     public boolean readServo(byte servoId) {
         if (servoId < 1 || servoId > 22) return false;

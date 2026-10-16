@@ -32,7 +32,6 @@ public final class ChestUpgrade {
     public static final long FIRMWARE_SIZE = 262144L;
     /** V352 staging app-update 小鏡像上限（0x0801F000..0x0803B000 共 0x1C000＝114688 bytes；此值或以下走 staging 更新，超限 MCU 經 48 回覆拒收）。 */
     public static final long FIRMWARE_SMALL_MAX = 0x1C000L;
-    public static final int FIRMWARE_PAGES = 2048;
     public static final int PAGE_SIZE = 128;
 
     /** 合法固件大小：只收 app 小鏡像 1..114688 bytes（見 FIRMWARE_SMALL_MAX），而且要係 4 嘅倍數：

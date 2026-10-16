@@ -108,12 +108,7 @@ var GAMEPAD_LED_PRESET_KEYS = { long: "gamepad_led_long", flash: "gamepad_led_fl
   random: "gamepad_led_random" };
 var GAMEPAD_DUAL_KEYS = { 3: "gamepad_dual_bg", 4: "gamepad_dual_rg", 5: "gamepad_dual_rb" };
 
-// 頭／眼 LED 部位＋效果＋色（同後端 isLedAction 對齊；眼無 breathe；色 1紅2綠3藍4黃5紫6青7白）。
-var GAMEPAD_LED_PARTS = ["head", "eye"];
-var GAMEPAD_LED_PRESETS = {
-  head: ["long", "flash", "breathe", "chase", "dual", "stop"],
-  eye: ["long", "flash", "chase", "dual", "stop"]
-};
+// LED 色（色 1紅2綠3藍4黃5紫6青7白）。
 var GAMEPAD_LED_COLOR_KEYS = [["1", "color_name_red"], ["2", "color_name_green"],
   ["3", "color_name_blue"], ["4", "color_name_yellow"], ["5", "color_name_purple"],
   ["6", "color_name_cyan"], ["7", "color_name_white"]];
@@ -1199,7 +1194,6 @@ function gamepadApplyUiLanguage() {
       gamepadRelabelSelect(sels[si]);
     }
   }
-  try { cameraPadRelabel(); } catch (e) {}
   // 全屏掣兩態唔同 key（data-i18n 已除），轉語言呢度重標。
   try { gamepadSyncFsBtns(); } catch (e) {}
 }
@@ -1795,9 +1789,6 @@ function gamepadReadKeyValue(side, k) {
   if (allNone) return "none";
   return gamepadJoinMulti(vals);
 }
-function gamepadReadRowValue(side, k) {
-  return gamepadReadKeyValue(side, k);
-}
 
 // 成區一次過存：只送同緩存唔同的行，一個掣搞掂（取代逐行存）。
 function gamepadSaveAll(side) {
@@ -1966,7 +1957,6 @@ function gamepadLightLogical(logical, on, action) {
   var lit = !!on;
   var mapped = lit && action && gamepadSplitMulti(action).some(function (p) { return p !== "none"; });
   var css = mapped ? "lit" : "lit-free";
-  var cssRow = mapped ? "gprow-lit" : "gprow-free";
   var g = document.getElementById("gpcap-" + logical);
   if (g) {
     g.classList.remove("lit");

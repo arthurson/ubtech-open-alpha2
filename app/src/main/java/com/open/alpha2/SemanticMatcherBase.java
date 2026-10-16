@@ -6,7 +6,6 @@ import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,15 +37,6 @@ import java.util.Random;
 public abstract class SemanticMatcherBase {
     private static final String ASSET_PATH_CATEGORIES = "semantic/action_category_pools.json";
     private static final String RANDOM_CATEGORY_PREFIX = "__RANDOM_CATEGORY__";
-
-    /** 十語共用的「聽不懂」fallback 動作組（5 個已驗證沒聲效動作；各子類之前各自複製同一份）。 */
-    protected static final String[] DEFAULT_FALLBACK_ACTION_IDS = {
-            "1464835936013", // 搖頭 / Shake head
-            "1464835936026", // 思考 / Thinking
-            "1464835936043", // 眨眼 / Wink
-            "1509000313549", // 賣萌 / Cute
-            "1464835936087", // 點頭 / Nod
-    };
 
     /** 配對結果。type 和 MainActivity 已有的 asr_result event 格式對齊,
      *  answer/actionId 可能是 null (例如 CHAT 類沒 actionId, 部分 FUNCTION 沒 answer)。

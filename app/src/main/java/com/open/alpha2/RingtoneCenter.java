@@ -144,16 +144,6 @@ public final class RingtoneCenter {
         stopRingtonePlaybackLocked();
     }
 
-    /** GamepadCenter ring toggle 共用：而家有無鈴聲播緊（player 在即係；
-     * 播完／出错 listener 會清掉）。 */
-    public synchronized boolean isRingtonePlaying() {
-        try {
-            return currentRingtonePlayer != null;
-        } catch (Throwable t) {
-            return false;
-        }
-    }
-
     private void stopRingtonePlaybackLocked() {
         MediaPlayerUtil.stopRelease(currentRingtonePlayer);
         currentRingtonePlayer = null;
@@ -300,12 +290,6 @@ public final class RingtoneCenter {
     public HttpServer.ApiResponse ringtonesStop() {
         stopRingtonePlayback();
         return HttpServer.ApiResponse.okTrue();
-    }
-
-    /** GamepadCenter 映射共用：按 title 播系統鈴聲（同 play_by_title 同一路
-     *  title→Uri＋STREAM_MUSIC；搵唔到回 false）。任意線程可調。 */
-    public synchronized boolean playRingtoneTitleNow(String title) {
-        return playRingtoneNow(null, title);
     }
 
     /** GamepadCenter 分表鈴聲共用：type phone／notification 分表搵，

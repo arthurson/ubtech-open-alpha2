@@ -47,11 +47,6 @@ public final class JsonUtil {
         return "\"" + esc(s) + "\"";
     }
 
-    /** nullable 字串值：null 回 {@code null}，否則回帶引號。 */
-    public static String quoteOrNull(String s) {
-        return s != null ? quote(s) : "null";
-    }
-
     /** {@code {"ok":true}} / {@code {"ok":false,"error":"..."}} 快捷。 */
     public static String okTrue() {
         return "{\"ok\":true}";

@@ -104,6 +104,11 @@ public final class ApiValidatorTest {
         eq(Float.NaN, ApiValidator.optionalFloat(q(), "k", Float.NaN), "optionalFloat.nanDefault");
         eq(1.5f, ApiValidator.optionalFloat(q("k", "1.5"), "k", Float.NaN), "optionalFloat.present");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.optionalFloat(q("k", "abc"), "k", Float.NaN); } }, "optionalFloat.bad");
+        // NaN／Infinity 解析得到但穿過 min/max 比較，必須擋
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.optionalFloatRange(q("k", "NaN"), "k", 0, 1, 0f); } }, "optionalFloatRange.nan");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.optionalFloatRange(q("k", "Infinity"), "k", 0, 1, 0f); } }, "optionalFloatRange.inf");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireFloat(q("k", "NaN"), "k"); } }, "requireFloat.nan");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireDouble(q("k", "-Infinity"), "k"); } }, "requireDouble.inf");
         eq(Double.valueOf(2.5d), Double.valueOf(ApiValidator.requireDouble(q("k", "2.5"), "k")), "requireDouble.ok");
         eq(Double.valueOf(3.0d), Double.valueOf(ApiValidator.optionalDouble(q(), "k", 3.0d)), "optionalDouble.missing");
 

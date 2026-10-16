@@ -128,7 +128,10 @@ public final class ApiValidator {
 
     private static float parseFloatOrThrow(String key, String v) {
         try {
-            return Float.parseFloat(v.trim());
+            float f = Float.parseFloat(v.trim());
+            // "NaN" 解析成功但同任何 min/max 比較都 false，會穿過範圍檢查；Infinity 亦唔係合法輸入
+            if (Float.isNaN(f) || Float.isInfinite(f)) throw new NumberFormatException(v);
+            return f;
         } catch (Exception e) {
             throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
         }
@@ -136,7 +139,10 @@ public final class ApiValidator {
 
     private static double parseDoubleOrThrow(String key, String v) {
         try {
-            return Double.parseDouble(v.trim());
+            double f = Double.parseDouble(v.trim());
+            // "NaN" 解析成功但同任何 min/max 比較都 false，會穿過範圍檢查；Infinity 亦唔係合法輸入
+            if (Double.isNaN(f) || Double.isInfinite(f)) throw new NumberFormatException(v);
+            return f;
         } catch (Exception e) {
             throw new IllegalArgumentException("parameter '" + key + "' must be a number, got: " + v);
         }
