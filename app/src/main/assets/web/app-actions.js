@@ -94,11 +94,11 @@ function displayNameOf(action) {
 
 function loadActionList() {
   const listEl = document.getElementById("actionList");
-  listEl.textContent = "載入中…";
+  listEl.textContent = t("loading");
   return Promise.all([Alpha2Api.actionList(), loadActionClassification()]).then(function (results) {
     const data = results[0];
     if (!data.ok) {
-      listEl.textContent = "錯誤: " + (data.error || data.code);
+      listEl.textContent = t("err_prefix", { msg: data.error || data.code });
       return;
     }
     allActions = data.actions || [];
@@ -294,7 +294,7 @@ function renderActionList() {
 
 function playAction() {
   const name = document.getElementById("actionName").value.trim();
-  if (!name) { showError("播放動作", "請輸入動作名稱"); return; }
+  if (!name) { showError(t("action_play_ctx"), t("action_enter_name")); return; }
   return Alpha2Api.actionPlay( { name: name });
 }
 

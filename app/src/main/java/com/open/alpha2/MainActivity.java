@@ -257,8 +257,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 維持 null，所有 vosk/* endpoint 經 VoskApi.voskOrError() 回清晰錯誤。
         if (android.os.Build.VERSION.SDK_INT >= 21) {
             try {
-                vosk = new VoskController(this, semanticMatcherZh, semanticMatcherEn, semanticMatcherEs, semanticMatcherFr, semanticMatcherJa,
-                        semanticMatcherDe, semanticMatcherIt, semanticMatcherPt, semanticMatcherKo, semanticMatcherRu);
+                vosk = new VoskController(this);
             } catch (Throwable e) {
                 Log.w(TAG, "VoskController init failed", e);
             }

@@ -401,7 +401,7 @@ function ttsFollowSyncRows(on) {
 
 function speakTts() {
   const text = document.getElementById("ttsText").value.trim();
-  if (!text) { showError("語音", t("speech_test_enter_text_alert")); return; }
+  if (!text) { showError(t("speech_ctx"), t("speech_test_enter_text_alert")); return; }
   // 恆行 Android TTS。手動先帶 lang/voice；自動跟隨開就唔帶（後端跟當前 Vosk 解）。
   const params = { text: text, engine: "android" };
   if (!currentTtsFollowVosk) {

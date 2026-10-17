@@ -468,8 +468,12 @@ public class XiaozhiClient {
             }
         }
         String response = headerText.toString();
-        String firstLine = response.substring(0, response.indexOf("\r\n"));
-        if (!firstLine.contains("101")) {
+        int eol = response.indexOf("\r\n");
+        if (eol < 0) throw new IOException("malformed HTTP upgrade response (no status line)");
+        String firstLine = response.substring(0, eol);
+        // 狀態碼要係第二個 token（HTTP/1.1 101 ...），contains("101") 會誤收例如 "400 ... 101"
+        String[] statusParts = firstLine.trim().split("\\s+");
+        if (statusParts.length < 2 || !"101".equals(statusParts[1])) {
             throw new IOException("server rejected WebSocket upgrade: " + firstLine.trim());
         }
         String acceptHeader = extractHeader(response, "sec-websocket-accept");
@@ -496,14 +500,43 @@ public class XiaozhiClient {
         // (0x8)」, 用獨立旗標分辨 server 主動 close 同用戶 disconnect。
         final boolean[] serverClosed = {false};
         try {
+            // 分片重組：首片 (text/binary, fin=0) + 若干 continuation (0x0)，fin=1 先當一個完整訊息。
+            // 控制 frame (close/ping/pong) 唔會分片，可以夾喺分片中間，照常即時處理。
+            final java.io.ByteArrayOutputStream fragBuf = new java.io.ByteArrayOutputStream();
+            int fragOpcode = -1;
             readLoopBody: while (open) {
                 Frame frame = readFrame(in);
                 if (frame == null) break; // EOF/closed
 
-                switch (frame.opcode) {
+                int opcode = frame.opcode;
+                byte[] data = frame.payload;
+                if (opcode == 0x0 || ((opcode == 0x1 || opcode == 0x2) && !frame.fin)) {
+                    if (opcode != 0x0) {
+                        fragOpcode = opcode;
+                        fragBuf.reset();
+                    } else if (fragOpcode == -1) {
+                        continue; // 冇首片嘅孤立 continuation，丟棄
+                    }
+                    fragBuf.write(data, 0, data.length);
+                    if (fragBuf.size() > 8 * 1024 * 1024) {
+                        throw new IOException("fragmented message too large");
+                    }
+                    if (!frame.fin) continue;
+                    opcode = fragOpcode;
+                    data = fragBuf.toByteArray();
+                    fragOpcode = -1;
+                    fragBuf.reset();
+                }
+
+                switch (opcode) {
                     case 0x1: // text
-                        handleTextMessage(new String(frame.payload, StandardCharsets.UTF_8),
-                                helloLock, helloReceived);
+                        try {
+                            handleTextMessage(new String(data, StandardCharsets.UTF_8),
+                                    helloLock, helloReceived);
+                        } catch (RuntimeException e) {
+                            // 單一訊息處理出錯唔應該拆斷成條連線（否則觸發重連、丟失後續訊息）
+                            Log.w(TAG, "text message handler failed, skipping: " + e);
+                        }
                         break;
                     case 0x2: { // binary (Opus audio)
                         // PHASE 2: hands the raw Opus payload to whatever AudioSink
@@ -512,14 +545,18 @@ public class XiaozhiClient {
                         // calls are delegated to McpBridge rather than handled inline.
                         AudioSink sink = audioSink;
                         if (sink != null) {
-                            sink.onIncomingOpusFrame(frame.payload);
+                            try {
+                                sink.onIncomingOpusFrame(data);
+                            } catch (RuntimeException e) {
+                                Log.w(TAG, "audio sink failed, skipping frame: " + e);
+                            }
                         }
                         break;
                     }
                     case 0x8: // close
                         // close frame payload 通常帶 2-byte close code (可選再加
                         // UTF-8 reason, 見 RFC 6455 §5.5.1) - 盡量解讀出來幫診斷。
-                        Log.w(TAG, "Server sent WebSocket close frame" + describeCloseFrame(frame.payload));
+                        Log.w(TAG, "Server sent WebSocket close frame" + describeCloseFrame(data));
                         // 收到 close 要回一個 close 完成雙向 handshake (RFC 6455),
                         // 再用 labeled break 立刻跳出 read loop (不是只跳 switch),
                         // 等 finally 可以立刻執行 (觸發重連)。
@@ -537,7 +574,7 @@ public class XiaozhiClient {
                         break readLoopBody;
                     case 0x9: // ping -> pong
                         try {
-                            sendFrame(out, (byte) 0xA, frame.payload);
+                            sendFrame(out, (byte) 0xA, data);
                         } catch (IOException e) {
                             open = false;
                         }
@@ -858,22 +895,24 @@ public class XiaozhiClient {
     private static final class Frame {
         final int opcode;
         final byte[] payload;
-        Frame(int opcode, byte[] payload) {
+        final boolean fin;
+        Frame(int opcode, byte[] payload, boolean fin) {
             this.opcode = opcode;
             this.payload = payload;
+            this.fin = fin;
         }
     }
 
     /** Reads one server->client frame. Server frames are never masked (masking is a
      *  client-to-server-only requirement in RFC 6455), matching what WebSocketServer's
-     *  own readLoop() assumes for the reverse direction. Fragmented frames (fin=false)
-     *  are not expected from xiaozhi.me's JSON/audio messages in practice and are not
-     *  reassembled here - same simplification WebSocketServer makes for browser->server. */
+     *  own readLoop() assumes for the reverse direction. 分片（fin=false）由 readLoop()
+     *  重組，呢度只負責讀單一 frame 並帶出 fin 位元。 */
     private Frame readFrame(InputStream in) throws IOException {
         int b0 = in.read();
         if (b0 == -1) return null;
         int b1 = readByteOrThrow(in);
 
+        boolean fin = (b0 & 0x80) != 0;
         int opcode = b0 & 0x0F;
         boolean masked = (b1 & 0x80) != 0;
         long len = b1 & 0x7F;
@@ -918,7 +957,7 @@ public class XiaozhiClient {
                 payload[i] ^= mask[i % 4];
             }
         }
-        return new Frame(opcode, payload);
+        return new Frame(opcode, payload, fin);
     }
 
     private static int readByteOrThrow(InputStream in) throws IOException {

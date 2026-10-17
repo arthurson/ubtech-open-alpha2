@@ -41,6 +41,8 @@ import java.util.concurrent.TimeUnit;
 public class HttpServer implements Runnable {
     private static final String TAG = "HttpServer";
     public static final int PORT = 8888;
+    /** 客戶端讀取逾時：閒置 keep-alive／卡住嘅連線唔再無限佔住 pool thread（WebSocket 升級後由 WebSocketServer 自己覆寫）。 */
+    private static final int CLIENT_READ_TIMEOUT_MS = 60_000;
 
     /**
      * For endpoints that need the raw POST body bytes rather than a UTF-8-decoded
@@ -136,16 +138,9 @@ public class HttpServer implements Runnable {
          *  先至知要帶 Authorization: Bearer）。 */
         public static ApiResponse unauthorized(String message) {
             Map<String, String> h = new HashMap<String, String>();
-            // "panel" = PanelAuth.AUTH_REALM（HttpServer 要留喺 test-apivalidator
-            // 編譯清單，唔可以反向依賴 PanelAuth→MainActivity，改 realm 記得兩邊同步）。
             h.put("WWW-Authenticate", "Bearer realm=\"panel\"");
             return new ApiResponse(401, "application/json; charset=utf-8",
                     JsonUtil.okFalse(String.valueOf(message)), h);
-        }
-
-        /** 轉義單一實現見 JsonUtil（舊 comment 擔心的循環已不存在：JsonUtil 零依賴）。 */
-        private static String esc(String s) {
-            return JsonUtil.esc(s);
         }
     }
 
@@ -237,6 +232,7 @@ public class HttpServer implements Runnable {
     private void handleClient(Socket socket, String remoteAddr) {
         try {
             socket.setTcpNoDelay(true);
+            socket.setSoTimeout(CLIENT_READ_TIMEOUT_MS);
             // Keep-alive loop: serve as many requests as the client sends on this same
             // TCP connection instead of closing after one. Loop ends when the client sends "Connection:
             // close", disconnects, or a request can't be parsed.
@@ -244,6 +240,8 @@ public class HttpServer implements Runnable {
             while (keepAlive) {
                 keepAlive = handleOneRequest(socket);
             }
+        } catch (java.net.SocketTimeoutException e) {
+            // 閒置 keep-alive 逾時屬正常關閉，唔使 log error stack。
         } catch (Exception e) {
             // The exception is fully caught here and
             // the socket is always closed in the finally block below regardless, so
@@ -293,7 +291,7 @@ public class HttpServer implements Runnable {
             if (++headerLines > 100) return false;
             int idx = line.indexOf(':');
             if (idx > 0) {
-                headers.put(line.substring(0, idx).trim().toLowerCase(),
+                headers.put(line.substring(0, idx).trim().toLowerCase(java.util.Locale.ROOT),
                         line.substring(idx + 1).trim());
             }
         }
@@ -535,11 +533,6 @@ public class HttpServer implements Runnable {
             if (t != null) return t;
         }
         return "application/octet-stream";
-    }
-
-    private static void writeResponse(OutputStream out, int status, String contentType, byte[] body, boolean keepAlive)
-            throws IOException {
-        writeResponse(out, status, contentType, body, keepAlive, false);
     }
 
     /** ApiResponse 版：附帶 extra headers（401 自動補 WWW-Authenticate，防漏寫）。 */

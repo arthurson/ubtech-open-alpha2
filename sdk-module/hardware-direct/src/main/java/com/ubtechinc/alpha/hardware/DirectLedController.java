@@ -234,7 +234,7 @@ public final class DirectLedController {
         if (sMouth == null || sMouthMode != 1) return;
         try {
             Object r = sMouth.invoke(null,
-                    (Object[]) new Object[]{sMouthRun, sMouthBreathe, sMouthOffDur, sMouthPlay, sMouthMode});
+                    new Object[]{sMouthRun, sMouthBreathe, sMouthOffDur, sMouthPlay, sMouthMode});
             boolean raw = r instanceof Boolean ? (Boolean) r : false;
             Log.d(TAG, (!raw ? "LED OK: " : "LED FAIL: ") + "mouth restore mode=1 raw=" + raw);
         } catch (Throwable t) {

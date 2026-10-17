@@ -3,7 +3,6 @@ package com.ubtechinc.alpha.hardware;
 import android.util.Log;
 
 import java.io.File;
-import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -40,7 +39,6 @@ public final class DirectSerialPort {
 
     private volatile InputStream input;
     private volatile OutputStream output;
-    private FileDescriptor fd;
     private Object serialPortFileObj; // JNI 路徑時持有，供 close() 用
     private volatile String openedPath;
     private Thread readerThread;
@@ -115,7 +113,6 @@ public final class DirectSerialPort {
                     .newInstance(dev, baudrate, 0);
             InputStream in;
             OutputStream out;
-            FileDescriptor jfd = null;
             try {
                 in = (InputStream) cls.getMethod("getInputStream").invoke(obj);
                 out = (OutputStream) cls.getMethod("getOutputStream").invoke(obj);
@@ -129,15 +126,6 @@ public final class DirectSerialPort {
                 try { cls.getMethod("close").invoke(obj); } catch (Exception ignore) {}
                 return false;
             }
-            try {
-                try {
-                    jfd = (FileDescriptor) cls.getMethod("getFD").invoke(obj);
-                } catch (NoSuchMethodException nsme2) {
-                    java.lang.reflect.Field f = cls.getDeclaredField("mFd");
-                    f.setAccessible(true);
-                    jfd = (FileDescriptor) f.get(obj);
-                }
-            } catch (Exception ignore) { /* fd 可選，有則存，無亦可 */ }
             if (!claimPath(path)) {
                 Log.w(TAG, path + " already held by another port, skipping (獨佔，防分流幀)");
                 try { cls.getMethod("close").invoke(obj); } catch (Exception ignore) {}
@@ -145,7 +133,6 @@ public final class DirectSerialPort {
             }
             this.input = in;
             this.output = out;
-            this.fd = jfd;
             this.serialPortFileObj = obj;
             this.openedPath = path;
             Log.i(TAG, "opened via JNI SerialPortFile: " + path + " baud=" + baudrate);
@@ -185,7 +172,6 @@ public final class DirectSerialPort {
             }
             this.input = fin;
             this.output = fout;
-            try { this.fd = fin.getFD(); } catch (Exception ignore) {}
             this.serialPortFileObj = null;
             this.openedPath = path;
             // 純 Java 開不出 termios，必須用 stty 把波特率從預設 9600 改到 115200，
@@ -390,6 +376,6 @@ public final class DirectSerialPort {
             try { if (output != null) output.close(); } catch (IOException ignore) {}
         }
         releasePath(openedPath);
-        input = null; output = null; fd = null; serialPortFileObj = null; openedPath = null;
+        input = null; output = null; serialPortFileObj = null; openedPath = null;
     }
 }

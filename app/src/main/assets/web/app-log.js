@@ -114,7 +114,7 @@ function appendLog(msg) {
     const el = document.getElementById("uuidOut");
     // 後端讀不到 (timeout/空) 會 publish {"uuid":null}；uuid:null 顯示讀取失敗，有 uuid 先走清洗+顯示流程。
     if (!msg.data.uuid) {
-      if (el) el.textContent = "❌ 讀取失敗 (chest cmd55 無回覆, 見 logcat)";
+      if (el) el.textContent = t("chest_cmd55_fail");
       return;
     }
     // SN 欄位可能帶 \0 padding — 去除控制字元先顯示。

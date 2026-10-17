@@ -157,7 +157,6 @@ public class WebSocketServer {
                 int b1 = in.read();
                 if (b1 == -1) return;
 
-                boolean fin = (b0 & 0x80) != 0;
                 int opcode = b0 & 0x0F;
                 boolean masked = (b1 & 0x80) != 0;
                 long len = b1 & 0x7F;
@@ -223,12 +222,8 @@ public class WebSocketServer {
                         sendFrame((byte) 0x8A, payload);
                         break;
                     default:
-                        // text/binary/continuation from the client: not used by this panel.
+                        // text/binary/continuation（含分片）：呢個 panel 唔會收，直接丟棄。
                         break;
-                }
-                if (!fin) {
-                    // Fragmented frames from the client aren't expected from this panel's
-                    // JS; ignore continuation complexity rather than mis-parse it.
                 }
             }
         }
@@ -266,7 +261,7 @@ public class WebSocketServer {
             } else {
                 out.write(127);
                 for (int i = 7; i >= 0; i--) {
-                    out.write((int) ((len >> (8 * i)) & 0xFF));
+                    out.write((len >> (8 * i)) & 0xFF);
                 }
             }
             out.write(payload);

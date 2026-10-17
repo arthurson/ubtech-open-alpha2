@@ -97,9 +97,10 @@ async function setCameraZoom(val) {
       cameraZoomHardwareSupported = res.hardwareSupported;
       const hint = document.getElementById("cameraZoomHint");
       if (hint) {
+        const ratio = res.ratios ? res.ratios[Math.min(Math.round((z-1)/4*(res.ratios.length-1)), res.ratios.length-1)] : "?";
         hint.textContent = res.hardwareSupported
-          ? "硬件變焦已生效（ratio " + (res.ratios ? res.ratios[Math.min(Math.round((z-1)/4*(res.ratios.length-1)), res.ratios.length-1)] : "?") + "/100）"
-          : "軟件變焦（前端即時縮放，拍照由後端裁切） x" + z.toFixed(1);
+          ? t("camera_zoom_hw", { ratio: ratio })
+          : t("camera_zoom_sw", { z: z.toFixed(1) });
       }
     }
   } catch(e) {
@@ -140,14 +141,14 @@ async function startCameraLive() {
   const placeholder = els.placeholder, badge = els.badge, btn = els.btn, hint = els.hint;
 
   const [w, h] = (els.resolution ? els.resolution.value : "800x600").split("x").map(Number);
-  if (hint) hint.textContent = "設定解像度…";
-  try { await Alpha2Api.cameraResolution( { w: w, h: h }); } catch(e) { if (hint) hint.textContent = "設定解像度失敗: " + e.message; return; }
+  if (hint) hint.textContent = t("cam_set_res");
+  try { await Alpha2Api.cameraResolution( { w: w, h: h }); } catch(e) { if (hint) hint.textContent = t("cam_set_res_fail", { msg: e.message }); return; }
 
   cameraLiveRunning = true;
   if (btn) btn.textContent = "⏸";
   if (badge) badge.classList.add("on");
   if (placeholder) placeholder.style.display = "none";
-  if (hint) hint.textContent = "連接緊鏡頭串流…";
+  if (hint) hint.textContent = t("cam_connecting");
 
   connectCameraStream();
   setupCrosshairIfNeeded();
@@ -224,7 +225,7 @@ async function refreshSupportedSizes() {
   const EXCLUDED = ["176x144","320x240","352x288"];
   try {
     const res = await Alpha2Api.cameraSupportedSizes();
-    if (!res.ok) { if (hint) hint.textContent = "讀取失敗: " + (res.error || ""); return; }
+    if (!res.ok) { if (hint) hint.textContent = t("cam_read_fail", { msg: res.error || "" }); return; }
     if (hint) hint.textContent = "Preview: " + (res.preview||[]).join(", ") + " | Picture: " + (res.picture||[]).join(", ") + " | FPS range: " + (res.fpsRanges||[]).join(", ") + " | 當前: " + res.current;
     if (res.preview && res.preview.length && sel) {
       const cur = sel.value;
@@ -247,7 +248,7 @@ async function refreshSupportedSizes() {
         Alpha2Api.cameraResolution({w:w,h:h});
       }
     }
-  } catch (e) { if (hint) hint.textContent = "讀取異常: " + e.message; }
+  } catch (e) { if (hint) hint.textContent = t("cam_read_err", { msg: e.message }); }
 }
 
 // ---------------- Camera: 9 檔影相並存入 Android (/sdcard/DCIM/Alpha2) ----------------
@@ -259,15 +260,15 @@ async function buildCameraPhoto9Grid() {
 async function capturePhotoAtResolution(w,h,btnEl,isPicture) {
   const hint = document.getElementById("cameraPhoto9Hint");
   const origText = btnEl ? btnEl.innerHTML : "";
-  if (btnEl) { btnEl.disabled = true; btnEl.textContent = "影緊…"; }
-  const mode = isPicture ? "單張高清" : "快照";
-  if (hint) hint.textContent = "正在以 " + w + "x" + h + " " + mode + " 影相…";
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = t("cam_shooting"); }
+  const mode = isPicture ? t("cam_mode_picture") : t("cam_mode_snapshot");
+  if (hint) hint.textContent = t("cam_shoot_status", { w: w, h: h, mode: mode });
   try {
     const res = isPicture
       ? await Alpha2Api.cameraTakePhotoSave({w:w,h:h})
       : await Alpha2Api.cameraSnapshotSave({w:w,h:h});
     if (!res.ok) throw new Error(res.error||"unknown");
-    if (hint) hint.textContent = "✓ 已存 " + w + "x" + h + " → " + res.path + " (" + (res.bytes||"?") + " bytes)";
+    if (hint) hint.textContent = t("cam_saved", { w: w, h: h, path: res.path, bytes: res.bytes || "?" });
     try { Alpha2Api.cameraShutterSound(); } catch(e){}
     try { flashCaptureLed(); } catch(e){}
     const byteChars = atob(res.jpegBase64);
@@ -278,8 +279,8 @@ async function capturePhotoAtResolution(w,h,btnEl,isPicture) {
     const filename = res.path ? res.path.split("/").pop() : ("alpha2_" + w + "x" + h + "_" + Date.now() + ".jpg");
     addCaptureItem("photo", url, filename);
   } catch (e) {
-    showError("影相 " + w + "x" + h, e);
-    if (hint) hint.textContent = "✗ " + w + "x" + h + " 失敗: " + e.message;
+    showError(t("cam_photo_ctx", { w: w, h: h }), e);
+    if (hint) hint.textContent = t("cam_shoot_fail", { w: w, h: h, msg: e.message });
   } finally {
     if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = origText; }
   }
@@ -310,7 +311,7 @@ function addCaptureItem(kind, url, filename, thumbSrc) {
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
-  link.textContent = kind === "photo" ? "⬇ 下載相片" : "⬇ 下載影片";
+  link.textContent = kind === "photo" ? t("cam_dl_photo") : t("cam_dl_video");
   item.appendChild(link);
   list.insertBefore(item, list.firstChild);
 }
@@ -383,16 +384,16 @@ function toggleRecording() {
 function startRecording() {
   const hint = document.getElementById("cameraStatusHint");
   if (!cameraLiveRunning) {
-    hint.textContent = "請先開啟鏡頭先可以錄影";
+    hint.textContent = t("cam_need_open");
     return;
   }
   if (!window.MediaRecorder) {
-    hint.textContent = "此瀏覽器不支援錄影 (MediaRecorder)";
+    hint.textContent = t("cam_no_mediarecorder");
     return;
   }
   const img = cameraElements().viewport.querySelector("img");
   if (!img) {
-    hint.textContent = "找不到鏡頭畫面";
+    hint.textContent = t("cam_no_frame");
     return;
   }
 
@@ -423,7 +424,7 @@ function startRecording() {
     mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType: mimeType }) : new MediaRecorder(stream);
   } catch (e) {
     clearInterval(recordDrawTimer);
-    showError("錄影", e);
+    showError(t("cam_record_ctx"), e);
     return;
   }
   mediaRecorder.ondataavailable = function (e) {
@@ -436,11 +437,11 @@ function startRecording() {
     const url = URL.createObjectURL(blob);
     const filename = "alpha2-video-" + Date.now() + ".webm";
     addCaptureItem("video", url, filename);
-    document.getElementById("cameraStatusHint").textContent = "已停止錄影 ✓";
+    document.getElementById("cameraStatusHint").textContent = t("cam_rec_stopped");
   };
   mediaRecorder.start();
   document.getElementById("recordFab").classList.add("recording");
-  hint.textContent = "錄影中…";
+  hint.textContent = t("cam_recording");
   setRecordingLed(true);
 }
 
@@ -470,6 +471,7 @@ function setRecordingLed(on) {
 // 檔存 /sdcard/DCIM/Alpha2（相簿即見），經手柄映射 video_toggle 都撳到。
 // 錄緊嗰陣拍照／改解像度後端會拒（保編碼器），MJPEG 訂閱者會因無新幀超時自斷。
 let robotVideoRecording = false;
+let robotVideoBusy = false; // robotVideoToggle 重入保護：連撳兩下唔好發兩個 start/stop
 
 function robotVideoSyncFab() {
   const fab = document.getElementById("robotVideoFab");
@@ -479,11 +481,13 @@ function robotVideoSyncFab() {
 function robotVideoHintDone(json) {
   if (!json || !json.ok) return "";
   const secs = Math.round((json.durationMs || 0) / 1000);
-  return "機錄完成 ✓ " + (json.path || "") + "（" + secs + "s，"
-    + (json.hasAudio ? "有聲" : "無聲") + "）";
+  return t("cam_rrec_done", { path: json.path || "", secs: secs,
+    audio: json.hasAudio ? t("cam_audio_yes2") : t("cam_audio_no2") });
 }
 
 async function robotVideoToggle() {
+  if (robotVideoBusy) return;
+  robotVideoBusy = true;
   const hint = document.getElementById("cameraStatusHint");
   try {
     if (robotVideoRecording) {
@@ -493,20 +497,22 @@ async function robotVideoToggle() {
         robotVideoSyncFab();
         if (hint) hint.textContent = robotVideoHintDone(json);
       } else if (hint) {
-        hint.textContent = "機錄停止失敗：" + ((json && json.error) || "未知錯誤");
+        hint.textContent = t("cam_rrec_stop_fail", { msg: (json && json.error) || t("err_unknown") });
       }
     } else {
       const json = await Alpha2Api.cameraVideoStart({});
       if (json && json.ok && json.recording) {
         robotVideoRecording = true;
         robotVideoSyncFab();
-        if (hint) hint.textContent = "機錄影中…" + (json.hasAudio ? "（有聲）" : "（無聲）");
+        if (hint) hint.textContent = t("cam_rrec_on", { audio: json.hasAudio ? t("cam_audio_yes") : t("cam_audio_no") });
       } else if (hint) {
-        hint.textContent = "機錄開始失敗：" + ((json && json.error) || "未知錯誤");
+        hint.textContent = t("cam_rrec_start_fail", { msg: (json && json.error) || t("err_unknown") });
       }
     }
   } catch (e) {
-    if (hint) hint.textContent = "機錄影失敗：" + e.message;
+    if (hint) hint.textContent = t("cam_rrec_fail", { msg: e.message });
+  } finally {
+    robotVideoBusy = false;
   }
 }
 
@@ -802,7 +808,7 @@ function connectCameraStream() {
       // comment above).
       Alpha2Api.cameraInfo( {}).then(function (resp) {
         if (resp && resp.previewWidth) {
-          hint.textContent = "實際解像度: " + resp.previewWidth + "x" + resp.previewHeight;
+          hint.textContent = t("cam_actual_res", { w: resp.previewWidth, h: resp.previewHeight });
         } else {
           hint.textContent = "";
         }
@@ -812,7 +818,7 @@ function connectCameraStream() {
     };
     img.onerror = function () {
       if (!cameraLiveRunning) return;
-      hint.textContent = "鏡頭串流連接失敗,3 秒後重試…";
+      hint.textContent = t("cam_stream_retry");
       setTimeout(function () {
         if (cameraLiveRunning) connectCameraStream();
       }, 3000);

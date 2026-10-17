@@ -275,7 +275,6 @@ public final class CameraApi {
         }
         HttpServer.ApiResponse startErr = startCameraOrError();
         if (startErr != null) return startErr;
-        if (startErr != null) return startErr;
         settleCameraForSnapshot();
         CameraController.Frame frame = waitForFrame(cameraController, 3000);
         cameraController.unlockAeAwbAsync();

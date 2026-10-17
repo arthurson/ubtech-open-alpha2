@@ -144,8 +144,9 @@ public final class GamepadCenter {
     private final AudioManager audioManager;
 
     // axis 增量位姿（19/20），null＝尚未初始化（下次用 pose／128 起步）。
-    private Integer axisPose19;
-    private Integer axisPose20;
+    // recenterServo() 喺 synchronized 外讀寫，要 volatile 保證可見性
+    private volatile Integer axisPose19;
+    private volatile Integer axisPose20;
     private long lastAxisMs = 0;
 
     // 最後一次按鍵（status 回顯＋除錯用；taken 供面板分清「做咗」定「只記錄」）。
@@ -1635,28 +1636,6 @@ public final class GamepadCenter {
     // 同 GestureCenter 音量連發 20 格封頂同例。
     private static final int SERVO_REPEAT_MAX_TICKS = 40;
 
-    /** 撳住連走（defl 偏轉 0..1：掣傳 1.0 全速，搖桿傳當刻偏轉跟速）。 */
-    private synchronized void startServoRepeat(String side, String key, String action, float defl) {
-        // 單值舊路（多值經下面 startServoRepeats 逐段排；呢度留住畀舊調用／單 servo）。
-        java.util.List<String> parts = splitMultiAction(action);
-        if (parts.size() > 1) {
-            startServoRepeats(side, key, action, defl);
-            return;
-        }
-        stopServoRepeat(side, key);
-        final int id;
-        final int baseDelta;
-        try {
-            String single = parts.isEmpty() ? action : parts.get(0);
-            id = Integer.parseInt(single.substring(5, single.length() - 1));
-            baseDelta = single.endsWith("+") ? SERVO_JOG_STEP : -SERVO_JOG_STEP;
-        } catch (Throwable t) {
-            Log.w(TAG, "startServoRepeat parse failed: " + action, t);
-            return;
-        }
-        startServoRepeatTag(side + ":" + key, id, baseDelta, defl);
-    }
-
     /**
      * 一鍵多功能連走：多值入面每個 servo 段各排一條 repeat（tag＝side:key／side:key#index，
      * 首段沿用舊 tag 兼容單鍵；放手經 stopServoRepeat 一次過停晒）。
@@ -1719,15 +1698,11 @@ public final class GamepadCenter {
     private synchronized void updateServoRepeatDefl(String side, String key, float defl) {
         String base = side + ":" + key;
         float v = Math.max(0f, Math.min(1f, defl));
-        boolean any = false;
         for (String tag : new java.util.ArrayList<String>(servoRepeaters.keySet())) {
             if (tag.equals(base) || tag.startsWith(base + "#")) {
                 servoRepeatDefl.put(tag, v);
-                any = true;
             }
         }
-        // 舊單 tag 兼容（上面已包，此分支留空，免漏）。
-        if (!any) { /* no-op */ }
     }
 
     /** 停該鍵全部連走（含多功能 #index 條）；回 true＝之前真有排緊。 */
@@ -2092,7 +2067,6 @@ public final class GamepadCenter {
     // 世代閘：回中任務排嗰陣記 gen，之後郁過（新沿／legacy 郁）即舊任務作廢。
     private final Integer[] refPose = new Integer[22];
     private volatile boolean refPrevPlaying = false;
-    private volatile java.util.concurrent.ScheduledFuture<?> refPollFuture;
     private final java.util.Set<Integer> legacyTouched = new java.util.LinkedHashSet<>();
     private long axisGen = 0;
     // 各軸今次最大偏轉（回中速度跟佢：慢去慢返快去快返；返完清）。
@@ -2127,7 +2101,7 @@ public final class GamepadCenter {
     /** 動作尾位常駐輕輪詢（250ms 睇 isPlaying 真→假；播完 400ms 後收尾）。 */
     private void startRefPosePoll() {
         try {
-            refPollFuture = servoRepeatPool.scheduleAtFixedRate(new Runnable() {
+            servoRepeatPool.scheduleAtFixedRate(new Runnable() {
                 @Override public void run() { refPosePollTick(); }
             }, 1000, 250, java.util.concurrent.TimeUnit.MILLISECONDS);
         } catch (Throwable t) {

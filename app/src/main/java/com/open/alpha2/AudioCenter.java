@@ -290,14 +290,14 @@ public final class AudioCenter {
             }
             sb.append('\n');
             String line = sb.toString();
-            java.io.FileWriter w = new java.io.FileWriter(DISCO_WATCH_FILE, true);
-            w.write(line);
-            w.close();
+            try (java.io.Writer w = discoWatchWriter(true)) {
+                w.write(line);
+            }
             try {
                 if (DISCO_WATCH_FILE.length() > 200 * 1024) {
-                    java.io.FileWriter w2 = new java.io.FileWriter(DISCO_WATCH_FILE, false);
-                    w2.write(line);
-                    w2.close();
+                    try (java.io.Writer w2 = discoWatchWriter(false)) {
+                        w2.write(line);
+                    }
                 }
             } catch (Throwable ignore) {
             }
@@ -308,11 +308,17 @@ public final class AudioCenter {
     /** 異常即寫一行（熔斷之類）。絕不 throw。 */
     private void discoWatchEvent(String msg) {
         try {
-            java.io.FileWriter w = new java.io.FileWriter(DISCO_WATCH_FILE, true);
-            w.write(SystemClock.elapsedRealtime() + " " + msg + '\n');
-            w.close();
+            try (java.io.Writer w = discoWatchWriter(true)) {
+                w.write(SystemClock.elapsedRealtime() + " " + msg + '\n');
+            }
         } catch (Throwable ignore) {
         }
+    }
+
+    /** disco watch log writer：明確 UTF-8（唔跟平台預設編碼），try-with-resources 用嚟保證寫失敗都閂 fd。 */
+    private static java.io.Writer discoWatchWriter(boolean append) throws java.io.IOException {
+        return new java.io.OutputStreamWriter(new java.io.FileOutputStream(DISCO_WATCH_FILE, append),
+                java.nio.charset.StandardCharsets.UTF_8);
     }
     // 頭 VU 左右 0-4 粒對應 mask（左 P4 正序、右 P3 反序，第 5 粒留返畀 wifi）
     private static final int[] DISCO_LEFT_MASK = {0, 1, 3, 7, 15};

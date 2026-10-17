@@ -313,12 +313,6 @@ public final class GrammarCenter {
             if (offlineGrammarActive || grammarInitInFlight) {
                 return; // 已經在離線模式/已經構建中, 不用重複開啟
             }
-            // 確保 ASR binding 走 zh_cn（舊 iFlytek 路已死，stub 即回；這個 call 對已綁定的情況無害）
-            try {
-                robot.speech_setRecognizedLanguage("zh_cn");
-            } catch (Exception e) {
-                Log.w(TAG, "setRecognizedLanguage failed during auto switch: " + e.getMessage());
-            }
             if (!lastGrammarBuildOk) {
                 // 未構建過/上次失敗 - 用預設文法構建, 成功之後 callback 會接手 start
                 pendingOfflineEnable = true;

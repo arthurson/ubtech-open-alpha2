@@ -45,7 +45,7 @@ function refreshChestFw() {
   return Alpha2Api.chestVersion().then(function (json) {
     if (out) out.textContent = (json && json.version) || "not found";
   }).catch(function (err) {
-    if (out) out.textContent = "錯誤: " + err.message;
+    if (out) out.textContent = t("err_prefix", { msg: err.message });
   });
 }
 

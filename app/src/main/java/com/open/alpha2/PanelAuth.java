@@ -63,8 +63,6 @@ public final class PanelAuth {
     public static final String HEADER_AUTHORIZATION = "authorization";
     /** Bearer 前綴（大小寫不計，後面一格空格）。 */
     public static final String BEARER_PREFIX = "bearer ";
-    /** 401 附帶的 WWW-Authenticate realm（見 HttpServer.ApiResponse.unauthorized）。 */
-    public static final String AUTH_REALM = "panel";
 
     private static SharedPreferences prefs(Context ctx) {
         return ctx.getApplicationContext().getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE);

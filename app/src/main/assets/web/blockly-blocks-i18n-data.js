@@ -253,8 +253,6 @@ window.ALPHA_BLOCK_I18N = {
   page_run_btn:              { zh: '▶ 執行', en: '▶ Run' },
   page_stop_btn:             { zh: '⏹ 停止', en: '⏹ Stop' },
   page_run_status_idle:      { zh: '閒置', en: 'Idle' },
-  page_refresh_actions_btn:  { zh: '🔄 取得動作列表', en: '🔄 Load Action List' },
-  page_refresh_music_btn:    { zh: '🔄 取得音樂清單', en: '🔄 Load Music List' },
   page_save_name_placeholder:{ zh: '程式名稱', en: 'Program name' },
   page_save_btn:             { zh: '💾 儲存', en: '💾 Save' },
   page_load_btn:             { zh: '📂 載入', en: '📂 Load' },
@@ -270,7 +268,6 @@ window.ALPHA_BLOCK_I18N = {
   page_edit_cut_title:       { zh: '剪下選取的積木 (Ctrl+X)', en: 'Cut selected block (Ctrl+X)' },
   page_edit_copy_title:      { zh: '複製選取的積木 (Ctrl+C)', en: 'Copy selected block (Ctrl+C)' },
   page_edit_paste_title:     { zh: '貼上 (Ctrl+V)', en: 'Paste (Ctrl+V)' },
-  page_edit_delete_title:    { zh: '刪除選取的積木 (Delete)', en: 'Delete selected block (Delete)' },
   // -- 縮放按鈕列 (垂直組, 同上對齊 Code Lab editor-tool: 歸中/放大/縮細) --
   page_edit_center_title:    { zh: '回到預設視角', en: 'Centre view' },
   page_edit_zoom_in_title:   { zh: '放大', en: 'Zoom in' },

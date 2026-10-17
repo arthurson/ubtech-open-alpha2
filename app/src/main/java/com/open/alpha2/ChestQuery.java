@@ -80,21 +80,17 @@ public final class ChestQuery {
     // payload [10, status, ...]（status 0 = OK，同 cmd12/升級 ACK 同一套語義）。
     // 只認領等待中那次（單發唔重試，見 modifyServoId）。
     private volatile CountDownLatch modifyIdLatch;
-    private volatile int modifyIdExpectOld = -1;
-    private volatile int modifyIdExpectNew = -1;
     private volatile Boolean modifyIdOk = null;
     // Motor firmware version read (cmd 14 / 0x0e) latch. Query
     // f8 8f 08 05 00 0e <id> <sum> ed; reply shape UNVERIFIED
     // (first real-device read will show raw bytes in logcat + API rawHex).
     // Claim any payload[0]==14 while waiting and keep the raw payload.
     private volatile CountDownLatch motorVerLatch;
-    private volatile int motorVerExpectId = -1;
     private volatile byte[] motorVerPayload = null;
     // Motor hardware info read (cmd 33 / 0x21) latch. Query
     // f8 8f 08 05 00 21 <id> <sum> ed; reply shape UNVERIFIED.
     // Claim any payload[0]==33 while waiting and keep the raw payload.
     private volatile CountDownLatch motorHwLatch;
-    private volatile int motorHwExpectId = -1;
     private volatile byte[] motorHwPayload = null;
 
     public ChestQuery(Context context, RobotStub robot) {
@@ -268,14 +264,10 @@ public final class ChestQuery {
         backAngleLatch = null;
         backAngleExpectId = -1;
         modifyIdLatch = null;
-        modifyIdExpectOld = -1;
-        modifyIdExpectNew = -1;
         modifyIdOk = null;
         motorVerLatch = null;
-        motorVerExpectId = -1;
         motorVerPayload = null;
         motorHwLatch = null;
-        motorHwExpectId = -1;
         motorHwPayload = null;
     }
 
@@ -329,7 +321,7 @@ public final class ChestQuery {
         // 嘗試按標準幀解析
         for (int i = 0; i + 5 < n; i++) {
             if ((bytes[i] & 0xFF) == 0xF8 && (bytes[i + 1] & 0xFF) == 0x8F) {
-                if (bytes[i + 5] == RobotWire.CHEST_READ_VERSION || bytes[i + 5] == RobotWire.HEADER_READ_VERSION) {
+                if (bytes[i + 5] == RobotWire.CHEST_READ_VERSION /* 同 HEADER_READ_VERSION 同值 51 */) {
                     int lenByte = bytes[i + 2] & 0xFF;
                     int pl = lenByte - 7;
                     if (pl < 0) pl = 0;
@@ -725,8 +717,6 @@ public final class ChestQuery {
             return null;
         }
         java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
-        modifyIdExpectOld = oldId;
-        modifyIdExpectNew = newId;
         modifyIdOk = null;
         modifyIdLatch = latch;
         boolean sent;
@@ -775,7 +765,6 @@ public final class ChestQuery {
             return null;
         }
         java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
-        motorVerExpectId = id;
         motorVerPayload = null;
         motorVerLatch = latch;
         boolean sent;
@@ -824,7 +813,6 @@ public final class ChestQuery {
             return null;
         }
         java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
-        motorHwExpectId = id;
         motorHwPayload = null;
         motorHwLatch = latch;
         boolean sent;

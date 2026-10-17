@@ -17,7 +17,7 @@ public final class HardwareDirectManager {
 
     private final DirectChestController chest;
     private final DirectHeadController head;
-    private boolean directReady = false;
+    private volatile boolean directReady = false; // isDirectAvailable() 無鎖讀，要 volatile
 
     private HardwareDirectManager(Context ctx) {
         DirectSerialPort chestPort = DirectSerialPort.forChest();

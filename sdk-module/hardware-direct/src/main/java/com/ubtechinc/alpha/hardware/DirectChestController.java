@@ -115,7 +115,7 @@ public final class DirectChestController {
         if (servoId < 1 || servoId > 22) return false;
         if (trim < -32768) trim = -32768;
         if (trim > 32767) trim = 32767;
-        byte[] p = new byte[]{(byte) servoId, (byte) ((trim >> 8) & 0xFF), (byte) (trim & 0xFF)};
+        byte[] p = new byte[]{servoId, (byte) ((trim >> 8) & 0xFF), (byte) (trim & 0xFF)};
         return port.send(RobotWire.CHEST_CMD_WRITE_TRIM, p);
     }
 

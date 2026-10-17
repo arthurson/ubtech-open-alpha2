@@ -26,7 +26,7 @@ function chestUpload() {
   // 揀咗新檔即舊憑證作廢，等呢次上載成功先再簽發。
   chestFreshUpload = null;
   if (!input || !input.files || input.files.length === 0) {
-    if (status) status.textContent = "請先選擇一個 .bin 文件";
+    if (status) status.textContent = t("chest_pick_bin");
     return;
   }
   const file = input.files[0];
@@ -36,7 +36,7 @@ function chestUpload() {
     if (status) status.textContent = t("chest_upload_bad_size", { n: file.size });
     return;
   }
-  if (status) status.textContent = "上傳中 " + file.name + " (" + file.size + " 字節)…";
+  if (status) status.textContent = t("chest_uploading", { name: file.name, size: file.size });
   const reader = new FileReader();
   reader.onload = function(e) {
     const bytes = e.target.result;
@@ -58,23 +58,23 @@ function chestUpload() {
         chestFreshUpload = { name: file.name, size: file.size };
         chestFileInfo();
       } else {
-        if (status) status.textContent = "❌ 上傳失敗：" + (json.error || JSON.stringify(json));
+        if (status) status.textContent = t("chest_upload_fail", { msg: json.error || JSON.stringify(json) });
       }
     }).catch(function(err) {
-      if (status) status.textContent = "❌ 上傳錯誤：" + err.message;
+      if (status) status.textContent = t("chest_upload_err", { msg: err.message });
     });
   };
-  reader.onerror = function() { if (status) status.textContent = "讀取文件失敗"; };
+  reader.onerror = function() { if (status) status.textContent = t("chest_read_file_fail"); };
   reader.readAsArrayBuffer(file);
 }
 
 function chestCheck() {
   const ver = document.getElementById("chestVersionText");
-  if (ver) ver.textContent = "查詢中…";
+  if (ver) ver.textContent = t("chest_querying");
   Alpha2Api.chestVersion().then(function(json) {
     if (ver) ver.textContent = json.version || (json.ok ? "" : "not found");
   }).catch(function(err) {
-    if (ver) ver.textContent = "錯誤: " + err.message;
+    if (ver) ver.textContent = t("err_prefix", { msg: err.message });
   });
 }
 
@@ -129,7 +129,7 @@ function chestUpgrade() {
       return;
     }
     if (!confirm(t("chest_upgrade_confirm"))) return;
-    if (status) status.textContent = "開始升級…";
+    if (status) status.textContent = t("chest_upgrade_starting");
     if (wrap) wrap.style.display = "block";
     if (bar) bar.style.width = "0%";
     if (txt) txt.textContent = "0%";
@@ -142,8 +142,8 @@ function startChestUpgradePoll() {
   const bar = document.getElementById("chestProgressBar");
   const txt = document.getElementById("chestProgressText");
   Alpha2Api.chestUpgrade().then(function(json) {
-    if (!json.ok) { if (status) status.textContent = "❌ " + (json.error || "啟動失敗"); return; }
-    if (status) status.textContent = "升級中…請勿斷電（約需 1–2 分鐘）";
+    if (!json.ok) { if (status) status.textContent = "❌ " + (json.error || t("chest_start_fail")); return; }
+    if (status) status.textContent = t("chest_upgrading");
     const timer = setInterval(function() {
       Alpha2Api.chestUpgradeStatus().then(function(s) {
         const p = s.progress || 0;
@@ -154,9 +154,9 @@ function startChestUpgradePoll() {
           if (s.status && s.status.indexOf("success") !== -1) {
             if (status) status.textContent = t("chest_upgrade_done_power");
           } else if (p === 100) {
-            if (status) status.textContent = "✅ 完成";
+            if (status) status.textContent = t("chest_done");
           } else {
-            if (status) status.textContent = "❌ " + (s.status || "失敗");
+            if (status) status.textContent = "❌ " + (s.status || t("chest_failed"));
           }
           chestCheck();
         }

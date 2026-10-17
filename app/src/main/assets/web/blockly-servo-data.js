@@ -106,7 +106,6 @@
 
   window.ALPHA_SERVO_CALIBRATION = SERVO_CALIBRATION;
   window.ALPHA_SERVO_NAMES = SERVO_NAMES;
-  window.ALPHA_SERVO_GROUPS = SERVO_GROUPS;
   window.ALPHA_SERVO_GROUP_OF = groupOfServoId;
   window.ALPHA_SERVO_DROPDOWN_FOR_GROUP = servoDropdownForGroup;
   window.ALPHA_SERVO_CLAMP = clampServoAngle;

@@ -94,7 +94,6 @@ public class CameraController {
     private HandlerThread cameraThread;
     private Handler cameraHandler;
     private volatile Camera camera;
-    private volatile int openedIndex = -1;
     private volatile int previewWidth = DEFAULT_PREVIEW_WIDTH;
     private volatile int previewHeight = DEFAULT_PREVIEW_HEIGHT;
     private volatile long frameSeq = 0;
@@ -298,7 +297,6 @@ public class CameraController {
                 for (int index : CAMERA_INDEX_CANDIDATES) {
                     try {
                         camera = Camera.open(index);
-                        openedIndex = index;
                         Log.i(TAG, "Camera.open(" + index + ") succeeded");
                         break;
                     } catch (RuntimeException e) {
@@ -1017,7 +1015,6 @@ public class CameraController {
             } catch (Exception ignored) {
             }
             camera = null;
-            openedIndex = -1;
             lastFrame = null;
             previewStartedAtMs = 0;
             synchronized (this) {
@@ -1181,8 +1178,12 @@ public class CameraController {
                 }
             });
         }
-        if (cameraThread != null) {
-            cameraThread.quitSafely();
+        HandlerThread t;
+        synchronized (this) { // startCameraThreadIfNeeded() 係 synchronized，呢度同鎖讀先唔會見到半改嘅值
+            t = cameraThread;
+        }
+        if (t != null) {
+            t.quitSafely();
         }
     }
 }

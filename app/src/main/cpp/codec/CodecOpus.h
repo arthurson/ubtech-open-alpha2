@@ -13,8 +13,8 @@ class CodecOpus {
 
 private:
     const char *TAG = "CodecOpus";
-    OpusEncoder* encoder;
-    OpusDecoder* decoder;
+    OpusEncoder* encoder = nullptr;
+    OpusDecoder* decoder = nullptr;
 
     int decoderNumChannels = -1;
 

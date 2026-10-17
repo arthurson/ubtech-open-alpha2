@@ -89,6 +89,7 @@
   // app-core.js 那份獨立 I18N object (這個頁面獨立於 index.html 存在, 不應該
   // 反過去依賴 app-core.js 才有字典)。
   function applyUiTextLocale() {
+    document.documentElement.lang = uiLang === 'en' ? 'en' : 'zh-Hant';
     document.querySelectorAll('[data-i18n]').forEach(function (el) {
       const key = el.dataset.i18n;
       if (!window.ALPHA_BLOCK_I18N || !window.ALPHA_BLOCK_I18N[key]) return;

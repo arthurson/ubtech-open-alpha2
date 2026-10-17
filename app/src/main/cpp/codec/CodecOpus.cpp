@@ -2,6 +2,7 @@
 // Created by Loboda Alexey on 21.05.2020.
 //
 
+#include <cstdlib>
 #include "CodecOpus.h"
 #include "../utils/SamplesConverter.h"
 #include "../utils/logger.h"
@@ -21,6 +22,7 @@ int CodecOpus::encoderInit(int sampleRate, int numChannels, int application) {
         return size;
     }
 
+    encoderRelease(); // 重複 init 唔好洩漏舊 encoder
     encoder = (OpusEncoder*) malloc((size_t) size);
 
     int ret = opus_encoder_init(encoder, sampleRate, numChannels, application);
@@ -28,6 +30,7 @@ int CodecOpus::encoderInit(int sampleRate, int numChannels, int application) {
     if (ret) {
         LOGE(TAG, "[encoderInit] couldn't init encoder ret: %d; error: %s", ret, opus_strerror(ret));
         free(encoder);
+        encoder = nullptr; // 避免之後 checkForNull 通過再 use-after-free
         return -1;
     } else LOGD(TAG, "[encoderInit] encoder successfully initialized");
 
@@ -62,17 +65,16 @@ std::vector<uint8_t> CodecOpus::encode(uint8_t *bytes, int frameSize) {
     int ret = checkForNull("encode", true);
     if (ret < 0) return result;
 
-    int maxBytesCount = sizeof(unsigned char) * 1024;
-    unsigned char *outBuffer = (unsigned char*) malloc((size_t) maxBytesCount);
+    const int maxBytesCount = 1024;
+    std::vector<unsigned char> outBuffer((size_t) maxBytesCount);
 
-    int resultLength = opus_encode(encoder, (opus_int16 *) bytes, frameSize, outBuffer, maxBytesCount);
+    int resultLength = opus_encode(encoder, (opus_int16 *) bytes, frameSize, outBuffer.data(), maxBytesCount);
     if (resultLength <= 0) {
         LOGE(TAG, "[encode] error: %s", opus_strerror(resultLength));
         return result;
     }
 
-    std::copy(&outBuffer[0], &outBuffer[resultLength], std::back_inserter(result));
-    free(outBuffer);
+    result.assign(outBuffer.begin(), outBuffer.begin() + resultLength);
     return result;
 }
 
@@ -96,6 +98,7 @@ int CodecOpus::decoderInit(int sampleRate, int numChannels) {
         return size;
     }
 
+    decoderRelease(); // 重複 init 唔好洩漏舊 decoder
     decoder = (OpusDecoder*) malloc((size_t) size);
 
     int ret = opus_decoder_init(decoder, sampleRate, numChannels);
@@ -103,6 +106,7 @@ int CodecOpus::decoderInit(int sampleRate, int numChannels) {
     if (ret) {
         LOGE(TAG, "[decoderInit] couldn't init decoder ret: %d; error: %s", ret, opus_strerror(ret));
         free(decoder);
+        decoder = nullptr; // 避免之後 checkForNull 通過再 use-after-free
         return -1;
     } else LOGD(TAG, "[decoderInit] decoder successfully initialized");
 
@@ -124,17 +128,23 @@ std::vector<uint8_t> CodecOpus::decode(uint8_t *bytes, int length, int frameSize
     int ret = checkForNull("decode", false);
     if (ret < 0) return result;
 
-    opus_int16 *outBuffer = (opus_int16*) malloc(sizeof(opus_int16) * 1024);
+    if (frameSize <= 0) {
+        LOGE(TAG, "[decode] invalid frameSize: %d", frameSize);
+        return result;
+    }
 
-    int resultLength = opus_decode(decoder, bytes, length, outBuffer, frameSize, fec);
+    // opus_decode 會寫 frameSize * channels 個 sample；固定 1024 喺 stereo／大 frame 會 heap overflow
+    const int channels = decoderNumChannels > 0 ? decoderNumChannels : 1;
+    std::vector<opus_int16> outBuffer((size_t) frameSize * (size_t) channels);
+    opus_int16 *outData = outBuffer.data();
+
+    int resultLength = opus_decode(decoder, bytes, length, outData, frameSize, fec);
     if (resultLength <= 0) {
         LOGE(TAG, "[decode] error: %s", opus_strerror(resultLength));
         return result;
     }
 
-    result = SamplesConverter::convert(&outBuffer, resultLength * decoderNumChannels);
-
-    free(outBuffer);
+    result = SamplesConverter::convert(&outData, resultLength * channels);
     return result;
 }
 
@@ -147,7 +157,7 @@ void CodecOpus::decoderRelease() {
 int CodecOpus::checkForNull(const char *methodName, bool isEncoder) {
     const char *typeName = isEncoder ? "encoder" : "decoder";
 
-    if (isEncoder && !encoder || !isEncoder && !decoder) {
+    if ((isEncoder && !encoder) || (!isEncoder && !decoder)) {
         LOGE(TAG, "[%s] %s wasn't initialized you must call %sInit() first", methodName, typeName, typeName);
         return -1;
     }
