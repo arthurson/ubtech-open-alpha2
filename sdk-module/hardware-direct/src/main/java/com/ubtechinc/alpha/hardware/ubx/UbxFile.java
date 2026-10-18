@@ -69,6 +69,24 @@ public final class UbxFile {
          */
         public final List<int[]> daSpans = new ArrayList<>();
         /**
+         * 與 daAll 平行：每段 d.a 自己嘅內置 f 表（頭 fLen 子表）行列；
+         * 官方 gate（f/b.f 第一步）＝搵 row.a==leaf.d 嘅 row.d（0/3 播、1 特別、2 跳）。
+         */
+        public final List<List<UbxKeyRow>> blockRows = new ArrayList<>();
+        /**
+         * 與 daAll 平行：每段 d.a 自己嘅時間基 tickMs（type-0 首值；0＝無，
+         * 沿用當前 static——官方 a/p.f2630a 為 static，每個 block parse 時覆寫）。
+         */
+        public final List<Integer> blockTicks = new ArrayList<>();
+        /**
+         * 與 daAll 平行：f==2 block（e/d handler）嘅 subtype（1=條件、2=Loop）；其餘 0。
+         */
+        public final List<Integer> blockSubs = new ArrayList<>();
+        /**
+         * 與 daAll 平行：Loop block（subtype==2）參數 {f,g,h}（e/a.setRawData 原文）；其餘 null。
+         */
+        public final List<int[]> blockLoops = new ArrayList<>();
+        /**
          * 官方鏈式 servo 播放序：daAll 下標列（smali f/b.f＋f/c.a 實證：
          * 入口＝(a==-1,b==0) 葉；逐葉跟鏈，leaf.c 對 d/a.e 選段，
          * v7 gate（keyframe a==leaf.d 的 d 值）非 0/3 即 skip，
@@ -91,6 +109,18 @@ public final class UbxFile {
     public static final class UbxBlock {
         public int type;
         public byte[] data = new byte[0];
+    }
+
+    /**
+     * block 內置 f 表一行（com.ubtechinc.util.d.e）：a=文件 a 欄、b=文件 b 位元組、
+     * c=文件 c 欄、d=文件 d 欄、name=尾 20×int16 名字（"Loop"／"True"／"False" 等）。
+     */
+    public static final class UbxKeyRow {
+        public int a;
+        public int b;
+        public int c;
+        public int d;
+        public String name = "";
     }
 
     /**

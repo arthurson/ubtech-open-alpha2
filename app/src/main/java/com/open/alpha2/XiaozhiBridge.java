@@ -392,7 +392,8 @@ public final class XiaozhiBridge {
         toggleChestMuteLed();
     }
 
-    public void toggleChestMuteLed() {        long now = android.os.SystemClock.elapsedRealtime();
+    public void toggleChestMuteLed() {
+        long now = android.os.SystemClock.elapsedRealtime();
         long last = lastMutePressMs.get();
         if (now - last < MUTE_PRESS_DEBOUNCE_MS) {
             Log.d(TAG, "mute press debounced (gap " + (now - last) + "ms)");
@@ -488,7 +489,12 @@ public final class XiaozhiBridge {
     public synchronized boolean toggleConnection() {
         try {
             if (xiaozhiClient.isOpen()) {
-                teardownSession(true);
+                // disconnect() 會送 close frame（socket 寫入）。呢個方法經手柄／鍵盤映射呼叫，
+                // 實體鍵嗰條路喺主線程（MainActivity.dispatchKeyEvent）——直接做會拋
+                // NetworkOnMainThreadException，而且喺 closeQuietly() 之前拋，teardown 做一半
+                // （mic 已停、autoMode 已關，socket 仲開住）。同 mute 鍵路徑一樣丟去背景 executor
+                // （單線程，teardown 排喺 LED 指令前，次序同以前一樣）。
+                ledCenter.postPadLed(() -> teardownSession(true));
                 setChestMuteLed(false);
                 return true;
             }
@@ -559,6 +565,7 @@ public final class XiaozhiBridge {
                         // lastFullMcpToolList, 下次不用再強制)。
                         xiaozhiMcpBridge().listTools();
                         fullList = lastFullMcpToolList;
+                        if (fullList == null) fullList = new org.json.JSONArray(); // listTools 沒建到清單：回空，唔好 NPE
                     }
                     java.util.Set<String> disabledNames = xiaozhiConfig.getMcpDisabledToolNames();
                     org.json.JSONArray toolsWithState = new org.json.JSONArray();
@@ -689,7 +696,7 @@ public final class XiaozhiBridge {
 
             default:
                 return new HttpServer.ApiResponse(404, "application/json; charset=utf-8",
-                        "{\"ok\":false,\"error\":\"unknown xiaozhi endpoint: " + path + "\"}");
+                        "{\"ok\":false,\"error\":\"unknown xiaozhi endpoint: " + JsonUtil.esc(path) + "\"}");
         }
     }
 
@@ -803,6 +810,7 @@ public final class XiaozhiBridge {
         XiaozhiAudioController.StartResult playbackResult =
                 xiaozhiAudioController.startPlayback(5000);
         if (playbackResult.error != null) {
+            signalListenStopQuietly(); // listen-start 已送出：唔補 stop，server 會一直等 audio
             robot.speech_SetMIC(false);
             return HttpServer.ApiResponse.error("failed to start playback: " + playbackResult.error);
         }
@@ -824,6 +832,7 @@ public final class XiaozhiBridge {
                     }
                 }, 5000);
         if (captureResult.error != null) {
+            signalListenStopQuietly(); // 同上：listen-start 已送出，要補 stop
             xiaozhiAudioController.stopPlayback();
             if (vosk != null) {
                 try {
@@ -840,6 +849,15 @@ public final class XiaozhiBridge {
         startXiaozhiMicHoldEnforcer();
         EventBus.get().publish(XIAOZHI_MIC_STATE_EVENT, "{\"held\":true}");
         return HttpServer.ApiResponse.okTrue();
+    }
+
+    /** startXiaozhiMic() 喺 listen-start 之後失敗時補一個 listen-stop（失敗唔重要，連線可能剛斷）。 */
+    private void signalListenStopQuietly() {
+        try {
+            xiaozhiClient.sendListenStop();
+        } catch (java.io.IOException e) {
+            Log.w(TAG, "Failed to signal listen-stop after mic start failure: " + e.getMessage());
+        }
     }
 
     /** Stops the mic capture + playback pair - shared by the "mic/stop" HTTP endpoint
@@ -1240,20 +1258,6 @@ public final class XiaozhiBridge {
         }, delayMs);
     }
 
-    /** Speaks the activation code out loud through the robot's own TTS - this is the
-     *  "機器人自己讀出來" behavior the person asked for, so they don't need to look at
-     *  the browser control panel (which may not even be open yet on a first-time setup)
-     *  to find the code. Digit-by-digit with pauses would be more reliably understood
-     *  than reading "12345" as the number "twelve thousand three hundred forty-five",
-     *  but Alpha2RobotApi's TTS has no SSML/digit-mode control exposed - see
-     *  AIDL_REFERENCE.md's ISpeechInterface notes, which document no such parameter -
-     *  so this spells the digits out with spaces in the text itself
-     *  ("一 二 三 四 五" for Chinese TTS), 經實測各 TTS 引擎都會逐字讀出，
-     *  不會讀成一整個大數字。Reads the message twice
-     *  with a pause, matching how a person might naturally repeat something they want
-     *  written down. Mirrors the existing "speech/tts" endpoint's
-     *  SpeechCenter.STOP_TO_TTS_MIN_GAP_MS race guard and mouth-LED bracket (see handleApi() below)
-     *  since this runs from a background thread, not through that HTTP endpoint. */
     /** 讀出小智配對碼：行 Android 內置 TTS (同小智頁選 "Android"
      *  同一條路)——配對時刻未連 server，用不到雲端聲，只可以用本地讀。
      *  機身 TTS 無 alpha2services 會靜音，所以不用。

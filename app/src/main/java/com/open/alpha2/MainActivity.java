@@ -1098,6 +1098,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         if (audioPlaybackController != null) audioPlaybackController.shutdown();
         if (ledCenter != null) ledCenter.shutdown();
         if (ringtoneCenter != null) ringtoneCenter.stopRingtonePlayback();
+        musicController.shutdown(); // 音樂 tab 嘅 MediaPlayer：之前冇人 release，Activity 銷毀即洩漏
         // 之前這裡沒有呼叫 stopLocalMusicPlayback()/stopRadioPlayback() -
         // onDestroy() 就算執行了也不會釋放正在播放的 currentMusicPlayer/currentRadioPlayer,
         // 一直以來都是個 leak (MediaPlayer native resource 沒有 release())。沿用

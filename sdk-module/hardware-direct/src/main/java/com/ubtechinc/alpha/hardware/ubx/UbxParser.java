@@ -236,6 +236,104 @@ public final class UbxParser {
     }
 
     /**
+     * 官方 1.1.7.3 播放計劃一節：track＋段（daSpans 下標）＋段時間基。
+     */
+    public static final class UbxPlanNode {
+        public final UbxFile.UbxTrack track;
+        public final int spanIdx;
+        public final int tickMs;
+        public UbxPlanNode(UbxFile.UbxTrack track, int spanIdx, int tickMs) {
+            this.track = track;
+            this.spanIdx = spanIdx;
+            this.tickMs = tickMs;
+        }
+    }
+
+    /**
+     * 官方（Alpha2Services 1.1.7.3）播放計劃：完整流程模擬，回傳按序要播嘅 servo 節點。
+     *
+     * <p>照 com.ubtechinc.util.f.b／f.c、d.*、e.a 原文移植：
+     * 入口＝id==0 track 嘅 (a==-1,b==0) 葉；gate＝block 內置 f 表 row[a==leaf.d].d
+     * （0/3 播、1 中斷分支、2 跳過、其餘死路）；f==1＝跳 track id==g；
+     * f==2 subtype2＝Loop（(track,block) 快取 f/g/h）；f==4＝TTS（outIdx＝row[d==2].a）；
+     * 節點完成後跟 (a==block.e, b==outIdx) 搵同 track 下一批葉；
+     * 葉 c==-2：track id==0 全完，否則跳去有 block.g==當前 track id 嘅 track
+     * （跨 track 搵法跟 d.c.b：逐 track 首個命中、跨 track 後者優先），
+     * 由 marker（該 block 內置表 row[d==2] 嘅 a）續播。timebase＝static 後蓋前。
+     */
+    public static List<UbxPlanNode> computeOfficialPlan(UbxFile ubx) {
+        List<UbxPlanNode> plan = new ArrayList<>();
+        UbxFile.UbxTrack trk0 = null;
+        for (UbxFile.UbxTrack t : ubx.tracks) if (t.id == 0) { trk0 = t; break; }
+        if (trk0 == null) return plan;
+        int T = 50;
+        Map<String, int[]> loopCache = new HashMap<>();
+        List<Object[]> queue = new ArrayList<>();
+        for (int[] lf : trk0.leafRows) if (lf.length >= 2 && lf[0] == -1 && lf[1] == 0) queue.add(new Object[]{trk0, lf});
+        int guard = 0, qi = 0;
+        while (qi < queue.size() && guard++ < 1000) {
+            Object[] item = queue.get(qi++);
+            UbxFile.UbxTrack track = (UbxFile.UbxTrack) item[0];
+            int[] leaf = (int[]) item[1];
+            if (leaf[2] == -2) {
+                if (track.id == 0) break;
+                UbxFile.UbxTrack nt = null; int nbIdx = -1;
+                for (UbxFile.UbxTrack t : ubx.tracks) {
+                    for (int i2 = 0; i2 < t.daAll.size(); i2++) {
+                        int[] da = t.daAll.get(i2);
+                        if (da.length >= 3 && da[2] == track.id) { nt = t; nbIdx = i2; }
+                    }
+                }
+                if (nt == null || nbIdx < 0) break;
+                int av = -1;
+                for (UbxFile.UbxKeyRow rw : nt.blockRows.get(nbIdx)) if (rw.d == 2) { av = rw.a; break; }
+                int nbE = nt.daAll.get(nbIdx)[0];
+                for (int[] lf : nt.leafRows) if (lf.length >= 2 && lf[0] == nbE && lf[1] == av) queue.add(new Object[]{nt, lf});
+                continue;
+            }
+            int blkIdx = -1;
+            for (int i2 = 0; i2 < track.daAll.size(); i2++) if (track.daAll.get(i2)[0] == leaf[2]) { blkIdx = i2; break; }
+            if (blkIdx < 0) continue;
+            int[] blk = track.daAll.get(blkIdx);
+            int blkE = blk[0], blkF = blk[1], blkG = blk.length >= 3 ? blk[2] : 0;
+            int iC = -1;
+            List<UbxFile.UbxKeyRow> rows = track.blockRows.get(blkIdx);
+            for (UbxFile.UbxKeyRow rw : rows) if (rw.a == leaf[3]) { iC = rw.d; break; }
+            if (iC == 0 || iC == 3) {
+                if (blkF == 0) {
+                    int tick = track.blockTicks.get(blkIdx);
+                    if (tick > 0) T = tick;
+                    plan.add(new UbxPlanNode(track, blkIdx, T));
+                    for (int[] lf : track.leafRows) if (lf.length >= 2 && lf[0] == blkE && lf[1] == 2) queue.add(new Object[]{track, lf});
+                } else if (blkF == 1) {
+                    UbxFile.UbxTrack nt = null;
+                    for (UbxFile.UbxTrack t : ubx.tracks) if (t.id == blkG) { nt = t; break; }
+                    if (nt != null) for (int[] lf : nt.leafRows) if (lf.length >= 2 && lf[0] == -1 && lf[1] == 0) queue.add(new Object[]{nt, lf});
+                } else if (blkF == 2) {
+                    int sub = track.blockSubs.get(blkIdx);
+                    int outIdx = -1;
+                    if (sub == 2 && track.blockLoops.get(blkIdx) != null) {
+                        String key = track.id + ":" + blkE;
+                        int[] st = loopCache.get(key);
+                        if (st == null) { int[] lp = track.blockLoops.get(blkIdx); st = new int[]{lp[0], lp[1], lp[2]}; loopCache.put(key, st); }
+                        if (st[0] >= st[2]) { for (UbxFile.UbxKeyRow rw : rows) if (rw.d == 2) { outIdx = rw.a; break; } }
+                        else { for (UbxFile.UbxKeyRow rw : rows) if ("Loop".equals(rw.name)) { outIdx = rw.a; break; } st[0] += st[1]; }
+                    } else if (sub == 1) {
+                        for (UbxFile.UbxKeyRow rw : rows) if ("True".equals(rw.name)) { outIdx = rw.a; break; }
+                    }
+                    for (int[] lf : track.leafRows) if (lf.length >= 2 && lf[0] == blkE && lf[1] == outIdx) queue.add(new Object[]{track, lf});
+                } else if (blkF == 4) {
+                    int outIdx = -1;
+                    for (UbxFile.UbxKeyRow rw : rows) if (rw.d == 2) { outIdx = rw.a; break; }
+                    for (int[] lf : track.leafRows) if (lf.length >= 2 && lf[0] == blkE && lf[1] == outIdx) queue.add(new Object[]{track, lf});
+                }
+            }
+            // iC==1：中斷分支（corpus 未用，保守當死路）；iC==2：跳過唔續
+        }
+        return plan;
+    }
+
+    /**
      * d.d 葉列（d.b 私有 a）：[echo==len][count][L1 outer][echo==L1 + 20B頭 + 尾]*。
      * 葉頭 20B [echo][a][b][c][d]（原裝值多為 -1/-2 sentinel）；全量保留，
      * leafA~D 沿用末項以兼容。
@@ -297,6 +395,33 @@ public final class UbxParser {
         int p = off + 4;
         int fLen = le(f, p); p += 4;
         if (fLen < 0 || p + fLen > itemEnd) throw new UbxParseException("bad aframe ftable");
+        // 內置 f 表（d.a 頭子表）：官方 gate（row.a==leaf.d → row.d）＋名字（"Loop" 等）
+        List<UbxFile.UbxKeyRow> rows = new ArrayList<>();
+        if (fLen > 0) {
+            int q2 = p;
+            int cnt2 = le(f, q2 + 4);
+            int pp2 = q2 + 8;
+            for (int k = 0; k < cnt2; k++) {
+                int l2 = le(f, pp2);
+                if (l2 <= 0) { pp2 += 4; continue; }
+                if (pp2 + 4 + l2 > itemEnd) throw new UbxParseException("bad fleaf len " + l2);
+                UbxFile.UbxKeyRow rw = new UbxFile.UbxKeyRow();
+                rw.a = le(f, pp2 + 8);
+                rw.b = f[pp2 + 12] & 0xFF;
+                rw.c = le(f, pp2 + 13);
+                rw.d = le(f, pp2 + 17);
+                int rf = le(f, pp2 + 21);
+                int nameOff = pp2 + 26 + rf;
+                StringBuilder nm = new StringBuilder();
+                for (int ni = 0; ni < 20 && nameOff + ni * 2 + 2 <= itemEnd; ni++) {
+                    int cv = (f[nameOff + ni * 2] & 0xFF) | ((f[nameOff + ni * 2 + 1] & 0xFF) << 8);
+                    if (cv != 0) nm.append((char) cv);
+                }
+                rw.name = nm.toString().trim();
+                rows.add(rw);
+                pp2 += 4 + l2;
+            }
+        }
         p += fLen;
         if (p + 216 > itemEnd) throw new UbxParseException("bad aframe head");
         p += 4; // a（編排字段）
@@ -305,25 +430,60 @@ public final class UbxParser {
         p += 100; // d[50]
         int fe = le(f, p); p += 4; // e＝d/a.a()：官方 leaf.c 選段鍵（f/b.f 實證）
         int ff = le(f, p); p += 4; // f：==0 即 servo（f.b.f→f.i 原文）
-        p += 4; // g
+        int fg = le(f, p); p += 4; // g（f==1 跳 track 目標 id；-2 跨 track 搵法用）
         int fh = le(f, p); p += 4; // h＝i blob 長
         if (fh < 0 || p + fh > itemEnd) throw new UbxParseException("bad aframe iblob " + fh);
         if (p + fh != itemEnd) throw new UbxParseException("aframe slack " + (itemEnd - p - fh));
         track.framesA++;
         track.frameBValues.add(fb);
-        // 全段記 (e,f)（鏈式排序用；非 servo 段 span 記 null）
-        track.daAll.add(new int[]{fe, ff});
+        // 全段記 (e,f,g)（官方流程模擬用；非 servo 段 span 記 null）
+        track.daAll.add(new int[]{fe, ff, fg});
+        track.blockRows.add(rows);
+        int[] tickHold = new int[]{0};
+        track.blockTicks.add(0);
+        track.blockSubs.add(0);
+        track.blockLoops.add(null);
+        int blkIdx = track.daAll.size() - 1;
         if (fh == 0) { track.daSpans.add(null); return; }
-        if (ff != 0) { track.nonServoFrames++; track.daSpans.add(null); return; }
+        if (ff != 0) {
+            track.nonServoFrames++;
+            track.daSpans.add(null);
+            // f==2（e/d handler）blob：[len][subtype]；subtype==2 → Loop 參數 {f,g,h}（e/a 原文）
+            if (ff == 2 && fh >= 12 && le(f, p) == fh) {
+                int sub = le(f, p + 4);
+                track.blockSubs.set(blkIdx, sub);
+                if (sub == 2) {
+                    int iB = le(f, p + 8);
+                    int i2 = p + 12, lf = 0, lg = 0, lh = 0;
+                    if (iB > 0 && i2 + iB <= itemEnd) { lf = intOf(f, i2, iB); i2 += iB; }
+                    if (i2 + 4 <= itemEnd && le(f, i2) > 0) { lg = intOf(f, i2 + 4, iB); }
+                    int i3 = i2 + 4 + iB;
+                    if (i3 + 4 <= itemEnd) {
+                        int iB2 = le(f, i3);
+                        if (iB2 > 0 && i3 + 4 + iB2 <= itemEnd) lh = intOf(f, i3 + 4, iB2);
+                    }
+                    track.blockLoops.set(blkIdx, new int[]{lf, lg, lh});
+                }
+            }
+            return;
+        }
         int spanStart = track.frames.size();
         try {
-            parseServoChain(f, p, fh, out, track, false);
+            parseServoChain(f, p, fh, out, track, false, tickHold);
             track.servoGroups++;
         } catch (UbxParseException e) {
             track.nonServoFrames++;
         }
+        track.blockTicks.set(blkIdx, tickHold[0]);
         // servo d.a 段記 span（鏈式排序＋player 取幀用；半截鏈都記，播嗰陣照出）
         track.daSpans.add(new int[]{spanStart, track.frames.size()});
+    }
+
+    /** 由位元組讀小十進數字串（e/a 原文：GB2312 字串 parseInt；失敗 0）。 */
+    private static int intOf(byte[] b, int off, int len) {
+        if (len <= 0 || off + len > b.length) return 0;
+        try { return Integer.parseInt(new String(b, off, len, "GB2312").trim()); }
+        catch (Exception e) { return 0; }
     }
 
     /**
@@ -333,7 +493,7 @@ public final class UbxParser {
      * type==4 → data → a/j 配樂鏈（同形 a/c→a/b→a.a，幀標 voice 供配樂調度，不進舵機）；
      * 其餘 type（2/3/5…）原樣保留並提取音樂名/路徑（回退）。
      */
-    static void parseServoChain(byte[] eBytes, int off, int eLen, UbxFile out, UbxFile.UbxTrack track, boolean voice) throws UbxParseException {
+    static void parseServoChain(byte[] eBytes, int off, int eLen, UbxFile out, UbxFile.UbxTrack track, boolean voice, int[] tickHold) throws UbxParseException {
         if (le(eBytes, off) != eLen) throw new UbxParseException("adispatch len check");
         int count = le(eBytes, off + 4);
         int p = off + 8;
@@ -347,6 +507,7 @@ public final class UbxParser {
                 track.timeBaseMs = base;
                 track.timeBaseB = le(eBytes, p + 4);
                 if (out.timeBaseMs <= 0) out.timeBaseMs = base;
+                if (tickHold != null && base > 0) tickHold[0] = base; // 後蓋前（官方 static 同語義）
             } else if (type == 1) {
                 parseTrackH(eBytes, p, len, out, track, voice);
             } else if (type == 4) {

@@ -490,8 +490,12 @@ public final class LedCenter {
         if (wifiLedReceiver != null) {
             try {
                 appContext.unregisterReceiver(wifiLedReceiver);
-                wifiLedReceiver = null;
             } catch (IllegalArgumentException ignored) {
+                // 已經唔喺度（被系統／重複 unregister）
+            } finally {
+                // 一定要清：否則 registerWifiLedReceiver() 嘅重入保護會永遠 early-return，
+                // WiFi 燈再冇 receiver 可以重新註冊。
+                wifiLedReceiver = null;
             }
         }
     }
@@ -547,14 +551,14 @@ public final class LedCenter {
         applyWifiLedInternal(wifiOn, conn);
     }
 
-    /**
-     * 實際切換: 先 ledSetOFF() 清除舊色, 等 100ms, 再點目標顏色
-     * （wifi 關閉就不點亮）。兩步都是 burst 重試式。
-     */
     /** Wi-Fi 燈試燈＋mirror 用嘅最後態（red/blue/off）。applyWifiLedInternal
      *  同 ledWifiSet 都會更新；LED tab 頭燈第 5 粒跟呢個畫（硬件就係咁）。 */
     private volatile String wifiLedState = "off";
 
+    /**
+     * 實際切換：只喺目標顏色同上次唔同先打硬件（見下面注釋）。紅↔藍淨係點 ledSetOn(12/13)，
+     * wifi 關閉先做全域 OFF；都係 burst 重試式。
+     */
     private void applyWifiLedInternal(boolean wifiOn, boolean connected) {
         String want = !wifiOn ? "off" : (connected ? "blue" : "red");
         // 冇變色就一個 ioctl 都唔使打。實機 logcat 見過舊 path 隔幾百 ms 就
@@ -687,12 +691,14 @@ public final class LedCenter {
                 // onEvent() 在 main thread 執行 - AIDL/JNI LED call 搬到 background
                 // thread, 不要用主執行緒, 和專案一貫做法一致 (見
                 // registerPirAlertListener()/registerChestMuteKeyTestListener())。
-                new Thread(new Runnable() {
+                // 一事件一條新 thread 會令連續嘅 true/false 事件亂序（後發先至→燈卡紅＋警示狀態
+                // 同硬件唔一致）；排去單線程 pad executor 保序。
+                postPadLed(new Runnable() {
                     @Override
                     public void run() {
                         applyAlpha2PirLedAndSound(triggered);
                     }
-                }).start();
+                });
             }
         });
     }
@@ -838,6 +844,30 @@ public final class LedCenter {
         return mouthTtsActive;
     }
 
+    /** 頭燈 preset → {p5, p6, p8}。HTTP（led/head/set）同 MCP（led_set_head）共用，免兩處
+     *  各抄一份對照表。speed<0＝經典值；speed 單位 ms（50-500）。 */
+    private static int[] headPresetParams(String preset, int speed) {
+        switch (preset) {
+            case "flash":   return new int[]{speed < 0 ? 100 : speed, speed < 0 ? 100 : speed, 0};
+            case "breathe": return new int[]{speed < 0 ? 5 : Math.max(1, speed / 20), speed < 0 ? 20 : speed / 5, 1};
+            case "chase":   return new int[]{speed < 0 ? 100 : speed, 0, 3};
+            case "dual":    return new int[]{speed < 0 ? 500 : speed, 0, 5};
+            case "long":
+            default:        return new int[]{Integer.MAX_VALUE, 0, 0};
+        }
+    }
+
+    /** 眼燈 preset → {p5, p6, p8}（眼無 breathe；mode 碼同頭唔同，見 Alpha2RobotApi javadoc）。 */
+    private static int[] eyePresetParams(String preset, int speed) {
+        switch (preset) {
+            case "flash": return new int[]{speed < 0 ? 100 : speed, speed < 0 ? 100 : speed, 0};
+            case "chase": return new int[]{speed < 0 ? 100 : speed, 0, 1};
+            case "dual":  return new int[]{speed < 0 ? 500 : speed, 0, 3};
+            case "long":
+            default:      return new int[]{Integer.MAX_VALUE, 0, 0};
+        }
+    }
+
     // -- LEDs (5-mic hardware only path - server-side preset mapping) --------------
     // Colour/brightness/mode values are user-confirmed on real 5-mic hardware:
     //   color: 1=紅 2=綠 3=藍 4=黃 5=紫 6=青 7=白
@@ -865,15 +895,8 @@ public final class LedCenter {
         // 速度（ms，50-500）：flash p5/p6、chase/dual p5、breathe 按比例；
         // 唔帶＝沿用各 preset 經典值（Blockly／舊客無影響）。
         int speed = ApiValidator.optionalIntRange(query, "speed", 50, 500, -1);
-        int p5, p6, p8;
-        switch (preset) {
-            case "flash":   p5 = speed < 0 ? 100 : speed; p6 = speed < 0 ? 100 : speed; p8 = 0; break;
-            case "breathe": p5 = speed < 0 ? 5 : Math.max(1, speed / 20); p6 = speed < 0 ? 20 : speed / 5; p8 = 1; break;
-            case "chase":   p5 = speed < 0 ? 100 : speed; p6 = 0; p8 = 3; break;
-            case "dual":    p5 = speed < 0 ? 500 : speed; p6 = 0; p8 = 5; break;
-            case "long":
-            default:        p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
-        }
+        int[] pp = headPresetParams(preset, speed);
+        int p5 = pp[0], p6 = pp[1], p8 = pp[2];
         // 逐粒試燈：preset 跟住而家著緊嘅 mask（唔帶＝全開，兼容舊客/Blockly）。
         int p3 = ApiValidator.optionalIntRange(query, "p3", 0, 31, 31);
         int p4 = ApiValidator.optionalIntRange(query, "p4", 0, 31, 31);
@@ -891,14 +914,8 @@ public final class LedCenter {
         int brightness = ApiValidator.requireBrightness(query);
         // 速度（ms，50-500）：flash p5/p6、chase/dual p5；唔帶＝經典值。
         int speed = ApiValidator.optionalIntRange(query, "speed", 50, 500, -1);
-        int p5, p6, p8;
-        switch (preset) {
-            case "flash": p5 = speed < 0 ? 100 : speed; p6 = speed < 0 ? 100 : speed; p8 = 0; break;
-            case "chase": p5 = speed < 0 ? 100 : speed; p6 = 0; p8 = 1; break;
-            case "dual":  p5 = speed < 0 ? 500 : speed; p6 = 0; p8 = 3; break;
-            case "long":
-            default:      p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
-        }
+        int[] pp = eyePresetParams(preset, speed);
+        int p5 = pp[0], p6 = pp[1], p8 = pp[2];
         // 逐粒試燈：preset 跟住而家著緊嘅 mask（唔帶＝全開，兼容舊客/Blockly）。
         int p3 = ApiValidator.optionalIntRange(query, "p3", 0, 255, 255);
         int p4 = ApiValidator.optionalIntRange(query, "p4", 0, 255, 255);
@@ -1262,15 +1279,8 @@ public final class LedCenter {
                         + ApiValidator.LED_BRIGHTNESS_MIN + " and " + ApiValidator.LED_BRIGHTNESS_MAX
                         + ", got: " + brightness);
             }
-            int p5, p6, p8;
-            switch (preset) {
-                case "flash":   p5 = 100; p6 = 100; p8 = 0; break;
-                case "breathe": p5 = 5;   p6 = 20;  p8 = 1; break;
-                case "chase":   p5 = 100; p6 = 0;   p8 = 3; break;
-                case "dual":    p5 = 500; p6 = 0;   p8 = 5; break;
-                case "long":
-                default:        p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
-            }
+            int[] pp = headPresetParams(preset, -1);
+            int p5 = pp[0], p6 = pp[1], p8 = pp[2];
             code = MainActivity.directCode(DirectLedController.setHead5MicRaw(color, brightness, 31, 31, p5, p6, Integer.MAX_VALUE, p8));
         }
         boolean hReady = headerReady();
@@ -1309,14 +1319,8 @@ public final class LedCenter {
                         + ApiValidator.LED_BRIGHTNESS_MIN + " and " + ApiValidator.LED_BRIGHTNESS_MAX
                         + ", got: " + brightness);
             }
-            int p5, p6, p8;
-            switch (preset) {
-                case "flash": p5 = 100; p6 = 100; p8 = 0; break;
-                case "chase": p5 = 100; p6 = 0;   p8 = 1; break;
-                case "dual":  p5 = 500; p6 = 0;   p8 = 3; break;
-                case "long":
-                default:      p5 = Integer.MAX_VALUE; p6 = 0; p8 = 0; break;
-            }
+            int[] pp = eyePresetParams(preset, -1);
+            int p5 = pp[0], p6 = pp[1], p8 = pp[2];
             code = MainActivity.directCode(DirectLedController.setEye5MicRaw(color, brightness, 255, 255, p5, p6, Integer.MAX_VALUE, p8));
         }
         boolean eReady = headerReady();

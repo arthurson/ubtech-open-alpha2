@@ -1084,22 +1084,16 @@ public final class AudioCenter {
      *  這個循環, 不用靠猜。 */
     private Runnable musicFillerActionLoop;
 
-    /** 啟動「播歌期間不斷動隨機動作」的循環 - 每 MUSIC_FILLER_ACTION_INTERVAL_MS
-     *  觸發一次 triggerRandomFillerAction(), 再重新 schedule 自己, 直到
-     *  boundPlayer 不再是 currentMusicPlayer (也就是整首歌已經播完/被叫停/被第二首歌
-     *  取代了) 才停止。用 mainHandler (Looper.getMainLooper()) 排程——這個 method
-     *  本身只是 postDelayed, 沒有做 blocking call, 不用擔心阻塞 main thread;
-     *  真正的動作播放 (在 triggerRandomFillerAction() 裡面) 一直都是開獨立 thread 做。 */
-    /** 播歌隨機動作開關 - 讀取 SharedPreferences, 預設 true (保持之前還沒有開關按鈕之前
-     *  的行為: 一直都會動)。讓 audio/local_music/filler_action/get、
-     *  startMusicFillerActionLoop()、playLocalMusicFile() 一起用同一個讀法,
-     *  用戶隨時可以在 UI 上切換, 不用讓正在播放的歌也要重新播放才生效 - 下一個
-     *  loop tick (或下一次播歌) 就會反映新設定。*/
-    /** 映射事件共用讀態（public 純讀，寫經 fillerActionSet／toggleFillerAction）。 */
+    /** 播歌隨機動作開關 - 讀取 SharedPreferences, 預設 true。每個 loop tick 都即時讀取，
+     *  用戶隨時喺 UI 切換，唔使重播。映射事件共用讀態（public 純讀，寫經
+     *  fillerActionSet／toggleFillerAction）。 */
     public boolean isMusicFillerActionEnabled() {
         return prefs().getBoolean(PREF_MUSIC_FILLER_ACTION_ENABLED, true);
     }
 
+    /** 啟動「播歌期間不斷動隨機動作」的循環 - 每 MUSIC_FILLER_ACTION_INTERVAL_MS 觸發一次，
+     *  再重新 schedule 自己，直到 boundPlayer 不再是 currentMusicPlayer（播完／被停／被取代）
+     *  或用戶暫停。用 mainHandler.postDelayed 排程，唔會阻塞主線程；真正動作播放喺獨立 thread。 */
     private void startMusicFillerActionLoop(final android.media.MediaPlayer boundPlayer) {
         Runnable loop = new Runnable() {
             @Override
@@ -1189,18 +1183,6 @@ public final class AudioCenter {
         }
     }
 
-    /** Plays a local music file - same STREAM_MUSIC/prepareAsync()/auto-release shape as
-     *  playRingtoneUri(), kept as a separate method (rather than generalising both into
-     *  one) so a future change to one playback path can't accidentally affect the
-     *  other. Stops whatever local music track was previously playing first.
-     *
-     *  播歌時動作要不停動到播完：在真正開始播放的那一刻 (onPreparedListener 裡面, 而不是
-     *  prepareAsync() 的 request 一發出就做) 順便啟動
-     *  startMusicFillerActionLoop() - 用戶要求「播歌時要不停動, 直到整首歌播
-     *  完」, 見那個 method 的 javadoc。刻意放在 onPrepared 裡面 (真正 start()
-     *  之後) 而不是這個 method 一開頭就做: 如果檔案根本播不了 (loss/corrupt,
-     *  prepareAsync 觸發 onError), 不應該仍然先動了那個動作, 「動作」應該與
-     *  「真的有歌聲」同步, 而不是與「這個 method 被呼叫了」同步。 */
     /** onDestroy 共用：停播（上面 MainActivity 會調）、拆 watch loop、
      *  停 disco 線程、放共用頻譜。之前 executor／watch loop／Visualizer
      *  無人收，process 唔死嗰陣一直漏（特別係 disco executor 條 thread）。 */
@@ -1227,6 +1209,12 @@ public final class AudioCenter {
         currentRadioStationName = null;
     }
 
+    /** Plays a local music file - same STREAM_MUSIC/prepareAsync()/auto-release shape as
+     *  playRingtoneUri(), kept separate so a change to one playback path can't affect the other.
+     *  Stops whatever local music track was previously playing first.
+     *
+     *  隨機動作循環喺 onPrepared（真正 start() 之後）先啟動，而唔係 prepareAsync() 一發出就做：
+     *  播唔到嘅檔案（損壞）唔應該先郁咗動作，「動作」要同「真係有歌聲」同步。 */
     public synchronized void playLocalMusicFile(java.io.File file) {
         localMusicPaused = false; // 新歌：上首 pause 嘅旗即清，循環照起
         discoPauseHold = false; // 新歌：上首 pause 嘅 hold 即清，幀到即推
@@ -1243,11 +1231,16 @@ public final class AudioCenter {
             player.setAudioStreamType(AudioManager.STREAM_MUSIC);
             player.setDataSource(file.getAbsolutePath());
             player.setOnPreparedListener(mp -> {
-                mp.start();
-                setupMusicVisualizerLocked(mp);
-                setupMusicEqualizerLocked(mp);
-                startMusicFillerActionLoop(mp);
-                startSharedFillerLoop();
+                // 主線程回調：要同 stop／release（工作線程持鎖）互斥，否則可能對一部剛被
+                // release 嘅 player 起 Visualizer／Equalizer 而漏咗（*Locked helper 本身要求持鎖）。
+                synchronized (AudioCenter.this) {
+                    if (currentMusicPlayer != mp) return; // 已被停止／取代
+                    mp.start();
+                    setupMusicVisualizerLocked(mp);
+                    setupMusicEqualizerLocked(mp);
+                    startMusicFillerActionLoop(mp);
+                    startSharedFillerLoop();
+                }
             });
             player.setOnCompletionListener(mp -> {
                 synchronized (AudioCenter.this) {
@@ -1377,11 +1370,14 @@ public final class AudioCenter {
             NetLog.out("radio-play", resolvedUrl);
             player.setDataSource(url);
             player.setOnPreparedListener(mp -> {
-                mp.start();
-                // 共用頻譜/隨機動作 — 與本地音樂同一套
-                setupMusicVisualizerLocked(mp);
-                setupMusicEqualizerLocked(mp);
-                startSharedFillerLoop();
+                synchronized (AudioCenter.this) { // 理由同 playLocalMusicFile 嘅 onPrepared
+                    if (currentRadioPlayer != mp) return; // 已被停止／取代
+                    mp.start();
+                    // 共用頻譜/隨機動作 — 與本地音樂同一套
+                    setupMusicVisualizerLocked(mp);
+                    setupMusicEqualizerLocked(mp);
+                    startSharedFillerLoop();
+                }
             });
             player.setOnCompletionListener(mp -> {
                 // 串流多數無限，但有限長度/轉址 EOS 會走到呢度——
@@ -1653,8 +1649,18 @@ public final class AudioCenter {
             // 避免撞名覆蓋另一首已經存在的歌 - 自動加 " (2)"/" (3)" 這類尾綴,
             // 和瀏覽器下載檔案撞名那種做法一致, 用戶預期不會「悄悄蓋掉舊檔」。
             dest = uniqueFileFor(dest);
-            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(dest)) {
+            // 先寫 .part（唔喺 LOCAL_MUSIC_EXTENSIONS，唔會出現喺歌單），成功先 rename：
+            // 寫到一半失敗（磁碟滿／斷線）唔會留低一首殘缺嘅「歌」。
+            java.io.File tmp = new java.io.File(LOCAL_MUSIC_DIR, dest.getName() + ".part");
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(tmp)) {
                 fos.write(body);
+            } catch (java.io.IOException | RuntimeException writeErr) {
+                tmp.delete();
+                throw writeErr;
+            }
+            if (!tmp.renameTo(dest)) {
+                tmp.delete();
+                return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"failed to finalize uploaded file\"}");
             }
             return HttpServer.ApiResponse.ok("{\"ok\":true,\"name\":\""
                     + MainActivity.jsonSafe(dest.getName()) + "\",\"sizeBytes\":" + body.length + "}");

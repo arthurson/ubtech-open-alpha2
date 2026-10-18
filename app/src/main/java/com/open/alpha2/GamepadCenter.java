@@ -241,7 +241,8 @@ public final class GamepadCenter {
     }
 
     // -- 預設映射（分邊；同名鍵獨立值；user snapshot as factory default，
-    // 烘於 2026-10-10：reset／新裝機回呢套；舊機已存值唔受影響） ------------
+    // 烘於 2026-10-18（實機現行 snapshot：搖桿多動作走姿＋start=stop）：
+    // reset／新裝機回呢套；舊機已存值唔受影響） ------------
     public static Map<String, String> defaultPadMapping() {
         Map<String, String> m = new LinkedHashMap<>();
         for (String k : PAD_KEYS) m.put(k, "none");
@@ -253,19 +254,19 @@ public final class GamepadCenter {
         m.put("b", "servo19+");
         m.put("x", "servo19-");
         m.put("y", "servo20-");
-        m.put("start", "action:1510818174706");
+        m.put("start", "stop");
         m.put("select", "action:1514366181328");
         m.put("l1", "action:1464835936018");
         m.put("r1", "action:1464835936017");
         m.put("l2", "action:1464835936047");
         m.put("r2", "action:1464835936041");
-        m.put("lx_neg", "servo5+");
-        m.put("lx_pos", "servo5-");
-        m.put("ly_neg", "servo4+");
-        m.put("ly_pos", "servo4-");
-        m.put("rx_neg", "servo2+");
-        m.put("rx_pos", "servo2-");
-        m.put("ry_neg", "servo1-");
+        m.put("lx_neg", "servo5+\nservo18+");
+        m.put("lx_pos", "servo5-\nservo18+");
+        m.put("ly_neg", "servo4+\nservo18-\nservo19-");
+        m.put("ly_pos", "servo4-\nservo18+");
+        m.put("rx_neg", "servo2+\nservo17+");
+        m.put("rx_pos", "servo2-\nservo17-\nservo19+");
+        m.put("ry_neg", "servo1-\nservo3+\nservo20-");
         m.put("ry_pos", "servo1+");
         return m;
     }
@@ -1318,7 +1319,6 @@ public final class GamepadCenter {
                 }
                 if (a.equals("disco_toggle")) {
                     try {
-                        if (audioCenter == null) return false;
                         boolean ok = audioCenter.toggleDisco();
                         if (ok) {
                             publishToggleState("{\"domain\":\"disco\",\"enabled\":"
@@ -1332,7 +1332,6 @@ public final class GamepadCenter {
                 }
                 if (a.equals("filler_toggle")) {
                     try {
-                        if (audioCenter == null) return false;
                         boolean ok = audioCenter.toggleFillerAction();
                         if (ok) {
                             publishToggleState("{\"domain\":\"filler\",\"enabled\":"
@@ -1362,9 +1361,6 @@ public final class GamepadCenter {
                     if (toggleFlipMulti(side, key, idx)) {
                         if ("ring_phone".equals(a)) {
                             return ringtoneCenter.playDefaultPhoneRingtoneNow();
-                        }
-                        if ("ring_random".equals(a)) {
-                            return ringtoneCenter.playRandomRingtoneNow();
                         }
                         // ring:phone:／ring:notification: 分表搵，舊式 ring: 全表搵。
                         return ringtoneCenter.playRingtoneNow(ringTypeOf(a), ringTitleOf(a));
@@ -1742,11 +1738,6 @@ public final class GamepadCenter {
         }
     }
 
-    /**
-     * 單軸 jog：以目前命令位姿為基（未知則校準原點起），校準 clamp（見
-     * ApiValidator，同 servo tab slider 同一套，唔會頂過機械限位）；
-     * 已到頂（target==base）即唔送幀回 false，等連走自己停。
-     */
     /** 命令位姿逐軸讀（poseBoxed 逐粒 known，比全量 pose() 可靠得多；
      *  servo/one 郁過即有數，唔使等全量發送）。無即 null。 */
     private Integer commandedAngle(int id) {
@@ -1783,6 +1774,11 @@ public final class GamepadCenter {
         return plan[0] == plan[1];
     }
 
+    /**
+     * 單軸 jog：以目前命令位姿為基（未知則校準原點起），校準 clamp（見
+     * ApiValidator，同 servo tab slider 同一套，唔會頂過機械限位）；
+     * 已到頂（target==base）即唔送幀回 false，等連走自己停。
+     */
     private synchronized boolean jogServo(int id, int delta) {
         int[] plan = jogPlan(id, delta);
         int base = plan[0];
@@ -1981,14 +1977,6 @@ public final class GamepadCenter {
     public HttpServer.ApiResponse keyResponse(Map<String, String> query) {
         String key = ApiValidator.require(query, "key");
         key = key.trim();
-        // 兼容 Android 數字鍵碼直送（部分自研前端會送 19/20/…）：先轉邏輯名。
-        if (key.matches("-?\\d+")) {
-            try {
-                String logical = keyCodeToLogical(Integer.parseInt(key));
-                if (logical != null) key = logical;
-            } catch (NumberFormatException ignored) {
-            }
-        }
         String source = query.get("source");
         if (source == null || source.trim().isEmpty()) source = "browser";
         source = source.trim();
@@ -1999,6 +1987,16 @@ public final class GamepadCenter {
             side = sl.contains("keyboard") ? SIDE_KB : SIDE_PAD;
         }
         side = normalizeSide(side);
+        // 兼容 Android 數字鍵碼直送（部分自研前端會送 19/20/…）：先轉邏輯名。
+        // 唔係該邊已知邏輯鍵先轉——kb 本身有 "0"-"9" 數字鍵，而 Android 鍵碼 7-16 正正係
+        // KEYCODE_0-9，無條件轉會令 key=7/8/9 變成 0/1/2（觸發錯鍵）。
+        if (!isKnownKey(side, key) && key.matches("-?\\d+")) {
+            try {
+                String logical = keyCodeToLogical(Integer.parseInt(key));
+                if (logical != null) key = logical;
+            } catch (NumberFormatException ignored) {
+            }
+        }
         if (!isKnownKey(side, key)) {
             String[] all = SIDE_KB.equals(side) ? KB_KEYS : PAD_KEYS;
             throw new IllegalArgumentException("parameter 'key' (side=" + side + ") must be one of "
@@ -2786,8 +2784,16 @@ public final class GamepadCenter {
             Object r = m.invoke(proxy, dev);
             started = r instanceof Boolean && (Boolean) r;
         } catch (Throwable t) {
-            // proxy 可能已死（藍牙開關過）：掟咗緩存，下次重拿，唔使等 shutdown 先復原。
-            if (proxy == hidHostProxy) hidHostProxy = null;
+            // proxy 可能已死（藍牙開關過）：掟咗緩存，下次重拿，唔使等 shutdown 先復原；
+            // 同時要 closeProfileProxy，否則 profile service 連線一直留住（每次失敗洩漏一條）。
+            boolean wasCached = false;
+            synchronized (this) {
+                if (proxy == hidHostProxy) {
+                    hidHostProxy = null;
+                    wasCached = true;
+                }
+            }
+            if (wasCached) closeHidHostProxy(proxy);
             return HttpServer.ApiResponse.error("hid connect failed: " + t.getMessage());
         }
         EventBus.get().publish("gamepad_bt", "{\"event\":\"hid_connect\",\"address\":\""

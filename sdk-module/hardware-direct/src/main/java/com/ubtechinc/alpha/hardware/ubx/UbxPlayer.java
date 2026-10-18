@@ -26,12 +26,14 @@ import java.util.List;
  * </pre>
  * v1 簡化：
  * <ul>
- *   <li>只播 a.d 鏈定時幀（servo 看 groupBytes&gt;0；d.f 關鍵幀表不發送）。</li>
- *   <li>幀序按官方鏈式次序（smali f/b.f＋f/c.a 實證：入口 (-1,0) 葉起，
- *       leaf.c 對 d/a.e 選段，v7 gate＋c==-2 終止，段完按出索引跟鏈；
- *       見 UbxParser.computePlayOrder）。撳唔出序先回退解析序。
- *       鏈終止（c==-2）即全動作完，後續 track 唔播；多 track 首尾相接；
- *       a.h/a.j 視窗偏移忽略。</li>
+ *   <li>只播 servo 幀（groupBytes&gt;0；d.f 關鍵幀表不發送）。</li>
+ *   <li>幀序＝官方 Alpha2Services 1.1.7.3 完整流程（見
+ *       {@link UbxParser#computeOfficialPlan}）：入口 (-1,0) 葉、block 內置 f 表
+ *       gate（row[a==leaf.d].d：0/3 播、1 中斷、2 跳過）、f==1 跳 track（g＝目標 id）、
+ *       f==2 subtype2 Loop 重播（(track,block) 快取 f/g/h）、f==4 TTS、
+ *       每段完成跟 (a==e,b==outIdx) 搵同 track 下一批葉；c==-2：track id==0 全完，
+ *       否則跨 track 續接（有 block.g==當前 id 嘅 track，由 marker row[d==2] 續）。
+ *       timebase＝static 後蓋前（即 per-block）。</li>
  *   <li>自然播完停喺尾格：唔加送任何修正幀，播乜就係乜（stop() 中斷同樣
  *       保持末位姿）。</li>
  *   <li>單調 deadline 調度，累計漂移消除；stop() 中斷雙線，舵機保持末位姿。</li>
@@ -181,16 +183,22 @@ public final class UbxPlayer {
         String base = name != null && name.endsWith(".ubx") ? name.substring(0, name.length() - 4) : name;
         if (ubx != null) {
             long voiceElapsed = 0;
-            for (UbxFile.UbxTrack t : ubx.tracks) {
-                int tickMs = resolveTickMs(ubx, t);
-                for (UbxFile.UbxServoFrame sf : orderedFrames(t)) {
+            // 官方（Alpha2Services 1.1.7.3）流程：leaf 鏈＋block 內置 gate 表＋LOOP／
+            // 跳 track／-2 跨 track 續接＋per-block timebase（見 UbxParser.computeOfficialPlan）。
+            List<UbxParser.UbxPlanNode> planNodes = UbxParser.computeOfficialPlan(ubx);
+            for (UbxParser.UbxPlanNode node : planNodes) {
+                int[] span = node.spanIdx < node.track.daSpans.size() ? node.track.daSpans.get(node.spanIdx) : null;
+                if (span == null) continue;
+                int tickMs = node.tickMs > 0 ? node.tickMs : resolveTickMs(ubx, node.track);
+                for (int fi = span[0]; fi < span[1] && fi < node.track.frames.size(); fi++) {
+                    UbxFile.UbxServoFrame sf = node.track.frames.get(fi);
                     if (sf.voice) {
                         if (ubxFile == null) continue;
-                        String music = sf.music != null ? sf.music : t.musicName;
+                        String music = sf.music != null ? sf.music : node.track.musicName;
                         File mf = resolveVoiceFile(ubxFile, base, music);
                         // 配樂自停上限不鉗 30000（那是胸協議 move 的鉗位；歌可長達數分鐘，
                         // 鉗了會提前腰斬——0.67x 下 69s bound 曾被誤殺成 30s）。
-                        long boundMs = scaleTime((long) sf.moveTimeHintMs, sp);
+                        long boundMs = scaleTime((long) sf.start * (long) tickMs, sp);
                         long slotMs = scaleTime((long) (sf.start + sf.end) * (long) tickMs, sp);
                         vsongs.add(new VSong(voiceElapsed, boundMs, mf,
                                 mf != null ? mf.getName() : (music != null ? music : "")));
@@ -198,16 +206,9 @@ public final class UbxPlayer {
                         continue;
                     }
                     if (sf.groupBytes <= 0) continue; // d.f 關鍵幀表葉：只作位姿參考不發送
-                    int moveMs = scaleTime(sf.moveTimeHintMs, sp);
+                    int moveMs = (int) scaleTime((long) sf.start * (long) tickMs, sp);
                     long slotMs = scaleTime((long) (sf.start + sf.end) * (long) tickMs, sp);
                     seq.add(new Slot(sf, slotMs, moveMs));
-                }
-                // 鏈終止（c==-2，smali f/c.a completed 分支）：全動作完，
-                // 後續 track 唔播——前進/後退收步段就係咁被 skip（真機片實證）。
-                if (t.chainTerminated) {
-                    Log.i(TAG, "play " + name + " chain terminated after track "
-                            + t.id + " (skipping later tracks)");
-                    break;
                 }
             }
         }
