@@ -1,38 +1,63 @@
 #!/usr/bin/env python3
-"""全量 .ubx leaf-order 驗證：parse 零失敗＋order 統計＋列出被重排的 track。"""
+"""全量 .ubx 官方播序驗證（純 Python，無需 Java classpath）：
+parse 零失敗＋官方播序 vs 解析序分類（線性／重排）＋Loop/Jump/Cross 統計。
+用法: python scripts/ubx_corpus_order.py [actions_dir]
+（預設 C:\\Users\\user\\Desktop\\alpha2\\UBX\\actions）"""
 import glob
-import subprocess
+import os
+import sys
 
-CLS = "C:\\Users\\user\\AppData\\Local\\Temp\\ubxverify\\classes"
-files = sorted(glob.glob("C:\\Users\\user\\Desktop\\alpha2\\UBX\\actions\\*.ubx"))
+ARGS = sys.argv[1:]
+sys.argv = ["x"]
+exec(open("scripts/ubx_walk_humanize.py", encoding="utf-8").read()
+     .split("if __name__")[0])
+
+DIR = (ARGS[0] if ARGS
+       else "C:\\Users\\user\\Desktop\\alpha2\\UBX\\actions")
+files = sorted(glob.glob(os.path.join(DIR, "*.ubx")))
 print("files:", len(files))
-r = subprocess.run(["java", "-cp", CLS, "VerifyOrder"] + files,
-                   capture_output=True, text=True)
-if r.stderr.strip():
-    print("STDERR:", r.stderr.strip()[-300:])
-lines = [x for x in r.stdout.splitlines() if x.strip()]
-print("parsed:", len(lines), "failed:", len(files) - len(lines))
-n_null = n_empty = n_reord = n_same = 0
-for line in lines:
-    parts = line.split("|trk")
-    name = parts[0].strip()
-    for p in parts[1:]:
-        frags = dict(kv.split("=") for kv in p.strip().split(" ") if "=" in kv)
-        order = frags.get("order", "")
-        da = int(frags.get("da", "0"))
-        if order in ("null", "None"):
-            n_null += 1
-            print("NULL-ORDER " + name + " trk" + p.strip())
-        elif order == "[]":
-            n_empty += 1
-            if da > 0:
-                print("EMPTY-ORDER(da=%d) %s trk%s" % (da, name, p.strip()))
-        else:
-            idxs = [int(x) for x in order.strip("[]").split(",") if x.strip() != ""]
-            if idxs == list(range(da)):
-                n_same += 1
-            else:
-                n_reord += 1
-                print("REORDER " + name + " trk" + p.strip())
-print("null=%d empty=%d same-as-parse=%d reordered=%d"
-      % (n_null, n_empty, n_same, n_reord))
+
+n_same = n_diff = 0
+fails = []
+diffs = []
+loops = []
+jumps = []
+crosses = []
+for path in files:
+    name = os.path.basename(path)
+    try:
+        m = parse_ubx(path)
+        segs, voices, total, logs = official_plan(m)
+    except Exception as ex:
+        fails.append(name)
+        print("PARSE-FAIL " + name + " " + str(ex))
+        continue
+    d = m["raw"]
+    pl = []
+    for t in m["tracks"]:
+        for bi, blk in enumerate(track_detail(d, t)[1]):
+            if blk["f"] == 0 and blk["h"] > 0:
+                pl.append((t["id"], bi))
+    ol = [(s["track"], s["idx"]) for s in segs]
+    if ol == pl:
+        n_same += 1
+    else:
+        n_diff += 1
+        nfr = sum(len(s["frames"]) for s in segs)
+        diffs.append((name, pl, ol, total, nfr))
+    if any(x.startswith("LOOP") for x in logs):
+        loops.append(name)
+    if any(x.startswith("JUMP") for x in logs):
+        jumps.append(name)
+    if any(x.startswith("CROSS") for x in logs):
+        crosses.append(name)
+
+print("parsed: %d failed: %d" % (len(files) - len(fails), len(fails)))
+print("official-order == parse-order: %d" % n_same)
+print("reordered: %d" % n_diff)
+for name, pl, ol, total, nfr in diffs:
+    print("  DIFF %s parse=%s official=%s total=%dms frames=%d"
+          % (name, pl, ol, total, nfr))
+print("loops=%d %s" % (len(loops), loops))
+print("jumps=%d %s" % (len(jumps), jumps))
+print("cross-track=%d %s" % (len(crosses), crosses))
