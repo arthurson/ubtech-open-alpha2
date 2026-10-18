@@ -48,7 +48,13 @@ LEAD_TICKS = 0  # 開場 lead-in（預設沒有；官方原檔是即時起步）
 # 即 40 ticks x 50ms = 2000ms；教訓：v2 首格由站直 50ms 直扯 K0 致發狂 reboot）。
 # 預設 0 ＝跟官方即時起步。
 LEAD_TICKS = 0
-HOME_POSE = [120, 120, 120, 120, 120, 120, 120, 65, 145, 140,
+# 開場第一格 move tick 數（0＝唔用，跟 SUB_S）。原檔開場第一格 s=20（tb50＝1000ms）
+# 由現有姿態慢慢入起步 pose；急扯（例：5 tick＝250ms）會扯到胸板 reboot。
+# 只喺有 lead-in 嗰段（＝播放序第一段）生效，會延長總時長 (FIRST_MOVE_TICKS-SUB_S)。
+FIRST_MOVE_TICKS = 0
+# 手臂唔好一字：servo2/5 = 120 係手臂攤平一字（PC 展示姿）；205/35 = 手臂自然垂低。
+# 站定／收步／lead-in 一律垂低手（唔好再出現一字手）。
+HOME_POSE = [120, 205, 120, 120, 35, 120, 120, 65, 145, 140,
              120, 120, 175, 95, 100, 120, 120, 120, 120, 120]
 # 步數＋變速（只限明確版本參數化；預設 N_CYCLES=2 即原循環數，SPEEDUP=1 即原速）。
 # 例 8 步：N_CYCLES=4；變速經 timeBase bake 入檔（整數 ms 檔位：20→13，50→33，
@@ -68,7 +74,11 @@ END_BLEND = 0
 BLEND_ARMS = 1
 BLEND_LEGS = 1
 OUTRO_HOME = 0
-STAND_POSE = [120, 120, 120, 120, 120, 120, 120, 65, 145, 140,
+# OUTRO_STAND：最尾一段（官方播放序最後嘅 servo d.a）壓成企定 STAND
+# （保留格數／時長；由上一段尾 pose 平滑埋位再定住）。專治「行完尾段又慢慢
+# 擘開雙手 205/35 停死」——前進 1508999860568 嘅收尾段就係噉。預設 0。
+OUTRO_STAND = 0
+STAND_POSE = [120, 205, 120, 120, 35, 120, 120, 65, 145, 140,
               120, 120, 175, 95, 100, 120, 120, 120, 120, 120]
 
 
@@ -736,13 +746,16 @@ def humanize(in_path, out_path):
     m = parse_ubx(in_path)
     d = m["raw"]
     # 先算播放序上每個 servo d.a 的首/尾 pose，供 ghost 過渡（跨 track 跳步順滑）。
-    order = []  # (track_idx, da_idx)
-    parsed = {}  # (ti, di) -> da（同一物件，id 穩定）
+    # 播放序用官方流程（leaf 鏈）計——parse 序≠播序嘅檔（例：前進）ghost 先唔會撈亂。
+    segs, voices, total, logs = official_plan(m)
+    ti_of = {t["id"]: i for i, t in enumerate(m["tracks"])}
+    order = list(dict.fromkeys((ti_of[sg["track"]], sg["idx"]) for sg in segs))
+    parsed = {}  # (ti, di) -> da（同一物件，id 穩定；包括唔會播嘅段照重建）
     for ti, t in enumerate(m["tracks"]):
         for di, da in enumerate(parse_blist_frames(d, t["blist_off"])):
             if da["fh"] > 0 and da["f"] == 0:
-                order.append((ti, di))
                 parsed[(ti, di)] = da
+    order = [k for k in order if k in parsed]
     lasts = {}
     for key in order:
         da = parsed[key]
@@ -757,9 +770,33 @@ def humanize(in_path, out_path):
         ghost_of[key] = prev_last  # 首個為 None（lead-in 由 HOME 起步）
         prev_last = lasts[key]
     pos_in_order = {key: i for i, key in enumerate(order)}
+    outro_key = order[-1] if order else None
     # ghost 用重建後尾 pose（串行跟進）：blend 改尾當時，下一段不可以再用原尾
     # （否則 track1 收 HOME、track2 由舊 W5 起步，中間斷一截——實證捉到）。
     rebuilt_end = {}
+    # 按播放序 pre-rebuild（ghost 要跟播序串行；檔案序 ≠ 播序，例：前進嘅
+    # 收尾段喺檔案排前但播最後，唔可以早過 gait 重建）。
+    rebuilt = {}  # (ti, di) -> (new_type1, new_ticks)
+    for key in order:
+        ti_k, di_k = key
+        da_k = parse_blist_frames(d, m["tracks"][ti_k]["blist_off"])[di_k]
+        blks_k = parse_chain(da_k["chain"], da_k["fh"])
+        oi = pos_in_order[key]
+        if oi > 0 and order[oi - 1] in rebuilt_end:
+            ghost = rebuilt_end[order[oi - 1]]
+            lead = 0
+        else:
+            ghost = ghost_of.get(key)
+            lead = LEAD_TICKS if key == first_key else 0
+        for (ty_k, data_k) in blks_k:
+            if ty_k == 1:
+                nt1, nt2, last_pose = rebuild_type1(
+                    data_k, ghost, lead, m["tracks"][ti_k]["id"],
+                    stand_outro=bool(OUTRO_STAND and key == outro_key))
+                rebuilt[key] = (nt1, nt2)
+                if last_pose is not None:
+                    rebuilt_end[key] = last_pose
+                break
     new_tracks = []
     for ti, t in enumerate(m["tracks"]):
         das = parse_blist_frames(d, t["blist_off"])
@@ -779,19 +816,14 @@ def humanize(in_path, out_path):
                             orig_ticks += f0["s"] + f0["e"]
             new_type1 = None
             new_ticks = orig_ticks
-            for (ty, data) in blks:
-                if ty == 1:
-                    oi = pos_in_order.get((ti, di), -1)
-                    if oi > 0 and order[oi - 1] in rebuilt_end:
-                        ghost = rebuilt_end[order[oi - 1]]
-                        lead = 0
-                    else:
-                        ghost = ghost_of[(ti, di)]
-                        lead = LEAD_TICKS if (ti, di) == first_key else 0
-                    new_type1, new_ticks, last_pose = rebuild_type1(data, ghost, lead, t["id"])
-                    if last_pose is not None:
-                        rebuilt_end[(ti, di)] = last_pose
-                    break
+            if (ti, di) in rebuilt:
+                new_type1, new_ticks = rebuilt[(ti, di)]
+            else:
+                # 唔喺播放序（死段）：自我起步重建，保持檔案完整
+                for (ty, data) in blks:
+                    if ty == 1:
+                        new_type1, new_ticks, _ = rebuild_type1(data, None, 0, t["id"])
+                        break
             new_items = []
             for (ty, data) in blks:
                 if ty == 1:
@@ -840,7 +872,7 @@ def rebuild_da_verbatim(d, da):
     return d[fp - 4:fp + da["L1"]]  # outer+內容
 
 
-def rebuild_type1(data, ghost_prev, lead_ticks=0, tid=None):
+def rebuild_type1(data, ghost_prev, lead_ticks=0, tid=None, stand_outro=False):
     blks = parse_trackh(data)
     # 收集全 d.a 幀序（player 播放序即此序）；每幀即由上一 pose 過渡到本幀。
     seq = []
@@ -855,6 +887,7 @@ def rebuild_type1(data, ghost_prev, lead_ticks=0, tid=None):
     cyc = None
     if n >= 6 and n % 6 == 0 and all(k == keys[i % 6] for i, k in enumerate(keys)):
         cyc = (keys[:6], ticks[:6])
+    fm = 0
     if cyc is not None:
         ck, ct = cyc
         ek = ck * N_CYCLES
@@ -900,6 +933,10 @@ def rebuild_type1(data, ghost_prev, lead_ticks=0, tid=None):
             ws += per_ticks + 1
         tmpl_frames = [b["frames"] for b in blks]
     else:
+        if stand_outro:
+            # 收尾段壓成企定：保留格數／時長，全部 key 換做 STAND，
+            # 由上一段（gait）尾 pose 平滑埋位；唔再擘開手。
+            keys = [list(STAND_POSE) for _ in keys]
         if OUTRO_HOME and tid == 2 and len(keys) == 1:
             # 收步段單格：手臂按返 HOME（原 O0 擘開，播出來就是尾段十字；
             # 腳本來已站定，成格置 HOME 等於站定 1.25 秒，時長不變）
@@ -935,10 +972,18 @@ def rebuild_type1(data, ghost_prev, lead_ticks=0, tid=None):
         tmpl_frames = [b["frames"] for b in blks]
         wins = [None] * len(blks)
         new_ticks = sum(ticks2)
+        if lead_ticks > 0 and FIRST_MOVE_TICKS > SUB_S:
+            fm = FIRST_MOVE_TICKS
+            new_ticks += fm - SUB_S
     new_contents = []
     for blk, poses, tfrms, win in zip(blks, groups, tmpl_frames, wins):
         tmpl = tfrms[-1]["raw"]  # 該 blk 尾幀模板（eblob 雜湊字節同構）
-        fbytes = [build_servo_frame(tmpl, SUB_S, SUB_E, p) for p in poses]
+        fbytes = []
+        for pi, p in enumerate(poses):
+            if fm and blk is blks[0] and pi == 0:
+                fbytes.append(build_servo_frame(tmpl, fm, 0, p))
+            else:
+                fbytes.append(build_servo_frame(tmpl, SUB_S, SUB_E, p))
         new_contents.append(build_block(blk["raw"], fbytes, win))
     last_pose = new_poses[-1] if new_poses else None
     return build_trackh(new_contents), new_ticks, last_pose
