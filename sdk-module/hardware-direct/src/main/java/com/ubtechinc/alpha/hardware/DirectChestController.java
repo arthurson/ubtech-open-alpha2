@@ -88,6 +88,18 @@ public final class DirectChestController {
         return playAllServos(angles, time);
     }
 
+    /** 官方開機 START（cmd 0x01，無 payload）：狀態查詢＋電源初始化。官方
+     *  ChestStartThread 喺胸板串口連上後第一條發佢（回覆 0x8A DC 狀態/0x8D 心跳）。 */
+    public boolean sendStart() {
+        return port.send(RobotWire.CHEST_CMD_START, null);
+    }
+
+    /** 官方開機查「充電時播放」（cmd 0x35 [2]，官方 queryChargePlay() 原文）；
+     *  MCU 側會順帶觸發 servo 掃描（模式 11）。 */
+    public boolean queryChargePlay() {
+        return port.send(RobotWire.CHEST_CMD_CHANGE_PLAY, new byte[]{2});
+    }
+
     /** 聲納配置：1.1.7.3 正確值為 subCmd=10, 距離 cm（byte 範圍，超限鉗 0-255 防 wrap） */
     public boolean configureSonar(int distanceCm) {
         return port.send(RobotWire.CHEST_CMD_SETTING, new byte[]{10, (byte) clampByte(distanceCm)});
@@ -189,6 +201,12 @@ public final class DirectChestController {
     /** 讀胸板固件版本 cmd 51 */
     public boolean readVersion() {
         return port.send(RobotWire.CHEST_READ_VERSION, null);
+    }
+
+    /** 讀電池固件版本 (cmd 57 POWER_INFO，payload [3])。
+     *  官方 Alpha2Services VersionCollector 同款（iz 命令：cmd 57 [3]）。 */
+    public boolean readBatteryVersion() {
+        return port.send(RobotWire.CHEST_POWER_INFO, new byte[]{3});
     }
 
     /** 讀機器人 SN/UUID (chest EEPROM, cmd 55 CHEST_READ_SID_EEPROM)。

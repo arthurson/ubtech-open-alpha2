@@ -216,6 +216,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         super.onCreate(savedInstanceState);
         sInstance = this;
         installCrashRestartHandler();
+        Log.i(TAG, "MIC fw: " + SysProps.hardwareVersion() + " (ro.hardware.version)");
 
         // LedCenter/RingtoneCenter 在這裡建立（不等 initRobot），因為下面
         // registerWifiLedReceiver() 即刻就要用。兩個都只需要 Context/
@@ -232,12 +233,46 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
             @Override public void run() {
                 boolean direct = localServices.start();
                 Log.i(TAG, "LocalAlpha2Services direct=" + direct + " (pure-direct, no alpha2services fallback)");
-                // 用戶要求：開app自動做一次蹲下站起（伸展筋骨），只在直驅就緒先播。
-                if (direct) {
-                    if (actionDirect.playActionDirect(ActionDirect.STOP_RECOVERY_ACTION_ID)
-                            != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-                        Log.w(TAG, "startup squat not started: " + ubxPlayer.lastError());
+                // 官方開機流程（參考 Alpha2Services v1.1.7.3）：
+                //   官方 MainService initThread 一綁好串口就 robotStandup() 發固定企姿
+                //   （零檔案依賴），~5s 後先由 ChestStartThread 發 cmd 0x01 START、
+                //   queryChargePlay 發 cmd 0x35[2]（見 ActionDirect.officialBootStandup）。
+                // 呢度照跟，但加防護：
+                //   1. 等胸板串口 ready：開機初期 /dev/ttyS1 可能未 ready，每 1s 重試
+                //      tryEnableDirect()（官方 ChestStartThread 都係輪詢等串口），最多 30s；
+                //   2. 唔再播「蹲下站起」ubx 伸展——嗰個係檔案依賴多幀動畫，靜默失敗
+                //      會卡住企唔起身；官方做法係一發固定企姿，可靠得多。
+                HardwareDirectManager dm = HardwareDirectManager.get(MainActivity.this);
+                long deadline = System.currentTimeMillis() + 30000;
+                while (!dm.chest().isAvailable() && System.currentTimeMillis() < deadline) {
+                    dm.tryEnableDirect();
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return;
                     }
+                }
+                if (!dm.chest().isAvailable()) {
+                    Log.w(TAG, "official boot standup skipped: chest serial unavailable after 30s");
+                    return;
+                }
+                boolean stood = actionDirect.officialBootStandup();
+                Log.i(TAG, "official boot standup sent=" + stood);
+                // 電池固件 warm-up：智能電池 UART 閒置會瞓（深睡實測要 poke
+                // ~10 下先醒）。開機熱身：第一輪 10s，唔得隔 2s 再一輪 4s，
+                // 之後面板／API 一問即回。純讀，失敗唔影響開機。
+                try {
+                    String batteryFwWarm = chestQuery.queryBatteryVersion(10000);
+                    if (batteryFwWarm == null) {
+                        Thread.sleep(2000);
+                        batteryFwWarm = chestQuery.queryBatteryVersion(4000);
+                    }
+                    Log.i(TAG, "battery fw warm-up: " + batteryFwWarm);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                } catch (Throwable t) {
+                    Log.w(TAG, "battery fw warm-up failed", t);
                 }
             }
         }, "LocalServicesInit").start();

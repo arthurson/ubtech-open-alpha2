@@ -12,6 +12,7 @@ import android.opengl.EGLConfig;
 import android.opengl.EGLContext;
 import android.opengl.EGLDisplay;
 import android.opengl.EGLSurface;
+import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -97,6 +98,46 @@ public class CameraController {
     private volatile int previewWidth = DEFAULT_PREVIEW_WIDTH;
     private volatile int previewHeight = DEFAULT_PREVIEW_HEIGHT;
     private volatile long frameSeq = 0;
+    private volatile long lastBufLogMs = 0;
+    private volatile boolean textureDrainWarned = false;
+
+    // -- 錄影期間 GL readback（實測：MediaRecorder 一錄影，preview callback 完全停派，
+    //    但 MediaRecorder 照樣將真實預覽 render 入 dummyPreviewTexture ~24fps）。
+    //    Texture drain listener（camera thread，EGL context 已 current）每 READBACK_EVERY_N
+    //    幀抽一次：external texture → FBO → glReadPixels → Bitmap → JPEG → 餵返 listeners，
+    //    令錄影期間 MJPEG／追蹤照有（活）幀。見 beginRecorderHandoff。 --
+    private volatile boolean recorderHandoffActive = false;
+    private boolean rbInitFailed = false;
+    private int rbFbo = -1;
+    private int rbTex = -1;
+    private int rbProgram = -1;
+    private int rbPosLoc = -1;
+    private int rbTexLoc = -1;
+    private int rbSamplerLoc = -1;
+    private int rbWidth = 0;
+    private int rbHeight = 0;
+    private java.nio.ByteBuffer rbPixels;
+    private java.nio.FloatBuffer rbQuadBuf;
+    private java.nio.FloatBuffer rbTexBuf;
+    private Bitmap rbBitmap;
+    private final ByteArrayOutputStream rbJpegOut = new ByteArrayOutputStream();
+    private int rbFailCount = 0;
+    private long rbFrameCounter = 0;
+    private static final int READBACK_EVERY_N = 3;
+    private static final float[] RB_QUAD = {-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f};
+    // 實測（樣本亮度梯度對比）：SurfaceTexture v=0 直接對應畫面底行，唔使反轉。
+    private static final float[] RB_TEX = {0f, 0f, 1f, 0f, 0f, 1f, 1f, 1f};
+    private static final String RB_VS =
+            "attribute vec4 aPos;\n"
+            + "attribute vec2 aTex;\n"
+            + "varying vec2 vTex;\n"
+            + "void main() { gl_Position = aPos; vTex = aTex; }\n";
+    private static final String RB_FS =
+            "#extension GL_OES_EGL_image_external : require\n"
+            + "precision mediump float;\n"
+            + "varying vec2 vTex;\n"
+            + "uniform samplerExternalOES sTex;\n"
+            + "void main() { gl_FragColor = texture2D(sTex, vTex); }\n";
     private volatile Frame lastFrame;
     private final Set<FrameListener> listeners = new CopyOnWriteArraySet<>();
 
@@ -399,9 +440,206 @@ public class CameraController {
             throw new Exception("glGenTextures returned 0 (no valid texture allocated)");
         }
         dummyPreviewTexture = new SurfaceTexture(previewTextureId);
+        // 攞走 frame 先唔會塞爆 BufferQueue：updateTexImage 要有 current EGL context，
+        // listener 喺 camera thread fire，setup 時 make current 嗰個 context 仍在。
+        // 錄影期間 MediaRecorder 將預覽 render 入呢個 texture（preview callback 停派），
+        // 就靠呢度 readback 出 JPEG 餵返 listeners（見 maybePublishReadbackFrameLocked）。
+        dummyPreviewTexture.setOnFrameAvailableListener(
+                new SurfaceTexture.OnFrameAvailableListener() {
+                    @Override public void onFrameAvailable(SurfaceTexture st) {
+                        try {
+                            st.updateTexImage();
+                            if (recorderHandoffActive) {
+                                maybePublishReadbackFrameLocked();
+                            }
+                        } catch (Throwable t) {
+                            if (!textureDrainWarned) {
+                                textureDrainWarned = true;
+                                Log.w(TAG, "texture drain failed: " + t);
+                            }
+                        }
+                    }
+                });
+    }
+
+    /** beginRecorderHandoff 後（camera thread）開 readback：確保 GL context current＋pipeline 就緒。 */
+    private void armRecorderReadbackLocked() {
+        rbFailCount = 0;
+        rbFrameCounter = 0;
+        try {
+            EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext);
+        } catch (Throwable ignored) {
+        }
+        recorderHandoffActive = initReadbackGlLocked();
+        if (recorderHandoffActive) {
+            Log.d(TAG, "recorder readback armed (" + previewWidth + "x" + previewHeight + ")");
+        } else {
+            Log.w(TAG, "recorder readback unavailable - 錄影期間預覽唔會有新幀");
+        }
+    }
+
+    /** 建 GL readback pipeline（FBO＋external texture shader；camera thread 專用）。 */
+    private boolean initReadbackGlLocked() {
+        if (rbInitFailed) return false;
+        if (rbProgram > 0 && rbWidth == previewWidth && rbHeight == previewHeight) {
+            return true;
+        }
+        releaseReadbackGlLocked();
+        try {
+            int[] tex = new int[1];
+            GLES20.glGenTextures(1, tex, 0);
+            rbTex = tex[0];
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, rbTex);
+            GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, previewWidth,
+                    previewHeight, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER,
+                    GLES20.GL_NEAREST);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER,
+                    GLES20.GL_NEAREST);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S,
+                    GLES20.GL_CLAMP_TO_EDGE);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T,
+                    GLES20.GL_CLAMP_TO_EDGE);
+            int[] fbo = new int[1];
+            GLES20.glGenFramebuffers(1, fbo, 0);
+            rbFbo = fbo[0];
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, rbFbo);
+            GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                    GLES20.GL_TEXTURE_2D, rbTex, 0);
+            int status = GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER);
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+            if (status != GLES20.GL_FRAMEBUFFER_COMPLETE) {
+                throw new Exception("FBO incomplete: 0x" + Integer.toHexString(status));
+            }
+            int vs = compileShaderLocked(GLES20.GL_VERTEX_SHADER, RB_VS);
+            int fs = compileShaderLocked(GLES20.GL_FRAGMENT_SHADER, RB_FS);
+            rbProgram = GLES20.glCreateProgram();
+            GLES20.glAttachShader(rbProgram, vs);
+            GLES20.glAttachShader(rbProgram, fs);
+            GLES20.glLinkProgram(rbProgram);
+            int[] linked = new int[1];
+            GLES20.glGetProgramiv(rbProgram, GLES20.GL_LINK_STATUS, linked, 0);
+            GLES20.glDeleteShader(vs);
+            GLES20.glDeleteShader(fs);
+            if (linked[0] == 0) {
+                throw new Exception("link failed: " + GLES20.glGetProgramInfoLog(rbProgram));
+            }
+            rbPosLoc = GLES20.glGetAttribLocation(rbProgram, "aPos");
+            rbTexLoc = GLES20.glGetAttribLocation(rbProgram, "aTex");
+            rbSamplerLoc = GLES20.glGetUniformLocation(rbProgram, "sTex");
+            rbQuadBuf = java.nio.ByteBuffer.allocateDirect(RB_QUAD.length * 4)
+                    .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
+            rbQuadBuf.put(RB_QUAD).position(0);
+            rbTexBuf = java.nio.ByteBuffer.allocateDirect(RB_TEX.length * 4)
+                    .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();
+            rbTexBuf.put(RB_TEX).position(0);
+            rbPixels = java.nio.ByteBuffer.allocateDirect(previewWidth * previewHeight * 4);
+            rbBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Bitmap.Config.ARGB_8888);
+            rbWidth = previewWidth;
+            rbHeight = previewHeight;
+            return true;
+        } catch (Throwable t) {
+            Log.w(TAG, "readback GL init failed", t);
+            releaseReadbackGlLocked();
+            rbInitFailed = true;
+            return false;
+        }
+    }
+
+    private static int compileShaderLocked(int type, String src) throws Exception {
+        int shader = GLES20.glCreateShader(type);
+        GLES20.glShaderSource(shader, src);
+        GLES20.glCompileShader(shader);
+        int[] ok = new int[1];
+        GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, ok, 0);
+        if (ok[0] == 0) {
+            String log = GLES20.glGetShaderInfoLog(shader);
+            GLES20.glDeleteShader(shader);
+            throw new Exception("shader compile failed: " + log);
+        }
+        return shader;
+    }
+
+    private void releaseReadbackGlLocked() {
+        try {
+            if (rbFbo != -1) {
+                GLES20.glDeleteFramebuffers(1, new int[]{rbFbo}, 0);
+            }
+            if (rbTex != -1) {
+                GLES20.glDeleteTextures(1, new int[]{rbTex}, 0);
+            }
+            if (rbProgram != -1) {
+                GLES20.glDeleteProgram(rbProgram);
+            }
+        } catch (Throwable ignored) {
+        }
+        rbFbo = -1;
+        rbTex = -1;
+        rbProgram = -1;
+        rbWidth = 0;
+        rbHeight = 0;
+        rbPixels = null;
+        rbQuadBuf = null;
+        rbTexBuf = null;
+        rbBitmap = null;
+    }
+
+    /** 錄影期間由 SurfaceTexture 抽幀（每 READBACK_EVERY_N 幀一次）→ JPEG → 餵 listeners。 */
+    private void maybePublishReadbackFrameLocked() {
+        if (rbProgram <= 0 || rbFailCount >= 5) return;
+        if ((++rbFrameCounter % READBACK_EVERY_N) != 0) return;
+        try {
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, rbFbo);
+            GLES20.glViewport(0, 0, rbWidth, rbHeight);
+            GLES20.glUseProgram(rbProgram);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, previewTextureId);
+            GLES20.glUniform1i(rbSamplerLoc, 0);
+            GLES20.glEnableVertexAttribArray(rbPosLoc);
+            GLES20.glVertexAttribPointer(rbPosLoc, 2, GLES20.GL_FLOAT, false, 0, rbQuadBuf);
+            GLES20.glEnableVertexAttribArray(rbTexLoc);
+            GLES20.glVertexAttribPointer(rbTexLoc, 2, GLES20.GL_FLOAT, false, 0, rbTexBuf);
+            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
+            GLES20.glDisableVertexAttribArray(rbPosLoc);
+            GLES20.glDisableVertexAttribArray(rbTexLoc);
+            rbPixels.position(0);
+            GLES20.glReadPixels(0, 0, rbWidth, rbHeight, GLES20.GL_RGBA,
+                    GLES20.GL_UNSIGNED_BYTE, rbPixels);
+            rbPixels.position(0);
+            rbBitmap.copyPixelsFromBuffer(rbPixels);
+            rbJpegOut.reset();
+            rbBitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, rbJpegOut);
+            byte[] jpeg = rbJpegOut.toByteArray();
+            if (jpeg.length > 0) {
+                Frame frame = new Frame(jpeg, ++frameSeq);
+                lastFrame = frame;
+                synchronized (CameraController.this) {
+                    long now = System.nanoTime();
+                    fpsTimestamps.addLast(now);
+                    while (fpsTimestamps.size() > FPS_WINDOW_SIZE) {
+                        fpsTimestamps.removeFirst();
+                    }
+                }
+                for (FrameListener l : listeners) {
+                    try {
+                        l.onFrame(frame);
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            rbFailCount++;
+            Log.w(TAG, "readback frame failed (" + rbFailCount + ")", t);
+        } finally {
+            try {
+                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+            } catch (Throwable ignored) {
+            }
+        }
     }
 
     private void releasePreviewTextureLocked() {
+        releaseReadbackGlLocked();
         if (dummyPreviewTexture != null) {
             try {
                 dummyPreviewTexture.release();
@@ -522,8 +760,20 @@ public class CameraController {
                     // Hand the same buffer back to the driver for reuse - required when
                     // using setPreviewCallbackWithBuffer (unlike the single-buffer
                     // setPreviewCallback(), the driver does NOT auto-recycle these).
-                    if (camera != null) {
-                        camera.addCallbackBuffer(data);
+                    // try/catch：錄影期間相機已 unlock 畀 MediaRecorder（見
+                    // beginRecorderHandoff），呢度 fail 都唔可以炸咗相機 thread；真係
+                    // 唔收 buffer 的話回調會喺 2 格後自然停，只影響預覽唔會影響錄影。
+                    try {
+                        if (camera != null) {
+                            camera.addCallbackBuffer(data);
+                        }
+                    } catch (Throwable t) {
+                        // 診斷用：unlock 後回收 buffer 若被拒，log 出嚟（1 秒最多一次）。
+                        long now = android.os.SystemClock.elapsedRealtime();
+                        if (now - lastBufLogMs >= 1000) {
+                            lastBufLogMs = now;
+                            Log.w(TAG, "addCallbackBuffer during handoff failed: " + t);
+                        }
                     }
                 }
             }
@@ -1095,8 +1345,12 @@ public class CameraController {
     }
 
     /**
-     * 錄影交接（上半）：相機線程上拆預覽回調＋unlock，交出 Camera＋SurfaceTexture
-     * 畀 VideoCenter 配 MediaRecorder。回 null＝失敗（相機未開／unlock 炸）。
+     * 錄影交接（上半）：相機線程上 unlock，交出 Camera＋SurfaceTexture 畀 VideoCenter
+     * 配 MediaRecorder。回 null＝失敗（相機未開／unlock 炸）。
+     * 預覽唔會斷：preview callback 保留著（本機 HAL 一錄影就停派，addCallbackBuffer
+     * 有 try/catch 保底），錄影期間由 texture drain listener 做 GL readback 出 JPEG
+     * 餵返 listeners（見 armRecorderReadbackLocked）；停錄後（endRecorderHandoff）
+     * 自動返返正常 callback 路徑。
      * 交接期間 takePhoto／resolution 等調用方要自己擋（見 VideoCenter／CameraApi 守衛）；
      * stopIfIdle 誤放靠 VideoCenter 掛住個 dummy listener 頂住（見 VideoCenter）。
      */
@@ -1108,11 +1362,9 @@ public class CameraController {
             @Override public void run() {
                 try {
                     if (camera == null) return;
-                    try {
-                        camera.setPreviewCallbackWithBuffer(null);
-                    } catch (Throwable ignore) {
-                    }
                     camera.unlock();
+                    Log.d(TAG, "recorder handoff: camera unlocked");
+                    armRecorderReadbackLocked();
                     out.set(new RecorderHandoff(camera, dummyPreviewTexture,
                             previewWidth, previewHeight));
                 } catch (Throwable t) {
@@ -1137,6 +1389,7 @@ public class CameraController {
         cameraHandler.post(new Runnable() {
             @Override public void run() {
                 try {
+                    recorderHandoffActive = false;
                     if (camera == null) return;
                     try {
                         camera.lock();

@@ -156,6 +156,28 @@ public final class ApiDispatcher {
                     return HttpServer.ApiResponse.ok("{\"ok\":false,\"version\":\"not found\"}");
                 }
             }
+            case "mic/version": {
+                // MIC 固件版本：原廠系統信息畫面同名欄位（getprop ro.hardware.version，
+                // Alpha2Services 內部叫 ALPHA_MIC_HARDWARE_VERSION；alpha2_10005 =
+                // Lynx 5mic，alpha2_10002 = 舊款）。純讀，即回。
+                String v = SysProps.hardwareVersion();
+                return HttpServer.ApiResponse.ok("{\"ok\":true,\"version\":\"" + MainActivity.jsonSafe(v)
+                        + "\",\"is5Mic\":" + "alpha2_10005".equals(v)
+                        + ",\"is2Mic\":" + "alpha2_10002".equals(v) + "}");
+            }
+            case "battery/version": {
+                // 電池固件版本：原廠系統信息同名欄位（胸 cmd 57 [3] POWER_INFO，
+                // 智能電池 UART 協議；官方 VersionCollector 同款問法）。
+                // 智能電池閒置會瞓：輕睡（~90s 內）poke 3-5 下會醒，所以
+                // default 4000 ≈ 4-5 下 poke；深睡靠開機 warm-up 叫醒。
+                long timeoutMs = ApiValidator.optionalLong(query, "timeout", 4000L);
+                String v = chestQuery.queryBatteryVersion(timeoutMs);
+                if (v != null) {
+                    return HttpServer.ApiResponse.ok("{\"ok\":true,\"version\":\"" + MainActivity.jsonSafe(v) + "\"}");
+                } else {
+                    return HttpServer.ApiResponse.ok("{\"ok\":false,\"version\":\"not found\"}");
+                }
+            }
             case "chest/upgrade": {
                 // 觸發胸口升級：讀 /sdcard/AlphaII_CHEST_kernel.bin 經 48/49/50 協議升級
                 String err = chestUpgrade.startChestUpgrade();
@@ -709,8 +731,10 @@ public final class ApiDispatcher {
             Map<String, String> headers) {
         switch (path) {
             // 一次搜齊機器資料（lynx 年代 sys/* 七連發的 pure-direct 版，一個回包齊完，
-            // 慢 query 各 1.5s 上限）。電池版本字串本機胸固件無此命令，如實缺席；
-            // 電量/充電走 Android 系統廣播。
+            // 慢 query 各 1.5s 上限）。batteryFw 讀胸 cmd 57（V352 POWER_INFO；
+            // 冇回覆時 null，如實缺席）；電量/充電走 Android 系統廣播。micFw（原廠叫
+            // 「MIC 固件」，其實係 ro.hardware.version）一齊帶埋——alpha2_10005 =
+            // Lynx 5mic／alpha2_10002 = 舊款。
             case "discover": {
                 String appVer = "?";
                 try {
@@ -722,6 +746,12 @@ public final class ApiDispatcher {
                     chestFw = chestQuery.queryFirmwareVersion(1500);
                 } catch (Exception e) {
                     chestFw = null;
+                }
+                String batteryFw;
+                try {
+                    batteryFw = chestQuery.queryBatteryVersion(1500);
+                } catch (Exception e) {
+                    batteryFw = null;
                 }
                 String chestUuid;
                 try {
@@ -735,7 +765,9 @@ public final class ApiDispatcher {
                         .append("\"version\":\"").append(MainActivity.jsonSafe(appVer)).append("\",")
                         .append("\"panel\":\"http://").append(MainActivity.jsonSafe(deviceStatus.getWifiIp())).append(":")
                         .append(HttpServer.PORT).append("/\"},");
-                sb.append("\"robot\":{\"chestFw\":").append(chestFw != null ? "\"" + MainActivity.jsonSafe(chestFw) + "\"" : "null").append(",")
+                sb.append("\"robot\":{\"micFw\":\"").append(MainActivity.jsonSafe(SysProps.hardwareVersion())).append("\",")
+                        .append("\"chestFw\":").append(chestFw != null ? "\"" + MainActivity.jsonSafe(chestFw) + "\"" : "null").append(",")
+                        .append("\"batteryFw\":").append(batteryFw != null ? "\"" + MainActivity.jsonSafe(batteryFw) + "\"" : "null").append(",")
                         .append("\"chestUuid\":").append(chestUuid != null ? "\"" + MainActivity.jsonSafe(chestUuid) + "\"" : "null").append(",")
                         .append("\"chestAvailable\":").append(directChestReady()).append(",")
                         .append("\"headerAvailable\":").append(directHeaderReady()).append("},");

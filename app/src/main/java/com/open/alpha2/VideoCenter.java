@@ -14,14 +14,17 @@ import java.util.Map;
  * 機端錄影（mp4，legacy Camera1＋MediaRecorder；同 CameraController 交接相機）。
  *
  * 流程（見 start）：開鏡（CameraController.start）→ 掛 dummy listener 頂住
- * stopIfIdle 誤放 → beginRecorderHandoff（拆預覽回調＋unlock）→ 配 MediaRecorder
- * （先試 MIC 有聲，prepare／start 炸即 reset 重配純畫面，唔會成單失敗）→ start。
+ * stopIfIdle 誤放 → beginRecorderHandoff（unlock；預覽回調保留，錄影期間 MJPEG
+ * 照出）→ 配 MediaRecorder（先試 MIC 有聲，prepare／start 炸即 reset 重配純畫面，
+ * 唔會成單失敗）→ start。
  * 收尾（見 stop）：recorder.stop／reset／release → endRecorderHandoff（lock＋
  * 重掛預覽回調）→ 媒體掃描。用家撳停為止，不設時長上限。
  *
  * 並發約束：
- * - 錄影期間預覽回調已拆：MJPEG 訂閱者收唔到新幀（10 秒超時自斷，見 CameraApi），
- *   人臉／顏色追蹤訂閱仲在但收唔到幀（唔郁，唔會用 stale 幀郁頭）。
+ * - 錄影期間預覽照出：本機 HAL 一入 MediaRecorder 就完全停派 preview callback，但
+ *   MediaRecorder 仍將真實預覽 render 入 dummyPreviewTexture；CameraController 由
+ *   texture drain listener 做 GL readback 出 JPEG 餵返 listeners（見該類
+ *   recorderHandoffActive），所以 MJPEG／追蹤訂閱者錄影期間照有新幀（約 5-8fps）。
  * - takePhoto／snapshot／snapshotSave／resolution 錄影期間直接拒（CameraApi 守衛），
  *   否則 takePicture 停預覽會打斷編碼器。
  * - onDestroy 經 stopIfRecording() 先停錄影先放相機（見 MainActivity）。
@@ -53,8 +56,8 @@ public final class VideoCenter {
     private long lastBytes;
     private boolean lastHasAudio;
 
-    // stopIfIdle 誤放頂：錄影期間預覽回調已拆，listeners 隨時可能清空
-    //（MJPEG 超時自斷＋追蹤無新幀），呢個空訂閱令 stopIfIdle 永遠見到非空。
+    // stopIfIdle 誤放頂：錄影期間 listeners 隨時可能清空（MJPEG 超時自斷等），
+    // 呢個空訂閱令 stopIfIdle 永遠見到非空。
     private final CameraController.FrameListener keepAlive =
             new CameraController.FrameListener() {
                 @Override public void onFrame(CameraController.Frame frame) {
@@ -182,6 +185,7 @@ public final class VideoCenter {
         hasAudio = audio;
         outPath = path;
         startElapsedMs = SystemClock.elapsedRealtime();
+        Log.d(TAG, "recording started hasAudio=" + audio + " path=" + path);
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"recording\":true,\"path\":\""
                 + MainActivity.jsonSafe(path) + "\",\"hasAudio\":" + audio + "}");
     }

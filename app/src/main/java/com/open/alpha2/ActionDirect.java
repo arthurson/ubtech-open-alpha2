@@ -20,6 +20,15 @@ public final class ActionDirect {
     /** 一鍵全停之後補播的「蹲下站起」回位動作。 */
     public static final String STOP_RECOVERY_ACTION_ID = "1510818174706";
 
+    /** 官方 Alpha2Services v1.1.7.3 `robotStandup()` 原文 20 軸企姿（raw 0-255；
+     *  官方 smali 係 signed byte：-51→205、-111→145、-121→135、-79→177、-6→250）。 */
+    private static final int[] OFFICIAL_BOOT_STANDUP_POSE = {
+            120, 205, 120, 120, 35, 120, 120, 63, 145, 135,
+            120, 120, 177, 95, 105, 120, 120, 120, 250, 120
+    };
+    /** 官方 STANDUP_TOTAL_TIME（robotStandup 嘅 move 時間）。 */
+    private static final int OFFICIAL_BOOT_STANDUP_TIME_MS = 2000;
+
     // actionInfo.txt 行格式（GBK 编码）：<fileId>##<nameCn>##<nameEn>##<type>，
     // 与旧 AIDL getActionList 行顺序不同（彼为 id/type/nameCn/nameEn），此处重排，
     // 前端收到的 JSON 形状与以前完全一致，app-actions.js 无需改动。
@@ -453,6 +462,53 @@ public final class ActionDirect {
         }
         lastPlayedFile = f;
         return UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+    }
+
+    /**
+     * 官方 v1.1.7.3 開機起身序列（參考 AlphaMainSeviceImpl.initThread）：
+     *   1. robotStandup() 固定企姿 20 軸 raw + 2000ms——零檔案依賴，一開機就企。
+     *   2. 之後先發官方開機握手：cmd 0x01 START（狀態查詢＋電源初始化，回 0x8A
+     *      DC 狀態）＋ cmd 0x35[2] 查「充電時播放」（queryChargePlay 原文）。
+     *      （官方次序就係企姿先，ChestStartThread 嗰兩條係 5s+ 之後先出，
+     *      呢度等 2.2s 企姿 move 行完先補，唔阻住個 2s move。）
+     *
+     * 官方 robotStandup 用 cmd 0x34(52)，但本 repo 真機直驅實測 0x34 有 ACK 唔郁，
+     * 故此處用**同一 payload**行官方播放通道 cmd 0x03（同官方每一個動作幀嘅通道，
+     * 真機實證會郁）。
+     *
+     * 企姿發唔出（串口閂咗）短重試 3 次；一 send 得出即返 true——官方係
+     * fire-and-forget，冇 ACK 可等，調用方唔好當 false 係「MCU 冇做」。
+     */
+    public boolean officialBootStandup() {
+        HardwareDirectManager dm = HardwareDirectManager.get(appContext);
+        if (!dm.chest().isAvailable()) return false;
+        boolean sent = false;
+        for (int attempt = 0; attempt < 3 && !sent; attempt++) {
+            if (dm.chest().playAllServos(OFFICIAL_BOOT_STANDUP_POSE,
+                    (short) OFFICIAL_BOOT_STANDUP_TIME_MS)) {
+                ubxPlayer.notePose(OFFICIAL_BOOT_STANDUP_POSE);
+                sent = true;
+                break;
+            }
+            Log.w(TAG, "official boot standup send failed, retry " + (attempt + 1) + "/3");
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        if (!sent) return false;
+        // 等 2s 企姿 move 行完先發官方開機握手（同官方一樣係之後先出）。
+        try {
+            Thread.sleep(OFFICIAL_BOOT_STANDUP_TIME_MS + 200L);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return true; // 企姿已經發出，握手唔發都唔改變結果
+        }
+        dm.chest().sendStart();
+        dm.chest().queryChargePlay();
+        return true;
     }
 
     /**

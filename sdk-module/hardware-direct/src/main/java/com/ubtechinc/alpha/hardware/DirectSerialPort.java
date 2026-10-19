@@ -176,7 +176,18 @@ public final class DirectSerialPort {
             this.openedPath = path;
             // 純 Java 開不出 termios，必須用 stty 把波特率從預設 9600 改到 115200，
             // 否則 MCU 侧全是亂碼（2026-09 實測教訓）。busybox 自帶 stty。
-            configureBaudStty(path, baudrate);
+            // 改唔到就當開唔到：留喺 9600 嘅 port 只會靜默發亂碼（舵機唔郁、
+            // 回覆全爛），比誠實失敗更難查——寧願 isAvailable()=false 等重試。
+            if (!configureBaudStty(path, baudrate)) {
+                Log.w(TAG, "File path stty 配 baud 失敗（port 會留喺 9600 發亂碼），放棄 " + path);
+                try { fin.close(); } catch (Exception ignore) {}
+                try { fout.close(); } catch (Exception ignore) {}
+                this.input = null;
+                this.output = null;
+                this.openedPath = null;
+                releasePath(path);
+                return false;
+            }
             Log.i(TAG, "opened via File: " + path);
             return true;
         } catch (Exception e) {
@@ -187,8 +198,10 @@ public final class DirectSerialPort {
         }
     }
 
-    /** 用 busybox stty 配波特率+8N1 raw（File 路徑專用，JNI 路徑 native 已配好）。 */
-    private static void configureBaudStty(String path, int baudrate) {
+    /** 用 busybox stty 配波特率+8N1 raw（File 路徑專用，JNI 路徑 native 已配好）。
+     *  回 true = 已讀回確認 baudrate 生效；false = 兩條 stty 都配唔到（調用方必須
+     *  當開 port 失敗，唔可以留喺 9600 發亂碼）。 */
+    private static boolean configureBaudStty(String path, int baudrate) {
         String[] cmds = {
                 "busybox stty -F " + path + " " + baudrate + " cs8 -cstopb -parenb raw -echo",
                 "stty -F " + path + " " + baudrate + " cs8 -cstopb -parenb raw -echo",
@@ -211,7 +224,7 @@ public final class DirectSerialPort {
                     } catch (Exception ignore) {}
                     p.waitFor();
                     Log.i(TAG, "stty " + path + " [" + cmd.split(" ")[0] + "] -> " + sb.toString().trim());
-                    if (sb.toString().contains(String.valueOf(baudrate))) return; // 配好了就不用試下一條
+                    if (sb.toString().contains(String.valueOf(baudrate))) return true; // 讀回確認配好先算成功
                 } finally {
                     try { r.close(); } catch (Exception ignore) {}
                 }
@@ -221,6 +234,7 @@ public final class DirectSerialPort {
                 if (p != null) p.destroy();
             }
         }
+        return false;
     }
 
     public boolean isAvailable() { return running.get() && input != null && output != null; }

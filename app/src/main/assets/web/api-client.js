@@ -351,6 +351,11 @@ const Alpha2Api = (function() {
     return api('battery/status', params);
   }
 
+  function batteryVersion(params) {
+    // 讀電池固件版本 (原廠「系統信息」同名欄位；胸 cmd 57 [3] POWER_INFO)
+    return api('battery/version', params);
+  }
+
   function btStatus(params) {
     // 查詢藍牙狀態
     return api('bt/status', params);
@@ -386,6 +391,11 @@ const Alpha2Api = (function() {
   function chestVersion(params) {
     // 讀胸口 MCU 韌體版本 (sendCommand 51)
     return api('chest/version', params);
+  }
+
+  function micVersion(params) {
+    // 讀 MIC 固件版本 (原廠「系統信息」同名欄位 = ro.hardware.version)
+    return api('mic/version', params);
   }
 
   function miscRequestUuid(params) {
@@ -1205,6 +1215,7 @@ const Alpha2Api = (function() {
     faceTrackStatus,
     faceTrackStop,
     batteryStatus,
+    batteryVersion,
     btStatus,
     chestPage,
     chestUpgrade,
@@ -1212,6 +1223,7 @@ const Alpha2Api = (function() {
     chestUpgradeResume,
     chestUpgradeStatus,
     chestVersion,
+    micVersion,
     miscRequestUuid,
     miscSetUuid,
     status,

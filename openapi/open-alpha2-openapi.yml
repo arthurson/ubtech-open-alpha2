@@ -129,6 +129,67 @@ paths:
                       type: string
                       example: 1.1.7.3.20
       operationId: chestVersion_get
+  /api/mic/version:
+    get:
+      tags:
+      - core
+      summary: 讀 MIC 固件版本 (原廠「系統信息」同名欄位 = ro.hardware.version)
+      description: alpha2_10005 = Lynx 5mic、alpha2_10002 = 舊款。純讀 property，即回，唔經串口。
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 版本字串
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    version:
+                      type: string
+                      example: alpha2_10005
+                    is5Mic:
+                      type: boolean
+                    is2Mic:
+                      type: boolean
+      operationId: micVersion_get
+  /api/battery/version:
+    get:
+      tags:
+      - core
+      summary: 讀電池固件版本 (原廠「系統信息」同名欄位；胸 cmd 57 [3] POWER_INFO)
+      description: 智能電池 UART 協議（V352 新命令），同官方 Alpha2Services VersionCollector 同款問法。智能電池閒置會瞓，後端會 poke 重試到 timeout（default 4000ms）；電池最終唔回覆先回 ok:false / version:"not found"。
+      parameters:
+      - $ref: '#/components/parameters/TimeoutMs'
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 版本字串
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - type: object
+                  properties:
+                    version:
+                      type: string
+                      example: V1.5
+      operationId: batteryVersion_get
   /api/chest/upgrade:
     post:
       tags:

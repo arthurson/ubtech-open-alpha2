@@ -2,6 +2,7 @@ package com.open.alpha2;
 
 import android.content.Context;
 import android.content.Intent;
+import android.util.Log;
 
 import java.nio.charset.StandardCharsets;
 
@@ -525,6 +526,9 @@ public final class CameraApi {
             }
         };
         cameraController.subscribe(listener);
+        Log.d("CameraApi", "MJPEG connect, recording="
+                + (videoCenter != null && videoCenter.isRecording()));
+        int framesWritten = 0;
         try {
             while (true) {
                 CameraController.Frame frame;
@@ -546,8 +550,10 @@ public final class CameraApi {
                 out.write(frame.jpeg);
                 out.write("\r\n".getBytes(StandardCharsets.ISO_8859_1));
                 out.flush(); // each part must reach the client promptly, not batch up
+                framesWritten++;
             }
         } finally {
+            Log.d("CameraApi", "MJPEG disconnect after frames=" + framesWritten);
             cameraController.unsubscribe(listener);
             // Only actually releases the camera once every other stream client (if any)
             // has also disconnected - see CameraController.stopIfIdle() javadoc.

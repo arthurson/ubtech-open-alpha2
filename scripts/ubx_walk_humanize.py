@@ -52,6 +52,16 @@ LEAD_TICKS = 0
 # 由現有姿態慢慢入起步 pose；急扯（例：5 tick＝250ms）會扯到胸板 reboot。
 # 只喺有 lead-in 嗰段（＝播放序第一段）生效，會延長總時長 (FIRST_MOVE_TICKS-SUB_S)。
 FIRST_MOVE_TICKS = 0
+# >1：合併子幀——每 m 格子幀併成 1 格大格（move=SUB_S*m tick），減少胸板命令
+# 密度。原因：官方 202 招 move 96% ≥500ms、最細 150ms；太密（例 100ms/格）胸板
+# 行唔到指定速度，真機手腳會「忽然快」。唔整除時自動揀最大可用因數
+# （例 10%4→2、152%4→4）。預設 1＝唔併（HTML 邏輯）。
+MERGE_SUB = 1
+# >1：再喺每個 d.a 內合併「已建成嘅格」（跨原格；MERGE_SUB 只合併單格內子位姿）。
+# 用途：加快（SPEEDUP）會縮短每格 move，真機唔穩；併格＝命令變疏，每格 move
+# 加長返（例：MERGE_SUB=4 + MERGE_FRAME=2 + SPEEDUP=1.5 → 每格 40t×13ms=520ms），
+# 總時長／軌跡不變（最後一格保留、時長相加）。唔整除時自動揀最大可用因數。
+MERGE_FRAME = 1
 # 手臂唔好一字：servo2/5 = 120 係手臂攤平一字（PC 展示姿）；205/35 = 手臂自然垂低。
 # 站定／收步／lead-in 一律垂低手（唔好再出現一字手）。
 HOME_POSE = [120, 205, 120, 120, 35, 120, 120, 65, 145, 140,
@@ -73,6 +83,9 @@ UNIFORM_RESAMPLE = 0
 END_BLEND = 0
 BLEND_ARMS = 1
 BLEND_LEGS = 1
+# START_BLEND：>0 時，步態頭 N 個循環由 STAND 漸入（smoothstep，同收步對稱），
+# 令「起腳」唔會突然扯起（真機回饋：起腳唔順）。預設 0＝跟原檔即時起腳。
+START_BLEND = 0
 OUTRO_HOME = 0
 # OUTRO_STAND：最尾一段（官方播放序最後嘅 servo d.a）壓成企定 STAND
 # （保留格數／時長；由上一段尾 pose 平滑埋位再定住）。專治「行完尾段又慢慢
@@ -919,6 +932,18 @@ def rebuild_type1(data, ghost_prev, lead_ticks=0, tid=None, stand_outro=False):
                     else:
                         new_poses[base + j] = [(1 - te) * a + te * b if k < 6 else a
                                                for k, (a, b) in enumerate(zip(row, STAND_POSE))]
+        if START_BLEND:
+            # 起腳緩入：頭 N 個循環由縫位 pose（g＝上一段尾格）漸入，
+            # 速度由 0 起（smoothstep），之後先全幅步態——同收步對稱
+            cyc_per = len(new_poses) // N_CYCLES
+            assert cyc_per * N_CYCLES == len(new_poses), (len(new_poses), N_CYCLES)
+            n = min(START_BLEND, N_CYCLES) * cyc_per
+            ref = list(g)
+            for j in range(n):
+                t = (j + 1) / n
+                te = t * t * (3 - 2 * t)
+                row = new_poses[j]
+                new_poses[j] = [a + te * (b - a) for a, b in zip(ref, row)]
         # 分回原 block 數（tick 均分；窗口按官方格式重計：end=start+ticks，
         # 下一格 start=end+1，原檔例 0-190/191-381；player 忽略窗口，
         # 但 alpha2services 為準就要啱）
@@ -974,17 +999,40 @@ def rebuild_type1(data, ghost_prev, lead_ticks=0, tid=None, stand_outro=False):
         new_ticks = sum(ticks2)
         if lead_ticks > 0 and FIRST_MOVE_TICKS > SUB_S:
             fm = FIRST_MOVE_TICKS
-            new_ticks += fm - SUB_S
-    new_contents = []
+            m_first = max(1, MERGE_SUB)
+            while m_first > 1 and (not groups[0] or len(groups[0]) % m_first):
+                m_first -= 1
+            new_ticks += fm - SUB_S * m_first
+    built = []  # (s, e, pose, blk_raw, tmpl_raw, win)
     for blk, poses, tfrms, win in zip(blks, groups, tmpl_frames, wins):
         tmpl = tfrms[-1]["raw"]  # 該 blk 尾幀模板（eblob 雜湊字節同構）
-        fbytes = []
-        for pi, p in enumerate(poses):
-            if fm and blk is blks[0] and pi == 0:
-                fbytes.append(build_servo_frame(tmpl, fm, 0, p))
-            else:
-                fbytes.append(build_servo_frame(tmpl, SUB_S, SUB_E, p))
-        new_contents.append(build_block(blk["raw"], fbytes, win))
+        m = max(1, MERGE_SUB)
+        while m > 1 and len(poses) % m:
+            m -= 1
+        if m > 1:
+            for i in range(0, len(poses), m):
+                s = fm if (fm and blk is blks[0] and i == 0) else SUB_S * m
+                built.append((s, 0, poses[i + m - 1], blk["raw"], tmpl, win))
+        else:
+            for pi, p in enumerate(poses):
+                s = fm if (fm and blk is blks[0] and pi == 0) else SUB_S
+                built.append((s, 0 if s == fm else SUB_E, p, blk["raw"], tmpl, win))
+    k = max(1, MERGE_FRAME)
+    while k > 1 and len(built) % k:
+        k -= 1
+    if k > 1:
+        merged = []
+        for i in range(0, len(built), k):
+            grp = built[i:i + k]
+            merged.append((sum(g[0] for g in grp), grp[-1][1], grp[-1][2],
+                           grp[-1][3], grp[-1][4], grp[0][5]))
+        built = merged
+    new_contents = []
+    ws = blks[0]["start"] if blks else 0
+    for s, e, p, blk_raw, tmpl, _win in built:
+        win2 = (ws, ws + s + e)
+        ws += s + e + 1
+        new_contents.append(build_block(blk_raw, [build_servo_frame(tmpl, s, e, p)], win2))
     last_pose = new_poses[-1] if new_poses else None
     return build_trackh(new_contents), new_ticks, last_pose
 

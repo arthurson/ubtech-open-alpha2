@@ -22,15 +22,26 @@ public final class RobotWire {
     public static final String ALPHA_WIFI_RESULT = "com.ubt.alpha2.wifiresult";
 
     // -- Chest microcontroller serial command bytes ---------------------------
+    /** 官方開機 START（cmd 0x01）：狀態查詢＋電源初始化，回 0x8A(DC 狀態)/0x8D。
+     *  官方 Alpha2Services 開機 ChestStartThread 等串口連上後第一條就發佢。 */
+    public static final byte CHEST_CMD_START = 1;
     public static final byte CHES_CMD_MOTORANGLE = 5;
     public static final byte CHEST_CMD_SETTING = 4;
     public static final byte CHES_CMD_START_UPDATE = 48;
     public static final byte CHES_CMD_UPDATE_PAGE = 49;
     public static final byte CHES_CMD_UPDATE_END = 50;
     public static final byte CHEST_READ_VERSION = 51;
-    /** 已死：播放唔行呢個（行 cmd 3），留低只防同 52 撞名，唔好用。 */
-    @Deprecated
+    /** 電池資訊/版本 cmd 57（V352 新命令 POWER_INFO；payload [3] 讀版本，
+     *  官方 Alpha2Services VersionCollector 同款問法，回覆經 parseBatteryVersion
+     *  解析——payload[1]==3 時版本字串由 payload[2] 起）。 */
+    public static final byte CHEST_POWER_INFO = 57;
+    /** 已死：播放唔行呢個（行 cmd 3）。注意官方 v1.1.7.3 robotStandup() 其實用佢
+     *  （cmd 0x34 [20軸+BE16 time]）發開機企姿；本 repo 直驅舊實測 0x34 有 ACK 唔郁，
+     *  故企姿改行 cmd 3 同一 payload（見 ActionDirect.officialBootStandup）。 */
     public static final byte CHEST_SET_ALL_ANGLE = 52;
+    /** 「充電時播放」設定/查詢（cmd 0x35）：官方開機 queryChargePlay() 發 [2] 查詢；
+     *  MCU 側順帶觸發 servo 掃描（模式 11）。 */
+    public static final byte CHEST_CMD_CHANGE_PLAY = 53;
     /** 讀舵機 trim/cmd13（DirectChestController.readServo）。 */
     public static final byte CHEST_CMD_READ_SERVO = 13;
     /** 寫舵機 trim/cmd12（DirectChestController.writeServoTrim，EEPROM 掉電保持）。 */
