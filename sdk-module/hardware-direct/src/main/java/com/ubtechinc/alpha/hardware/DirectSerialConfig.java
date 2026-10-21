@@ -23,6 +23,12 @@ public final class DirectSerialConfig {
     public static final String CHEST_TTY_ALT2 = "/dev/ttyS0";
     public static final String HEAD_TTY_ALT2  = "/dev/ttyS0";
 
+    // 1.1.7.3 官方 AlphaSerialPortServices / AlphaSerialPortHeaderServices
+    // 寫死 /dev/ttySAC0（胸）同 /dev/ttySAC1（頭）；2-mic (alpha2_10002,
+    // Android 4.4.2) 用呢兩個。5-mic RK3288 先用 ttyS1/ttyS3。
+    public static final String CHEST_TTY_2MIC = "/dev/ttySAC0";
+    public static final String HEAD_TTY_2MIC  = "/dev/ttySAC1";
+
     public static final int BAUDRATE = 115200;
 
     // 2026-09: wire 命令字已收喺本 package 嘅 RobotWire，唔再引用舊 SDK 常數表。

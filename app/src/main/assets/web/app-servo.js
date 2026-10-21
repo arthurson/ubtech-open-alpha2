@@ -307,6 +307,8 @@ function alpha2SetPirAlertEnabled() {
 
 // 入頁同步：硬件開關自記態＋警示開關一次過擺返兩個掣（mapping toggle 改過都會對返）。
 function syncPirUi() {
+  // alpha2_10002 冇 PIR（卡已收埋），唔好再問 pir/get。
+  if (window.alpha2Is2Mic) return Promise.resolve(null);
   return Alpha2Api.pirGet().then(function (json) {
     if (!json || !json.ok) return json;
     const hw = document.getElementById("alpha2Pir");

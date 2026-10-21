@@ -12,7 +12,7 @@ import android.content.Context;
  *  或者翻譯來的 - 反編譯確認了
  * AlphaEnglishChat 主要靠 Api.ai (Dialogflow V1) 雲端 NLU, 而那個 API 已經在 2020 年
  * 3 月正式關閉, 英文語料沒得直接沿用。這 3993 句是跟著中文版 semantic_zh.json
- * 的結構和動作對照表 (operation/actionId/分類 pool 全部一致, 已驗證 202 動作清單裡面
+ * 的結構和動作對照表 (operation/actionId/分類 pool 全部一致, 已驗證 203 動作清單裡面
  * 沒撞聲效), 用道地英文重新創作的問法/答案 - 詳見對話 history。
  *  2026-09 追加 EN+146 CHAT (en.mov/en.son/en.cit/en.arg: 電影 27／歌詞
  *  39／名言 40／潮語 40 組, 日常趣味問法＋5 個英文原生答案, 來自 en800.txt,
@@ -20,15 +20,15 @@ import android.content.Context;
  *  CHAT (chat.001-476＋en.mov/son/cit/arg) 全刪, 新建 en.daily.001-200
  *  (每組地道英文 5 問法＋5 個答案: 001-040 問候天氣、041-080 飲食、081-120
  *  家庭家居寵物、121-160 工作學習健康、161-200 休閒旅行日常; 同法西日版一樣
- *  200 日常組動作全 __RANDOM__ (fallback 60 池，播嗰刻先 resolve)。85 ACTION＋13 FUNCTION (要求外的 beginconnect/connect/sleep 已刪)。
+ *  200 日常組動作全 __RANDOM__ (fallback 60 池，播嗰刻先 resolve)。86 ACTION＋13 FUNCTION (要求外的 beginconnect/connect/sleep 已刪)。
  *  每個 intent 內:
  *   q      - 用戶問法 (例如 "Dance for me", "How old are you")
  *   a      - 候選答案句 (5句, 隨機選一句做 TTS; 部分 FUNCTION 類沒答案句)
  *   type   - ACTION (有動作) | FUNCTION (系統操作, 例如音量/連線) | CHAT (日常對答, 動作 __RANDOM__)
  *   op     - operation 代號 (例如 "DANCE"), 和中文版一致, ACTION/FUNCTION 才有
  *   slot   - 方向/情緒等參數 (例如 "LEFT"), 只有部分 ACTION 有
- *   actionId - 已經由 operation+slot 對應好的、202 動作清單裡面的真實 action id
- *              (也就是 xiaozhi_actions.json 那 202 個裡面其中一個), 只有 ACTION 才有。
+ *   actionId - 已經由 operation+slot 對應好的、203 動作清單裡面的真實 action id
+ *              (也就是 xiaozhi_actions.json 那 203 個裡面其中一個), 只有 ACTION 才有。
   *              兩種特殊值: "__RANDOM__" (TFBOY 這類沒固定動作, 隨機 filler 池 60 個裡面隨便選一個
  *              - 見 resolveRandomActionId()); "__RANDOM_CATEGORY__<key>" (2026-08 新增
  *              - 用戶說到分類名但沒說出具體哪個動作, 例如 "Dance for me" "Do some yoga",

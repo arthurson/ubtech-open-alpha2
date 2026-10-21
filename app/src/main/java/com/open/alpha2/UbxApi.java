@@ -20,6 +20,8 @@ public final class UbxApi {
     private final UbxPlayer ubxPlayer;
     private final ActionDirect actionDirect;
     private final ChestQuery chestQuery;
+    /** 連續拖 slider 會連發 ubx/speed；序列化 stop+restart，免兩個請求互相截停。 */
+    private final Object speedLock = new Object();
 
     public UbxApi(Context context, UbxPlayer ubxPlayer, ActionDirect actionDirect, ChestQuery chestQuery) {
         this.appContext = context.getApplicationContext();
@@ -90,28 +92,30 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse ubxSpeedResponse(String v) {
-        float f = ApiValidator.parseUbxSpeedValue(v);
-        if (!ubxPlayer.setSpeed(f)) {
-            throw new IllegalArgumentException("parameter 'value' must be one of [0.5, 0.67, 1, 1.5, 2], got: " + v);
-        }
-        // 正在播時即時生效：用新速度由頭重播同一文件（内部快照隔离，旧计划安全交接）。
-        boolean restarted = false;
-        java.io.File last = actionDirect.getLastPlayedFile();
-        if (ubxPlayer.isPlaying() && last != null && last.isFile()) {
-            try {
-                UbxFile rubx = UbxParser.parseFile(last);
-                HardwareDirectManager rdm = HardwareDirectManager.get(appContext);
-                if (rdm.chest().isAvailable()) {
-                    ubxPlayer.stop();
-                    restarted = ubxPlayer.play(rubx, last.getName(), rdm.chest(), last);
-                    if (restarted) actionDirect.setLastPlayedFile(last);
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "speed restart failed", e);
+        synchronized (speedLock) {
+            float f = ApiValidator.parseUbxSpeedValue(v);
+            if (!ubxPlayer.setSpeed(f)) {
+                throw new IllegalArgumentException("parameter 'value' must be between 0.5 and 2.0, got: " + v);
             }
+            // 正在播時即時生效：用新速度由頭重播同一文件（内部快照隔离，旧计划安全交接）。
+            boolean restarted = false;
+            java.io.File last = actionDirect.getLastPlayedFile();
+            if (ubxPlayer.isPlaying() && last != null && last.isFile()) {
+                try {
+                    UbxFile rubx = UbxParser.parseFile(last);
+                    HardwareDirectManager rdm = HardwareDirectManager.get(appContext);
+                    if (rdm.chest().isAvailable()) {
+                        ubxPlayer.stop();
+                        restarted = ubxPlayer.play(rubx, last.getName(), rdm.chest(), last);
+                        if (restarted) actionDirect.setLastPlayedFile(last);
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "speed restart failed", e);
+                }
+            }
+            return HttpServer.ApiResponse.ok("{\"ok\":true,\"code\":\"API_ERROR_SUCCEED\",\"speed\":" + ubxPlayer.getSpeed()
+                    + ",\"restarted\":" + restarted + "}");
         }
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"code\":\"API_ERROR_SUCCEED\",\"speed\":" + ubxPlayer.getSpeed()
-                + ",\"restarted\":" + restarted + "}");
     }
 
     public HttpServer.ApiResponse ubxStopResponse() {
@@ -197,7 +201,7 @@ public final class UbxApi {
     public HttpServer.ApiResponse servoAllResponse(Map<String, String> query) {
         int[] angles = ApiValidator.requireAngles20(query);
         int time = ApiValidator.optionalIntRange(query, "time", ApiValidator.SERVO_TIME_MIN_MS, ApiValidator.SERVO_TIME_MAX_MS, 1000);
-        // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
+        // setAllServos 按版本：2-mic 官方 cmd52／5-mic cmd03。
         boolean sent = HardwareDirectManager.get(appContext).chest().setAllServos(angles, (short) time);
         if (sent) ubxPlayer.notePose(angles);
         return MainActivity.sentReadyResponse(sent, directChestReady());

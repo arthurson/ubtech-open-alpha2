@@ -39,7 +39,7 @@ public final class ActionDirect {
     private final UbxPlayer ubxPlayer;
 
     private List<String[]> actionInfoCache; // 每项 [fileId, nameCn, nameEn, type]
-    /** Cached parse of assets/web/xiaozhi_actions.json (202 動作, id/nameCn/nameEn) -
+    /** Cached parse of assets/web/xiaozhi_actions.json (203 動作, id/nameCn/nameEn) -
      *  loaded once lazily on first use rather than at onCreate(), since it's only
      *  needed if/when the XiaoZhi tab's play_action tool schema is actually requested.
      *  null until first load attempt; an empty (but non-null) list means the load was
@@ -204,7 +204,7 @@ public final class ActionDirect {
     };
 
     /** 有聲效動作 id 表：桌面 UBX 目錄（alpha2/UBX/actions）有同名子目錄
-     *  （入面有 mp3）者即播嗰陣韌體會自己出聲，共 86 個（全部已對過 202 catalog）。
+     *  （入面有 mp3）者即播嗰陣韌體會自己出聲，共 87 個（全部已對過 203 catalog）。
      *  語意管線共用：SemanticCenter 播之前先 resolve 做真實 id 再查呢個表，
      *  有聲就成句 TTS 對白唔講（免同動作音效搶喇叭）；隨機 filler 池本身已驗證
      *  全 silent，唔使查但照行同一個判斷無妨。有新動作加落機先對一次 UBX 目錄。 */
@@ -242,6 +242,7 @@ public final class ActionDirect {
             "1487404045423",
             "1487404045424",
             "1487404045425",
+            "1487404045427",
             "1496217022040",
             "1496218328201",
             "1496218474326",
@@ -472,9 +473,9 @@ public final class ActionDirect {
      *      （官方次序就係企姿先，ChestStartThread 嗰兩條係 5s+ 之後先出，
      *      呢度等 2.2s 企姿 move 行完先補，唔阻住個 2s move。）
      *
-     * 官方 robotStandup 用 cmd 0x34(52)，但本 repo 真機直驅實測 0x34 有 ACK 唔郁，
-     * 故此處用**同一 payload**行官方播放通道 cmd 0x03（同官方每一個動作幀嘅通道，
-     * 真機實證會郁）。
+     * 官方 robotStandup 用 cmd 0x34(52)。5-mic 本 repo 真機直驅實測 0x34 有
+     * ACK 唔郁，故 5-mic 用同一 payload 行 cmd 0x03；2-mic 照官方用 cmd 0x34
+     *（DirectChestController.setAllServos 內部按 HardwareVersion 分流）。
      *
      * 企姿發唔出（串口閂咗）短重試 3 次；一 send 得出即返 true——官方係
      * fire-and-forget，冇 ACK 可等，調用方唔好當 false 係「MCU 冇做」。
@@ -484,7 +485,7 @@ public final class ActionDirect {
         if (!dm.chest().isAvailable()) return false;
         boolean sent = false;
         for (int attempt = 0; attempt < 3 && !sent; attempt++) {
-            if (dm.chest().playAllServos(OFFICIAL_BOOT_STANDUP_POSE,
+            if (dm.chest().setAllServos(OFFICIAL_BOOT_STANDUP_POSE,
                     (short) OFFICIAL_BOOT_STANDUP_TIME_MS)) {
                 ubxPlayer.notePose(OFFICIAL_BOOT_STANDUP_POSE);
                 sent = true;

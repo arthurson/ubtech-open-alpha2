@@ -12,12 +12,20 @@ from the same port (see [HTTP API](#http-api)).
 
 ## Requirements
 
-- Robot: RK3288 (`armeabi-v7a` only), Android 5.1.1 (API 22).
+- Robot: `alpha2_10005` 5-mic (RK3288, Android 5.1.1/API 22) or `alpha2_10002`
+  2-mic (Android 4.4.2/API 19); `armeabi-v7a` only. The app reads
+  `ro.hardware.version` at startup and selects the matching serial/JNI paths.
   The APK declares `minSdkVersion 19`, `targetSdkVersion 22` (deliberate, no
   Play Store release — it is installed with `adb install`).
-- Hardware wired up by the app: chest MCU on `/dev/ttyS1`, head MCU on
-  `/dev/ttyS3` (115200 baud); head +/- touch pads on `/dev/input/event0`;
-  head/eye/mouth LEDs via `libhead_led.so` (JNI).
+- Hardware wired up by the app:
+  - `alpha2_10005`: chest MCU `/dev/ttyS1`, head MCU `/dev/ttyS3` (115200 baud);
+    head/eye/mouth LEDs via `libhead_led.so` (JNI); head keys via
+    `libhead_key_mgr.so`.
+  - `alpha2_10002`: chest MCU `/dev/ttySAC0`, head MCU `/dev/ttySAC1`
+    (115200 baud; fallback `ttyS1`/`ttyS3`); head/eye LEDs via head-MCU serial
+    (`0x01`/`0x02`/`0x08`); head keys via 1.1.7.3 `libNativeClassJni.so`.
+    The web panel hides the PIR card and the chest-firmware upgrade card.
+  - Head +/- touch pads on `/dev/input/event0`.
 - Robot and browser must be on the same Wi-Fi. The server is plain HTTP.
 - ⚠️ **Trusted LAN only**: by default there is no auth — anyone on the
   network can play actions, view the camera, listen to the mic, or upload
@@ -67,9 +75,9 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   optional alert (red LED + ringtone), accelerometer live chart and optional
   4-direction tilt → head/eye LED.
 - Actions (🕺) — action list with category sub-tabs, play/stop, playback speed
-  (0.5/0.67/1/1.5/2x). Action chips are coloured by category (sub-category
-  colour first, main-category fallback). (Pack download lives in the
-  Experiment tab.)
+  slider (0.5–2.0x; servo and mp3 playback both follow the speed). Action
+  chips are coloured by category (sub-category colour first, main-category
+  fallback). (Pack download lives in the Experiment tab.)
 - Servo (⚙️) — 22 joints in head/arm/leg/extra groups, individually or all at
   once, with live command-pose display. Live angle read-back: one-click
   `servo/back-angle-all` (chest cmd `0x17`, pure read, all 22 axes incl.
@@ -90,7 +98,7 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   release to stop; same calibration limits as the servo tab), local-music
   function keys (incl. random track) / random yoga / system ringtones (named /
   default call tone) / head-eye-mouth LEDs / all-lights-off / photo + face &
-  colour tracking toggles + the 202 actions (5 groups: basic / dance / story /
+  colour tracking toggles + the 203 actions (5 groups: basic / dance / story /
   yoga / misc); mapping `stop` means stop-everything (action re-centre + TTS +
   music + radio + ringtone + all LEDs); `taken` reflects the real execution
   result, so the panel shows `✓` vs `✗ logged but not executed` at a glance.
@@ -143,8 +151,8 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
 - Spoken replies use the Android system TTS (`speech/tts`, `speech/stop`),
   with optional auto language follow of the loaded Vosk model.
 - Local intent matching in 10 dialogue languages (zh/en/es/fr/ja/de/it/pt/
-  ko/ru, `app/src/main/assets/semantic/`). Each language ships 85 action
-  intents, 13 function intents and 200 chat intents (298 groups total).
+  ko/ru, `app/src/main/assets/semantic/`). Each language ships 86 action
+  intents, 13 function intents and 200 chat intents (299 groups total).
   - Action intents speak a reply and play a robot motion.
   - Function intents really act: stop-everything, volume step up/down,
     Bluetooth on/off, Wi-Fi on/off, photo capture, local-music
@@ -269,8 +277,8 @@ open-alpha2/
 │   ├── src/main/assets/web/        ← control panel (10 tabs) + Blockly +
 │   │                                  generated api-client.js (199 wrappers)
 │   │                                  (CI strips web comments before build)
-│   ├── src/main/assets/semantic/   ← 10 intent libraries (298 groups each:
-│   │                                  85 action + 13 function + 200 chat)
+│   ├── src/main/assets/semantic/   ← 10 intent libraries (299 groups each:
+│   │                                  86 action + 13 function + 200 chat)
 │   │                                  + action category pools
 │   ├── src/main/cpp/               ← easyopus JNI (CMake)
 │   ├── src/test/java/…             ← ApiValidatorTest + ColorTrackTest + MusicEqTest

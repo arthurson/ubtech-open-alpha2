@@ -35,6 +35,33 @@ function refreshDeviceInfo() {
   });
 }
 
+// ---------------- Hardware variant (alpha2_10005 / alpha2_10002) ----------------
+// 10002 = 2-mic（Android 4.4.2）：冇 PIR、冇胸板固件升級卡。呢個 flag 亦俾
+// app-servo.js 嘅 PIR polling 用；未讀到版本前當 5-mic，讀到 10002 先收埋。
+window.alpha2Is2Mic = false;
+
+function applyHardwareUi(is2Mic) {
+  window.alpha2Is2Mic = !!is2Mic;
+  const pir = document.getElementById("pirCard");
+  if (pir) pir.style.display = is2Mic ? "none" : "";
+  const chest = document.getElementById("chestCard");
+  if (chest) chest.style.display = is2Mic ? "none" : "";
+  if (is2Mic) {
+    const body = document.getElementById("chestCardBody");
+    if (body) body.style.display = "none";
+    // Gamepad mapping 嘅 sensor 下拉：移除 PIR 選項（可能已經 build 咗）。
+    if (typeof GAMEPAD_SENSOR_FNS !== "undefined") {
+      const pi = GAMEPAD_SENSOR_FNS.indexOf("pir_toggle");
+      if (pi >= 0) GAMEPAD_SENSOR_FNS.splice(pi, 1);
+    }
+    document.querySelectorAll("select[id^='gpSensorSel_']").forEach(function (sel) {
+      for (let i = sel.options.length - 1; i >= 0; i--) {
+        if (sel.options[i].value === "pir_toggle") sel.remove(i);
+      }
+    });
+  }
+}
+
 // ---------------- MIC 固件直顯 ----------------
 // 原廠「系統信息」嘅 MIC固件欄位 = ro.hardware.version（alpha2_10005 = Lynx
 // 5mic、alpha2_10002 = 舊款）。純讀 property，即回；寫自己格 (micFwOut)。
@@ -43,6 +70,7 @@ function refreshMicFw() {
   if (out) out.textContent = t("uuid_querying_hint");
   return Alpha2Api.micVersion().then(function (json) {
     if (out) out.textContent = (json && json.version) || "not found";
+    applyHardwareUi(!!(json && json.is2Mic));
   }).catch(function (err) {
     if (out) out.textContent = t("err_prefix", { msg: err.message });
   });

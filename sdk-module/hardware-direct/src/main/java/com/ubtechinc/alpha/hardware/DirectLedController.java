@@ -3,13 +3,18 @@ package com.ubtechinc.alpha.hardware;
 import android.util.Log;
 
 /**
- * 5-mic 頭/眼/嘴 LED 的 JNI 直驅。
- * 完全繞過 alpha2services 的 AIDL，直接走 libhead_led.so 的 ioctl。
- * 3.002 版（/dev/led_eye，ioctl 號與 1.1.7.3 逐個相同：On=0x4c00/OFF=0x4c01/
- * Eye=0x4c02/Head=0x4c03/Mouth=0x4c04，反匯編核對過）。
- * 已在 open-alpha2 的 MouthLedData 驗證過。
+ * 頭/眼/嘴 LED 直驅，按 {@code ro.hardware.version} 分兩條後端：
  *
- * <p>為避免 sdk-module 硬件層與 app 層的循環依賴，這裡用反射調用
+ * <ul>
+ *   <li><b>5-mic (alpha2_10005)</b>：JNI 直驅 libhead_led.so（/dev/led_eye，
+ *       ioctl 號與 1.1.7.3 相同：On=0x4c00/OFF=0x4c01/Eye=0x4c02/Head=0x4c03/
+ *       Mouth=0x4c04，反匯編核對過），即原路徑不變。</li>
+ *   <li><b>2-mic (alpha2_10002)</b>：冇 mouth LED；耳/眼 LED 經頭板 MCU
+ *       串口 cmd 0x01/0x02/0x08（官方 Alpha2RobotApi 同款 payload），
+ *       見 {@link DirectHeadController#setEarLed2Mic}。</li>
+ * </ul>
+ *
+ * <p>為避免 sdk-module 硬件層與 app 層的循環依賴，5-mic 用反射調用
  * {@code com.ubtechinc.alpha.jni.LedControl}（3.002 原裝包名；舊
  * {@code com.ubtechinc.mic5.LedControl} 保留文件但不再引用）。
  * 這樣 hardware-direct 編譯期不依賴 app，執行時通過自身 dex 找到類。</p>
@@ -25,6 +30,10 @@ public final class DirectLedController {
     // p3/p4 用全 mask（31/31，跟上面講嘅原 binder 行為；之前誤傳 color，
     // 搞到同一隻色比 LedCenter preset 暗一截）。
     public static boolean setHead5Mic(int color, int bright, int p5, int p6, int runTime, int mode) {
+        if (HardwareVersion.is2Mic()) {
+            // 2-mic 耳燈冇 color/mode：官方 2-mic 分支只傳 bright + up/down/run。
+            return setHead2Mic(color, bright, 31, 31, p5, p6, runTime);
+        }
         boolean ok = callLedReflect("ledSetHead",
                 new Object[]{color, bright, 31, 31, p5, p6, runTime, mode}, "head color=" + color + " mode=" + mode);
         if (ok) recordHead(color, bright, 31, 31);
@@ -32,6 +41,10 @@ public final class DirectLedController {
     }
 
     public static boolean setMouth(int runTime, int breathe, int off, int play, int mode) {
+        if (HardwareVersion.is2Mic()) {
+            // 2-mic 冇嘴燈（官方 PlayMouthLedBlockData / XMPP mouth LED 都係 no-op）。
+            return true;
+        }
         boolean ok = callLedReflect("ledSetMouth",
                 new Object[]{runTime, breathe, off, play, mode},
                 "mouth mode=" + mode + " breathe=" + breathe + "ms off=" + off + "ms");
@@ -40,6 +53,9 @@ public final class DirectLedController {
     }
 
     public static boolean setOff() {
+        if (HardwareVersion.is2Mic()) {
+            return setOff2Mic();
+        }
         // 3.002 簽名 ledSetOFF(I)：反匯編證實該 int 只進 log（mov r3,r4 → __android_log_print），不落硬件，傳 0。
         // 注意：呢個 ioctl 號本身會連 wifi 12/13 一起清——硬件上頭+眼係一齊熄，
         // 所以成功嗰陣兩邊 mirror 一齊記 off。咀通道一樣會死，即刻補返（之前呼吸緊先補）。
@@ -173,6 +189,9 @@ public final class DirectLedController {
 
     public static boolean runBatch(java.util.List<LedOp> ops) {
         synchronized (DRIVER_LOCK) {
+            if (HardwareVersion.is2Mic()) {
+                return runBatch2Mic(ops);
+            }
             try {
                 if (!ensureInit()) return false;
                 Object openRes = sOpen.invoke(null);
@@ -244,6 +263,7 @@ public final class DirectLedController {
 
     /** 出面用：全局 OFF 之後補返個咀（之前呼吸緊先做）。自己開關一次。 */
     public static boolean restoreMouthAfterOff() {
+        if (HardwareVersion.is2Mic()) return true; // 2-mic 冇嘴燈
         synchronized (DRIVER_LOCK) {
             try {
                 if (!ensureInit()) return false;
@@ -320,6 +340,9 @@ public final class DirectLedController {
      * pure-direct 下 p3/p4 保持原值，行為不變。
      */
     public static boolean setHead5MicRaw(int p1, int p2, int p3, int p4, int p5, int p6, int p7, int p8) {
+        if (HardwareVersion.is2Mic()) {
+            return setHead2Mic(p1, p2, p3, p4, p5, p6, p7);
+        }
         boolean ok = callLedReflect("ledSetHead",
                 new Object[]{p1, p2, p3, p4, p5, p6, p7, p8}, "head raw p1=" + p1 + " p8=" + p8);
         if (ok) recordHead(p1, p2, p3, p4);
@@ -327,6 +350,9 @@ public final class DirectLedController {
     }
 
     public static boolean setEye5MicRaw(int p1, int p2, int p3, int p4, int p5, int p6, int p7, int p8) {
+        if (HardwareVersion.is2Mic()) {
+            return setEye2Mic(p1, p2, p3, p4, p5, p6, p7);
+        }
         boolean ok = callLedReflect("ledSetEye",
                 new Object[]{p1, p2, p3, p4, p5, p6, p7, p8}, "eye raw p1=" + p1 + " p8=" + p8);
         if (ok) recordEye(p1, p2, p3, p4);
@@ -346,11 +372,17 @@ public final class DirectLedController {
      * 而家要成組熄先用 clear()/setOff()。
      */
     public static boolean stopHead5Mic() {
+        if (HardwareVersion.is2Mic()) {
+            return stopHead2Mic();
+        }
         boolean ok = setHead5MicRaw(7, 9, 0, 0, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
         if (ok) recordHeadOff();
         return ok;
     }
     public static boolean stopEye5Mic() {
+        if (HardwareVersion.is2Mic()) {
+            return stopEye2Mic();
+        }
         boolean ok = setEye5MicRaw(7, 9, 0, 0, Integer.MAX_VALUE, 0, Integer.MAX_VALUE, 0);
         if (ok) recordEyeOff();
         return ok;
@@ -390,6 +422,96 @@ public final class DirectLedController {
     }
     private static void recordEyeOff() {
         sEyeP1 = 0; sEyeP2 = 0; sEyeP3 = 0; sEyeP4 = 0;
+    }
+
+    // -- 2-mic 串口後端 (alpha2_10002) ------------------------------------
+    // 跟 1.1.7.3 官方 Alpha2RobotApi 嘅 2-mic 分支：
+    //   耳燈 cmd 0x01, 眼燈 cmd 0x02, 停耳 [1] / 停眼 [0] 都係 cmd 0x08。
+    // 2-mic 冇嘴燈、冇 pad/wifi 燈（ledSetOn 無效），呢兩類一律 no-op。
+
+    private static DirectHeadController head2Mic() {
+        HardwareDirectManager m = HardwareDirectManager.peek();
+        return m == null ? null : m.head();
+    }
+
+    private static boolean setHead2Mic(int color, int bright, int p3, int p4,
+                                       int upMs, int downMs, int runMs) {
+        DirectHeadController h = head2Mic();
+        if (h == null) {
+            Log.w(TAG, "2mic head serial not ready (head)");
+            return false;
+        }
+        boolean ok = h.setEarLed2Mic(bright, upMs, downMs, runMs);
+        if (ok) recordHead(color, bright, p3, p4);
+        return ok;
+    }
+
+    private static boolean setEye2Mic(int color, int bright, int p3, int p4,
+                                      int upMs, int downMs, int runMs) {
+        DirectHeadController h = head2Mic();
+        if (h == null) {
+            Log.w(TAG, "2mic head serial not ready (eye)");
+            return false;
+        }
+        boolean ok = h.setEyeLed2Mic(color, bright, upMs, downMs, runMs);
+        if (ok) recordEye(color, bright, p3, p4);
+        return ok;
+    }
+
+    private static boolean stopHead2Mic() {
+        DirectHeadController h = head2Mic();
+        if (h == null) return false;
+        boolean ok = h.stopEarLed2Mic();
+        if (ok) recordHeadOff();
+        return ok;
+    }
+
+    private static boolean stopEye2Mic() {
+        DirectHeadController h = head2Mic();
+        if (h == null) return false;
+        boolean ok = h.stopEyeLed2Mic();
+        if (ok) recordEyeOff();
+        return ok;
+    }
+
+    private static boolean setOff2Mic() {
+        DirectHeadController h = head2Mic();
+        if (h == null) return false;
+        boolean a = h.stopEarLed2Mic();
+        boolean b = h.stopEyeLed2Mic();
+        if (a && b) {
+            recordHeadOff();
+            recordEyeOff();
+        }
+        return a && b;
+    }
+
+    private static boolean runBatch2Mic(java.util.List<LedOp> ops) {
+        boolean allOk = true;
+        for (int i = 0; i < ops.size(); i++) {
+            LedOp op = ops.get(i);
+            boolean ok;
+            if ("ledSetOFF".equals(op.method)) {
+                ok = setOff2Mic();
+            } else if ("ledSetHead".equals(op.method)) {
+                ok = setHead2Mic((Integer) op.args[0], (Integer) op.args[1],
+                        (Integer) op.args[2], (Integer) op.args[3],
+                        (Integer) op.args[4], (Integer) op.args[5], (Integer) op.args[6]);
+            } else if ("ledSetEye".equals(op.method)) {
+                ok = setEye2Mic((Integer) op.args[0], (Integer) op.args[1],
+                        (Integer) op.args[2], (Integer) op.args[3],
+                        (Integer) op.args[4], (Integer) op.args[5], (Integer) op.args[6]);
+            } else {
+                // 2-mic 冇嘴燈／pad／wifi 燈：照成功算，唔好拖累成個 batch。
+                ok = true;
+            }
+            if (!ok) {
+                Log.w(TAG, "2mic LED op failed: " + op.desc);
+                allOk = false;
+                break;
+            }
+        }
+        return allOk;
     }
 
     /** 最後頭/眼參數（p1-p4）——ledPadSet 獨立熄之後補燈用。

@@ -12,6 +12,7 @@ import android.util.Log;
 
 import com.ubtechinc.alpha.hardware.DirectLedController;
 import com.ubtechinc.alpha.hardware.HardwareDirectManager;
+import com.ubtechinc.alpha.hardware.HardwareVersion;
 import com.ubtechinc.alpha.hardware.MouthLedData;
 import com.ubtechinc.alpha.jni.LedControl;
 
@@ -262,6 +263,8 @@ public final class LedCenter {
      *（累加式，兩顆齊按兩顆都著），打不開就重試。
      */
     private boolean assertPadLedsComboBurst() {
+        // 2-mic 冇 /dev/led_eye，亦冇 pad 燈；直接當成功，唔好掂 JNI。
+        if (HardwareVersion.is2Mic()) return true;
         for (int attempt = 1; attempt <= PAD_LED_OPEN_ATTEMPTS; attempt++) {
             final boolean[] openOk = {false};
             // open→ioctl→close 包入全局驅動鎖：/dev/led_eye 頂唔順併發 open，
@@ -314,6 +317,8 @@ public final class LedCenter {
      * 一致。keepPads=false：實體鍵放手就係嗰粒(s)要滅，唔應該照 mirror 補返。
      */
     private boolean assertPadLedsOffBurst() {
+        // 2-mic 冇 pad/wifi 燈；唔好行全域 OFF，否則會誤熄頭/眼燈。
+        if (HardwareVersion.is2Mic()) return true;
         for (int attempt = 1; attempt <= PAD_LED_OPEN_ATTEMPTS; attempt++) {
             java.util.List<DirectLedController.LedOp> ops = new java.util.ArrayList<>(6);
             ops.add(DirectLedController.LedOp.off());
@@ -581,6 +586,8 @@ public final class LedCenter {
     /** One burst: retry open()/dev/led_eye until it opens, light a single LED index.
      *  open→ioctl→close 入全局驅動鎖，唔好同 disco 撞 open（見上）。 */
     private boolean assertSingleLedBurst(int index) {
+        // 2-mic 冇 wifi/pad 燈（ledSetOn 無效）；no-op 成功。
+        if (HardwareVersion.is2Mic()) return true;
         for (int attempt = 1; attempt <= PAD_LED_OPEN_ATTEMPTS; attempt++) {
             final boolean[] openOk = {false};
             DirectLedController.runExclusive(() -> {
@@ -1149,6 +1156,28 @@ public final class LedCenter {
         // 很可能也是同一個 driver 另一個 ioctl (例如尚未用過的 ledSetOn(i))。
         // func=on&i=N -> ledSetOn(N); func=eye/head&a1..a8 -> 對應 setter。
         String func = ApiValidator.requireDebugLedFunc(query);
+        if (HardwareVersion.is2Mic()) {
+            // 2-mic 冇 /dev/led_eye：off/head/eye 經 DirectLedController 落
+            // 頭板串口；ledSetOn(pad/wifi) 呢部機冇。
+            if ("off".equals(func)) {
+                boolean ok = DirectLedController.setOff();
+                return HttpServer.ApiResponse.ok(
+                        "{\"ok\":" + ok + ",\"mode\":\"2mic-serial\"}");
+            }
+            if ("on".equals(func)) {
+                return HttpServer.ApiResponse.ok(
+                        "{\"ok\":false,\"unsupported\":\"ledSetOn not present on alpha2_10002\"}");
+            }
+            int[] a = new int[8];
+            for (int k = 0; k < 8; k++) {
+                a[k] = ApiValidator.requireIntRange(query, "a" + (k + 1), 0, 255);
+            }
+            boolean r = "eye".equals(func)
+                    ? DirectLedController.setEye5MicRaw(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7])
+                    : DirectLedController.setHead5MicRaw(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
+            return HttpServer.ApiResponse.ok("{\"ok\":" + r + ",\"mode\":\"2mic-serial\",\"args\":"
+                    + java.util.Arrays.toString(a).replace(" ", "") + "}");
+        }
         // 同埋照舊排全局驅動鎖：唔好喺 disco 高頻打燈途中另起 open。
         if ("off".equals(func)) {
             final boolean[] res = new boolean[2];

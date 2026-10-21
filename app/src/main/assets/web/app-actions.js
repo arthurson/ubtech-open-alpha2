@@ -304,8 +304,17 @@ function stopAction() {
 
 function setActionSpeed() {
   const el = document.getElementById("actionSpeed");
-  const v = parseFloat(el.value);
+  const v = Math.round(parseFloat(el.value) * 10) / 10;
+  const valEl = document.getElementById("actionSpeedVal");
+  if (valEl) valEl.textContent = v.toFixed(1) + "x";
   return Alpha2Api.ubxSpeed({ value: v });
+}
+
+function resetActionSpeed() {
+  const el = document.getElementById("actionSpeed");
+  if (!el) return;
+  el.value = "1";
+  return setActionSpeed();
 }
 
 

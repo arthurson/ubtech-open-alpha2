@@ -8,13 +8,20 @@ import com.ubtechinc.alpha.jni.headkey.HeadKeyMgr;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 頭頂 +/- pad：{@code libhead_key_mgr.so} native 線程唯一入口。
+ * 頭頂 +/- pad：5-mic 用 {@code libhead_key_mgr.so}；2-mic 用 1.1.7.3
+ * {@code libNativeClassJni.so}（{@link #start()} 按 {@link HardwareVersion} 分流）。
  *
- * <p>native 線程讀 {@code /dev/input/event*}（rk29-keypad），經
- * {@code HeadKeyMgr.onNativeCallback(int)} 回調本類，碼形如
- * {@code 0x5A01/0x5B01/0x5E01…}（即舊 broadcast 格式
- * {@code (eventCode<<8)|0x01}），由 {@link #onNativeKey(int)} 按
- * 0x5a..0x5f 合成 gesture。回調來自 native 回調線程，非主線程。</p>
+ * <p>native 線程讀 {@code /dev/input/event*}（rk29-keypad），5-mic 碼形如
+ * {@code 0x5A01/0x5B01/0x5E01…}，2-mic 碼形如 {@code 0x3C01/0x3D01/0x4201…}
+ * （即舊 broadcast 格式 {@code (eventCode<<8)|0x01}），由
+ * {@link #onNativeKey(int)} 按 0x5a..0x5f／舊制 60/61/66 合成 gesture。
+ * 回調來自 native 回調線程，非主線程。</p>
+ *
+ * <p>另支援舊制原始碼 60/61/66（1.x/2.x 世代 libNativeClassJni；同一粒
+ * 3.002 lib 喺非 Lynx 機種／舊觸控板亦可能派呢套）——60/61＝短按、冇 down/up
+ * 邊沿，合成 press+release click（v−／v＋）；66（interrupt）＝雙鍵總停。
+ * 64/65（長按，官方語意係 QR 連接模式 toggle／未處理）本 app 冇等價嘢，
+ * 唔映射。見 {@link #onNativeKey(int)}。</p>
  *
  * <p>收斂狀態機（吞重複／stray、雙鍵合成、去重）見下面各 locked 方法。
  * 注意：本類冇 Java 後備直讀——native 起唔嚟（.so 缺失／Init 失敗）就係
@@ -44,6 +51,14 @@ public class HeadKeyPoller extends HeadKeyMgr {
     private static final int KEY_BOTH = 0x5e;
     private static final int KEY_BOTH_UP = 0x5f;
 
+    // 舊制原始碼（高 byte；1.x/2.x 世代 libNativeClassJni 同 3.0.0.2 官方
+    // 非 Lynx fallback 共用呢套）：冇 press/lift 邊沿、冇 release，一粒碼
+    // 代表成下動作。只有 60/61/66 喺本 app 有完整對應（音量−／音量＋／
+    // 總停）；64/65（長按）官方語意係 QR 連接模式 toggle／未處理，唔映射。
+    private static final int KEY_OLD_FORMOR_SHORT = 60;
+    private static final int KEY_OLD_BACK_SHORT = 61;
+    private static final int KEY_OLD_INTERRUPT = 66;
+
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile Listener listener;
     // 2026-09-10 刪：startNativeWatchdog（6s 冇回調當死）——keyjnilog.txt 實證
@@ -58,6 +73,17 @@ public class HeadKeyPoller extends HeadKeyMgr {
     // stuck 吃單）。raw 邊到先清。
     private boolean bothSynthetic = false;
     private boolean nativeActive = false;
+    // alpha2_10002 (2-mic, Android 4.4.2) 行 1.1.7.3 嘅 libNativeClassJni，
+    // 唔用 libhead_key_mgr（見 start() 分支）。
+    private com.example.t01.nativeClass nativeClass;
+    private boolean nativeClassActive = false;
+    /**
+     * 舊制 click 嘅 press→release 間隔（ms）：一撳即著 pad LED（14/16，LedCenter
+     * worker 80ms 一 tick）＋行一格音量，隔呢個時間先放 release 熄燈／收連發。
+     * 必須 < GestureCenter 連發首格（300ms），先唔會多行一格。
+     */
+    static final long CLICK_RELEASE_DELAY_MS = 150;
+    private java.util.Timer clickTimer;
     /**
      * 同一個雙撳去重窗（ms，uptime 計）。driver 會將同一吓雙撳報幾次
      * （raw 重疊＋遲到嘅 synthetic 0x5e01，中間重隔住 raw 放手）——窗內
@@ -71,6 +97,12 @@ public class HeadKeyPoller extends HeadKeyMgr {
 
     public synchronized void start() {
         if (running.get()) return;
+        // alpha2_10002 行 1.1.7.3 原裝 2-mic 路徑：libNativeClassJni.so。
+        // 5-mic (Lynx) 先繼續用 libhead_key_mgr.so。
+        if (HardwareVersion.is2Mic()) {
+            startNativeClass();
+            return;
+        }
         // 與 Java 直讀互斥寫死喺度：native 起得來就係唯一 reader，唔開第二條。
         // 注意：反匯編證實 native Init() 成功失敗一律回 0（結尾 moveq r0,#0），
         // 不可用返回值判斷；照原裝順序調，成敗看回調/“nativeRun” log。
@@ -92,8 +124,37 @@ public class HeadKeyPoller extends HeadKeyMgr {
         }
     }
 
+    private void startNativeClass() {
+        try {
+            nativeClass = new com.example.t01.nativeClass();
+            com.example.t01.nativeClass.setPoller(this);
+            running.set(true);
+            // 原廠 GestureService.onCreate 次序：Init → nativeInit → nativeThreadStart。
+            boolean initRet = nativeClass.Init();
+            Log.i(TAG, "nativeClass.Init() returned " + initRet);
+            nativeClass.nativeInit();
+            nativeClass.nativeThreadStart();
+            nativeClassActive = true;
+            Log.i(TAG, "nativeClass head_key thread active (1.1.7.3 2-mic)");
+        } catch (Throwable t) {
+            running.set(false);
+            nativeClassActive = false;
+            com.example.t01.nativeClass.setPoller(null);
+            Log.w(TAG, "nativeClass head_key failed, no fallback: " + t.getMessage());
+        }
+    }
+
     public synchronized void stop() {
         running.set(false);
+        if (nativeClassActive) {
+            nativeClassActive = false;
+            try {
+                if (nativeClass != null) nativeClass.nativeThreadStop();
+            } catch (Throwable t) {
+                Log.w(TAG, "nativeClass nativeThreadStop failed: " + t.getMessage());
+            }
+            com.example.t01.nativeClass.setPoller(null);
+        }
         if (nativeActive) {
             nativeActive = false;
             try {
@@ -116,15 +177,27 @@ public class HeadKeyPoller extends HeadKeyMgr {
         onNativeKey(code);
     }
 
+    /** libNativeClassJni（alpha2_10002）回調；碼值同舊制 60/61/66 一樣。 */
+    public void onNativeClassCallback(int code) {
+        if (!running.get()) return;
+        Log.i(TAG, "nativeClass key 0x" + Integer.toHexString(code));
+        onNativeKey(code);
+    }
+
     /**
      * native 回調解碼：實測碼形如 {@code 0x5A01/0x5B01/0x5E01…}，
      * 即舊 broadcast 格式 {@code (eventCode<<8)|0x01}。
      * 0x5a..0x5d 行收斂狀態機（防雙重派發）；0x5e01/0x5f01 信 native 但唔
      * 重複報（raw 重疊報過就吞 synthetic 果粒；狀態全清先吞 0x5f01）。
+     * 舊制 60/61 另走 click 合成、66＝總停（見各 case）；64/65 唔映射。
+     *
+     * package-private：等 unit test（scripts/test-headkeypoller.py）直接餵碼。
      */
-    private void onNativeKey(int code) {
+    void onNativeKey(int code) {
         int eventCode = (code >> 8) & 0xFF;
         boolean publish = false;
+        boolean minusClickRelease = false;
+        boolean plusClickRelease = false;
         java.util.List<Integer> tmp = new java.util.ArrayList<Integer>(1);
         synchronized (this) {
             switch (eventCode) {
@@ -164,6 +237,34 @@ public class HeadKeyPoller extends HeadKeyMgr {
                     }
                     publish = true;
                     break;
+                case KEY_OLD_FORMOR_SHORT:
+                    // 舊制 click 模型：一粒碼＝成下短按（driver 冇 release
+                    // 邊沿）——即行 press（著 LED 14＜「−」＞＋行一格），release
+                    // 隔 CLICK_RELEASE_DELAY_MS 先放：LED worker 有時間著燈，
+                    // 連發首格（300ms）之前已收，唔會多行一格。
+                    // 只有 60/61/66 有完整對應；64/65（長按，官方=QR 模式
+                    // toggle／未處理）唔映射，跌落 default log。
+                    tmp.add(KEY_MINUS);
+                    minusClickRelease = true;
+                    publish = true;
+                    break;
+                case KEY_OLD_BACK_SHORT:
+                    // 同上（LED 16＜「＋」＞）。
+                    tmp.add(KEY_PLUS);
+                    plusClickRelease = true;
+                    publish = true;
+                    break;
+                case KEY_OLD_INTERRUPT:
+                    // interrupt＝總停，同 0x5e01 一條路：食同一個 1 秒去重窗
+                    // （driver 重複報唔會開兩次火）；假旗交俾
+                    // pressLocked/releaseLocked 嘅 synthetic 殘留清理。
+                    if (tryFireBothLocked(tmp)) {
+                        minusDown = true;
+                        plusDown = true;
+                        bothSynthetic = true;
+                    }
+                    publish = true;
+                    break;
                 default:
                     Log.d(TAG, "native key unmapped 0x" + Integer.toHexString(code));
                     break;
@@ -180,6 +281,31 @@ public class HeadKeyPoller extends HeadKeyMgr {
             }
         }
         for (int i = 0; i < tmp.size(); i++) emitGesture(tmp.get(i));
+        // press 出咗先排 release（Timer 最長 150ms 後到，次序保證）。
+        if (minusClickRelease) scheduleClickRelease(KEY_MINUS_UP);
+        if (plusClickRelease) scheduleClickRelease(KEY_PLUS_UP);
+    }
+
+    /**
+     * 排舊制 click 嘅 release：press 已行咗一格／著咗燈，隔
+     * {@link #CLICK_RELEASE_DELAY_MS} 先放。daemon Timer（唔阻 process 退出），
+     * 唔 cancel——stop 後殘留一粒 release 最多 150ms 就到，listener 已清空
+     * 就自然 no-op（GestureCenter.shutdown 先 setListener(null) 再 stop）。
+     * package-private 等 unit test 可以覆寫捕捉（唔使等真時間）。
+     */
+    void scheduleClickRelease(final int eventCode) {
+        final java.util.Timer t;
+        synchronized (this) {
+            if (clickTimer == null) {
+                clickTimer = new java.util.Timer("headkey-click", true);
+            }
+            t = clickTimer;
+        }
+        t.schedule(new java.util.TimerTask() {
+            @Override public void run() {
+                emitGesture(eventCode);
+            }
+        }, CLICK_RELEASE_DELAY_MS);
     }
 
     /** 報雙撳（0x5e），同一個雙撳窗內只報一次（見 DOUBLE_DEDUP_MS）。

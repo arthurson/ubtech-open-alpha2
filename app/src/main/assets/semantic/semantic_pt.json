@@ -1,7 +1,7 @@
 {
   "version": 2,
   "lang": "pt",
-  "_comment": "85 ACTION（id/op/slot/actionId全同英文版；每组葡文5问法＋5答案）＋200 日常CHAT（pt.daily.001-200，每组5问法＋5答案，动作全__RANDOM__）。fallback后加。",
+  "_comment": "86 ACTION（id/op/slot/actionId全同英文版；每组葡文5问法＋5答案）＋200 日常CHAT（pt.daily.001-200，每组5问法＋5答案，动作全__RANDOM__）。fallback后加。",
   "intents": [
     {
       "id": "pt.action.applaud",
@@ -1328,6 +1328,26 @@
         "Conhece história de cowboy?",
         "História do Velho Oeste!",
         "Causo western!"
+      ]
+    },
+    {
+      "id": "pt.action.story_pig",
+      "type": "ACTION",
+      "op": "STORY_WESTERN",
+      "actionId": "1487404045427",
+      "a": [
+        "Claro!",
+        "Com certeza, vou contar a história do porquinho.",
+        "Está bem, era uma vez um porquinho...",
+        "Perfeito, senta-te, a história vai começar.",
+        "Deixa comigo, vai ser divertido."
+      ],
+      "qs": [
+        "Conta a história do porquinho que não gosta de tomar banho",
+        "O porquinho que não gosta de tomar banho",
+        "História do porquinho que não quer tomar banho",
+        "Quero ouvir a história do porquinho",
+        "Conta a história do porquinho"
       ]
     },
     {

@@ -194,8 +194,11 @@ public final class ApiValidatorTest {
         // ── ubx speed ──
         eq(1.0f, ApiValidator.requireUbxSpeed(q("value", "1")), "ubxSpeed.one");
         eq(0.67f, ApiValidator.requireUbxSpeed(q("value", "0.67")), "ubxSpeed.067");
+        eq(1.3f, ApiValidator.requireUbxSpeed(q("value", "1.3")), "ubxSpeed.slider");
         eq(2.0f, ApiValidator.parseUbxSpeedValue("2"), "ubxSpeed.parse");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireUbxSpeed(q("value", "3")); } }, "ubxSpeed.bad");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireUbxSpeed(q("value", "0.49")); } }, "ubxSpeed.low");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.requireUbxSpeed(q("value", "2.01")); } }, "ubxSpeed.high");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireUbxSpeed(q()); } }, "ubxSpeed.missing");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.parseUbxSpeedValue(null); } }, "ubxSpeed.null");
 

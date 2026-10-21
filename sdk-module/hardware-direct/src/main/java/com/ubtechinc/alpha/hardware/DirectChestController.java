@@ -56,11 +56,30 @@ public final class DirectChestController {
     }
 
     /**
-     * 群舵機播放幀（跳舞/.ubx）：cmd 3 [20軸byte + short time]，a.m 原文。
-     * 注意：setAllServos 的 cmd 52 係另一用途，保持不動，播放一律走此方法。
+     * 動作播放幀（跳舞/.ubx）：固定 cmd 3，payload [20軸byte + short time]。
+     * 官方 1.1.7.3 {@code PlayMotorBlockData} 都係 cmd 3，兩代胸板一致；
+     * 5-mic 實機亦證實 cmd 3 會郁。
      * 兼容 20 或 22 軸：22 時前 20 走 cmd3，21/22 各補一發 cmd05（同 time）。
      */
     public boolean playAllServos(int[] angles, short time) {
+        return sendAllServos(angles, time, RobotWire.CHEST_CMD_SENDMOTOR);
+    }
+
+    /**
+     * 伺服頁「全組」/ 開機企姿：payload 同動作幀，但 command 按版本分：
+     * 5-mic 用 cmd 3（本 repo 5-mic 實測 cmd 52 有 ACK 唔郁）；
+     * 2-mic 用官方 0x34（cmd 52）——官方 Alpha2RobotApi.sendFreeAngle 同
+     * AlphaMainSeviceImpl.robotStandup 原文，舊胸板行呢個。
+     * 單舵機微調一律 cmd 5（setSingleServo）。
+     */
+    public boolean setAllServos(int[] angles, short time) {
+        byte cmd = HardwareVersion.is2Mic()
+                ? RobotWire.CHEST_SET_ALL_ANGLE      // 2-mic 官方 0x34
+                : RobotWire.CHEST_CMD_SENDMOTOR;     // 5-mic 實測會郁嘅 cmd 3
+        return sendAllServos(angles, time, cmd);
+    }
+
+    private boolean sendAllServos(int[] angles, short time, byte cmd) {
         if (angles == null || (angles.length != 20 && angles.length != 22)) return false;
         time = clampTime(time);
         int[] first20 = angles.length == 20 ? angles : java.util.Arrays.copyOf(angles, 20);
@@ -69,23 +88,13 @@ public final class DirectChestController {
             p.putByte((byte) clampByte(a));
         }
         p.putShort_(time);
-        boolean ok = port.send(RobotWire.CHEST_CMD_SENDMOTOR, p.getBuffer());
+        boolean ok = port.send(cmd, p.getBuffer());
         if (angles.length == 22) {
             boolean ok21 = setSingleServo((byte) 21, angles[20], time);
             boolean ok22 = setSingleServo((byte) 22, angles[21], time);
             return ok && ok21 && ok22;
         }
         return ok;
-    }
-
-    /**
-     * 全舵機 20/22 個角度。注意：cmd 52 有 ACK 但舵机不动（旧实测），故播放/全組
-     * 位姿一律走 cmd 3（dance 通道，a.m 私有发送原文）。單舵機微調則走 cmd 5
-     *（setSingleServo，2026-09-06 官方 PC tuner 實測可郁，用戶目視確認）。
-     * 位姿追踪见 {@link ServoPoseTracker}。
-     */
-    public boolean setAllServos(int[] angles, short time) {
-        return playAllServos(angles, time);
     }
 
     /** 官方開機 START（cmd 0x01，無 payload）：狀態查詢＋電源初始化。官方

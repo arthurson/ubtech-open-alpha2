@@ -48,7 +48,7 @@ public abstract class SemanticMatcherBase {
         public final String operation;  // 悠聊 operation 代號, CHAT 類是 null
         public final String slot;       // 方向/情緒 slot, 沒有就是 null
         public final String answer;     // 隨機選一句的回覆句, 沒答案句就是 null
-        public final String actionId;   // 202動作清單裡面的 action id, 沒動作就是 null
+        public final String actionId;   // 203動作清單裡面的 action id, 沒動作就是 null
         public final boolean matched;   // 真命中／fallback
         public final int matchLayer;    // 0 精確／1 包含／2 反包含／3 模糊／4 fallback
 
@@ -356,8 +356,8 @@ public abstract class SemanticMatcherBase {
         String actionId = e.actionId;
         if ("__RANDOM__".equals(actionId)) {
             // 這類 operation 在問法庫裡面沒對應固定動作, 跟著用戶決定: 隨機選一個
-            // 202 動作清單裡面的動作。實際隨機邏輯留給呼叫方做 (MainActivity 已經
-            // 有 loadXiaozhiActions(), 這個 class 不重複讀多一次 202 動作清單),
+            // 203 動作清單裡面的動作。實際隨機邏輯留給呼叫方做 (MainActivity 已經
+            // 有 loadXiaozhiActions(), 這個 class 不重複讀多一次 203 動作清單),
             // 這裡回傳 "__RANDOM__" 標記給呼叫方識別。
         }
         return new MatchResult(e.q, e.type, e.op, e.slot, answer, actionId, true, layer);
@@ -423,7 +423,7 @@ public abstract class SemanticMatcherBase {
      *  呼叫方 (SemanticCenter.handleSemanticMatch()) 應該在拿到 MatchResult
      *  之後、真正 call robot.action_PlayActionName() 之前, 用這個方法將
      *  actionId 解析成真實可播放的 id - 和 "__RANDOM__" 標記屬於同一種「延遲到
-     *  執行時才選」的設計, 但這是分類限定的隨機, 不是全部 202 個隨便選。 */
+     *  執行時才選」的設計, 但這是分類限定的隨機, 不是全部 203 個隨便選。 */
     public String resolveCategoryRandomActionId(String actionId) {
         if (actionId == null || !actionId.startsWith(RANDOM_CATEGORY_PREFIX)) {
             return actionId;

@@ -21,7 +21,7 @@ import android.content.Context;
  *  081-120 家庭家居寵物、121-160 工作學習健康、161-200 休閒旅行日常;
  *  同英法西日版一樣，200 日常組動作全 __RANDOM__ (fallback 60 池，
  *  播嗰刻先 resolve，同 fallback 做法一致)。72 ACTION 對齊英文版
- *  改到 85 組 (id/op/actionId 全同英文版一致, slot 清一色 None；問法≥5
+ *  改到 86 組 (id/op/actionId 全同英文版一致, slot 清一色 None；問法≥5
  *  (原表同組多行變體保留, 未刪)、答案≥5；笑面併入 express、雙手併入
   *  handsup.3；答案沿用原有通用句)；13 FUNCTION (要求外的 beginconnect/connect/sleep 已刪)。
  *  cn800 (電影／名言／歌詞／潮語各 200) 啱意境的 119 句按意配入 70 個日常組
@@ -38,14 +38,14 @@ import android.content.Context;
  *   type   - ACTION (有動作) | FUNCTION (系統操作, 例如音量/連線) | CHAT (日常對答, 動作 __RANDOM__)
  *   op     - 悠聊原本的 operation 代號 (例如 "DANCE"), ACTION/FUNCTION 才有
  *   slot   - 方向/情緒等參數 (例如 "LEFT"), 只有部分 ACTION 有
- *   actionId - 已經由 operation+slot 對應好的、202 動作清單裡面的真實 action id
- *              (也就是 xiaozhi_actions.json 那 202 個裡面其中一個), 只有 ACTION 才有。
+ *   actionId - 已經由 operation+slot 對應好的、203 動作清單裡面的真實 action id
+ *              (也就是 xiaozhi_actions.json 那 203 個裡面其中一個), 只有 ACTION 才有。
   *              兩種特殊值: "__RANDOM__" (TFBOY 這類沒固定動作, 隨機 filler 池 60 個裡面隨便選一個
  *              - 見 resolveRandomActionId()); "__RANDOM_CATEGORY__<key>" (2026-08 新增
  *              - 用戶說到分類名但沒說出具體哪個動作, 例如「跳舞」「玩個瑜伽」, 要在
  *              那個分類裡面隨機選一個 - 見 resolveCategoryRandomActionId())
  *
- * 分類 random (__RANDOM_CATEGORY__): 202 個動作本身分成 5 大類 17 個子分類 (見用戶
+ * 分類 random (__RANDOM_CATEGORY__): 203 個動作本身分成 5 大類 17 個子分類 (見用戶
  * 提供的 202_actions_classified.txt), 目標是「說到具體動作名就直接做那個, 只說到
  * 分類名 (例如「瑜伽」「跳舞」「講故事」) 就在那類裡面隨機選一個」, 三層 fallback:
  * 具體動作名 (原有 32 operation) > 子分類 (例如 DANCE_KIDS) > 大分類 (例如

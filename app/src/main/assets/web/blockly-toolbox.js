@@ -10,6 +10,15 @@
 // 一次, 拿到用回新語言的版本。window.ALPHA_TOOLBOX 保留做「最近一次 build
 // 出來的版本」, 等 initWorkspace() (blockly-page.js) 首次注入 workspace 當時
 // 不用改呼叫方式。
+// alpha2_10002 冇 PIR：主頁 PIR 卡收埋之外，Blockly toolbox 亦唔顯示 PIR
+// 開關／觸發 block（alpha2Is2Mic 由 blockly.html 讀 mic/version 後設）。
+function tbNoPir(items) {
+  if (!window.alpha2Is2Mic) return items;
+  return items.filter(function (it) {
+    return it.type !== 'alpha_sensor_pir_toggle' && it.type !== 'alpha_event_pir_triggered';
+  });
+}
+
 window.buildAlphaToolbox = function () {
   return {
   kind: 'categoryToolbox',
@@ -34,7 +43,7 @@ window.buildAlphaToolbox = function () {
     },
     {
       kind: 'category', name: t('toolbox_cat_events'), colour: '0',
-      contents: [
+      contents: tbNoPir([
         { kind: 'block', type: 'alpha_sensor_accel_toggle', fields: { ON: 'true' } },
         { kind: 'block', type: 'alpha_sensor_sonar_toggle', fields: { ON: 'true' } },
         { kind: 'block', type: 'alpha_sensor_pir_toggle', fields: { ON: 'true' } },
@@ -42,7 +51,7 @@ window.buildAlphaToolbox = function () {
         { kind: 'block', type: 'alpha_event_accel_threshold' },
         { kind: 'block', type: 'alpha_event_sonar_triggered' },
         { kind: 'block', type: 'alpha_event_pir_triggered' },
-      ]
+      ])
     },
     {
       // 2026-08 更新: 動作 block 由一粒 alpha_action_play_builtin (帶 CATEGORY

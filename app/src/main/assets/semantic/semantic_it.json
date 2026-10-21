@@ -1,7 +1,7 @@
 {
   "version": 2,
   "lang": "it",
-  "_comment": "85 ACTION（id/op/slot/actionId全同英文版；每组意大利文5问法＋5答案）＋200 日常CHAT（it.daily.001-200，每组5问法＋5答案，动作全__RANDOM__）。fallback后加。",
+  "_comment": "86 ACTION（id/op/slot/actionId全同英文版；每组意大利文5问法＋5答案）＋200 日常CHAT（it.daily.001-200，每组5问法＋5答案，动作全__RANDOM__）。fallback后加。",
   "intents": [
     {
       "id": "it.action.applaud",
@@ -1328,6 +1328,26 @@
         "Conosci storie di cowboy?",
         "Una storia dal Far West!",
         "Una storia western!"
+      ]
+    },
+    {
+      "id": "it.action.story_pig",
+      "type": "ACTION",
+      "op": "STORY_WESTERN",
+      "actionId": "1487404045427",
+      "a": [
+        "Certo!",
+        "Va bene, ti racconto la storia del maialino.",
+        "D'accordo, c'era una volta un maialino...",
+        "Perfetto, mettiti comodo, la storia comincia.",
+        "Lascia fare a me, ti piacerà!"
+      ],
+      "qs": [
+        "Raccontami la storia del maialino che non ama lavarsi",
+        "Il maialino che non ama lavarsi",
+        "La storia del maialino che non vuole fare il bagno",
+        "Raccontami la storia del maialino",
+        "Voglio sentire la storia del maialino"
       ]
     },
     {

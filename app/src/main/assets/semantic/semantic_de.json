@@ -1,7 +1,7 @@
 {
   "version": 2,
   "lang": "de",
-  "_comment": "85 ACTION（id/op/slot/actionId全同英文版；每组地道德文5问法＋5答案）＋200 日常CHAT（de.daily.001-200，每组5问法＋5答案，动作全__RANDOM__）。fallback后加。",
+  "_comment": "86 ACTION（id/op/slot/actionId全同英文版；每组地道德文5问法＋5答案）＋200 日常CHAT（de.daily.001-200，每组5问法＋5答案，动作全__RANDOM__）。fallback后加。",
   "intents": [
     {
       "id": "de.action.applaud",
@@ -1328,6 +1328,26 @@
         "Kennst du ein Western-Märchen?",
         "Eine Geschichte aus dem Wilden Westen!",
         "Cowboy-Story bitte!"
+      ]
+    },
+    {
+      "id": "de.action.story_pig",
+      "type": "ACTION",
+      "op": "STORY_WESTERN",
+      "actionId": "1487404045427",
+      "a": [
+        "Aber gerne!",
+        "Natürlich, ich erzähle dir die Geschichte vom kleinen Schweinchen.",
+        "Alles klar, es war einmal ein kleines Schweinchen...",
+        "Sehr gern, setz dich hin, die Geschichte beginnt.",
+        "Überlass das mir, es wird wunderbar."
+      ],
+      "qs": [
+        "Erzähl mir die Geschichte vom kleinen Schweinchen, das nicht baden mag",
+        "Das kleine Schweinchen, das nicht baden mag",
+        "Die Geschichte vom Schweinchen, das nicht baden will",
+        "Erzähl die Geschichte vom kleinen Schwein",
+        "Ich möchte die Geschichte vom kleinen Schweinchen hören"
       ]
     },
     {

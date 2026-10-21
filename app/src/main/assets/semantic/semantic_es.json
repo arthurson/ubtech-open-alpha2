@@ -1378,6 +1378,26 @@
       ]
     },
     {
+      "id": "es.action.story_pig",
+      "type": "ACTION",
+      "op": "STORY_WESTERN",
+      "actionId": "1487404045427",
+      "a": [
+        "¡Claro que sí!",
+        "Muy bien, te cuento la historia del cerdito.",
+        "De acuerdo, había una vez un cerdito...",
+        "Perfecto, ponte cómodo, el cuento empieza.",
+        "Déjamelo a mí, te va a encantar."
+      ],
+      "qs": [
+        "Cuéntame el cuento del cerdito que no le gusta bañarse",
+        "El cerdito que no le gusta bañarse",
+        "Cuéntame la historia del cerdito",
+        "Quiero el cuento del cerdito que no se quiere bañar",
+        "Historia del cerdito que odia el baño"
+      ]
+    },
+    {
       "id": "es.action.tfboy",
       "type": "ACTION",
       "op": "TFBOY",

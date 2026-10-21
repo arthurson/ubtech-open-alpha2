@@ -887,7 +887,7 @@ public final class ApiDispatcher {
             case "servo/all": {
                 int[] arr = ApiValidator.requireAngles20(query);
                 int time = ApiValidator.optionalIntRange(query, "time", ApiValidator.SERVO_TIME_MIN_MS, ApiValidator.SERVO_TIME_MAX_MS, 500);
-                // setAllServos 内部已转 cmd03（cmd52 有 ACK 无动作）。
+                // setAllServos 按版本：2-mic 官方 cmd52／5-mic cmd03。
                 boolean sent = HardwareDirectManager.get(appContext).chest().setAllServos(arr, (short) time);
                 if (!sent) return HttpServer.ApiResponse.error("direct not ready");
                 ubxPlayer.notePose(arr);

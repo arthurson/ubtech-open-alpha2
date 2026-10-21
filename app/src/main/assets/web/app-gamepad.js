@@ -603,7 +603,7 @@ function gamepadPair(address) {
 
 // ---------------- 管理：映射表 ----------------
 
-// 動作清單緩存（機身 action/list 活數據優先，唔得先用內嵌 202 catalog）。
+// 動作清單緩存（機身 action/list 活數據優先，唔得先用內嵌 203 catalog）。
 // 分組經 action_classification.json（靜態，同目錄 fetch）。
 var __gpActionsCache = null;
 var __gpActionCatCache = null;
@@ -763,7 +763,7 @@ function gamepadActionKindOf(id) {
   return GAMEPAD_ACTION_SUB2KIND[sub] || "others";
 }
 
-// 建 202 動作級聯下拉（先大類、再入面動作；數據未到先得提示，load 完補）。
+// 建 203 動作級聯下拉（先大類、再入面動作；數據未到先得提示，load 完補）。
 function gamepadBuildActionSelect(side, k, idx, parsed) {
   var wrap = document.createElement("span");
   wrap.id = gamepadSubId("gpActionWrap", side, k, idx);
@@ -1490,6 +1490,8 @@ function gamepadBuildMappingSubRow(side, k, idx, parsed, isFirst) {
   sensorSel.id = gamepadSubId("gpSensorSel", side, k, idx);
   sensorSel.style.display = parsed.kind === "sensor" ? "inline" : "none";
   GAMEPAD_SENSOR_FNS.forEach(function (f2) {
+    // alpha2_10002 冇 PIR：gamepad sensor 下拉都唔顯示 pir_toggle。
+    if (window.alpha2Is2Mic && f2 === "pir_toggle") return;
     var o3 = document.createElement("option");
     o3.value = f2;
     o3.textContent = t(GAMEPAD_SENSOR_FN_KEYS[f2] || f2);

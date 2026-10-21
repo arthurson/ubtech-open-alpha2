@@ -10,7 +10,7 @@
 
 const Alpha2Api = (function() {
   function assertEnum(val, allowed, key) { if (val != null && !allowed.includes(val)) throw new Error(key + ' must be one of ' + allowed.join(',')); }
-  // 2026-09-09：數字 enum（ubx/speed 0.5/0.67/…）用數值比對＋後端同款 0.001 容差——
+  // 數字 enum 用數值比對＋後端同款 0.001 容差——
   // URL/query 來的是字串，嚴格 includes 會誤殺 "1" 之類合法值。
   function assertEnumNum(val, allowed, key) { if (val != null && !allowed.some(function(a){ return Math.abs(Number(val)-a) < 0.001; })) throw new Error(key + ' must be one of ' + allowed.join(',')); }
   function assertRange(val, min, max, key) { if (val < min || val > max) throw new Error(key + ' must be between '+min+' and '+max); }
@@ -472,7 +472,7 @@ const Alpha2Api = (function() {
   }
 
   function directUbxSpeed(params) {
-    if (params && params.value != null) assertEnumNum(params.value, [0.5, 0.67, 1, 1.5, 2], 'value');
+    if (params && params.value != null) assertRange(Number(params.value), 0.5, 2.0, 'value');
     // 動作播放變速（舵機+配樂同縮放；黏性，正在播時設會由頭重播即時生效）
     return directApi('ubx/speed', params);
   }
@@ -498,7 +498,7 @@ const Alpha2Api = (function() {
   }
 
   function ubxSpeed(params) {
-    if (params && params.value != null) assertEnumNum(params.value, [0.5, 0.67, 1, 1.5, 2], 'value');
+    if (params && params.value != null) assertRange(Number(params.value), 0.5, 2.0, 'value');
     // 動作播放變速（舵機+配樂同縮放；黏性，正在播時設會由頭重播即時生效）
     return api('ubx/speed', params);
   }

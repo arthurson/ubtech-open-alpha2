@@ -8,7 +8,7 @@ import android.content.Context;
  * SemanticMatcherJa (日文版) 同一套語意配對機制, 專門處理德文。
  *
  * 資料來源: assets/semantic/semantic_de.json (v2 grouped 格式, 同其他語言同一個
- * schema - 見 SemanticMatcherBase.load())。85 ACTION (id/op/slot/actionId 全同
+ * schema - 見 SemanticMatcherBase.load())。86 ACTION (id/op/slot/actionId 全同
  * 英文版；每組地道德文 5 問法＋5 答案) ＋200 日常 CHAT (de.daily.001-200，
  * 每組 5 問法＋5 答案：001-040 問候天氣、041-080 飲食、081-120 家庭家居寵物、
  * 121-160 工作學習健康、161-200 休閒旅行日常；動作全 __RANDOM__)。

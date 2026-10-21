@@ -1,7 +1,7 @@
 {
   "version": 2,
   "lang": "ja",
-  "_comment": "v2 grouped格式, 同其他語言同一個schema (見 SemanticMatcherBase.load)。85 ACTION（同西版同op/actionId，通用日文答案5句＋jp800.txt精選對白/歌詞/俚語按意配對）＋200 日常CHAT（ja.daily.001-200，每組日常問法＋口語答案5句）。",
+  "_comment": "v2 grouped格式, 同其他語言同一個schema (見 SemanticMatcherBase.load)。86 ACTION（同西版同op/actionId，通用日文答案5句＋jp800.txt精選對白/歌詞/俚語按意配對）＋200 日常CHAT（ja.daily.001-200，每組日常問法＋口語答案5句）。",
   "intents": [
     {
       "id": "ja.action.applaud",
@@ -1402,6 +1402,26 @@
         "西洋",
         "西洋のおとぎ話",
         "グリム童話みたいな話"
+      ]
+    },
+    {
+      "id": "ja.action.story_pig",
+      "type": "ACTION",
+      "op": "STORY_WESTERN",
+      "actionId": "1487404045427",
+      "a": [
+        "はーい！",
+        "もちろん、子ぶたの話をするね。",
+        "わかった、昔々、お風呂が嫌いな子ぶたがいました…",
+        "いいよ、座ってね、お話が始まるよ。",
+        "まかせて！きっと楽しいよ。"
+      ],
+      "qs": [
+        "お風呂が嫌いな子ぶたの話をして",
+        "お風呂が嫌いな子ぶた",
+        "子ぶたがお風呂に入らない話",
+        "お風呂嫌いの子ぶたの物語",
+        "子ぶたの話を聞かせて"
       ]
     },
     {

@@ -20,6 +20,9 @@
 // 同其餘 199 個動作一致的大小寫風格, 不要僅那 18 個變完大楷開頭。現在全部
 // 200 個 id 都經核對, 對得上機身 actionInfo.txt 的原廠 nameEn。
 //
+// ⚠️ 2026-10 更新: 用家要求保留原本 202 個動作, 只補回「不愛洗澡的小豬」
+// (1487404045427) 1 個, 清單總數為 203 個 (201 個機身動作 + 2 個 Neuron 動作)。
+//
 // 分類邏輯: 5 個 main (basic/dance/story/yoga/others) 之下再分 15 個 sub, 對照
 // 如下 (main -> [sub,...]):
 //   basic: 移動類, 手勢類, 頭部類, 表情 / 互動類, 全身 / 其他動作
@@ -281,6 +284,7 @@
     { id: '1464835936127', nameCn: '狼與羔羊', nameEn: 'The wolf and the lamb', main: 'story', sub: '西方寓言 / 故事' },
     { id: '1464835936128', nameCn: '老鼠、青蛙和老鷹', nameEn: 'The mouse, the frog, and the eagle', main: 'story', sub: '西方寓言 / 故事' },
     { id: '1464835936129', nameCn: '特洛伊木馬', nameEn: 'Trojan horse', main: 'story', sub: '西方寓言 / 故事' },
+    { id: '1487404045427', nameCn: '不愛洗澡的小豬', nameEn: "The Little Pig Who Doesn't Like Bathing", main: 'story', sub: '西方寓言 / 故事' },
     { id: '1509004671917', nameCn: '金雞獨立', nameEn: 'one foot standing', main: 'yoga', sub: '站立式 / 平衡式' },
     { id: '1509004843153', nameCn: '敬禮式', nameEn: 'salute', main: 'yoga', sub: '站立式 / 平衡式' },
     { id: '1509004868066', nameCn: '蹲式', nameEn: 'squat pose', main: 'yoga', sub: '站立式 / 平衡式' },
@@ -363,7 +367,7 @@
   // 白名單推斷分類, 完全不理個 id 本身。新版資料來自 actionInfo.txt 實機清單 (見
   // 檔頭 2026-08 更新註解), 對照表本身就是「id -> {main, sub}」, 更準確亦更簡單
   // 直接查表, 不用再靠 type 數字猜測。機械人即時回傳的 action 裡面, 凡是 id 剛好
-  // 在這個已知清單 (200 個實機 id + 底下額外加的 2 個 Neuron 動作) 裡面的, 就
+  // 在這個已知清單 (201 個實機 id + 底下額外加的 2 個 Neuron 動作) 裡面的, 就
   // 會拿到正確分類前綴; 不在清單裡面的 (例如用家自己上載的自訂動作, 或者部分
   // 機型先有的擴充動作) 就沒有前綴, 屬正常現象, 不是 bug。
   var ACTION_MAIN_BY_ID = {};

@@ -229,9 +229,9 @@ public final class SemanticCenter {
                 String actionId = finalResult.actionId;
                 if (actionId != null && actionId.startsWith("__RANDOM_CATEGORY__")) {
                     // 用戶說到分類名 (例如「跳舞」/"Dance for me") 但沒有
-                    // 說出具體是哪個動作 - 在 202 動作清單的對應分類 (例如
+                    // 說出具體是哪個動作 - 在 203 動作清單的對應分類 (例如
                     // DANCE_KIDS/YOGA_ANY) 裡面隨機選一個。和下面 "__RANDOM__"
-                    // (完全不限分類, 202 個隨便選) 不同, 這是分類限定的隨機。中英文
+                    // (完全不限分類, 203 個隨便選) 不同, 這是分類限定的隨機。中英文
                     // matcher 共用同一份 action_category_pools.json, 哪個 instance
                     // 呼叫結果都一樣, 直接用主 matcher。
                     final SemanticMatcherBase hitMatcher = mainMatcher;
@@ -239,7 +239,7 @@ public final class SemanticCenter {
                             ? hitMatcher.resolveCategoryRandomActionId(actionId) : null;
                 } else if ("__RANDOM__".equals(actionId)) {
                     // TFBOY 這類 operation 在原廠問法裡沒有固定動作 - 沿用
-                    // triggerRandomFillerAction() 已有的隨機動作池 (202 個動作裡
+                    // triggerRandomFillerAction() 已有的隨機動作池 (203 個動作裡
                     // 「隨機短/長」開頭的那批, 專門用來做這種「動一下讓它生動一點」的效果)。
                     actionId = actionDirect.resolveRandomActionId();
                 }

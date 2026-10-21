@@ -26,6 +26,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.ubtechinc.alpha.hardware.RobotWire;
+import com.ubtechinc.alpha.hardware.HardwareVersion;
 import com.ubtechinc.alpha.hardware.HardwareDirectManager;
 import com.ubtechinc.alpha.hardware.LocalAlpha2Services;
 import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
@@ -115,7 +116,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     private SemanticMatcherFr semanticMatcherFr;
 
     /** 日文語意配對引擎實例, 和其他語言版同一套機制、獨立資料
-     *  (semantic_ja.json, 見 SemanticMatcherJa: 85 ACTION＋200 日常 CHAT)。
+     *  (semantic_ja.json, 見 SemanticMatcherJa: 86 ACTION＋200 日常 CHAT)。
      *  哪句用哪個 matcher 由 SemanticCenter 根據對話語言／輸入文字決定
      *  (見 handleSemanticMatch), 靠內容判斷更可靠。 */
     private SemanticMatcherJa semanticMatcherJa;
@@ -217,6 +218,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         sInstance = this;
         installCrashRestartHandler();
         Log.i(TAG, "MIC fw: " + SysProps.hardwareVersion() + " (ro.hardware.version)");
+        Log.i(TAG, "hardware variant: " + (HardwareVersion.is2Mic()
+                ? "alpha2_10002 (2-mic, Android 4.4.2)"
+                : "alpha2_10005 (5-mic)"));
 
         // LedCenter/RingtoneCenter 在這裡建立（不等 initRobot），因為下面
         // registerWifiLedReceiver() 即刻就要用。兩個都只需要 Context/
@@ -226,7 +230,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         registerDynamicReceiver();
         ledCenter.registerWifiLedReceiver();
         initRobot();
-        // pure-direct：胸 /dev/ttyS1 + 頭 /dev/ttyS3 + libhead_led.so JNI，
+        // pure-direct：10005 胸/頭 ttyS1/ttyS3 + libhead_led.so JNI；
+        // 10002 胸/頭 ttySAC0/ttySAC1 + 頭板 MCU 串口 LED。
         // 機身已無 alpha2services，無 binder fallback，失敗直接報錯。
         localServices = new LocalAlpha2Services(this);
         new Thread(new Runnable() {

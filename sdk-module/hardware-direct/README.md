@@ -41,7 +41,8 @@ Serial (`com.ubtechinc.alpha.hardware`):
 `.ubx` playback (`...hardware/ubx`):
 
 - `UbxFile` / `UbxParser` — action-file parse.
-- `UbxPlayer` — drift-free tick playback with 0.5/0.67/1/1.5/2x speed shift;
+- `UbxPlayer` — drift-free tick playback with 0.5–2.0x speed shift (servo and
+  mp3 music follow the same speed);
   `stop()` halts holding the last pose (the app-level stop plays the recovery
   action on top).
 - `VoiceStream` — per-action background music, locked to the same clock.

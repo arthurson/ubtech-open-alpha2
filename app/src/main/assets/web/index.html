@@ -116,8 +116,8 @@
          (chest serial cmd=72)。後端 publish "alpha2_pir_state" event，前端不用理背後路徑。
          indicator id: alpha2PirIndicator（見 app-status.js onAlpha2PirState()）。
          警示反應（紅燈＋"Heaven" 鈴聲）經 MainActivity#applyAlpha2PirLedAndSound() 實現，
-         預設關。 -->
-    <section class="card">
+         預設關。alpha2_10002 冇 PIR，app-status.js 會將成張卡收埋。 -->
+    <section class="card" id="pirCard">
       <h2 data-i18n="alpha2_pir_heading">PIR 感應器</h2>
       <div class="row">
         <label class="switch-label"><span data-i18n="alpha2_pir_switch_label">感應器開關</span>
@@ -190,13 +190,12 @@
         <button onclick="playAction()" data-i18n="action_play_btn">播放</button>
         <button onclick="stopAction()" data-i18n="action_stop_btn">停止</button>
         <label data-i18n="action_speed_label">變速</label>
-        <select id="actionSpeed" onchange="setActionSpeed()">
-          <option value="0.5">0.5x</option>
-          <option value="0.67">0.67x</option>
-          <option value="1" selected>1x</option>
-          <option value="1.5">1.5x</option>
-          <option value="2">2x</option>
-        </select>
+        <input id="actionSpeed" type="range" min="0.5" max="2" step="0.1" value="1"
+               style="width:140px"
+               oninput="document.getElementById('actionSpeedVal').textContent=Number(this.value).toFixed(1)+'x'"
+               onchange="setActionSpeed()">
+        <span id="actionSpeedVal">1.0x</span>
+        <button class="secondary" onclick="resetActionSpeed()">x1.0</button>
       </div>
     </section>
   </div>
@@ -1254,7 +1253,7 @@
       </div>
     </section>
 
-    <section class="card">
+    <section class="card" id="chestCard">
       <div class="row" style="justify-content:space-between;align-items:center">
         <h2 style="margin:0" data-i18n="chest_title">胸板固件</h2>
         <label class="switch-label">
@@ -1316,13 +1315,13 @@
      尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
      所以全部 <script src> 一定要行完先到那個 inline script。 -->
 <script src="app-core.js?v=20261017b"></script>
-<script src="api-client.js?v=20261017a"></script>
-<script src="app-status.js?v=20261017a"></script>
-<script src="app-actions.js?v=20261017a"></script>
+<script src="api-client.js?v=20261021a"></script>
+<script src="app-status.js?v=20261020a"></script>
+<script src="app-actions.js?v=20261021b"></script>
 <script src="app-speech.js?v=20261017a"></script>
 <script src="app-vosk.js?v=20261001a"></script>
-<script src="app-servo.js?v=20261017a"></script>
-<script src="app-gamepad.js?v=20261017a"></script>
+<script src="app-servo.js?v=20261020a"></script>
+<script src="app-gamepad.js?v=20261020a"></script>
 <script src="app-led.js?v=20261001a"></script>
 <script src="app-camera.js?v=20261017b"></script>
 <script src="app-xiaozhi.js?v=20261017a"></script>

@@ -95,7 +95,7 @@
 <script src="blockly-servo-data.js"></script>
 <script src="blockly-ringtone-data.js"></script>
 <script src="blockly-blocks.js"></script>
-<script src="blockly-toolbox.js"></script>
+<script src="blockly-toolbox.js?v=20261020a"></script>
 <script src="blockly-run.js"></script>
 <script src="blockly-page.js"></script>
 <!-- 型別化 API client (同 index.html 一樣, 一定要在提供 window.api 的 blockly-page.js 之後載入) -->
@@ -103,5 +103,27 @@
 <!-- 群控鏡像 (同 index.html 一樣; blockly.html 冇群控 tab，淨載 mirrorFanout＋scan helper，
      等積木 Run 嗰陣寫入類 call 都會同步去跟隨名單；top-level 淨 function＋listener，安全) -->
 <script src="app-group.js?v=20261001a"></script>
+<script>
+// alpha2_10002 冇 PIR：讀 mic/version 後收起 toolbox 嘅 PIR block。
+(function () {
+  function applyHardwareUi() {
+    if (typeof Alpha2Api === "undefined" || typeof Alpha2Api.micVersion !== "function") return;
+    Alpha2Api.micVersion().then(function (json) {
+      if (json && json.is2Mic) {
+        window.alpha2Is2Mic = true;
+        var ws = window.__alphaBlocklyWorkspace;
+        if (ws && typeof ws.updateToolbox === "function" && typeof window.buildAlphaToolbox === "function") {
+          ws.updateToolbox(window.buildAlphaToolbox());
+        }
+      }
+    }).catch(function () {});
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", applyHardwareUi);
+  } else {
+    applyHardwareUi();
+  }
+})();
+</script>
 </body>
 </html>

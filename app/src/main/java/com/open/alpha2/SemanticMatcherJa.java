@@ -8,7 +8,7 @@ import android.content.Context;
  * 同一套語意配對機制, 專門處理日文。
  *
  * 資料來源: assets/semantic/semantic_ja.json (v2 grouped 格式, 同其他語言同一個
- * schema - 見 SemanticMatcherBase.load())。85 ACTION (同西版同 op/actionId,
+ * schema - 見 SemanticMatcherBase.load())。86 ACTION (同西版同 op/actionId,
  * 通用日文答案 5 句＋jp800.txt 精選對白／歌詞／俚語按意配對，英文・中文句已剔除)
  * ＋200 日常 CHAT (ja.daily.001-200，每組 5 問法＋口語答案 5 句起，生活話題，
  * 中文版覆蓋為參照)。聽不懂 fallback 用 jp800 未配對剩句全池 (664 句，去重保序)，

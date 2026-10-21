@@ -640,8 +640,9 @@ paths:
         required: true
         schema:
           type: number
-          enum: [0.5, 0.67, 1, 1.5, 2]
-        description: 變速倍率（配樂同 pitch 一齊變）
+          minimum: 0.5
+          maximum: 2.0
+        description: 變速倍率 0.5–2.0（配樂同 pitch 一齊變）
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -1077,8 +1078,9 @@ paths:
         required: true
         schema:
           type: number
-          enum: [0.5, 0.67, 1, 1.5, 2]
-        description: 變速倍率（配樂同 pitch 一齊變）
+          minimum: 0.5
+          maximum: 2.0
+        description: 變速倍率 0.5–2.0（配樂同 pitch 一齊變）
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':

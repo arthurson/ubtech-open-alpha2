@@ -7,7 +7,7 @@ import android.content.Context;
  * (英文版)／SemanticMatcherEs (西班牙文版)／SemanticMatcherFr (法文版)／
  * SemanticMatcherJa (日文版) 同一套語意配對機制, 專門處理俄文。
  *
- * 骨架：assets/semantic/semantic_ru.json 目前有 85 ACTION (id/op/slot/actionId
+ * 骨架：assets/semantic/semantic_ru.json 目前有 86 ACTION (id/op/slot/actionId
  * 全同英文版；每組俄文 5 問法＋5 答案) ＋200 日常 CHAT (ru.daily.001-200，
  * 每組 5 問法＋5 答案：001-040 問候天氣、041-080 飲食、081-120 家庭家居寵物、
  * 121-160 工作學習健康、161-200 休閒旅行日常；動作全 __RANDOM__)。

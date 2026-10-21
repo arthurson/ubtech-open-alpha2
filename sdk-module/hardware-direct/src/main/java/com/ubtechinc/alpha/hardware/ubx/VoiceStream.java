@@ -6,6 +6,7 @@ import android.media.AudioTrack;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
+import android.media.MediaMetadataRetriever;
 import android.util.Log;
 
 import java.io.File;
@@ -21,14 +22,18 @@ import java.nio.ByteBuffer;
  * 此處與速度鎖定 pitch，即“磁帶式”變速，特此說明），
  * 經 AudioTrack(STREAM_MUSIC) 播出。</p>
  *
- * <p>流式環形輸入（只留約 0.4s 解碼幀），不整曲進記憶體；輸出按小塊寫入，
+ * <p>流式環形輸入（只留約 1.5s 解碼幀），不整曲進記憶體；輸出按小塊寫入，
  * stop 延遲不超過一塊（約 50ms）。所用 MediaCodec API（getInputBuffers 等）
- * 均為 API 16+，在 minSdk 19 上安全。</p>
+ * 均為 API 16+，在 minSdk 19 上安全。若 caller 的 bound 接近整首歌長
+ * （≥90%），改用 decoder EOS 收尾而唔按 deadline 腰斬，尾緩衝亦會 drain。</p>
  */
 final class VoiceStream {
     private static final String TAG = "VoiceStream";
-    private static final int RING_FRAMES = 16384;
+    /** 環夠大（約 1.5 秒），慢速時 decoder 唔會因為環滿而丟 PCM。 */
+    private static final int RING_FRAMES = 65536;
     private static final int OUT_CHUNK_FRAMES = 2048;
+    /** 歌長同 caller bound 相差少於 10% 當作「唱完成首」，尾位唔腰斬。 */
+    private static final double FULL_SONG_MIN_RATIO = 0.9;
 
     /** 另一線程可見的停止請求（UbxPlayer.stop/stopVoice 置位）。 */
     interface StopFlag { boolean isStopped(); }
@@ -53,6 +58,7 @@ final class VoiceStream {
      */
     void play(File file, float speed, long deadlineMonoMs, StopFlag stop) {
         abort = false;
+        final long callMono = nowMs();
         MediaExtractor ex = null;
         MediaCodec codec = null;
         AudioTrack track = null;
@@ -73,6 +79,32 @@ final class VoiceStream {
             if (audioIdx < 0 || srcFmt == null) {
                 Log.w(TAG, "no audio track: " + file.getName());
                 return;
+            }
+            long fullDurationMs = -1;
+            try {
+                if (srcFmt.containsKey(MediaFormat.KEY_DURATION)) {
+                    long us = srcFmt.getLong(MediaFormat.KEY_DURATION);
+                    if (us > 0) fullDurationMs = us / 1000L;
+                }
+            } catch (Exception ignore) {
+                // duration 只作完整播放判斷，冇都照播
+            }
+            if (fullDurationMs <= 0) {
+                MediaMetadataRetriever mmr = null;
+                try {
+                    mmr = new MediaMetadataRetriever();
+                    mmr.setDataSource(file.getAbsolutePath());
+                    String d = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+                    if (d != null) fullDurationMs = Long.parseLong(d);
+                } catch (Exception ignore) {
+                    // 舊機型個別 mp3 取唔到 duration：維持 caller bound 行為
+                } finally {
+                    if (mmr != null) {
+                        try { mmr.release(); } catch (Exception ignore) {
+                            // ignore
+                        }
+                    }
+                }
             }
             String mime = srcFmt.getString(MediaFormat.KEY_MIME);
             ex.selectTrack(audioIdx);
@@ -101,14 +133,35 @@ final class VoiceStream {
                 return;
             }
             track.play();
-            Log.i(TAG, "streaming " + file.getName() + " " + speed + "x sr=" + sampleRate + " ch=" + channels);
-            String why = pump(ex, codec, track, channels, speed, deadlineMonoMs, stop);
+            // deadline 原本由 caller 用 voiceLoop 起點計；decode/AudioTrack 起機要時間，
+            // 唔補返呢段，慢速/快速都會提早 cut 咗歌尾。
+            final long audioStart = nowMs();
+            long effectiveDeadline = deadlineMonoMs;
+            if (effectiveDeadline != Long.MAX_VALUE) {
+                long setupDrift = audioStart - callMono;
+                if (setupDrift > 0) effectiveDeadline += setupDrift;
+            }
+            if (fullDurationMs > 0 && effectiveDeadline != Long.MAX_VALUE) {
+                long requestedContentMs = (long) Math.max(0,
+                        (effectiveDeadline - audioStart) * (double) speed);
+                if (requestedContentMs >= (long) (fullDurationMs * FULL_SONG_MIN_RATIO)) {
+                    // 當作要唱完成首：唔再用時間 deadline 腰斬，交由 decoder EOS 自然收尾。
+                    effectiveDeadline = Long.MAX_VALUE;
+                    Log.i(TAG, "full-song mode " + fullDurationMs + "ms @ " + speed + "x");
+                }
+            }
+            Log.i(TAG, "streaming " + file.getName() + " " + speed + "x sr=" + sampleRate
+                    + " ch=" + channels + " songMs=" + fullDurationMs
+                    + " deadlineMs=" + (effectiveDeadline == Long.MAX_VALUE ? -1 : effectiveDeadline - audioStart));
+            String why = pump(ex, codec, track, channels, speed, effectiveDeadline, stop);
             Log.i(TAG, "stream end " + file.getName() + " " + why);
         } catch (Exception e) {
             Log.w(TAG, "voice stream failed " + file.getName() + ": " + e.getMessage());
         } finally {
             liveTrack = null;
             if (track != null) {
+                // 正常播完/自停：等 AudioTrack 緩衝區真正播完先 stop，否則尾音會被丟。
+                if (!abort && stop != null && !stop.isStopped()) drainTail(track);
                 try { track.stop(); } catch (Exception ignore) {
                     // ignore
                 }
@@ -132,11 +185,53 @@ final class VoiceStream {
         }
     }
 
+    private static long nowMs() {
+        return System.nanoTime() / 1000000L;
+    }
+
+    /** 正常播完/自停：等 AudioTrack 緩衝區真正播完（playback head 穩定）先收工。 */
+    private static void drainTail(AudioTrack track) {
+        int last = -1;
+        int stable = 0;
+        for (int i = 0; i < 12; i++) { // 最多約 360ms
+            try {
+                Thread.sleep(30);
+            } catch (InterruptedException e) {
+                return;
+            }
+            int pos;
+            try {
+                pos = track.getPlaybackHeadPosition();
+            } catch (Exception e) {
+                return;
+            }
+            if (pos == last) {
+                if (++stable >= 2) return;
+            } else {
+                stable = 0;
+                last = pos;
+            }
+        }
+    }
+
+    /** decoder 單個 output buffer 最多幾多幀；環要預留咁多空間先唔會丟 PCM。 */
+    private static int maxOutputFrames(ByteBuffer[] outBufs, int channels) {
+        int maxBytes = 0;
+        if (outBufs != null) {
+            for (ByteBuffer b : outBufs) {
+                if (b != null) maxBytes = Math.max(maxBytes, b.capacity());
+            }
+        }
+        int frames = maxBytes / (2 * channels);
+        return Math.max(1024, Math.min(frames, RING_FRAMES / 2));
+    }
+
     /** @return 結束原因：eos（自然播完）/bound（b*timeBase 自停）/stopped（打斷）/track-dead. */
     private String pump(MediaExtractor ex, MediaCodec codec, AudioTrack track, int channels,
                         float speed, long deadlineMonoMs, StopFlag stop) {
         ByteBuffer[] inBufs = codec.getInputBuffers();
         ByteBuffer[] outBufs = codec.getOutputBuffers();
+        int maxOutFrames = maxOutputFrames(outBufs, channels);
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         short[] ring = new short[RING_FRAMES * channels];
         int ringStart = 0; // 已消費絕對幀數（只加不減；array 內數據已前移，寫位用 ringAvail 相對下標）
@@ -152,7 +247,7 @@ final class VoiceStream {
             if (System.nanoTime() / 1000000L >= deadlineMonoMs) return "bound"; // b*timeBase 自停
             // 喂輸入（環將滿時停喂，免慢速下溢出丟尾；空位只看 ringAvail，
             // ringStart 係絕對已消費數，唔可以計入下標）
-            if (!inputEos && (RING_FRAMES - ringAvail) > 4096) {
+            if (!inputEos && (RING_FRAMES - ringAvail) > Math.max(4096, maxOutFrames)) {
                 int ii = codec.dequeueInputBuffer(10000);
                 if (ii >= 0) {
                     ByteBuffer ib = inBufs[ii];
@@ -166,9 +261,10 @@ final class VoiceStream {
                     }
                 }
             }
-            // 收輸出 → 環
+            // 收輸出 → 環（環唔夠位就唔 dequeue，等下輪消費完先收，唔丟尾）
             boolean progressed = false;
             for (int k = 0; k < 4; k++) {
+                if (RING_FRAMES - ringAvail < maxOutFrames) break;
                 int oi = codec.dequeueOutputBuffer(info, 10000);
                 if (oi >= 0) {
                     progressed = true;
@@ -176,7 +272,10 @@ final class VoiceStream {
                         ByteBuffer ob = outBufs[oi];
                         int frames = info.size / (2 * channels);
                         int space = RING_FRAMES - ringAvail;
-                        if (frames > space) frames = space; // 環滿則丟尾（極端慢速才發生）
+                        if (frames > space) {
+                            Log.w(TAG, "ring full, dropped " + (frames - space) + " frames");
+                            frames = space;
+                        }
                         ob.position(info.offset);
                         for (int f = 0; f < frames; f++) {
                             for (int c = 0; c < channels; c++) {
@@ -189,6 +288,7 @@ final class VoiceStream {
                     if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) outEosSeen = true;
                 } else if (oi == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
                     outBufs = codec.getOutputBuffers();
+                    maxOutFrames = maxOutputFrames(outBufs, channels);
                 } else {
                     break; // TRY_AGAIN_LATER 或 FORMAT_CHANGED（mp3 全程同參，沿用初值）
                 }

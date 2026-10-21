@@ -7,7 +7,7 @@ import android.content.Context;
  * (英文版) 同一套語意配對機制, 專門處理西班牙文。
  *
  * 資料來源: assets/semantic/semantic_es.json (v2 grouped 格式, 同中英文版同一個
- * schema - 見 SemanticMatcherBase.load())。85 ACTION (同其他語言同 op/actionId)
+ * schema - 見 SemanticMatcherBase.load())。86 ACTION (同其他語言同 op/actionId)
  * ＋200 日常 CHAT (es.daily.001-200，每組 5 問法＋口語答案 5 句，生活話題，
  * 中性西語 tuteo，日版覆盖為參照)。每個 intent 內:
  *   qs       - 用戶問法 (例如 "Hola", "Fiesta", "Háblame de amor")

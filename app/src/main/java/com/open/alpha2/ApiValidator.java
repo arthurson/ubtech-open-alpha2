@@ -362,12 +362,12 @@ public final class ApiValidator {
         return requireEnum(q, "mode", new String[]{"off","xiaozhi","vosk"});
     }
 
-    /** ubx/speed value: 0.5|0.67|1|1.5|2 (見 openapi enum + UbxPlayer.setSpeed)。 */
+    /** ubx/speed value: 0.5–2.0 倍 (見 openapi minimum/maximum + UbxPlayer.setSpeed)。 */
     public static float requireUbxSpeed(Map<String, String> q) {
         return parseUbxSpeedValue(require(q, "value"));
     }
 
-    /** 共用字串版 (供 ubxSpeedResponse 這類已抽出 query 的 helper覆用, 同一套 enum)。 */
+    /** 共用字串版 (供 ubxSpeedResponse 這類已抽出 query 的 helper覆用, 同一套範圍)。 */
     public static float parseUbxSpeedValue(String v) {
         if (v == null || v.isEmpty()) {
             throw new IllegalArgumentException("missing required parameter: value");
@@ -376,13 +376,12 @@ public final class ApiValidator {
         try {
             f = Float.parseFloat(v.trim());
         } catch (Exception e) {
-            throw new IllegalArgumentException("parameter 'value' must be one of [0.5, 0.67, 1, 1.5, 2], got: " + v);
+            throw new IllegalArgumentException("parameter 'value' must be between 0.5 and 2.0, got: " + v);
         }
-        float[] allowed = new float[]{0.5f, 0.67f, 1.0f, 1.5f, 2.0f};
-        for (float a : allowed) {
-            if (Math.abs(f - a) < 0.001f) return a;
+        if (Float.isNaN(f) || f < 0.5f || f > 2.0f) {
+            throw new IllegalArgumentException("parameter 'value' must be between 0.5 and 2.0, got: " + v);
         }
-        throw new IllegalArgumentException("parameter 'value' must be one of [0.5, 0.67, 1, 1.5, 2], got: " + v);
+        return f;
     }
 
     /** 實驗 tab 面板 token：8–64 字元 URL-safe（英數/-/_，見 PanelAuth）。 */

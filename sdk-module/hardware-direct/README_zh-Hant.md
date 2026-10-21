@@ -39,7 +39,7 @@ Android library 模組：連接應用程式與 Alpha2 胸板／頭板的硬件�
 `.ubx` 播放（`...hardware/ubx`）：
 
 - `UbxFile`／`UbxParser`——動作檔解析。
-- `UbxPlayer`——無漂移節拍播放，支援 0.5／0.67／1／1.5／2 倍速；
+- `UbxPlayer`——無漂移節拍播放，支援 0.5–2.0 倍速（舵機同 mp3 配樂速度一齊跟住變）；
   `stop()` 停喺末位姿唔郁（App 層截停會再播回位動作）。
 - `VoiceStream`——動作配樂，與同一時鐘鎖定。
 

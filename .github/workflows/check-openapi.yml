@@ -77,6 +77,8 @@ jobs:
         run: python scripts/test-apivalidator.py
       - name: Run SerialFrameCodec unit tests
         run: python scripts/test-serialcodec.py
+      - name: Run HeadKeyPoller unit tests
+        run: python scripts/test-headkeypoller.py
       - name: Check web spec copies are in sync with openapi/
         run: python scripts/check-spec-copies.py
       - name: Check version sync (build.gradle vs openapi)

@@ -11,12 +11,20 @@ spec 及 Swagger UI（見 [HTTP 接口](#http-接口)）。
 
 ## 前提條件
 
-- 機械人：RK3288（僅 `armeabi-v7a`），Android 5.1.1（API 22）。
+- 機械人：`alpha2_10005` 5-mic（RK3288，Android 5.1.1／API 22）或
+  `alpha2_10002` 2-mic（Android 4.4.2／API 19）；僅 `armeabi-v7a`。
+  應用程式開機讀 `ro.hardware.version`，自動選返對應嘅串口／JNI 路徑。
   APK 宣告 `minSdkVersion 19`、`targetSdkVersion 22`（刻意如此，不上架
   Play Store——以 `adb install` 直接安裝）。
-- 應用程式接管的硬件：胸板 MCU（`/dev/ttyS1`）、頭板 MCU（`/dev/ttyS3`，
-  波特率 115200）；頭頂＋/－觸控鍵（`/dev/input/event0`）；頭／眼／嘴
-  LED（經 `libhead_led.so` JNI）。
+- 應用程式接管的硬件：
+  - `alpha2_10005`：胸板 MCU（`/dev/ttyS1`）、頭板 MCU（`/dev/ttyS3`，
+    波特率 115200）；頭／眼／嘴 LED 經 `libhead_led.so`（JNI）；頭頂鍵經
+    `libhead_key_mgr.so`。
+  - `alpha2_10002`：胸板 MCU（`/dev/ttySAC0`）、頭板 MCU（`/dev/ttySAC1`，
+    波特率 115200；失敗 fallback `ttyS1`／`ttyS3`）；頭／眼 LED 經頭板 MCU
+    串口（`0x01`／`0x02`／`0x08`）；頭頂鍵經 1.1.7.3 `libNativeClassJni.so`。
+    網頁面板唔會顯示 PIR 卡同胸板固件升級卡。
+  - 頭頂＋/－觸控鍵（`/dev/input/event0`）。
 - 機械人與瀏覽器裝置必須在同一 Wi-Fi。伺服器只用純 HTTP。
 - ⚠️ **僅限可信內網**：預設沒有認證——同網段任何人都可以播放動作、查看
   相機、收聽咪高峰或上載韌體。切勿橋接至互聯網，亦不要放在共用大內網。
@@ -60,9 +68,9 @@ adb -s <serial> forward tcp:8888 tcp:8888
 - 狀態 (📊)——語言切換、媒體音量、系統／裝置資訊（電池、Wi-Fi／藍牙、機械人
   UUID、胸板韌體）、聲納圖表、PIR 感應器（可選警示：紅燈＋鈴聲）、加速度
   計即時曲線，以及可選的四方向傾側 → 頭／眼 LED。
-- 動作 (🕺)——動作清單及分類分頁、播放／停止、變速（0.5／0.67／1／1.5／2 倍）。
-  動作名粒粒跟分類轉色（先跟子分類色，無就跟大分類色）。
-  （動作包下載在實驗分頁。）
+- 動作 (🕺)——動作清單及分類分頁、播放／停止、變速 slider（0.5–2.0 倍，
+  舵機同 mp3 配樂速度一齊跟住變）。動作名粒粒跟分類轉色（先跟子分類色，
+  無就跟大分類色）。（動作包下載在實驗分頁。）
 - 舵機 (⚙️)——22 軸按頭／手／腳／擴展分組，逐顆或全組控制，附即時指令位姿顯示。
   即時角度回讀：一鍵 `servo/back-angle-all`（胸板 cmd `0x17` 純讀，22 軸全讀，
   包括 21／22），另有單顆讀取——`servo/angle`（胸板 cmd6 即時查詢）、
@@ -78,7 +86,7 @@ adb -s <serial> forward tcp:8888 tcp:8888
   `gamepad/axis` 後端保留畀脚本直調。動作值支援 22 軸 `servo1-22±` 步進
   （撳住連走、放手停；跟 servo tab 同一套校準大小值）、本地音樂功能鍵
   （含隨機歌）／隨機瑜伽／系統鈴聲（名／預設電話鈴）／頭眼咀 LED／三燈全熄／
-  影相＋人臉顏色追蹤開關＋202 動作（基本／舞蹈／故事／瑜伽／其他 5 分組）；
+  影相＋人臉顏色追蹤開關＋203 動作（基本／舞蹈／故事／瑜伽／其他 5 分組）；
   mapping `stop` 係全部停止（動作回位＋TTS＋音樂電台＋鈴聲＋三燈）；`taken`
   照真執行结果，面板 `✓`／`✗只記錄唔執行`一眼分清。
 - 語音 (🗣️)——對話界面（可打字測試 `speech/semantic_simulate`）、Vosk 離線
@@ -120,8 +128,8 @@ adb -s <serial> forward tcp:8888 tcp:8888
 - 回答語音使用 Android 系統 TTS（`speech/tts`、`speech/stop`），可選自動
   跟隨已載入 Vosk 模型嘅語言。
 - 十種對話語言的本地意圖配對（中英西法日德意葡韓俄，
-  `app/src/main/assets/semantic/`）。每種語言各有 85 組動作意圖、13 組
-  功能意圖及 200 組閒聊意圖（共 298 組）。
+  `app/src/main/assets/semantic/`）。每種語言各有 86 組動作意圖、13 組
+  功能意圖及 200 組閒聊意圖（共 299 組）。
   - 動作意圖會說出回覆並播放機械人動作。
   - 功能意圖會真正執行：全部停止、音量加／減一格、藍牙開／關、Wi-Fi
     開／關、拍照、本地音樂播放／上／下一首。關機／重啟意圖只會說出
@@ -231,8 +239,8 @@ open-alpha2/
 │   ├── src/main/assets/web/        ← control panel (10 tabs) + Blockly +
 │   │                                  generated api-client.js (199 wrappers)
 │   │                                  (CI strips web comments before build)
-│   ├── src/main/assets/semantic/   ← 10 intent libraries (298 groups each:
-│   │                                  85 action + 13 function + 200 chat)
+│   ├── src/main/assets/semantic/   ← 10 intent libraries (299 groups each:
+│   │                                  86 action + 13 function + 200 chat)
 │   │                                  + action category pools
 │   ├── src/main/cpp/               ← easyopus JNI (CMake)
 │   ├── src/test/java/…             ← ApiValidatorTest + ColorTrackTest + MusicEqTest

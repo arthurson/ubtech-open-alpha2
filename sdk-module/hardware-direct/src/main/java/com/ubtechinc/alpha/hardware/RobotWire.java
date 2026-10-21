@@ -35,9 +35,10 @@ public final class RobotWire {
      *  官方 Alpha2Services VersionCollector 同款問法，回覆經 parseBatteryVersion
      *  解析——payload[1]==3 時版本字串由 payload[2] 起）。 */
     public static final byte CHEST_POWER_INFO = 57;
-    /** 已死：播放唔行呢個（行 cmd 3）。注意官方 v1.1.7.3 robotStandup() 其實用佢
-     *  （cmd 0x34 [20軸+BE16 time]）發開機企姿；本 repo 直驅舊實測 0x34 有 ACK 唔郁，
-     *  故企姿改行 cmd 3 同一 payload（見 ActionDirect.officialBootStandup）。 */
+    /** 官方 v1.1.7.3 sendFreeAngle / robotStandup 用嘅全舵機命令
+     *  （cmd 0x34 [20軸+BE16 time]）。5-mic 直驅舊實測 0x34 有 ACK 唔郁，
+     *  故 5-mic 改行 cmd 3 同一 payload；2-mic 照官方用 cmd 52
+     *  （見 DirectChestController.playAllServos）。 */
     public static final byte CHEST_SET_ALL_ANGLE = 52;
     /** 「充電時播放」設定/查詢（cmd 0x35）：官方開機 queryChargePlay() 發 [2] 查詢；
      *  MCU 側順帶觸發 servo 掃描（模式 11）。 */
@@ -64,8 +65,16 @@ public final class RobotWire {
     public static final byte CHEST_POWER_SAVE = 64;
 
     // -- Head microcontroller serial command bytes ----------------------------
+    /** 2-mic 耳燈（DeveloperEarLedData，9-byte payload）。5-mic 已失效。 */
     public static final byte LED_EAR = 1;
+    /** 2-mic 眼燈（DeveloperEyesLedData，10-byte payload）。5-mic 已失效。 */
+    public static final byte LED_EYE = 2;
+    /** 2-mic 停燈：payload [1] = 耳燈，[0] = 眼燈（官方 stopEarLED/stopEyeLED）。 */
     public static final byte STOP_CMD = 8;
+    /** 官方 HeadStartThread（只喺 2-mic 行）：開機送 cmd 5（無 payload）。 */
+    public static final byte HEAD_CMD_INIT_2MIC = 5;
+    /** 官方 HeadStartThread（只喺 2-mic 行）：cmd 0x20 payload [1]。 */
+    public static final byte HEAD_CMD_READY_2MIC = 0x20;
     public static final byte HEAD_CONTROL_BYPASS = 39;
     public static final byte HEADER_READ_VERSION = 51;
 }

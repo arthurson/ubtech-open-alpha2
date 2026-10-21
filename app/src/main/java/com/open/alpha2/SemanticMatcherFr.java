@@ -7,7 +7,7 @@ import android.content.Context;
  * (英文版)／SemanticMatcherEs (西班牙文版) 同一套語意配對機制, 專門處理法文。
  *
  * 資料來源: assets/semantic/semantic_fr.json (v2 grouped 格式, 同其他語言同一個
- * schema - 見 SemanticMatcherBase.load())。85 ACTION (同西版同 op/actionId,
+ * schema - 見 SemanticMatcherBase.load())。86 ACTION (同西版同 op/actionId,
  * 補到每組 5 問法＋5 通用法文答案) ＋ 200 CHAT 日常組 (fr.daily.001-200,
  * 每組地道法文 5 問法＋5 個答案：001-040 問候天氣、041-080 飲食、
  * 081-120 家庭家居寵物、121-160 工作學習健康、161-200 休閒旅行日常；

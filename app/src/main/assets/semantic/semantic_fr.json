@@ -1,7 +1,7 @@
 {
   "version": 2,
   "lang": "fr",
-  "_comment": "v2 grouped格式, 同中英西版同一個schema (見 SemanticMatcherBase.load)。85 ACTION（通用法文答案5句，同西版同op/actionId）＋160 CHAT（電影對白/歌詞/名人名言/潮語各40組，每組日常問法＋5個原生法文答案，800句來自france800.txt；id: fr.mov/fr.son/fr.cit/fr.arg）。",
+  "_comment": "v2 grouped格式, 同中英西版同一個schema (見 SemanticMatcherBase.load)。86 ACTION（通用法文答案5句，同西版同op/actionId）＋160 CHAT（電影對白/歌詞/名人名言/潮語各40組，每組日常問法＋5個原生法文答案，800句來自france800.txt；id: fr.mov/fr.son/fr.cit/fr.arg）。",
   "intents": [
     {
       "a": [
@@ -1325,6 +1325,26 @@
         "Occidental",
         "Un conte d'Occident",
         "Raconte un conte occidental"
+      ],
+      "type": "ACTION"
+    },
+    {
+      "a": [
+        "Bien sûr !",
+        "D'accord, je te raconte l'histoire du petit cochon.",
+        "Très bien, il était une fois un petit cochon...",
+        "Parfait, installe-toi, l'histoire commence.",
+        "Je m'en occupe, tu vas adorer."
+      ],
+      "actionId": "1487404045427",
+      "id": "fr.action.story_pig",
+      "op": "STORY_WESTERN",
+      "qs": [
+        "Raconte-moi l'histoire du petit cochon qui n'aime pas se baigner",
+        "Le petit cochon qui n'aime pas se baigner",
+        "Raconte l'histoire du petit cochon",
+        "Je veux l'histoire du petit cochon",
+        "Une histoire de petit cochon qui déteste le bain"
       ],
       "type": "ACTION"
     },

@@ -1394,6 +1394,26 @@
       ]
     },
     {
+      "id": "action.story_pig",
+      "type": "ACTION",
+      "op": "STORY_WESTERN",
+      "actionId": "1487404045427",
+      "a": [
+        "Certainly, story time begins, listen carefully.",
+        "Of course, telling you the little pig story now.",
+        "Got it, once upon a time there was a little pig...",
+        "Wonderful, please settle down, the story starts.",
+        "Leave it to me, guaranteed to be delightful."
+      ],
+      "qs": [
+        "Tell me the story of the little pig who doesn't like bathing",
+        "Tell the little pig story",
+        "The little pig who doesn't like bathing",
+        "Tell me a story about a pig who hates baths",
+        "I want the little pig story"
+      ]
+    },
+    {
       "id": "action.tfboy",
       "type": "ACTION",
       "op": "TFBOY",
