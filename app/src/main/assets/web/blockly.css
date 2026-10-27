@@ -15,7 +15,19 @@ body.blockly-body {
   height: 100dvh;
   overflow: hidden;
   width: 100%;
+  /* 2026-10: viewport-fit=cover 之後內容會畫到瀏覽器 notch / 圓角 / home bar 下面,
+     橫向手機左右兩邊 (notch) 會遮住掣; 用 env() 預留 (WebView 冇 inset 就係 0, 唔影響)。 */
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+/* 拖積木/畫布時唔好觸發 Chrome 下拉重新整理或者 iOS 橡筋回彈 (會令程式捽走)。 */
+html:has(body.blockly-body), body.blockly-body {
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+body.blockly-body { -webkit-tap-highlight-color: transparent; }
 
 .bk-header {
   padding-left: 10px;
@@ -548,3 +560,42 @@ body.blockly-body {
   }
 }
 
+/* ------------------------------------------------------------------
+   2026-10 手機/平板補強
+   ------------------------------------------------------------------ */
+
+/* 窄屏 (直向手機): WS 狀態只留燈, 文字 (「WebSocket: …」被截到冇意義) 收起,
+   標題騰得多啲位。 */
+@media (max-width: 480px) {
+  .bk-header-status #wsStatusText { display: none; }
+  .bk-lang-toggle { margin-left: 0; }
+}
+
+/* 橫向手機 / 矮螢幕 (高 <= 500px): 之前 header 47 + toolbar 53 食咗 100px,
+   390px 高嘅機剩 ~290px 畫布, 連 error banner 就剩 250。
+   壓縮 header/toolbar 成一半, 收起版本 badge / 標題字細啲, toolbox 行距收窄。 */
+@media (max-height: 500px) {
+  .bk-header {
+    min-height: 0;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    gap: 6px;
+  }
+  .bk-header h1 { font-size: 13px; }
+  .bk-back { font-size: 18px; padding: 0 8px; }
+  .bk-version-badge { display: none; }
+  .bk-lang-toggle button { padding: 2px 8px; font-size: 11px; }
+  .bk-toolbar { padding-top: 3px; padding-bottom: 3px; gap: 6px; }
+  .bk-btn { min-height: 32px; padding: 5px 10px; font-size: 12px; }
+  .bk-input { min-height: 32px; font-size: 14px; padding: 3px 6px; }
+  .error-banner { padding: 4px 12px; font-size: 12px; }
+  /* Blockly 13 嘅 category 行 (.blocklyToolboxCategory) 本身冇固定高, 收細字同行距, 12 個分類少啲捲。 */
+  .blocklyToolboxCategory .blocklyToolboxCategoryLabel { font-size: 12px; }
+  .blocklyToolboxCategoryContainer { padding: 0 !important; }
+  .blocklyToolboxCategory { margin: 0 !important; }
+}
+
+/* 平板直向 (>480 且 <=900): 工具箱唔使縮到 118px, 畫布夠闊; 還原做正常闊度。 */
+@media (min-width: 700px) and (max-width: 900px) {
+  .blocklyToolboxDiv { max-width: 160px; }
+}

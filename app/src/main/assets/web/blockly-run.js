@@ -1470,10 +1470,23 @@
         const tRect = trashcan.getBoundingRectangle();
         const tHeight = tRect.bottom - tRect.top;
         this.left = tRect.left - this.MARGIN_HORIZONTAL - width;
-        // 手機畫布窄: 成組闊過剩餘空間嗰陣唔好伸入 toolbox / 出界,
-        // 夾返喺畫布左緣 (toolbox 以外) —— 好過成組被剪到得返兩粒掣。
-        if (this.left < this.MARGIN_HORIZONTAL) this.left = this.MARGIN_HORIZONTAL;
         this.top = tRect.top + (tHeight - this.BUTTON_SIZE) / 2;
+        // 2026-10 修正: 之前夾去 svg 左緣 (MARGIN_HORIZONTAL), 但 Blockly 嘅 svg 座標原點
+        // 係成個 injection div 左緣, toolbox 疊喺 svg 上面 —— 直向手機 toolbox 闊 ~126px,
+        // 成組左面兩粒 (復原/取消復原) 被 toolbox 遮住撳唔到。而家用 absoluteMetrics.left
+        // (= 畫布可視區喺 svg 入面嘅起點, 已包 toolbox 闊度) 做下限; 並排放唔落
+        // (直向手機畫布得 ~240px) 就改擺畫布右上角橫排, 唔同底部垃圾桶/縮放掣搶位。
+        const am = uiMetrics && uiMetrics.absoluteMetrics;
+        const vm = uiMetrics && uiMetrics.viewMetrics;
+        const minLeft = (am ? am.left : 0) + this.MARGIN_HORIZONTAL;
+        if (this.left < minLeft) {
+          if (am && vm) {
+            this.left = Math.max(minLeft, am.left + vm.width - width - this.MARGIN_HORIZONTAL);
+            this.top = am.top + this.MARGIN_VERTICAL;
+          } else {
+            this.left = minLeft;
+          }
+        }
       } else {
         // fallback: 垃圾桶未起好 (理論上不應該發生, addTrashcan() 一定早過
         // 這個 component 註冊), 保留原本的角落定位邏輯做保險。
