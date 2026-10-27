@@ -7,9 +7,10 @@ gradle cache 無 junit，不想整斷 `--offline` build。
 
 流程：找 android.jar (SDK) + javac → 編譯被測類 + Test
 → 跑 main() → 非零 exit = 失敗 (啱 CI 用)。
-跑三套：ApiValidatorTest (ApiValidator closure)＋ColorTrackTest
-(ColorTrackLogic 單檔)＋MusicEqTest (MusicEq 單檔，後兩者連 android.jar
-都唔掂)。
+跑五套：ApiValidatorTest (ApiValidator closure)＋IkPoseTest (IkPose，
+期望值由 app-ik.js 出)＋IkTransitionTest (Gamepad IK 均速過渡數學)＋
+ColorTrackTest (ColorTrackLogic 單檔)＋MusicEqTest (MusicEq 單檔，
+後兩者連 android.jar 都唔掂)。
 
 用法: python scripts/test-apivalidator.py
 """
@@ -80,8 +81,13 @@ def main() -> int:
     print(f"SDK: {sdk}  android.jar: {jar.name}")
 
     src = ROOT / "app" / "src" / "main" / "java" / "com" / "open" / "alpha2"
-    test = ROOT / "app" / "src" / "test" / "java" / "com" / "open" / "alpha2" / "ApiValidatorTest.java"
+    testdir = ROOT / "app" / "src" / "test" / "java" / "com" / "open" / "alpha2"
+    test = testdir / "ApiValidatorTest.java"
+    iktest = testdir / "IkPoseTest.java"
+    iktrans = testdir / "IkTransitionTest.java"
     assert test.exists(), f"測試檔不見了: {test}"
+    assert iktest.exists(), f"測試檔不見了: {iktest}"
+    assert iktrans.exists(), f"測試檔不見了: {iktrans}"
 
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="apivalidator-test-"))
     # ApiValidator → HttpServer → WebSocketServer → EventBus 這條 closure
@@ -94,7 +100,11 @@ def main() -> int:
         str(src / "HttpServer.java"),
         str(src / "WebSocketServer.java"),
         str(src / "EventBus.java"),
+        str(src / "IkPose.java"),
+        str(src / "IkTransition.java"),
         str(test),
+        str(iktest),
+        str(iktrans),
     ]
     cp = [javac, "-encoding", "UTF-8", "-nowarn", "-cp", str(jar), "-d", str(tmp)] + files
     r = subprocess.run(cp, capture_output=True, text=True)
@@ -115,8 +125,33 @@ def main() -> int:
         print("FAIL")
         return r.returncode
 
+    # 第一套加碼：IkPoseTest（同 ApiValidator 一齊編，期望值由 app-ik.js 出）。
+    r = subprocess.run(
+        [java, "-cp", str(tmp) + os.pathsep + str(jar), "com.open.alpha2.IkPoseTest"],
+        capture_output=True, text=True,
+    )
+    print(r.stdout, end="")
+    if r.stderr:
+        print(r.stderr, end="", file=sys.stderr)
+    if r.returncode != 0:
+        shutil.rmtree(tmp, ignore_errors=True)
+        print("FAIL")
+        return r.returncode
+
+    # 第一套再加碼：IkTransitionTest（Gamepad IK 均速過渡數學）。
+    r = subprocess.run(
+        [java, "-cp", str(tmp) + os.pathsep + str(jar), "com.open.alpha2.IkTransitionTest"],
+        capture_output=True, text=True,
+    )
+    print(r.stdout, end="")
+    if r.stderr:
+        print(r.stderr, end="", file=sys.stderr)
+    if r.returncode != 0:
+        shutil.rmtree(tmp, ignore_errors=True)
+        print("FAIL")
+        return r.returncode
+
     # 第二套：ColorTrackTest (ColorTrackLogic 純 java.*，唔經 android stub)。
-    testdir = ROOT / "app" / "src" / "test" / "java" / "com" / "open" / "alpha2"
     files2 = [
         str(src / "ColorTrackLogic.java"),
         str(testdir / "ColorTrackTest.java"),

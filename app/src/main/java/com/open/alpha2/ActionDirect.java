@@ -20,11 +20,13 @@ public final class ActionDirect {
     /** 一鍵全停之後補播的「蹲下站起」回位動作。 */
     public static final String STOP_RECOVERY_ACTION_ID = "1510818174706";
 
-    /** 官方 Alpha2Services v1.1.7.3 `robotStandup()` 原文 20 軸企姿（raw 0-255；
-     *  官方 smali 係 signed byte：-51→205、-111→145、-121→135、-79→177、-6→250）。 */
+    /** 官方 Alpha2Services v1.1.7.3 `robotStandup()` 20 軸企姿（raw 0-255；
+     *  官方 smali 係 signed byte：-51→205、-111→145、-121→135、-79→177。
+     *  #19 官方原文係 -6→250，呢度跟 app 安全範圍改為 120。
+     *  同 {@link IkPose#BOOT_POSE}／web app-ik.js {@code IK_BOOT_POSE} 一致，改要三邊一齊改。 */
     private static final int[] OFFICIAL_BOOT_STANDUP_POSE = {
             120, 205, 120, 120, 35, 120, 120, 63, 145, 135,
-            120, 120, 177, 95, 105, 120, 120, 120, 250, 120
+            120, 120, 177, 95, 105, 120, 120, 120, 120, 120
     };
     /** 官方 STANDUP_TOTAL_TIME（robotStandup 嘅 move 時間）。 */
     private static final int OFFICIAL_BOOT_STANDUP_TIME_MS = 2000;
@@ -509,6 +511,20 @@ public final class ActionDirect {
         }
         dm.chest().sendStart();
         dm.chest().queryChargePlay();
+        // START／掃描可能令胸板重播上次動作（例如死機前最後一格 IK）。
+        // 再送企姿兩次，確保開機最終停喺企姿，唔會「自己做返之前既動作」。
+        for (int i = 0; i < 2; i++) {
+            try {
+                Thread.sleep(i == 0 ? 600L : 1200L);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return true;
+            }
+            if (dm.chest().setAllServos(OFFICIAL_BOOT_STANDUP_POSE,
+                    (short) OFFICIAL_BOOT_STANDUP_TIME_MS)) {
+                ubxPlayer.notePose(OFFICIAL_BOOT_STANDUP_POSE);
+            }
+        }
         return true;
     }
 

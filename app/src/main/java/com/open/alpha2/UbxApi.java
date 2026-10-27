@@ -15,6 +15,16 @@ import java.util.Map;
  */
 public final class UbxApi {
     private static final String TAG = "UbxApi";
+    /**
+     * cmd12 trim 寫入 EEPROM 嘅 ACK 實測好慢：官方 PC tuner log 見到首個
+     * ACK 約 2 秒、整批 20 軸可拖到 7–8 秒。單粒寫入唔好再用 250ms 密集
+     * 重試（會同 EEPROM 写入互相踩），一次過等夠。
+     */
+    private static final long SERVO_TRIM_ACK_TIMEOUT_MS = 7000;
+    /** 官方校準流程：全組 cmd12 送完後等 EEPROM，再送 cmd05 回標準姿勢。 */
+    private static final long SERVO_TRIM_SETTLE_MS = 7000;
+    /** 官方 home 係逐粒 cmd05（log 09:56:37-38），唔係 cmd03；留少少 gap 畀胸板轉發。 */
+    private static final long SERVO_HOME_GAP_MS = 50;
 
     private final Context appContext;
     private final UbxPlayer ubxPlayer;
@@ -161,10 +171,23 @@ public final class UbxApi {
         return DirectProbes.isChestReady(appContext);
     }
 
+    /**
+     * 開機企姿／START 握手未完成之前，拒絕會令舵機郁嘅請求。
+     * 避免機械人死機 reboot 後，舊瀏覽器 tab 嘅 IK 動畫／還原表單值
+     * 將上一次 pose 當成新指令，一開機就「自己做返之前既動作」。
+     */
+    private static HttpServer.ApiResponse bootServoBlocked() {
+        if (MainActivity.isBootServoReady()) return null;
+        return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"booting\"}");
+    }
+
     public HttpServer.ApiResponse servoOneResponse(Map<String, String> query) {
+        HttpServer.ApiResponse boot = bootServoBlocked();
+        if (boot != null) return boot;
         // pure-direct: 單舵機經 cmd05 直發。
-        // 可選 trim 參數——有帶就接著經 cmd12 寫入 chest EEPROM
-        //（官方 tuner 同款持久化；掉電保持，亂寫會改出廠校準，用戶明確先好用）。
+        // 可選 trim 參數——有帶就**先**經 cmd12 寫入 chest EEPROM，再送 cmd05。
+        // 官方 PC tuner 係 trim 先、movement 後；掉轉會令新 trim 未 apply 就
+        // 用舊校準行，或者行完才 apply 變成雙重偏移。
         int id = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
         // 跟 spec/MCP（angle 0-255，time 20-32767）顯式驗，
         // 超限即 400。
@@ -177,15 +200,20 @@ public final class UbxApi {
             } catch (NumberFormatException e) {
                 throw new IllegalArgumentException("parameter 'trim' must be an integer");
             }
-            if (trim < -1000 || trim > 1000) {
-                throw new IllegalArgumentException("parameter 'trim' must be within [-1000,1000]");
+            if (trim < ApiValidator.SERVO_TRIM_MIN || trim > ApiValidator.SERVO_TRIM_MAX) {
+                throw new IllegalArgumentException("parameter 'trim' must be within ["
+                        + ApiValidator.SERVO_TRIM_MIN + "," + ApiValidator.SERVO_TRIM_MAX + "]");
             }
+        }
+        Boolean written = null;
+        if (trim != null) {
+            // 先寫 trim 並等 EEPROM/ACK（最長 7 秒），之後嘅 cmd05 一定會用新校準。
+            written = writeServoTrimLive(id, trim);
         }
         boolean ok = servoSendOneCode(id, angle, time) == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
         if (!ok || trim == null) {
             return MainActivity.sentReadyResponse(ok, directChestReady());
         }
-        Boolean written = writeServoTrimLive(id, trim);
         StringBuilder sb = new StringBuilder("{\"ok\":true,\"code\":\"API_ERROR_SUCCEED\"");
         sb.append(",\"bindReady\":").append(directChestReady());
         sb.append(",\"id\":").append(id).append(",\"angle\":").append(angle & 0xFF);
@@ -199,12 +227,102 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoAllResponse(Map<String, String> query) {
+        HttpServer.ApiResponse boot = bootServoBlocked();
+        if (boot != null) return boot;
         int[] angles = ApiValidator.requireAngles20(query);
         int time = ApiValidator.optionalIntRange(query, "time", ApiValidator.SERVO_TIME_MIN_MS, ApiValidator.SERVO_TIME_MAX_MS, 1000);
         // setAllServos 按版本：2-mic 官方 cmd52／5-mic cmd03。
         boolean sent = HardwareDirectManager.get(appContext).chest().setAllServos(angles, (short) time);
         if (sent) ubxPlayer.notePose(angles);
         return MainActivity.sentReadyResponse(sent, directChestReady());
+    }
+
+    /**
+     * 官方 ServoCalibration 1.0.0.4 校準流程（Desktop log 實測）：
+     * 1) 一次過送全部有效 cmd12 trim（唔逐粒等 ACK）；
+     * 2) 等 EEPROM 寫入／ACK 沉澱（官方約 7 秒）；
+     * 3) 再送 cmd05 全部舵機回標準姿勢，等新 offset 以 home 位呈現。
+     *
+     * <p>request: trims=20 或 22 個 comma-separated signed trim，空格代表
+     * 該軸跳過（未掃描／無回授）；time=回 home 動作時間（預設 2000ms）。
+     * 呢個 endpoint 只寫已掃描嘅軸，唔會用 0 覆蓋未讀到嘅出廠 trim。</p>
+     */
+    public HttpServer.ApiResponse servoCalibrateResponse(Map<String, String> query) {
+        HttpServer.ApiResponse boot = bootServoBlocked();
+        if (boot != null) return boot;
+        Integer[] trims = ApiValidator.optionalTrims20or22(query);
+        if (trims == null) {
+            throw new IllegalArgumentException("parameter 'trims' is required");
+        }
+        int time = ApiValidator.optionalIntRange(query, "time",
+                ApiValidator.SERVO_TIME_MIN_MS, ApiValidator.SERVO_TIME_MAX_MS, 2000);
+        int expected = 0;
+        for (Integer t : trims) if (t != null) expected++;
+        if (expected == 0) {
+            throw new IllegalArgumentException("parameter 'trims' must contain at least one value");
+        }
+        HardwareDirectManager dm = HardwareDirectManager.get(appContext);
+        if (!dm.chest().isAvailable()) {
+            return HttpServer.ApiResponse.error("direct not ready");
+        }
+        StringBuilder writtenIds = new StringBuilder("[");
+        StringBuilder failedIds = new StringBuilder("[");
+        int sentCount = 0, failedCount = 0;
+        for (int i = 0; i < trims.length; i++) {
+            Integer t = trims[i];
+            if (t == null) continue;
+            boolean sent = dm.chest().writeServoTrim((byte) (i + 1), t.intValue());
+            if (sent) {
+                if (sentCount > 0) writtenIds.append(',');
+                writtenIds.append(i + 1);
+                sentCount++;
+            } else {
+                if (failedCount > 0) failedIds.append(',');
+                failedIds.append(i + 1);
+                failedCount++;
+            }
+        }
+        if (sentCount == 0) {
+            return HttpServer.ApiResponse.error("trim write failed (direct not ready)");
+        }
+        // 官方 tuner 喺呢個位等約 7 秒（log 2026-09-07 09:56:30→09:56:37）。
+        try {
+            Thread.sleep(SERVO_TRIM_SETTLE_MS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        int[] homes = new int[ApiValidator.SERVO_COUNT];
+        for (int i = 0; i < homes.length; i++) homes[i] = ApiValidator.servoCalHome(i + 1);
+        // 官方 log 係逐粒 cmd05（09:56:37-38），唔係一次過 cmd03/52。
+        // cmd03/52 唔會令新寫入嘅 trim 即時反映到物理角度；cmd05 才會。
+        int homeSentCount = 0;
+        for (int i = 0; i < homes.length; i++) {
+            if (dm.chest().setSingleServo((byte) (i + 1), homes[i], (short) time)) homeSentCount++;
+            if (i + 1 < homes.length) {
+                try {
+                    Thread.sleep(SERVO_HOME_GAP_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        boolean homeSent = homeSentCount == homes.length;
+        Log.i(TAG, "servoCalibrate trims=" + expected + " sent=" + sentCount
+                + " failed=" + failedCount + " homeCmd05=" + homeSentCount + "/" + homes.length);
+        if (homeSent) ubxPlayer.notePose(homes);
+        StringBuilder sb = new StringBuilder("{\"ok\":").append(homeSent);
+        sb.append(",\"code\":\"").append(homeSent ? "API_ERROR_SUCCEED" : "API_ERROR_FAILED").append('"');
+        sb.append(",\"bindReady\":").append(directChestReady());
+        sb.append(",\"trimCount\":").append(expected);
+        sb.append(",\"trimSent\":").append(sentCount);
+        sb.append(",\"trimWritten\":").append(writtenIds).append(']');
+        sb.append(",\"trimFailed\":").append(failedIds).append(']');
+        sb.append(",\"homeSent\":").append(homeSent);
+        sb.append(",\"homeSentCount\":").append(homeSentCount);
+        sb.append(",\"time\":").append(time);
+        sb.append('}');
+        return HttpServer.ApiResponse.ok(sb.toString());
     }
 
     public HttpServer.ApiResponse servoReadResponse(Map<String, String> query) {
@@ -272,6 +390,8 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoAngleResponse(Map<String, String> query) {
+        HttpServer.ApiResponse boot = bootServoBlocked();
+        if (boot != null) return boot;
         // 單舵機絕對角度實際讀取 (cmd 6)。同 servo/one 同單位，
         // 跟位實測誤差約 1°——注意不是 servo/read 那個 trim/偏差。
         // 讀不到（超時）如實報 ok:false，不編 0。
@@ -288,6 +408,8 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoAngleRestoreResponse(Map<String, String> query) {
+        HttpServer.ApiResponse boot = bootServoBlocked();
+        if (boot != null) return boot;
         // 讀＋即寫回原子操作。cmd6 讀會鬆開那顆（見上），
         // 這裡讀到即用 servo/one（cmd05）寫回同一個位上力，全程後端內完成、
         // 不經瀏覽器來回——鬆力窗口得幾十毫秒，跌都未跌得切，肉眼不覺動。
@@ -320,6 +442,8 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoModifyIdResponse(java.util.Map<String, String> query) {
+        HttpServer.ApiResponse boot = bootServoBlocked();
+        if (boot != null) return boot;
         int id = ApiValidator.requireIntRange(query, "id", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
         int newId = ApiValidator.requireIntRange(query, "newId", ApiValidator.SERVO_ID_MIN, ApiValidator.SERVO_ID_MAX);
         if (id == newId) {
@@ -721,13 +845,13 @@ public final class UbxApi {
     }
 
     /**
-     * 帶重試的 trim 寫入（3 次 × 250ms，與實際讀取同級——官方 service 爭食回覆
-     * bytes 時超時常見）。回 TRUE/FALSE（ACK 語意）；全部超時／發送失敗回 null。
+     * 單粒 trim 寫入：官方 cmd12 ACK 實測 2–8 秒，唔可以再用 250ms 密集
+     * 重試（會同 EEPROM 寫入互相踩）。呢度一次過等夠；true/false = MCU
+     * ACK 語意，null = 超時／發送失敗（可能其實已寫入，前端要重掃驗證）。
      */
     private Boolean writeServoTrimLive(final int id, final int trim) {
-        return retryServoLive(30, new ServoRetry<Boolean>() {
-            @Override public Boolean attempt() { return chestQuery.writeServoTrim(id, trim, 250); }
-        });
+        if (chestQuery == null || !directChestReady()) return null;
+        return chestQuery.writeServoTrim(id, trim, SERVO_TRIM_ACK_TIMEOUT_MS);
     }
 }
 

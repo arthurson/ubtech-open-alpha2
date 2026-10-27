@@ -93,13 +93,26 @@ function onVolumeChangedEvent(data) {
 // ---------------- Servos: grouped sliders (head / arms / legs) ----------------
 //
 // Each servo is now a single <input type="range"> instead of a plain number box.
-// Dragging the slider updates the live value readout immediately, but the actual
-// robot command is only sent on "change" (i.e. when the user releases / lifts the
-// finger) - not on every "input" tick - so a drag doesn't flood the AIDL bridge
-// with dozens of intermediate servo/one calls per second.
+// Dragging sends throttled live servo/one commands (about 8 Hz) so the joint
+// follows the slider immediately; releasing sends one final command using the
+// time field. Per-slider queues coalesce intermediate input ticks, so a drag
+// doesn't flood the AIDL bridge with dozens of calls per second.
+
+// 拖動時即時跟隨：最快每 120ms 送一次（約 8Hz），每步 180ms 行完。
+const SERVO_LIVE_INTERVAL_MS = 120;
+const SERVO_LIVE_TIME_MS = 180;
+// 「全部回到原位」固定 1200ms（唔跟時間欄，避免同 IK 回 boot pose 唔一致）。
+const SERVO_RESET_TIME_MS = 1200;
 
 function servoTime() {
-  return document.getElementById("servoAllTime").value;
+  const el = document.getElementById("servoAllTime");
+  return el ? el.value : "";
+}
+
+/** 時間欄的值轉成有效 ms；空白／無效用 1000，並鉗在 API 接受範圍。 */
+function servoMoveTime() {
+  const v = parseInt(servoTime(), 10);
+  return isNaN(v) ? 1000 : Math.max(20, Math.min(32767, v));
 }
 
 /** 建立 servo grid 的共用邏輯, 抽出來做獨立 function 方便日後有第二個 grid 要建
@@ -107,7 +120,7 @@ function servoTime() {
  *  @param wrapId       外層容器的 id ("servoGroups")
  *  @param sliderPrefix slider input 的 id prefix ("servoSlider_")
  *  @param valPrefix    數值顯示 span 的 id prefix ("servoSliderVal_")
- *  @param sendFn       (id, angle) => void, 拖完手之後實際送出去robot的call (servo/one)
+ *  @param sendFn       (id, angle, timeMs) => Promise, 實際送出去robot的call (servo/one)
  *  @param readPrefix   (可選) 「讀取所有角度」結果顯示 span 的 id prefix - 沒有傳的話
  *                       (Alpha2 現在還是這樣) 不會加這欄, 版面同以前一樣。
  */
@@ -118,6 +131,13 @@ function buildServoGridInto(wrapId, sliderPrefix, valPrefix, sendFn, readPrefix)
     return;
   }
   wrap.innerHTML = "";
+  // 瀏覽器 reload 會還原表單 slider 值，部分瀏覽器會連帶發 input/change。
+  // 如果照樣送，上一次 IK 留低嘅 20 軸 pose 就會喺開機時被當成新指令，
+  // 機械人會「自己硬做返之前既動作」。只接受真正用家互動（pointer／touch／
+  // key）之後嘅事件；程式設定 value（IK preview／reset）本身唔會發事件。
+  let gridEngaged = false;
+  function markGridEngaged() { gridEngaged = true; }
+
   SERVO_GROUPS.forEach(function (group) {
     const groupEl = document.createElement("div");
     groupEl.className = "servo-group";
@@ -139,19 +159,98 @@ function buildServoGridInto(wrapId, sliderPrefix, valPrefix, sendFn, readPrefix)
       const slider = row.querySelector("input");
       const valueLabel = row.querySelector(".servo-slider-value");
 
-      // Live readout while dragging - no network call yet.
-      slider.addEventListener("input", function () {
-        valueLabel.textContent = slider.value;
-      });
-      // Actually move the servo once the drag ends.
-      slider.addEventListener("change", function () {
+      // 每條 slider 自己一個 live queue：多手指同時拉兩條都唔會互相蓋位。
+      let liveBusy = false;
+      let livePending = null; // {angle, time, final}
+      let liveLastAt = 0;
+      let liveLastInputAt = 0;
+      let liveTimer = null;
+
+      function liveClamp() {
         const raw = parseInt(slider.value, 10);
         const clamped = clampServoAngle(id, isNaN(raw) ? cal.home : raw);
-        if (clamped !== raw) {
-          slider.value = clamped;
-          valueLabel.textContent = clamped;
+        if (clamped !== raw) slider.value = clamped;
+        valueLabel.textContent = clamped;
+        return clamped;
+      }
+
+      function liveStart(job) {
+        liveBusy = true;
+        liveLastAt = Date.now();
+        let p;
+        try {
+          p = sendFn(id, job.angle, job.time);
+        } catch (e) {
+          p = Promise.reject(e);
         }
-        sendFn(id, clamped);
+        Promise.resolve(p).then(function () {
+          liveBusy = false;
+          livePump();
+        }, function () {
+          liveBusy = false;
+          livePump();
+        });
+      }
+
+      function liveSchedule() {
+        if (liveTimer) return;
+        let wait = 0;
+        if (livePending && !livePending.final) {
+          wait = Math.max(0, SERVO_LIVE_INTERVAL_MS - (Date.now() - liveLastAt));
+        }
+        liveTimer = setTimeout(function () {
+          liveTimer = null;
+          livePump();
+        }, wait);
+      }
+
+      function livePump() {
+        if (liveBusy || !livePending) return;
+        const job = livePending;
+        livePending = null;
+        if (!job.final) {
+          const wait = SERVO_LIVE_INTERVAL_MS - (Date.now() - liveLastAt);
+          if (wait > 0) {
+            livePending = job;
+            liveSchedule();
+            return;
+          }
+        }
+        liveStart(job);
+      }
+
+      function liveEnqueue(angle, time, final) {
+        const now = Date.now();
+        // 新一拖（停咗 250ms 再拉）或者放手 final：唔等節流，即刻送。
+        if (final || now - liveLastInputAt > 250) liveLastAt = 0;
+        liveLastInputAt = now;
+        // final 一定贏；排緊 final 時，live 唔好蓋過佢。
+        if (!final && livePending && livePending.final) return;
+        livePending = { angle: angle, time: time, final: !!final };
+        if (final && liveTimer) {
+          clearTimeout(liveTimer);
+          liveTimer = null;
+        }
+        if (liveBusy) {
+          liveSchedule();
+        } else {
+          livePump();
+        }
+      }
+
+      // 拖動時即時跟隨（節流），放手送最後準確值。
+      // 只認用家互動後嘅事件；reload 還原表單值嘅 input/change 唔好送。
+      slider.addEventListener("pointerdown", markGridEngaged);
+      slider.addEventListener("touchstart", markGridEngaged, { passive: true });
+      slider.addEventListener("mousedown", markGridEngaged);
+      slider.addEventListener("keydown", markGridEngaged);
+      slider.addEventListener("input", function (ev) {
+        if (ev && ev.isTrusted && !gridEngaged) return;
+        liveEnqueue(liveClamp(), SERVO_LIVE_TIME_MS, false);
+      });
+      slider.addEventListener("change", function (ev) {
+        if (ev && ev.isTrusted && !gridEngaged) return;
+        liveEnqueue(liveClamp(), servoMoveTime(), true);
       });
 
       groupEl.appendChild(row);
@@ -162,8 +261,8 @@ function buildServoGridInto(wrapId, sliderPrefix, valPrefix, sendFn, readPrefix)
 }
 
 function buildServoGrid() {
-  buildServoGridInto("servoGroups", "servoSlider_", "servoSliderVal_", function (id, angle) {
-    return Alpha2Api.servoOne({id: id, angle: angle, time: servoTime()});
+  buildServoGridInto("servoGroups", "servoSlider_", "servoSliderVal_", function (id, angle, timeMs) {
+    return Alpha2Api.servoOne({id: id, angle: angle, time: timeMs});
   }, "servoAngleVal_");
 }
 
@@ -219,8 +318,11 @@ function resetServoGrid() {
     const advInp = document.getElementById("advServoVal_" + i);
     if (advInp) advInp.value = cal.home;
   }
+  // IK 卡跟住歸零；記住 reset 後嘅 home pose，下次 IK 由 home 均速過渡。
+  // IK 嘅 0% 仍然固定係開機企姿，唔跟舵機格嘅 home 走。
+  if (typeof ikResetSlidersOnly === "function") ikResetSlidersOnly(homes);
   // 直接寫入原廠截圖角度（1:120 2:120 3:120 4:120 5:120 6:120 7:120 8:65 9:145 10:140 11:120 12:120 13:175 14:95 15:100 16:120 17:120 18:120 19:120 20:120 21:120 22:120），而非播放動作
-  return Alpha2Api.servoAll({angles: homes.join(","), time: servoTime()});
+  return Alpha2Api.servoAll({angles: homes.join(","), time: SERVO_RESET_TIME_MS});
 }
 
 function servoAll() {
@@ -232,7 +334,7 @@ function servoAll() {
     const clamped = clampServoAngle(i, isNaN(raw) ? cal.home : raw);
     angles.push(clamped);
   }
-  return Alpha2Api.servoAll( { angles: angles.join(","), time: servoTime() });
+  return Alpha2Api.servoAll( { angles: angles.join(","), time: servoMoveTime() });
 }
 
 // ---------------- Sonar (chest ultrasonic obstacle sensor) ----------------
@@ -240,7 +342,7 @@ function servoAll() {
 // distance is assumed to be centimetres directly (unverified on real hardware - see
 // the card's own hint text and Alpha2RobotApi#chest_configureSonar's javadoc).
 // Slider drag updates the live cm readout only; the actual API call fires on release
-// (onchange), matching the servo sliders' drag-then-send pattern elsewhere.
+// (onchange). Sonar stays release-only even though the servo sliders follow live.
 function onSonarSliderInput(v) {
   document.getElementById("sonarDistVal").textContent = v + " cm";
 }
@@ -370,57 +472,96 @@ function buildAdvTuner() {
   advTrimScanned = {};
   // 版本標記：驗瀏覽器有無用舊 JS（見不到這行就是 正在cache舊版，做 Ctrl+F5）。
   const statusEl = document.getElementById("advTunerStatus");
-  if (statusEl) statusEl.textContent = t("servo_tuner_ready", { v: "0906l" });
+  if (statusEl) statusEl.textContent = t("servo_tuner_ready", { v: "1021b" });
 }
-// 校准按鈕（官方「校准」同款）——將 22 格有效 trim 順序寫入 chest EEPROM（掉電保持）。格內無數／未掃描 skip 並報告；每粒附帶送本身角度（time=100，已在位不會動）。
+// 校准按鈕（官方 ServoCalibration 1.0.0.4 流程）：
+//   一次過送全部有效 cmd12 trim → 後端等 EEPROM（約 7 秒）→ cmd05 全部回 home。
+// 唔可以逐粒 servoOne(angle,trim)：官方係 trim 先、home 後；用調校角度再送
+// 05 會令 offset 再加一次（double offset）。格內無數／未掃描 skip 並報告。
 function advCalibrateAll() {
   const statusEl = document.getElementById("advTunerStatus");
-  const jobs = [];
-  const skipped = [];
-  for (let i = 1; i <= 22; i++) {
-    const el = document.getElementById("advServoOff_" + i);
-    const t = el ? parseInt(el.textContent, 10) : NaN;
-    if (isNaN(t) || !advTrimScanned[i]) { skipped.push(i); continue; }
-    const inp = document.getElementById("advServoVal_" + i);
-    let v = inp ? parseInt(inp.value, 10) : SERVO_CALIBRATION[i].home;
-    if (isNaN(v)) v = SERVO_CALIBRATION[i].home;
-    jobs.push({ id: i, angle: clampServoAngle(i, v), trim: t });
-  }
-  if (!jobs.length) {
-    statusEl.textContent = t("servo_tuner_cal_none");
+  if (advScanInProgress) {
+    if (statusEl) statusEl.textContent = t("servo_tuner_scanning_wait");
     return Promise.resolve();
   }
-  let idx = 0, okCount = 0;
-  const failed = [], unknown = [];
-  function next() {
-    if (idx >= jobs.length) {
-      let msg = t("servo_tuner_cal_done", { ok: okCount, n: jobs.length });
-      if (unknown.length) msg += t("servo_tuner_cal_unknown", { ids: "#" + unknown.join(",#") });
-      if (failed.length) msg += t("servo_tuner_cal_failed", { ids: "#" + failed.join(",#") });
-      if (skipped.length) msg += t("servo_tuner_cal_skipped", { ids: "#" + skipped.join(",#") });
-      statusEl.textContent = msg;
-      return Promise.resolve();
-    }
-    const j = jobs[idx++];
-    statusEl.textContent = t("servo_tuner_cal_progress", { i: idx, n: jobs.length, id: j.id, v: advFmtOff(j.trim) });
-    return Alpha2Api.servoOne({ id: j.id, angle: j.angle, time: 100, trim: j.trim }).then(function(json){
-      if (json.ok && json.trimWritten) okCount++;
-      else if (json.ok && json.trimUnknown) unknown.push(j.id);
-      else failed.push(j.id);
-      return next();
-    }).catch(function(){ failed.push(j.id); return next(); });
+  const trims = new Array(22).fill("");
+  const intended = {};
+  const skipped = [];
+  let n = 0;
+  for (let i = 1; i <= 22; i++) {
+    const el = document.getElementById("advServoOff_" + i);
+    const v = el ? parseInt(el.textContent, 10) : NaN;
+    if (isNaN(v) || !advTrimScanned[i]) { skipped.push(i); continue; }
+    trims[i - 1] = String(v);
+    intended[i] = v;
+    n++;
   }
-  return next();
+  if (n === 0) {
+    if (statusEl) statusEl.textContent = t("servo_tuner_cal_none");
+    return Promise.resolve();
+  }
+  if (statusEl) statusEl.textContent = t("servo_tuner_cal_writing", { n: n });
+  return Alpha2Api.servoCalibrate({ trims: trims.join(","), time: 2000 }).then(function(json){
+    if (!json || !json.ok) {
+      if (statusEl) statusEl.textContent = t("servo_tuner_cal_home_fail", {
+        e: (json && (json.error || json.code)) || "?"
+      });
+      return json;
+    }
+    // 官方流程完成後一定係 home 位；UI 同步返 home，等重掃唔會用舊角度/舊 offset。
+    for (let i = 1; i <= 22; i++) {
+      const cal = SERVO_CALIBRATION[i];
+      const inp = document.getElementById("advServoVal_" + i);
+      if (inp) inp.value = cal.home;
+      advPrevAngle[i] = cal.home;
+      const cell = document.getElementById("advServoOff_" + i);
+      if (cell) cell.textContent = "…";
+      delete advTrimScanned[i];
+    }
+    if (statusEl) statusEl.textContent = t("servo_tuner_cal_verify");
+    // 等 home 動作行完（time=2000）再重掃，確認 EEPROM 真係生效。
+    return new Promise(function(resolve) { setTimeout(resolve, 3000); }).then(function() {
+      return advTunerReadAll();
+    }).then(function(res) {
+      if (!res || !res.trims) {
+        if (statusEl) statusEl.textContent = t("servo_tuner_cal_verify_fail");
+        return res;
+      }
+      let okCount = 0;
+      const bad = [], unread = [];
+      Object.keys(intended).forEach(function(k) {
+        const i = Number(k);
+        const got = res.trims[i - 1];
+        if (got === null || got === undefined) unread.push(i);
+        else if (Number(got) === intended[i]) okCount++;
+        else bad.push(i);
+      });
+      let msg = t("servo_tuner_cal_verify_done", { ok: okCount, n: n });
+      if (bad.length) msg += t("servo_tuner_cal_verify_bad", { ids: "#" + bad.join(",#") });
+      if (unread.length) msg += t("servo_tuner_cal_verify_unread", { ids: "#" + unread.join(",#") });
+      if (skipped.length) msg += t("servo_tuner_cal_skipped", { ids: "#" + skipped.join(",#") });
+      if (statusEl) statusEl.textContent = msg;
+      return res;
+    });
+  }).catch(function(e) {
+    if (statusEl) statusEl.textContent = t("servo_tuner_cal_send_fail", { e: (e && e.message ? e.message : e) });
+  });
 }
 let advPrevAngle = {};
 // 本 session 掃描／還原過 trim 的 id：Enter 寫入只跟這些去存 EEPROM，
 // 不會用新頁計出來的數覆蓋出廠 trim（官方工具連線即讀，永遠有 baseline）。
 let advTrimScanned = {};
+let advScanInProgress = false;
 function advTunerToggle(){
   const en = document.getElementById("advTunerEnabled").checked;
   document.getElementById("advTunerBody").style.display = en ? "block" : "none";
   document.getElementById("advTunerDisabledHint").style.display = en ? "none" : "block";
-  if (en) buildAdvTuner();
+  if (en) {
+    buildAdvTuner();
+    // 官方工具一連線就讀全部 trim 做 baseline。呢度開 tuner 即自動掃，
+    // 避免用戶直接 +/- 之後校準，因為未掃描而被 skip 或失去出廠 baseline。
+    advTunerReadAll();
+  }
 }
 let advHoldTimer=null, advHoldInt=null;
 function advHoldStart(id, dir){
@@ -481,6 +622,11 @@ function advNudgeOff(id, deltaAngle) {
 }
 function advTunerSend(id, timeMs) {
   // 加減/輸入格 Enter 一律僅送角度 cmd05（Enter 500ms，加減 100ms）。trim 只經「校准」按鈕成組寫入，這裡不碰 EEPROM。
+  const statusEl0 = document.getElementById("advTunerStatus");
+  if (advScanInProgress) {
+    if (statusEl0) statusEl0.textContent = t("servo_tuner_scanning_wait");
+    return Promise.resolve();
+  }
   if (timeMs === undefined || timeMs === null) timeMs = advServoTime();
   const inp = document.getElementById("advServoVal_" + id);
   let v = parseInt(inp.value, 10);
@@ -513,11 +659,17 @@ function advTunerDec(id) {
 }
 function advTunerReadAll() {
   const statusEl = document.getElementById("advTunerStatus");
+  if (advScanInProgress) return Promise.resolve(null);
+  advScanInProgress = true;
   statusEl.textContent = t("servo_tuner_read_all");
+  function finish(res) {
+    advScanInProgress = false;
+    return res;
+  }
   return Alpha2Api.servoReadAll().then(function(json){
     if (!json.ok || !json.live || !json.trims || json.trims.length !== 22) {
       statusEl.textContent = t("servo_tuner_read_fail", { id: "1-22" }) + advErrSuffix(json.error);
-      return json;
+      return finish(json);
     }
     let okCount = 0;
     for (let i = 1; i <= 22; i++) {
@@ -532,11 +684,19 @@ function advTunerReadAll() {
     }
     const fails = (json.failed && json.failed.length) ? t("servo_tuner_read_fails", { ids: "#" + json.failed.join(",#") }) : "";
     statusEl.textContent = t("servo_tuner_read_done", { ok: okCount }) + fails;
-    return json;
-  }).catch(function(e){ statusEl.textContent = t("servo_tuner_read_err", { e: e.message }); });
+    return finish(json);
+  }).catch(function(e){
+    statusEl.textContent = t("servo_tuner_read_err", { e: e.message });
+    return finish(null);
+  });
 }
 function advTunerReset() {
   // 復位 = 成組回home，動完自動重新掃描 trim（chest 存值不受動角度影響）。格設「…」等掃，不填計出來的數；兼清 scanned 旗 — 填 0 會寫入 EEPROM 覆蓋掉出廠 trim。
+  if (advScanInProgress) {
+    const st = document.getElementById("advTunerStatus");
+    if (st) st.textContent = t("servo_tuner_scanning_wait");
+    return Promise.resolve();
+  }
   const homes = [];
   for (let i = 1; i <= 22; i++) {
     const cal = SERVO_CALIBRATION[i];
@@ -549,14 +709,15 @@ function advTunerReset() {
     delete advTrimScanned[i];
   }
   document.getElementById("advTunerStatus").textContent = t("servo_tuner_reset_sending");
-  return Alpha2Api.servoAll( { angles: homes.join(","), time: 500 }).then(function(json){
+  // 同官方 reset 一樣用 2000ms 行去標準姿勢；行完先重掃，避免讀到移動中舊值。
+  return Alpha2Api.servoAll( { angles: homes.join(","), time: 2000 }).then(function(json){
     if (!json.ok) {
       document.getElementById("advTunerStatus").textContent = t("servo_tuner_reset_fail", { e: (json.error || "") });
       return json;
     }
     document.getElementById("advTunerStatus").textContent = t("servo_tuner_reset_done");
     return new Promise(function(resolve) {
-      setTimeout(function() { resolve(advTunerReadAll()); }, 1500);
+      setTimeout(function() { resolve(advTunerReadAll()); }, 3000);
     });
   });
 }

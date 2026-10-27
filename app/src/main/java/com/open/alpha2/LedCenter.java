@@ -634,9 +634,10 @@ public final class LedCenter {
     // 獨立於 pir/set 感應器硬件開關本身 - 預設關, 使用者要自己選開才會有 LED/聲反應,
     // 避免一開機就無啦啦閃紅燈/響鈴。
     private volatile boolean alpha2PirAlertEnabled = false;
-    // PIR 硬件開關自記態（胸口讀唔返，只能記最後一次設定；預設開——
-    // 同警示開關唔同，感應器本身出廠多數係開住，toggle 熄咗先會停事件）。
-    private volatile boolean pirEnabled = true;
+    // PIR 硬件開關自記態（胸口讀唔返，只能記最後一次設定；預設關——
+    // 用家要自己開先有事件；開機 SonarCenter 會主動送一次關，
+    // 就算硬件留住上次開嘅態都跟返「預設關」）。
+    private volatile boolean pirEnabled = false;
 
     /** 由 pir/alert_enabled endpoint (pirAlertEnabledResponse) 轉調。 */
     public void setPirAlertEnabled(boolean enabled) {

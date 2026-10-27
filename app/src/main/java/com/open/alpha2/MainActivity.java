@@ -193,6 +193,18 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     // 影響到整個 registerDynamicReceiver() 的 new RobotEventReceiver() call 位)。
     private static volatile MainActivity sInstance;
 
+    /**
+     * 開機企姿／START 握手完成之前，唔接受外部 servo 指令。
+     *
+     * <p>機械人死機／reboot 後，舊瀏覽器 tab 可能仍有 IK 動畫喺度排隊；
+     * 如果新 process 一開 HTTP server 就照收，會將上一次 IK 嘅 pose 當成
+     * 新指令，機械人就會「自己硬做返之前既動作」。boot 期間擋住 servo/all
+     * 同 servo/one，等企姿穩定先放行。</p>
+     */
+    private static volatile boolean bootServoReady = false;
+
+    static boolean isBootServoReady() { return bootServoReady; }
+
     /** SONAR_DISTANCE_ACTION 觸發的 broadcast 未到之前, RobotEventReceiver 都要知道
      *  現在的門檻才計得到 "triggered"。沒 instance／sonarCenter (例如 Activity
      *  未起好/已destroy 中間那段窗口) 就當沒門檻, 不會誤判 triggered。 */
@@ -216,6 +228,10 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         sInstance = this;
+        // 開機企姿／START 握手完成之前，先擋住外部 servo 指令。
+        // 必須喺 initRobot() 起 HTTP server 之前設 false（Activity 重建時
+        // static 可能仍然係上一次嘅 true）。
+        bootServoReady = false;
         installCrashRestartHandler();
         Log.i(TAG, "MIC fw: " + SysProps.hardwareVersion() + " (ro.hardware.version)");
         Log.i(TAG, "hardware variant: " + (HardwareVersion.is2Mic()
@@ -236,48 +252,56 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         localServices = new LocalAlpha2Services(this);
         new Thread(new Runnable() {
             @Override public void run() {
-                boolean direct = localServices.start();
-                Log.i(TAG, "LocalAlpha2Services direct=" + direct + " (pure-direct, no alpha2services fallback)");
-                // 官方開機流程（參考 Alpha2Services v1.1.7.3）：
-                //   官方 MainService initThread 一綁好串口就 robotStandup() 發固定企姿
-                //   （零檔案依賴），~5s 後先由 ChestStartThread 發 cmd 0x01 START、
-                //   queryChargePlay 發 cmd 0x35[2]（見 ActionDirect.officialBootStandup）。
-                // 呢度照跟，但加防護：
-                //   1. 等胸板串口 ready：開機初期 /dev/ttyS1 可能未 ready，每 1s 重試
-                //      tryEnableDirect()（官方 ChestStartThread 都係輪詢等串口），最多 30s；
-                //   2. 唔再播「蹲下站起」ubx 伸展——嗰個係檔案依賴多幀動畫，靜默失敗
-                //      會卡住企唔起身；官方做法係一發固定企姿，可靠得多。
-                HardwareDirectManager dm = HardwareDirectManager.get(MainActivity.this);
-                long deadline = System.currentTimeMillis() + 30000;
-                while (!dm.chest().isAvailable() && System.currentTimeMillis() < deadline) {
-                    dm.tryEnableDirect();
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
+                try {
+                    boolean direct = localServices.start();
+                    Log.i(TAG, "LocalAlpha2Services direct=" + direct + " (pure-direct, no alpha2services fallback)");
+                    // 官方開機流程（參考 Alpha2Services v1.1.7.3）：
+                    //   官方 MainService initThread 一綁好串口就 robotStandup() 發固定企姿
+                    //   （零檔案依賴），~5s 後先由 ChestStartThread 發 cmd 0x01 START、
+                    //   queryChargePlay 發 cmd 0x35[2]（見 ActionDirect.officialBootStandup）。
+                    // 呢度照跟，但加防護：
+                    //   1. 等胸板串口 ready：開機初期 /dev/ttyS1 可能未 ready，每 1s 重試
+                    //      tryEnableDirect()（官方 ChestStartThread 都係輪詢等串口），最多 30s；
+                    //   2. 唔再播「蹲下站起」ubx 伸展——嗰個係檔案依賴多幀動畫，靜默失敗
+                    //      會卡住企唔起身；官方做法係一發固定企姿，可靠得多。
+                    HardwareDirectManager dm = HardwareDirectManager.get(MainActivity.this);
+                    long deadline = System.currentTimeMillis() + 30000;
+                    while (!dm.chest().isAvailable() && System.currentTimeMillis() < deadline) {
+                        dm.tryEnableDirect();
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    }
+                    if (!dm.chest().isAvailable()) {
+                        Log.w(TAG, "official boot standup skipped: chest serial unavailable after 30s");
                         return;
                     }
-                }
-                if (!dm.chest().isAvailable()) {
-                    Log.w(TAG, "official boot standup skipped: chest serial unavailable after 30s");
-                    return;
-                }
-                boolean stood = actionDirect.officialBootStandup();
-                Log.i(TAG, "official boot standup sent=" + stood);
-                // 電池固件 warm-up：智能電池 UART 閒置會瞓（深睡實測要 poke
-                // ~10 下先醒）。開機熱身：第一輪 10s，唔得隔 2s 再一輪 4s，
-                // 之後面板／API 一問即回。純讀，失敗唔影響開機。
-                try {
-                    String batteryFwWarm = chestQuery.queryBatteryVersion(10000);
-                    if (batteryFwWarm == null) {
-                        Thread.sleep(2000);
-                        batteryFwWarm = chestQuery.queryBatteryVersion(4000);
+                    boolean stood = actionDirect.officialBootStandup();
+                    Log.i(TAG, "official boot standup sent=" + stood);
+                    // 企姿同 START 握手完成（或失敗）先放行外部 servo 指令；
+                    // 下面電池 warm-up 純讀，唔使再擋。
+                    bootServoReady = true;
+                    // 電池固件 warm-up：智能電池 UART 閒置會瞓（深睡實測要 poke
+                    // ~10 下先醒）。開機熱身：第一輪 10s，唔得隔 2s 再一輪 4s，
+                    // 之後面板／API 一問即回。純讀，失敗唔影響開機。
+                    try {
+                        String batteryFwWarm = chestQuery.queryBatteryVersion(10000);
+                        if (batteryFwWarm == null) {
+                            Thread.sleep(2000);
+                            batteryFwWarm = chestQuery.queryBatteryVersion(4000);
+                        }
+                        Log.i(TAG, "battery fw warm-up: " + batteryFwWarm);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    } catch (Throwable t) {
+                        Log.w(TAG, "battery fw warm-up failed", t);
                     }
-                    Log.i(TAG, "battery fw warm-up: " + batteryFwWarm);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                } catch (Throwable t) {
-                    Log.w(TAG, "battery fw warm-up failed", t);
+                } finally {
+                    // 企姿／握手完成（或失敗）先放行外部 servo 指令。
+                    bootServoReady = true;
                 }
             }
         }, "LocalServicesInit").start();

@@ -41,14 +41,28 @@ var GAMEPAD_KB_GROUPS = [
 
 // 動作種類（servo 軸＋方向另有下拉拼出 servo<N>±；music 揀功能（含音量＋-）；
 // ring 揀鈴聲（系統預設電話鈴＋鈴聲名）；led 揀部位＋效果＋色；camera 揀影相／追蹤；
-// action 由動作下拉選）。
+// ik 揀蹲下／一字馬＋方向（撳住連走）；action 由動作下拉選）。
 var GAMEPAD_MAX_PER_KEY = 6;
-var GAMEPAD_KINDS = ["none", "stop", "servo", "music", "radio", "ring", "led", "camera", "sensor", "voice", "action"];
+var GAMEPAD_KINDS = ["none", "stop", "servo", "ik", "music", "radio", "ring", "led", "camera", "sensor", "voice", "action"];
 var GAMEPAD_KIND_KEYS = { none: "gamepad_kind_none", stop: "gamepad_kind_stop",
-  servo: "gamepad_kind_servo", music: "gamepad_kind_music", radio: "gamepad_kind_radio",
+  servo: "gamepad_kind_servo", ik: "gamepad_kind_ik",
+  music: "gamepad_kind_music", radio: "gamepad_kind_radio",
   ring: "gamepad_kind_ring",
   led: "gamepad_kind_led", camera: "gamepad_kind_camera", sensor: "gamepad_kind_sensor",
   voice: "gamepad_kind_voice", action: "gamepad_kind_action" };
+
+// IK 動作（值＝ik:<kind>±；同 servo jog 一樣撳住連走，每步 10%）。
+// 同後端 GamepadCenter.isIkAction／IkPose 對齊。舊 ik:fb± 當左前。
+var GAMEPAD_IK_FNS = ["ik:squat+", "ik:squat-", "ik:ysquat+", "ik:ysquat-",
+                      "ik:lr+", "ik:lr-", "ik:fsplit+", "ik:fsplit-",
+                      "ik:fsplit2+", "ik:fsplit2-"];
+
+function gamepadIkLabel(v) {
+  var m = /^ik:(squat|ysquat|lr|fsplit2?|fb)([+-])$/.exec(v || "");
+  if (!m) return v || "";
+  var kind = m[1] === "fb" ? "fsplit" : m[1];
+  return t("ik_name_" + kind) + (m[2] === "+" ? " +" : " −");
+}
 var GAMEPAD_VOICE_FIXED = [["xiaozhi_toggle", "gamepad_voice_xiaozhi"],
   ["vosk", "gamepad_voice_vosk"]];
 
@@ -516,10 +530,16 @@ function onGamepadKeyEvent(type, data) {
     if (data.pressed === false) return;
     gamepadSetLastText(gamepadLastText(data));
   } else if (type === "gamepad_axis") {
-    // A 端搖桿經呢度郁點。
+    // 物理柄回聲先郁點。自己注入嘅回聲（source=panel／campad）一律唔跟：
+    // 放手送嘅 0 可能撞後端 150ms 節流被 drop，跟住舊偏轉值回聲遲到會將
+    // 已回中嘅菇推返出去留喺度——「搖桿間中唔識自己回中」就係呢個，
+    // 本機 dx/dy 先係真相（同 cameraPadMirrorAxis 同一道理）。
+    var axSrc = "";
+    try { axSrc = String(data.source || ""); } catch (eAx) {}
+    try { cameraPadMirrorAxis(data); } catch (e1) {}
+    if (axSrc === "panel" || axSrc === "campad") return;
     gamepadMoveNubs(Number(data.lx || 0), Number(data.ly || 0),
       Number(data.rx || 0), Number(data.ry || 0));
-    try { cameraPadMirrorAxis(data); } catch (e) {}
   } else if (type === "gamepad_state") {
     // 映射 toggle 做咗，機身即推新態：掣即時跟（唔使入版重讀）。
     gamepadApplyToggleState(data);
@@ -658,12 +678,13 @@ function gamepadActionGroupOf(id) {
 
 // 值拆解：none/stop 直回；music_*/vol_* 歸 music 種；
 // ring_phone/ring_stop/ring_random/ring:[phone:|notification:]<title> 歸 ring 種；head:/eye: 歸 led 種；
-// servo<N>± 拆轴向；action:<id> 拆 id。
+// servo<N>± 拆轴向；ik:<kind>± 拆 IK 動作／方向；action:<id> 拆 id。
 function gamepadParseValue(v) {
   var out = { kind: "none", servoId: 20, servoDir: "+", musicFn: "music_play",
     ringSel: "ring_phone", ledPart: "head", ledPreset: "flash", ledColor: "1",
     ledSpeed: "500", cameraFn: "camera_photo", sensorFn: "sonar_toggle",
-    voiceFn: "xiaozhi_toggle", radioFn: "radio_toggle", eqPreset: "normal", actionId: "" };
+    voiceFn: "xiaozhi_toggle", radioFn: "radio_toggle", eqPreset: "normal", actionId: "",
+    ikFn: "ik:squat+" };
   if (!v) return out;
   if (v === "none" || v === "stop") {
     out.kind = v;
@@ -722,6 +743,12 @@ function gamepadParseValue(v) {
     out.servoDir = m[2];
     return out;
   }
+  m = v.match(/^ik:(squat|ysquat|lr|fsplit2?|fb)([+-])$/);
+  if (m) {
+    out.kind = "ik";
+    out.ikFn = "ik:" + (m[1] === "fb" ? "fsplit" : m[1]) + m[2];
+    return out;
+  }
   if (v.indexOf("action:") === 0) {
     out.kind = "action";
     out.actionId = v.substring(7);
@@ -747,6 +774,24 @@ function gamepadBuildServoControls(side, k, idx, parsed) {
       sel.appendChild(o);
     });
   }
+  wrap.appendChild(sel);
+  return wrap;
+}
+
+// 建 IK 動作下拉（蹲下／蹲式／左右／前後 × +/-；撳住連走，同 servo jog 一樣）。
+function gamepadBuildIkControls(side, k, idx, parsed) {
+  var wrap = document.createElement("span");
+  wrap.id = gamepadSubId("gpIkWrap", side, k, idx);
+  wrap.style.display = parsed.kind === "ik" ? "inline" : "none";
+  var sel = document.createElement("select");
+  sel.id = gamepadSubId("gpIkSel", side, k, idx);
+  GAMEPAD_IK_FNS.forEach(function (f) {
+    var o = document.createElement("option");
+    o.value = f;
+    o.textContent = gamepadIkLabel(f);
+    if (f === parsed.ikFn) o.selected = true;
+    sel.appendChild(o);
+  });
   wrap.appendChild(sel);
   return wrap;
 }
@@ -1203,6 +1248,12 @@ function gamepadRelabelSelect(sel) {
   var id = sel.id;
   var map = null;
   if (id.indexOf("gpSel_") === 0) map = GAMEPAD_KIND_KEYS;
+  else if (id.indexOf("gpIkSel_") === 0) {
+    for (var iki = 0; iki < sel.options.length; iki++) {
+      sel.options[iki].text = gamepadIkLabel(sel.options[iki].value);
+    }
+    return;
+  }
   else if (id.indexOf("gpMusicSel_") === 0) map = GAMEPAD_MUSIC_FN_KEYS;
   else if (id.indexOf("gpRadioSel_") === 0) map = GAMEPAD_RADIO_FN_KEYS;
   else if (id.indexOf("gpEqSel_") === 0) {
@@ -1421,6 +1472,7 @@ function gamepadBuildMappingSubRow(side, k, idx, parsed, isFirst) {
     return function () {
       var v = document.getElementById(gamepadSubId("gpSel", s, kk, ii)).value;
       var sw = document.getElementById(gamepadSubId("gpServoWrap", s, kk, ii));
+      var iw = document.getElementById(gamepadSubId("gpIkWrap", s, kk, ii));
       var aw = document.getElementById(gamepadSubId("gpActionWrap", s, kk, ii));
       var mu = document.getElementById(gamepadSubId("gpMusicSel", s, kk, ii));
       var ra = document.getElementById(gamepadSubId("gpRadioSel", s, kk, ii));
@@ -1430,6 +1482,7 @@ function gamepadBuildMappingSubRow(side, k, idx, parsed, isFirst) {
       var sn = document.getElementById(gamepadSubId("gpSensorSel", s, kk, ii));
       var vc = document.getElementById(gamepadSubId("gpVoiceWrap", s, kk, ii));
       if (sw) sw.style.display = v === "servo" ? "inline" : "none";
+      if (iw) iw.style.display = v === "ik" ? "inline" : "none";
       if (aw) aw.style.display = v === "action" ? "inline" : "none";
       if (mu) mu.style.display = v === "music" ? "inline" : "none";
       if (true) gamepadSyncMusicEq(s, kk, ii);
@@ -1442,6 +1495,7 @@ function gamepadBuildMappingSubRow(side, k, idx, parsed, isFirst) {
     };
   })(side, k, idx);
   var servoWrap = gamepadBuildServoControls(side, k, idx, parsed);
+  var ikWrap = gamepadBuildIkControls(side, k, idx, parsed);
   var musicSel = document.createElement("select");
   musicSel.id = gamepadSubId("gpMusicSel", side, k, idx);
   musicSel.style.display = parsed.kind === "music" ? "inline" : "none";
@@ -1531,6 +1585,7 @@ function gamepadBuildMappingSubRow(side, k, idx, parsed, isFirst) {
   sub.appendChild(badge);
   sub.appendChild(kind);
   sub.appendChild(servoWrap);
+  sub.appendChild(ikWrap);
   sub.appendChild(musicSel);
   sub.appendChild(eqSel);
   sub.appendChild(radioSel);
@@ -1701,6 +1756,10 @@ function gamepadReadSubRowValue(side, k, idx) {
   if (kind === "servo") {
     var sv = document.getElementById(gamepadSubId("gpServo", side, k, idx));
     return (sv && sv.value) ? sv.value : "servo20+";
+  }
+  if (kind === "ik") {
+    var ik = document.getElementById(gamepadSubId("gpIkSel", side, k, idx));
+    return (ik && ik.value) ? ik.value : "ik:squat+";
   }
   if (kind === "music") {
     var mu = document.getElementById(gamepadSubId("gpMusicSel", side, k, idx));
@@ -1882,7 +1941,9 @@ var GAMEPAD_KB_NAV = [
   [["prt", "print", ""], ["scr", "scroll", ""], ["paus", "pause", ""]],
   [["ins", "ins", ""], ["home", "home", ""], ["pgup", "pgup", ""]],
   [["del", "del", ""], ["end", "end", ""], ["pgdn", "pgdn", ""]],
-  [["◀", "left", ""], ["▲", "up", ""], ["▼", "down", ""], ["▶", "right", ""]]
+  // 箭嘴同上面一樣 3 鍵闊（上下兩行標準十字排法），唔好 4 粒逼埋細一截。
+  [null, ["▲", "up", ""], null],
+  [["◀", "left", ""], ["▼", "down", ""], ["▶", "right", ""]]
 ];
 // 媒體列（7 粒：播／停＋音量，置導航／數字區上面，全闊一行）。
 var GAMEPAD_KB_MEDIA = [
@@ -2029,6 +2090,10 @@ function gamepadMoveNubs(lx, ly, rx, ry) {
 var __gpDiagBound = false;
 var __gpDiagPtr = {};
 var __gpDiagHold = {};
+// 每次 pointerdown 遞增；down／up 都帶同一個 seq，後端就算 up 先過 down
+// 都認得返同一撳（唔會漏停連走行到 100%）。base 用時間戳，避免 reload 後
+// seq 由 0 再數同上一頁嘅舊 seq 撞（撞咗會誤判 up 已到，長撳唔連走）。
+var __gpDiagSeq = (Date.now ? Date.now() : 1) * 1000;
 var __gpDiagStickL = { dx: 0, dy: 0, held: false, ptr: null };
 var __gpDiagStickR = { dx: 0, dy: 0, held: false, ptr: null };
 var __gpDiagAxisSentAt = 0;
@@ -2061,12 +2126,14 @@ function gamepadDiagHolders(hk, excludePid) {
 // 原理：HTTP 有回應即係後端已 stop＋publish（回應喺處理之後先寫），成功就唔使估。
 // 得第一發失敗（ok:false／掟 exception，後端未處理）先補，最多兩次；
 // 補嗰陣有新撳住即收手（舊 up 遲到有後端反轉閘兜，唔斬斷人哋）。
-function gamepadDiagSendUp(side, key, hk) {
+function gamepadDiagSendUp(side, key, hk, seq) {
   var tries = 0;
   function sendOnce() {
     var p = null;
     try {
-      p = Alpha2Api.gamepadKey({ side: side, key: key, action: "up", source: "panel" });
+      var q = { side: side, key: key, action: "up", source: "panel" };
+      if (seq != null) q.seq = seq;
+      p = Alpha2Api.gamepadKey(q);
     } catch (e) {
       scheduleRetry();
       return;
@@ -2094,7 +2161,7 @@ function gamepadDiagSendUp(side, key, hk) {
   sendOnce();
 }
 
-function gamepadDiagPress(side, key, down, pid) {
+function gamepadDiagPress(side, key, down, pid, seq) {
   if (!key) return;
   side = (side === "kb") ? "kb" : "pad";
   var hk = side + ":" + key;
@@ -2106,7 +2173,9 @@ function gamepadDiagPress(side, key, down, pid) {
     if (others > 0) return;
     try { gamepadLightLogical(key, true, gamepadDiagCachedAction(side, key)); } catch (e) {}
     try {
-      Alpha2Api.gamepadKey({ side: side, key: key, action: "down", source: "panel" }).catch(function () {
+      var q = { side: side, key: key, action: "down", source: "panel" };
+      if (seq != null) q.seq = seq;
+      Alpha2Api.gamepadKey(q).catch(function () {
         __gpDiagHold[hk] = 0;
         try { gamepadLightLogical(key, false); } catch (e2) {}
       });
@@ -2118,7 +2187,7 @@ function gamepadDiagPress(side, key, down, pid) {
     if (holders > 0) return;
     try { gamepadLightLogical(key, false); } catch (e) {}
     gamepadNoteLocalUp(side, key);
-    gamepadDiagSendUp(side, key, hk);
+    gamepadDiagSendUp(side, key, hk, seq);
   }
 }
 
@@ -2187,7 +2256,7 @@ function gamepadDiagReleaseAll() {
   for (var pid in __gpDiagPtr) {
     try {
       var h = __gpDiagPtr[pid];
-      if (h) gamepadDiagPress(h.side, h.key, false, pid);
+      if (h) gamepadDiagPress(h.side, h.key, false, pid, h.seq);
     } catch (e) {}
   }
   __gpDiagPtr = {};
@@ -2291,11 +2360,12 @@ function gamepadDiagPadDown(e) {
     // 再當新撳——單一 contact 唔可能合法撳兩次，有殘留必係漏。
     var stale = __gpDiagPtr[pid];
     if (stale) {
-      try { delete __gpDiagPtr[pid]; gamepadDiagPress(stale.side, stale.key, false, pid); } catch (x0) {}
+      try { delete __gpDiagPtr[pid]; gamepadDiagPress(stale.side, stale.key, false, pid, stale.seq); } catch (x0) {}
     }
-    __gpDiagPtr[pid] = { side: "pad", key: key };
+    var seq = ++__gpDiagSeq;
+    __gpDiagPtr[pid] = { side: "pad", key: key, seq: seq };
     try { if (btn.setPointerCapture && e.pointerId != null) btn.setPointerCapture(e.pointerId); } catch (x) {}
-    gamepadDiagPress("pad", key, true, pid);
+    gamepadDiagPress("pad", key, true, pid, seq);
     try { e.preventDefault(); } catch (x) {}
   }
 }
@@ -2312,11 +2382,12 @@ function gamepadDiagKbDown(e) {
   var pid = (e.pointerId != null) ? e.pointerId : "mouse";
   var staleKb = __gpDiagPtr[pid];
   if (staleKb) {
-    try { delete __gpDiagPtr[pid]; gamepadDiagPress(staleKb.side, staleKb.key, false, pid); } catch (x0) {}
+    try { delete __gpDiagPtr[pid]; gamepadDiagPress(staleKb.side, staleKb.key, false, pid, staleKb.seq); } catch (x0) {}
   }
-  __gpDiagPtr[pid] = { side: "kb", key: key };
+  var seq = ++__gpDiagSeq;
+  __gpDiagPtr[pid] = { side: "kb", key: key, seq: seq };
   try { if (k.setPointerCapture && e.pointerId != null) k.setPointerCapture(e.pointerId); } catch (x) {}
-  gamepadDiagPress("kb", key, true, pid);
+  gamepadDiagPress("kb", key, true, pid, seq);
   try { e.preventDefault(); } catch (x) {}
 }
 
@@ -2368,7 +2439,7 @@ function gamepadDiagOnUp(e) {
   var h = __gpDiagPtr[pid];
   if (h) {
     delete __gpDiagPtr[pid];
-    gamepadDiagPress(h.side, h.key, false, pid);
+    gamepadDiagPress(h.side, h.key, false, pid, h.seq);
   }
 }
 
@@ -2466,6 +2537,7 @@ var __cameraPadDown = {};
 var __cameraPadLit = {};
 var __cameraPadNo = {};
 var __cameraPadPtr = {};
+var __cameraPadSeq = {};
 var __cameraPadBound = false;
 // 搖桿態（dx/dy −1..1，右＋下＋；held＝手指撳緊；本機偏轉經 axis 送，物理柄經 WS 回聲鏡像）。
 var __campadStickL = { dx: 0, dy: 0, held: false };
@@ -2521,13 +2593,15 @@ function campadLiveHoldersKey(k, excludePid) {
 }
 
 // campad 版收掣 up：規矩同面板一樣——正常一次搞掂，得失敗先補（最多兩次）。
-function campadSendUp(k) {
+function campadSendUp(k, seq) {
   if (!k) return;
   var tries = 0;
   function sendOnce() {
     var p = null;
     try {
-      p = Alpha2Api.gamepadKey({ side: "pad", key: k, action: "up", source: "campad" });
+      var q = { side: "pad", key: k, action: "up", source: "campad" };
+      if (seq != null) q.seq = seq;
+      p = Alpha2Api.gamepadKey(q);
     } catch (e) {
       scheduleRetry();
       return;
@@ -2622,6 +2696,7 @@ function cameraPadReleaseAll() {
     if (__cameraPadDown[k]) {
       __cameraPadDown[k] = false;
       __cameraPadLit[k] = false;
+      try { delete __cameraPadSeq[k]; } catch (e0) {}
       gamepadNoteLocalUp("pad", k);
       try { campadSendUp(k); } catch (e) {}
     }
@@ -2844,12 +2919,12 @@ function campadAxisSend(force) {
 }
 
 // 物理柄回聲鏡像（無撳緊嗰支先跟；自己注入嘅回聲值一樣，changed 閘擋重畫）。
-// 例外：source=campad 嘅回聲一律唔跟——放手送嘅 0 可能撞後端 150ms 節流被
+// 例外：source=campad／panel 嘅回聲一律唔跟——放手送嘅 0 可能撞後端 150ms 節流被
 // drop，跟住舊偏轉值回聲遲到會將已回中嘅菇推返出去留喺度（就係間中唔回中）。
 // 本機 dx/dy 先係真相；物理柄（source robot 等）照跟。
 function cameraPadMirrorAxis(d) {
   if (!cameraPadViewOn || !d) return;
-  try { if (d.source === "campad") return; } catch (e) {}
+  try { if (d.source === "campad" || d.source === "panel") return; } catch (e) {}
   var changed = false;
   var pairs = [["lx", __campadStickL], ["ly", __campadStickL], ["rx", __campadStickR], ["ry", __campadStickR]];
   for (var i = 0; i < pairs.length; i++) {
@@ -3184,8 +3259,10 @@ function cameraPadPress(k, isDown, pid) {
     }
     __cameraPadDown[k] = true;
     __cameraPadLit[k] = true;
+    var seq = ++__gpDiagSeq;
+    __cameraPadSeq[k] = seq;
     cameraPadDraw();
-    Alpha2Api.gamepadKey({ side: "pad", key: k, action: "down", source: "campad" }).then(function (json) {
+    Alpha2Api.gamepadKey({ side: "pad", key: k, action: "down", source: "campad", seq: seq }).then(function (json) {
       if (json && json.taken === false) {
         __cameraPadNo[k] = Date.now();
         cameraPadDraw();
@@ -3209,9 +3286,11 @@ function cameraPadPress(k, isDown, pid) {
     if (campadLiveHoldersKey(k, pid) > 0) return;
     __cameraPadDown[k] = false;
     __cameraPadLit[k] = false;
+    var seq = __cameraPadSeq[k];
+    try { delete __cameraPadSeq[k]; } catch (e0) {}
     cameraPadDraw();
     gamepadNoteLocalUp("pad", k);
-    campadSendUp(k);
+    campadSendUp(k, seq);
   }
 }
 

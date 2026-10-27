@@ -465,6 +465,26 @@ pre {
   padding: 6px 0;
 }
 
+/* IK 動作 card：label / slider / 百分比，跟 servo slider row 對齊 */
+.ik-row {
+  display: grid;
+  grid-template-columns: 130px 1fr 56px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+.ik-row > span {
+  font-size: 14px;
+  color: var(--text);
+}
+.ik-row > input[type="range"] {
+  width: 100%;
+}
+.ik-row > b {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .servo-slider-row.has-readout {
   grid-template-columns: 130px 1fr 56px 64px;
 }
@@ -1802,8 +1822,8 @@ button.eq-preset-sq.selected {
 .kb-key.wide { flex-grow: 2.2; }
 .kb-key.wider { flex-grow: 3.2; }
 .kb-key.space { flex-grow: 8; }
-/* 頂行 F 區分組空位。 */
-.kb-gap { flex: 0.7 1 0; min-width: 4px; }
+/* 空位格（導航箭嘴上行兩側）：同鍵一樣闊，箭嘴先對正中列。 */
+.kb-gap { flex: 1 1 0; min-width: 4px; }
 .kb-key.lit {
   background: var(--accent);
   border-color: #ffffff;
@@ -1830,8 +1850,9 @@ button.eq-preset-sq.selected {
   flex-wrap: wrap;
 }
 .kb-zone-main { flex: 5 1 340px; min-width: 0; }
-.kb-zone-nav { flex: 2 1 130px; min-width: 0; }
-.kb-zone-num { flex: 2 1 130px; min-width: 0; }
+/* 導航行 3 鍵闊、數字區行 4 鍵闊：3:4 先至每粒鍵同闊（1:1 時數字鍵偏細）。 */
+.kb-zone-nav { flex: 3 1 0; min-width: 0; }
+.kb-zone-num { flex: 4 1 0; min-width: 0; }
 /* 右欄：媒體列置頂，導航＋數字區並排喺下（同闊對齊）。 */
 .kb-zone-right { flex: 4 1 260px; min-width: 0; display: flex; flex-direction: column; }
 .kb-zones-sub { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -2006,6 +2027,29 @@ body.gp-fs-open { overflow: hidden; }
   min-height: 0;
   min-width: 0;
 }
+/* 全屏主鍵盤加大：主區 7：右欄 4（正常 5:4 主區偏細，每粒鍵細過數字區）；
+   7:4 時主區 14 鍵一行同右欄 8 鍵一行，鍵闊啱啱睇齊。 */
+.kb-board:fullscreen .kb-zone-main, .kb-board:-webkit-full-screen .kb-zone-main,
+.kb-board.gp-fs-fallback .kb-zone-main {
+  flex: 7 1 0;
+}
+.kb-board:fullscreen .kb-zone-right, .kb-board:-webkit-full-screen .kb-zone-right,
+.kb-board.gp-fs-fallback .kb-zone-right {
+  flex: 4 1 0;
+}
+/* 打直（portrait）全屏：7:4 並排只限橫向——直向夾硬並排會將主區壓扁變形。
+   直向恢復原有疊版（basis 340/260 + wrap：主區一行置上、右欄一行置下，
+   各自撐滿闊度），同一直以嚟嘅直向版面一樣。 */
+@media (orientation: portrait) {
+  .kb-board:fullscreen .kb-zone-main, .kb-board:-webkit-full-screen .kb-zone-main,
+  .kb-board.gp-fs-fallback .kb-zone-main {
+    flex: 7 1 340px;
+  }
+  .kb-board:fullscreen .kb-zone-right, .kb-board:-webkit-full-screen .kb-zone-right,
+  .kb-board.gp-fs-fallback .kb-zone-right {
+    flex: 4 1 260px;
+  }
+}
 .kb-board:fullscreen .kb-row, .kb-board:-webkit-full-screen .kb-row,
 .kb-board.gp-fs-fallback .kb-row {
   gap: 2px;
@@ -2020,12 +2064,15 @@ body.gp-fs-open { overflow: hidden; }
   padding: 0;
   min-height: 0;
   height: auto;
-  flex: 1 1 auto;
+  /* 只鎖 basis：鍵闊平分唔跟字長，但保留 .wide／.wider／.space 嘅 grow
+     （用 flex shorthand 會連 grow 都蓋成 1，space／tab／shift／enter 會縮細）。 */
+  flex-basis: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-/* 右欄媒體列唔參與平分：固定 32px 高。 */
+/* 右欄媒體列唔參與垂直平分：固定 32px 高；
+   但闊度要同正常模式一樣 7 粒等闊平分（flex:none 會塌返內容闊、靠左擠埋＝走位）。 */
 .kb-board:fullscreen .kb-zone-right > .kb-row,
 .kb-board:-webkit-full-screen .kb-zone-right > .kb-row,
 .kb-board.gp-fs-fallback .kb-zone-right > .kb-row {
@@ -2035,7 +2082,8 @@ body.gp-fs-open { overflow: hidden; }
 .kb-board:-webkit-full-screen .kb-zone-right > .kb-row .kb-key,
 .kb-board.gp-fs-fallback .kb-zone-right > .kb-row .kb-key {
   height: 32px;
-  flex: none;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 /* 相機頁手柄視圖：22 粒 pad 鍵畫喺 viewport 內 canvas（圖形掣，非 HTML）。

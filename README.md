@@ -79,7 +79,8 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   chips are coloured by category (sub-category colour first, main-category
   fallback). (Pack download lives in the Experiment tab.)
 - Servo (⚙️) — 22 joints in head/arm/leg/extra groups, individually or all at
-  once, with live command-pose display. Live angle read-back: one-click
+  once, with live command-pose display. Dragging a joint slider follows live
+  (~8 Hz); release finishes the move. Live angle read-back: one-click
   `servo/back-angle-all` (chest cmd `0x17`, pure read, all 22 axes incl.
   21/22) plus single-servo reads — `servo/angle` (chest cmd6 live query),
   `servo/back-angle` (cmd `0x17`), `servo/read` (trim/offset via cmd13) and
@@ -88,6 +89,35 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   chest cmd14) and hardware info (`servo/hardware`, cmd33), servo ID changer
   (`servo/modify-id`, chest cmd10 — honours the chest left/right bus wiring),
   and single-servo firmware flash (`servo/upgrade`, 7168-byte `.bin` gate).
+  IK action card: squat / squat 2 (official “蹲式” deep-squat pose) /
+  left-right split / left-forward split / right-forward split on five 0–100
+  sliders, starting from the boot stand-up pose (robotStandup; servo 19 head
+  yaw at 120); dragging sets the target and the robot moves 10% every 120 ms
+  at constant speed (0→100 in ~1200 ms, five sliders mutually exclusive).
+  A "Direct transition" switch controls action changes: off (default) returns
+  to the boot pose at the same speed before moving to the new action; on blends
+  the 20 servo angles straight from the current A pose to the B pose at the
+  same 10%-per-120 ms rate (no boot pose in between). The choice is remembered.
+  Direct mode linearly blends the 20 servo angles, so intermediate poses may
+  not be valid IK — test at low percentages first.
+  If a servo-grid slider is changed during an IK action, the IK percentage is
+  kept; the next IK move blends from the current pose at the same 120 ms/step
+  rate instead of snapping back to the old percentage. Axes the action does
+  not drive keep the manual value (e.g. head yaw during a squat). Squat drives
+  only the 10 leg servos 7–16; squat 2 and left-right split drive the legs plus
+  shoulder roll 2/5 (targets 180/60 and 140/100 respectively); the two forward
+  splits drive the legs plus shoulder pitch 1/4 (left-forward 90/70,
+  right-forward 170/150). Head 19/20, hands 17/18 and elbows 3/6 are never
+  touched by IK, so they keep their current/manual values throughout. Switching
+  between actions leaves axes the new action does not drive at their current
+  values (the off-mode return to boot only moves the new action's axes), so the
+  arms do not drop.
+  Boot safety: until the stand-up pose and START handshake finish, the API
+  rejects motion commands (`ok:false, "booting"`), the stand-up is re-sent
+  after the handshake, the panel ignores browser-restored slider values until
+  the user actually drags them, and IK stops on WebSocket loss or a 2 s
+  `servo/all` timeout. A crash/reboot therefore cannot make the robot replay
+  the last IK pose by itself.
 - Gamepad (🎮) — BT gamepad/keyboard in two modes sharing one key mapping
   (`gamepad/*`): A = HID paired straight to the robot (BT on/scan/pair from
   the page, offline OK, keys via `dispatchKeyEvent`, right stick drives head
@@ -95,7 +125,15 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   injected via `gamepad/key`/`gamepad/axis`). The mapping table has two
   sections; `gamepad/key`/`gamepad/axis` stay available for direct scripting.
   Action values support 22-axis `servo1-22±` stepping (hold to repeat,
-  release to stop; same calibration limits as the servo tab), local-music
+  release to stop; same calibration limits as the servo tab), leg IK poses
+  (`ik:squat±` / `ik:ysquat±` / `ik:lr±` / `ik:fsplit±` (left-forward) /
+  `ik:fsplit2±` (right-forward); `ik:fb±` is a left-forward compatibility
+  alias; hold to move in 10% steps / 120 ms from the actual pose until
+  0%/100%; switching actions first
+  returns the old action to 0% at the same speed, and axes the new action does
+  not drive stay put; panel taps carry a per-press seq, so a quick tap stays one
+  step even if the HTTP up request reaches the server before the slow down
+  request), local-music
   function keys (incl. random track) / random yoga / system ringtones (named /
   default call tone) / head-eye-mouth LEDs / all-lights-off / photo + face &
   colour tracking toggles + the 203 actions (5 groups: basic / dance / story /
@@ -131,7 +169,8 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
 - Experiment (Advanced, 🧪) — panel auth token, boot-voice mode (off /
   auto-connect Xiaozhi / auto-listen Vosk), resource downloads (Vosk model
   catalog, 202-action pack, Google TTS APK — one at a time via
-  `DownloadGate`), 22ch servo angle tuner with offset backup/restore, robot
+  `DownloadGate`), 22ch servo angle tuner with offset backup/restore and
+  factory-style calibration (batch trim write → EEPROM settle → home → rescan), robot
   ID changer (query/copy/QR preview/EEPROM write), chest firmware upgrade
   (upload-then-flash; upgrade requires a fresh `.bin` upload in the current
   page session — a stale file left on the robot is never reused), servo

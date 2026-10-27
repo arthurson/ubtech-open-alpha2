@@ -133,13 +133,14 @@ const I18N = {
   gamepad_mapping_kb_heading:  { zh: "⌨️ 鍵盤映射", en: "⌨️ Keyboard mapping" },
   gamepad_mapping_show_pad:    { zh: "映射表", en: "Mapping" },
   gamepad_mapping_show_kb:     { zh: "映射表", en: "Mapping" },
-  gamepad_mapping_pad_hint:    { zh: "同名鍵兩邊獨立值；每鍵按 + 可加多個動作（一次過順序做晒）；改完即存機器人（重啟保留）。", en: "Same names hold separate values per side. Press + per key for multi-action (run in order). Saved on robot." },
-  gamepad_mapping_kb_hint:     { zh: "同名鍵兩邊獨立值；每鍵按 + 可加多個動作（一次過順序做晒）；改完即存機器人（重啟保留）。", en: "Same names hold separate values per side. Press + per key for multi-action (run in order). Saved on robot." },
+  gamepad_mapping_pad_hint:    { zh: "同名鍵兩邊獨立值；每鍵按 + 可加多個動作（一次過順序做晒），IK 用 +／− 撳住連走；改完即存機器人（重啟保留）。", en: "Same names hold separate values per side. Press + per key for multi-action (run in order); hold IK +/- to move. Saved on robot." },
+  gamepad_mapping_kb_hint:     { zh: "同名鍵兩邊獨立值；每鍵按 + 可加多個動作（一次過順序做晒），IK 用 +／− 撳住連走；改完即存機器人（重啟保留）。", en: "Same names hold separate values per side. Press + per key for multi-action (run in order); hold IK +/- to move. Saved on robot." },
 
   // -- gamepad 映射行下拉（種類＋各值，中英齊，免版面又中又英） --
   gamepad_kind_none:   { zh: "無動作", en: "None" },
   gamepad_kind_stop:   { zh: "停止", en: "Stop" },
   gamepad_kind_servo:  { zh: "舵機", en: "Servo" },
+  gamepad_kind_ik:     { zh: "IK 動作", en: "IK pose" },
   gamepad_kind_music:  { zh: "音樂", en: "Music" },
   gamepad_kind_radio:  { zh: "電台", en: "Radio" },
   gamepad_kind_ring:   { zh: "鈴聲", en: "Ringtone" },
@@ -200,7 +201,7 @@ const I18N = {
 
   // -- servo tab --
   servo_heading:         { zh: "舵機 (Servos, 1–22)", en: "Servos (1–22)" },
-  servo_hint:            { zh: "拖動滑桿, 放手即送出, 自動限制在安全範圍內。", en: "Drag a slider and release to send — values are auto-clamped to a safe range." },
+  servo_hint:            { zh: "拖動滑桿即時跟隨（約 8Hz），放手用時間欄完成；數值自動限制在安全範圍內。", en: "Drag a slider to follow live (~8 Hz); release finishes with the time value. Values are auto-clamped to a safe range." },
   servo_time_label:      { zh: "時間(ms)：",       en: "Time (ms):" },
   servo_reset_btn:       { zh: "全部回到原位",     en: "Reset All to Home" },
   servo_read_all_btn:    { zh: "📖 讀取全部",       en: "📖 Read all" },
@@ -209,8 +210,34 @@ const I18N = {
   servo_reading_hint:    { zh: "讀取中…",             en: "Reading…" },
   servo_read_done:       { zh: "✅ 已更新",            en: "✅ Updated" },
   servo_read_failed_prefix: { zh: "❌ 讀取失敗：",     en: "❌ Read failed: " },
+  // -- servo tab: IK action card --
+  ik_heading:            { zh: "IK 動作",             en: "IK Actions" },
+  ik_direct_label:       { zh: "直接轉移",           en: "Direct transition" },
+  ik_squat:              { zh: "蹲下",               en: "Squat" },
+  ik_ysquat:             { zh: "蹲式",               en: "Squat 2" },
+  ik_split_lr:           { zh: "左右一字馬",         en: "Left-right split" },
+  ik_split_lf:           { zh: "左前一字馬",         en: "Left-forward split" },
+  ik_split_rf:           { zh: "右前一字馬",         en: "Right-forward split" },
+  ik_reset:              { zh: "↩ 開機企姿",         en: "↩ Boot pose" },
+  ik_name_squat:         { zh: "蹲下",               en: "Squat" },
+  ik_name_ysquat:        { zh: "蹲式",               en: "Squat 2" },
+  ik_name_lr:            { zh: "左右一字馬",         en: "Left-right split" },
+  ik_name_fsplit:        { zh: "左前一字馬",         en: "Left-forward split" },
+  ik_name_fsplit2:       { zh: "右前一字馬",         en: "Right-forward split" },
+  ik_status_ready:       { zh: "拖動滑桿",           en: "Drag a slider" },
+  ik_status_live:        { zh: "跟隨 {name} {pct}%…", en: "Following {name} {pct}%…" },
+  ik_status_live_base:   { zh: "回企姿…",            en: "Returning to boot pose…" },
+  ik_status_switching:   { zh: "切換 {name}：回企姿…", en: "Switching to {name}: boot pose…" },
+  ik_status_direct:      { zh: "直接過渡到 {name} {pct}%…", en: "Direct to {name} {pct}%…" },
+  ik_status_sending:     { zh: "完成中…",            en: "Finishing…" },
+  ik_status_sent:        { zh: "✅ 已完成 {name} {pct}%", en: "✅ Done {name} {pct}%" },
+  ik_status_base:        { zh: "✅ 已回到開機企姿",   en: "✅ Back to boot pose" },
+  ik_status_fail:        { zh: "❌ 送出失敗：{err}",  en: "❌ Send failed: {err}" },
+  ik_status_link_lost:   { zh: "⚠ 連線斷開，IK 已停止；重連後請重新拖動。", en: "⚠ Connection lost; IK stopped. Drag again after reconnect." },
+  ik_status_manual:      { zh: "手動調整；下次 IK 均速過渡。", en: "Manual change; next IK blends smoothly." },
+  ik_status_manual_move: { zh: "由現時 pose → {name} {pct}%…", en: "Current pose → {name} {pct}%…" },
   servo_tuner_heading:   { zh: "🔧 舵機角度調整", en: "🔧 Servo Angle Tuner" },
-  servo_tuner_hint:      { zh: "獨立於舵機分頁的進階微調器 — 直接修改 22 顆 servo 角度，±1° 精調，一鍵讀取全部目前角度。與原廠 1.0.0.4 校準工具相同佈局（1-20 對應肩/肘/髖/膝/踝/手/頭，21-22 為擴展）。長按 ±1 連發時已禁用系統複製選單。", en: "Standalone tuner — tune 22 servos directly, ±1° fine-tune, one-click read. Matches factory 1.0.0.4 layout (1-20: shoulder/elbow/hip/knee/ankle/hand/head, 21-22 extra). Long-press ±1 repeats, copy menu disabled." },
+  servo_tuner_hint:      { zh: "獨立於舵機分頁的進階微調器 — 開啟即自動掃描 22 顆 offset；±1° 精調角度。校准依官方 1.0.0.4 流程：一次過寫 offset → 等 EEPROM → 全部回標準姿勢 → 重掃驗證。與原廠相同佈局（1-20 對應肩/肘/髖/膝/踝/手/頭，21-22 為擴展）。長按 ±1 連發時已禁用系統複製選單。", en: "Standalone tuner — auto-scans all 22 offsets on open; ±1° fine-tune. Calibrate follows factory 1.0.0.4: write offsets in one batch → wait for EEPROM → return all to home → rescan verify. Same layout as factory (1-20: shoulder/elbow/hip/knee/ankle/hand/head, 21-22 extra). Long-press ±1 repeats, copy menu disabled." },
   servo_tuner_standby:   { zh: "復位+掃描",         en: "reset+scan" },
   servo_tuner_calibrate: { zh: "校准",               en: "Calibrate" },
   servo_tuner_angle:     { zh: "角度",               en: "Angle" },
@@ -230,7 +257,7 @@ const I18N = {
   servo_tuner_unscanned:     { zh: "（{n}/22 未讀）…",   en: "({n}/22 unread)…" },
 
   // adv tuner 動態狀態字。
-  servo_tuner_ready:         { zh: "tuner {v} 就緒（加減/輸入僅變動角度；校准先成組寫 EEPROM）", en: "tuner {v} ready (+/- and input move only; Calibrate writes EEPROM)" },
+  servo_tuner_ready:         { zh: "tuner {v} 就緒（自動掃描中；加減/輸入只動角度，校准先成組寫 EEPROM）", en: "tuner {v} ready (auto-scanning; +/- and input move only, Calibrate writes EEPROM)" },
   servo_tuner_read_all:      { zh: "一鍵實際讀取全部 trim 1-22（約幾秒）…", en: "Reading all 22 trims (a few seconds)…" },
   servo_tuner_read_done:     { zh: "實際讀取完成 {ok}/22",   en: "Read done {ok}/22" },
   servo_tuner_read_fails:    { zh: "，無回授：{ids}",   en: ", no feedback: {ids}" },
@@ -245,9 +272,18 @@ const I18N = {
   servo_tuner_cal_unknown:   { zh: "，未確認：{ids}（重新掃描驗證）", en: ", unconfirmed: {ids} (rescan to verify)" },
   servo_tuner_cal_failed:    { zh: "，失敗：{ids}",     en: ", failed: {ids}" },
   servo_tuner_cal_skipped:   { zh: "（跳過未掃描：{ids}）", en: "(skipped unscanned: {ids})" },
+  servo_tuner_cal_writing:   { zh: "校准中：官方流程（寫入 {n} 軸 offset → 等 EEPROM → 回標準姿勢）…", en: "Calibrating (factory flow: write {n} offsets → wait for EEPROM → return home)…" },
+  servo_tuner_cal_home_fail: { zh: "校准失敗（回標準姿勢）：{e}", en: "Calibration failed (home pose): {e}" },
+  servo_tuner_cal_verify:    { zh: "offset 已寫入，回標準姿勢中；3 秒後重掃驗證…", en: "Offsets written, returning home; rescanning to verify in 3s…" },
+  servo_tuner_cal_verify_done: { zh: "校准完成，重掃驗證 {ok}/{n} 一致", en: "Calibration done, rescan verified {ok}/{n}" },
+  servo_tuner_cal_verify_bad: { zh: "，未生效：{ids}", en: ", not applied: {ids}" },
+  servo_tuner_cal_verify_unread: { zh: "，讀不到：{ids}", en: ", unreadable: {ids}" },
+  servo_tuner_cal_verify_fail: { zh: "校准完成，但重掃失敗（請手動再掃描）", en: "Calibrated, but rescan failed (scan manually)" },
+  servo_tuner_cal_send_fail: { zh: "校准請求失敗：{e}", en: "Calibrate request failed: {e}" },
+  servo_tuner_scanning_wait: { zh: "掃描中，請等完成再操作…", en: "Scanning, please wait…" },
   servo_tuner_reset_sending: { zh: "送復位姿勢中…",      en: "Sending reset pose…" },
   servo_tuner_reset_fail:    { zh: "復位失敗：{e}",      en: "Reset failed: {e}" },
-  servo_tuner_reset_done:    { zh: "已復位，1.5 秒後重新掃描 trim…", en: "Reset done, rescanning trims in 1.5s…" },
+  servo_tuner_reset_done:    { zh: "已復位，3 秒後重新掃描 trim…", en: "Reset done, rescanning trims in 3s…" },
   servo_tuner_no_feedback:   { zh: "讀失敗",             en: "no feedback" },
   servo_tuner_live_suffix:   { zh: " (即時)",            en: " (live)" },
   servo_tuner_err_nofeedback: { zh: "無回授（超時或壞舵機）", en: "no feedback (timeout or faulty servo)" },
@@ -795,6 +831,10 @@ function setUiLanguage(lang) {
   // 動作包狀態行一樣動態起，重畫一次就轉語言（不用再問後端）。
   try {
     if (typeof actionsPackApplyUiLanguage === "function") actionsPackApplyUiLanguage();
+  } catch(e) {}
+  // IK 卡狀態行也是動態起（跟 slider 操作），轉語言即重畫。
+  try {
+    if (typeof ikApplyUiLanguage === "function") ikApplyUiLanguage();
   } catch(e) {}
   // 舵機 ID 卡左右接口提示行一樣動態起（跟輸入＋語言），轉語言即重畫（唔使再撳）。
   try { if (typeof servoIdBusUpdate === "function") servoIdBusUpdate(); } catch(e) {}

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Open Alpha2</title>
-<link rel="stylesheet" href="style.css?v=20261001f">
+<link rel="stylesheet" href="style.css?v=20261024a">
 </head>
 <body>
 
@@ -202,9 +202,61 @@
 
   <!-- ============ TAB: SERVO ============ -->
   <div id="tab-servo" class="tab-page">
+    <!-- IK 動作：5 條 slider 由開機企姿（robotStandup）開始，0=企姿、100=已測試 pose。
+         拖動設定目標，機械人每 120ms 行 10%（0→100 約 1200ms 均速），
+         每步預覽＋送 /api/servo/all；無關舵機保持目前／手動值。
+         蹲下只郁腳 7-16；蹲式／左右一字馬郁腳 7-16 + 肩 roll 2/5；
+         左前／右前一字馬郁腳 7-16 + 肩 pitch 1/4（雙臂前後擺）。
+         放手唔會跳，會繼續行到目標。
+         「直接轉移」閂：切換動作先回企姿；開：A pose 直接均速過渡去 B pose。 -->
+    <section class="card" id="ikCard">
+      <h2 data-i18n="ik_heading">IK 動作</h2>
+      <div class="row" style="margin-top:0; justify-content:space-between;">
+        <button class="secondary" onclick="ikResetAll()" data-i18n="ik_reset">↩ 開機企姿</button>
+        <label class="switch-label">
+          <span data-i18n="ik_direct_label">直接轉移</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="ikDirectToggle" onchange="ikSetDirectMode(this.checked)">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
+      <div class="ik-row">
+        <span data-i18n="ik_squat">蹲下</span>
+        <input type="range" id="ikSquat" min="0" max="100" step="1" value="0"
+               oninput="onIkSlider('squat', this.value, event)" onchange="onIkSliderCommit('squat', this.value, event)">
+        <b id="ikSquatVal" class="mono">0</b>
+      </div>
+      <div class="ik-row">
+        <span data-i18n="ik_ysquat">蹲式</span>
+        <input type="range" id="ikYSquat" min="0" max="100" step="1" value="0"
+               oninput="onIkSlider('ysquat', this.value, event)" onchange="onIkSliderCommit('ysquat', this.value, event)">
+        <b id="ikYSquatVal" class="mono">0</b>
+      </div>
+      <div class="ik-row">
+        <span data-i18n="ik_split_lr">左右一字馬</span>
+        <input type="range" id="ikSplitLR" min="0" max="100" step="1" value="0"
+               oninput="onIkSlider('lr', this.value, event)" onchange="onIkSliderCommit('lr', this.value, event)">
+        <b id="ikSplitLRVal" class="mono">0</b>
+      </div>
+      <div class="ik-row">
+        <span data-i18n="ik_split_lf">左前一字馬</span>
+        <input type="range" id="ikSplitLF" min="0" max="100" step="1" value="0"
+               oninput="onIkSlider('fsplit', this.value, event)" onchange="onIkSliderCommit('fsplit', this.value, event)">
+        <b id="ikSplitLFVal" class="mono">0</b>
+      </div>
+      <div class="ik-row">
+        <span data-i18n="ik_split_rf">右前一字馬</span>
+        <input type="range" id="ikSplitRF" min="0" max="100" step="1" value="0"
+               oninput="onIkSlider('fsplit2', this.value, event)" onchange="onIkSliderCommit('fsplit2', this.value, event)">
+        <b id="ikSplitRFVal" class="mono">0</b>
+      </div>
+      <p id="ikStatus" class="hint"></p>
+    </section>
+
     <section class="card">
       <h2 data-i18n="servo_heading">舵機 (Servos, 1–22)</h2>
-      <p class="hint" data-i18n="servo_hint">拖動滑桿, 放手即送出, 自動限制在安全範圍內。</p>
+      <p class="hint" data-i18n="servo_hint">拖動滑桿即時跟隨（約 8Hz），放手用時間欄完成；數值自動限制在安全範圍內。</p>
       <div class="row">
         <label data-i18n="servo_time_label">時間(ms)：</label>
         <input id="servoAllTime" type="number" min="20" value="1000" style="width:90px">
@@ -295,7 +347,7 @@
             <button class="secondary" onclick="gamepadResetMapping('pad')" data-i18n="gamepad_reset_btn">↩ 回預設</button>
           </span>
         </div>
-        <p class="hint" data-i18n="gamepad_mapping_pad_hint">同名鍵兩邊獨立值；改完即存機器人（重啟保留）。熄掣即收起。</p>
+        <p class="hint" data-i18n="gamepad_mapping_pad_hint">同名鍵兩邊獨立值；每鍵按 + 可加多個動作（一次過順序做晒），IK 用 +／− 撳住連走；改完即存機器人（重啟保留）。</p>
         <div id="gamepadMappingPadGrid"></div>
       </div>
     </section>
@@ -332,7 +384,7 @@
             <button class="secondary" onclick="gamepadResetMapping('kb')" data-i18n="gamepad_reset_btn">↩ 回預設</button>
           </span>
         </div>
-        <p class="hint" data-i18n="gamepad_mapping_kb_hint">同名鍵兩邊獨立值；改完即存機器人（重啟保留）。熄掣即收起。</p>
+        <p class="hint" data-i18n="gamepad_mapping_kb_hint">同名鍵兩邊獨立值；每鍵按 + 可加多個動作（一次過順序做晒），IK 用 +／− 撳住連走；改完即存機器人（重啟保留）。</p>
         <div id="gamepadMappingKbGrid"></div>
       </div>
     </section>
@@ -1088,7 +1140,7 @@
       </div>
       <p id="advTunerDisabledHint" class="hint" data-i18n="servo_tuner_disabled_hint">開啟後才顯示 22ch 微調器（長按 ±1 連發，offset 即時計算，已禁用長按選單）</p>
       <div id="advTunerBody" style="display:none" oncontextmenu="return false">
-        <p class="hint" data-i18n="servo_tuner_hint">獨立於舵機分頁的進階微調器 — 直接修改 22 顆 servo 角度，±1° 精調，一鍵讀取全部目前角度。與原廠 1.0.0.4 校準工具相同佈局（1-20 對應肩/肘/髖/膝/踝/手/頭，21-22 為擴展）。長按 ±1 連發時已禁用系統複製選單。</p>
+        <p class="hint" data-i18n="servo_tuner_hint">獨立於舵機分頁的進階微調器 — 開啟即自動掃描 22 顆 offset；±1° 精調角度。校准依官方 1.0.0.4 流程：一次過寫 offset → 等 EEPROM → 全部回標準姿勢 → 重掃驗證。與原廠相同佈局（1-20 對應肩/肘/髖/膝/踝/手/頭，21-22 為擴展）。長按 ±1 連發時已禁用系統複製選單。</p>
         <div class="row">
           <button onclick="advTunerReset()" class="secondary" data-i18n="servo_tuner_standby">復位+掃描</button>
           <button onclick="advCalibrateAll()" class="danger-btn" style="background:#dc2626;color:white" data-i18n="servo_tuner_calibrate">校准</button>
@@ -1098,8 +1150,8 @@
           <button onclick="document.getElementById('advImportFile').click()" class="secondary" data-i18n="servo_tuner_restore">還原 offset</button>
           <input type="file" id="advImportFile" accept=".json" style="display:none" onchange="advImport(this)">
         </div>
-        <div id="advServoTunerGrid" class="servo-tuner-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px" oncontextmenu="return false"></div>
         <p id="advTunerStatus" class="hint"></p>
+        <div id="advServoTunerGrid" class="servo-tuner-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px" oncontextmenu="return false"></div>
       </div>
     </section>
 
@@ -1314,14 +1366,15 @@
        3. 中間檔案之間沒有排序依賴（function hoisting），保持原 section 順序方便對照。
      尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
      所以全部 <script src> 一定要行完先到那個 inline script。 -->
-<script src="app-core.js?v=20261017b"></script>
+<script src="app-core.js?v=20261025c"></script>
 <script src="api-client.js?v=20261021a"></script>
 <script src="app-status.js?v=20261020a"></script>
 <script src="app-actions.js?v=20261021b"></script>
 <script src="app-speech.js?v=20261017a"></script>
 <script src="app-vosk.js?v=20261001a"></script>
-<script src="app-servo.js?v=20261020a"></script>
-<script src="app-gamepad.js?v=20261020a"></script>
+<script src="app-servo.js?v=20261025b"></script>
+<script src="app-ik.js?v=20261025l"></script>
+<script src="app-gamepad.js?v=20261025b"></script>
 <script src="app-led.js?v=20261001a"></script>
 <script src="app-camera.js?v=20261017b"></script>
 <script src="app-xiaozhi.js?v=20261017a"></script>
@@ -1335,7 +1388,7 @@
 <script src="app-chest.js?v=20261017a"></script>
 <script src="app-actions-pack.js?v=20261001a"></script>
 <script src="app-apk.js?v=20261001a"></script>
-<script src="app-log.js?v=20261017a"></script>
+<script src="app-log.js?v=20261025b"></script>
 
 <!-- ============================================================
      Sample: 4角度傾側控制頭/眼 LED

@@ -47,6 +47,9 @@ public final class ApiValidator {
     public static final int SERVO_ANGLE_MAX = 255;
     public static final int SERVO_TIME_MIN_MS = 20;
     public static final int SERVO_TIME_MAX_MS = 32767;
+    /** trim/offset 同 servo/one、前端 tuner 一致嘅安全範圍。 */
+    public static final int SERVO_TRIM_MIN = -1000;
+    public static final int SERVO_TRIM_MAX = 1000;
 
     /** 每軸行程＋原點（同 app-core.js SERVO_CALIBRATION 一字不差，實機量度；
      *  改一邊記得改另一邊——servo tab slider 同手柄 jog 共用同一套，
@@ -438,6 +441,42 @@ public final class ApiValidator {
                 throw new IllegalArgumentException("parameter 'angles' element " + (i+1) + " must be between 0 and 255, got: " + v);
             }
             out[i] = v;
+        }
+        return out;
+    }
+
+    /**
+     * 校準用 trim CSV：20 或 22 個 comma-separated 值，空字串／"-"／"null"
+     * 代表該軸跳過（未掃描／無回授）。回傳長度同輸入一致，未提供 'trims'
+     * 時回 null（由 caller 決定是否 required）。
+     */
+    public static Integer[] optionalTrims20or22(Map<String, String> q) {
+        String csv = q.get("trims");
+        if (csv == null) return null;
+        // -1 保留尾隨空欄，22 軸最後一格留空都算數。
+        String[] parts = csv.split(",", -1);
+        if (parts.length != SERVO_COUNT && parts.length != SERVO_COUNT_LEGACY) {
+            throw new IllegalArgumentException("parameter 'trims' must have exactly "
+                    + SERVO_COUNT_LEGACY + " or " + SERVO_COUNT
+                    + " comma-separated values, got " + parts.length);
+        }
+        Integer[] out = new Integer[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            String s = parts[i].trim();
+            if (s.isEmpty() || "-".equals(s) || "null".equalsIgnoreCase(s)) continue;
+            int v;
+            try {
+                v = Integer.parseInt(s);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("parameter 'trims' element " + (i + 1)
+                        + " must be integer or empty, got: " + parts[i]);
+            }
+            if (v < SERVO_TRIM_MIN || v > SERVO_TRIM_MAX) {
+                throw new IllegalArgumentException("parameter 'trims' element " + (i + 1)
+                        + " must be between " + SERVO_TRIM_MIN + " and " + SERVO_TRIM_MAX
+                        + ", got: " + v);
+            }
+            out[i] = Integer.valueOf(v);
         }
         return out;
     }

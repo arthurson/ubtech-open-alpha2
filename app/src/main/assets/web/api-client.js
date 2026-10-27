@@ -773,6 +773,12 @@ const Alpha2Api = (function() {
     return api('servo/back-angle-all', params);
   }
 
+  function servoCalibrate(params) {
+    if (params && params.time != null) assertRange(Number(params.time), 20, 32767, 'time');
+    // 官方流程舵機校準（批次寫 trim → 等 EEPROM → 回標準姿勢）
+    return api('servo/calibrate', params);
+  }
+
   function servoHardware(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
     // 讀單顆舵機硬件資訊（胸 cmd33 live query，純讀）
@@ -1288,6 +1294,7 @@ const Alpha2Api = (function() {
     servoAngleRestore,
     servoBackAngle,
     servoBackAngleAll,
+    servoCalibrate,
     servoHardware,
     servoHardwareAll,
     servoModifyId,

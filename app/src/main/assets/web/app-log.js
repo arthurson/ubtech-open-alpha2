@@ -22,9 +22,15 @@ function connectWs() { // 舊 tab（裝機嗰陣開住）斷線重連見到唔�
   };
   ws.onclose = function () {
     appendLog({ type: "connection", time: nowTimeStr(), data: "已斷線，3秒後重連…" });
+    // 機械人死機／reboot：停 IK 動畫，唔好重連後自動做返舊動作。
+    try { if (typeof ikOnLinkDown === "function") ikOnLinkDown(); } catch (ign) {}
     setTimeout(connectWs, 3000);
   };
-  ws.onerror = function () { ws.close(); };
+  ws.onerror = function () {
+    // 有啲死機情況 TCP 未即刻斷，onclose 可能唔會即時嚟；onerror 先停 IK。
+    try { if (typeof ikOnLinkDown === "function") ikOnLinkDown(); } catch (ign) {}
+    ws.close();
+  };
   ws.onmessage = function (evt) {
     try {
       const msg = JSON.parse(evt.data);

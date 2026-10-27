@@ -52,10 +52,15 @@ import java.util.Map;
  * vosk_toggle／vosk:&lt;id&gt;（Vosk 監聽／切包 toggle，經 VoskApi）／eq:&lt;preset&gt;（EQ toggle，經 AudioCenter）／
  * radio:&lt;uuid或名&gt;（收藏電台直播，經 AudioCenter）／
  * servo&lt;1-22&gt;+／servo&lt;1-22&gt;-（單步 jog，步長 {@link #SERVO_JOG_STEP}，
- * 撳住連走）／action:&lt;fileId或中英文名或xxx.ubx&gt;（經 ActionDirect 搶佔式播放）
+ * 撳住連走）／ik:squat±／ik:ysquat±／ik:lr±／ik:fsplit±（左前）／ik:fsplit2±（右前）
+ * （腳部 IK 動作，經 {@link IkPose}；
+ * 同 servo 一樣撳住連走，每步 10%（每格 120ms，同 Web IK 卡一致），
+ * 到 0%／100% 自動停；由非 0% pose 開始時會由實際 pose 均速過渡，
+ * 轉動作先均速回 0% 再行新動作，唔會突然跳）／
+ * action:&lt;fileId或中英文名或xxx.ubx&gt;（經 ActionDirect 搶佔式播放）
  * 一鍵多功能：單鍵值可換行分隔多達 {@link #MAX_ACTIONS_PER_KEY} 個動作，
- * 撳一下一次過順序做晒（servo 段撳住各自連走、放手一次過停；ring／led toggle
- * 逐段獨立計，免同鍵兩段互消）。
+ * 撳一下一次過順序做晒（servo／IK 段撳住各自連走、放手一次過停；
+ * ring／led toggle 逐段獨立計，免同鍵兩段互消）。
  *
  * 搖桿連續量（gamepad/axis）：rx→20 號頭 yaw，ry→19 號頭 pitch，
  * 死區＋150ms 節流＋增量速度式（不跳變），見 {@link #axisResponse}。
@@ -129,6 +134,11 @@ public final class GamepadCenter {
     /** 單步 jog 步長（0-255 servo 單位）＋時間。 */
     public static final int SERVO_JOG_STEP = 8;
     public static final int SERVO_JOG_TIME_MS = 300;
+    /** IK 每步百分比＋每格動作時間（同 Web IK 卡一致：每 120ms 10%）。 */
+    public static final int IK_STEP_PCT = 10;
+    public static final int IK_STEP_TIME_MS = 120;
+    /** Gamepad IK 過渡 tick 間隔（第一格即送，之後每 120ms 一格）。 */
+    private static final long IK_TRANS_INTERVAL_MS = IK_STEP_TIME_MS;
     /** 搖桿死區＋節流＋滿偏每 tick 步長。 */
     private static final float AXIS_DEADZONE = 0.15f;
     private static final long AXIS_MIN_INTERVAL_MS = 150;
@@ -147,6 +157,7 @@ public final class GamepadCenter {
     // recenterServo() 喺 synchronized 外讀寫，要 volatile 保證可見性
     private volatile Integer axisPose19;
     private volatile Integer axisPose20;
+
     private long lastAxisMs = 0;
 
     // 最後一次按鍵（status 回顯＋除錯用；taken 供面板分清「做咗」定「只記錄」）。
@@ -241,8 +252,8 @@ public final class GamepadCenter {
     }
 
     // -- 預設映射（分邊；同名鍵獨立值；user snapshot as factory default，
-    // 烘於 2026-10-18（實機現行 snapshot：搖桿多動作走姿＋start=stop）：
-    // reset／新裝機回呢套；舊機已存值唔受影響） ------------
+    // 烘於 2026-10-18（實機現行：手柄走姿 multi-action＋start=stop；
+    // 鍵盤十字/a/b/x/y 跟手柄自訂）：reset／新裝機回呢套；舊機已存值唔受影響） ------------
     public static Map<String, String> defaultPadMapping() {
         Map<String, String> m = new LinkedHashMap<>();
         for (String k : PAD_KEYS) m.put(k, "none");
@@ -260,14 +271,14 @@ public final class GamepadCenter {
         m.put("r1", "action:1464835936017");
         m.put("l2", "action:1464835936047");
         m.put("r2", "action:1464835936041");
-        m.put("lx_neg", "servo5+\nservo18+");
+        m.put("lx_neg", "servo5+\nservo18-\nservo19-");
         m.put("lx_pos", "servo5-\nservo18+");
-        m.put("ly_neg", "servo4+\nservo18-\nservo19-");
-        m.put("ly_pos", "servo4-\nservo18+");
+        m.put("ly_neg", "servo4+\nservo6-\nservo20-");
+        m.put("ly_pos", "servo4-\nservo20+");
         m.put("rx_neg", "servo2+\nservo17+");
         m.put("rx_pos", "servo2-\nservo17-\nservo19+");
         m.put("ry_neg", "servo1-\nservo3+\nservo20-");
-        m.put("ry_pos", "servo1+");
+        m.put("ry_pos", "servo1+\nservo20+");
         return m;
     }
 
@@ -276,11 +287,12 @@ public final class GamepadCenter {
         for (String k : KB_KEYS) m.put(k, "none");
         m.put("up", "action:1508999860568");
         m.put("down", "action:1510818256622");
-        m.put("left", "action:1464835936040");
-        m.put("right", "action:1464835936035");
-        m.put("a", "servo17-");
-        m.put("b", "servo20+");
-        m.put("x", "servo3-");
+        m.put("left", "action:1464835936046");
+        m.put("right", "action:1464835936040");
+        m.put("a", "servo20+");
+        m.put("b", "servo19+");
+        m.put("x", "servo19-");
+        m.put("y", "servo20-");
         m.put("c", "servo1+");
         m.put("d", "servo1-");
         m.put("e", "servo2+");
@@ -501,8 +513,9 @@ public final class GamepadCenter {
      * 動作值合法性：none／stop／vol_up／vol_down／music_*／ring_*／led_*／led_off／
      * camera_photo／face_toggle／color_toggle／video_toggle／sonar_toggle／
      * pir_toggle／accel_toggle／xiaozhi_toggle／vosk_toggle／vosk:&lt;id&gt;／
-     * eq:&lt;preset&gt;／radio:&lt;uuid或名&gt;／servo1-22±／action:&lt;非空&gt;。
-     * servo 步進覆蓋全部 22 軸（jogServo 通用）。
+     * eq:&lt;preset&gt;／radio:&lt;uuid或名&gt;／servo1-22±／
+     * ik:squat±／ik:ysquat±／ik:lr±／ik:fsplit±／ik:fsplit2±／action:&lt;非空&gt;。
+     * servo／IK 步進撳住連走（jogServo／ikStep 通用）。
      * 單個動作唔可以含換行（一鍵多功能用換行分隔，見 splitMultiAction）。
      */
     public static boolean isValidAction(String action) {
@@ -521,6 +534,7 @@ public final class GamepadCenter {
         if (isRadioFavAction(a)) return true;
         if ("led_off".equals(a)) return true;
         if (isServoJog(a)) return true;
+        if (isIkAction(a)) return true;
         if (a.startsWith("action:")) {
             String rest = a.substring(7).trim();
             if (rest.isEmpty()) return false;
@@ -618,6 +632,42 @@ public final class GamepadCenter {
         } catch (NumberFormatException e) {
             return false;
         }
+    }
+
+    /**
+     * IK 動作值：{@code ik:squat+/-}／{@code ik:ysquat+/-}／{@code ik:lr+/-}／
+     * {@code ik:fsplit+/-}（左前）／{@code ik:fsplit2+/-}（右前）。
+     * 舊 {@code ik:fb+/-} 當 fsplit（左前）相容別名。
+     * 同 servo jog 一樣撳住連走，每步 {@link #IK_STEP_PCT}%（每格 120ms），
+     * 由實際 pose 均速過渡；轉動作先均速回 0%。
+     */
+    public static boolean isIkAction(String a) {
+        if (a == null) return false;
+        String t = a.trim();
+        if (!t.startsWith("ik:")) return false;
+        String rest = t.substring(3).trim();
+        if (rest.length() < 2) return false;
+        char sign = rest.charAt(rest.length() - 1);
+        if (sign != '+' && sign != '-') return false;
+        String kind = rest.substring(0, rest.length() - 1);
+        return "squat".equals(kind) || "ysquat".equals(kind)
+                || "lr".equals(kind) || "fsplit".equals(kind)
+                || "fsplit2".equals(kind) || "fb".equals(kind);
+    }
+
+    /** ik 動作拆 kind（squat／ysquat／lr／fsplit／fsplit2；fb→fsplit）；非法回 null。 */
+    private static String ikKindOf(String a) {
+        if (!isIkAction(a)) return null;
+        String rest = a.trim().substring(3).trim();
+        String kind = rest.substring(0, rest.length() - 1);
+        return "fb".equals(kind) ? "fsplit" : kind;
+    }
+
+    /** ik 動作拆方向（+1／-1）；非法回 0。 */
+    private static int ikSignOf(String a) {
+        if (!isIkAction(a)) return 0;
+        String rest = a.trim().substring(3).trim();
+        return rest.charAt(rest.length() - 1) == '+' ? 1 : -1;
     }
 
     private static final String PREFS_KEY_MAPPING_KB = "gamepad_kb_mapping_json";
@@ -961,15 +1011,15 @@ public final class GamepadCenter {
         if (logical == null || !isKnownKey(norm, logical)) return false;
         // 放開：停連走＋僅記事件，不重複觸發動作（taken＝有無真停到連走）。
         if (!pressed) {
-            boolean stopped = stopServoRepeat(norm, logical);
+            boolean stopped = stopRepeats(norm, logical);
             publishKey(logical, false, "robot", mappedActionOf(norm, logical), stopped);
             return true;
         }
         String action = mappedActionOf(norm, logical);
         boolean taken = executeAction(norm, logical, action);
-        // 撳住 servo jog 即排連走（首步上面已行，跟住每 120ms 一步；掣全速；
-        // 一鍵多功能入面有幾多 servo 段就排幾多條，放手一次過停）。
-        if (taken && !servoJogParts(action).isEmpty()) startServoRepeats(norm, logical, action, 1f);
+        // 撳住 servo jog／IK 即排連走（首步上面已行，跟住每 120ms 一步；掣全速；
+        // 一鍵多功能入面有幾多相關段就排幾多條，放手一次過停）。
+        if (taken) startRepeats(norm, logical, action, 1f);
         publishKey(logical, true, "robot", action, taken);
         return true;
     }
@@ -1250,8 +1300,9 @@ public final class GamepadCenter {
                 } catch (Throwable t) {
                     Log.w(TAG, "stopAll leds failed", t);
                 }
-                // 全停清 toggle 態（ring／led 下次撳由開做起）。
+                // 全停清 toggle 態（ring／led 下次撳由開做起）＋IK 連走狀態。
                 toggleClear();
+                resetIkState();
                 return code == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
             }
             if (a.equals("vol_up") || a.equals("vol_down")) {
@@ -1265,11 +1316,15 @@ public final class GamepadCenter {
             if (isServoJog(a)) {
                 int id = Integer.parseInt(a.substring(5, a.length() - 1));
                 int delta = a.endsWith("+") ? SERVO_JOG_STEP : -SERVO_JOG_STEP;
+                // 手動 jog 郁過舵機：IK 百分比唔再對應現況，下次 IK 由 0% 重計。
+                resetIkState();
                 // 到頂唔送幀都當成功（唔打紅✗，同 repeat「唔再頂住限位嗌」同哲學）；
                 // 真送唔出先回 false 打紅。
                 if (isServoJogAtLimit(id, delta)) return true;
                 return jogServo(id, delta);
             }
+            // 腳部 IK 動作（蹲下／蹲式／左右／左前／右前，± 撳住連走）。
+            if (isIkAction(a)) return executeIkAction(a);
             // 本地音樂功能鍵（無歌／無載入即 false，taken 照實）。
             if (isMusicAction(a)) {
                 if (audioCenter == null) return false;
@@ -1577,6 +1632,8 @@ public final class GamepadCenter {
             if (a.startsWith("action:")) {
                 String name = a.substring(7).trim();
                 if (name.isEmpty()) return false;
+                // 動作檔接管全身位姿：IK 百分比唔再有效。
+                resetIkState();
                 // 真返回值：缺文件／胸口唔通即 false，面板 taken 照實顯示。
                 boolean ok = actionDirect.playActionDirect(name)
                         == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
@@ -1626,11 +1683,51 @@ public final class GamepadCenter {
     private final Map<String, java.util.concurrent.ScheduledFuture<?>> servoRepeaters =
             new LinkedHashMap<>();
     // 連走偏轉量（tag→0..1；掣 1.0 全速，搖桿跟手指；repeat tick 即時讀，見下）。
-    private final Map<String, Float> servoRepeatDefl = new LinkedHashMap<>();
+    private final Map<String, Float> repeatDefl = new LinkedHashMap<>();
     private static final long SERVO_REPEAT_MS = 120;
     // 連走封頂 40 格（約 5 秒）：放開事件丟失（斷網／USB 跌）都唔會無限走，
     // 同 GestureCenter 音量連發 20 格封頂同例。
     private static final int SERVO_REPEAT_MAX_TICKS = 40;
+
+    // IK 連走：+/− 掣共用同一個「當前動作＋百分比」狀態；轉動作即由 0% 重計
+    // （同 IK 卡五條 slider 互斥一樣）。撳住每 120ms 行 10%，到 0／100 自己停；
+    // 每步都由實際 pose 均速過渡，唔會由 boot pose 突然跳去目標。
+    private final Map<String, java.util.concurrent.ScheduledFuture<?>> ikRepeaters =
+            new LinkedHashMap<>();
+    private volatile String ikActiveKind = null;
+    private volatile int ikActivePct = 0;
+    // 上次成功送出嘅 20 軸 IK 位姿：其他路（web servo／動作／手勢）郁過即對唔上，
+    // 下次 IK 會由實際 pose 均速過渡，唔會用舊百分比突然跳去目標。
+    private int[] ikLastPose = null;
+    // 進行中嘅均速過渡。thenKind 非 null＝phase 1 回舊動作 0%，
+    // 完成後等 120ms 才開始 thenKind 嘅新目標。
+    private IkTrans ikTrans = null;
+    private java.util.concurrent.ScheduledFuture<?> ikTransFuture = null;
+
+    private static final class IkTrans {
+        final int[] fromPose;
+        final int[] toPose;
+        final int[] holdPose;
+        final String toKind;
+        final int toPct;
+        final int steps;
+        int step;
+        String thenKind;
+        int thenPct;
+
+        IkTrans(int[] fromPose, int[] toPose, int[] holdPose,
+                String toKind, int toPct, int steps,
+                String thenKind, int thenPct) {
+            this.fromPose = fromPose;
+            this.toPose = toPose;
+            this.holdPose = holdPose;
+            this.toKind = toKind;
+            this.toPct = toPct;
+            this.steps = Math.max(1, steps);
+            this.thenKind = thenKind;
+            this.thenPct = thenPct;
+        }
+    }
 
     /**
      * 一鍵多功能連走：多值入面每個 servo 段各排一條 repeat（tag＝side:key／side:key#index，
@@ -1657,7 +1754,7 @@ public final class GamepadCenter {
     private synchronized void startServoRepeatTag(final String tag, final int id,
             final int baseDelta, float defl) {
         try {
-            servoRepeatDefl.put(tag, Math.max(0f, Math.min(1f, defl)));
+            repeatDefl.put(tag, Math.max(0f, Math.min(1f, defl)));
             final int[] ticks = new int[1];
             final int[] stillFails = new int[1];
             java.util.concurrent.ScheduledFuture<?> f = servoRepeatPool.scheduleAtFixedRate(
@@ -1686,17 +1783,22 @@ public final class GamepadCenter {
     }
 
     private synchronized float repeatDeflOfTag(String tag) {
-        Float fd = servoRepeatDefl.get(tag);
+        Float fd = repeatDefl.get(tag);
         return fd == null ? 1f : fd;
     }
 
-    /** 搖桿偏轉跟速（連走緊先有用；無排緊即 no-op，唔留垃圾；多 servo 一齊跟）。 */
-    private synchronized void updateServoRepeatDefl(String side, String key, float defl) {
+    /** 搖桿偏轉跟速（連走緊先有用；無排緊即 no-op，唔留垃圾；servo／IK 一齊跟）。 */
+    private synchronized void updateRepeatDefl(String side, String key, float defl) {
         String base = side + ":" + key;
         float v = Math.max(0f, Math.min(1f, defl));
         for (String tag : new java.util.ArrayList<String>(servoRepeaters.keySet())) {
             if (tag.equals(base) || tag.startsWith(base + "#")) {
-                servoRepeatDefl.put(tag, v);
+                repeatDefl.put(tag, v);
+            }
+        }
+        for (String tag : new java.util.ArrayList<String>(ikRepeaters.keySet())) {
+            if (tag.equals(base) || tag.startsWith(base + "#")) {
+                repeatDefl.put(tag, v);
             }
         }
     }
@@ -1712,7 +1814,7 @@ public final class GamepadCenter {
             boolean any = false;
             for (String tag : tags) {
                 java.util.concurrent.ScheduledFuture<?> f = servoRepeaters.remove(tag);
-                servoRepeatDefl.remove(tag);
+                repeatDefl.remove(tag);
                 if (f != null) {
                     try { f.cancel(false); } catch (Throwable ignored) {}
                     any = true;
@@ -1729,12 +1831,115 @@ public final class GamepadCenter {
     private synchronized void stopServoRepeatTag(String tag) {
         try {
             java.util.concurrent.ScheduledFuture<?> f = servoRepeaters.remove(tag);
-            servoRepeatDefl.remove(tag);
+            repeatDefl.remove(tag);
             if (f != null) {
                 try { f.cancel(false); } catch (Throwable ignored) {}
             }
         } catch (Throwable t) {
             Log.w(TAG, "stopServoRepeatTag failed", t);
+        }
+    }
+
+    // -- IK 按住連走（同 servo jog 一樣：首步即行，之後每 120ms 一步）------
+    /** 該多值入面有無 ik 段。 */
+    private static boolean hasIkParts(String multi) {
+        for (String p : splitMultiAction(multi)) {
+            if (isIkAction(p)) return true;
+        }
+        return false;
+    }
+
+    /** 啟動該鍵所有 repeat（servo jog＋IK；無相關段即 no-op）。 */
+    private synchronized void startRepeats(String side, String key, String multi, float defl) {
+        if (!servoJogParts(multi).isEmpty()) startServoRepeats(side, key, multi, defl);
+        if (hasIkParts(multi)) startIkRepeats(side, key, multi, defl);
+    }
+
+    /** 停該鍵所有 repeat（servo jog＋IK）；回 true＝之前真有排緊。 */
+    private synchronized boolean stopRepeats(String side, String key) {
+        boolean servo = stopServoRepeat(side, key);
+        boolean ik = stopIkRepeat(side, key);
+        return servo || ik;
+    }
+
+    /** 多值入面每個 ik 段各排一條連走（tag＝side:key／side:key#index）。 */
+    private synchronized void startIkRepeats(String side, String key, String multi, float defl) {
+        stopIkRepeat(side, key);
+        java.util.List<String> parts = splitMultiAction(multi);
+        for (int i = 0; i < parts.size(); i++) {
+            String p = parts.get(i);
+            if (!isIkAction(p)) continue;
+            String kind = ikKindOf(p);
+            int sign = ikSignOf(p);
+            if (kind == null || sign == 0) continue;
+            String tag = (i == 0) ? (side + ":" + key) : (side + ":" + key + "#" + i);
+            startIkRepeatTag(tag, kind, sign, defl);
+        }
+    }
+
+    /** 單條 IK 連走；到 0%／100% 或連續 3 次送唔出即自己停。 */
+    private synchronized void startIkRepeatTag(final String tag, final String kind,
+            final int sign, float defl) {
+        try {
+            final float d = Math.max(0f, Math.min(1f, defl));
+            final int[] ticks = new int[1];
+            final int[] stillFails = new int[1];
+            java.util.concurrent.ScheduledFuture<?> f = servoRepeatPool.scheduleAtFixedRate(
+                    new Runnable() {
+                        @Override public void run() {
+                            if (++ticks[0] > SERVO_REPEAT_MAX_TICKS) {
+                                stopIkRepeatTag(tag);
+                                return;
+                            }
+                            int step = Math.max(1, Math.round(IK_STEP_PCT * repeatDeflOfTag(tag)));
+                            if (executeIkStep(kind, sign, step)) {
+                                stillFails[0] = 0;
+                            } else if (++stillFails[0] >= 3) {
+                                Log.i(TAG, "IK repeat auto-stop at limit: " + tag);
+                                stopIkRepeatTag(tag);
+                            }
+                        }
+                    }, SERVO_REPEAT_MS, SERVO_REPEAT_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+            ikRepeaters.put(tag, f);
+            repeatDefl.put(tag, d);
+        } catch (Throwable t) {
+            Log.w(TAG, "startIkRepeat failed", t);
+        }
+    }
+
+    /** 停該鍵全部 IK 連走（含多功能 #index 條）；回 true＝之前真有排緊。 */
+    private synchronized boolean stopIkRepeat(String side, String key) {
+        try {
+            String base = side + ":" + key;
+            java.util.List<String> tags = new java.util.ArrayList<String>();
+            for (String tag : ikRepeaters.keySet()) {
+                if (tag.equals(base) || tag.startsWith(base + "#")) tags.add(tag);
+            }
+            boolean any = false;
+            for (String tag : tags) {
+                java.util.concurrent.ScheduledFuture<?> f = ikRepeaters.remove(tag);
+                repeatDefl.remove(tag);
+                if (f != null) {
+                    try { f.cancel(false); } catch (Throwable ignored) {}
+                    any = true;
+                }
+            }
+            return any;
+        } catch (Throwable t) {
+            Log.w(TAG, "stopIkRepeat failed", t);
+        }
+        return false;
+    }
+
+    private synchronized void stopIkRepeatTag(String tag) {
+        try {
+            java.util.concurrent.ScheduledFuture<?> f = ikRepeaters.remove(tag);
+            repeatDefl.remove(tag);
+            if (f != null) {
+                try { f.cancel(false); } catch (Throwable ignored) {}
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "stopIkRepeatTag failed", t);
         }
     }
 
@@ -1796,6 +2001,289 @@ public final class GamepadCenter {
             if (id == 20) axisPose20 = target;
         }
         return sent;
+    }
+
+    private boolean sendIkPose(int[] pose, int timeMs) {
+        try {
+            StringBuilder csv = new StringBuilder();
+            for (int i = 0; i < 20; i++) {
+                if (i > 0) csv.append(',');
+                int v = pose[i];
+                if (v < 0) v = 0;
+                if (v > 255) v = 255;
+                pose[i] = v; // 記落 ikLastPose 嘅值要同實際送出嘅一致
+                csv.append(v);
+            }
+            java.util.Map<String, String> q = new java.util.HashMap<String, String>();
+            q.put("angles", csv.toString());
+            q.put("time", String.valueOf(timeMs));
+            HttpServer.ApiResponse resp = ubxApi.servoAllResponse(q);
+            return resp != null && resp.status == 200
+                    && resp.body != null && resp.body.contains("\"ok\":true");
+        } catch (Throwable t) {
+            Log.w(TAG, "sendIkPose failed", t);
+            return false;
+        }
+    }
+
+    /** 執行一下 {@code ik:<kind>±}：按住由 repeat 續行（見 startIkRepeats）。 */
+    private boolean executeIkAction(String a) {
+        String kind = ikKindOf(a);
+        int sign = ikSignOf(a);
+        if (kind == null || sign == 0) return false;
+        return executeIkStep(kind, sign, IK_STEP_PCT);
+    }
+
+    /**
+     * IK 行一步：0% base 固定係官方開機 robotStandup 企姿（同 Web IK 卡
+     * {@code IK_BOOT_POSE} 一致）。+/− 共用一個當前動作百分比；轉動作即由
+     * 0% 重計（同 IK 卡 slider 互斥），所以按新動作嘅 − 會先回開機企姿。
+     *
+     * <p>唔會再由 boot pose 直接跳去目標：任何一步都係由目前實際 pose
+     * 以每格 120ms 均速過渡（同 slider 一樣）；轉動作先將舊動作控制嘅軸
+     * 均速回 0%，新動作唔控制嘅軸（例如蹲式→蹲下嘅 2/5）凍結喺切換一刻。
+     */
+    private synchronized boolean executeIkStep(String kind, int sign, int stepPct) {
+        if (kind == null || sign == 0) return false;
+        int step = Math.max(1, stepPct);
+        int basePct = kind.equals(ikActiveKind) ? ikActivePct : 0;
+        int target = basePct + (sign > 0 ? step : -step);
+        if (target < 0) target = 0;
+        if (target > 100) target = 100;
+
+        boolean retargeted = false;
+        if (ikTrans != null) {
+            String finalKind = ikTrans.thenKind != null ? ikTrans.thenKind : ikTrans.toKind;
+            int finalPct = ikTrans.thenKind != null ? ikTrans.thenPct : ikTrans.toPct;
+            if (kind.equals(finalKind) && target == finalPct) {
+                // 同一個目標：按住連走嘅重複 tick 唔好打斷過渡。
+                return true;
+            }
+            // 切換回 0% 途中按 −：取消之後嘅新動作移動，只完成回企姿。
+            if (kind.equals(finalKind) && sign < 0 && finalPct > 0
+                    && ikTrans.thenKind != null) {
+                ikTrans.thenPct = 0;
+                return true;
+            }
+            // 反向／轉動作：由目前實際 pose 重新均速過渡，唔會跳。
+            stopIkTrans();
+            retargeted = true;
+        }
+
+        boolean poseWasCurrent = !retargeted && ikActiveKind != null
+                && kind.equals(ikActiveKind) && ikPoseStillCurrentFor(kind);
+        boolean switched = ikActiveKind != null && !kind.equals(ikActiveKind);
+
+        int[] actual = currentPose20();
+        // 由實際 pose 做過渡基準；過渡期間其他路郁過相關軸就中止。
+        ikLastPose = actual.clone();
+        int[] hold = actual.clone();
+
+        if (switched) {
+            String oldKind = ikActiveKind;
+            int[] returnPose = IkPose.compute(oldKind, 0, IkPose.bootPose(), hold);
+            // 新動作唔控制嘅軸（例如蹲式→蹲下嘅 2/5）凍結喺切換一刻；
+            // 舊動作唔控制嘅軸亦保持實際值，交由新動作自己行。
+            for (int i = 0; i < 20; i++) {
+                if (!IkPose.affects(kind, i) || !IkPose.affects(oldKind, i)) {
+                    returnPose[i] = hold[i];
+                }
+            }
+            int returnSteps = IkTransition.manualSteps(actual, returnPose, oldKind, 0, hold);
+            ikActiveKind = kind;
+            ikActivePct = 0;
+            ikTrans = new IkTrans(actual, returnPose, hold, oldKind, 0, returnSteps,
+                    kind, target);
+            Log.i(TAG, "IK trans " + oldKind + " -> " + kind + " " + target
+                    + "% (return " + returnSteps + " steps)");
+            if (IkTransition.maxPoseDelta(actual, returnPose) <= 0) {
+                // 已經喺舊動作 0%：直接開始新動作。
+                startIkPhase(kind, target, returnPose, hold);
+            }
+        } else {
+            int[] toPose = IkPose.compute(kind, target, IkPose.bootPose(), hold);
+            for (int i = 0; i < 20; i++) {
+                if (!IkPose.affects(kind, i)) toPose[i] = hold[i];
+            }
+            // 同一個動作到頂／到底，而且實際 pose 已經等於目標：唔送，
+            // 等 repeat 自己停（同 servo jog 到限位）。
+            if (poseWasCurrent && target == basePct
+                    && IkTransition.maxPoseDelta(actual, toPose) <= 0) {
+                return false;
+            }
+            int steps = poseWasCurrent
+                    ? IkTransition.pctSteps(ikActivePct, target, IK_STEP_PCT)
+                    : IkTransition.manualSteps(actual, toPose, kind, target, hold);
+            ikActiveKind = kind;
+            // 保留起始百分比，令按住連走嘅重複 tick 計到同一個目標；
+            // 過渡完成才更新做 target。
+            ikTrans = new IkTrans(actual, toPose, hold, kind, target, steps,
+                    null, 0);
+            Log.i(TAG, "IK trans " + kind + " " + basePct + "->" + target
+                    + "% steps=" + steps + (poseWasCurrent ? "" : " manual"));
+        }
+
+        boolean sent = ikTransTick(); // 第一格即刻送
+        if (ikTrans != null) ensureIkTransFuture();
+        return sent;
+    }
+
+    /** 開始新動作 phase：由 fromPose 均速去 kind@pct（非控制軸保持 hold）。 */
+    private synchronized void startIkPhase(String kind, int pct, int[] fromPose, int[] holdPose) {
+        int[] toPose = IkPose.compute(kind, pct, IkPose.bootPose(), holdPose);
+        for (int i = 0; i < 20; i++) {
+            if (!IkPose.affects(kind, i)) toPose[i] = fromPose[i];
+        }
+        boolean needsManual = IkTransition.needsManualStart(kind, fromPose, holdPose);
+        int steps = needsManual
+                ? IkTransition.manualSteps(fromPose, toPose, kind, pct, holdPose)
+                : IkTransition.pctSteps(0, pct, IK_STEP_PCT);
+        ikTrans = new IkTrans(fromPose, toPose, holdPose, kind, pct, steps,
+                null, 0);
+        // 新動作由 0% 開始；phase 完成才更新做 pct。
+        ikActivePct = 0;
+    }
+
+    /** 過渡 tick：每格最多 10%，第一格已由 executeIkStep 即時送出。 */
+    private synchronized boolean ikTransTick() {
+        IkTrans tr = ikTrans;
+        if (tr == null) {
+            stopIkTransFuture();
+            return false;
+        }
+        if (tr.step >= tr.steps) {
+            finishIkTrans(tr);
+            return true;
+        }
+        // 其他路（web servo／動作／手勢）郁過相關軸：即刻停，唔好搶。
+        if (!ikPoseStillCurrentForTrans(tr)) {
+            Log.i(TAG, "IK transition aborted: pose changed elsewhere");
+            stopIkTrans();
+            return false;
+        }
+        tr.step++;
+        int[] pose = IkTransition.lerp(tr.fromPose, tr.toPose, tr.step, tr.steps);
+        if (!sendIkPose(pose, IK_STEP_TIME_MS)) {
+            Log.w(TAG, "IK transition send failed; stop");
+            stopIkTrans();
+            return false;
+        }
+        ikLastPose = pose;
+        if (tr.step >= tr.steps) finishIkTrans(tr);
+        return true;
+    }
+
+    private synchronized void finishIkTrans(IkTrans tr) {
+        if (tr.thenKind != null) {
+            // 舊動作已均速回 0%；下一個 120ms tick 才開始新動作。
+            Log.i(TAG, "IK trans " + tr.toKind + " returned 0%, next "
+                    + tr.thenKind + " " + tr.thenPct + "%");
+            startIkPhase(tr.thenKind, tr.thenPct, tr.toPose, tr.holdPose);
+            return;
+        }
+        ikActiveKind = tr.toKind;
+        ikActivePct = tr.toPct;
+        ikLastPose = tr.toPose.clone();
+        ikTrans = null;
+        stopIkTransFuture();
+        Log.i(TAG, "IK trans done " + tr.toKind + " " + tr.toPct + "%");
+    }
+
+    private synchronized void ensureIkTransFuture() {
+        if (ikTransFuture != null && !ikTransFuture.isDone() && !ikTransFuture.isCancelled()) return;
+        try {
+            ikTransFuture = servoRepeatPool.scheduleAtFixedRate(new Runnable() {
+                @Override public void run() {
+                    try {
+                        ikTransTick();
+                    } catch (Throwable t) {
+                        Log.w(TAG, "ikTransTick failed", t);
+                        stopIkTrans();
+                    }
+                }
+            }, IK_TRANS_INTERVAL_MS, IK_TRANS_INTERVAL_MS,
+                    java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (Throwable t) {
+            Log.w(TAG, "ensureIkTransFuture failed", t);
+            stopIkTrans();
+        }
+    }
+
+    private synchronized void stopIkTrans() {
+        ikTrans = null;
+        stopIkTransFuture();
+    }
+
+    private synchronized void stopIkTransFuture() {
+        if (ikTransFuture != null) {
+            try { ikTransFuture.cancel(false); } catch (Throwable ignored) {}
+            ikTransFuture = null;
+        }
+    }
+
+    /**
+     * 讀目前命令位姿 20 軸（未知嘅軸用開機企姿）。用嚟保留 IK 動作
+     * 唔控制嘅舵機，例如頭、手、肩 pitch、肘。
+     */
+    private synchronized int[] currentPose20() {
+        int[] cur = IkPose.bootPose();
+        try {
+            if (ubxPlayer == null) return cur;
+            Integer[] boxed = ubxPlayer.poseBoxed();
+            if (boxed == null) return cur;
+            for (int i = 0; i < 20 && i < boxed.length; i++) {
+                if (boxed[i] != null) cur[i] = boxed[i].intValue();
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "currentPose20 failed", t);
+        }
+        return cur;
+    }
+
+    /**
+     * 現時命令位姿嘅該 IK 動作相關軸係咪仍然等於上次送出嘅（未知即 false）。
+     * 只比該動作真正控制嘅軸：頭 19／20（右搖桿）同手／肘同 IK 百分比無關，
+     * 郁過唔應該 reset；蹲式／左右一字馬嘅 2/5 同腳 7-16 都會比。
+     */
+    private synchronized boolean ikPoseStillCurrentFor(String kind) {
+        try {
+            if (ikLastPose == null || ubxPlayer == null) return false;
+            if (kind == null || !IkPose.isKind(kind)) return false;
+            int[] cur = currentPose20();
+            for (int i = 0; i < 20; i++) {
+                if (IkPose.affects(kind, i) && cur[i] != ikLastPose[i]) return false;
+            }
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * 過渡期間檢查：phase 1 會郁舊動作＋新動作控制嘅軸（新動作唔控制嘅
+     * 軸會凍結），phase 2 只郁新動作控制嘅軸。其他路郁過呢啲軸即中止。
+     */
+    private synchronized boolean ikPoseStillCurrentForTrans(IkTrans tr) {
+        try {
+            if (ikLastPose == null || ubxPlayer == null || tr == null) return false;
+            int[] cur = currentPose20();
+            for (int i = 0; i < 20; i++) {
+                boolean relevant = IkPose.affects(tr.toKind, i)
+                        || (tr.thenKind != null && IkPose.affects(tr.thenKind, i));
+                if (relevant && cur[i] != ikLastPose[i]) return false;
+            }
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 清 IK 連走／過渡狀態（stop／手動 jog／播動作後，下次由 0% 重計）。 */
+    private synchronized void resetIkState() {
+        stopIkTrans();
+        ikActiveKind = null;
+        ikActivePct = 0;
+        ikLastPose = null;
     }
 
     // -- HTTP API（管理 UI＋脚本直調經這裡；A 端物理鍵走上面 handleRobotKey）------
@@ -1930,7 +2418,9 @@ public final class GamepadCenter {
                     + "camera_photo/face_toggle/color_toggle/video_toggle/"
                     + "sonar_toggle/pir_toggle/accel_toggle/"
                     + "xiaozhi_toggle/vosk_toggle/vosk:<id>/eq:<preset>/radio:<uuid或名>/"
-                    + "servo1-22+/servo1-22-/action:<id>, got: " + action);
+                    + "servo1-22+/servo1-22-/ik:squat+/ik:squat-/"
+                    + "ik:ysquat+/ik:ysquat-/ik:lr+/ik:lr-/"
+                    + "ik:fsplit+/ik:fsplit-/ik:fsplit2+/ik:fsplit2-/action:<id>, got: " + action);
         }
         Map<String, String> mapping = loadMapping(side);
         mapping.put(key, action);
@@ -1956,6 +2446,36 @@ public final class GamepadCenter {
     // 驗都唔使驗。物理直連鍵行 UI 單 thread，本身唔會重疊，唔使經呢度。
     private final Map<String, Long> keyDownStartNanos = new LinkedHashMap<>();
     private final Map<String, Long> keyLastUpNanos = new LinkedHashMap<>();
+    // 面板／相機頁每次 pointerdown 會帶一個遞增 seq；up 遲到／早到都靠 seq 對返
+    // 同一撳。HTTP 兩個 request 行唔同 thread，up 有機會先過 down（down 卡喺
+    // chest serial）——只靠時間閘會漏停，連走就會行到 100%。seq 係 exact match，
+    // 舊 up 唔會斬新撳。
+    private final Map<String, Long> keyDownSeq = new LinkedHashMap<>();
+    private final Map<String, Long> keyUpSeq = new LinkedHashMap<>();
+
+    private synchronized void noteKeyDownSeq(String hk, long seq) {
+        keyDownSeq.put(hk, seq);
+    }
+
+    private synchronized void noteKeyUpSeq(String hk, long seq) {
+        keyUpSeq.put(hk, seq);
+    }
+
+    /** 同一個 seq 嘅 up 係咪已經到咗（可能早過 down）。 */
+    private synchronized boolean keyUpSeqAlready(String hk, long seq) {
+        Long up = keyUpSeq.get(hk);
+        return up != null && up.longValue() == seq;
+    }
+
+    /** 同一個 seq 嘅 down 係咪已經到咗。 */
+    private synchronized boolean keySeqMatchesDown(String hk, long seq) {
+        Long down = keyDownSeq.get(hk);
+        return down != null && down.longValue() == seq;
+    }
+
+    private synchronized String seqState(String hk) {
+        return "downSeq=" + keyDownSeq.get(hk) + " upSeq=" + keyUpSeq.get(hk);
+    }
 
     private synchronized void noteKeyDownStart(String hk) {
         keyDownStartNanos.put(hk, System.nanoTime());
@@ -2014,18 +2534,46 @@ public final class GamepadCenter {
         String mapped = mappedActionOf(side, key);
         boolean taken = false;
         String hk = side + ":" + key;
+        // 面板／相機頁帶 seq（每次 pointerdown 遞增）；舊前端／脚本冇 seq 就行
+        // 原本時間閘。seq 可以對返同一撳，唔怕 up／down 兩個 HTTP request 邊個先。
+        long seq = ApiValidator.optionalLong(query, "seq", -1L);
+        boolean hasSeq = seq >= 0;
         // 放開：停連走＋不上動作（避免按住連發播兩次），但事件照記、前端燈照跟。
         if (pressed) {
             noteKeyDownStart(hk);
+            if (hasSeq) noteKeyDownSeq(hk, seq);
             taken = executeAction(side, key, mapped);
-            if (taken && !servoJogParts(mapped).isEmpty()) {
-                startServoRepeats(side, key, mapped, 1f);
-                // 快 tap 反轉：上行 serial 期間 up 已到過→即停，唔好變長撳。
-                if (keyUpLandedDuring(hk)) stopServoRepeat(side, key);
+            if (taken) {
+                // 同一個 seq 嘅 up 已經到咗（up 先過 down）：只做第一格，
+                // 唔好排連走，否則之後冇 up 停就會行到 100%。
+                boolean upAlready = hasSeq && keyUpSeqAlready(hk, seq);
+                if (hasSeq && upAlready) {
+                    Log.i(TAG, "key " + hk + " " + source + " down seq=" + seq + " "
+                            + seqState(hk) + " upAlready -> single step");
+                }
+                if (!upAlready) {
+                    startRepeats(side, key, mapped, 1f);
+                    // 排完再驗一次：down 執行期間 up 到過就即停。
+                    if (hasSeq) {
+                        if (keyUpSeqAlready(hk, seq)) stopRepeats(side, key);
+                    } else if (keyUpLandedDuring(hk)) {
+                        stopRepeats(side, key);
+                    }
+                }
             }
         } else {
             noteKeyUp(hk);
-            taken = stopServoRepeat(side, key);
+            if (hasSeq) {
+                noteKeyUpSeq(hk, seq);
+                // 只停同一個 seq 嘅連走；舊 up 遲到唔好斬新撳。
+                taken = keySeqMatchesDown(hk, seq) ? stopRepeats(side, key) : false;
+            } else {
+                taken = stopRepeats(side, key);
+            }
+        }
+        if (hasSeq) {
+            Log.i(TAG, "key " + hk + " " + source + (pressed ? " down" : " up")
+                    + " seq=" + seq + " " + seqState(hk) + " taken=" + taken);
         }
         publishKey(key, pressed, source, mapped, taken);
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"side\":\"" + side + "\""
@@ -2294,20 +2842,20 @@ public final class GamepadCenter {
             String mapped = padMap != null ? padMap.get(dirKey) : null;
             if (!isMappedValue(mapped)) return false;
             boolean taken = executeAction(SIDE_PAD, dirKey, mapped);
-            if (taken && !servoJogParts(mapped).isEmpty()) startServoRepeats(SIDE_PAD, dirKey, mapped, defl);
+            if (taken) startRepeats(SIDE_PAD, dirKey, mapped, defl);
             publishKey(dirKey, true, source, mapped, taken);
             return taken;
         }
         if (active && wasActive) {
             // 撳住唔放偏轉變：連走步長即時跟手指（半推即慢，見 repeat tick）。
-            updateServoRepeatDefl(SIDE_PAD, dirKey, defl);
+            updateRepeatDefl(SIDE_PAD, dirKey, defl);
             return false;
         }
         if (!active && wasActive) {
             synchronized (this) {
                 stickActive.remove(dirKey);
             }
-            boolean stopped = stopServoRepeat(SIDE_PAD, dirKey);
+            boolean stopped = stopRepeats(SIDE_PAD, dirKey);
             String mapped = padMap != null ? padMap.get(dirKey) : null;
             publishKey(dirKey, false, source, mapped != null ? mapped : "none", stopped);
             maybeRecenterAxis(dirKey, padMap);
@@ -2474,6 +3022,7 @@ public final class GamepadCenter {
     /** onDestroy 共用：停舵機連走池＋反註冊掃描 receiver＋清觸控板暫存。 */
     public synchronized void shutdown() {
         try {
+            stopIkTrans();
             for (java.util.concurrent.ScheduledFuture<?> f : servoRepeaters.values()) {
                 try {
                     if (f != null) f.cancel(false);
@@ -2481,6 +3030,13 @@ public final class GamepadCenter {
                 }
             }
             servoRepeaters.clear();
+            for (java.util.concurrent.ScheduledFuture<?> f : ikRepeaters.values()) {
+                try {
+                    if (f != null) f.cancel(false);
+                } catch (Throwable ignored) {
+                }
+            }
+            ikRepeaters.clear();
             servoRepeatPool.shutdownNow();
         } catch (Throwable ignored) {
         }

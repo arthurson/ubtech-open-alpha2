@@ -22,6 +22,33 @@ public final class SonarCenter {
     public SonarCenter(Context context, LedCenter ledCenter) {
         this.appContext = context.getApplicationContext();
         this.ledCenter = ledCenter;
+        // PIR 預設關：硬件開關胸口讀唔返，開機前可能留住上次開嘅態——主動送一次關
+        // （等 chest ready，最多試 10 秒；失敗淨係記低，唔阻開機）。
+        try {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    for (int i = 0; i < 10; i++) {
+                        try {
+                            if (directChestReady()
+                                    && HardwareDirectManager.get(appContext).chest()
+                                            .setPirEnabled(false)) {
+                                return;
+                            }
+                        } catch (Throwable t) {
+                            android.util.Log.w("SonarCenter", "boot PIR off failed", t);
+                            return;
+                        }
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e) {
+                            return;
+                        }
+                    }
+                }
+            }, "PirDefaultOff").start();
+        } catch (Throwable ignored) {
+        }
     }
 
     /** onCreate 接線用：補 PIR 推送 uplink。 */
@@ -40,7 +67,7 @@ public final class SonarCenter {
     // here purely so the obstacle-triggered purple-LED logic below knows what
     // threshold is currently active, and so the front-end chart can draw it as a
     // reference line against live sonar readings.
-    private volatile int sonarThresholdCm = 30;
+    private volatile int sonarThresholdCm = 0; // 預設 0＝關（面板 toggle 用 threshold＞0）
     private volatile boolean sonarLedActive = false;
     // onSonarDistanceReceived() 之前只是用來判斷 triggered 有沒有改變
     // (驅動 LED), 沒有存下實際讀數本身 - XiaoZhi MCP tool (self.sensors.get_sonar)

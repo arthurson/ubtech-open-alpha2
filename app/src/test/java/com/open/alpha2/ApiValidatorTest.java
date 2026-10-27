@@ -220,6 +220,30 @@ public final class ApiValidatorTest {
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireAngles20(q("angles", "90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90")); } }, "angles21.bad");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireAngles20(q()); } }, "angles20.missing");
 
+        // ── 校準 trim CSV ──
+        eq(null, ApiValidator.optionalTrims20or22(q()), "trims.missing");
+        StringBuilder trims22 = new StringBuilder("81,,,-12");
+        for (int i = 4; i < 22; i++) trims22.append(',');
+        Integer[] trims = ApiValidator.optionalTrims20or22(q("trims", trims22.toString()));
+        eq(22, trims.length, "trims22.len");
+        eq(Integer.valueOf(81), trims[0], "trims22.first");
+        eq(null, trims[1], "trims22.empty");
+        eq(Integer.valueOf(-12), trims[3], "trims22.negative");
+        eq(null, trims[21], "trims22.trailingEmpty");
+        String trims20 = "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19";
+        eq(20, ApiValidator.optionalTrims20or22(q("trims", trims20)).length, "trims20.len");
+        StringBuilder skipMarkers = new StringBuilder("-,null,,5");
+        for (int i = 4; i < 22; i++) skipMarkers.append(',');
+        Integer[] skipped = ApiValidator.optionalTrims20or22(q("trims", skipMarkers.toString()));
+        eq(null, skipped[0], "trims.markerDash");
+        eq(null, skipped[1], "trims.markerNull");
+        eq(null, skipped[2], "trims.markerEmpty");
+        eq(Integer.valueOf(5), skipped[3], "trims.markerValue");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.optionalTrims20or22(q("trims", "1,2,3")); } }, "trims.tooShort");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.optionalTrims20or22(q("trims", "x,,,0")); } }, "trims.badInt");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.optionalTrims20or22(q("trims", "1001,,,,,,,,,,,,,,,,,,,,,")); } }, "trims.high");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.optionalTrims20or22(q("trims", "-1001,,,,,,,,,,,,,,,,,,,,,")); } }, "trims.low");
+
         // ── 舵機校準 clamp（同 app-core.js SERVO_CALIBRATION 一字不差；
         // 手柄 jog／搖桿／觸控板共用，頂限位唔會再頂過龍）──
         eq(5, ApiValidator.servoCalMin(1), "cal.min1");
