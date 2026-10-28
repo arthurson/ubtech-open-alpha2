@@ -299,7 +299,7 @@ public final class ApiDispatcher {
                 // 這裡只保證必填 (缺席即 400), 避免兩次 parse。
                 return ubxApi.ubxSpeedResponse(ApiValidator.require(query, "value"));
 
-            // -- 按住向前行（步態＝.ubx；租約守護，見 WalkCenter）-------------------------
+            // -- 按住向前行／向後行（步態＝.ubx；租約守護，見 WalkCenter）-------------------------
             case "walk/start":
                 return walkCenter.startResponse(query);
             case "walk/stop":

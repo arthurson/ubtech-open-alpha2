@@ -397,7 +397,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         gamepadCenter = new GamepadCenter(this, actionDirect, ubxApi, ubxPlayer, deviceStatus,
                 audioCenter, ringtoneCenter, ledCenter, speechCenter, cameraApi, sonarCenter,
                 xiaozhiBridge, voskApi);
-        // 按住向前行（步態 assets/gait/walk_fwd.json，源自 .ubx）；手柄 walk:* 映射同 HTTP walk/* 共用。
+        // 按住向前行／向後行（步態 assets/gait/walk_fwd.json＋walk_back.json，源自 .ubx）；手柄 walk:* 映射同 HTTP walk/* 共用。
         walkCenter = new WalkCenter(this, ubxPlayer);
         gamepadCenter.attachWalkCenter(walkCenter);
         // dispatcher 包全部上面 controller (+speechCenter 做 Host；sensorState

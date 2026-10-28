@@ -99,11 +99,11 @@ function gamepadParseSubKeyId(id, prefix) {
   return { key: rest.substring(0, sep), idx: idx };
 }
 
-// 行路（同後端 isWalkAction 對齊）：fwd＝按住向前行（放手企停）；fast／slow＝行路時加速／減速
-// （搖桿向按偏轉量，掣＝全速）；fwd 掛搖桿向時偏轉量即速度。
-var GAMEPAD_WALK_FNS = ["walk:fwd", "walk:fast", "walk:slow"];
-var GAMEPAD_WALK_FN_KEYS = { "walk:fwd": "gamepad_walk_fwd", "walk:fast": "gamepad_walk_fast",
-  "walk:slow": "gamepad_walk_slow" };
+// 行路（同後端 isWalkAction 對齊）：fwd／back＝按住向前行／向後行（放手企停；前後同按即收步）；
+// fast／slow＝行路時加速／減速（搖桿向按偏轉量，掣＝全速）；fwd／back 掛搖桿向時偏轉量即速度。
+var GAMEPAD_WALK_FNS = ["walk:fwd", "walk:back", "walk:fast", "walk:slow"];
+var GAMEPAD_WALK_FN_KEYS = { "walk:fwd": "gamepad_walk_fwd", "walk:back": "gamepad_walk_back",
+  "walk:fast": "gamepad_walk_fast", "walk:slow": "gamepad_walk_slow" };
 
 // 相機（同後端 isCameraAction 對齊；追蹤係 toggle：face_toggle／color_toggle）。
 var GAMEPAD_CAMERA_FNS = ["camera_photo", "face_toggle", "color_toggle", "video_toggle"];
@@ -755,7 +755,7 @@ function gamepadParseValue(v) {
     out.ikFn = "ik:" + (m[1] === "fb" ? "fsplit" : m[1]) + m[2];
     return out;
   }
-  if (v === "walk:fwd" || v === "walk:fast" || v === "walk:slow") {
+  if (v === "walk:fwd" || v === "walk:back" || v === "walk:fast" || v === "walk:slow") {
     out.kind = "walk";
     out.walkFn = v;
     return out;
@@ -3473,11 +3473,14 @@ function gamepadBindFullscreen() {
   } catch (e) {}
 }
 
-// ---------------- 按住向前行（面板掣；步態＝.ubx，見後端 WalkCenter） ----------------
-// 按住期間每 250ms 叫一次 walk/start（續租約＋帶最新速度）；後端租約 700ms，
+// ---------------- 按住向前行／向後行（面板掣；步態＝.ubx，見後端 WalkCenter） ----------------
+// 按住期間每 250ms 叫一次 walk/start（續租約＋帶最新速度＋方向）；後端租約 700ms，
 // 所以頁面死機／斷網／切走分頁都會自動收步。放手／離開／失焦即 walk/stop。
+// 一次只認一個方向（已撳住其中一個時，另一個掣當冇撳）。
 var walkHoldTimer = null;
 var walkHolding = false;
+var walkHoldDir = "fwd";
+var walkGlobalBound = false;
 
 function walkSpeedValue() {
   var el = document.getElementById("walkSpeed");
@@ -3491,15 +3494,16 @@ function walkSetState(st) {
 }
 
 function walkTick() {
-  return Alpha2Api.walkStart({ speed: walkSpeedValue() }).then(function (r) {
+  return Alpha2Api.walkStart({ speed: walkSpeedValue(), dir: walkHoldDir }).then(function (r) {
     if (r && r.ok === false) { walkSetState(null); if (r.error === "booting") walkHoldEnd(); return; }
     walkSetState(r && r.phase ? r.phase : "walking");
   }).catch(function () { walkSetState(null); });
 }
 
-function walkHoldBegin(ev) {
+function walkHoldBegin(ev, dir) {
   if (walkHolding) return;
   walkHolding = true;
+  walkHoldDir = dir === "back" ? "back" : "fwd";
   try { if (ev && ev.target && ev.target.setPointerCapture && ev.pointerId != null) ev.target.setPointerCapture(ev.pointerId); } catch (e) {}
   walkTick();
   walkHoldTimer = setInterval(walkTick, 250);
@@ -3514,15 +3518,24 @@ function walkHoldEnd() {
   }).catch(function () { walkSetState(null); });
 }
 
-function walkCardInit() {
-  var btn = document.getElementById("walkHoldBtn");
+function walkBindBtn(id, dir) {
+  var btn = document.getElementById(id);
   if (!btn || btn.getAttribute("data-bound")) return;
   btn.setAttribute("data-bound", "1");
-  btn.addEventListener("pointerdown", function (e) { e.preventDefault(); walkHoldBegin(e); });
+  btn.addEventListener("pointerdown", function (e) { e.preventDefault(); walkHoldBegin(e, dir); });
   ["pointerup", "pointercancel", "lostpointercapture", "pointerleave"].forEach(function (n) {
-    btn.addEventListener(n, function () { walkHoldEnd(); });
+    btn.addEventListener(n, function () { if (walkHoldDir === dir) walkHoldEnd(); });
   });
   btn.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+}
+
+function walkCardInit() {
+  var fwdBtn = document.getElementById("walkHoldBtn");
+  if (!fwdBtn) return;
+  walkBindBtn("walkHoldBtn", "fwd");
+  walkBindBtn("walkBackBtn", "back");
+  if (walkGlobalBound) return;
+  walkGlobalBound = true;
   window.addEventListener("blur", walkHoldEnd);
   document.addEventListener("visibilitychange", function () { if (document.hidden) walkHoldEnd(); });
   var sp = document.getElementById("walkSpeed");

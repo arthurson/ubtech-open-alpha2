@@ -274,10 +274,12 @@
   <!-- ============ TAB: GAMEPAD (BT 手柄／鍵盤，兩端共用映射) ============ -->
   <div id="tab-gamepad" class="tab-page">
     <section class="card" id="walkCard">
-      <h2 data-i18n="walk_card_heading">🚶 向前行（按住）</h2>
+      <h2 data-i18n="walk_card_heading">🚶 向前行／向後行（按住）</h2>
       <div class="row" style="align-items:center">
         <button id="walkHoldBtn" style="min-width:150px;min-height:56px;font-size:1.1em;touch-action:none;user-select:none;-webkit-user-select:none"
                 data-i18n="walk_card_hold">按住向前行</button>
+        <button id="walkBackBtn" style="min-width:150px;min-height:56px;font-size:1.1em;touch-action:none;user-select:none;-webkit-user-select:none"
+                data-i18n="walk_card_hold_back">按住向後行</button>
         <span id="walkState" class="hint"></span>
       </div>
       <div class="row" style="align-items:center">

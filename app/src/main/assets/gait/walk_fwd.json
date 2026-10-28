@@ -1,6 +1,7 @@
 {
  "source": "open-1508999860568-8step-smooth6.ubx",
  "note": "由 scripts/ubx_to_gait.py 生成，勿手改；ms 為 1.0x 時每格時長",
+ "direction": "fwd",
  "home": [
   120,
   205,

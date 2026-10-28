@@ -16,11 +16,17 @@
 GaitWalker。所有角度都會 clamp 入 SERVO_CALIBRATION（同 ubx_walk_humanize.CAL
 一致），超出即報錯唔寫檔。
 
+向後行（walk_back.json）：由前行步態「時間反轉」而來——同一組循環姿勢倒序播放
+（每格時長跟住倒轉：由 P[k-1] 去 P[k] 嘅時間＝原檔由 P[k] 去 P[k-1] 嘅時間），
+起步段 leadIn 同 home 完全沿用前行嘅，所以進入／離開步態嘅姿勢都係已知安全嘅。
+呢個係運動學上嘅近似（慢速準靜態步態適用）；未經實機驗證，第一次請托住機身試。
+
 用法:
   python scripts/ubx_to_gait.py <in.ubx> [out.json]
-  （預設 out = app/src/main/assets/gait/walk_fwd.json）
+  （預設 out = app/src/main/assets/gait/walk_fwd.json；
+    同時寫同目錄嘅 walk_back.json——out 檔名含 fwd 就換成 back，否則加 _back 後綴）
   python scripts/ubx_to_gait.py --check
-  （CI：用 scripts/gait-src/ 內嘅 .ubx 重新生成，同已 commit 嘅 JSON 比對；唔一致即 exit 1）
+  （CI：用 scripts/gait-src/ 內嘅 .ubx 重新生成，同已 commit 嘅前行／後行 JSON 比對；唔一致即 exit 1）
 """
 import importlib.util
 import json
@@ -30,6 +36,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 DEFAULT_OUT = os.path.join(ROOT, "app", "src", "main", "assets", "gait", "walk_fwd.json")
+DEFAULT_OUT_BACK = os.path.join(os.path.dirname(DEFAULT_OUT), "walk_back.json")
 
 LEAD_STATIC_DEV = 6   # 起步段頭幾格同 home 最大差 <= 此值視為靜止，跳過
 CYCLE_TOL = 6         # 週期偵測：f[i] 同 f[i+p] 每軸最大差容差
@@ -123,6 +130,7 @@ def build(path):
     doc = {
         "source": os.path.basename(path),
         "note": "由 scripts/ubx_to_gait.py 生成，勿手改；ms 為 1.0x 時每格時長",
+        "direction": "fwd",
         "home": home,
         "leadIn": {"ms": [ms for _, ms in lead], "frames": [a for a, _ in lead]},
         "cycle": {"ms": [ms for _, ms in cycle], "frames": [a for a, _ in cycle]},
@@ -139,23 +147,88 @@ def build(path):
     return doc, info
 
 
+def reverse_gait(doc):
+    """前行步態 → 後行步態（時間反轉）。
+
+    循環 c[0..n-1]（ms[i]＝由 c[i-1] 去 c[i] 嘅時間，c[0] 係由 c[n-1] 回頭接）倒序播：
+      P[k]  = c[(n-k) % n]            → [c0, c(n-1), c(n-2), ..., c1]
+      D[k]  = ms[(n+1-k) % n]         → 由 P[k-1] 去 P[k]（＝原檔 c[i] 去 c[i-1]）嘅時間
+    P[0]＝c0，同前行一樣由 leadIn 末姿勢接入，所以 leadIn／home 全部沿用。
+    """
+    cyc = doc["cycle"]
+    n = len(cyc["frames"])
+    frames = [list(cyc["frames"][(n - k) % n]) for k in range(n)]
+    ms = [cyc["ms"][(n + 1 - k) % n] for k in range(n)]
+    back = dict(doc)
+    back["note"] = "由 scripts/ubx_to_gait.py 生成（前行步態時間反轉），勿手改；ms 為 1.0x 時每格時長"
+    back["direction"] = "back"
+    back["cycle"] = {"ms": ms, "frames": frames}
+    return back
+
+
+def verify_reverse(fwd, back):
+    """結構檢查：後行循環真係前行循環嘅時間反轉（姿勢集合／相鄰關係／每格時長）。"""
+    f, b = fwd["cycle"], back["cycle"]
+    n = len(f["frames"])
+    if len(b["frames"]) != n or len(b["ms"]) != n:
+        return "格數唔同"
+    if sorted(map(tuple, b["frames"])) != sorted(map(tuple, f["frames"])):
+        return "姿勢集合唔同"
+    if sum(b["ms"]) != sum(f["ms"]):
+        return "週期總時長唔同"
+    for k in range(n):
+        # 後行 P[k-1]→P[k]（耗時 D[k]）必須等於前行某格 c[i]→c[i-1]（耗時 ms[i]）
+        i = (n + 1 - k) % n
+        if b["frames"][k - 1] != f["frames"][i] or b["frames"][k] != f["frames"][i - 1]:
+            return "第 %d 格相鄰關係唔係反轉" % k
+        if b["ms"][k] != f["ms"][i]:
+            return "第 %d 格時長唔啱" % k
+    for key in ("home", "leadIn", "blend", "limits"):
+        if back[key] != fwd[key]:
+            return "%s 同前行唔一致" % key
+    return None
+
+
+def back_path_for(out):
+    d, name = os.path.split(out)
+    if "fwd" in name:
+        return os.path.join(d, name.replace("fwd", "back"))
+    stem, ext = os.path.splitext(name)
+    return os.path.join(d, stem + "_back" + ext)
+
+
+def dump(doc):
+    return json.dumps(doc, ensure_ascii=False, indent=1) + "\n"
+
+
 GAIT_SRC = os.path.join(HERE, "gait-src", "open-1508999860568-8step-smooth6.ubx")
 
 
 def check():
     doc, info = build(GAIT_SRC)
-    want = json.dumps(doc, ensure_ascii=False, indent=1) + "\n"
-    try:
-        have = open(DEFAULT_OUT, encoding="utf-8").read()
-    except OSError:
-        print("❌ 缺少", DEFAULT_OUT)
-        return 1
-    if have != want:
-        print("❌ walk_fwd.json 同 .ubx 重新生成嘅結果不一致，請跑 python scripts/ubx_to_gait.py", GAIT_SRC)
-        return 1
-    print("✅ walk_fwd.json 同 %s 一致（cycle %d 格 / %d ms）"
-          % (os.path.basename(GAIT_SRC), info["cycleFrames"], info["cycleMs"]))
-    return 0
+    back = reverse_gait(doc)
+    rc = 0
+    bad = verify_reverse(doc, back)
+    if bad:
+        print("❌ 後行步態唔係前行嘅時間反轉：" + bad)
+        rc = 1
+    for label, path, want_doc in (("walk_fwd.json", DEFAULT_OUT, doc),
+                                  ("walk_back.json", DEFAULT_OUT_BACK, back)):
+        want = dump(want_doc)
+        try:
+            have = open(path, encoding="utf-8").read()
+        except OSError:
+            print("❌ 缺少", path)
+            rc = 1
+            continue
+        if have != want:
+            print("❌ %s 同 .ubx 重新生成嘅結果不一致，請跑 python scripts/ubx_to_gait.py %s"
+                  % (label, GAIT_SRC))
+            rc = 1
+            continue
+        print("✅ %s 同 %s 一致（cycle %d 格 / %d ms）"
+              % (label, os.path.basename(GAIT_SRC), info["cycleFrames"], info["cycleMs"]))
+    return rc
 
 
 def main(argv):
@@ -167,10 +240,11 @@ def main(argv):
     out = argv[2] if len(argv) > 2 else DEFAULT_OUT
     doc, info = build(argv[1])
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    with open(out, "w", encoding="utf-8") as f:
-        json.dump(doc, f, ensure_ascii=False, indent=1)
-        f.write("\n")
-    print("wrote", out)
+    back_out = back_path_for(out)
+    for path, d in ((out, doc), (back_out, reverse_gait(doc))):
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(dump(d))
+        print("wrote", path)
     for k, v in info.items():
         print("  %s = %s" % (k, v))
     return 0

@@ -64,7 +64,7 @@ tags:
 - name: system
   description: 不經機身服務的系統功能 (/api/system/*)
 - name: walk
-  description: 按住向前行（步態＝.ubx；放手即收步企定；速度 0.5–2.0x；租約守護）
+  description: 按住向前行／向後行（步態＝.ubx，後行＝前行步態時間反轉；放手即收步企定；速度 0.5–2.0x；租約守護）
 - name: gamepad
   description: BT 手柄／鍵盤（機器人直連 HID；映射分手柄／鍵盤兩邊）
 - name: xiaozhi
@@ -1112,8 +1112,8 @@ paths:
     get:
       tags:
       - walk
-      summary: 按住向前行：未行就起步，行緊就續租約並更新速度
-      description: 面板按住期間要每 ~250ms 再叫一次（租約 700ms，超時冇續即自動放手收步）；開機企姿完成前回 {ok:false,error:booting}。起步時會搶佔正在播放嘅普通動作。
+      summary: 按住向前行／向後行：未行就起步，行緊就續租約並更新速度
+      description: 面板按住期間要每 ~250ms 再叫一次（租約 700ms，超時冇續即自動放手收步）；開機企姿完成前回 {ok:false,error:booting}。起步時會搶佔正在播放嘅普通動作。行緊相反方向時會先硬停（舵機保持末位姿）再由當前姿勢起步。
       parameters:
       - name: speed
         in: query
@@ -1122,6 +1122,15 @@ paths:
           minimum: 0.5
           maximum: 2.0
         description: 速度倍率（1.0＝.ubx 原速）；唔帶用預設速度
+      - name: dir
+        in: query
+        schema:
+          type: string
+          enum:
+          - fwd
+          - back
+          default: fwd
+        description: 方向：fwd＝向前行（預設）；back＝向後行（前行步態時間反轉，未經實機驗證）
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -7202,6 +7211,10 @@ components:
         walking:
           type: boolean
           description: 行路線程仍然喺度（包括收步中）
+        dir:
+          type: string
+          enum: [fwd, back]
+          description: 最近一次起步嘅方向（冇行路時係上一次嘅方向，預設 fwd）
         phase:
           type: string
           enum: [idle, lead_in, walking, standing]
@@ -7220,6 +7233,10 @@ components:
           type: integer
         loaded:
           type: boolean
+          description: 前行步態檔已載入
+        loadedBack:
+          type: boolean
+          description: 後行步態檔已載入
         error:
           type: string
     OkWrapper:

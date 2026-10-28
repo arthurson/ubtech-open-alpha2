@@ -57,7 +57,7 @@ import java.util.Map;
  * 同 servo 一樣撳住連走，每步 10%（每格 120ms，同 Web IK 卡一致），
  * 到 0%／100% 自動停；由非 0% pose 開始時會由實際 pose 均速過渡，
  * 轉動作先均速回 0% 再行新動作，唔會突然跳）／
- * walk:fwd（按住向前行，放手企停；步態＝.ubx，見 {@link WalkCenter}）／walk:fast／walk:slow
+ * walk:fwd（按住向前行，放手企停；步態＝.ubx，見 {@link WalkCenter}）／walk:back（按住向後行）／walk:fast／walk:slow
  * （行路時加速／減速；搖桿向按偏轉量，掣＝全速；fwd 掛搖桿向＝偏轉量即速度）／
  * action:&lt;fileId或中英文名或xxx.ubx&gt;（經 ActionDirect 搶佔式播放）
  * 一鍵多功能：單鍵值可換行分隔多達 {@link #MAX_ACTIONS_PER_KEY} 個動作，
@@ -512,12 +512,14 @@ public final class GamepadCenter {
     }
 
     /**
-     * 行路動作值：{@code walk:fwd}（按住向前行，放手企停）／{@code walk:fast}／{@code walk:slow}
+     * 行路動作值：{@code walk:fwd}（按住向前行，放手企停）／{@code walk:back}（按住向後行，
+     * 放手企停；前後同時撳住互相抵消即收步）／{@code walk:fast}／{@code walk:slow}
      * （行路期間加速／減速；掣＝全速，搖桿向＝按偏轉量 1x→2x／1x→0.5x）。
      * 步態來自 .ubx（見 {@link WalkCenter}）。
      */
     public static boolean isWalkAction(String a) {
-        return "walk:fwd".equals(a) || "walk:fast".equals(a) || "walk:slow".equals(a);
+        return "walk:fwd".equals(a) || "walk:back".equals(a)
+                || "walk:fast".equals(a) || "walk:slow".equals(a);
     }
 
     private static boolean hasWalkParts(String multi) {
@@ -1344,11 +1346,16 @@ public final class GamepadCenter {
             }
             // 腳部 IK 動作（蹲下／蹲式／左右／左前／右前，± 撳住連走）。
             if (isIkAction(a)) return executeIkAction(a);
-            // 按住行路：fwd 即刻起步（taken＝真起到）；fast／slow 只係變速修飾，等 startRepeats 登記。
+            // 按住行路：fwd／back 即刻起步（taken＝真起到）；fast／slow 只係變速修飾，等 startRepeats 登記。
+            // 相反方向已撳住：唔起步（walkHolds 登記後 applyWalkSpeed 會令佢收步＝互相抵消）。
             if (isWalkAction(a)) {
                 WalkCenter wc = walkCenter;
                 if (wc == null) return false;
-                if (a.equals("walk:fwd")) return wc.hold(wc.baseSpeed());
+                if (a.equals("walk:fwd") || a.equals("walk:back")) {
+                    boolean back = a.equals("walk:back");
+                    if (walkHeld(back ? "fwd" : "back")) return true;
+                    return wc.hold(wc.baseSpeed(), back);
+                }
                 return true;
             }
             // 本地音樂功能鍵（無歌／無載入即 false，taken 照實）。
@@ -1874,9 +1881,10 @@ public final class GamepadCenter {
         }
     }
 
-    // -- 按住行路（walk:fwd／fast／slow）-----------------------------------------
-    // 登記「邊粒鍵／搖桿向喺度撳住咩」；放手（stopRepeats）移除，冇 fwd 撳住即收步。
-    // 速度：fwd 掣＝預設速度；fwd 掛搖桿向＝偏轉量 0.5x→2.0x（幾何，半偏≈1x）；
+    // -- 按住行路（walk:fwd／back／fast／slow）------------------------------------
+    // 登記「邊粒鍵／搖桿向喺度撳住咩」；放手（stopRepeats）移除，冇 fwd／back 撳住即收步；
+    // fwd 同 back 同時撳住＝互相抵消即收步，放開其中一個就跟返仲撳住嗰個方向重新起步。
+    // 速度：fwd／back 掣＝預設速度；掛搖桿向＝偏轉量 0.5x→2.0x（幾何，半偏≈1x）；
     // fast／slow ＝ ×(1+t)／×(1−0.5t)（t＝掣 1、搖桿向由閾值至滿偏 0→1）。
     // 每 120ms 續租約；本機撳住（robotHeld）無上限，網頁／腳本（無可靠 key-up）最長 15 秒。
     private static final int WALK_UNATTENDED_MAX_TICKS = 125;
@@ -1885,6 +1893,8 @@ public final class GamepadCenter {
     private final Map<String, java.util.concurrent.ScheduledFuture<?>> walkBeats =
             new LinkedHashMap<>();
     private volatile WalkCenter walkCenter;
+    /** 前後同按互相抵消而收咗步（放開其中一個後要跟返仲撳住嗰個方向重新起步）。 */
+    private boolean walkCancelled;
 
     /** MainActivity 建好 WalkCenter 後掛入（避免改建構子簽名）。 */
     public void attachWalkCenter(WalkCenter w) {
@@ -1963,28 +1973,42 @@ public final class GamepadCenter {
         }
     }
 
-    private synchronized void afterWalkChange() {
-        boolean anyFwd = false;
-        for (String k : walkHolds.values()) if ("fwd".equals(k)) anyFwd = true;
-        WalkCenter wc = walkCenter;
-        if (!anyFwd && wc != null) wc.release();
-        else applyWalkSpeed();
+    /** 該方向（"fwd"／"back"）而家有冇鍵撳住（已登記）。 */
+    private synchronized boolean walkHeld(String dir) {
+        for (String k : walkHolds.values()) if (dir.equals(k)) return true;
+        return false;
     }
 
-    /** 按而家撳住嘅 fwd／fast／slow 重算速度並推落行緊嘅路。 */
-    private synchronized void applyWalkSpeed() {
+    private synchronized void afterWalkChange() {
+        boolean f = walkHeld("fwd");
+        boolean b = walkHeld("back");
         WalkCenter wc = walkCenter;
         if (wc == null) return;
-        boolean anyFwd = false;
-        float base = wc.baseSpeed();
+        if (f == b) {            // 冇方向撳住，或前後互相抵消
+            walkCancelled = f;
+            wc.release();
+            return;
+        }
+        // 只剩一個方向：若係因抵消而收咗步，就按該方向重新起步；否則只更新速度。
+        if (walkCancelled) {
+            walkCancelled = false;
+            wc.hold(computeWalkSpeed(), b);
+        } else {
+            applyWalkSpeed();
+        }
+    }
+
+    /** 按而家撳住嘅 fwd／back／fast／slow 計出目標速度（未夾範圍；WalkCenter 會 clamp）。 */
+    private synchronized float computeWalkSpeed() {
+        WalkCenter wc = walkCenter;
+        float base = wc != null ? wc.baseSpeed() : WalkCenter.DEFAULT_SPEED;
         float mul = 1f;
         for (Map.Entry<String, String> e : walkHolds.entrySet()) {
             String tag = e.getKey();
             boolean analog = Boolean.TRUE.equals(walkAnalog.get(tag));
             float t = analog ? stickT(repeatDeflOfTag(tag)) : 1f;
             String k = e.getValue();
-            if ("fwd".equals(k)) {
-                anyFwd = true;
+            if ("fwd".equals(k) || "back".equals(k)) {
                 if (analog) base = 0.5f * (float) Math.pow(4.0, t);
             } else if ("fast".equals(k)) {
                 mul *= 1f + t;
@@ -1992,7 +2016,21 @@ public final class GamepadCenter {
                 mul *= 1f - 0.5f * t;
             }
         }
-        if (anyFwd) wc.setSpeed(base * mul);
+        return base * mul;
+    }
+
+    /** 按而家撳住嘅 fwd／back／fast／slow 重算速度並推落行緊嘅路；前後同按即收步。 */
+    private synchronized void applyWalkSpeed() {
+        WalkCenter wc = walkCenter;
+        if (wc == null) return;
+        boolean f = walkHeld("fwd");
+        boolean b = walkHeld("back");
+        if (f && b) {            // 互相抵消
+            walkCancelled = true;
+            wc.release();
+            return;
+        }
+        if (f || b) wc.setSpeed(computeWalkSpeed());
     }
 
     /** 有冇實體手柄／鍵盤接住（藍牙斷線兜底）。 */
@@ -2601,7 +2639,7 @@ public final class GamepadCenter {
                     + "xiaozhi_toggle/vosk_toggle/vosk:<id>/eq:<preset>/radio:<uuid或名>/"
                     + "servo1-22+/servo1-22-/ik:squat+/ik:squat-/"
                     + "ik:ysquat+/ik:ysquat-/ik:lr+/ik:lr-/"
-                    + "ik:fsplit+/ik:fsplit-/ik:fsplit2+/ik:fsplit2-/walk:fwd/walk:fast/walk:slow/action:<id>, got: " + action);
+                    + "ik:fsplit+/ik:fsplit-/ik:fsplit2+/ik:fsplit2-/walk:fwd/walk:back/walk:fast/walk:slow/action:<id>, got: " + action);
         }
         Map<String, String> mapping = loadMapping(side);
         mapping.put(key, action);

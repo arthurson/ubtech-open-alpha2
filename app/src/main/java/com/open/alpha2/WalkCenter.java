@@ -16,8 +16,13 @@ import java.io.InputStream;
 import java.util.Map;
 
 /**
- * 「按住向前行」：步態來自 assets/gait/walk_fwd.json（由 scripts/ubx_to_gait.py 從
- * open-1508999860568-8step-smooth6.ubx 生成），引擎見 {@link GaitWalker}。
+ * 「按住向前行／向後行」：步態來自 assets/gait/walk_fwd.json、walk_back.json（由
+ * scripts/ubx_to_gait.py 從 open-1508999860568-8step-smooth6.ubx 生成；後行＝前行步態
+ * 時間反轉），引擎見 {@link GaitWalker}。
+ *
+ * <p>方向：{@link #hold(float)} ＝向前；{@link #hold(float, boolean)} 可揀向後。行緊
+ * 其中一個方向時要求相反方向，會先硬停（舵機保持末位姿）再由當前姿勢起步（起步第一格
+ * 有限速，唔會急扯）。</p>
  *
  * <p>語義：按住（{@link #hold}）＝起步後循環行；放手（{@link #release}）＝由當前姿勢
  * 線性收返企定姿勢然後停；{@code stopNow}＝硬停（舵機保持末位姿，同 ubx/stop 一致）。
@@ -30,6 +35,7 @@ import java.util.Map;
 public final class WalkCenter {
     private static final String TAG = "WalkCenter";
     public static final String ASSET = "gait/walk_fwd.json";
+    public static final String ASSET_BACK = "gait/walk_back.json";
     /** 租約：本機按鍵／面板每 ~120–250ms 續期，超過就當放手。 */
     public static final long LEASE_MS = 700;
     public static final float DEFAULT_SPEED = 1.0f;
@@ -38,7 +44,9 @@ public final class WalkCenter {
     private final UbxPlayer ubxPlayer;
 
     private volatile GaitProgram program;
+    private volatile GaitProgram programBack;
     private volatile String loadError = "";
+    private volatile String loadErrorBack = "";
     private volatile float baseSpeed = DEFAULT_SPEED;
     private volatile String lastError = "";
 
@@ -52,22 +60,38 @@ public final class WalkCenter {
     private synchronized GaitProgram program() {
         if (program != null) return program;
         try {
-            InputStream in = appContext.getAssets().open(ASSET);
-            ByteArrayOutputStream bo = new ByteArrayOutputStream();
-            try {
-                byte[] buf = new byte[4096];
-                int n;
-                while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
-            } finally {
-                try { in.close(); } catch (Exception ignore) { /* ignore */ }
-            }
-            program = parse(new JSONObject(new String(bo.toByteArray(), "UTF-8")));
+            program = parse(new JSONObject(readAsset(ASSET)));
             loadError = "";
         } catch (Exception e) {
             loadError = String.valueOf(e.getMessage());
             Log.w(TAG, "gait load failed", e);
         }
         return program;
+    }
+
+    private synchronized GaitProgram programBack() {
+        if (programBack != null) return programBack;
+        try {
+            programBack = parse(new JSONObject(readAsset(ASSET_BACK)));
+            loadErrorBack = "";
+        } catch (Exception e) {
+            loadErrorBack = String.valueOf(e.getMessage());
+            Log.w(TAG, "gait(back) load failed", e);
+        }
+        return programBack;
+    }
+
+    private String readAsset(String name) throws Exception {
+        InputStream in = appContext.getAssets().open(name);
+        ByteArrayOutputStream bo = new ByteArrayOutputStream();
+        try {
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+        } finally {
+            try { in.close(); } catch (Exception ignore) { /* ignore */ }
+        }
+        return new String(bo.toByteArray(), "UTF-8");
     }
 
     private static GaitProgram parse(JSONObject o) throws Exception {
@@ -116,30 +140,44 @@ public final class WalkCenter {
     }
 
     /**
-     * 按住：未行就起步，行緊就續租約＋更新速度。
+     * 按住（向前）：未行就起步，行緊就續租約＋更新速度。
      * @return true＝行緊（或已起步）；false＝起唔到（lastError 有原因）
      */
-    public synchronized boolean hold(float speed) {
+    public boolean hold(float speed) {
+        return hold(speed, false);
+    }
+
+    /**
+     * 按住：未行就起步，行緊同方向就續租約＋更新速度；行緊相反方向就先硬停再起步。
+     * @param back true＝向後行；false＝向前行
+     * @return true＝行緊（或已起步）；false＝起唔到（lastError 有原因）
+     */
+    public synchronized boolean hold(float speed, boolean back) {
         if (!MainActivity.isBootServoReady()) {
             lastError = "booting";
             return false;
         }
         float sp = GaitWalker.clampSpeed(speed);
+        String want = back ? UbxPlayer.WALK_BACK : UbxPlayer.WALK_FWD;
         if (ubxPlayer.isWalking() && !ubxPlayer.isWalkFinishing()) {
-            ubxPlayer.setWalkSpeed(sp);
-            ubxPlayer.beatWalk();
-            return true;
+            if (want.equals(ubxPlayer.walkName())) {
+                ubxPlayer.setWalkSpeed(sp);
+                ubxPlayer.beatWalk();
+                return true;
+            }
+            // 相反方向：硬停（舵機保持末位姿），下面由當前指令姿勢重新起步。
+            ubxPlayer.stop();
         }
-        GaitProgram prog = program();
+        GaitProgram prog = back ? programBack() : program();
         if (prog == null) {
-            lastError = "gait not loaded: " + loadError;
+            lastError = "gait not loaded: " + (back ? loadErrorBack : loadError);
             return false;
         }
         // 普通動作播放中：搶佔（同 playActionDirect 一致）。
         if (ubxPlayer.isPlaying() && !ubxPlayer.isWalking()) ubxPlayer.stop();
         // 若正收步（已放手）：startWalk 內部會截停再起。
         boolean ok = ubxPlayer.startWalk(prog, HardwareDirectManager.get(appContext).chest(),
-                sp, LEASE_MS);
+                sp, LEASE_MS, want);
         lastError = ok ? "" : ubxPlayer.lastError();
         return ok;
     }
@@ -166,6 +204,12 @@ public final class WalkCenter {
 
     public boolean isWalking() { return ubxPlayer.isWalking(); }
 
+    /** 正喺指定方向行（未放手）？back＝true 問向後，false 問向前。 */
+    public boolean isWalking(boolean back) {
+        return ubxPlayer.isWalking() && !ubxPlayer.isWalkFinishing()
+                && (back ? UbxPlayer.WALK_BACK : UbxPlayer.WALK_FWD).equals(ubxPlayer.walkName());
+    }
+
     // -- HTTP ----------------------------------------------------------------
 
     private static float speedParam(Map<String, String> q, String name, float def) {
@@ -177,13 +221,18 @@ public final class WalkCenter {
         return v;
     }
 
-    /** walk/start：起步或續租約（面板按住期間每 ~250ms 再叫一次，同時帶最新 speed）。 */
+    /**
+     * walk/start：起步或續租約（面板按住期間每 ~250ms 再叫一次，同時帶最新 speed）。
+     * {@code dir=fwd|back}（預設 fwd）；行緊相反方向會先硬停再起步。
+     */
     public HttpServer.ApiResponse startResponse(Map<String, String> query) {
         float sp = speedParam(query, "speed", baseSpeed);
+        boolean back = "back".equals(
+                ApiValidator.optionalEnum(query, "dir", new String[] {"fwd", "back"}, "fwd"));
         if (!MainActivity.isBootServoReady()) {
             return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"booting\"}");
         }
-        if (!hold(sp)) {
+        if (!hold(sp, back)) {
             return HttpServer.ApiResponse.error("cannot start walk: " + lastError);
         }
         return statusResponse();
@@ -209,6 +258,7 @@ public final class WalkCenter {
                 + ",\"defaultSpeed\":" + baseSpeed
                 + ",\"leaseMs\":" + LEASE_MS
                 + ",\"loaded\":" + (program != null)
+                + ",\"loadedBack\":" + (programBack != null)
                 + ",\"error\":\"" + JsonUtil.esc(lastError.isEmpty() ? loadError : lastError) + "\"}");
     }
 }

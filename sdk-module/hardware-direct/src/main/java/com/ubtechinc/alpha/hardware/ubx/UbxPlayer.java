@@ -446,6 +446,13 @@ public final class UbxPlayer {
     // ---- 按住連行（GaitWalker；放入 play 線程，所以 stop()／isPlaying() 搶佔語義照舊）----
 
     private volatile GaitWalker walker;
+    /** 最近一次 startWalk 嘅方向名（WALK_FWD／WALK_BACK）。 */
+    private volatile String walkName = WALK_FWD;
+
+    /** 行緊（或最近一次）路嘅方向：{@link #WALK_FWD}／{@link #WALK_BACK}。 */
+    public String walkName() {
+        return walkName;
+    }
 
     /**
      * 開始按住連行。已有普通播放／行緊路 → false（lastError 有原因）；
@@ -454,15 +461,29 @@ public final class UbxPlayer {
      * @param leaseMs 0＝無租約（本機 key-up 可靠）；&gt;0＝超時未 {@link #beatWalk()} 即自動放手
      */
     public boolean startWalk(GaitProgram prog, DirectChestController chest, float speed, long leaseMs) {
+        return startWalk(prog, chest, speed, leaseMs, WALK_FWD);
+    }
+
+    /** 行路名：{@link #WALK_FWD}（向前行）／{@link #WALK_BACK}（向後行）；同時係 currentName。 */
+    public static final String WALK_FWD = "walk:fwd";
+    public static final String WALK_BACK = "walk:back";
+
+    /**
+     * 同 {@link #startWalk(GaitProgram, DirectChestController, float, long)}，但可指定行路名
+     * （方向）。名只係標籤（狀態／日誌用）；實際步態由傳入嘅 {@code prog} 決定。
+     */
+    public boolean startWalk(GaitProgram prog, DirectChestController chest, float speed, long leaseMs,
+            String name) {
         GaitWalker old = walker;
         if (old != null && old.isFinishing() && playThread != null && playThread.isAlive()) {
             stop(); // 唔可以喺 synchronized 內 stop()（join 會同收尾線程互等）
         }
-        return startWalkLocked(prog, chest, speed, leaseMs);
+        return startWalkLocked(prog, chest, speed, leaseMs,
+                WALK_BACK.equals(name) ? WALK_BACK : WALK_FWD);
     }
 
     private synchronized boolean startWalkLocked(GaitProgram prog, final DirectChestController chest,
-            float speed, long leaseMs) {
+            float speed, long leaseMs, String name) {
         if ((playThread != null && playThread.isAlive())
                 || (voiceThread != null && voiceThread.isAlive())) {
             lastError = "already playing " + currentName;
@@ -476,7 +497,8 @@ public final class UbxPlayer {
         voiceStopReq = false;
         framesSent = 0;
         framesTotal = 0;
-        currentName = "walk:fwd";
+        currentName = name;
+        walkName = name;
         lastError = "";
         voiceSong = "";
         final int gen = ++playbackGen;
@@ -560,6 +582,7 @@ public final class UbxPlayer {
             }
         }
         return "\"walking\":" + walking
+                + ",\"dir\":\"" + (WALK_BACK.equals(walkName) ? "back" : "fwd") + "\""
                 + ",\"phase\":\"" + phase + "\""
                 + ",\"speed\":" + (walking && w != null ? w.speed() : 0f)
                 + ",\"cycles\":" + (walking && w != null ? w.cycles() : 0)

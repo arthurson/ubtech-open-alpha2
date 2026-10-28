@@ -139,14 +139,20 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   yoga / misc); mapping `stop` means stop-everything (action re-centre + TTS +
   music + radio + ringtone + all LEDs); `taken` reflects the real execution
   result, so the panel shows `✓` vs `✗ logged but not executed` at a glance.
-- Walk forward (hold) — Gamepad tab card + mapping value `walk:fwd` (default
-  D-pad up): hold to walk, release and the robot eases back to the standing pose
-  and stops. The gait is taken from `open-1508999860568-8step-smooth6.ubx`
-  (`scripts/ubx_to_gait.py` → `assets/gait/walk_fwd.json`: start-up frames, a
-  19-frame loop, stand pose). Speed 0.5–2.0x (1.0x = the .ubx's own speed), live:
-  map `walk:fwd` onto a stick direction and the deflection is the speed
-  (0.5x→2.0x), or keep it on a button and add `walk:fast` / `walk:slow` (stick
-  deflection or full button). A 700 ms lease (`walk/start` heartbeat, key-hold
+- Walk forward / backward (hold) — Gamepad tab card (two hold buttons) + mapping
+  values `walk:fwd` (default D-pad up) and `walk:back`: hold to walk, release and
+  the robot eases back to the standing pose and stops. The gait is taken from
+  `open-1508999860568-8step-smooth6.ubx` (`scripts/ubx_to_gait.py` →
+  `assets/gait/walk_fwd.json`: start-up frames, a 19-frame loop, stand pose).
+  The backward gait (`walk_back.json`) is the same loop played in reverse
+  (time-reversed; same start-up and stand poses) — a kinematic approximation,
+  not yet validated on hardware, so support the robot by hand on the first try.
+  `walk/start?dir=fwd|back` selects the direction; asking for the opposite
+  direction while walking hard-stops first, then restarts from the current pose;
+  holding both directions at once cancels out and stops. Speed 0.5–2.0x
+  (1.0x = the .ubx's own speed), live: map `walk:fwd` / `walk:back` onto a stick
+  direction and the deflection is the speed (0.5x→2.0x), or keep it on a button
+  and add `walk:fast` / `walk:slow` (stick deflection or full button). A 700 ms lease (`walk/start` heartbeat, key-hold
   beat) stops the robot if the page dies, the key-up is lost or the pad
   disconnects; any normal action/`ubx/stop` pre-empts the walk.
 - Speech (🗣️) — conversation UI (type-to-test `speech/semantic_simulate`), Vosk
@@ -293,7 +299,7 @@ tab; boot auto-connect is the Experiment tab's boot-voice mode.
   (`.ubx` → `traj.csv`), `ubx_walk_humanize.py` (gait de-jerk),
   `ubx_checklist.py` (live action-list check), `ubx_corpus_order.py`
   (corpus order verification), `ubx_to_gait.py` (`.ubx` → hold-to-walk
-  `walk_fwd.json`, `--check` is a CI gate; engine tests: `test-gaitwalker.py`).
+  `walk_fwd.json` + the time-reversed `walk_back.json`, `--check` is a CI gate; engine tests: `test-gaitwalker.py`).
 
 ## On-device data
 
