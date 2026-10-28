@@ -443,6 +443,129 @@ public final class UbxPlayer {
         }
     }
 
+    // ---- 按住連行（GaitWalker；放入 play 線程，所以 stop()／isPlaying() 搶佔語義照舊）----
+
+    private volatile GaitWalker walker;
+
+    /**
+     * 開始按住連行。已有普通播放／行緊路 → false（lastError 有原因）；
+     * 例外：上一次行路已放手、正喺收步，就截停佢再起（連撳唔使等收步完）。
+     *
+     * @param leaseMs 0＝無租約（本機 key-up 可靠）；&gt;0＝超時未 {@link #beatWalk()} 即自動放手
+     */
+    public boolean startWalk(GaitProgram prog, DirectChestController chest, float speed, long leaseMs) {
+        GaitWalker old = walker;
+        if (old != null && old.isFinishing() && playThread != null && playThread.isAlive()) {
+            stop(); // 唔可以喺 synchronized 內 stop()（join 會同收尾線程互等）
+        }
+        return startWalkLocked(prog, chest, speed, leaseMs);
+    }
+
+    private synchronized boolean startWalkLocked(GaitProgram prog, final DirectChestController chest,
+            float speed, long leaseMs) {
+        if ((playThread != null && playThread.isAlive())
+                || (voiceThread != null && voiceThread.isAlive())) {
+            lastError = "already playing " + currentName;
+            return false;
+        }
+        if (prog == null || chest == null || !chest.isAvailable()) {
+            lastError = "chest not available";
+            return false;
+        }
+        stopReq = false;
+        voiceStopReq = false;
+        framesSent = 0;
+        framesTotal = 0;
+        currentName = "walk:fwd";
+        lastError = "";
+        voiceSong = "";
+        final int gen = ++playbackGen;
+        final GaitWalker w = new GaitWalker(prog, new GaitWalker.Sender() {
+            @Override public boolean send(int[] angles, int timeMs) {
+                try {
+                    if (chest.playAllServos(angles, (short) timeMs)) {
+                        poseTracker.update(angles); // 命令位姿追踪（成功发送才记）
+                        framesSent++;
+                        return true;
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "walk send failed: " + e.getMessage());
+                }
+                return false;
+            }
+        }, poseTracker.snapshot(), speed, leaseMs);
+        walker = w;
+        playThread = new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    w.run();
+                } finally {
+                    Log.i(TAG, "walk end reason=" + w.endReason() + " cycles=" + w.cycles()
+                            + " gen=" + gen);
+                }
+            }
+        }, "ubx-walk");
+        playThread.start();
+        Log.i(TAG, "walk start speed=" + speed + "x lease=" + leaseMs + "ms");
+        return true;
+    }
+
+    /** 行緊路？（含收步中；收步完線程結束即 false）。 */
+    public boolean isWalking() {
+        GaitWalker w = walker;
+        Thread t = playThread;
+        return w != null && t != null && t.isAlive();
+    }
+
+    /** 行路已放手／收步中（此時再撳會截停後重起）。 */
+    public boolean isWalkFinishing() {
+        GaitWalker w = walker;
+        return w != null && w.isFinishing();
+    }
+
+    /** 放手：優雅收步回企定（線程自己結束）。冇行緊即 no-op。 */
+    public void releaseWalk() {
+        GaitWalker w = walker;
+        if (w != null) w.release();
+    }
+
+    /** 行路變速（即時、逐格平滑）。 */
+    public void setWalkSpeed(float s) {
+        GaitWalker w = walker;
+        if (w != null) w.setSpeed(s);
+    }
+
+    /** 租約續期。 */
+    public void beatWalk() {
+        GaitWalker w = walker;
+        if (w != null) w.beat();
+    }
+
+    public void setWalkLeaseMs(long ms) {
+        GaitWalker w = walker;
+        if (w != null) w.setLeaseMs(ms);
+    }
+
+    /** 行路狀態 JSON 片段（無行路時 walking=false）。 */
+    public String walkStatusJson() {
+        GaitWalker w = walker;
+        boolean walking = isWalking();
+        String phase = "idle";
+        if (walking && w != null) {
+            switch (w.phase()) {
+                case GaitWalker.PHASE_LEAD_IN: phase = "lead_in"; break;
+                case GaitWalker.PHASE_WALKING: phase = "walking"; break;
+                case GaitWalker.PHASE_STANDING: phase = "standing"; break;
+                default: phase = "idle"; break;
+            }
+        }
+        return "\"walking\":" + walking
+                + ",\"phase\":\"" + phase + "\""
+                + ",\"speed\":" + (walking && w != null ? w.speed() : 0f)
+                + ",\"cycles\":" + (walking && w != null ? w.cycles() : 0)
+                + ",\"endReason\":\"" + (w != null && !walking ? esc(w.endReason()) : "") + "\"";
+    }
+
     /** 停止播放（中斷雙線，停歌，舵機保持末位姿）。 */
     public void stop() {
         final Thread pt;

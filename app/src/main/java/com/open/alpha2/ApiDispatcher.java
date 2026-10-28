@@ -62,6 +62,7 @@ public final class ApiDispatcher {
     private final ActionsPackController actionsPackController;
     private final ApkDownloadController apkDownloadController;
     private final GamepadCenter gamepadCenter;
+    private final WalkCenter walkCenter;
 
     public ApiDispatcher(Context context, Host host, XiaozhiBridge.HostState sensorState,
             ActionDirect actionDirect, UbxApi ubxApi, ChestQuery chestQuery,
@@ -72,7 +73,7 @@ public final class ApiDispatcher {
             GrammarCenter grammarCenter, UbxPlayer ubxPlayer, MusicController musicController,
             LocalAlpha2Services localServices, SonarCenter sonarCenter,
             ActionsPackController actionsPackController, ApkDownloadController apkDownloadController,
-            GamepadCenter gamepadCenter) {
+            GamepadCenter gamepadCenter, WalkCenter walkCenter) {
         this.appContext = context.getApplicationContext();
         this.host = host;
         this.sensorState = sensorState;
@@ -99,6 +100,7 @@ public final class ApiDispatcher {
         this.actionsPackController = actionsPackController;
         this.apkDownloadController = apkDownloadController;
         this.gamepadCenter = gamepadCenter;
+        this.walkCenter = walkCenter;
     }
 
     // directChestReady() 內聯：經 appContext 不用 Activity（各 center 自帶副本）。
@@ -296,6 +298,16 @@ public final class ApiDispatcher {
                 // 枚舉校驗在 ubxSpeedResponse 內經 ApiValidator.parseUbxSpeedValue 統一做,
                 // 這裡只保證必填 (缺席即 400), 避免兩次 parse。
                 return ubxApi.ubxSpeedResponse(ApiValidator.require(query, "value"));
+
+            // -- 按住向前行（步態＝.ubx；租約守護，見 WalkCenter）-------------------------
+            case "walk/start":
+                return walkCenter.startResponse(query);
+            case "walk/stop":
+                return walkCenter.stopResponse(query);
+            case "walk/speed":
+                return walkCenter.speedResponse(query);
+            case "walk/status":
+                return walkCenter.statusResponse();
 
             // -- Speech / TTS -----------------------------------------------------------
             // engine: android only (only engine that speaks). nuance/iflytek

@@ -57,6 +57,8 @@ import java.util.Map;
  * 同 servo 一樣撳住連走，每步 10%（每格 120ms，同 Web IK 卡一致），
  * 到 0%／100% 自動停；由非 0% pose 開始時會由實際 pose 均速過渡，
  * 轉動作先均速回 0% 再行新動作，唔會突然跳）／
+ * walk:fwd（按住向前行，放手企停；步態＝.ubx，見 {@link WalkCenter}）／walk:fast／walk:slow
+ * （行路時加速／減速；搖桿向按偏轉量，掣＝全速；fwd 掛搖桿向＝偏轉量即速度）／
  * action:&lt;fileId或中英文名或xxx.ubx&gt;（經 ActionDirect 搶佔式播放）
  * 一鍵多功能：單鍵值可換行分隔多達 {@link #MAX_ACTIONS_PER_KEY} 個動作，
  * 撳一下一次過順序做晒（servo／IK 段撳住各自連走、放手一次過停；
@@ -257,7 +259,7 @@ public final class GamepadCenter {
     public static Map<String, String> defaultPadMapping() {
         Map<String, String> m = new LinkedHashMap<>();
         for (String k : PAD_KEYS) m.put(k, "none");
-        m.put("up", "action:1508999860568");
+        m.put("up", "walk:fwd");
         m.put("down", "action:1510818256622");
         m.put("left", "action:1464835936046");
         m.put("right", "action:1464835936040");
@@ -285,7 +287,7 @@ public final class GamepadCenter {
     public static Map<String, String> defaultKbMapping() {
         Map<String, String> m = new LinkedHashMap<>();
         for (String k : KB_KEYS) m.put(k, "none");
-        m.put("up", "action:1508999860568");
+        m.put("up", "walk:fwd");
         m.put("down", "action:1510818256622");
         m.put("left", "action:1464835936046");
         m.put("right", "action:1464835936040");
@@ -510,6 +512,22 @@ public final class GamepadCenter {
     }
 
     /**
+     * 行路動作值：{@code walk:fwd}（按住向前行，放手企停）／{@code walk:fast}／{@code walk:slow}
+     * （行路期間加速／減速；掣＝全速，搖桿向＝按偏轉量 1x→2x／1x→0.5x）。
+     * 步態來自 .ubx（見 {@link WalkCenter}）。
+     */
+    public static boolean isWalkAction(String a) {
+        return "walk:fwd".equals(a) || "walk:fast".equals(a) || "walk:slow".equals(a);
+    }
+
+    private static boolean hasWalkParts(String multi) {
+        for (String p : splitMultiAction(multi)) {
+            if (isWalkAction(p)) return true;
+        }
+        return false;
+    }
+
+    /**
      * 動作值合法性：none／stop／vol_up／vol_down／music_*／ring_*／led_*／led_off／
      * camera_photo／face_toggle／color_toggle／video_toggle／sonar_toggle／
      * pir_toggle／accel_toggle／xiaozhi_toggle／vosk_toggle／vosk:&lt;id&gt;／
@@ -535,6 +553,7 @@ public final class GamepadCenter {
         if ("led_off".equals(a)) return true;
         if (isServoJog(a)) return true;
         if (isIkAction(a)) return true;
+        if (isWalkAction(a)) return true;
         if (a.startsWith("action:")) {
             String rest = a.substring(7).trim();
             if (rest.isEmpty()) return false;
@@ -1019,7 +1038,7 @@ public final class GamepadCenter {
         boolean taken = executeAction(norm, logical, action);
         // 撳住 servo jog／IK 即排連走（首步上面已行，跟住每 120ms 一步；掣全速；
         // 一鍵多功能入面有幾多相關段就排幾多條，放手一次過停）。
-        if (taken) startRepeats(norm, logical, action, 1f);
+        if (taken) startRepeats(norm, logical, action, 1f, true);
         publishKey(logical, true, "robot", action, taken);
         return true;
     }
@@ -1325,6 +1344,13 @@ public final class GamepadCenter {
             }
             // 腳部 IK 動作（蹲下／蹲式／左右／左前／右前，± 撳住連走）。
             if (isIkAction(a)) return executeIkAction(a);
+            // 按住行路：fwd 即刻起步（taken＝真起到）；fast／slow 只係變速修飾，等 startRepeats 登記。
+            if (isWalkAction(a)) {
+                WalkCenter wc = walkCenter;
+                if (wc == null) return false;
+                if (a.equals("walk:fwd")) return wc.hold(wc.baseSpeed());
+                return true;
+            }
             // 本地音樂功能鍵（無歌／無載入即 false，taken 照實）。
             if (isMusicAction(a)) {
                 if (audioCenter == null) return false;
@@ -1801,6 +1827,14 @@ public final class GamepadCenter {
                 repeatDefl.put(tag, v);
             }
         }
+        boolean walkChanged = false;
+        for (String tag : new java.util.ArrayList<String>(walkHolds.keySet())) {
+            if (tag.equals(base) || tag.startsWith(base + "#")) {
+                repeatDefl.put(tag, v);
+                walkChanged = true;
+            }
+        }
+        if (walkChanged) applyWalkSpeed();
     }
 
     /** 停該鍵全部連走（含多功能 #index 條）；回 true＝之前真有排緊。 */
@@ -1840,6 +1874,146 @@ public final class GamepadCenter {
         }
     }
 
+    // -- 按住行路（walk:fwd／fast／slow）-----------------------------------------
+    // 登記「邊粒鍵／搖桿向喺度撳住咩」；放手（stopRepeats）移除，冇 fwd 撳住即收步。
+    // 速度：fwd 掣＝預設速度；fwd 掛搖桿向＝偏轉量 0.5x→2.0x（幾何，半偏≈1x）；
+    // fast／slow ＝ ×(1+t)／×(1−0.5t)（t＝掣 1、搖桿向由閾值至滿偏 0→1）。
+    // 每 120ms 續租約；本機撳住（robotHeld）無上限，網頁／腳本（無可靠 key-up）最長 15 秒。
+    private static final int WALK_UNATTENDED_MAX_TICKS = 125;
+    private final Map<String, String> walkHolds = new LinkedHashMap<>();
+    private final Map<String, Boolean> walkAnalog = new LinkedHashMap<>();
+    private final Map<String, java.util.concurrent.ScheduledFuture<?>> walkBeats =
+            new LinkedHashMap<>();
+    private volatile WalkCenter walkCenter;
+
+    /** MainActivity 建好 WalkCenter 後掛入（避免改建構子簽名）。 */
+    public void attachWalkCenter(WalkCenter w) {
+        walkCenter = w;
+    }
+
+    private static boolean isStickKey(String key) {
+        return key != null && (key.startsWith("lx_") || key.startsWith("ly_")
+                || key.startsWith("rx_") || key.startsWith("ry_"));
+    }
+
+    private static float stickT(float defl) {
+        float t = (defl - STICK_MAP_THRESHOLD) / (1f - STICK_MAP_THRESHOLD);
+        return Math.max(0f, Math.min(1f, t));
+    }
+
+    private synchronized void startWalkHolds(final String side, String key, String multi,
+            float defl, final boolean robotHeld) {
+        stopWalkHolds(side, key);
+        java.util.List<String> parts = splitMultiAction(multi);
+        boolean analog = isStickKey(key);
+        for (int i = 0; i < parts.size(); i++) {
+            String p = parts.get(i);
+            if (!isWalkAction(p)) continue;
+            final String tag = (i == 0) ? (side + ":" + key) : (side + ":" + key + "#" + i);
+            walkHolds.put(tag, p.substring(5));
+            walkAnalog.put(tag, analog);
+            repeatDefl.put(tag, Math.max(0f, Math.min(1f, defl)));
+            final int[] ticks = new int[1];
+            try {
+                walkBeats.put(tag, servoRepeatPool.scheduleAtFixedRate(new Runnable() {
+                    @Override public void run() {
+                        WalkCenter wc = walkCenter;
+                        if (wc == null) return;
+                        boolean lost = !robotHeld && ++ticks[0] > WALK_UNATTENDED_MAX_TICKS;
+                        if (robotHeld && !hasPhysicalInput()) lost = true; // 藍牙斷線：key-up 永遠唔會嚟
+                        if (lost) {
+                            Log.i(TAG, "walk hold dropped (lost key-up): " + tag);
+                            dropWalkTag(tag);
+                            return;
+                        }
+                        wc.beat();
+                    }
+                }, SERVO_REPEAT_MS, SERVO_REPEAT_MS, java.util.concurrent.TimeUnit.MILLISECONDS));
+            } catch (Throwable t) {
+                Log.w(TAG, "startWalkHolds schedule failed", t);
+            }
+        }
+        applyWalkSpeed();
+    }
+
+    /** 放手：移除該鍵全部 walk 登記；冇 fwd 撳住即收步。回 true＝之前真有登記。 */
+    private synchronized boolean stopWalkHolds(String side, String key) {
+        String base = side + ":" + key;
+        java.util.List<String> tags = new java.util.ArrayList<String>();
+        for (String tag : walkHolds.keySet()) {
+            if (tag.equals(base) || tag.startsWith(base + "#")) tags.add(tag);
+        }
+        for (String tag : tags) removeWalkTag(tag);
+        if (!tags.isEmpty()) afterWalkChange();
+        return !tags.isEmpty();
+    }
+
+    private synchronized void dropWalkTag(String tag) {
+        removeWalkTag(tag);
+        afterWalkChange();
+    }
+
+    private void removeWalkTag(String tag) {
+        walkHolds.remove(tag);
+        walkAnalog.remove(tag);
+        repeatDefl.remove(tag);
+        java.util.concurrent.ScheduledFuture<?> f = walkBeats.remove(tag);
+        if (f != null) {
+            try { f.cancel(false); } catch (Throwable ignored) {}
+        }
+    }
+
+    private synchronized void afterWalkChange() {
+        boolean anyFwd = false;
+        for (String k : walkHolds.values()) if ("fwd".equals(k)) anyFwd = true;
+        WalkCenter wc = walkCenter;
+        if (!anyFwd && wc != null) wc.release();
+        else applyWalkSpeed();
+    }
+
+    /** 按而家撳住嘅 fwd／fast／slow 重算速度並推落行緊嘅路。 */
+    private synchronized void applyWalkSpeed() {
+        WalkCenter wc = walkCenter;
+        if (wc == null) return;
+        boolean anyFwd = false;
+        float base = wc.baseSpeed();
+        float mul = 1f;
+        for (Map.Entry<String, String> e : walkHolds.entrySet()) {
+            String tag = e.getKey();
+            boolean analog = Boolean.TRUE.equals(walkAnalog.get(tag));
+            float t = analog ? stickT(repeatDeflOfTag(tag)) : 1f;
+            String k = e.getValue();
+            if ("fwd".equals(k)) {
+                anyFwd = true;
+                if (analog) base = 0.5f * (float) Math.pow(4.0, t);
+            } else if ("fast".equals(k)) {
+                mul *= 1f + t;
+            } else if ("slow".equals(k)) {
+                mul *= 1f - 0.5f * t;
+            }
+        }
+        if (anyFwd) wc.setSpeed(base * mul);
+    }
+
+    /** 有冇實體手柄／鍵盤接住（藍牙斷線兜底）。 */
+    private boolean hasPhysicalInput() {
+        try {
+            for (int id : android.view.InputDevice.getDeviceIds()) {
+                android.view.InputDevice d = android.view.InputDevice.getDevice(id);
+                if (d == null || d.isVirtual()) continue;
+                int src = d.getSources();
+                if ((src & android.view.InputDevice.SOURCE_GAMEPAD) == android.view.InputDevice.SOURCE_GAMEPAD
+                        || (src & android.view.InputDevice.SOURCE_JOYSTICK) == android.view.InputDevice.SOURCE_JOYSTICK
+                        || (src & android.view.InputDevice.SOURCE_KEYBOARD) == android.view.InputDevice.SOURCE_KEYBOARD) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Throwable t) {
+            return true; // 查唔到就唔好誤殺
+        }
+    }
+
     // -- IK 按住連走（同 servo jog 一樣：首步即行，之後每 120ms 一步）------
     /** 該多值入面有無 ik 段。 */
     private static boolean hasIkParts(String multi) {
@@ -1850,16 +2024,23 @@ public final class GamepadCenter {
     }
 
     /** 啟動該鍵所有 repeat（servo jog＋IK；無相關段即 no-op）。 */
-    private synchronized void startRepeats(String side, String key, String multi, float defl) {
+    private synchronized void startRepeats(String side, String key, String multi, float defl,
+            boolean robotHeld) {
         if (!servoJogParts(multi).isEmpty()) startServoRepeats(side, key, multi, defl);
         if (hasIkParts(multi)) startIkRepeats(side, key, multi, defl);
+        if (hasWalkParts(multi)) startWalkHolds(side, key, multi, defl, robotHeld);
+    }
+
+    private synchronized void startRepeats(String side, String key, String multi, float defl) {
+        startRepeats(side, key, multi, defl, false);
     }
 
     /** 停該鍵所有 repeat（servo jog＋IK）；回 true＝之前真有排緊。 */
     private synchronized boolean stopRepeats(String side, String key) {
         boolean servo = stopServoRepeat(side, key);
         boolean ik = stopIkRepeat(side, key);
-        return servo || ik;
+        boolean walk = stopWalkHolds(side, key);
+        return servo || ik || walk;
     }
 
     /** 多值入面每個 ik 段各排一條連走（tag＝side:key／side:key#index）。 */
@@ -2420,7 +2601,7 @@ public final class GamepadCenter {
                     + "xiaozhi_toggle/vosk_toggle/vosk:<id>/eq:<preset>/radio:<uuid或名>/"
                     + "servo1-22+/servo1-22-/ik:squat+/ik:squat-/"
                     + "ik:ysquat+/ik:ysquat-/ik:lr+/ik:lr-/"
-                    + "ik:fsplit+/ik:fsplit-/ik:fsplit2+/ik:fsplit2-/action:<id>, got: " + action);
+                    + "ik:fsplit+/ik:fsplit-/ik:fsplit2+/ik:fsplit2-/walk:fwd/walk:fast/walk:slow/action:<id>, got: " + action);
         }
         Map<String, String> mapping = loadMapping(side);
         mapping.put(key, action);
@@ -2842,7 +3023,7 @@ public final class GamepadCenter {
             String mapped = padMap != null ? padMap.get(dirKey) : null;
             if (!isMappedValue(mapped)) return false;
             boolean taken = executeAction(SIDE_PAD, dirKey, mapped);
-            if (taken) startRepeats(SIDE_PAD, dirKey, mapped, defl);
+            if (taken) startRepeats(SIDE_PAD, dirKey, mapped, defl, "robot".equals(source));
             publishKey(dirKey, true, source, mapped, taken);
             return taken;
         }
@@ -3037,6 +3218,16 @@ public final class GamepadCenter {
                 }
             }
             ikRepeaters.clear();
+            for (java.util.concurrent.ScheduledFuture<?> f : walkBeats.values()) {
+                try {
+                    if (f != null) f.cancel(false);
+                } catch (Throwable ignored) {
+                }
+            }
+            walkBeats.clear();
+            walkHolds.clear();
+            walkAnalog.clear();
+            if (walkCenter != null) walkCenter.release();
             servoRepeatPool.shutdownNow();
         } catch (Throwable ignored) {
         }

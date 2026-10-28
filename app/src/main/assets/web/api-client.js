@@ -1067,6 +1067,29 @@ const Alpha2Api = (function() {
   }
 
   // ── upload ──────────────────────────────────────────────
+  // ── walk ──────────────────────────────────────────────
+  function walkSpeed(params) {
+    if (params && params.value != null) assertRange(Number(params.value), 0.5, 2.0, 'value');
+    // 設預設行路速度（同時即時套用於行緊嘅路）
+    return api('walk/speed', params);
+  }
+
+  function walkStart(params) {
+    if (params && params.speed != null) assertRange(Number(params.speed), 0.5, 2.0, 'speed');
+    // 按住向前行：未行就起步，行緊就續租約並更新速度
+    return api('walk/start', params);
+  }
+
+  function walkStatus(params) {
+    // 行路狀態
+    return api('walk/status', params);
+  }
+
+  function walkStop(params) {
+    // 放手：由當前姿勢收返企定姿勢然後停（hard=true 即刻硬停，舵機保持末位姿）
+    return api('walk/stop', params);
+  }
+
   // ── websocket ──────────────────────────────────────────────
   // ── xiaozhi ──────────────────────────────────────────────
   function xiaozhiActivationStatus(params) {
@@ -1349,6 +1372,10 @@ const Alpha2Api = (function() {
     systemMusicStatus,
     systemMusicStop,
     systemMusicVolume,
+    walkSpeed,
+    walkStart,
+    walkStatus,
+    walkStop,
     xiaozhiActivationStatus,
     xiaozhiAutoMode,
     xiaozhiBootVoiceGet,

@@ -139,6 +139,16 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   yoga / misc); mapping `stop` means stop-everything (action re-centre + TTS +
   music + radio + ringtone + all LEDs); `taken` reflects the real execution
   result, so the panel shows `✓` vs `✗ logged but not executed` at a glance.
+- Walk forward (hold) — Gamepad tab card + mapping value `walk:fwd` (default
+  D-pad up): hold to walk, release and the robot eases back to the standing pose
+  and stops. The gait is taken from `open-1508999860568-8step-smooth6.ubx`
+  (`scripts/ubx_to_gait.py` → `assets/gait/walk_fwd.json`: start-up frames, a
+  19-frame loop, stand pose). Speed 0.5–2.0x (1.0x = the .ubx's own speed), live:
+  map `walk:fwd` onto a stick direction and the deflection is the speed
+  (0.5x→2.0x), or keep it on a button and add `walk:fast` / `walk:slow` (stick
+  deflection or full button). A 700 ms lease (`walk/start` heartbeat, key-hold
+  beat) stops the robot if the page dies, the key-up is lost or the pad
+  disconnects; any normal action/`ubx/stop` pre-empts the walk.
 - Speech (🗣️) — conversation UI (type-to-test `speech/semantic_simulate`), Vosk
   offline ASR card (load/listen, model download in Experiment), TTS
   (engine/lang/voice pickers + optional auto-follow-Vosk).
@@ -282,7 +292,8 @@ tab; boot auto-connect is the Experiment tab's boot-voice mode.
   diffs), `ubx_gate.py` (official dispatch simulation), `ubx_to_traj.py`
   (`.ubx` → `traj.csv`), `ubx_walk_humanize.py` (gait de-jerk),
   `ubx_checklist.py` (live action-list check), `ubx_corpus_order.py`
-  (corpus order verification).
+  (corpus order verification), `ubx_to_gait.py` (`.ubx` → hold-to-walk
+  `walk_fwd.json`, `--check` is a CI gate; engine tests: `test-gaitwalker.py`).
 
 ## On-device data
 

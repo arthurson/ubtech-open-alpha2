@@ -43,9 +43,9 @@ var GAMEPAD_KB_GROUPS = [
 // ring 揀鈴聲（系統預設電話鈴＋鈴聲名）；led 揀部位＋效果＋色；camera 揀影相／追蹤；
 // ik 揀蹲下／一字馬＋方向（撳住連走）；action 由動作下拉選）。
 var GAMEPAD_MAX_PER_KEY = 6;
-var GAMEPAD_KINDS = ["none", "stop", "servo", "ik", "music", "radio", "ring", "led", "camera", "sensor", "voice", "action"];
+var GAMEPAD_KINDS = ["none", "stop", "servo", "ik", "walk", "music", "radio", "ring", "led", "camera", "sensor", "voice", "action"];
 var GAMEPAD_KIND_KEYS = { none: "gamepad_kind_none", stop: "gamepad_kind_stop",
-  servo: "gamepad_kind_servo", ik: "gamepad_kind_ik",
+  servo: "gamepad_kind_servo", ik: "gamepad_kind_ik", walk: "gamepad_kind_walk",
   music: "gamepad_kind_music", radio: "gamepad_kind_radio",
   ring: "gamepad_kind_ring",
   led: "gamepad_kind_led", camera: "gamepad_kind_camera", sensor: "gamepad_kind_sensor",
@@ -98,6 +98,12 @@ function gamepadParseSubKeyId(id, prefix) {
   if (!isFinite(idx)) idx = 0;
   return { key: rest.substring(0, sep), idx: idx };
 }
+
+// 行路（同後端 isWalkAction 對齊）：fwd＝按住向前行（放手企停）；fast／slow＝行路時加速／減速
+// （搖桿向按偏轉量，掣＝全速）；fwd 掛搖桿向時偏轉量即速度。
+var GAMEPAD_WALK_FNS = ["walk:fwd", "walk:fast", "walk:slow"];
+var GAMEPAD_WALK_FN_KEYS = { "walk:fwd": "gamepad_walk_fwd", "walk:fast": "gamepad_walk_fast",
+  "walk:slow": "gamepad_walk_slow" };
 
 // 相機（同後端 isCameraAction 對齊；追蹤係 toggle：face_toggle／color_toggle）。
 var GAMEPAD_CAMERA_FNS = ["camera_photo", "face_toggle", "color_toggle", "video_toggle"];
@@ -684,7 +690,7 @@ function gamepadParseValue(v) {
     ringSel: "ring_phone", ledPart: "head", ledPreset: "flash", ledColor: "1",
     ledSpeed: "500", cameraFn: "camera_photo", sensorFn: "sonar_toggle",
     voiceFn: "xiaozhi_toggle", radioFn: "radio_toggle", eqPreset: "normal", actionId: "",
-    ikFn: "ik:squat+" };
+    ikFn: "ik:squat+", walkFn: "walk:fwd" };
   if (!v) return out;
   if (v === "none" || v === "stop") {
     out.kind = v;
@@ -747,6 +753,11 @@ function gamepadParseValue(v) {
   if (m) {
     out.kind = "ik";
     out.ikFn = "ik:" + (m[1] === "fb" ? "fsplit" : m[1]) + m[2];
+    return out;
+  }
+  if (v === "walk:fwd" || v === "walk:fast" || v === "walk:slow") {
+    out.kind = "walk";
+    out.walkFn = v;
     return out;
   }
   if (v.indexOf("action:") === 0) {
@@ -1274,6 +1285,7 @@ function gamepadRelabelSelect(sel) {
   else if (id.indexOf("gpLedPreset_") === 0) map = GAMEPAD_LED_PRESET_KEYS;
   else if (id.indexOf("gpCameraSel_") === 0) map = GAMEPAD_CAM_FN_KEYS;
   else if (id.indexOf("gpSensorSel_") === 0) map = GAMEPAD_SENSOR_FN_KEYS;
+  else if (id.indexOf("gpWalkSel_") === 0) map = GAMEPAD_WALK_FN_KEYS;
   else if (id.indexOf("gpActionKind_") === 0) map = GAMEPAD_ACTION_KIND_KEYS;
   if (id.indexOf("gpVoiceSel_") === 0) {
     // 小智／Vosk 組名跟語言。
@@ -1481,6 +1493,8 @@ function gamepadBuildMappingSubRow(side, k, idx, parsed, isFirst) {
       var cm = document.getElementById(gamepadSubId("gpCameraSel", s, kk, ii));
       var sn = document.getElementById(gamepadSubId("gpSensorSel", s, kk, ii));
       var vc = document.getElementById(gamepadSubId("gpVoiceWrap", s, kk, ii));
+      var wk = document.getElementById(gamepadSubId("gpWalkSel", s, kk, ii));
+      if (wk) wk.style.display = v === "walk" ? "inline" : "none";
       if (sw) sw.style.display = v === "servo" ? "inline" : "none";
       if (iw) iw.style.display = v === "ik" ? "inline" : "none";
       if (aw) aw.style.display = v === "action" ? "inline" : "none";
@@ -1540,6 +1554,16 @@ function gamepadBuildMappingSubRow(side, k, idx, parsed, isFirst) {
     if (f[0] === parsed.cameraFn) o2.selected = true;
     cameraSel.appendChild(o2);
   });
+  var walkSel = document.createElement("select");
+  walkSel.id = gamepadSubId("gpWalkSel", side, k, idx);
+  walkSel.style.display = parsed.kind === "walk" ? "inline" : "none";
+  GAMEPAD_WALK_FNS.forEach(function (f) {
+    var o3 = document.createElement("option");
+    o3.value = f;
+    o3.textContent = t(GAMEPAD_WALK_FN_KEYS[f]);
+    if (f === parsed.walkFn) o3.selected = true;
+    walkSel.appendChild(o3);
+  });
   var sensorSel = document.createElement("select");
   sensorSel.id = gamepadSubId("gpSensorSel", side, k, idx);
   sensorSel.style.display = parsed.kind === "sensor" ? "inline" : "none";
@@ -1592,6 +1616,7 @@ function gamepadBuildMappingSubRow(side, k, idx, parsed, isFirst) {
   sub.appendChild(ringWrap);
   sub.appendChild(ledWrap);
   sub.appendChild(cameraSel);
+  sub.appendChild(walkSel);
   sub.appendChild(sensorSel);
   sub.appendChild(voiceWrap);
   sub.appendChild(actionWrap);
@@ -1775,6 +1800,10 @@ function gamepadReadSubRowValue(side, k, idx) {
     var rd = document.getElementById(gamepadSubId("gpRadioSel", side, k, idx));
     // 收藏都無即空單：回 null 成行跳過，唔亂存。
     return (rd && rd.value) ? rd.value : null;
+  }
+  if (kind === "walk") {
+    var wsel = document.getElementById(gamepadSubId("gpWalkSel", side, k, idx));
+    return (wsel && wsel.value) ? wsel.value : "walk:fwd";
   }
   if (kind === "camera") {
     var cm = document.getElementById(gamepadSubId("gpCameraSel", side, k, idx));
@@ -3444,9 +3473,69 @@ function gamepadBindFullscreen() {
   } catch (e) {}
 }
 
+// ---------------- 按住向前行（面板掣；步態＝.ubx，見後端 WalkCenter） ----------------
+// 按住期間每 250ms 叫一次 walk/start（續租約＋帶最新速度）；後端租約 700ms，
+// 所以頁面死機／斷網／切走分頁都會自動收步。放手／離開／失焦即 walk/stop。
+var walkHoldTimer = null;
+var walkHolding = false;
+
+function walkSpeedValue() {
+  var el = document.getElementById("walkSpeed");
+  var v = el ? parseFloat(el.value) : 1;
+  return (isFinite(v) && v >= 0.5 && v <= 2) ? v : 1;
+}
+
+function walkSetState(st) {
+  var el = document.getElementById("walkState");
+  if (el) el.textContent = st ? t("walk_state_" + st) : "";
+}
+
+function walkTick() {
+  return Alpha2Api.walkStart({ speed: walkSpeedValue() }).then(function (r) {
+    if (r && r.ok === false) { walkSetState(null); if (r.error === "booting") walkHoldEnd(); return; }
+    walkSetState(r && r.phase ? r.phase : "walking");
+  }).catch(function () { walkSetState(null); });
+}
+
+function walkHoldBegin(ev) {
+  if (walkHolding) return;
+  walkHolding = true;
+  try { if (ev && ev.target && ev.target.setPointerCapture && ev.pointerId != null) ev.target.setPointerCapture(ev.pointerId); } catch (e) {}
+  walkTick();
+  walkHoldTimer = setInterval(walkTick, 250);
+}
+
+function walkHoldEnd() {
+  if (!walkHolding) return;
+  walkHolding = false;
+  if (walkHoldTimer) { clearInterval(walkHoldTimer); walkHoldTimer = null; }
+  Alpha2Api.walkStop({}).then(function (r) {
+    walkSetState(r && r.walking ? "standing" : null);
+  }).catch(function () { walkSetState(null); });
+}
+
+function walkCardInit() {
+  var btn = document.getElementById("walkHoldBtn");
+  if (!btn || btn.getAttribute("data-bound")) return;
+  btn.setAttribute("data-bound", "1");
+  btn.addEventListener("pointerdown", function (e) { e.preventDefault(); walkHoldBegin(e); });
+  ["pointerup", "pointercancel", "lostpointercapture", "pointerleave"].forEach(function (n) {
+    btn.addEventListener(n, function () { walkHoldEnd(); });
+  });
+  btn.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  window.addEventListener("blur", walkHoldEnd);
+  document.addEventListener("visibilitychange", function () { if (document.hidden) walkHoldEnd(); });
+  var sp = document.getElementById("walkSpeed");
+  if (sp) sp.addEventListener("input", function () {
+    var v = document.getElementById("walkSpeedVal");
+    if (v) v.textContent = walkSpeedValue().toFixed(1) + "x";
+  });
+}
+
 // ---------------- 初始化（app-log.js init 呼叫） ----------------
 
 function gamepadInitPage() {
+  try { walkCardInit(); } catch (e) {}
   gamepadBuildKeyboardDiagram();
   try { gamepadBindDiagrams(); } catch (e) {}
   try { gamepadBindFullscreen(); } catch (e) {}

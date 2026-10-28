@@ -273,6 +273,21 @@
 
   <!-- ============ TAB: GAMEPAD (BT 手柄／鍵盤，兩端共用映射) ============ -->
   <div id="tab-gamepad" class="tab-page">
+    <section class="card" id="walkCard">
+      <h2 data-i18n="walk_card_heading">🚶 向前行（按住）</h2>
+      <div class="row" style="align-items:center">
+        <button id="walkHoldBtn" style="min-width:150px;min-height:56px;font-size:1.1em;touch-action:none;user-select:none;-webkit-user-select:none"
+                data-i18n="walk_card_hold">按住向前行</button>
+        <span id="walkState" class="hint"></span>
+      </div>
+      <div class="row" style="align-items:center">
+        <label><span data-i18n="walk_card_speed">速度</span>
+          <input type="range" id="walkSpeed" min="0.5" max="2" step="0.1" value="1" style="vertical-align:middle">
+          <span id="walkSpeedVal">1.0x</span></label>
+      </div>
+      <div class="hint" data-i18n="walk_card_hint">按住就行，放手即收步企定。</div>
+    </section>
+
     <section class="card">
       <h2 data-i18n="gamepad_manage_heading">🔷 藍牙</h2>
       <div class="row">

@@ -164,6 +164,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     private SpeechCenter speechCenter;
     private SonarCenter sonarCenter;
     private GamepadCenter gamepadCenter;
+    private WalkCenter walkCenter;
 
     // -- XiaozhiBridge.HostState (宿主縫)：TTS 兩法轉交 SpeechCenter，sonar 四法
     // 轉交 SonarCenter（delegate＋null-guard；MCP 4 tool 經這裡照讀）。 --
@@ -396,6 +397,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         gamepadCenter = new GamepadCenter(this, actionDirect, ubxApi, ubxPlayer, deviceStatus,
                 audioCenter, ringtoneCenter, ledCenter, speechCenter, cameraApi, sonarCenter,
                 xiaozhiBridge, voskApi);
+        // 按住向前行（步態 assets/gait/walk_fwd.json，源自 .ubx）；手柄 walk:* 映射同 HTTP walk/* 共用。
+        walkCenter = new WalkCenter(this, ubxPlayer);
+        gamepadCenter.attachWalkCenter(walkCenter);
         // dispatcher 包全部上面 controller (+speechCenter 做 Host；sensorState
         // 繼續經 this——TTS／sonar 全部轉交給對應 center；servo/sonar 直調
         // sonarCenter)。
@@ -404,7 +408,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 chestUpgrade, servoUpgrade, ttsCenter, voskApi, ledCenter, semanticCenter, deviceStatus,
                 cameraApi, audioCenter, ringtoneCenter, micCenter, robot, grammarCenter,
                 ubxPlayer, musicController, localServices, sonarCenter, actionsPackController,
-                apkDownloadController, gamepadCenter);
+                apkDownloadController, gamepadCenter, walkCenter);
 
         // 播歌指示燈（disco 開住播歌）同「小智已連線」燈共用胸口同一盞 mute 燈，
         // 由 XiaozhiBridge 做 OR。起喺 xiaozhiBridge 之後。

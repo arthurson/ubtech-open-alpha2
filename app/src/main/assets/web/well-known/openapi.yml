@@ -63,6 +63,8 @@ tags:
   description: 網絡電台 (Radio Browser API)
 - name: system
   description: 不經機身服務的系統功能 (/api/system/*)
+- name: walk
+  description: 按住向前行（步態＝.ubx；放手即收步企定；速度 0.5–2.0x；租約守護）
 - name: gamepad
   description: BT 手柄／鍵盤（機器人直連 HID；映射分手柄／鍵盤兩邊）
 - name: xiaozhi
@@ -1106,6 +1108,120 @@ paths:
                     restarted:
                       type: boolean
       operationId: ubxSpeed_get
+  /api/walk/start:
+    get:
+      tags:
+      - walk
+      summary: 按住向前行：未行就起步，行緊就續租約並更新速度
+      description: 面板按住期間要每 ~250ms 再叫一次（租約 700ms，超時冇續即自動放手收步）；開機企姿完成前回 {ok:false,error:booting}。起步時會搶佔正在播放嘅普通動作。
+      parameters:
+      - name: speed
+        in: query
+        schema:
+          type: number
+          minimum: 0.5
+          maximum: 2.0
+        description: 速度倍率（1.0＝.ubx 原速）；唔帶用預設速度
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 行路狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - $ref: '#/components/schemas/WalkStatus'
+      operationId: walkStart_get
+  /api/walk/stop:
+    post:
+      tags:
+      - walk
+      summary: 放手：由當前姿勢收返企定姿勢然後停（hard=true 即刻硬停，舵機保持末位姿）
+      parameters:
+      - name: hard
+        in: query
+        schema:
+          type: boolean
+          default: false
+        description: true＝硬停（同 ubx/stop 一樣保持末位姿，唔收步）
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 行路狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - $ref: '#/components/schemas/WalkStatus'
+      operationId: walkStop_post
+  /api/walk/speed:
+    get:
+      tags:
+      - walk
+      summary: 設預設行路速度（同時即時套用於行緊嘅路）
+      parameters:
+      - name: value
+        in: query
+        required: true
+        schema:
+          type: number
+          minimum: 0.5
+          maximum: 2.0
+        description: 速度倍率 0.5–2.0
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 行路狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - $ref: '#/components/schemas/WalkStatus'
+      operationId: walkSpeed_get
+  /api/walk/status:
+    get:
+      tags:
+      - walk
+      summary: 行路狀態
+      parameters:
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: 行路狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - $ref: '#/components/schemas/WalkStatus'
+      operationId: walkStatus_get
   /api/speech/tts:
     get:
       tags:
@@ -7080,6 +7196,32 @@ components:
         minLength: 8
         maxLength: 64
   schemas:
+    WalkStatus:
+      type: object
+      properties:
+        walking:
+          type: boolean
+          description: 行路線程仍然喺度（包括收步中）
+        phase:
+          type: string
+          enum: [idle, lead_in, walking, standing]
+        speed:
+          type: number
+          description: 當前實際速度倍率（行緊先有，0＝冇行）
+        cycles:
+          type: integer
+          description: 已完成嘅步態循環數（每個循環 = 2 個步幅）
+        endReason:
+          type: string
+          description: 上一次行路結束原因（released／lease／stopped／send-failed）
+        defaultSpeed:
+          type: number
+        leaseMs:
+          type: integer
+        loaded:
+          type: boolean
+        error:
+          type: string
     OkWrapper:
       type: object
       required:

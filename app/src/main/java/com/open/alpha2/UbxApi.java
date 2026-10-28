@@ -110,7 +110,7 @@ public final class UbxApi {
             // 正在播時即時生效：用新速度由頭重播同一文件（内部快照隔离，旧计划安全交接）。
             boolean restarted = false;
             java.io.File last = actionDirect.getLastPlayedFile();
-            if (ubxPlayer.isPlaying() && last != null && last.isFile()) {
+            if (ubxPlayer.isPlaying() && !ubxPlayer.isWalking() && last != null && last.isFile()) {
                 try {
                     UbxFile rubx = UbxParser.parseFile(last);
                     HardwareDirectManager rdm = HardwareDirectManager.get(appContext);
