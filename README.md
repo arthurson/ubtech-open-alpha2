@@ -141,7 +141,10 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   result, so the panel shows `✓` vs `✗ logged but not executed` at a glance.
 - Walk forward / backward (hold) — Gamepad tab card (two hold buttons) + mapping
   values `walk:fwd` (default D-pad up) and `walk:back`: hold to walk, release and
-  the robot eases back to the standing pose and stops. The gait is taken from
+  the robot finishes the step to the nearest "feet-down" frame of the loop
+  (≤ ~half a step; 4 per loop, picked from the pose data) and then eases back
+  to the standing pose and stops (lease expiry / `walk/stop?hard=true` skip
+  the wait). The gait is taken from
   `open-1508999860568-8step-smooth6.ubx` (`scripts/ubx_to_gait.py` →
   `assets/gait/walk_fwd.json`: start-up frames, a 19-frame loop, stand pose).
   The backward gait (`walk_back.json`) is the same loop played in reverse

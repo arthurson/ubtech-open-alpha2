@@ -72,6 +72,15 @@ public final class GaitWalkerTest {
                 pose(120), 5, 40, 200, 3, 0);
     }
 
+    /** 無 leadIn、cycle 4 格（100,110,125,115），著地格＝第 2 格（pose 125），home 全 120。 */
+    private static GaitProgram progStand(int frameMs, int[] stand) {
+        return new GaitProgram(
+                new int[0][], new int[0],
+                new int[][]{pose(100), pose(110), pose(125), pose(115)},
+                new int[]{frameMs, frameMs, frameMs, frameMs},
+                pose(120), 5, 40, 200, 3, 0, stand);
+    }
+
     private static Thread start(GaitWalker w) {
         Thread t = new Thread(w, "test-walker");
         t.start();
@@ -86,6 +95,11 @@ public final class GaitWalkerTest {
             Thread.sleep(5);
         }
         return c.call();
+    }
+
+    private static int indexOf(int[] arr, int v) {
+        for (int i = 0; i < arr.length; i++) if (arr[i] == v) return i;
+        return -1;
     }
 
     private static long nowMs() { return System.nanoTime() / 1000000L; }
@@ -297,6 +311,71 @@ public final class GaitWalkerTest {
             t.interrupt();
             t.join(1000);
             check(!t.isAlive() && nowMs() - t0 < 500, "stand-down: interrupt ends quickly");
+        }
+
+        // ---- 11) 著地收步格：放手後行到著地格先收步 ----
+        {
+            boolean bad = false;
+            try { progStand(40, new int[]{9}); } catch (IllegalArgumentException e) { bad = true; }
+            check(bad, "standFrames: out-of-range index rejected");
+            check(progStand(40, new int[]{2}).isStandFrame(2) && !progStand(40, new int[]{2}).isStandFrame(1),
+                    "standFrames: isStandFrame");
+            check(prog(40).standFrames.length == 0, "standFrames: old 10-arg ctor = none");
+
+            FakeSender fs = new FakeSender();
+            final GaitWalker w = new GaitWalker(progStand(100, new int[]{2}), fs, null, 1.0f, 0);
+            Thread t = start(w);
+            Thread.sleep(130);                       // 行緊循環中途
+            w.release();
+            t.join(3000);
+            check(!t.isAlive(), "stand-frame: thread ends");
+            int n = fs.size();
+            Rec home = fs.get(n - 1);
+            Rec lastCycle = fs.get(n - 2);
+            eq(120, home.a[0], "stand-frame: last is home");
+            eq(125, lastCycle.a[0], "stand-frame: frame before home is the stand frame");
+            eq("released", w.endReason(), "stand-frame: endReason released");
+            // 順序仍然係循環順序（每格係上一格嘅下一格）
+            int[] cyc = {100, 110, 125, 115};
+            boolean order = true;
+            for (int i = 1; i < n - 1; i++) {
+                int prev = indexOf(cyc, fs.get(i - 1).a[0]);
+                int cur = indexOf(cyc, fs.get(i).a[0]);
+                if (prev < 0 || cur < 0 || cur != (prev + 1) % 4) order = false;
+            }
+            check(order, "stand-frame: cycle order kept while finishing");
+        }
+
+        // ---- 12) 租約過期：唔等著地格，即刻收步 ----
+        {
+            FakeSender fs = new FakeSender();
+            final GaitWalker w = new GaitWalker(progStand(600, new int[]{2}), fs, null, 1.0f, 100);
+            long t0 = nowMs();
+            Thread t = start(w);
+            t.join(3000);
+            check(!t.isAlive(), "lease+stand: thread ends");
+            eq("lease", w.endReason(), "lease+stand: endReason lease");
+            int n = fs.size();
+            eq(120, fs.get(n - 1).a[0], "lease+stand: home sent");
+            check(n == 2 && fs.get(0).a[0] == 100, "lease+stand: no extra cycle frames (n=" + n + ")");
+            check(nowMs() - t0 < 1500, "lease+stand: ended well before reaching stand frame");
+        }
+
+        // ---- 13) 著地收步期間硬停：唔送收步 ----
+        {
+            FakeSender fs = new FakeSender();
+            final GaitWalker w = new GaitWalker(progStand(400, new int[]{2}), fs, null, 1.0f, 0);
+            Thread t = start(w);
+            Thread.sleep(150);
+            w.release();
+            Thread.sleep(20);
+            t.interrupt();
+            t.join(2000);
+            check(!t.isAlive(), "stand-frame hard stop: thread ends");
+            boolean homeSent = false;
+            for (int i = 0; i < fs.size(); i++) if (fs.get(i).a[0] == 120) homeSent = true;
+            check(!homeSent, "stand-frame hard stop: no home blend");
+            eq("stopped", w.endReason(), "stand-frame hard stop: endReason");
         }
 
         System.out.println("GaitWalkerTest: passed=" + passed + " failed=" + failed);

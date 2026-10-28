@@ -12,6 +12,9 @@
           要求 f[i] ≈ f[i+p]，容差 CYCLE_TOL），首尾可無縫接返。
   home    企定姿勢：播序最後一格（原檔收步終點）。放手就由當前姿勢線性收返呢個姿勢。
 
+standFrames  著地收步格：循環入面腿部最近 home 嘅局部最低點（見 find_stand_frames）。
+          放手後引擎會繼續行到最近一格先收步，避免單腳懸空時就收（由姿勢推斷，未經實機驗證）。
+
 輸出 app/src/main/assets/gait/walk_fwd.json，Java 側 WalkCenter 讀入後交畀
 GaitWalker。所有角度都會 clamp 入 SERVO_CALIBRATION（同 ubx_walk_humanize.CAL
 一致），超出即報錯唔寫檔。
@@ -41,6 +44,7 @@ DEFAULT_OUT_BACK = os.path.join(os.path.dirname(DEFAULT_OUT), "walk_back.json")
 LEAD_STATIC_DEV = 6   # 起步段頭幾格同 home 最大差 <= 此值視為靜止，跳過
 CYCLE_TOL = 6         # 週期偵測：f[i] 同 f[i+p] 每軸最大差容差
 MIN_PERIOD = 4
+LEG_SERVOS = range(5, 16)   # servo 6..16（0-based 索引 5..15）：兩條腿
 
 # 收步／起步限速：單位 = 每 servo 單位 ms（原檔最慢收步 ≈ 31 ms/unit，起步 ≈ 28）。
 BLEND_MS_PER_UNIT = 31
@@ -94,6 +98,22 @@ def find_period(frames):
     return None
 
 
+def find_stand_frames(cycle_angles, home):
+    """著地收步格：循環入面「腿部離企定姿勢最近」嘅局部最低點（循環首尾相接）。
+
+    量度＝腿部舵機同 home 嘅絕對差總和。局部最低點＝兩邊都唔比佢近，即步態經過
+    「雙腳近乎企直」嗰刻；放手後行到呢啲格先收步，收步行程最短、重心最穩。
+    （由姿勢數據推斷，唔係原 .ubx 標明；未經實機驗證。）
+    """
+    n = len(cycle_angles)
+    dev = [sum(abs(a[j] - home[j]) for j in LEG_SERVOS) for a in cycle_angles]
+    out = []
+    for i in range(n):
+        if dev[i] <= dev[i - 1] and dev[i] < dev[(i + 1) % n]:
+            out.append(i)
+    return out
+
+
 def build(path):
     h = load_helpers()
     m = h.parse_ubx(path)
@@ -132,6 +152,7 @@ def build(path):
         "note": "由 scripts/ubx_to_gait.py 生成，勿手改；ms 為 1.0x 時每格時長",
         "direction": "fwd",
         "home": home,
+        "standFrames": find_stand_frames([a for a, _ in cycle], home),
         "leadIn": {"ms": [ms for _, ms in lead], "frames": [a for a, _ in lead]},
         "cycle": {"ms": [ms for _, ms in cycle], "frames": [a for a, _ in cycle]},
         "blend": {"msPerUnit": BLEND_MS_PER_UNIT, "minMs": BLEND_MIN_MS, "maxMs": BLEND_MAX_MS},
@@ -163,6 +184,8 @@ def reverse_gait(doc):
     back["note"] = "由 scripts/ubx_to_gait.py 生成（前行步態時間反轉），勿手改；ms 為 1.0x 時每格時長"
     back["direction"] = "back"
     back["cycle"] = {"ms": ms, "frames": frames}
+    # 著地格同循環一齊倒序：P[k] = c[(n-k)%n]，所以前行格 s 對應後行格 (n-s)%n。
+    back["standFrames"] = sorted((n - sf) % n for sf in doc.get("standFrames", []))
     return back
 
 
@@ -186,6 +209,13 @@ def verify_reverse(fwd, back):
     for key in ("home", "leadIn", "blend", "limits"):
         if back[key] != fwd[key]:
             return "%s 同前行唔一致" % key
+    fs, bs = fwd.get("standFrames", []), back.get("standFrames", [])
+    if len(fs) != len(bs):
+        return "standFrames 數量唔同"
+    for sf in fs:
+        k = (n - sf) % n
+        if k not in bs or b["frames"][k] != f["frames"][sf]:
+            return "standFrames 鏡像唔啱（前行第 %d 格）" % sf
     return None
 
 

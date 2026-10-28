@@ -9,9 +9,11 @@ package com.ubtechinc.alpha.hardware.ubx;
  * </pre>
  *
  * <ul>
- *   <li><b>放手即停</b>：{@link #release()} 喚醒等待，馬上由「當前指令姿勢」按偏差大細
- *       線性收返 home（servo 由實際位置接手，唔會突跳）；收步時間 =
- *       偏差 × blendMsPerUnit，夾入 [blendMinMs, blendMaxMs]。</li>
+ *   <li><b>放手收步</b>：{@link #release()} 喚醒等待。若 {@link GaitProgram#standFrames}
+ *       非空，先繼續行到最近一個著地收步格（放手時若已喺該格就唔使等），等該格行完先收；
+ *       否則即刻由「當前指令姿勢」收步。收步＝按偏差大細線性收返 home（servo 由實際位置
+ *       接手，唔會突跳）；時間 = 偏差 × blendMsPerUnit，夾入 [blendMinMs, blendMaxMs]。
+ *       租約過期（網頁死機）同硬停都唔等著地格：租約過期即刻收步，硬停即停。</li>
  *   <li><b>變速</b>：{@link #setSpeed} 即時生效，逐格縮放時長（平滑過渡，唔會一格跳）；
  *       範圍 0.5–2.0（同 UbxPlayer 一致）。另有每格最快限速 minMsPerUnit 保護舵機。</li>
  *   <li><b>租約（lease）</b>：leaseMs &gt; 0 時，超過該時間未 {@link #beat()} 視為放手
@@ -165,11 +167,32 @@ public final class GaitWalker implements Runnable {
                 cycles++;
             }
         }
-        if (endReason.isEmpty()) endReason = releaseReq ? "released" : "lease";
+        final boolean graceful = releaseReq;   // 迴圈結束嗰刻係咪人手放手（唔係租約過期）
+        if (endReason.isEmpty()) endReason = graceful ? "released" : "lease";
 
         // 3) 收步：由當前指令姿勢回 home（冇送過任何嘢就唔使收）
         phase = PHASE_STANDING;
         if (!sentAny) return;
+        // 3a) 正常放手（唔係租約過期）：先行到著地收步格，等該格行完先收。
+        //     最多行 n 格（standFrames 非空必有一格會中），interrupt 照舊即停。
+        if (graceful && prog.standFrames.length > 0 && frameIdx >= 0) {
+            int j = frameIdx;
+            int guardN = n;
+            while (!prog.isStandFrame(j) && guardN-- > 0) {
+                sleepQuiet(next);                      // 等當前格行完（忽略放手）
+                j = (j + 1) % n;
+                effSpeed = smooth(effSpeed, clampSpeed(targetSpeed));
+                int dur = scaled(prog.cycleMs[j], effSpeed);
+                int guard = clampMs((long) GaitProgram.maxDelta(cmdPose, prog.cycle[j])
+                        * prog.minMsPerUnit);
+                if (guard > dur) dur = guard;
+                if (!emit(prog.cycle[j], dur)) return;
+                frameIdx = j;
+                if (j == 0) cycles++;
+                next = advance(next, dur);
+            }
+            sleepQuiet(next);                          // 等著地格行完先收
+        }
         int dev = Math.max(GaitProgram.maxDelta(cmdPose, prog.home),
                 GaitProgram.maxDelta(prevPose, prog.home));
         int t = (int) Math.max(prog.blendMinMs,

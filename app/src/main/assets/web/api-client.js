@@ -1087,7 +1087,7 @@ const Alpha2Api = (function() {
   }
 
   function walkStop(params) {
-    // 放手：由當前姿勢收返企定姿勢然後停（hard=true 即刻硬停，舵機保持末位姿）
+    // 放手：先行到最近一個著地收步格（約半步內），再收返企定姿勢然後停（hard=true 即刻硬停，舵機保持末位姿）
     return api('walk/stop', params);
   }
 
