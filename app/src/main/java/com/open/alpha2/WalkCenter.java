@@ -24,9 +24,10 @@ import java.util.Map;
  * 其中一個方向時要求相反方向，會先硬停（舵機保持末位姿）再由當前姿勢起步（起步第一格
  * 有限速，唔會急扯）。</p>
  *
- * <p>語義：按住（{@link #hold}）＝起步後循環行；放手（{@link #release}）＝先行到最近一個
- * 著地收步格（步態檔 standFrames），再線性收返企定姿勢然後停；{@code stopNow}＝硬停（舵機保持末位姿，同 ubx/stop 一致）。
- * 速度 0.5–2.0 倍（1.0 ＝ .ubx 原速），行緊時即時生效。</p>
+ * <p>語義：按住（{@link #hold}）＝起步後循環行；放手（{@link #release}）＝由當前姿勢
+ * 線性收返企定姿勢然後停；{@code stopNow}＝硬停（舵機保持末位姿，同 ubx/stop 一致）。
+ * 速度 0.5–2.0 倍（1.0 ＝ .ubx 原速），行緊時即時生效。步態送出間隔有 400ms 下限
+ * （{@link GaitWalker#WALK_MIN_UPDATE_MS}），所以 &gt;1.0x 唔會再加快；&lt;1.0x 先會放慢。</p>
  *
  * <p>安全：行路由租約守護——超過 {@link #LEASE_MS} 冇續期（{@link #hold} 再叫）即自動放手，
  * 所以網頁死機／key-up 遺失／藍牙斷線唔會一路行落去。普通動作播放經
@@ -102,11 +103,9 @@ public final class WalkCenter {
         int[][] lf = frames(lead.getJSONArray("frames"));
         int[][] cf = frames(cyc.getJSONArray("frames"));
         int[] home = pose(o.getJSONArray("home"));
-        JSONArray sf = o.optJSONArray("standFrames");   // 可選：著地收步格（冇＝放手即收）
         return new GaitProgram(lf, ints(lead.getJSONArray("ms")), cf, ints(cyc.getJSONArray("ms")),
                 home, blend.getInt("msPerUnit"), blend.getInt("minMs"), blend.getInt("maxMs"),
-                lim.getInt("entryMsPerUnit"), lim.getInt("minMsPerUnit"),
-                sf == null ? new int[0] : ints(sf));
+                lim.getInt("entryMsPerUnit"), lim.getInt("minMsPerUnit"));
     }
 
     private static int[][] frames(JSONArray a) throws Exception {

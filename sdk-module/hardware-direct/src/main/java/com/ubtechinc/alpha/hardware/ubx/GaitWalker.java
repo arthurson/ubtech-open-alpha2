@@ -9,11 +9,9 @@ package com.ubtechinc.alpha.hardware.ubx;
  * </pre>
  *
  * <ul>
- *   <li><b>放手收步</b>：{@link #release()} 喚醒等待。若 {@link GaitProgram#standFrames}
- *       非空，先繼續行到最近一個著地收步格（放手時若已喺該格就唔使等），等該格行完先收；
- *       否則即刻由「當前指令姿勢」收步。收步＝按偏差大細線性收返 home（servo 由實際位置
- *       接手，唔會突跳）；時間 = 偏差 × blendMsPerUnit，夾入 [blendMinMs, blendMaxMs]。
- *       租約過期（網頁死機）同硬停都唔等著地格：租約過期即刻收步，硬停即停。</li>
+ *   <li><b>放手即停</b>：{@link #release()} 喚醒等待，馬上由「當前指令姿勢」按偏差大細
+ *       線性收返 home（servo 由實際位置接手，唔會突跳）；收步時間 =
+ *       偏差 × blendMsPerUnit，夾入 [blendMinMs, blendMaxMs]。</li>
  *   <li><b>變速</b>：{@link #setSpeed} 即時生效，逐格縮放時長（平滑過渡，唔會一格跳）；
  *       範圍 0.5–2.0（同 UbxPlayer 一致）。另有每格最快限速 minMsPerUnit 保護舵機。</li>
  *   <li><b>租約（lease）</b>：leaseMs &gt; 0 時，超過該時間未 {@link #beat()} 視為放手
@@ -38,6 +36,15 @@ public final class GaitWalker implements Runnable {
     public static final int PHASE_STANDING = 3;
     public static final int PHASE_DONE = 4;
 
+    /** 實機按住連行：兩次送出之間最短間隔（ms）。speed 再高都唔會快過呢個更新率。 */
+    public static final int WALK_MIN_UPDATE_MS = 400;
+    /**
+     * 實機按住連行：步態每格 move 時間 ÷ 送出間隔。略 &gt; 1 令舵機未到位已接住下一格，
+     * 唔會喺每格尾停一停等命令（送出有抖動時最明顯）；代價係幅度略收（約 7%）。
+     */
+    public static final float WALK_MOVE_OVERLAP = 1.15f;
+    private static final float MAX_MOVE_OVERLAP = 1.5f;
+
     private static final int MAX_SEND_FAILS = 5;
     private static final int STAND_SEND_TRIES = 3;
     private static final long WAIT_SLICE_MS = 40;
@@ -49,6 +56,8 @@ public final class GaitWalker implements Runnable {
     private final Object lock = new Object();
 
     private volatile float targetSpeed;
+    private volatile int minUpdateMs;      // 0＝唔限制（預設，單元測試用）
+    private volatile float moveOverlap = 1.0f;
     private volatile long leaseMs;
     private volatile long lastBeatMs;
     private volatile boolean releaseReq;
@@ -86,6 +95,19 @@ public final class GaitWalker implements Runnable {
     public void setSpeed(float s) { targetSpeed = clampSpeed(s); }
 
     public void setLeaseMs(long ms) { leaseMs = Math.max(0L, ms); }
+
+    /**
+     * 週期送出（起步／步態格）嘅最短間隔：格時長低過呢個值就拉長，連同遲到追拍都唔會令
+     * 兩次送出靠近過呢個值。收步（放手）唔受限，確保放手即刻有反應。0＝唔限制。
+     */
+    public void setMinUpdateMs(int ms) {
+        minUpdateMs = Math.max(0, Math.min(GaitProgram.MAX_FRAME_MS, ms));
+    }
+
+    /** 步態格 move 時間 ÷ 送出間隔（夾入 1.0–1.5）；只作用於步態循環，起步／收步照舊。 */
+    public void setMoveOverlap(float f) {
+        moveOverlap = Float.isNaN(f) ? 1.0f : Math.max(1.0f, Math.min(MAX_MOVE_OVERLAP, f));
+    }
 
     /** 租約續期（按住期間遠端定時叫）。 */
     public void beat() { lastBeatMs = nowMs(); }
@@ -143,8 +165,9 @@ public final class GaitWalker implements Runnable {
                         * prog.entryMsPerUnit);
                 if (guard > dur) dur = guard;
             }
+            if (dur < minUpdateMs) dur = minUpdateMs;
             if (!emit(prog.leadIn[i], dur)) return;
-            next = advance(next, dur);
+            next = advance(next, dur, nowMs());
             if (!waitUntil(next)) break;
         }
 
@@ -158,41 +181,22 @@ public final class GaitWalker implements Runnable {
             int guard = clampMs((long) GaitProgram.maxDelta(cmdPose, prog.cycle[i])
                     * prog.minMsPerUnit);
             if (guard > dur) dur = guard;
-            if (!emit(prog.cycle[i], dur)) return;
+            if (dur < minUpdateMs) dur = minUpdateMs;
+            // move 時間略長過送出間隔（moveOverlap）：舵機持續郁，唔喺格尾停低等下一格
+            if (!emit(prog.cycle[i], clampMs(Math.round(dur * (double) moveOverlap)))) return;
             frameIdx = i;
-            next = advance(next, dur);
+            next = advance(next, dur, nowMs());
             if (!waitUntil(next)) break;
             if (++i == n) {
                 i = 0;
                 cycles++;
             }
         }
-        final boolean graceful = releaseReq;   // 迴圈結束嗰刻係咪人手放手（唔係租約過期）
-        if (endReason.isEmpty()) endReason = graceful ? "released" : "lease";
+        if (endReason.isEmpty()) endReason = releaseReq ? "released" : "lease";
 
         // 3) 收步：由當前指令姿勢回 home（冇送過任何嘢就唔使收）
         phase = PHASE_STANDING;
         if (!sentAny) return;
-        // 3a) 正常放手（唔係租約過期）：先行到著地收步格，等該格行完先收。
-        //     最多行 n 格（standFrames 非空必有一格會中），interrupt 照舊即停。
-        if (graceful && prog.standFrames.length > 0 && frameIdx >= 0) {
-            int j = frameIdx;
-            int guardN = n;
-            while (!prog.isStandFrame(j) && guardN-- > 0) {
-                sleepQuiet(next);                      // 等當前格行完（忽略放手）
-                j = (j + 1) % n;
-                effSpeed = smooth(effSpeed, clampSpeed(targetSpeed));
-                int dur = scaled(prog.cycleMs[j], effSpeed);
-                int guard = clampMs((long) GaitProgram.maxDelta(cmdPose, prog.cycle[j])
-                        * prog.minMsPerUnit);
-                if (guard > dur) dur = guard;
-                if (!emit(prog.cycle[j], dur)) return;
-                frameIdx = j;
-                if (j == 0) cycles++;
-                next = advance(next, dur);
-            }
-            sleepQuiet(next);                          // 等著地格行完先收
-        }
         int dev = Math.max(GaitProgram.maxDelta(cmdPose, prog.home),
                 GaitProgram.maxDelta(prevPose, prog.home));
         int t = (int) Math.max(prog.blendMinMs,
@@ -257,11 +261,16 @@ public final class GaitWalker implements Runnable {
         }
     }
 
-    /** 下一格到期時刻：延遲 &lt;= 一格內自動追返，超過就重新對時（唔連發補拍）。 */
-    private static long advance(long next, int dur) {
+    /**
+     * 下一格到期時刻：延遲 &lt;= 一格內自動追返，超過就重新對時（唔連發補拍）。
+     * 追拍後亦唔會早過 sentAt + minUpdateMs，所以兩次送出間隔恆 &gt;= minUpdateMs。
+     */
+    private long advance(long next, int dur, long sentAt) {
         long n = next + dur;
         long now = nowMs();
-        return n < now ? now : n;
+        if (n < now) n = now;
+        long floor = sentAt + minUpdateMs;
+        return n < floor ? floor : n;
     }
 
     private static float smooth(float cur, float target) {

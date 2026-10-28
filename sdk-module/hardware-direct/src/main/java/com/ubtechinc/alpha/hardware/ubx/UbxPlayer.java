@@ -516,6 +516,8 @@ public final class UbxPlayer {
                 return false;
             }
         }, poseTracker.snapshot(), speed, leaseMs);
+        w.setMinUpdateMs(GaitWalker.WALK_MIN_UPDATE_MS);   // 步態更新唔快過 400ms
+        w.setMoveOverlap(GaitWalker.WALK_MOVE_OVERLAP);
         walker = w;
         playThread = new Thread(new Runnable() {
             @Override public void run() {
