@@ -1380,18 +1380,25 @@
       this.id = 'alphaEditFabControls';
       this.top = 0;
       this.left = 0;
-      // 版面: 5 粒獨立深色圓形按鈕 (直徑 42px desktop / 34px 手機, Code Lab 同款), 自己一個圓圈
+      // 版面: 5 粒獨立深色圓形按鈕 (直徑 42px desktop / 38px 手機, Code Lab 同款), 自己一個圓圈
       // 背景, 按鈕與按鈕之間僅用均勻間距 (GAP=15 desktop / 8 手機) 分隔, 橫向
       // 排完一行, 沒有分組、沒有分隔線 (之前個 { sep:true } + GROUP_GAP 已經
       // 刪走, 因為 Code Lab 係 5 粒均勻、undo/redo 同 cut/copy/paste 之間無
       // 特別分隔)。
-      // 手機版要縮細: 直版手機 toolbox 食咗 ~110px 之後剩低 ~240px 畫布,
+      // 手機版要縮細: 直版手機 toolbox 食咗 ~112px 之後剩低 ~240px 畫布,
       // 42px 版成組 270px 闊會伸出 toolbox 外被剪 (見手機截圖底欄得返兩粒掣),
-      // 34px 版成組 202px 先至放得入。
+      // 38px 版成組 222px 先至放得入。
       const isMobile = (typeof window !== 'undefined' && window.matchMedia &&
         window.matchMedia('(max-width: 900px)').matches);
-      this.BUTTON_SIZE = isMobile ? 34 : 42;
-      this.GAP = isMobile ? 8 : 15;
+      // 2026-10: 34px 在手機上仍然偏細 (Apple/Google 建議 ~44px 觸控區),
+      // 但 42px 5 粒成組會闊過窄手機畫布。38px 折衷: 成組 5*38+4*8=222px,
+      // 390px 手機 toolbox 112px 後仍然放得入, 手指又易撳好多。
+      // 320px 超窄機再落一級 34px (成組 194px), 唔係最尾粒 paste 會同
+      // 垃圾桶疊住。
+      const isTiny = (typeof window !== 'undefined' && window.matchMedia &&
+        window.matchMedia('(max-width: 340px)').matches);
+      this.BUTTON_SIZE = isTiny ? 34 : (isMobile ? 38 : 42);
+      this.GAP = isTiny ? 6 : (isMobile ? 8 : 15);
       this.MARGIN_HORIZONTAL = isMobile ? 8 : 12;
       this.MARGIN_VERTICAL = isMobile ? 8 : 12;
       this.buttons = [
@@ -1469,23 +1476,24 @@
         // getBoundingRectangle() 來計。
         const tRect = trashcan.getBoundingRectangle();
         const tHeight = tRect.bottom - tRect.top;
-        this.left = tRect.left - this.MARGIN_HORIZONTAL - width;
-        this.top = tRect.top + (tHeight - this.BUTTON_SIZE) / 2;
-        // 2026-10 修正: 之前夾去 svg 左緣 (MARGIN_HORIZONTAL), 但 Blockly 嘅 svg 座標原點
-        // 係成個 injection div 左緣, toolbox 疊喺 svg 上面 —— 直向手機 toolbox 闊 ~126px,
-        // 成組左面兩粒 (復原/取消復原) 被 toolbox 遮住撳唔到。而家用 absoluteMetrics.left
-        // (= 畫布可視區喺 svg 入面嘅起點, 已包 toolbox 闊度) 做下限; 並排放唔落
-        // (直向手機畫布得 ~240px) 就改擺畫布右上角橫排, 唔同底部垃圾桶/縮放掣搶位。
-        const am = uiMetrics && uiMetrics.absoluteMetrics;
-        const vm = uiMetrics && uiMetrics.viewMetrics;
-        const minLeft = (am ? am.left : 0) + this.MARGIN_HORIZONTAL;
-        if (this.left < minLeft) {
-          if (am && vm) {
-            this.left = Math.max(minLeft, am.left + vm.width - width - this.MARGIN_HORIZONTAL);
-            this.top = am.top + this.MARGIN_VERTICAL;
-          } else {
-            this.left = minLeft;
-          }
+        // toolbox 本身會蓋住畫布左邊 (HTML toolbox z-index 高過 SVG)。
+        // 之前只 clamp 到 8px, 窄手機 (360/390) 第一粒 undo 會俾 toolbox
+        // 食咗, 睇得到兩三粒但撳唔到最左嗰粒。這裡用 toolbox 實際闊度
+        // 做下限; 如果 toolbox 同垃圾桶之間唔夠位放成組, 就改放畫布
+        // 左上角 (toolbox 右邊), 遠離垃圾桶/縮放掣。
+        const toolbox = (this.workspace.getToolbox && this.workspace.getToolbox());
+        const toolboxWidth = (toolbox && typeof toolbox.getWidth === 'function') ? toolbox.getWidth() : 0;
+        const minLeft = toolboxWidth + this.MARGIN_HORIZONTAL;
+        const leftByTrash = tRect.left - this.MARGIN_HORIZONTAL - width;
+        if (leftByTrash >= minLeft) {
+          this.left = leftByTrash;
+          this.top = tRect.top + (tHeight - this.BUTTON_SIZE) / 2;
+        } else {
+          const maxLeft = (uiMetrics.viewWidth && uiMetrics.viewWidth > width)
+            ? Math.max(this.MARGIN_HORIZONTAL, uiMetrics.viewWidth - width - this.MARGIN_HORIZONTAL)
+            : minLeft;
+          this.left = Math.min(minLeft, maxLeft);
+          this.top = this.MARGIN_VERTICAL;
         }
       } else {
         // fallback: 垃圾桶未起好 (理論上不應該發生, addTrashcan() 一定早過
@@ -1522,12 +1530,14 @@
       this.id = 'alphaZoomFabControls';
       this.top = 0;
       this.left = 0;
-      // 同 EditFabControls 一樣大, 同一個系列 (desktop 42 / 手機 34,
+      // 同 EditFabControls 一樣大, 同一個系列 (desktop 42 / 手機 38,
       // 見上面手機截圖: 橫版高度唔夠, 42px 版垂直成組 156px+垃圾桶會頂住)。
       const isMobileZoom = (typeof window !== 'undefined' && window.matchMedia &&
         window.matchMedia('(max-width: 900px)').matches);
-      this.BUTTON_SIZE = isMobileZoom ? 34 : 42; // 同 EditFabControls 一樣大, 同一個系列
-      this.GAP = isMobileZoom ? 8 : 15;
+      const isTinyZoom = (typeof window !== 'undefined' && window.matchMedia &&
+        window.matchMedia('(max-width: 340px)').matches);
+      this.BUTTON_SIZE = isTinyZoom ? 34 : (isMobileZoom ? 38 : 42); // 同 EditFabControls 一樣大, 同一個系列
+      this.GAP = isTinyZoom ? 6 : (isMobileZoom ? 8 : 15);
       this.MARGIN_ABOVE_TRASH = isMobileZoom ? 10 : 16; // 同垃圾桶頂的距離 (Code Lab editor-tool 同垃圾桶之間約 18px)
       this.buttons = [
         { action: 'center', icon: 'center', titleKey: 'page_edit_center_title' },
@@ -1617,6 +1627,31 @@
 
   let editFabControls = null;
   let zoomFabControls = null;
+  let fabLayoutKey = null;
+  let fabBreakpointListenerBound = false;
+
+  // 按鈕大細分三級 (desktop 42 / 手機 38 / 超窄機 34), 用一個 key 記住
+  // 目前用邊級; 轉向/縮窗跨過 900px 或 340px 都要重新起。
+  function fabSizeKey() {
+    if (typeof window === 'undefined' || !window.matchMedia) return 'desktop';
+    if (window.matchMedia('(max-width: 340px)').matches) return 'tiny';
+    if (window.matchMedia('(max-width: 900px)').matches) return 'mobile';
+    return 'desktop';
+  }
+
+  // 平板轉向 (820 <-> 1180) 會跨過 900px 界線, 浮動按鈕大細要跟返
+  // 新 layout 重新起 (34/38px vs 42px)。直接 dispose 再 new, component
+  // manager 同 DOM 都會清乾淨; workspace/undo 歷史完全唔受影響。
+  function rebuildFabControls() {
+    if (!workspace) return;
+    if (fabLayoutKey === fabSizeKey() && editFabControls && zoomFabControls) return;
+    if (editFabControls) { editFabControls.dispose(); editFabControls = null; }
+    if (zoomFabControls) { zoomFabControls.dispose(); zoomFabControls = null; }
+    fabLayoutKey = fabSizeKey();
+    editFabControls = new EditFabControls(workspace);
+    zoomFabControls = new ZoomFabControls(workspace);
+    Blockly.svgResize(workspace);
+  }
 
   function currentSelectedBlock() {
     return (Blockly.common && Blockly.common.getSelected) ? Blockly.common.getSelected() : null;
@@ -1710,8 +1745,17 @@
       // ZoomFabControls 這兩個 class 的大段註解) —— 一定要在 workspace
       // inject 了、有真正的 SVG root 之後先可以起, 所以擺在 init() 這裡做,
       // 不是在 module load 當時就起。
-      editFabControls = new EditFabControls(workspace);
-      zoomFabControls = new ZoomFabControls(workspace);
+      rebuildFabControls();
+      // 跨過 900px / 340px (手機/平板轉向、桌面縮窗) 時重新量度按鈕大細。
+      if (!fabBreakpointListenerBound && window.matchMedia) {
+        fabBreakpointListenerBound = true;
+        try {
+          [window.matchMedia('(max-width: 900px)'), window.matchMedia('(max-width: 340px)')].forEach(function (fabMq) {
+            if (fabMq.addEventListener) fabMq.addEventListener('change', rebuildFabControls);
+            else if (fabMq.addListener) fabMq.addListener(rebuildFabControls);
+          });
+        } catch (e) { /* 舊 WebView 沒有 addListener 就維持原本大細, 不緊要 */ }
+      }
       // 2026-09: 動作清單 + 音樂清單改由 blockly-page.js 開頁嗰陣統一自動抓
       // (fire-and-forget), 呢度唔再各自抓, 頂欄手動掣亦已移除。
     },
@@ -1739,6 +1783,8 @@
       if (!main) return;
       const collapsed = !main.classList.contains('bk-side-collapsed');
       main.classList.toggle('bk-side-collapsed', collapsed);
+      const trigger = document.getElementById('bkSideTrigger');
+      if (trigger) trigger.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
       try { localStorage.setItem('blocklySideCollapsed', collapsed ? '1' : '0'); } catch (e) { /* 不緊要, 沒有記錄低就下次預設展開 */ }
       // .bk-side flex-basis 有 CSS transition (0.18s), 畫布闊度要跟著個過渡
       // 動畫慢慢變, resize 幾次涵蓋整個過程 (Blockly.svgResize 會觸發
@@ -1758,6 +1804,8 @@
       const main = document.querySelector('.bk-main');
       if (!main) return;
       main.classList.toggle('bk-side-collapsed', collapsed);
+      const trigger = document.getElementById('bkSideTrigger');
+      if (trigger) trigger.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     },
     clearWorkspace: function () {
       if (workspace) workspace.clear();

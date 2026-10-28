@@ -157,6 +157,14 @@
     if (window.AlphaBlockly && window.AlphaBlockly.refreshEditControlsI18n) {
       window.AlphaBlockly.refreshEditControlsI18n();
     }
+    // #wsStatusText 有 data-i18n, applyUiTextLocale() 會將它重設做長字
+    // ("WebSocket: 未連接")。手機版要短字 + 保留目前連線狀態, 所以叫返
+    // blockly-page.js 重新按 520px 界線寫一次。
+    if (window.refreshBlocklyWsStatus) window.refreshBlocklyWsStatus();
+    // 語言切換會令工具列按鈕文字長度改變, 橫捲提示要重新量度; 平板版
+    // 工具列亦可能由一行變兩行, 要叫 Blockly 重新計畫布高度。
+    if (window.updateBlocklyToolbarHints) window.updateBlocklyToolbarHints();
+    if (window.resizeBlocklyWorkspace) window.resizeBlocklyWorkspace();
   };
 
   window.getUiLanguage = function () { return uiLang; };

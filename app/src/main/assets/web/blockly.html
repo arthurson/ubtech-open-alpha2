@@ -2,10 +2,10 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <title data-i18n="page_title">Open Alpha2 — Blockly 積木編程</title>
 <link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="blockly.css">
+<link rel="stylesheet" href="blockly.css?v=20261028a">
 </head>
 <body class="blockly-body">
 
@@ -25,7 +25,8 @@
   </div>
 </header>
 
-<div class="bk-toolbar">
+<div class="bk-toolbar-wrap" id="bkToolbarWrap">
+<div class="bk-toolbar" id="bkToolbar">
   <div class="bk-toolbar-group">
     <button id="runBtn" class="bk-btn bk-btn-primary" onclick="AlphaBlockly.run()" data-i18n="page_run_btn">▶ 執行</button>
     <button id="stopBtn" class="bk-btn bk-btn-danger" onclick="AlphaBlockly.stop()" disabled data-i18n="page_stop_btn">⏹ 停止</button>
@@ -50,18 +51,21 @@
     <button class="bk-btn bk-btn-danger-outline" onclick="onClearWorkspace()" data-i18n="page_clear_workspace_btn">🧹 清空畫布</button>
   </div>
 </div>
+</div>
 
 <div class="bk-main">
   <div id="blocklyDiv" class="bk-canvas"></div>
 
   <div class="bk-side" id="bkSide">
-    <!-- 2026-09: 側欄收起掣 —— 展開/收起都係一粒 32x32 浮動掣 (展開嗰陣
-      騎住畫布同面板條邊, 唔再留 32px 直條 gutter)。箭嘴方向純 CSS 跟
-      .bk-side-collapsed 轉。 -->
-    <div class="bk-side-trigger" id="bkSideTrigger" onclick="toggleSidePanel()"
+    <!-- 2026-09: 側欄收起掣 —— 展開/收起都係一粒浮動掣 (桌面 32x32,
+      觸控 40x40; 展開嗰陣騎住畫布同面板條邊, 唔再留直條 gutter)。
+      箭嘴方向純 CSS 跟 .bk-side-collapsed 轉。用 <button> 而非 <div>,
+      等鍵盤/屏幕閱讀器都用得到。 -->
+    <button type="button" class="bk-side-trigger" id="bkSideTrigger" onclick="toggleSidePanel()"
+      aria-controls="bkSide" aria-expanded="false"
       data-i18n="page_side_toggle_title" data-i18n-attr="title" title="收起/展開執行紀錄面板">
-      <svg viewBox="0 0 8 16" width="8" height="16"><path d="M7 1L1 8l6 7"/></svg>
-    </div>
+      <svg viewBox="0 0 8 16" width="8" height="16" aria-hidden="true"><path d="M7 1L1 8l6 7"/></svg>
+    </button>
     <div class="bk-side-body">
     <div class="bk-side-header">
       <h2 data-i18n="page_run_log_title">執行紀錄</h2>
@@ -89,15 +93,15 @@
 <script>
   window.__ALPHA_BLOCKLY_MSG_EN = Object.assign({}, Blockly.Msg);
 </script>
-<script src="blockly-i18n.js"></script>
+<script src="blockly-i18n.js?v=20261028a"></script>
 <script src="blockly-blocks-i18n-data.js"></script>
 <script src="blockly-actions-data.js"></script>
 <script src="blockly-servo-data.js"></script>
 <script src="blockly-ringtone-data.js"></script>
 <script src="blockly-blocks.js"></script>
 <script src="blockly-toolbox.js?v=20261020a"></script>
-<script src="blockly-run.js"></script>
-<script src="blockly-page.js"></script>
+<script src="blockly-run.js?v=20261028a"></script>
+<script src="blockly-page.js?v=20261028a"></script>
 <!-- 型別化 API client (同 index.html 一樣, 一定要在提供 window.api 的 blockly-page.js 之後載入) -->
 <script src="api-client.js"></script>
 <!-- 群控鏡像 (同 index.html 一樣; blockly.html 冇群控 tab，淨載 mirrorFanout＋scan helper，

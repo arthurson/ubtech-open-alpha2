@@ -108,11 +108,30 @@ window.hwApi = window.api;
 let ws = null;
 let wsReconnectTimer = null;
 let wsBootId = null; // server bootId（舊頁自動 reload 用，見 app-log.js）。
+let wsConnected = false;
 
-function setWsStatus(connected) {
-  document.getElementById('wsStatusDot').className = 'run-status-dot ' + (connected ? 'running' : 'idle');
-  document.getElementById('wsStatusText').textContent = 'WebSocket: ' + (connected ? t('page_ws_connected') : t('page_ws_disconnected_word'));
+// 手機 header 闊度有限: 520px 以下只顯示「● 未連接/已連接」, 唔再頂住
+// 個標題。state 記在 wsConnected, 切語言/轉螢幕方向都可以重算一次。
+function wsStatusCompact() {
+  return !!(window.matchMedia && window.matchMedia('(max-width: 520px)').matches);
 }
+function setWsStatus(connected) {
+  wsConnected = connected;
+  const dot = document.getElementById('wsStatusDot');
+  const textEl = document.getElementById('wsStatusText');
+  if (dot) dot.className = 'run-status-dot ' + (connected ? 'running' : 'idle');
+  if (!textEl) return;
+  const label = connected ? t('page_ws_connected') : t('page_ws_disconnected_word');
+  textEl.textContent = (wsStatusCompact() ? '' : 'WebSocket: ') + label;
+  const box = textEl.parentElement;
+  if (box) {
+    box.title = 'WebSocket: ' + label;
+    box.setAttribute('aria-label', 'WebSocket: ' + label);
+  }
+}
+// 語言切換會經 applyUiTextLocale() 重設 #wsStatusText (它有 data-i18n),
+// 所以 blockly-i18n.js 切完語言要 call 這個還原成目前連線狀態的短字。
+window.refreshBlocklyWsStatus = function () { setWsStatus(wsConnected); };
 
 function connectWs() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -178,9 +197,18 @@ function initWorkspace() {
   showBlocklyVersionBadge();
   // 手機畫布剩低闊度得 ~240px, 中文積木本身闊 (~300-400px, 見截圖
   // 「播放本地音樂」被右緣切走), startScale 0.9 會一入嚟就出界要左右捽。
-  // 手機版用 0.6 起跳, 積木成個放得入畫布; desktop 維持 0.9。
-  const isMobileStart = (typeof window !== 'undefined' && window.matchMedia &&
-    window.matchMedia('(max-width: 900px)').matches);
+  // 2026-10: 按螢幕闊度分級 —— 平板用 0.7 (比手機大粒、易睇易撳),
+  // 普通手機 0.58, 窄手機 (360/320) 再細少少, 主要係等 toolbox (112px)
+  // 加 flyout 打開時仍然留返少量畫布位可以放積木; desktop 維持 0.9。
+  const startMq = (typeof window !== 'undefined' && window.matchMedia)
+    ? window.matchMedia.bind(window)
+    : null;
+  const startScale = !startMq ? 0.9
+    : startMq('(max-width: 340px)').matches ? 0.5
+    : startMq('(max-width: 380px)').matches ? 0.55
+    : startMq('(max-width: 480px)').matches ? 0.58
+    : startMq('(max-width: 900px)').matches ? 0.7
+    : 0.9;
   workspace = Blockly.inject('blocklyDiv', {
     toolbox: window.ALPHA_TOOLBOX,
     // 這個 Blockly 版本的預設 pathToMedia 是 "https://static.blockly.com/media/"
@@ -193,7 +221,7 @@ function initWorkspace() {
     // 2026-09: zoom.controls 關掉 —— 內建三粒 sprite 按鈕 (zoom-in/out/reset)
     // 同 Code Lab 風格唔夾, 改用 blockly-run.js ZoomFabControls 自畫垂直組
     // (歸中/放大/縮細, 同 edit 橫排同一個深色圓系列)。wheel 縮放保留。
-    zoom: { controls: false, wheel: true, startScale: (isMobileStart ? 0.6 : 0.9), maxScale: 3, minScale: 0.3, scaleSpeed: 1.1 },
+    zoom: { controls: false, wheel: true, startScale: startScale, maxScale: 3, minScale: 0.3, scaleSpeed: 1.1 },
     trashcan: true,
     move: { scrollbars: true, drag: true, wheel: false },
     theme: buildAlphaTheme(),
@@ -209,6 +237,11 @@ function initWorkspace() {
 
   // 視窗 resize 時重新計算 Blockly 畫布大小。
   window.addEventListener('resize', resizeBlockly);
+  // iOS/Android 地址欄收合、螢幕小鍵盤彈出，有時只觸發 visualViewport
+  // resize 而唔觸發 window resize；補一條 listener 等畫布唔會用錯高度。
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', resizeBlockly);
+  }
   resizeBlockly();
 
   // 抄自 Code Lab (見對話紀錄的截圖): 側欄 (執行紀錄面板) 收起/展開狀態,
@@ -243,6 +276,10 @@ function initWorkspace() {
 function resizeBlockly() {
   if (workspace) Blockly.svgResize(workspace);
 }
+// 語言切換可能令工具列由一行變兩/三行 (英文 label 較長), body flex 會
+// 重新分配高度, 但 Blockly 自己唔會知道, 所以要由 blockly-i18n.js call
+// 呢個 function 補一次 svgResize。
+window.resizeBlocklyWorkspace = resizeBlockly;
 
 function toggleSidePanel() {
   if (window.AlphaBlockly && window.AlphaBlockly.toggleSidePanel) {
@@ -311,10 +348,70 @@ function onClearWorkspace() {
   }
 }
 
+// ---------------- 工具列橫捲提示 ----------------
+// 工具列在手機/窄平板是一行橫向捲動 (唔換行食高度)。手機瀏覽器多數唔顯示
+// scrollbar, 用家未必知道右邊仲有「載入/刪除/匯入/匯出/清空」。這裡按實際
+// scrollLeft 開關 .bk-toolbar-wrap 的左右漸變, 提示仲有內容可以捽。
+let toolbarHintRaf = 0;
+function updateToolbarScrollHints() {
+  const wrap = document.getElementById('bkToolbarWrap');
+  const bar = document.getElementById('bkToolbar');
+  if (!wrap || !bar) return;
+  const max = bar.scrollWidth - bar.clientWidth;
+  wrap.classList.toggle('can-scroll-left', bar.scrollLeft > 4);
+  wrap.classList.toggle('can-scroll-right', max > 4 && bar.scrollLeft < max - 4);
+}
+function scheduleToolbarScrollHints() {
+  if (toolbarHintRaf) return;
+  toolbarHintRaf = window.requestAnimationFrame(function () {
+    toolbarHintRaf = 0;
+    updateToolbarScrollHints();
+  });
+}
+window.updateBlocklyToolbarHints = updateToolbarScrollHints;
+
 // ---------------- 啟動 ----------------
 document.addEventListener('DOMContentLoaded', function () {
   initWorkspace();
+  // 側欄收起掣是 <button>, 初始 aria-expanded 要跟實際 class 對齊
+  // (setSidePanelCollapsedInitial() 只改 class, 這裡補返 ARIA)。
+  const sideMain = document.querySelector('.bk-main');
+  const sideTrigger = document.getElementById('bkSideTrigger');
+  if (sideMain && sideTrigger) {
+    sideTrigger.setAttribute('aria-expanded', sideMain.classList.contains('bk-side-collapsed') ? 'false' : 'true');
+  }
+  setWsStatus(false);
   connectWs();
+
+  // 工具列漸變 + 語言切換/轉向後重新量度。ResizeObserver/MutationObserver
+  // 都有就一齊用 (舊 WebView 冇就靠 resize + setTimeout fallback)。
+  const toolbarBar = document.getElementById('bkToolbar');
+  if (toolbarBar) {
+    toolbarBar.addEventListener('scroll', scheduleToolbarScrollHints, { passive: true });
+    if (window.ResizeObserver) {
+      try { new ResizeObserver(scheduleToolbarScrollHints).observe(toolbarBar); } catch (e) {}
+    }
+    if (window.MutationObserver) {
+      try {
+        new MutationObserver(scheduleToolbarScrollHints).observe(toolbarBar, {
+          childList: true, subtree: true, characterData: true,
+        });
+      } catch (e) {}
+    }
+  }
+  window.addEventListener('resize', scheduleToolbarScrollHints);
+  updateToolbarScrollHints();
+  setTimeout(updateToolbarScrollHints, 300);
+  setTimeout(updateToolbarScrollHints, 1000);
+  // 520px 界線會影響 header 的 WebSocket 短字, 轉向/縮放視窗後重算。
+  if (window.matchMedia) {
+    try {
+      const wsmq = window.matchMedia('(max-width: 520px)');
+      const onWsMq = function () { setWsStatus(wsConnected); };
+      if (wsmq.addEventListener) wsmq.addEventListener('change', onWsMq);
+      else if (wsmq.addListener) wsmq.addListener(onWsMq);
+    } catch (e) {}
+  }
   // 2026-09: 開頁自動抓動作清單 (actioninfo.txt) + 本地音樂清單, fire-and-
   // forget 唔阻 workspace; 失敗會有 error banner + dropdown fallback, 同之前
   // 手撳掣一樣。頂欄嗰兩粒手動掣已移除 (見 blockly.html)。

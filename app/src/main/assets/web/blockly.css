@@ -15,11 +15,18 @@ body.blockly-body {
   height: 100dvh;
   overflow: hidden;
   width: 100%;
+  /* 手機拖積木去到畫面邊緣時, 唔好觸發瀏覽器 pull-to-refresh / 前後頁
+     swipe 手勢 (Android WebView 同 iOS Safari 都可能發生)。 */
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   /* 2026-10: viewport-fit=cover 之後內容會畫到瀏覽器 notch / 圓角 / home bar 下面,
-     橫向手機左右兩邊 (notch) 會遮住掣; 用 env() 預留 (WebView 冇 inset 就係 0, 唔影響)。 */
-  padding-left: env(safe-area-inset-left, 0px);
+     橫向手機左右兩邊 (notch) 會遮住掣; 用 env() 預留 (WebView 冇 inset 就係 0, 唔影響)。
+     瀏海/圓角機: 預留安全區, 唔好等 header / 畫布底邊貼住聽筒或手勢條。 */
+  padding-top: env(safe-area-inset-top, 0px);
   padding-right: env(safe-area-inset-right, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
 }
 /* 拖積木/畫布時唔好觸發 Chrome 下拉重新整理或者 iOS 橡筋回彈 (會令程式捽走)。 */
 html:has(body.blockly-body), body.blockly-body {
@@ -34,12 +41,46 @@ body.blockly-body { -webkit-tap-highlight-color: transparent; }
   padding-right: 10px;
 }
 
+/* 工具列外層淨係用嚟擺左右漸變提示 (見下面 ::before/::after) ——
+   手機仍然用單行橫向捲動 (唔食畫布高度), 平板會按下面媒體查詢換行。 */
+.bk-toolbar-wrap {
+  flex: 0 0 auto;
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+.bk-toolbar-wrap::before,
+.bk-toolbar-wrap::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.bk-toolbar-wrap::before {
+  left: 0;
+  background: linear-gradient(to right, var(--card-bg) 10%, rgba(255, 255, 255, 0));
+}
+.bk-toolbar-wrap::after {
+  right: 0;
+  background: linear-gradient(to left, var(--card-bg) 10%, rgba(255, 255, 255, 0));
+}
+.bk-toolbar-wrap.can-scroll-left::before,
+.bk-toolbar-wrap.can-scroll-right::after {
+  opacity: 1;
+}
+
 .bk-toolbar {
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+  touch-action: pan-x;
   padding-left: 10px;
   padding-right: 10px;
   gap: 8px 12px;
@@ -96,6 +137,10 @@ body.blockly-body { -webkit-tap-highlight-color: transparent; }
   margin: 0;
   font-size: 17px;
   flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .bk-version-badge {
@@ -115,6 +160,16 @@ body.blockly-body { -webkit-tap-highlight-color: transparent; }
   gap: 6px;
   font-size: 12px;
   color: var(--muted);
+  flex: 0 0 auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+.bk-header-status #wsStatusText {
+  display: inline-block;
+  max-width: 14em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
 }
 
 .bk-lang-toggle {
@@ -348,14 +403,19 @@ body.blockly-body { -webkit-tap-highlight-color: transparent; }
   height: 32px;
   left: -16px;
   top: 15px;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 1px 4px rgba(28,33,38,.15);
-  line-height: 30px;
-  text-align: center;
   cursor: pointer;
   z-index: 5;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 /* 收起嗰陣側欄得返 0 闊, 掣要再伸出去啲浮喺畫布上面 (離邊 8px)。 */
 .bk-main.bk-side-collapsed .bk-side-trigger {
@@ -394,6 +454,11 @@ body.blockly-body { -webkit-tap-highlight-color: transparent; }
   display: flex;
   flex-direction: column;
   position: relative;
+  /* 一定要高過 Blockly 的 injectionDiv/toolbox/scrollbar (它們自己會
+     stacking)。唔係手機版收起側欄時, 粒浮動展開掣會俾 toolbox 蓋住;
+     桌面版收起側欄時就會俾 Blockly 右邊條 vertical scrollbar 蓋住,
+     兩邊都會變成「睇得到但撳唔到」。 */
+  z-index: 30;
   border-left: 1px solid var(--border);
   background: var(--card-bg);
   min-height: 0;
@@ -457,7 +522,7 @@ body.blockly-body { -webkit-tap-highlight-color: transparent; }
     padding-left: 8px;
     padding-right: 8px;
     gap: 8px;
-    min-height: 42px;
+    min-height: 48px;
     overflow: hidden;
   }
   .bk-header h1 {
@@ -467,16 +532,34 @@ body.blockly-body { -webkit-tap-highlight-color: transparent; }
     text-overflow: ellipsis;
     min-width: 0;
   }
+  .bk-back {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+  }
   .bk-version-badge { display: none; }
-  .bk-lang-toggle button { padding: 4px 8px; font-size: 12px; }
+  .bk-lang-toggle { margin-left: 0; }
+  .bk-lang-toggle button {
+    padding: 6px 9px;
+    min-height: 36px;
+    font-size: 12px;
+  }
   .bk-header-status { font-size: 11px; white-space: nowrap; }
   .bk-header-status #wsStatusText {
-    max-width: 7em;
+    max-width: 9em;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  /* Toolbar: 已喺 base 做橫捲; 手機再收 padding, 隱藏 scrollbar。 */
+  /* Toolbar: 已喺 base 做橫捲; 手機再收 padding, 隱藏 scrollbar。
+     左右漸變由 blockly-page.js 按實際捲動位置開關 (can-scroll-*);
+     漸變唔好太闊, 否則會將右邊第一粒掣 (例如「儲存」) 染到好似 disabled。 */
+  .bk-toolbar-wrap::before,
+  .bk-toolbar-wrap::after { width: 8px; }
   .bk-toolbar {
     padding-top: 6px;
     padding-bottom: 6px;
@@ -524,39 +607,77 @@ body.blockly-body { -webkit-tap-highlight-color: transparent; }
     overflow: visible;
     border-top: none;
   }
-  /* 手機: 展開嗰陣掣喺面板頂邊; 收起嗰陣喺畫布底緣。
-     箭嘴轉 90°: 收起顯示 ^ (撳向上展), 展開顯示 v (撳向下收)。 */
+  /* 手機側欄收起掣: 展開嗰陣擺喺面板 header 右上角 (唔會騎住畫布,
+     亦唔會蓋住下面嘅清空/自動捲動掣); 收起嗰陣浮喺畫布右下角。
+     兩邊都 40x40, 手指易撳, 而且 z-index 已經由 .bk-side 抬高過 Blockly
+     toolbox, 唔會再出現「睇得到但撳唔到」。 */
   .bk-side-trigger,
   .bk-main.bk-side-collapsed .bk-side-trigger {
-    left: 15px;
-    top: -40px;
+    left: auto;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
   }
+  .bk-main:not(.bk-side-collapsed) .bk-side-trigger {
+    top: 8px;
+  }
+  .bk-main.bk-side-collapsed .bk-side-trigger {
+    top: -48px;
+  }
+  /* 箭嘴轉 90°: 收起顯示 ^ (撳向上展), 展開顯示 v (撳向下收)。 */
   .bk-side-trigger svg { transform: rotate(90deg); }
   .bk-main:not(.bk-side-collapsed) .bk-side-trigger svg { transform: rotate(270deg); }
 
-  /* 側欄 header/log 手機版收返啲 padding, log 字細少少。 */
-  .bk-side-header { padding: 8px 10px; }
+  /* 側欄 header/log 手機版收返啲 padding, log 字細少少。
+     header 右邊留 56px 俾粒收起掣, 唔好同標題/清空掣撞。 */
+  .bk-side-header { padding: 8px 10px; padding-right: 56px; }
   .run-log { padding: 8px 10px; font-size: 11px; }
 
-  /* Blockly 自己個 flyout/工具箱手機版會好闊 —— 用 CSS 收窄 category 列。
-     直版手機全闊得 ~360px, 工具箱本身 ~140px 會食咗三分一畫布 (見截圖),
-     限返 118px, label 過長出 …。 */
-  .blocklyToolboxDiv {
-    font-size: 12px;
-    max-width: 118px;
+  /* Blockly 13 嘅 toolbox class 已經轉名:
+     .blocklyToolboxDiv / .blocklyTreeRow / .blocklyTreeLabel
+     -> .blocklyToolbox / .blocklyToolboxCategoryContainer /
+        .blocklyToolboxCategoryLabel。
+     舊 selector 保留 (舊版 Blockly 兼容), 新 selector 係實際生效嗰批。
+     手機版: 收窄工具箱到 112px (原本 128px), category 由 25px 高加到
+     36px (手指易撳), 過長 label 出 …。 */
+  .blocklyToolboxDiv,
+  .blocklyToolbox {
+    font-size: 13px;
+    max-width: 112px;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
   }
-  .blocklyTreeRow {
-    height: 32px !important;
-    padding: 0 6px !important;
-    max-width: 118px;
+  .blocklyTreeRow,
+  .blocklyToolboxCategoryContainer {
+    height: auto !important;
+    min-height: 36px;
+    max-width: 112px;
   }
-  .blocklyTreeRow .blocklyTreeLabel {
+  .blocklyTreeRow,
+  .blocklyToolboxCategory {
+    line-height: 33px;
+    min-height: 33px;
+    padding-right: 2px !important;
+  }
+  .blocklyTreeRowContentContainer {
+    min-height: 33px;
+    display: flex;
+    align-items: center;
+  }
+  .blocklyTreeRow .blocklyTreeLabel,
+  .blocklyToolboxCategoryLabel {
+    font-size: 13px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 92px;
+    max-width: 80px;
     display: inline-block;
     vertical-align: middle;
+    padding-right: 0;
+  }
+  .blocklyToolboxCategoryIcon {
+    flex: 0 0 16px;
   }
 }
 
@@ -598,4 +719,124 @@ body.blockly-body { -webkit-tap-highlight-color: transparent; }
 /* 平板直向 (>480 且 <=900): 工具箱唔使縮到 118px, 畫布夠闊; 還原做正常闊度。 */
 @media (min-width: 700px) and (max-width: 900px) {
   .blocklyToolboxDiv { max-width: 160px; }
+}
+
+/* 窄手機 (例如 360px 或以下): 再收窄工具箱, 等 flyout 打開時唔會成個
+   畫面都係工具箱+flyout, 完全冇畫布位放積木。 */
+@media (max-width: 380px) {
+  .bk-header h1 { font-size: 12px; }
+  .blocklyToolboxDiv,
+  .blocklyToolbox { max-width: 100px; }
+  .blocklyTreeRow,
+  .blocklyToolboxCategoryContainer { max-width: 100px; }
+  .blocklyTreeRow .blocklyTreeLabel,
+  .blocklyToolboxCategoryLabel { max-width: 68px; font-size: 12px; }
+}
+
+/* 手機橫向 (高度好矮): 工具箱唔夠位放 12 個 36px category, 收返做 30px
+   等佢哋可以一屏見多幾個; 仍然比原本 25px 好撳。 */
+@media (max-width: 900px) and (max-height: 520px) {
+  .blocklyTreeRow,
+  .blocklyToolboxCategoryContainer { min-height: 30px; }
+  .blocklyTreeRow,
+  .blocklyToolboxCategory { min-height: 27px; line-height: 27px; }
+  .blocklyTreeRowContentContainer { min-height: 27px; }
+}
+
+/* 超窄手機: header 唔夠位同時放標題+語言掣+WebSocket 全寫, 只留
+   「點 + 未連接/已連接」短字 (由 blockly-page.js setWsStatus 負責),
+   版本 badge 同完整 "WebSocket:" 前綴都收起。 */
+@media (max-width: 520px) {
+  .bk-header { gap: 6px; }
+  .bk-header h1 { font-size: 13px; }
+  .bk-header-status { gap: 5px; }
+  .bk-header-status #wsStatusText { max-width: 5.5em; }
+}
+
+/* 平板 (601-1120px, 例如 iPad 768/820/1024 橫向): 工具列全部掣加起來
+   大約 800-1100px (英文 label 更長), 唔想用家靠橫掃去搵「載入/刪除/
+   匯入/匯出/清空」。這裡容許 group 換行, 820/900/1024px 通常兩行放晒;
+   768px 會三行, 但平板高度充足, 好過收埋一半功能。手機 (<=600px)
+   保持單行橫捲, 唔食畫布高度; 手機橫向 (高度 <=500px) 都維持單行,
+   免得換行食晒僅有嘅畫布高度。 */
+@media (min-width: 601px) and (max-width: 1120px) and (min-height: 501px) {
+  .bk-toolbar {
+    flex-wrap: wrap;
+    overflow-x: hidden;
+    touch-action: manipulation;
+    padding-bottom: 8px;
+  }
+  .bk-toolbar-group { flex-wrap: wrap; }
+  .bk-toolbar-wrap::before,
+  .bk-toolbar-wrap::after { display: none; }
+}
+
+/* 1024px 平板橫向: 工具列只差 10 幾 px 就放得晒, 輕輕收窄 gap 就唔使
+   成條橫捲, 對用家更直接。 */
+@media (min-width: 901px) and (max-width: 1100px) {
+  .bk-toolbar {
+    gap: 8px 12px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
+
+/* 觸控平板 (iPad / Android 平板) 闊過 900px 時, layout 仍然用桌面版
+   (側欄在右邊), 但按鈕/toolbox 要跟手機一樣易撳: 40px 高按鈕、
+   36px 高 toolbox category。純滑鼠桌面唔會食到這組 rule。 */
+@media (pointer: coarse) and (min-width: 901px) {
+  .bk-back {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+  }
+  .bk-lang-toggle { margin-left: 0; }
+  .bk-lang-toggle button {
+    padding: 6px 9px;
+    min-height: 36px;
+    font-size: 12px;
+  }
+  .bk-btn {
+    min-height: 40px;
+    min-width: 40px;
+    padding: 9px 12px;
+  }
+  .bk-input { min-height: 40px; }
+
+  .blocklyToolbox {
+    font-size: 13px;
+    max-width: 112px;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .blocklyToolboxCategoryContainer {
+    height: auto !important;
+    min-height: 36px;
+    max-width: 112px;
+  }
+  .blocklyToolboxCategory {
+    line-height: 33px;
+    min-height: 33px;
+    padding-right: 2px !important;
+  }
+  .blocklyTreeRowContentContainer {
+    min-height: 33px;
+    display: flex;
+    align-items: center;
+  }
+  .blocklyToolboxCategoryLabel {
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 80px;
+    display: inline-block;
+    vertical-align: middle;
+    padding-right: 0;
+  }
+  .blocklyToolboxCategoryIcon { flex: 0 0 16px; }
 }

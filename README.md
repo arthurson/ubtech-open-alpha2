@@ -129,12 +129,11 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   (`ik:squat±` / `ik:ysquat±` / `ik:lr±` / `ik:fsplit±` (left-forward) /
   `ik:fsplit2±` (right-forward); `ik:fb±` is a left-forward compatibility
   alias; hold to move in 10% steps / 120 ms from the actual pose until
-  0%/100%; switching actions first
-  returns the old action to 0% at the same speed, and axes the new action does
-  not drive stay put; panel taps carry a per-press seq, so a quick tap stays one
-  step even if the HTTP up request reaches the server before the slow down
-  request), local-music
-  function keys (incl. random track) / random yoga / system ringtones (named /
+  0%/100%; switching actions first returns the old action to 0% at the same
+  speed, and axes the new action does not drive stay put; panel taps carry a
+  per-press seq, so a quick tap stays one step even if the HTTP up request
+  reaches the server before the slow down request), local-music function keys
+  (incl. random track) / random yoga / system ringtones (named /
   default call tone) / head-eye-mouth LEDs / all-lights-off / photo + face &
   colour tracking toggles + the 203 actions (5 groups: basic / dance / story /
   yoga / misc); mapping `stop` means stop-everything (action re-centre + TTS +

@@ -32,10 +32,10 @@
 // action keeps running.
 //
 // Switching actions never touches servos the new action does not drive:
-// e.g. squat 2 / left-right -> squat / forward split keeps shoulder roll 2/5
-// and shoulder pitch 1/4 at their current values (including during the
-// off-mode return-to-boot phase), so the arms do not drop back to the boot
-// pose.
+// e.g. squat 2 / left-right -> squat keeps shoulder roll 2/5 at its current
+// value, and left-forward / right-forward -> squat keeps shoulder pitch 1/4
+// at its current value (including during the off-mode return-to-boot phase),
+// so the arms do not drop back to the boot pose.
 
 var IK_LEG_CHAINS = {
   r: [
@@ -596,8 +596,8 @@ function ikSyncHoldForKind(kind, pose) {
 }
 
 // off mode 切換：舊動作要均速回 0%，但新動作唔控制嘅軸（例如
-// 蹲式／左右一字馬 → 蹲下／前後一字馬時嘅 2/5 肩 roll，或者
-// 前後一字馬 → 蹲下時嘅 1/4 肩 pitch）要凍結喺目前實際值，
+// 蹲式／左右一字馬 → 蹲下時嘅 2/5 肩 roll，或者左前／右前一字馬
+// → 蹲下時嘅 1/4 肩 pitch）要凍結喺目前實際值，
 // 唔可以跟住舊動作回企姿。切換途中再改目標時，
 // 之前凍結咗嘅軸繼續凍結，避免佢哋突然跳去舊動作嘅插值 pose。
 function ikFreezeForSwitch(kind, pose) {

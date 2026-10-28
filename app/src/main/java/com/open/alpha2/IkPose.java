@@ -367,7 +367,7 @@ public final class IkPose {
     }
 
     /**
-     * 前後一字馬最終 pose（同 ubx-player.html 嘅 ikFSplitCapture／
+     * 左前／右前一字馬最終 pose（同 ubx-player.html 嘅 ikFSplitCapture／
      * ikFSplit2Capture）。fsplit＝左腳前、右腳後；fsplit2 係鏡像。
      */
     private static FbEnd fsplitEnd(double[] base, String kind) {

@@ -778,7 +778,7 @@ function gamepadBuildServoControls(side, k, idx, parsed) {
   return wrap;
 }
 
-// 建 IK 動作下拉（蹲下／蹲式／左右／前後 × +/-；撳住連走，同 servo jog 一樣）。
+// 建 IK 動作下拉（蹲下／蹲式／左右／左前／右前 × +/-；撳住連走，同 servo jog 一樣）。
 function gamepadBuildIkControls(side, k, idx, parsed) {
   var wrap = document.createElement("span");
   wrap.id = gamepadSubId("gpIkWrap", side, k, idx);

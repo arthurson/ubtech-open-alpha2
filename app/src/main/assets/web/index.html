@@ -1093,7 +1093,11 @@
          所以唔使改 Java／OpenAPI。前提：全部機同一個 Wi-Fi。 -->
     <!-- 同其他進階卡一致寫法：預設收起，總開關（groupCardEnabled）揭開先顯示內容，
          每次入頁預設關閉，不記狀態；入面嘅 Mirror 掣狀態獨立記喺 localStorage。 -->
-    <section class="card">
+    <!-- ⏸ 暫時隱藏（2026-10-28）：卡片唔出現喺界面，但功能全保留——
+         app-group.js 照樣載入，mirrorFanout 照樣掛喺 api()/sysApi()/directApi()，
+         localStorage（mirror_on、group_ips）同自動搜機全部照舊。
+         要恢復顯示：刪走下面 section 嘅 style="display:none" 即可。 -->
+    <section class="card" style="display:none">
       <div class="row" style="justify-content:space-between;align-items:center">
         <h2 style="margin:0" data-i18n="group_heading">👯 群控鏡像</h2>
         <label class="switch-label">
