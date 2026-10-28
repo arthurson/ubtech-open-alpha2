@@ -92,6 +92,61 @@ def smooth_cycle(cycle, w=CYCLE_SMOOTH):
     return out
 
 
+# 左右對稱配對 (右舵機號, 左舵機號, sigma)，舵機號 1-based。
+# 全身舵機係鏡像安裝（左右 home 加埋 = 240），所以「同一個動作」＝相對 home 嘅偏移反號：
+#   sigma=-1：偏移反號先比較（肩／肘／股上下／膝／踝上下）；
+#   sigma=+1：股左右(7/12)、踝左右(11/16) 兩邊本身同向擺（原數據相關係數 1.00，係重心側擺），直接比較。
+# 手指 17/18、頭 19/20 唔郁，唔放入。
+SYMMETRY_PAIRS = ((1, 4, -1), (2, 5, -1), (3, 6, -1), (7, 12, 1),
+                  (8, 13, -1), (9, 14, -1), (10, 15, -1), (11, 16, 1))
+STATIC_PTP = 2           # 幅度 < 此值當冇郁（例：原數據左肩左右 #5 全程唔動）
+SYM_PTP_TOL = 2          # --check：左右幅度差容差（整數捨入）
+SYM_MEAN_TOL = 2         # --check：左右平均偏移差容差
+
+
+def symmetrize_cycle(cycle, home):
+    """左右手／腳動作對稱：每對舵機統一幅度（取兩邊平均）同平均偏移，各自保留原有時序／形狀。
+
+    g = sigma * (角度 - home)；兩邊 g 用同一個 peak-to-peak 同平均值，再轉返角度。
+    其中一邊冇郁（例 #5）就跟另一邊嘅形狀走。
+    """
+    out = [list(a) for a, _ in cycle]
+    n = len(out)
+    for r, l, sg in SYMMETRY_PAIRS:
+        ri, li = r - 1, l - 1
+        gr = [out[k][ri] - home[ri] for k in range(n)]
+        gl = [sg * (out[k][li] - home[li]) for k in range(n)]
+        pr, pl = max(gr) - min(gr), max(gl) - min(gl)
+        mr, ml = sum(gr) / n, sum(gl) / n
+        amp, mean = (pr + pl) / 2.0, (mr + ml) / 2.0
+        if pr < STATIC_PTP and pl < STATIC_PTP:
+            continue
+        if pl < STATIC_PTP:
+            gl = list(gr); ml = mr; pl = pr
+        elif pr < STATIC_PTP:
+            gr = list(gl); mr = ml; pr = pl
+        for k in range(n):
+            out[k][ri] = int(round(home[ri] + mean + (gr[k] - mr) * amp / pr))
+            out[k][li] = int(round(home[li] + sg * (mean + (gl[k] - ml) * amp / pl)))
+    return [(out[k], cycle[k][1]) for k in range(n)]
+
+
+def symmetry_report(doc):
+    """檢查 cycle 左右對稱；回傳 [(右, 左, 幅度差, 平均差)] 超容差嘅配對（空＝通過）。"""
+    home = doc["home"]
+    frames = doc["cycle"]["frames"]
+    n = len(frames)
+    bad = []
+    for r, l, sg in SYMMETRY_PAIRS:
+        gr = [f[r - 1] - home[r - 1] for f in frames]
+        gl = [sg * (f[l - 1] - home[l - 1]) for f in frames]
+        dp = abs((max(gr) - min(gr)) - (max(gl) - min(gl)))
+        dm = abs(sum(gr) / n - sum(gl) / n)
+        if dp > SYM_PTP_TOL or dm > SYM_MEAN_TOL:
+            bad.append((r, l, dp, round(dm, 1)))
+    return bad
+
+
 def match_len(frames, p):
     """由頭起連續幾格 f[i] ≈ f[i+p]（每軸差 <= CYCLE_TOL）。"""
     n = len(frames)
@@ -135,7 +190,7 @@ def build(path):
     p = find_period(angles)
     if p is None:
         raise SystemExit("搵唔到步態週期（容差 %d）" % CYCLE_TOL)
-    cycle = smooth_cycle(main[:p])
+    cycle = symmetrize_cycle(smooth_cycle(main[:p]), home)   # 先平滑，再左右對稱（幅度先會真係相等）
 
     clamp_cal(h, lead, "leadIn")
     clamp_cal(h, cycle, "cycle")
@@ -158,6 +213,7 @@ def build(path):
         "cycleFrames": p,
         "cycleMs": sum(ms for _, ms in cycle),
         "cycleSmooth": CYCLE_SMOOTH,
+        "symmetry": "ok" if not symmetry_report({"home": home, "cycle": {"frames": [a for a, _ in cycle]}}) else "VIOLATION",
         "wrapMaxDiff": wrap,
     }
     return doc, info
@@ -228,6 +284,11 @@ def check():
     if bad:
         print("❌ 後行步態唔係前行嘅時間反轉：" + bad)
         rc = 1
+    for label, d in (("walk_fwd", doc), ("walk_back", back)):
+        sym = symmetry_report(d)
+        if sym:
+            print("❌ %s 左右唔對稱（右,左,幅度差,平均差）：%s" % (label, sym))
+            rc = 1
     for label, path, want_doc in (("walk_fwd.json", DEFAULT_OUT, doc),
                                   ("walk_back.json", DEFAULT_OUT_BACK, back)):
         want = dump(want_doc)
