@@ -147,6 +147,77 @@ def symmetry_report(doc):
     return bad
 
 
+# 後行起步：跟官方後行檔（1510818256622.ubx）嘅起步段，唔再沿用前行起步。
+GAIT_BACK_SRC = os.path.join(HERE, "gait-src", "1510818256622.ubx")
+BACK_JOIN_MAX = 26       # 起步末格→步態首格最大差（前行係 26）；超過就自動補一格過渡
+BACK_BRIDGE_MS = 800     # 過渡格時長（0＝唔補，起步末格直接接步態首格）
+
+
+# 後行循環入口相位：循環係前行時間反轉，第 0 格剛好係右腳最前相位，起步後會「右腳先向前、再向後」。
+# 所以循環要由適合嘅相位入（循環係環形，旋轉只改起點，唔改任何姿勢／時長）。
+BACK_FIRST_LEG = "L"     # 後行起步用邊隻腳先向後："L"＝左腳（#13 髖上下，數值細＝向後）、"R"＝右腳（#8，數值大＝向後）
+BACK_FIRST_WIN = 3       # 睇起步後頭幾格
+BACK_FIRST_BACK_MIN = 8  # 起步腳頭 BACK_FIRST_WIN 格內要明顯向後 >= 此值（相對起步站姿）
+BACK_FIRST_FWD_MAX = 4   # 去到最後位之前，起步腳向前擺、以及另一隻腳向後，都唔可以超過此值
+_HIP = {"R": (7, 1), "L": (12, -1)}   # 髖上下軸（0-based）、「向後」嘅數值符號
+
+
+def back_disp(frame, stance, leg):
+    """該腳髖上下相對起步站姿嘅向後位移（正＝向後）。"""
+    ax, sg = _HIP[leg]
+    return sg * (frame[ax] - stance[ax])
+
+
+def entry_ok(frames, stance):
+    """frames[0..] 作為循環開頭，由 stance 起步：BACK_FIRST_LEG 係咪先向後（冇先向前擺），另一隻腳冇同時向後。"""
+    n = len(frames)
+    other = "R" if BACK_FIRST_LEG == "L" else "L"
+    d = [back_disp(frames[k % n], stance, BACK_FIRST_LEG) for k in range(BACK_FIRST_WIN)]
+    o = [back_disp(frames[k % n], stance, other) for k in range(BACK_FIRST_WIN)]
+    peak = max(range(len(d)), key=lambda k: d[k])
+    return (d[peak] >= BACK_FIRST_BACK_MIN and min(d[:peak + 1]) > -BACK_FIRST_FWD_MAX
+            and max(o) <= BACK_FIRST_FWD_MAX)
+
+
+def pick_back_entry(frames, stance):
+    """揀循環入口相位：BACK_FIRST_LEG 先向後，再揀同起步末姿勢最接近（每軸最大差最細）嘅。"""
+    n = len(frames)
+    best = None
+    for r in range(n):
+        rot = frames[r:] + frames[:r]
+        if not entry_ok(rot, stance):
+            continue
+        join = max(abs(rot[0][j] - stance[j]) for j in range(20))
+        if best is None or join < best[0]:
+            best = (join, r)
+    if best is None:
+        raise SystemExit("後行循環搵唔到「%s腳先向後」嘅入口相位" % ("左" if BACK_FIRST_LEG == "L" else "右"))
+    return best[1]
+
+
+def build_back_lead(path):
+    """官方後行檔嘅起步段 → [(angles20, ms)]；同 build() 一樣跳過頭幾格近乎靜止（＝站定 home）。"""
+    h = load_helpers()
+    m = h.parse_ubx(path)
+    segs, _voices, _total, _logs = h.official_plan(m)
+    servo = [seg_frames(h, sg) for sg in segs]
+    if len(servo) < 2:
+        raise SystemExit("官方播序少於 2 個 servo 段，唔似後行步態檔")
+    home = servo[-1][-1][0]
+    lead = servo[0]
+    skip = 0
+    for a, _ms in lead:
+        if max(abs(a[j] - home[j]) for j in range(20)) <= LEAD_STATIC_DEV:
+            skip += 1
+        else:
+            break
+    lead = lead[skip:]
+    if not lead:
+        raise SystemExit("後行檔搵唔到起步段（全部格都近 home）")
+    clamp_cal(h, lead, "back leadIn")
+    return lead
+
+
 def match_len(frames, p):
     """由頭起連續幾格 f[i] ≈ f[i+p]（每軸差 <= CYCLE_TOL）。"""
     n = len(frames)
@@ -219,22 +290,37 @@ def build(path):
     return doc, info
 
 
-def reverse_gait(doc):
+def reverse_gait(doc, back_lead=None, lead_src=None):
     """前行步態 → 後行步態（時間反轉）。
 
     循環 c[0..n-1]（ms[i]＝由 c[i-1] 去 c[i] 嘅時間，c[0] 係由 c[n-1] 回頭接）倒序播：
       P[k]  = c[(n-k) % n]            → [c0, c(n-1), c(n-2), ..., c1]
       D[k]  = ms[(n+1-k) % n]         → 由 P[k-1] 去 P[k]（＝原檔 c[i] 去 c[i-1]）嘅時間
-    P[0]＝c0，同前行一樣由 leadIn 末姿勢接入，所以 leadIn／home 全部沿用。
+    再將 P 環形旋轉 r 格（entryRotation）：循環入口揀「起步後 BACK_FIRST_LEG 先向後」嘅相位（見 pick_back_entry）。
+    起步段：有 back_lead（官方後行檔）就用佢，否則沿用前行起步。
     """
     cyc = doc["cycle"]
     n = len(cyc["frames"])
-    frames = [list(cyc["frames"][(n - k) % n]) for k in range(n)]
-    ms = [cyc["ms"][(n + 1 - k) % n] for k in range(n)]
+    P = [list(cyc["frames"][(n - k) % n]) for k in range(n)]
+    D = [cyc["ms"][(n + 1 - k) % n] for k in range(n)]
+    if back_lead:
+        lead = [(list(a), m) for a, m in back_lead]
+    else:
+        lead = [(list(a), m) for a, m in zip(doc["leadIn"]["frames"], doc["leadIn"]["ms"])]
+    r = pick_back_entry(P, lead[-1][0])
+    frames, ms = P[r:] + P[:r], D[r:] + D[:r]
+    join = max(abs(lead[-1][0][j] - frames[0][j]) for j in range(20))
+    if BACK_BRIDGE_MS > 0 and join > BACK_JOIN_MAX:
+        mid = [int(round((lead[-1][0][j] + frames[0][j]) / 2.0)) for j in range(20)]
+        lead.append((mid, BACK_BRIDGE_MS))     # 起步末格→步態首格太遠：中途補一格過渡
     back = dict(doc)
     back["note"] = "由 scripts/ubx_to_gait.py 生成（前行步態時間反轉），勿手改；ms 為 1.0x 時每格時長"
     back["direction"] = "back"
+    back["entryRotation"] = r
     back["cycle"] = {"ms": ms, "frames": frames}
+    back["leadIn"] = {"ms": [m for _, m in lead], "frames": [a for a, _ in lead]}
+    if lead_src:
+        back["leadInSource"] = lead_src
     return back
 
 
@@ -248,14 +334,16 @@ def verify_reverse(fwd, back):
         return "姿勢集合唔同"
     if sum(b["ms"]) != sum(f["ms"]):
         return "週期總時長唔同"
+    r = back.get("entryRotation", 0)
     for k in range(n):
-        # 後行 P[k-1]→P[k]（耗時 D[k]）必須等於前行某格 c[i]→c[i-1]（耗時 ms[i]）
-        i = (n + 1 - k) % n
+        # 後行（未旋轉）P[q-1]→P[q]（耗時 D[q]）必須等於前行某格 c[i]→c[i-1]（耗時 ms[i]）；q＝k 加入口旋轉
+        q = (k + r) % n
+        i = (n + 1 - q) % n
         if b["frames"][k - 1] != f["frames"][i] or b["frames"][k] != f["frames"][i - 1]:
             return "第 %d 格相鄰關係唔係反轉" % k
         if b["ms"][k] != f["ms"][i]:
             return "第 %d 格時長唔啱" % k
-    for key in ("home", "leadIn", "blend", "limits"):
+    for key in ("home", "blend", "limits"):
         if back[key] != fwd[key]:
             return "%s 同前行唔一致" % key
     return None
@@ -276,13 +364,24 @@ def dump(doc):
 GAIT_SRC = os.path.join(HERE, "gait-src", "open-1508999860568-8step-smooth6.ubx")
 
 
+def back_variant(doc):
+    """後行 JSON：有官方後行檔就用佢嘅起步段，否則沿用前行起步。"""
+    if os.path.exists(GAIT_BACK_SRC):
+        return reverse_gait(doc, build_back_lead(GAIT_BACK_SRC), os.path.basename(GAIT_BACK_SRC))
+    return reverse_gait(doc)
+
+
 def check():
     doc, info = build(GAIT_SRC)
-    back = reverse_gait(doc)
+    back = back_variant(doc)
     rc = 0
     bad = verify_reverse(doc, back)
     if bad:
         print("❌ 後行步態唔係前行嘅時間反轉：" + bad)
+        rc = 1
+    if not entry_ok(back["cycle"]["frames"], back["leadIn"]["frames"][-1]):
+        print("❌ walk_back 起步後%s腳唔係先向後（頭 %d 格）"
+              % ("左" if BACK_FIRST_LEG == "L" else "右", BACK_FIRST_WIN))
         rc = 1
     for label, d in (("walk_fwd", doc), ("walk_back", back)):
         sym = symmetry_report(d)
@@ -318,7 +417,7 @@ def main(argv):
     doc, info = build(argv[1])
     os.makedirs(os.path.dirname(out), exist_ok=True)
     back_out = back_path_for(out)
-    for path, d in ((out, doc), (back_out, reverse_gait(doc))):
+    for path, d in ((out, doc), (back_out, back_variant(doc))):
         with open(path, "w", encoding="utf-8") as f:
             f.write(dump(d))
         print("wrote", path)
