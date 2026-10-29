@@ -238,6 +238,10 @@ const I18N = {
   ik_name_squat:         { zh: "蹲下",               en: "Squat" },
   ik_name_ysquat:        { zh: "蹲式",               en: "Squat 2" },
   ik_name_lr:            { zh: "左右一字馬",         en: "Left-right split" },
+  ik_name_fb:            { zh: "前後一字馬",         en: "Front/back split" },
+  ik_dir_left:           { zh: "左前",               en: "left-forward" },
+  ik_dir_right:          { zh: "右前",               en: "right-forward" },
+  // 舊 mapping 遷移前仍可能出現；保留標籤，後端 loadMapping 會轉成 fb。
   ik_name_fsplit:        { zh: "左前一字馬",         en: "Left-forward split" },
   ik_name_fsplit2:       { zh: "右前一字馬",         en: "Right-forward split" },
   ik_status_ready:       { zh: "拖動滑桿",           en: "Drag a slider" },

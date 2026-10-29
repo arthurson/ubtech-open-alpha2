@@ -52,15 +52,21 @@ var GAMEPAD_KIND_KEYS = { none: "gamepad_kind_none", stop: "gamepad_kind_stop",
   voice: "gamepad_kind_voice", action: "gamepad_kind_action" };
 
 // IK 動作（值＝ik:<kind>±；同 servo jog 一樣撳住連走，每步 10%）。
-// 同後端 GamepadCenter.isIkAction／IkPose 對齊。舊 ik:fb± 當左前。
+// 同後端 GamepadCenter.isIkAction／IkPose 對齊。前後一字馬二合一：
+// ik:fb+ 向 +100（右前）、ik:fb- 向 -100（左前），0＝企姿。
+// 舊 ik:fsplit±／ik:fsplit2± 由後端 loadMapping 自動遷移。
 var GAMEPAD_IK_FNS = ["ik:squat+", "ik:squat-", "ik:ysquat+", "ik:ysquat-",
-                      "ik:lr+", "ik:lr-", "ik:fsplit+", "ik:fsplit-",
-                      "ik:fsplit2+", "ik:fsplit2-"];
+                      "ik:lr+", "ik:lr-", "ik:fb+", "ik:fb-"];
 
 function gamepadIkLabel(v) {
-  var m = /^ik:(squat|ysquat|lr|fsplit2?|fb)([+-])$/.exec(v || "");
+  var m = /^ik:(squat|ysquat|lr|fb|fsplit2?)([+-])$/.exec(v || "");
   if (!m) return v || "";
-  var kind = m[1] === "fb" ? "fsplit" : m[1];
+  var kind = m[1];
+  if (kind === "fb") {
+    return t("ik_name_fb") + (m[2] === "+"
+      ? " + (" + t("ik_dir_right") + ")"
+      : " − (" + t("ik_dir_left") + ")");
+  }
   return t("ik_name_" + kind) + (m[2] === "+" ? " +" : " −");
 }
 var GAMEPAD_VOICE_FIXED = [["xiaozhi_toggle", "gamepad_voice_xiaozhi"],
@@ -682,6 +688,14 @@ function gamepadActionGroupOf(id) {
   return "其他";
 }
 
+// 舊左前／右前 mapping 併入二合一 fb（同 GamepadCenter.loadMapping 一致）：
+// fsplit+（左前）→ fb-、fsplit- → fb+、fsplit2+（右前）→ fb+、fsplit2- → fb-。
+function gamepadCanonicalIkFn(kind, dir) {
+  if (kind === "fsplit") return "ik:fb" + (dir === "+" ? "-" : "+");
+  if (kind === "fsplit2") return "ik:fb" + dir;
+  return "ik:" + kind + dir;
+}
+
 // 值拆解：none/stop 直回；music_*/vol_* 歸 music 種；
 // ring_phone/ring_stop/ring_random/ring:[phone:|notification:]<title> 歸 ring 種；head:/eye: 歸 led 種；
 // servo<N>± 拆轴向；ik:<kind>± 拆 IK 動作／方向；action:<id> 拆 id。
@@ -749,10 +763,10 @@ function gamepadParseValue(v) {
     out.servoDir = m[2];
     return out;
   }
-  m = v.match(/^ik:(squat|ysquat|lr|fsplit2?|fb)([+-])$/);
+  m = v.match(/^ik:(squat|ysquat|lr|fb|fsplit2?)([+-])$/);
   if (m) {
     out.kind = "ik";
-    out.ikFn = "ik:" + (m[1] === "fb" ? "fsplit" : m[1]) + m[2];
+    out.ikFn = gamepadCanonicalIkFn(m[1], m[2]);
     return out;
   }
   if (v === "walk:fwd" || v === "walk:back" || v === "walk:fast" || v === "walk:slow") {
@@ -789,7 +803,8 @@ function gamepadBuildServoControls(side, k, idx, parsed) {
   return wrap;
 }
 
-// 建 IK 動作下拉（蹲下／蹲式／左右／左前／右前 × +/-；撳住連走，同 servo jog 一樣）。
+// 建 IK 動作下拉（蹲下／蹲式／左右／前後二合一 × +/-；撳住連走，同 servo jog 一樣）。
+// 前後二合一：+ 向 +100（右前）、− 向 -100（左前），預設 0＝企姿。
 function gamepadBuildIkControls(side, k, idx, parsed) {
   var wrap = document.createElement("span");
   wrap.id = gamepadSubId("gpIkWrap", side, k, idx);

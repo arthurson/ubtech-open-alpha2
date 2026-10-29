@@ -9495,9 +9495,9 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "description": "none/stop/vol_up/vol_down/music_play/next/prev/pause/resume/toggle/stop/random/radio_toggle/disco_toggle/filler_toggle/ring_phone/ring_stop/ring_random/ring:<title>/ring:phone:<title>/ring:notification:<title>/head:<preset>:<color>/head:random/eye:<preset>:<color>/eye:random/mouth:breathing:<speedMs>/mouth:off/led_off/camera_photo/face_toggle/color_toggle/video_toggle/sonar_toggle/pir_toggle/accel_toggle/xiaozhi_toggle/vosk_toggle/vosk:<id>/eq:<preset>/radio:<uuid或名>/servo1-22+/servo1-22-/ik:squat+/ik:squat-/ik:ysquat+/ik:ysquat-/ik:lr+/ik:lr-/ik:fsplit+/ik:fsplit-/ik:fsplit2+/ik:fsplit2-/action:<id>"
+              "description": "none/stop/vol_up/vol_down/music_play/next/prev/pause/resume/toggle/stop/random/radio_toggle/disco_toggle/filler_toggle/ring_phone/ring_stop/ring_random/ring:<title>/ring:phone:<title>/ring:notification:<title>/head:<preset>:<color>/head:random/eye:<preset>:<color>/eye:random/mouth:breathing:<speedMs>/mouth:off/led_off/camera_photo/face_toggle/color_toggle/video_toggle/sonar_toggle/pir_toggle/accel_toggle/xiaozhi_toggle/vosk_toggle/vosk:<id>/eq:<preset>/radio:<uuid或名>/servo1-22+/servo1-22-/ik:squat+/ik:squat-/ik:ysquat+/ik:ysquat-/ik:lr+/ik:lr-/ik:fb+/ik:fb-/action:<id>"
             },
-            "description": "映射動作（單個或換行分隔多達 6 個，撳一下一次過順序做晒；reset=1 時可省略；music_* 為本地音樂；servo 步進覆蓋全部 22 軸；ik 為腳部 IK 動作（squat／ysquat／lr／fsplit 左前／fsplit2 右前；舊 fb 當左前），同 servo 一樣撳住 +／− 連走，每步 10%，到 0%／100% 自動停）"
+            "description": "映射動作（單個或換行分隔多達 6 個，撳一下一次過順序做晒；reset=1 時可省略；music_* 為本地音樂；servo 步進覆蓋全部 22 軸；ik 為腳部 IK 動作（squat／ysquat／lr／fb 前後一字馬二合一：− 向 -100＝左前、+ 向 +100＝右前；舊 fsplit／fsplit2 會自動遷移，舊 fb 別名亦即係二合一），同 servo 一樣撳住 +／− 連走，每步 10%，到 0%／100%（fb 係 -100%／+100%）自動停）"
           },
           {
             "name": "reset",

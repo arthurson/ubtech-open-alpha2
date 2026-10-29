@@ -177,6 +177,17 @@ public final class IkPoseTest {
         eq(170, fs2_100[0], "fsplit2.servo1.100");
         eq(150, fs2_100[3], "fsplit2.servo4.100");
 
+        // 前後一字馬二合一：-100＝左前、+100＝右前、0＝企姿。
+        eq(fs100, IkPose.computeFb(-100, boot), "fb.-100.left");
+        eq(fs2_100, IkPose.computeFb(100, boot), "fb.+100.right");
+        eq(IkPose.compute("fsplit", 50, boot), IkPose.computeFb(-50, boot),
+                "fb.-50.left");
+        eq(IkPose.compute("fsplit2", 50, boot), IkPose.computeFb(50, boot),
+                "fb.+50.right");
+        eq(boot, IkPose.computeFb(0, boot), "fb.0.boot");
+        eq(fs100, IkPose.computeSigned("fb", -100, boot, null), "fb.signed.-100");
+        eq(fs2_100, IkPose.computeSigned("fb", 100, boot, null), "fb.signed.+100");
+
         // 4-arg compute：IK 唔控制嘅軸用 current，唔會拉返 base。
         int[] current = boot.clone();
         current[18] = 150; // 19 號頭
@@ -200,6 +211,10 @@ public final class IkPoseTest {
         eq(150, curFsplit2[1], "current.fsplit2.servo2");
         eq(170, curFsplit2[0], "current.fsplit2.servo1");
         eq(150, curFsplit2[3], "current.fsplit2.servo4");
+        int[] curFb0 = IkPose.computeSigned("fb", 0, boot, current);
+        eq(150, curFb0[18], "current.fb0.head");
+        eq(150, curFb0[1], "current.fb0.servo2");
+        eq(boot[7], curFb0[7], "current.fb0.legs");
         int[] curZero = IkPose.compute("squat", 0, boot, current);
         eq(150, curZero[18], "current.squat0.head");
         eq(150, curZero[1], "current.squat0.servo2");

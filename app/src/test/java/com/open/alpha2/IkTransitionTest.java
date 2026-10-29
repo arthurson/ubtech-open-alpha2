@@ -122,6 +122,14 @@ public final class IkTransitionTest {
                     fk + " manualSteps > 1");
         }
 
+        // 二合一前後一字馬：-50／+50 嘅參考步長要同單邊 fsplit／fsplit2 一致。
+        eq(IkTransition.kindStepDeg("fsplit", 50, boot),
+                IkTransition.kindStepDeg("fb", -50, boot), "fb stepDeg -50 = fsplit 50");
+        eq(IkTransition.kindStepDeg("fsplit2", 50, boot),
+                IkTransition.kindStepDeg("fb", 50, boot), "fb stepDeg +50 = fsplit2 50");
+        eq(10, IkTransition.pctSteps(-50, 50, 10), "fb pctSteps -50->+50");
+        eq(5, IkTransition.pctSteps(0, -50, 10), "fb pctSteps 0->-50");
+
         // 逐格插值唔會跳過參考步長（轉動作 phase 1）。
         int steps = IkTransition.manualSteps(ysquat100, returnPose, "ysquat", 0, hold);
         int refYs = IkTransition.kindStepDeg("ysquat", 0, hold);

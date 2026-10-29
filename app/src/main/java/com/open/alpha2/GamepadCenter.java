@@ -52,10 +52,12 @@ import java.util.Map;
  * vosk_toggle／vosk:&lt;id&gt;（Vosk 監聽／切包 toggle，經 VoskApi）／eq:&lt;preset&gt;（EQ toggle，經 AudioCenter）／
  * radio:&lt;uuid或名&gt;（收藏電台直播，經 AudioCenter）／
  * servo&lt;1-22&gt;+／servo&lt;1-22&gt;-（單步 jog，步長 {@link #SERVO_JOG_STEP}，
- * 撳住連走）／ik:squat±／ik:ysquat±／ik:lr±／ik:fsplit±（左前）／ik:fsplit2±（右前）
+ * 撳住連走）／ik:squat±／ik:ysquat±／ik:lr±／ik:fb±（前後一字馬二合一：
+ * − 向 -100＝左前、+ 向 +100＝右前、0＝企姿；舊 ik:fsplit±／ik:fsplit2±
+ * 載入時自動遷移）
  * （腳部 IK 動作，經 {@link IkPose}；
  * 同 servo 一樣撳住連走，每步 10%（每格 120ms，同 Web IK 卡一致），
- * 到 0%／100% 自動停；由非 0% pose 開始時會由實際 pose 均速過渡，
+ * 到 0%／100%（fb 係 -100%／+100%）自動停；由非 0% pose 開始時會由實際 pose 均速過渡，
  * 轉動作先均速回 0% 再行新動作，唔會突然跳）／
  * walk:fwd（按住向前行，放手企停；步態＝.ubx，見 {@link WalkCenter}）／walk:back（按住向後行）／walk:fast／walk:slow
  * （行路時加速／減速；搖桿向按偏轉量，掣＝全速；fwd 掛搖桿向＝偏轉量即速度）／
@@ -534,7 +536,8 @@ public final class GamepadCenter {
      * camera_photo／face_toggle／color_toggle／video_toggle／sonar_toggle／
      * pir_toggle／accel_toggle／xiaozhi_toggle／vosk_toggle／vosk:&lt;id&gt;／
      * eq:&lt;preset&gt;／radio:&lt;uuid或名&gt;／servo1-22±／
-     * ik:squat±／ik:ysquat±／ik:lr±／ik:fsplit±／ik:fsplit2±／action:&lt;非空&gt;。
+     * ik:squat±／ik:ysquat±／ik:lr±／ik:fb±（前後一字馬二合一）／
+     * 舊 ik:fsplit±／ik:fsplit2±／action:&lt;非空&gt;。
      * servo／IK 步進撳住連走（jogServo／ikStep 通用）。
      * 單個動作唔可以含換行（一鍵多功能用換行分隔，見 splitMultiAction）。
      */
@@ -657,8 +660,9 @@ public final class GamepadCenter {
 
     /**
      * IK 動作值：{@code ik:squat+/-}／{@code ik:ysquat+/-}／{@code ik:lr+/-}／
-     * {@code ik:fsplit+/-}（左前）／{@code ik:fsplit2+/-}（右前）。
-     * 舊 {@code ik:fb+/-} 當 fsplit（左前）相容別名。
+     * {@code ik:fb+/-}（前後一字馬二合一：− 向 -100＝左前、+ 向 +100＝右前）。
+     * 舊 {@code ik:fsplit+/-}（左前）／{@code ik:fsplit2+/-}（右前）仍然接受，
+     * 載入舊映射時會自動遷移成 {@code ik:fb∓}／{@code ik:fb±}。
      * 同 servo jog 一樣撳住連走，每步 {@link #IK_STEP_PCT}%（每格 120ms），
      * 由實際 pose 均速過渡；轉動作先均速回 0%。
      */
@@ -676,12 +680,14 @@ public final class GamepadCenter {
                 || "fsplit2".equals(kind) || "fb".equals(kind);
     }
 
-    /** ik 動作拆 kind（squat／ysquat／lr／fsplit／fsplit2；fb→fsplit）；非法回 null。 */
+    /**
+     * ik 動作拆 kind（squat／ysquat／lr／fb；fsplit／fsplit2 係舊映射）；
+     * 非法回 null。{@code fb} 保留做二合一帶符號動作，唔再 normalize 做 fsplit。
+     */
     private static String ikKindOf(String a) {
         if (!isIkAction(a)) return null;
         String rest = a.trim().substring(3).trim();
-        String kind = rest.substring(0, rest.length() - 1);
-        return "fb".equals(kind) ? "fsplit" : kind;
+        return rest.substring(0, rest.length() - 1);
     }
 
     /** ik 動作拆方向（+1／-1）；非法回 0。 */
@@ -689,6 +695,33 @@ public final class GamepadCenter {
         if (!isIkAction(a)) return 0;
         String rest = a.trim().substring(3).trim();
         return rest.charAt(rest.length() - 1) == '+' ? 1 : -1;
+    }
+
+    /**
+     * 舊左前／右前 IK 映射併入二合一 {@code ik:fb±}：
+     * {@code fsplit+}（左前）→ {@code fb-}、{@code fsplit-} → {@code fb+}、
+     * {@code fsplit2+}（右前）→ {@code fb+}、{@code fsplit2-} → {@code fb-}。
+     * 保留「向該方向行」嘅語義；其他值原樣回。
+     */
+    private static String migrateIkAction(String a) {
+        if (a == null || !a.startsWith("ik:")) return a;
+        int n = a.length();
+        if (n < 5) return a;
+        char dir = a.charAt(n - 1);
+        if (dir != '+' && dir != '-') return a;
+        String kind = a.substring(3, n - 1);
+        if ("fsplit".equals(kind)) return "ik:fb" + (dir == '+' ? "-" : "+");
+        if ("fsplit2".equals(kind)) return "ik:fb" + dir;
+        return a;
+    }
+
+    /** 逐段遷移一鍵多功能入面嘅舊 IK 動作（其他段原樣保留）。 */
+    private static String migrateIkMultiAction(String multi) {
+        java.util.List<String> parts = splitMultiAction(multi);
+        if (parts.isEmpty()) return multi;
+        java.util.List<String> out = new java.util.ArrayList<String>(parts.size());
+        for (String p : parts) out.add(migrateIkAction(p));
+        return joinMultiAction(out);
     }
 
     private static final String PREFS_KEY_MAPPING_KB = "gamepad_kb_mapping_json";
@@ -765,6 +798,8 @@ public final class GamepadCenter {
                         char dg = dp[2].charAt(0);
                         if (dg < '3' || dg > '5') pv = dp[0] + ":dual:3";
                     }
+                    // 舊左前／右前 IK 動作併入二合一 fb（保留方向）。
+                    pv = migrateIkAction(pv);
                     fixed.add(pv);
                 }
                 // 上限收緊（如 8→3）舊存檔超長唔好成個掉，截斷保留前面。
@@ -875,8 +910,9 @@ public final class GamepadCenter {
         boolean first = true;
         for (Map.Entry<String, String> e : mapping.entrySet()) {
             if (!isKnownKey(norm, e.getKey())) continue;
-            // canonical：逐段 trim＋換行重接（去多餘空行／空格，免存垃圾）。
-            String canon = joinMultiAction(splitMultiAction(e.getValue()));
+            // canonical：逐段 trim＋換行重接（去多餘空行／空格，免存垃圾）；
+            // 舊左前／右前 IK 動作順手遷移成二合一 fb。
+            String canon = migrateIkMultiAction(joinMultiAction(splitMultiAction(e.getValue())));
             if (!isValidMultiAction(canon)) continue;
             if (!first) sb.append(',');
             first = false;
@@ -1723,11 +1759,13 @@ public final class GamepadCenter {
     private static final int SERVO_REPEAT_MAX_TICKS = 40;
 
     // IK 連走：+/− 掣共用同一個「當前動作＋百分比」狀態；轉動作即由 0% 重計
-    // （同 IK 卡五條 slider 互斥一樣）。撳住每 120ms 行 10%，到 0／100 自己停；
-    // 每步都由實際 pose 均速過渡，唔會由 boot pose 突然跳去目標。
+    // （同 IK 卡四條 slider 互斥一樣）。撳住每 120ms 行 10%，到 0／100 自己停；
+    // fb（前後一字馬二合一）用 -100…+100，0＝企姿。每步都由實際 pose
+    // 均速過渡，唔會由 boot pose 突然跳去目標。
     private final Map<String, java.util.concurrent.ScheduledFuture<?>> ikRepeaters =
             new LinkedHashMap<>();
     private volatile String ikActiveKind = null;
+    /** 當前動作百分比；fb（二合一）係 -100…+100，其他動作 0…100。 */
     private volatile int ikActivePct = 0;
     // 上次成功送出嘅 20 軸 IK 位姿：其他路（web servo／動作／手勢）郁過即對唔上，
     // 下次 IK 會由實際 pose 均速過渡，唔會用舊百分比突然跳去目標。
@@ -2096,7 +2134,7 @@ public final class GamepadCenter {
         }
     }
 
-    /** 單條 IK 連走；到 0%／100% 或連續 3 次送唔出即自己停。 */
+    /** 單條 IK 連走；到 0%／100%（fb 係 -100%／+100%）或連續 3 次送唔出即自己停。 */
     private synchronized void startIkRepeatTag(final String tag, final String kind,
             final int sign, float defl) {
         try {
@@ -2257,6 +2295,8 @@ public final class GamepadCenter {
      * IK 行一步：0% base 固定係官方開機 robotStandup 企姿（同 Web IK 卡
      * {@code IK_BOOT_POSE} 一致）。+/− 共用一個當前動作百分比；轉動作即由
      * 0% 重計（同 IK 卡 slider 互斥），所以按新動作嘅 − 會先回開機企姿。
+     * {@code fb}（前後一字馬二合一）唔同：pct 係 -100…+100，− 向 -100
+     * （左前）、+ 向 +100（右前）、0＝企姿，中途過 0 會直接連續過渡。
      *
      * <p>唔會再由 boot pose 直接跳去目標：任何一步都係由目前實際 pose
      * 以每格 120ms 均速過渡（同 slider 一樣）；轉動作先將舊動作控制嘅軸
@@ -2265,9 +2305,10 @@ public final class GamepadCenter {
     private synchronized boolean executeIkStep(String kind, int sign, int stepPct) {
         if (kind == null || sign == 0) return false;
         int step = Math.max(1, stepPct);
+        boolean fb = "fb".equals(kind);
         int basePct = kind.equals(ikActiveKind) ? ikActivePct : 0;
         int target = basePct + (sign > 0 ? step : -step);
-        if (target < 0) target = 0;
+        if (target < (fb ? -100 : 0)) target = fb ? -100 : 0;
         if (target > 100) target = 100;
 
         boolean retargeted = false;
@@ -2300,7 +2341,7 @@ public final class GamepadCenter {
 
         if (switched) {
             String oldKind = ikActiveKind;
-            int[] returnPose = IkPose.compute(oldKind, 0, IkPose.bootPose(), hold);
+            int[] returnPose = IkPose.computeSigned(oldKind, 0, IkPose.bootPose(), hold);
             // 新動作唔控制嘅軸（例如蹲式→蹲下嘅 2/5）凍結喺切換一刻；
             // 舊動作唔控制嘅軸亦保持實際值，交由新動作自己行。
             for (int i = 0; i < 20; i++) {
@@ -2320,7 +2361,7 @@ public final class GamepadCenter {
                 startIkPhase(kind, target, returnPose, hold);
             }
         } else {
-            int[] toPose = IkPose.compute(kind, target, IkPose.bootPose(), hold);
+            int[] toPose = IkPose.computeSigned(kind, target, IkPose.bootPose(), hold);
             for (int i = 0; i < 20; i++) {
                 if (!IkPose.affects(kind, i)) toPose[i] = hold[i];
             }
@@ -2349,7 +2390,7 @@ public final class GamepadCenter {
 
     /** 開始新動作 phase：由 fromPose 均速去 kind@pct（非控制軸保持 hold）。 */
     private synchronized void startIkPhase(String kind, int pct, int[] fromPose, int[] holdPose) {
-        int[] toPose = IkPose.compute(kind, pct, IkPose.bootPose(), holdPose);
+        int[] toPose = IkPose.computeSigned(kind, pct, IkPose.bootPose(), holdPose);
         for (int i = 0; i < 20; i++) {
             if (!IkPose.affects(kind, i)) toPose[i] = fromPose[i];
         }
@@ -2639,7 +2680,7 @@ public final class GamepadCenter {
                     + "xiaozhi_toggle/vosk_toggle/vosk:<id>/eq:<preset>/radio:<uuid或名>/"
                     + "servo1-22+/servo1-22-/ik:squat+/ik:squat-/"
                     + "ik:ysquat+/ik:ysquat-/ik:lr+/ik:lr-/"
-                    + "ik:fsplit+/ik:fsplit-/ik:fsplit2+/ik:fsplit2-/walk:fwd/walk:back/walk:fast/walk:slow/action:<id>, got: " + action);
+                    + "ik:fb+/ik:fb-/walk:fwd/walk:back/walk:fast/walk:slow/action:<id>, got: " + action);
         }
         Map<String, String> mapping = loadMapping(side);
         mapping.put(key, action);

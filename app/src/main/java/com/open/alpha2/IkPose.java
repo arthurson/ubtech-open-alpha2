@@ -1,7 +1,7 @@
 package com.open.alpha2;
 
 /**
- * 腳部 IK 動作位姿（蹲下／蹲式／左右一字馬／左前／右前一字馬）——Java 版。
+ * 腳部 IK 動作位姿（蹲下／蹲式／左右一字馬／前後一字馬二合一）——Java 版。
  *
  * <p>同 {@code app/src/main/assets/web/app-ik.js} 一字不差咁移植：同一組
  * URDF 連桿參數、校準 offset、ankle 補償、damped least-squares 解，
@@ -9,8 +9,11 @@ package com.open.alpha2;
  * 結果，所以兩邊做同一個百分比，落到舵機嘅 20 軸位姿應該一樣。</p>
  *
  * <p>0% base 係官方開機 robotStandup 企姿（{@link #BOOT_POSE}），唔再跟
- * 舵機格／現時位姿走：pct 0 回開機企姿，100 到已測試嘅最終 pose；五種動作
- * 互斥，但一律由同一個 base 計，所以中途轉動作唔會越做越歪。</p>
+ * 舵機格／現時位姿走：pct 0 回開機企姿，100 到已測試嘅最終 pose。
+ * 前後一字馬用 {@link #computeFb(int, int[])}／
+ * {@link #computeSigned(String, int, int[], int[])}：
+ * 負＝左前、正＝右前、0＝企姿。所有動作互斥，但一律由同一個 base 計，
+ * 所以中途轉動作唔會越做越歪。</p>
  *
  * <p>每個動作只控制相關舵機：蹲下只郁腳 7-16；蹲式／左右一字馬郁腳
  * 7-16 加肩 roll 2/5；左前／右前一字馬郁腳 7-16 加肩 pitch 1/4（雙臂
@@ -357,7 +360,11 @@ public final class IkPose {
         double s8, s9, s13, s14, pitchR, pitchL;
     }
 
-    /** 舊 API／已存手柄映射嘅 fb 當左前。 */
+    /**
+     * 舊 {@code compute("fb", pct)} API 仍然當左前（0…100）；
+     * Gamepad 二合一要用 {@link #computeFb(int, int[])}／
+     * {@link #computeSigned(String, int, int[], int[])}（-100…+100）。
+     */
     private static String normalizeKind(String kind) {
         return "fb".equals(kind) ? "fsplit" : kind;
     }
@@ -443,8 +450,8 @@ public final class IkPose {
     /**
      * 呢個 IK 動作會唔會控制 index（0-based）嗰粒舵機？
      * 腳 7-16（index 6-15）全部動作都會控制；蹲式／左右一字馬
-     * 另外控制 2/5（index 1/4）肩 roll；左前／右前另外控制
-     * 1/4（index 0/3）肩 pitch 前後擺。其他軸完全唔郁。
+     * 另外控制 2/5（index 1/4）肩 roll；前後一字馬（fsplit／fsplit2／fb
+     * 二合一）另外控制 1/4（index 0/3）肩 pitch 前後擺。其他軸完全唔郁。
      */
     public static boolean affects(String kind, int index) {
         kind = normalizeKind(kind);
@@ -549,7 +556,41 @@ public final class IkPose {
         return clampPose(toDouble(pose), base);
     }
 
-    /** 動作名：squat／ysquat／lr／fsplit／fsplit2（fb 為 fsplit 別名）。 */
+    /**
+     * 前後一字馬二合一目標位姿：{@code signedPct} -100…+100，
+     * 負＝左前（fsplit）、正＝右前（fsplit2）、0＝base（開機企姿）。
+     * Gamepad 映射 {@code ik:fb±} 同 Web IK 卡二合一 slider 共用同一語義。
+     */
+    public static int[] computeFb(int signedPct, int[] base) {
+        int p = Math.max(-100, Math.min(100, signedPct));
+        if (p < 0) return compute("fsplit", -p, base);
+        if (p > 0) return compute("fsplit2", p, base);
+        return compute("fsplit", 0, base);
+    }
+
+    /** 同 {@link #computeFb(int, int[])} 一樣，但唔控制嘅軸用目前實際值。 */
+    public static int[] computeFb(int signedPct, int[] base, int[] current) {
+        int[] pose = computeFb(signedPct, base);
+        if (current == null) return pose;
+        for (int i = 0; i < 20 && i < current.length; i++) {
+            if (!affects("fb", i)) pose[i] = current[i];
+        }
+        return clampPose(toDouble(pose), base);
+    }
+
+    /**
+     * Gamepad／IK 過渡用：{@code kind} 係 {@code fb} 時 {@code pct} 用帶符號
+     * -100…+100（負＝左前、正＝右前）；其他動作照舊 0…100。
+     */
+    public static int[] computeSigned(String kind, int pct, int[] base, int[] current) {
+        if ("fb".equals(kind)) return computeFb(pct, base, current);
+        return compute(kind, pct, base, current);
+    }
+
+    /**
+     * 動作名：squat／ysquat／lr／fsplit／fsplit2。
+     * {@code fb} 亦接受（Gamepad 二合一用 {@link #computeSigned}）。
+     */
     public static boolean isKind(String kind) {
         kind = normalizeKind(kind);
         return "squat".equals(kind) || "ysquat".equals(kind)

@@ -1,16 +1,18 @@
 // Open Alpha2 — Servo tab: IK action card
-// (squat / squat 2 / left-right split / left-forward / right-forward split)
+// (squat / squat 2 / left-right split / merged front-back split)
 //
-// Ported from alpha2_description/web/ubx-player.html (the five sliders that
-// were tested against the URDF + real robot). The leg FK parameters come from
+// Ported from alpha2_description/web/ubx-player.html (the sliders that were
+// tested against the URDF + real robot). The leg FK parameters come from
 // alpha2_description/web/fk-params.js (URDF + calibrated q_init offsets).
 //
-// The five controls are mutually exclusive and all start from the boot
-// stand-up pose (0 = robotStandup, 100 = the tested IK pose). Dragging sets
-// the target; the robot moves 10% every 120 ms at constant speed (0→100 in
-// 1200 ms), previews the 20 servo values in the grid, and sends /api/servo/all
-// at each step. Releasing does not jump — the same constant-speed ramp
-// continues until the target is reached.
+// The four controls are mutually exclusive and all start from the boot
+// stand-up pose (0 = robotStandup, 100 = the tested IK pose). The front-back
+// split is one merged -100…+100 slider: -100 = left leg forward,
+// +100 = right leg forward, 0 = boot pose. Dragging sets the target; the
+// robot moves 10% every 120 ms at constant speed (0→100 in 1200 ms), previews
+// the 20 servo values in the grid, and sends /api/servo/all at each step.
+// Releasing does not jump — the same constant-speed ramp continues until the
+// target is reached.
 //
 // Switching actions has a "direct transition" toggle (remembered in
 // localStorage). Off: return to the boot pose first, then move to the new
@@ -79,7 +81,7 @@ var IK_YSQUAT_ARM_L = 60;
 // 保留舵機格目前嘅值（包括手動改過嘅頭／手／肩）。
 //   蹲下：腳 7-16（10 顆）
 //   蹲式／左右一字馬：腳 7-16 + 肩 roll 2/5（12 顆）
-//   左前／右前一字馬：腳 7-16 + 肩 pitch 1/4（12 顆）
+//   前後一字馬（二合一）：腳 7-16 + 肩 pitch 1/4（12 顆）
 // 頭 19/20、手 17/18、肘 3/6 唔屬於任何 IK 動作。
 var IK_LEG_AXES = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 var IK_KINDS = ["squat", "ysquat", "lr", "fsplit", "fsplit2"];
@@ -126,7 +128,7 @@ var IK_YSQUAT_POSE = [
 ];
 
 // 開機 robotStandup 20 軸企姿（同 ActionDirect.OFFICIAL_BOOT_STANDUP_POSE 一致）。
-// #19 官方原文 250 已改為 120（app 安全範圍）；5 條 IK slider 嘅 0% 都用呢個做 base。
+// #19 官方原文 250 已改為 120（app 安全範圍）；4 條 IK slider 嘅 0% 都用呢個做 base。
 var IK_BOOT_POSE = [
   120, 205, 120, 120, 35, 120, 120, 63, 145, 135,
   120, 120, 177, 95, 105, 120, 120, 120, 120, 120
