@@ -90,10 +90,12 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   (`servo/modify-id`, chest cmd10 — honours the chest left/right bus wiring),
   and single-servo firmware flash (`servo/upgrade`, 7168-byte `.bin` gate).
   IK action card: squat / squat 2 (official “蹲式” deep-squat pose) /
-  left-right split / left-forward split / right-forward split on five 0–100
-  sliders, starting from the boot stand-up pose (robotStandup; servo 19 head
-  yaw at 120); dragging sets the target and the robot moves 10% every 120 ms
-  at constant speed (0→100 in ~1200 ms, five sliders mutually exclusive).
+  left-right split on 0–100 sliders, plus one merged front/back split slider
+  (−100…+100, default 0, same as ubx-player.html: −100 = left leg forward,
+  +100 = right leg forward), starting from the boot stand-up pose
+  (robotStandup; servo 19 head yaw at 120); dragging sets the target and the
+  robot moves 10% every 120 ms at constant speed (0→100 in ~1200 ms, four
+  sliders mutually exclusive).
   A "Direct transition" switch controls action changes: off (default) returns
   to the boot pose at the same speed before moving to the new action; on blends
   the 20 servo angles straight from the current A pose to the B pose at the
@@ -141,10 +143,7 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   result, so the panel shows `✓` vs `✗ logged but not executed` at a glance.
 - Walk forward / backward (hold) — Gamepad tab card (two hold buttons) + mapping
   values `walk:fwd` (default D-pad up) and `walk:back`: hold to walk, release and
-  the robot finishes the step to the nearest "feet-down" frame of the loop
-  (≤ ~half a step; 4 per loop, picked from the pose data) and then eases back
-  to the standing pose and stops (lease expiry / `walk/stop?hard=true` skip
-  the wait). The gait is taken from
+  the robot eases back to the standing pose and stops. The gait is taken from
   `open-1508999860568-8step-smooth6.ubx` (`scripts/ubx_to_gait.py` →
   `assets/gait/walk_fwd.json`: start-up frames, a 19-frame loop, stand pose).
   The backward gait (`walk_back.json`) is the same loop played in reverse

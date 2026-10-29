@@ -202,11 +202,12 @@
 
   <!-- ============ TAB: SERVO ============ -->
   <div id="tab-servo" class="tab-page">
-    <!-- IK 動作：5 條 slider 由開機企姿（robotStandup）開始，0=企姿、100=已測試 pose。
+    <!-- IK 動作：4 條 slider 由開機企姿（robotStandup）開始，0=企姿、100=已測試 pose；
+         前後一字馬係二合一（-100＝左前、+100＝右前、0＝企姿，同 ubx-player.html 一樣）。
          拖動設定目標，機械人每 120ms 行 10%（0→100 約 1200ms 均速），
          每步預覽＋送 /api/servo/all；無關舵機保持目前／手動值。
          蹲下只郁腳 7-16；蹲式／左右一字馬郁腳 7-16 + 肩 roll 2/5；
-         左前／右前一字馬郁腳 7-16 + 肩 pitch 1/4（雙臂前後擺）。
+         前後一字馬（左前／右前）郁腳 7-16 + 肩 pitch 1/4（雙臂前後擺）。
          放手唔會跳，會繼續行到目標。
          「直接轉移」閂：切換動作先回企姿；開：A pose 直接均速過渡去 B pose。 -->
     <section class="card" id="ikCard">
@@ -240,17 +241,12 @@
         <b id="ikSplitLRVal" class="mono">0</b>
       </div>
       <div class="ik-row">
-        <span data-i18n="ik_split_lf">左前一字馬</span>
-        <input type="range" id="ikSplitLF" min="0" max="100" step="1" value="0"
-               oninput="onIkSlider('fsplit', this.value, event)" onchange="onIkSliderCommit('fsplit', this.value, event)">
-        <b id="ikSplitLFVal" class="mono">0</b>
+        <span data-i18n="ik_split_fb">前後一字馬</span>
+        <input type="range" id="ikSplitFB" min="-100" max="100" step="1" value="0"
+               oninput="onIkFbSlider(this.value, event)" onchange="onIkFbSliderCommit(this.value, event)">
+        <b id="ikSplitFBVal" class="mono">0</b>
       </div>
-      <div class="ik-row">
-        <span data-i18n="ik_split_rf">右前一字馬</span>
-        <input type="range" id="ikSplitRF" min="0" max="100" step="1" value="0"
-               oninput="onIkSlider('fsplit2', this.value, event)" onchange="onIkSliderCommit('fsplit2', this.value, event)">
-        <b id="ikSplitRFVal" class="mono">0</b>
-      </div>
+      <p class="hint" data-i18n="ik_split_fb_hint">前後一字馬：−100＝左腳踏前、右腳踏後（右臂前擺）；+100＝右腳踏前、左腳踏後（左臂前擺）；0＝企姿。</p>
       <p id="ikStatus" class="hint"></p>
     </section>
 

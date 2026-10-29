@@ -453,16 +453,32 @@ function ikSliderId(kind) {
   if (kind === "squat") return "ikSquat";
   if (kind === "ysquat") return "ikYSquat";
   if (kind === "lr") return "ikSplitLR";
-  if (kind === "fsplit2") return "ikSplitRF";
-  return "ikSplitLF";
+  return "ikSplitFB";   // 左前（fsplit）／右前（fsplit2）二合一，-100…+100
 }
 function ikValId(kind) {
   kind = ikNormalizeKind(kind);
   if (kind === "squat") return "ikSquatVal";
   if (kind === "ysquat") return "ikYSquatVal";
   if (kind === "lr") return "ikSplitLRVal";
-  if (kind === "fsplit2") return "ikSplitRFVal";
-  return "ikSplitLFVal";
+  return "ikSplitFBVal";
+}
+
+// 前後一字馬 slider 係二合一：負＝左前（fsplit）、正＝右前（fsplit2）、0＝企姿（同 ubx-player.html）。
+// 回傳呢個動作 pct 對應嘅 slider 帶符號值；null＝slider 而家顯示緊另一邊嘅值，唔可以覆蓋。
+function ikFbSigned(kind, pct) {
+  var sg = ikNormalizeKind(kind) === "fsplit2" ? 1 : -1;
+  if (pct > 0) return sg * pct;
+  var sl = document.getElementById("ikSplitFB");
+  var raw = sl ? (parseInt(sl.value, 10) || 0) : 0;
+  return (raw !== 0 && (raw > 0) !== (sg > 0)) ? null : 0;
+}
+// 帶符號值 → 要驅動嘅動作：<0 左前、>0 右前；0 就跟返而家行緊／等緊切換嘅前後動作。
+function ikFbKindFor(v) {
+  if (v < 0) return "fsplit";
+  if (v > 0) return "fsplit2";
+  if (ikSwitchTo && ikIsFSplit(ikSwitchTo.kind)) return ikSwitchTo.kind;
+  if (ikActive && ikIsFSplit(ikActive)) return ikActive;
+  return "fsplit";
 }
 function ikName(kind) {
   return t("ik_name_" + ikNormalizeKind(kind));
@@ -499,6 +515,10 @@ function ikReadGridPose() {
 function ikSetSliderValue(kind, v) {
   var slider = document.getElementById(ikSliderId(kind));
   var label = document.getElementById(ikValId(kind));
+  if (ikIsFSplit(ikNormalizeKind(kind))) {
+    v = ikFbSigned(kind, v);
+    if (v === null) return;
+  }
   if (slider) slider.value = v;
   if (label) label.textContent = v;
 }
@@ -511,7 +531,11 @@ function ikAllZero() {
 function ikSliderValue(kind) {
   var el = document.getElementById(ikSliderId(kind));
   var v = el ? parseInt(el.value, 10) : 0;
-  return isNaN(v) ? 0 : v;
+  if (isNaN(v)) return 0;
+  kind = ikNormalizeKind(kind);
+  if (kind === "fsplit") return Math.max(0, -v);    // 負＝左前
+  if (kind === "fsplit2") return Math.max(0, v);    // 正＝右前
+  return v;
 }
 function ikEnsureFSplitEnd(kind) {
   kind = ikNormalizeKind(kind);
@@ -1098,7 +1122,14 @@ function ikStartAnim() {
 function ikApplySliderTarget(kind, value) {
   var pct = Math.max(0, Math.min(100, parseInt(value, 10) || 0));
   var label = document.getElementById(ikValId(kind));
-  if (label) label.textContent = pct;
+  if (label) {
+    if (ikIsFSplit(ikNormalizeKind(kind))) {
+      var shown = ikFbSigned(kind, pct);
+      if (shown !== null) label.textContent = shown;
+    } else {
+      label.textContent = pct;
+    }
+  }
 
   // 直接過渡進行中：無論 toggle 而家係開定閂，都先處理呢個 transition，
   // 咁 toggle 喺過渡途中被切換都唔會產生兩個 state 打架。
@@ -1210,6 +1241,16 @@ function onIkSliderCommit(kind, value, ev) {
   // 放手只更新目標；動畫會用同一速度行完，唔會跳去目標。
   if (ev && ev.isTrusted && !ikSliderEngaged[kind]) return;
   ikApplySliderTarget(kind, value);
+}
+
+// 前後一字馬（二合一，-100…+100）：負數行左前、正數行右前，0 行返企姿。
+function onIkFbSlider(value, ev) {
+  var v = Math.max(-100, Math.min(100, parseInt(value, 10) || 0));
+  onIkSlider(ikFbKindFor(v), Math.abs(v), ev);
+}
+function onIkFbSliderCommit(value, ev) {
+  var v = Math.max(-100, Math.min(100, parseInt(value, 10) || 0));
+  onIkSliderCommit(ikFbKindFor(v), Math.abs(v), ev);
 }
 
 function ikSendPose(pose, timeMs, kind, pct, live, trans) {
