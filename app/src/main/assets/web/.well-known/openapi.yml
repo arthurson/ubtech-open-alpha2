@@ -5654,7 +5654,7 @@ paths:
       - gamepad
       summary: 開／關藍牙（管理 UI 用）
       parameters:
-      - name: on
+      - name: 'on'
         in: query
         required: true
         schema:
@@ -5820,7 +5820,7 @@ paths:
           type: string
           enum: [pad, kb]
         description: 邊；唔帶＝兩邊一齊
-      - name: on
+      - name: 'on'
         in: query
         required: true
         schema:

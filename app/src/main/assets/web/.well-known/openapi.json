@@ -9503,7 +9503,7 @@
         "summary": "開／關藍牙（管理 UI 用）",
         "parameters": [
           {
-            "name": true,
+            "name": "on",
             "in": "query",
             "required": true,
             "schema": {
@@ -9777,7 +9777,7 @@
             "description": "邊；唔帶＝兩邊一齊"
           },
           {
-            "name": true,
+            "name": "on",
             "in": "query",
             "required": true,
             "schema": {
