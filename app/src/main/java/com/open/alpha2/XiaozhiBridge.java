@@ -665,6 +665,12 @@ public final class XiaozhiBridge {
                 }
                 return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + "}");
             }
+            case "filler_action/get":
+                return xiaozhiConfig.fillerActionGet();
+
+            case "filler_action/set":
+                return xiaozhiConfig.fillerActionSet(query);
+
             case "boot_voice/get":
                 return xiaozhiConfig.bootVoiceGet();
 
@@ -1053,7 +1059,9 @@ public final class XiaozhiBridge {
                         // AudioCenter.triggerRandomFillerAction()，播本地音樂都用同一個 helper。
                         // 例外：take_photo 快門期間（capturePhoto 立咗旗）唔觸發，
                         // 等影完先郁返，否則快門嗰下郁緊會鬆郁朦。
-                        if (!suppressFillerForPhoto) {
+                        // The user can also turn the gesture off with
+                        // xiaozhi/filler_action/set?enabled=false (persistent).
+                        if (!suppressFillerForPhoto && xiaozhiConfig.isTtsFillerActionEnabled()) {
                             audioCenter.triggerRandomFillerAction();
                         }
                     } else if ("stop".equals(stateValue)) {

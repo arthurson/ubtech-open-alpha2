@@ -1085,6 +1085,16 @@ const Alpha2Api = (function() {
     return xiaozhiApi('disconnect', params);
   }
 
+  function xiaozhiFillerActionGet(params) {
+    // 查詢小智講嘢時隨機動作開關 (filler gesture at TTS start, default true)
+    return xiaozhiApi('filler_action/get', params);
+  }
+
+  function xiaozhiFillerActionSet(params) {
+    // 設定小智講嘢時隨機動作開關 (filler gesture at TTS start, persistent)
+    return xiaozhiApi('filler_action/set', params);
+  }
+
   function xiaozhiMcpConfigGet(params) {
     // 取得 MCP disabled 清單（總開關已移除，mcpEnabled 恆為 true）
     return xiaozhiApi('mcp_config/get', params);
@@ -1337,6 +1347,8 @@ const Alpha2Api = (function() {
     xiaozhiBootVoiceSet,
     xiaozhiConnect,
     xiaozhiDisconnect,
+    xiaozhiFillerActionGet,
+    xiaozhiFillerActionSet,
     xiaozhiMcpConfigGet,
     xiaozhiMcpConfigSet,
     xiaozhiMcpToolsList,

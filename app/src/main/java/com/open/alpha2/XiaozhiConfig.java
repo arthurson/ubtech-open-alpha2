@@ -47,6 +47,11 @@ public final class XiaozhiConfig {
     /** 舊版小智 tab「開app自動連接」boolean（已由上面三態取代）。key 保留只為
      *  開機遷移：未存過新值、舊值是 true 就當 xiaozhi 並寫回去，之後不再讀。 */
     public static final String PREF_XIAOZHI_AUTO_CONNECT = "xiaozhi_auto_connect";
+    /** Random filler gesture at XiaoZhi TTS "start" (see XiaozhiBridge
+     *  TtsStateListener). Default true keeps the old behaviour. false = the TTS
+     *  start lights the mouth LED only, the robot does not move. See
+     *  filler_action/get|set. */
+    public static final String PREF_XIAOZHI_TTS_FILLER_ACTION_ENABLED = "xiaozhi_tts_filler_action_enabled";
 
     /** OTA 自架設定快照 (activation / vision 讀一次取齊，不用逐個 key 查)。 */
     public static final class OtaConfig {
@@ -130,6 +135,15 @@ public final class XiaozhiConfig {
             return mode;
         } catch (Exception e) {
             return BOOT_VOICE_OFF;
+        }
+    }
+
+    /** XiaoZhi TTS filler gesture switch, default true. */
+    public boolean isTtsFillerActionEnabled() {
+        try {
+            return prefs().getBoolean(PREF_XIAOZHI_TTS_FILLER_ACTION_ENABLED, true);
+        } catch (Exception e) {
+            return true;
         }
     }
 
@@ -280,6 +294,17 @@ public final class XiaozhiConfig {
         xiaozhiTtsEngine = engine;
         prefs().edit().putString(PREF_XIAOZHI_TTS_ENGINE, engine).apply();
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"engine\":\"" + MainActivity.jsonSafe(engine) + "\"}");
+    }
+
+    public HttpServer.ApiResponse fillerActionGet() {
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":"
+                + isTtsFillerActionEnabled() + "}");
+    }
+
+    public HttpServer.ApiResponse fillerActionSet(Map<String, String> query) {
+        boolean enabled = ApiValidator.requireBoolean(query, "enabled");
+        prefs().edit().putBoolean(PREF_XIAOZHI_TTS_FILLER_ACTION_ENABLED, enabled).apply();
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + "}");
     }
 
     public HttpServer.ApiResponse bootVoiceGet() {

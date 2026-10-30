@@ -684,6 +684,16 @@
         <button id="xiaozhiTtsEngineAndroidBtn" onclick="xiaozhiSetTtsEngine('android')" data-i18n="tts_engine_android_btn">Android 預設</button>
       </span>
     </div>
+    <!-- 講嘢時隨機動作開關 (xiaozhi/filler_action/get|set)：關咗 TTS start 只亮嘴燈，唔郁。 -->
+    <div class="row" style="align-items:center">
+      <label class="switch-label" title="開啟的話，小智每次開口講嘢機械人會做一個隨機動作">
+        <span data-i18n="xiaozhi_filler_heading">💃 講嘢時隨機動作</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="xiaozhiFillerToggle" checked onchange="xiaozhiSetFillerAction(this.checked)">
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+    </div>
   </section>
 
   <!-- 自訂小智 server：進階／一次性設定，擺 XiaoZhi 面板最底。四個欄位僅 OTA 位址必要，

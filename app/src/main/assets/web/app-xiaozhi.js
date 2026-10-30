@@ -850,12 +850,30 @@ function xiaozhiLoadTtsConfig() {
   });
 }
 
+/** 講嘢時隨機動作開關 (xiaozhi/filler_action/get|set)，預設開。 */
+function xiaozhiLoadFillerAction() {
+  Alpha2Api.xiaozhiFillerActionGet().then(function (res) {
+    const box = document.getElementById("xiaozhiFillerToggle");
+    if (box && res && res.ok) box.checked = !!res.enabled;
+  });
+}
+
+function xiaozhiSetFillerAction(enabled) {
+  Alpha2Api.xiaozhiFillerActionSet({ enabled: enabled ? "true" : "false" }).then(function (res) {
+    const box = document.getElementById("xiaozhiFillerToggle");
+    // 失敗就讀返後端真實狀態，唔好令個掣同後端唔一致。
+    if (box && res && res.ok) box.checked = !!res.enabled;
+    else xiaozhiLoadFillerAction();
+  });
+}
+
 window.addEventListener("DOMContentLoaded", function () {
   xiaozhiCheckSupport();
   xiaozhiRefreshStatus();
   xiaozhiLoadOtaConfig();
   xiaozhiLoadMcpConfig();
   xiaozhiLoadTtsConfig();
+  xiaozhiLoadFillerAction();
   setTimeout(xiaozhiBackgroundStatusWatch, 8000);
 });
 
