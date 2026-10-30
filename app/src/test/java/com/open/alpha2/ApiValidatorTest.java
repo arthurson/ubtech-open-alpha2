@@ -194,6 +194,17 @@ public final class ApiValidatorTest {
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireUbxSpeed(q()); } }, "ubxSpeed.missing");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.parseUbxSpeedValue(null); } }, "ubxSpeed.null");
 
+        // speech/tts、speech/tts_prosody/set: pitch／rate 0.5..2.0，可選 (null＝無帶)
+        eq(null, ApiValidator.optionalTtsProsody(q(), "pitch"), "ttsProsody.missing");
+        eq(null, ApiValidator.optionalTtsProsody(q("pitch", ""), "pitch"), "ttsProsody.empty");
+        eq(0.7f, ApiValidator.optionalTtsProsody(q("pitch", "0.7"), "pitch").floatValue(), "ttsProsody.pitch");
+        eq(0.5f, ApiValidator.optionalTtsProsody(q("rate", "0.5"), "rate").floatValue(), "ttsProsody.min");
+        eq(2.0f, ApiValidator.optionalTtsProsody(q("rate", " 2 "), "rate").floatValue(), "ttsProsody.max");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.optionalTtsProsody(q("pitch", "0.49"), "pitch"); } }, "ttsProsody.low");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.optionalTtsProsody(q("rate", "2.01"), "rate"); } }, "ttsProsody.high");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.optionalTtsProsody(q("rate", "NaN"), "rate"); } }, "ttsProsody.nan");
+        throwsIllegal(new Runnable() { public void run() { ApiValidator.optionalTtsProsody(q("pitch", "fast"), "pitch"); } }, "ttsProsody.text");
+
         // ── uuid / volume / angles ──
         eq("ABC123", ApiValidator.requireUuidValue(q("value", "ABC123")), "uuid.ok");
         throwsIllegal(new Runnable() { public void run() { ApiValidator.requireUuidValue(q("value", "01234567890123456789012345678901")); } }, "uuid.tooLong");

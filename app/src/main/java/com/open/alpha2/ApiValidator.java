@@ -210,6 +210,23 @@ public final class ApiValidator {
         return f;
     }
 
+    /** TTS 音高／語速範圍 (speech/tts、speech/tts_prosody/set 嘅 pitch／rate；1.0＝正常)。 */
+    public static final float TTS_PROSODY_MIN = 0.5f;
+    public static final float TTS_PROSODY_MAX = 2.0f;
+
+    /** speech/tts、speech/tts_prosody/set 嘅 pitch／rate：可選，null＝無帶。
+     *  範圍 TTS_PROSODY_MIN..MAX，NaN／Infinity 一律拒收。 */
+    public static Float optionalTtsProsody(Map<String, String> q, String key) {
+        String v = q.get(key);
+        if (v == null || v.isEmpty()) return null;
+        float f = parseFloatOrThrow(key, v);
+        if (Float.isNaN(f) || f < TTS_PROSODY_MIN || f > TTS_PROSODY_MAX) {
+            throw new IllegalArgumentException("parameter '" + key + "' must be between "
+                    + TTS_PROSODY_MIN + " and " + TTS_PROSODY_MAX + ", got: " + v);
+        }
+        return f;
+    }
+
     public static long requireLong(Map<String, String> q, String key) {        return parseLongOrThrow(key, require(q, key));
     }
 

@@ -913,6 +913,8 @@ const Alpha2Api = (function() {
 
   function speechTts(params) {
     if (params && params.engine != null) assertEnum(params.engine, ['android'], 'engine');
+    if (params && params.pitch != null) assertRange(Number(params.pitch), 0.5, 2.0, 'pitch');
+    if (params && params.rate != null) assertRange(Number(params.rate), 0.5, 2.0, 'rate');
     // 播 TTS（恆用 Android 系統 TTS）
     return api('speech/tts', params);
   }
@@ -926,6 +928,18 @@ const Alpha2Api = (function() {
     if (params && params.ui_lang != null) assertEnum(params.ui_lang, ['zh', 'en'], 'ui_lang');
     // 列出 Android TTS 可用語言
     return api('speech/tts_languages', params);
+  }
+
+  function speechTtsProsodyGet(params) {
+    // 查詢 TTS 音高／語速預設值 (1.0＝正常)
+    return api('speech/tts_prosody/get', params);
+  }
+
+  function speechTtsProsodySet(params) {
+    if (params && params.pitch != null) assertRange(Number(params.pitch), 0.5, 2.0, 'pitch');
+    if (params && params.rate != null) assertRange(Number(params.rate), 0.5, 2.0, 'rate');
+    // 設定 TTS 音高／語速預設值 (持久化；speech/tts 無帶 pitch/rate 時用，對話 TTS 亦跟)
+    return api('speech/tts_prosody/set', params);
   }
 
   function speechTtsVoices(params) {
@@ -1307,6 +1321,8 @@ const Alpha2Api = (function() {
     speechTts,
     speechTtsEngines,
     speechTtsLanguages,
+    speechTtsProsodyGet,
+    speechTtsProsodySet,
     speechTtsVoices,
     voskCatalog,
     voskDownload,

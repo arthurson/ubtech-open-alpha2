@@ -252,8 +252,8 @@ mappings:
         openapi: text
         required: true
         desc: Text to speak.
-    exclude: [engine, voice, lang, panel_token]
-    note: engine/voice/lang 刻意不暴露（callTool 固定 speech_startTTS en_us，與舊手寫行為一致；v1 誤寫 engine 預設 nuance 已移除）
+    exclude: [engine, voice, lang, pitch, rate, panel_token]
+    note: engine/voice/lang/pitch/rate 刻意不暴露（callTool 固定 speech_startTTS en_us，與舊手寫行為一致；v1 誤寫 engine 預設 nuance 已移除）
 
   - mcp: self.media.list_music
     openapi: /api/audio/local_music/list

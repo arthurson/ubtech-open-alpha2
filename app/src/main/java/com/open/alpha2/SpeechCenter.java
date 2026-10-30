@@ -100,8 +100,11 @@ public final class SpeechCenter implements ApiDispatcher.Host, GestureCenter.Hos
     @Override public HttpServer.ApiResponse handleSpeechTts(Map<String, String> query) {
         String text = ApiValidator.require(query, "text");
         ApiValidator.requireSpeechEngine(query); // 保留做 validation (未來若加回其他 engine 值時仍要驗)
+        // pitch／rate 可選 (0.5–2.0)，無帶＝speech/tts_prosody 預設值。
+        Float pitch = ApiValidator.optionalTtsProsody(query, "pitch");
+        Float rate = ApiValidator.optionalTtsProsody(query, "rate");
         String ttsErr = ttsCenter.speakPanelTts(text, ApiValidator.optional(query, "lang", ""),
-                ApiValidator.optional(query, "voice", ""));
+                ApiValidator.optional(query, "voice", ""), pitch, rate);
         if (ttsErr != null) return HttpServer.ApiResponse.error(ttsErr);
         return HttpServer.ApiResponse.okTrue();
     }
