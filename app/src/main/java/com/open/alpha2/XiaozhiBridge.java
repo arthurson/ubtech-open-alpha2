@@ -736,6 +736,17 @@ public final class XiaozhiBridge {
                 Thread.currentThread().interrupt();
             }
         }
+        // The reply audio needs an open AudioTrack + Opus decoder. Only
+        // startXiaozhiMic() opens them, and stopXiaozhiMic() above closes them.
+        // Without this, a typed text outside auto mode gets a silent reply
+        // (onIncomingOpusFrame() drops each frame while playback is closed).
+        // startPlayback() is a no-op when playback is already open.
+        if ("xiaozhi".equals(xiaozhiConfig.getTtsEngine()) && XiaozhiClient.isAudioSupported()) {
+            XiaozhiAudioController.StartResult playback = xiaozhiAudioController.startPlayback(5000);
+            if (playback.error != null) {
+                Log.w(TAG, "send_text: reply playback not opened: " + playback.error);
+            }
+        }
         try {
             xiaozhiClient.sendListenDetectText(text);
         } catch (java.io.IOException e) {
