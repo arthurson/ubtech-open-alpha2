@@ -1,14 +1,18 @@
 // Open Alpha2 — Servo tab: IK action card
-// (squat / squat 2 / left-right split / merged front-back split)
+// (squat / squat 2 / left-right split / front-back split / laugh / kick /
+//  Sirius side lunge / Hulu half squat / Hamlet bent-arm reach / Kneel)
 //
 // Ported from alpha2_description/web/ubx-player.html (the sliders that were
 // tested against the URDF + real robot). The leg FK parameters come from
 // alpha2_description/web/fk-params.js (URDF + calibrated q_init offsets).
+// The laugh / kick paths and the four single-keyframe poses use the values
+// solved by that player; signed actions use its mirror rule.
 //
-// The four controls are mutually exclusive and all start from the boot
-// stand-up pose (0 = robotStandup, 100 = the tested IK pose). The front-back
-// split is one merged -100…+100 slider: -100 = left leg forward,
-// +100 = right leg forward, 0 = boot pose. Dragging sets the target; the
+// The controls are mutually exclusive and all start from the boot stand-up
+// pose (0 = robotStandup, 100 = the tested IK pose). The front-back split and
+// the new kick / Sirius / Hulu / Hamlet / Kneel sliders run -100…+100:
+// negative = left-forward / mirrored / left kick, positive = right-forward /
+// original pose / right kick, 0 = boot pose. Dragging sets the target; the
 // robot moves 10% every 120 ms at constant speed (0→100 in 1200 ms), previews
 // the 20 servo values in the grid, and sends /api/servo/all at each step.
 // Releasing does not jump — the same constant-speed ramp continues until the
@@ -25,8 +29,10 @@
 //                              (targets 180/60 and 140/100)
 //   left-forward / right-fwd : legs 7-16 + shoulder pitch 1/4
 //                              (left 90/70, right 170/150)
+//   laugh / kick             : arms and legs 1-16 (hands/head untouched)
+//   Sirius/Hulu/Hamlet/Kneel : all 20 axes (official single-keyframe poses)
 // Head 19/20, hands 17/18 and elbows 3/6 keep their current/manual values for
-// the whole IK move.
+// the whole IK move except the four single-keyframe poses.
 //
 // A manual change to a driven servo keeps the IK percentage and freezes the
 // action; the next IK move blends from the actual pose at 120 ms/step. A
@@ -82,15 +88,25 @@ var IK_YSQUAT_ARM_L = 60;
 //   蹲下：腳 7-16（10 顆）
 //   蹲式／左右一字馬：腳 7-16 + 肩 roll 2/5（12 顆）
 //   前後一字馬（二合一）：腳 7-16 + 肩 pitch 1/4（12 顆）
-// 頭 19/20、手 17/18、肘 3/6 唔屬於任何 IK 動作。
+//   大笑／踢腿：手臂＋腳 1-16（16 顆）
+//   側弓步／半蹲／屈臂前伸／跪姿前傾：全 20 軸
 var IK_LEG_AXES = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-var IK_KINDS = ["squat", "ysquat", "lr", "fsplit", "fsplit2"];
+var IK_ARM_LEG_AXES = [1, 2, 3, 4, 5, 6].concat(IK_LEG_AXES);
+var IK_ALL_AXES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+var IK_KINDS = ["squat", "ysquat", "lr", "fsplit", "fsplit2",
+                "laugh", "kick", "sirius", "hulu", "hamlet", "kneel"];
 var IK_KIND_AXES = {
   squat: IK_LEG_AXES,
   ysquat: [2, 5].concat(IK_LEG_AXES),
   lr: [2, 5].concat(IK_LEG_AXES),
   fsplit: [1, 4].concat(IK_LEG_AXES),
-  fsplit2: [1, 4].concat(IK_LEG_AXES)
+  fsplit2: [1, 4].concat(IK_LEG_AXES),
+  laugh: IK_ARM_LEG_AXES,
+  kick: IK_ARM_LEG_AXES,
+  sirius: IK_ALL_AXES,
+  hulu: IK_ALL_AXES,
+  hamlet: IK_ALL_AXES,
+  kneel: IK_ALL_AXES
 };
 var IK_FSPLIT_FWD = 0.078;
 var IK_FSPLIT_BACK = 0.087;
@@ -110,7 +126,34 @@ function ikIsFSplit(kind) {
   kind = ikNormalizeKind(kind);
   return kind === "fsplit" || kind === "fsplit2";
 }
-
+// 帶符號動作：slider -100…+100；負＝鏡像／左踢，正＝原姿勢／右踢。
+function ikIsSignedKind(kind) {
+  kind = ikNormalizeKind(kind);
+  return kind === "kick" || kind === "sirius" || kind === "hulu"
+      || kind === "hamlet" || kind === "kneel";
+}
+function ikMinPct(kind) {
+  return ikIsSignedKind(kind) ? -100 : 0;
+}
+function ikMirrorPose(pose) {
+  var out = new Array(20);
+  for (var j = 1; j <= 20; j++) {
+    var x = pose[IK_MIRROR_PAIR[j] - 1];
+    out[j - 1] = (j === 17 || j === 18 || j === 20) ? x : 240 - x;
+  }
+  return out;
+}
+function ikKickPrep(frames) {
+  var c = [0], total = 0;
+  for (var i = 0; i < frames.length - 1; i++) {
+    var s = 0;
+    for (var k = 0; k < 16; k++) s += Math.abs(frames[i + 1][k] - frames[i][k]);
+    total += s;
+    c.push(total);
+  }
+  for (var j = 0; j < c.length; j++) c[j] = total ? c[j] / total : 0;
+  return { frames: frames, cum: c };
+}
 // Official "蹲下" final 20-axis pose (tested). IK 只會用入面 7-16 號腳嘅值；
 // 3/6 號肘部值唔屬於蹲下動作，會保持目前值。
 var IK_SQUAT_POSE = [
@@ -133,6 +176,75 @@ var IK_BOOT_POSE = [
   120, 205, 120, 120, 35, 120, 120, 63, 145, 135,
   120, 120, 177, 95, 105, 120, 120, 120, 120, 120
 ];
+
+// 官方「大笑」（1487230160190）路徑取樣表：16 軸 × 25 點（每段 8 點）。
+// 由 ubx-player.html 嘅 4 個關鍵姿勢做手／腳末端 IK 解出嚟；app 直接內嵌
+// 結果，避免將全身 FK／IK 搬過嚟。中間點線性內插，行為同原 player 一致。
+var IK_LAUGH_TABLE = [
+  [114, 205, 119, 116, 38, 114, 120, 65, 145, 135, 120, 120, 175, 95, 105, 120],
+  [109, 204, 123, 123, 39, 113, 120, 68, 142, 139, 120, 120, 172, 99, 100, 120],
+  [107, 203, 131, 129, 40, 109, 121, 72, 139, 143, 120, 120, 168, 102, 96, 120],
+  [107, 201, 143, 133, 41, 102, 121, 76, 138, 146, 121, 119, 163, 104, 93, 119],
+  [107, 200, 157, 136, 42, 92, 121, 81, 138, 148, 121, 119, 158, 104, 90, 119],
+  [106, 199, 168, 140, 43, 84, 122, 86, 138, 151, 121, 119, 152, 104, 88, 119],
+  [103, 198, 177, 144, 43, 77, 122, 92, 139, 153, 121, 119, 146, 102, 86, 119],
+  [99, 197, 183, 151, 42, 74, 123, 98, 141, 154, 122, 118, 139, 100, 85, 118],
+  [94, 197, 186, 158, 42, 73, 123, 104, 144, 155, 122, 118, 132, 96, 84, 118],
+  [89, 195, 185, 162, 43, 75, 123, 107, 143, 157, 122, 118, 129, 98, 82, 118],
+  [84, 194, 183, 167, 44, 77, 123, 109, 142, 159, 122, 118, 127, 99, 80, 118],
+  [80, 192, 182, 171, 44, 79, 123, 112, 141, 161, 122, 118, 124, 100, 78, 118],
+  [75, 191, 180, 176, 45, 80, 123, 115, 140, 163, 122, 118, 120, 101, 76, 118],
+  [70, 189, 179, 180, 45, 82, 123, 118, 140, 164, 122, 117, 117, 101, 74, 118],
+  [65, 188, 178, 185, 46, 84, 123, 121, 140, 166, 122, 117, 113, 101, 73, 118],
+  [60, 187, 176, 189, 47, 86, 123, 125, 140, 167, 122, 117, 110, 101, 72, 118],
+  [55, 186, 175, 194, 47, 88, 123, 128, 141, 168, 122, 117, 106, 100, 71, 118],
+  [49, 186, 171, 200, 47, 90, 123, 131, 139, 171, 122, 117, 103, 101, 69, 118],
+  [42, 187, 166, 205, 48, 92, 124, 134, 138, 173, 123, 116, 100, 102, 66, 117],
+  [35, 187, 162, 211, 48, 94, 124, 138, 137, 175, 123, 116, 96, 103, 64, 117],
+  [28, 188, 157, 216, 48, 96, 125, 141, 137, 177, 123, 115, 93, 103, 62, 116],
+  [21, 188, 152, 222, 48, 99, 125, 145, 137, 179, 124, 114, 90, 103, 61, 116],
+  [14, 189, 147, 228, 48, 101, 126, 149, 137, 180, 124, 113, 86, 103, 59, 115],
+  [7, 189, 142, 233, 47, 103, 127, 153, 137, 182, 124, 112, 83, 103, 57, 115],
+  [0, 190, 137, 239, 47, 105, 128, 157, 138, 183, 125, 111, 79, 103, 56, 114]
+];
+
+// 官方「左踢式」（1511247506520）／「右踢式」（1511247440171）頭 4 格。
+// slider -100＝左踢、+100＝右踢、0＝企姿；路徑按 16 軸角度變化量參數化。
+var IK_KICK_L_POSE = [
+  [120, 205, 120, 120, 35, 115, 120, 65, 145, 135, 120, 120, 175, 95, 105, 120],
+  [121, 179, 120, 119, 72, 115, 129, 54, 131, 137, 143, 127, 173, 80, 117, 133],
+  [121, 179, 120, 119, 72, 115, 134, 26, 83, 156, 122, 127, 173, 80, 117, 133],
+  [120, 120, 120, 120, 120, 120, 163, 47, 129, 141, 124, 127, 175, 84, 115, 137]
+];
+var IK_KICK_R_POSE = [
+  [120, 205, 120, 120, 35, 115, 120, 65, 145, 135, 120, 120, 175, 95, 105, 120],
+  [120, 168, 120, 120, 61, 120, 113, 62, 160, 123, 104, 107, 187, 111, 102, 94],
+  [120, 168, 120, 120, 61, 120, 113, 62, 160, 123, 104, 106, 214, 158, 84, 118],
+  [120, 120, 120, 120, 120, 120, 113, 62, 156, 125, 100, 77, 193, 111, 99, 116]
+];
+
+// 官方單關鍵幀姿勢（同 ubx-player.html「姿勢」slider 工廠一致）：
+// 正數＝原姿勢、負數＝左右反轉（手腳左右對調再 240-x；手指值不變；
+// 頭 #19 240-x、#20 不變）。
+var IK_SIRIUS_POSE = [
+  129, 98, 170, 123, 128, 120, 171, 92, 178, 129,
+  172, 125, 206, 197, 37, 128, 120, 120, 110, 113
+];
+var IK_HULU_POSE = [
+  122, 88, 123, 120, 118, 57, 103, 53, 112, 152,
+  107, 98, 204, 162, 75, 85, 120, 120, 173, 97
+];
+var IK_HAMLET_POSE = [
+  71, 164, 150, 166, 34, 90, 144, 57, 139, 133,
+  141, 134, 176, 101, 101, 127, 120, 120, 84, 120
+];
+var IK_KNEEL_POSE = [
+  195, 205, 117, 55, 35, 123, 169, 175, 115, 201,
+  139, 117, 187, 177, 105, 115, 120, 120, 120, 120
+];
+var IK_MIRROR_PAIR = [0, 4, 5, 6, 1, 2, 3, 12, 13, 14, 15, 16, 7, 8, 9, 10, 11, 18, 17, 19, 20];
+var IK_KICK_L = ikKickPrep(IK_KICK_L_POSE);
+var IK_KICK_R = ikKickPrep(IK_KICK_R_POSE);
 
 // 左前／右前一字馬嘅 100% 仍然由 IK solver 以 IK_BOOT_POSE 做 base 計出，
 // 同 ubx-player.html 測試過嘅算法一致；唔 hardcode 目標，避免改常數時漏改。
@@ -422,9 +534,53 @@ function ikPoseFb(base, pct, end, kind) {
   return ikClampPose(out, base);
 }
 
+// 大笑：25 點路徑表線性內插；頭 8% 由 base 過渡去路徑起點，
+// 同 ubx-player.html setIkLaugh 一致。只郁 1-16 號。
+function ikLaughTarget(pct) {
+  var p = Math.max(0, Math.min(100, pct));
+  var n = IK_LAUGH_TABLE.length - 1;
+  var x = p / 100 * n;
+  var j = Math.min(n - 1, Math.floor(x));
+  var f = x - j, a = IK_LAUGH_TABLE[j], b = IK_LAUGH_TABLE[j + 1];
+  var out = new Array(16);
+  for (var i = 0; i < 16; i++) out[i] = a[i] + (b[i] - a[i]) * f;
+  return out;
+}
+function ikPoseLaugh(base, pct) {
+  pct = Math.max(0, Math.min(100, pct));
+  var t = ikLaughTarget(pct);
+  var w = Math.min(1, pct / 8), out = base.slice();
+  for (var i = 0; i < 16; i++) out[i] = base[i] + (t[i] - base[i]) * w;
+  return ikClampPose(ikRoundPose(out), base);
+}
+function ikKickTarget(pct) {
+  var K = pct < 0 ? IK_KICK_L : IK_KICK_R;
+  var u = Math.max(0, Math.min(1, Math.abs(pct) / 100));
+  var s = 0;
+  while (s < K.frames.length - 2 && u > K.cum[s + 1]) s++;
+  var f = (u - K.cum[s]) / (K.cum[s + 1] - K.cum[s]);
+  var a = K.frames[s], b = K.frames[s + 1], out = new Array(16);
+  for (var i = 0; i < 16; i++) out[i] = a[i] + (b[i] - a[i]) * f;
+  return out;
+}
+function ikPoseKick(base, pct) {
+  pct = Math.max(-100, Math.min(100, pct));
+  var t = ikKickTarget(pct);
+  var w = Math.min(1, Math.abs(pct) / 8), out = base.slice();
+  for (var i = 0; i < 16; i++) out[i] = base[i] + (t[i] - base[i]) * w;
+  return ikClampPose(ikRoundPose(out), base);
+}
+// 單關鍵幀姿勢：正＝原姿勢、負＝左右反轉；由 base 線性過渡，郁晒 20 軸。
+function ikPoseFixed(base, pct, pose) {
+  var target = pct < 0 ? ikMirrorPose(pose) : pose;
+  var w = Math.abs(pct) / 100, out = base.slice();
+  for (var i = 0; i < 20; i++) out[i] = base[i] + (target[i] - base[i]) * w;
+  return ikClampPose(ikRoundPose(out), base);
+}
+
 // ---- UI state ----
 var ikBase = IK_BOOT_POSE.slice(); // 固定 0% base：官方開機企姿（唔再從舵機格擷取）
-var ikActive = null;     // "squat" | "ysquat" | "lr" | "fsplit" | "fsplit2"
+var ikActive = null;     // 其中一個 IK_KINDS（含帶符號動作）
 var ikFSplitEndCache = null; // kind -> cached IK end pose for the fixed boot base
 var ikPendingPose = null;
 var ikPendingKind = null;
@@ -455,6 +611,12 @@ function ikSliderId(kind) {
   if (kind === "squat") return "ikSquat";
   if (kind === "ysquat") return "ikYSquat";
   if (kind === "lr") return "ikSplitLR";
+  if (kind === "laugh") return "ikLaugh";
+  if (kind === "kick") return "ikKick";
+  if (kind === "sirius") return "ikSirius";
+  if (kind === "hulu") return "ikHulu";
+  if (kind === "hamlet") return "ikHamlet";
+  if (kind === "kneel") return "ikKneel";
   return "ikSplitFB";   // 左前（fsplit）／右前（fsplit2）二合一，-100…+100
 }
 function ikValId(kind) {
@@ -462,6 +624,12 @@ function ikValId(kind) {
   if (kind === "squat") return "ikSquatVal";
   if (kind === "ysquat") return "ikYSquatVal";
   if (kind === "lr") return "ikSplitLRVal";
+  if (kind === "laugh") return "ikLaughVal";
+  if (kind === "kick") return "ikKickVal";
+  if (kind === "sirius") return "ikSiriusVal";
+  if (kind === "hulu") return "ikHuluVal";
+  if (kind === "hamlet") return "ikHamletVal";
+  if (kind === "kneel") return "ikKneelVal";
   return "ikSplitFBVal";
 }
 
@@ -552,11 +720,17 @@ function ikPoseBase(kind, pct) {
   kind = ikNormalizeKind(kind);
   var base = ikBase || IK_BOOT_POSE.slice();
   ikBase = base;
-  if (pct <= 0) return base.slice();
-  if (kind === "squat") return ikPoseSquat(base, pct);
-  if (kind === "ysquat") return ikPoseYSquat(base, pct);
-  if (kind === "lr") return ikPoseLr(base, pct);
-  if (ikIsFSplit(kind)) return ikPoseFb(base, pct, ikEnsureFSplitEnd(kind), kind);
+  if (pct === 0) return base.slice();
+  if (kind === "squat") return pct > 0 ? ikPoseSquat(base, pct) : base.slice();
+  if (kind === "ysquat") return pct > 0 ? ikPoseYSquat(base, pct) : base.slice();
+  if (kind === "lr") return pct > 0 ? ikPoseLr(base, pct) : base.slice();
+  if (ikIsFSplit(kind)) return pct > 0 ? ikPoseFb(base, pct, ikEnsureFSplitEnd(kind), kind) : base.slice();
+  if (kind === "laugh") return pct > 0 ? ikPoseLaugh(base, pct) : base.slice();
+  if (kind === "kick") return ikPoseKick(base, pct);
+  if (kind === "sirius") return ikPoseFixed(base, pct, IK_SIRIUS_POSE);
+  if (kind === "hulu") return ikPoseFixed(base, pct, IK_HULU_POSE);
+  if (kind === "hamlet") return ikPoseFixed(base, pct, IK_HAMLET_POSE);
+  if (kind === "kneel") return ikPoseFixed(base, pct, IK_KNEEL_POSE);
   return base.slice();
 }
 
@@ -679,7 +853,8 @@ function ikTransPose(tr) {
 // 直接過渡用「較大嘅一邊」決定步數：100% = 10 步（1200ms），
 // 50% = 5 步（600ms），每步 120ms，維持同 slider 一樣嘅均速。
 function ikTransSteps(fromPct, toPct) {
-  var span = Math.max(fromPct || 0, toPct || 0);
+  var span = Math.max(Math.abs(fromPct || 0), Math.abs(toPct || 0),
+                     Math.abs((toPct || 0) - (fromPct || 0)));
   return Math.max(1, Math.ceil(span / IK_STEP_PCT));
 }
 
@@ -696,8 +871,23 @@ function ikMaxPoseDelta(a, b, moved) {
 // 該動作每 10% 大約最大會行幾多度；用嚟決定手動 pose → 目標 pose
 // 要分幾多格，確保唔會有一格突然大幅跳動。只計該動作真正控制嘅軸，
 // 唔好俾 IK 唔郁嘅軸（例如蹲下嘅肘）影響步數。
+function ikSignedStepDeg(kind, sign, mag) {
+  var p = Math.max(0, Math.min(100, mag));
+  var lo = Math.min(90, Math.floor(p / 10) * 10);
+  if (lo === p && p > 0) lo = Math.max(0, p - 10);
+  var a = ikPoseBase(kind, sign * lo);
+  var b = ikPoseBase(kind, sign * Math.min(100, lo + 10));
+  return Math.max(1, ikMaxPoseDelta(a, b, ikKindMovedAxes(kind)));
+}
 function ikKindStepDeg(kind, pct) {
-  var p = Math.max(0, Math.min(100, pct || 0));
+  kind = ikNormalizeKind(kind);
+  var p = Math.max(ikMinPct(kind), Math.min(100, pct || 0));
+  if (ikIsSignedKind(kind)) {
+    if (p === 0) {
+      return Math.max(ikSignedStepDeg(kind, -1, 0), ikSignedStepDeg(kind, 1, 0));
+    }
+    return ikSignedStepDeg(kind, p < 0 ? -1 : 1, Math.abs(p));
+  }
   var lo = Math.min(90, Math.floor(p / 10) * 10);
   if (lo === p && p > 0) lo = Math.max(0, p - 10);
   var a = ikPoseBase(kind, lo);
@@ -748,7 +938,7 @@ function ikFinishTrans(tr) {
     return;
   }
   ikClearSwitchKeep();
-  if (ikCurrentPct > 0) {
+  if (ikCurrentPct !== 0) {
     ikSetStatus("ik_status_sent", { name: ikName(ikActive), pct: ikCurrentPct });
   } else {
     ikSetStatus("ik_status_base");
@@ -931,7 +1121,7 @@ function ikStartManualTrans(kind, pct) {
     ikPendingPose = toPose;
     ikPendingKind = kind;
     ikPendingPct = pct;
-    if (pct > 0) {
+    if (pct !== 0) {
       ikSetStatus("ik_status_sent", { name: ikName(kind), pct: pct });
     } else {
       ikSetStatus("ik_status_base");
@@ -1074,7 +1264,7 @@ function ikAnimTick() {
     ikPendingPose = donePose;
     ikPendingKind = ikActive;
     ikPendingPct = current;
-    if (current > 0) {
+    if (current !== 0) {
       ikSetStatus("ik_status_sent", { name: ikName(ikActive), pct: current });
     } else {
       ikSetStatus("ik_status_base");
@@ -1100,7 +1290,7 @@ function ikAnimTick() {
   ikPendingPct = next;
   if (ikSwitchTo) {
     ikSetStatus("ik_status_switching", { name: ikName(ikSwitchTo.kind) });
-  } else if (next > 0) {
+  } else if (next !== 0) {
     ikSetStatus("ik_status_live", { name: ikName(ikActive), pct: next });
   } else {
     ikSetStatus("ik_status_live_base");
@@ -1122,7 +1312,8 @@ function ikStartAnim() {
 }
 
 function ikApplySliderTarget(kind, value) {
-  var pct = Math.max(0, Math.min(100, parseInt(value, 10) || 0));
+  kind = ikNormalizeKind(kind);
+  var pct = Math.max(ikMinPct(kind), Math.min(100, parseInt(value, 10) || 0));
   var label = document.getElementById(ikValId(kind));
   if (label) {
     if (ikIsFSplit(ikNormalizeKind(kind))) {
@@ -1153,7 +1344,7 @@ function ikApplySliderTarget(kind, value) {
       ikTargetPct = pct;
       return;
     }
-    if (!ikDirectMode && ikActive && ikActive !== kind && pct > 0) {
+    if (!ikDirectMode && ikActive && ikActive !== kind && pct !== 0) {
       ikStartManualSwitch(kind, pct);
       return;
     }
@@ -1197,7 +1388,7 @@ function ikApplySliderTarget(kind, value) {
       ikSetSliderValue(ikSwitchTo.kind, 0);
     }
     ikSwitchTo = { kind: kind, pct: pct };
-    if (ikCurrentPct > 0) {
+    if (ikCurrentPct !== 0) {
       ikTargetPct = 0;
       ikSetSliderValue(ikActive, 0);
       ikSetStatus("ik_status_switching", { name: ikName(kind) });
@@ -1344,7 +1535,7 @@ function ikStartSend(job) {
     ikSendBusy = false;
     if (res && res.ok) {
       if (!job.live) {
-        if (job.pct > 0) {
+        if (job.pct !== 0) {
           ikSetStatus("ik_status_sent", { name: ikName(job.kind), pct: job.pct });
         } else {
           ikSetStatus("ik_status_base");
@@ -1474,7 +1665,10 @@ function ikOnGridChange(ev) {
 
   // 未有 active 動作：如果改嘅軸日後會被 IK 控制，記住實際 pose，
   // 下次開始 IK 時由呢個 pose 均速過渡；否則只需保留目前值。
-  var anyIkAxis = id === 2 || id === 5 || (id >= 7 && id <= 16);
+  var anyIkAxis = false;
+  for (var k = 0; k < IK_KINDS.length && !anyIkAxis; k++) {
+    if (ikKindMovedAxes(IK_KINDS[k])[idx]) anyIkAxis = true;
+  }
   if (anyIkAxis) {
     var startPose = safePose(null);
     ikManualPose = startPose;
@@ -1502,7 +1696,8 @@ function initIkCard() {
   ikManualPose = null;
   ikManualHold = null;
   ikKindMovedCache = {};
-  ikSliderEngaged = { squat: false, ysquat: false, lr: false, fsplit: false, fsplit2: false };
+  ikSliderEngaged = {};
+  IK_KINDS.forEach(function (kind) { ikSliderEngaged[kind] = false; });
   ikTargetPct = 0;
   ikCurrentPct = 0;
   ikLastSentPct = 0;

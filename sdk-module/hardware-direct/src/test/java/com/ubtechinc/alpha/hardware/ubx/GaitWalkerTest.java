@@ -116,7 +116,7 @@ public final class GaitWalkerTest {
 
         // ---- 速度夾限 ----
         eq(2.0f, GaitWalker.clampSpeed(10f), "clampSpeed max");
-        eq(0.5f, GaitWalker.clampSpeed(0.01f), "clampSpeed min");
+        eq(1.0f, GaitWalker.clampSpeed(0.01f), "clampSpeed min");
         eq(1.0f, GaitWalker.clampSpeed(Float.NaN), "clampSpeed NaN -> 1");
 
         // ---- 1) 次序：起步 → 循環（含 wrap）→ 放手收步 ----
@@ -201,7 +201,7 @@ public final class GaitWalkerTest {
             eq(120, fs.last().a[0], "lease: home sent");
         }
 
-        // ---- 5) 變速（1x→2x 格時長約減半；0.5x 約加倍）----
+        // ---- 5) 變速（1x→2x 格時長約減半；低過 1x 夾返 1x）----
         {
             FakeSender fs = new FakeSender();
             final GaitWalker w = new GaitWalker(prog(60), fs, null, 1.0f, 0);
@@ -219,7 +219,8 @@ public final class GaitWalkerTest {
             w.setSpeed(0.5f);
             Thread.sleep(700);
             Rec slow = fs.last();
-            check(slow.ms >= 100, "speed 0.5x: frame time ~120ms (" + slow.ms + ")");
+            check(slow.ms >= 50 && slow.ms <= 70,
+                    "speed 0.5x clamped to 1x: frame time ~60ms (" + slow.ms + ")");
             w.release();
             t.join(3000);
             check(!t.isAlive(), "speed: ends");
@@ -299,14 +300,14 @@ public final class GaitWalkerTest {
             check(!t.isAlive() && nowMs() - t0 < 500, "stand-down: interrupt ends quickly");
         }
 
-        // ---- 11) 實機設定：送出間隔 >= minUpdateMs（2x 都唔例外），步態格 move = 間隔 x overlap ----
+        // ---- 11) 實機設定：送出間隔 >= 300ms（2x 都唔例外），步態格 move = 間隔 x overlap ----
         {
             FakeSender fs = new FakeSender();
             final GaitWalker w = new GaitWalker(prog(40), fs, null, 2.0f, 0);  // 2x → 格長 20ms，遠低過下限
-            w.setMinUpdateMs(150);
+            w.setMinUpdateMs(GaitWalker.WALK_MIN_UPDATE_MS);
             w.setMoveOverlap(1.25f);
             Thread t = start(w);
-            Thread.sleep(1300);
+            Thread.sleep(2000);
             w.release();
             t.join(3000);
             check(!t.isAlive(), "min update: ends after release");
@@ -319,12 +320,12 @@ public final class GaitWalkerTest {
             for (int i = 1; i < walk.size(); i++) {
                 minGap = Math.min(minGap, walk.get(i).at - walk.get(i - 1).at);
             }
-            check(minGap >= 145, "min update: gap between sends >= 150ms (min=" + minGap + ")");
-            eq(150, walk.get(0).ms, "min update: lead-in frame 0 floored to 150ms, no overlap");
-            eq(150, walk.get(1).ms, "min update: lead-in frame 1 floored to 150ms, no overlap");
+            check(minGap >= 295, "min update: gap between sends >= 300ms (min=" + minGap + ")");
+            eq(300, walk.get(0).ms, "min update: lead-in frame 0 floored to 300ms, no overlap");
+            eq(300, walk.get(1).ms, "min update: lead-in frame 1 floored to 300ms, no overlap");
             boolean ov = true;
-            for (int i = 2; i < walk.size(); i++) if (walk.get(i).ms != 188) ov = false;
-            check(ov, "overlap: cycle move time = 150 x 1.25 = 188ms");
+            for (int i = 2; i < walk.size(); i++) if (walk.get(i).ms != 375) ov = false;
+            check(ov, "overlap: cycle move time = 300 x 1.25 = 375ms");
             check(fs.last().a[0] == 120, "min update: release still sends home");
         }
 

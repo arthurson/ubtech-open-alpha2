@@ -41,7 +41,7 @@ var GAMEPAD_KB_GROUPS = [
 
 // 動作種類（servo 軸＋方向另有下拉拼出 servo<N>±；music 揀功能（含音量＋-）；
 // ring 揀鈴聲（系統預設電話鈴＋鈴聲名）；led 揀部位＋效果＋色；camera 揀影相／追蹤；
-// ik 揀蹲下／一字馬＋方向（撳住連走）；action 由動作下拉選）。
+// ik 揀蹲下／一字馬／大笑／踢腿／姿勢＋方向（撳住連走）；action 由動作下拉選）。
 var GAMEPAD_MAX_PER_KEY = 6;
 var GAMEPAD_KINDS = ["none", "stop", "servo", "ik", "walk", "music", "radio", "ring", "led", "camera", "sensor", "voice", "action"];
 var GAMEPAD_KIND_KEYS = { none: "gamepad_kind_none", stop: "gamepad_kind_stop",
@@ -52,14 +52,19 @@ var GAMEPAD_KIND_KEYS = { none: "gamepad_kind_none", stop: "gamepad_kind_stop",
   voice: "gamepad_kind_voice", action: "gamepad_kind_action" };
 
 // IK 動作（值＝ik:<kind>±；同 servo jog 一樣撳住連走，每步 10%）。
-// 同後端 GamepadCenter.isIkAction／IkPose 對齊。前後一字馬二合一：
-// ik:fb+ 向 +100（右前）、ik:fb- 向 -100（左前），0＝企姿。
+// 同後端 GamepadCenter.isIkAction／IkPose 對齊。帶符號動作：
+// ik:fb+ 向 +100（右前）、ik:fb- 向 -100（左前）；
+// ik:kick／sirius／hulu／hamlet／kneel 亦係 -100…+100，0＝企姿。
 // 舊 ik:fsplit±／ik:fsplit2± 由後端 loadMapping 自動遷移。
 var GAMEPAD_IK_FNS = ["ik:squat+", "ik:squat-", "ik:ysquat+", "ik:ysquat-",
-                      "ik:lr+", "ik:lr-", "ik:fb+", "ik:fb-"];
+                      "ik:lr+", "ik:lr-", "ik:fb+", "ik:fb-",
+                      "ik:laugh+", "ik:laugh-", "ik:kick+", "ik:kick-",
+                      "ik:sirius+", "ik:sirius-", "ik:hulu+", "ik:hulu-",
+                      "ik:hamlet+", "ik:hamlet-", "ik:kneel+", "ik:kneel-"];
+var GAMEPAD_IK_RE = "squat|ysquat|lr|fb|fsplit2?|laugh|kick|sirius|hulu|hamlet|kneel";
 
 function gamepadIkLabel(v) {
-  var m = /^ik:(squat|ysquat|lr|fb|fsplit2?)([+-])$/.exec(v || "");
+  var m = new RegExp("^ik:(" + GAMEPAD_IK_RE + ")([+-])$").exec(v || "");
   if (!m) return v || "";
   var kind = m[1];
   if (kind === "fb") {
@@ -106,7 +111,7 @@ function gamepadParseSubKeyId(id, prefix) {
 }
 
 // 行路（同後端 isWalkAction 對齊）：fwd／back＝按住向前行／向後行（放手企停；前後同按即收步）；
-// fast／slow＝行路時加速／減速（搖桿向按偏轉量，掣＝全速）；fwd／back 掛搖桿向時偏轉量即速度。
+// fast／slow＝行路時加速／減速（搖桿向按偏轉量，掣＝全速；下限 1x）；fwd／back 掛搖桿向時偏轉量即速度（1x→2x）。
 var GAMEPAD_WALK_FNS = ["walk:fwd", "walk:back", "walk:fast", "walk:slow"];
 var GAMEPAD_WALK_FN_KEYS = { "walk:fwd": "gamepad_walk_fwd", "walk:back": "gamepad_walk_back",
   "walk:fast": "gamepad_walk_fast", "walk:slow": "gamepad_walk_slow" };
@@ -763,7 +768,7 @@ function gamepadParseValue(v) {
     out.servoDir = m[2];
     return out;
   }
-  m = v.match(/^ik:(squat|ysquat|lr|fb|fsplit2?)([+-])$/);
+  m = v.match(new RegExp("^ik:(" + GAMEPAD_IK_RE + ")([+-])$"));
   if (m) {
     out.kind = "ik";
     out.ikFn = gamepadCanonicalIkFn(m[1], m[2]);
@@ -803,8 +808,8 @@ function gamepadBuildServoControls(side, k, idx, parsed) {
   return wrap;
 }
 
-// 建 IK 動作下拉（蹲下／蹲式／左右／前後二合一 × +/-；撳住連走，同 servo jog 一樣）。
-// 前後二合一：+ 向 +100（右前）、− 向 -100（左前），預設 0＝企姿。
+// 建 IK 動作下拉（蹲下／蹲式／左右／前後二合一／大笑／踢腿／姿勢 × +/-；
+// 撳住連走，同 servo jog 一樣）。帶符號動作：+ 向 +100、− 向 -100，預設 0＝企姿。
 function gamepadBuildIkControls(side, k, idx, parsed) {
   var wrap = document.createElement("span");
   wrap.id = gamepadSubId("gpIkWrap", side, k, idx);
@@ -3500,7 +3505,7 @@ var walkGlobalBound = false;
 function walkSpeedValue() {
   var el = document.getElementById("walkSpeed");
   var v = el ? parseFloat(el.value) : 1;
-  return (isFinite(v) && v >= 0.5 && v <= 2) ? v : 1;
+  return (isFinite(v) && v >= 1 && v <= 2) ? v : 1;
 }
 
 function walkSetState(st) {

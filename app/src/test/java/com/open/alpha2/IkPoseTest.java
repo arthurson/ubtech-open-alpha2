@@ -220,6 +220,38 @@ public final class IkPoseTest {
         eq(150, curZero[1], "current.squat0.servo2");
         eq(boot[7], curZero[7], "current.squat0.legs");
 
+        // 新增 IK 動作（同 ubx-player.html／app-ik.js 同一組目標）。
+        eq(pose("5,190,137,235,47,105,128,157,138,183,125,111,79,103,56,114,120,120,120,120"),
+                IkPose.compute("laugh", 100, boot), "boot.100.laugh");
+        eq(pose("75,191,180,176,45,80,123,115,140,163,122,118,120,101,76,118,120,120,120,120"),
+                IkPose.compute("laugh", 50, boot), "boot.50.laugh");
+        eq(pose("120,120,120,120,120,120,113,62,156,125,100,77,193,111,99,116,120,120,120,120"),
+                IkPose.computeSigned("kick", 100, boot, null), "boot.+100.kick");
+        eq(pose("120,120,120,120,120,120,163,47,129,141,124,127,175,84,115,137,120,120,120,120"),
+                IkPose.computeSigned("kick", -100, boot, null), "boot.-100.kick");
+        eq(pose("120,168,120,120,61,120,113,62,160,123,104,106,205,143,90,110,120,120,120,120"),
+                IkPose.computeSigned("kick", 50, boot, null), "boot.+50.kick");
+        eq(pose("129,98,170,123,128,120,171,92,178,129,172,125,206,197,37,128,120,120,110,113"),
+                IkPose.computeSigned("sirius", 100, boot, null), "boot.+100.sirius");
+        eq(pose("117,112,120,111,142,70,115,34,43,203,112,69,148,62,111,68,120,120,130,113"),
+                IkPose.computeSigned("sirius", -100, boot, null), "boot.-100.sirius");
+        eq(pose("122,88,123,120,118,57,103,53,112,152,107,98,204,162,75,85,120,120,165,105"),
+                IkPose.computeSigned("hulu", 100, boot, null), "boot.+100.hulu");
+        eq(pose("120,122,183,118,152,117,142,36,78,165,155,137,187,128,88,133,120,120,75,105"),
+                IkPose.computeSigned("hulu", -100, boot, null), "boot.-100.hulu");
+        eq(pose("71,164,150,166,34,90,144,57,139,133,141,134,176,101,101,127,120,120,84,120"),
+                IkPose.computeSigned("hamlet", 100, boot, null), "boot.+100.hamlet");
+        eq(pose("74,206,150,169,76,90,106,64,139,139,113,96,183,101,107,99,120,120,156,120"),
+                IkPose.computeSigned("hamlet", -100, boot, null), "boot.-100.hamlet");
+        eq(pose("195,205,117,55,35,123,169,175,115,201,139,117,187,177,105,115,120,120,120,120"),
+                IkPose.computeSigned("kneel", 100, boot, null), "boot.+100.kneel");
+        eq(pose("185,205,117,45,35,123,123,53,63,135,125,71,65,125,39,101,120,120,120,120"),
+                IkPose.computeSigned("kneel", -100, boot, null), "boot.-100.kneel");
+        // 0% 一律回開機企姿。
+        eq(boot, IkPose.compute("laugh", 0, boot), "boot.0.laugh");
+        eq(boot, IkPose.computeSigned("kick", 0, boot, null), "boot.0.kick");
+        eq(boot, IkPose.computeSigned("sirius", 0, boot, null), "boot.0.sirius");
+
         // 受影響軸 mask
         eq(true, IkPose.affects("squat", 6), "affects.squat.leg");
         eq(false, IkPose.affects("squat", 1), "affects.squat.servo2");
@@ -229,6 +261,13 @@ public final class IkPoseTest {
         eq(true, IkPose.affects("fsplit", 0), "affects.fsplit.servo1");
         eq(true, IkPose.affects("fsplit2", 3), "affects.fsplit2.servo4");
         eq(true, IkPose.affects("fb", 0), "affects.fb.alias.servo1");
+        eq(true, IkPose.affects("laugh", 0), "affects.laugh.servo1");
+        eq(true, IkPose.affects("laugh", 15), "affects.laugh.servo16");
+        eq(false, IkPose.affects("laugh", 16), "affects.laugh.servo17");
+        eq(true, IkPose.affects("kick", 5), "affects.kick.servo6");
+        eq(false, IkPose.affects("kick", 19), "affects.kick.servo20");
+        eq(true, IkPose.affects("sirius", 19), "affects.sirius.servo20");
+        eq(true, IkPose.affects("hulu", 0), "affects.hulu.servo1");
 
         // 動作名驗證（fb 係 fsplit 別名）
         eq(true, IkPose.isKind("squat"), "kind.squat");
@@ -237,6 +276,15 @@ public final class IkPoseTest {
         eq(true, IkPose.isKind("fsplit"), "kind.fsplit");
         eq(true, IkPose.isKind("fsplit2"), "kind.fsplit2");
         eq(true, IkPose.isKind("fb"), "kind.fb.alias");
+        eq(true, IkPose.isKind("laugh"), "kind.laugh");
+        eq(true, IkPose.isKind("kick"), "kind.kick");
+        eq(true, IkPose.isKind("sirius"), "kind.sirius");
+        eq(true, IkPose.isKind("hulu"), "kind.hulu");
+        eq(true, IkPose.isKind("hamlet"), "kind.hamlet");
+        eq(true, IkPose.isKind("kneel"), "kind.kneel");
+        eq(true, IkPose.isSignedKind("kick"), "signed.kick");
+        eq(true, IkPose.isSignedKind("sirius"), "signed.sirius");
+        eq(false, IkPose.isSignedKind("laugh"), "signed.laugh");
         eq(false, IkPose.isKind("base"), "kind.base");
         eq(false, IkPose.isKind("bogus"), "kind.bogus");
         eq(IkPose.compute("fsplit", 100, boot), IkPose.compute("fb", 100, boot),

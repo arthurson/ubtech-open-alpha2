@@ -26,8 +26,9 @@ import java.util.Map;
  *
  * <p>語義：按住（{@link #hold}）＝起步後循環行；放手（{@link #release}）＝由當前姿勢
  * 線性收返企定姿勢然後停；{@code stopNow}＝硬停（舵機保持末位姿，同 ubx/stop 一致）。
- * 速度 0.5–2.0 倍（1.0 ＝ .ubx 原速），行緊時即時生效。步態送出間隔有 400ms 下限
- * （{@link GaitWalker#WALK_MIN_UPDATE_MS}），所以 &gt;1.0x 唔會再加快；&lt;1.0x 先會放慢。</p>
+ * 速度 1.0–2.0 倍（1.0 ＝ .ubx 原速），行緊時即時生效。步態送出間隔有 300ms 實機下限
+ * （{@link GaitWalker#WALK_MIN_UPDATE_MS}，快過會唔穩），所以 &gt;1.33x 會受下限保護、
+ * 唔會再加快。</p>
  *
  * <p>安全：行路由租約守護——超過 {@link #LEASE_MS} 冇續期（{@link #hold} 再叫）即自動放手，
  * 所以網頁死機／key-up 遺失／藍牙斷線唔會一路行落去。普通動作播放經
@@ -135,7 +136,7 @@ public final class WalkCenter {
 
     public float baseSpeed() { return baseSpeed; }
 
-    /** 預設（未受搖桿調節）速度，0.5–2.0。 */
+    /** 預設（未受搖桿調節）速度，1.0–2.0。 */
     public void setBaseSpeed(float s) {
         baseSpeed = GaitWalker.clampSpeed(s);
     }

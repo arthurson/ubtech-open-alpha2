@@ -198,16 +198,35 @@
         <button class="secondary" onclick="resetActionSpeed()">x1.0</button>
       </div>
     </section>
+
+    <section class="card" id="walkCard">
+      <h2 data-i18n="walk_card_heading">🚶 向前行／向後行（按住）</h2>
+      <div class="row" style="align-items:center">
+        <button id="walkHoldBtn" style="min-width:150px;min-height:56px;font-size:1.1em;touch-action:none;user-select:none;-webkit-user-select:none"
+                data-i18n="walk_card_hold">按住向前行</button>
+        <button id="walkBackBtn" style="min-width:150px;min-height:56px;font-size:1.1em;touch-action:none;user-select:none;-webkit-user-select:none"
+                data-i18n="walk_card_hold_back">按住向後行</button>
+        <span id="walkState" class="hint"></span>
+      </div>
+      <div class="row" style="align-items:center">
+        <label><span data-i18n="walk_card_speed">速度</span>
+          <input type="range" id="walkSpeed" min="1" max="2" step="0.1" value="1" style="vertical-align:middle">
+          <span id="walkSpeedVal">1.0x</span></label>
+      </div>
+      <div class="hint" data-i18n="walk_card_hint">按住就行，放手即收步企定。</div>
+    </section>
   </div>
 
   <!-- ============ TAB: SERVO ============ -->
   <div id="tab-servo" class="tab-page">
-    <!-- IK 動作：4 條 slider 由開機企姿（robotStandup）開始，0=企姿、100=已測試 pose；
-         前後一字馬係二合一（-100＝左前、+100＝右前、0＝企姿，同 ubx-player.html 一樣）。
+    <!-- IK 動作：全部 slider 由開機企姿（robotStandup）開始，0=企姿、100=已測試 pose；
+         前後一字馬以及踢腿／側弓步／半蹲／屈臂前伸／跪姿前傾係帶符號
+         （-100＝另一邊／鏡像、+100＝原方向，0＝企姿，同 ubx-player.html 一樣）。
          拖動設定目標，機械人每 120ms 行 10%（0→100 約 1200ms 均速），
          每步預覽＋送 /api/servo/all；無關舵機保持目前／手動值。
          蹲下只郁腳 7-16；蹲式／左右一字馬郁腳 7-16 + 肩 roll 2/5；
-         前後一字馬（左前／右前）郁腳 7-16 + 肩 pitch 1/4（雙臂前後擺）。
+         前後一字馬郁腳 7-16 + 肩 pitch 1/4；大笑／踢腿郁 1-16；
+         側弓步／半蹲／屈臂前伸／跪姿前傾用官方單關鍵幀 20 軸 pose。
          放手唔會跳，會繼續行到目標。
          「直接轉移」閂：切換動作先回企姿；開：A pose 直接均速過渡去 B pose。 -->
     <section class="card" id="ikCard">
@@ -246,7 +265,44 @@
                oninput="onIkFbSlider(this.value, event)" onchange="onIkFbSliderCommit(this.value, event)">
         <b id="ikSplitFBVal" class="mono">0</b>
       </div>
+      <div class="ik-row">
+        <span data-i18n="ik_laugh">大笑</span>
+        <input type="range" id="ikLaugh" min="0" max="100" step="1" value="0"
+               oninput="onIkSlider('laugh', this.value, event)" onchange="onIkSliderCommit('laugh', this.value, event)">
+        <b id="ikLaughVal" class="mono">0</b>
+      </div>
+      <div class="ik-row">
+        <span data-i18n="ik_kick">踢腿</span>
+        <input type="range" id="ikKick" min="-100" max="100" step="1" value="0"
+               oninput="onIkSlider('kick', this.value, event)" onchange="onIkSliderCommit('kick', this.value, event)">
+        <b id="ikKickVal" class="mono">0</b>
+      </div>
+      <div class="ik-row">
+        <span data-i18n="ik_sirius">側弓步</span>
+        <input type="range" id="ikSirius" min="-100" max="100" step="1" value="0"
+               oninput="onIkSlider('sirius', this.value, event)" onchange="onIkSliderCommit('sirius', this.value, event)">
+        <b id="ikSiriusVal" class="mono">0</b>
+      </div>
+      <div class="ik-row">
+        <span data-i18n="ik_hulu">半蹲</span>
+        <input type="range" id="ikHulu" min="-100" max="100" step="1" value="0"
+               oninput="onIkSlider('hulu', this.value, event)" onchange="onIkSliderCommit('hulu', this.value, event)">
+        <b id="ikHuluVal" class="mono">0</b>
+      </div>
+      <div class="ik-row">
+        <span data-i18n="ik_hamlet">屈臂前伸</span>
+        <input type="range" id="ikHamlet" min="-100" max="100" step="1" value="0"
+               oninput="onIkSlider('hamlet', this.value, event)" onchange="onIkSliderCommit('hamlet', this.value, event)">
+        <b id="ikHamletVal" class="mono">0</b>
+      </div>
+      <div class="ik-row">
+        <span data-i18n="ik_kneel">跪姿前傾</span>
+        <input type="range" id="ikKneel" min="-100" max="100" step="1" value="0"
+               oninput="onIkSlider('kneel', this.value, event)" onchange="onIkSliderCommit('kneel', this.value, event)">
+        <b id="ikKneelVal" class="mono">0</b>
+      </div>
       <p class="hint" data-i18n="ik_split_fb_hint">前後一字馬：−100＝左腳踏前、右腳踏後（右臂前擺）；+100＝右腳踏前、左腳踏後（左臂前擺）；0＝企姿。</p>
+      <p class="hint" data-i18n="ik_signed_hint">踢腿／側弓步／半蹲／屈臂前伸／跪姿前傾：−100＝另一邊（鏡像），+100＝原姿勢，0＝企姿；腳掌貼地，建議先由低百分比試。</p>
       <p id="ikStatus" class="hint"></p>
     </section>
 
@@ -269,23 +325,6 @@
 
   <!-- ============ TAB: GAMEPAD (BT 手柄／鍵盤，兩端共用映射) ============ -->
   <div id="tab-gamepad" class="tab-page">
-    <section class="card" id="walkCard">
-      <h2 data-i18n="walk_card_heading">🚶 向前行／向後行（按住）</h2>
-      <div class="row" style="align-items:center">
-        <button id="walkHoldBtn" style="min-width:150px;min-height:56px;font-size:1.1em;touch-action:none;user-select:none;-webkit-user-select:none"
-                data-i18n="walk_card_hold">按住向前行</button>
-        <button id="walkBackBtn" style="min-width:150px;min-height:56px;font-size:1.1em;touch-action:none;user-select:none;-webkit-user-select:none"
-                data-i18n="walk_card_hold_back">按住向後行</button>
-        <span id="walkState" class="hint"></span>
-      </div>
-      <div class="row" style="align-items:center">
-        <label><span data-i18n="walk_card_speed">速度</span>
-          <input type="range" id="walkSpeed" min="0.5" max="2" step="0.1" value="1" style="vertical-align:middle">
-          <span id="walkSpeedVal">1.0x</span></label>
-      </div>
-      <div class="hint" data-i18n="walk_card_hint">按住就行，放手即收步企定。</div>
-    </section>
-
     <section class="card">
       <h2 data-i18n="gamepad_manage_heading">🔷 藍牙</h2>
       <div class="row">

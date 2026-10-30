@@ -13,7 +13,8 @@ package com.ubtechinc.alpha.hardware.ubx;
  *       線性收返 home（servo 由實際位置接手，唔會突跳）；收步時間 =
  *       偏差 × blendMsPerUnit，夾入 [blendMinMs, blendMaxMs]。</li>
  *   <li><b>變速</b>：{@link #setSpeed} 即時生效，逐格縮放時長（平滑過渡，唔會一格跳）；
- *       範圍 0.5–2.0（同 UbxPlayer 一致）。另有每格最快限速 minMsPerUnit 保護舵機。</li>
+ *       範圍 1.0–2.0（實機 300ms 步態下限，實際最快約 1.33x）。另有每格最快限速
+ *       minMsPerUnit 保護舵機。</li>
  *   <li><b>租約（lease）</b>：leaseMs &gt; 0 時，超過該時間未 {@link #beat()} 視為放手
  *       （遠端 key-up 遺失／網頁死機兜底）；leaseMs == 0 即無租約，只靠 release。</li>
  *   <li><b>硬停</b>：線程被 interrupt（{@code UbxPlayer.stop()}）即時結束，唔送收步，
@@ -27,7 +28,7 @@ public final class GaitWalker implements Runnable {
         boolean send(int[] angles20, int timeMs);
     }
 
-    public static final float MIN_SPEED = 0.5f;
+    public static final float MIN_SPEED = 1.0f;
     public static final float MAX_SPEED = 2.0f;
 
     public static final int PHASE_IDLE = 0;
@@ -36,8 +37,11 @@ public final class GaitWalker implements Runnable {
     public static final int PHASE_STANDING = 3;
     public static final int PHASE_DONE = 4;
 
-    /** 實機按住連行：兩次送出之間最短間隔（ms）。speed 再高都唔會快過呢個更新率。 */
-    public static final int WALK_MIN_UPDATE_MS = 400;
+    /**
+     * 實機按住連行：兩次送出之間最短間隔（ms）。1.0x 步態格 400ms；快過 300ms
+     * 實機會唔穩，所以 2.0x（理論 200ms）都會俾呢個下限壓住，實際最快約 1.33x。
+     */
+    public static final int WALK_MIN_UPDATE_MS = 300;
     /**
      * 實機按住連行：步態每格 move 時間 ÷ 送出間隔。略 &gt; 1 令舵機未到位已接住下一格，
      * 唔會喺每格尾停一停等命令（送出有抖動時最明顯）；代價係幅度略收（約 7%）。
@@ -75,7 +79,7 @@ public final class GaitWalker implements Runnable {
 
     /**
      * @param startPose 已知嘅當前指令姿勢（20 軸）；未知傳 null（當 home）
-     * @param speed     起步速度倍率（夾入 0.5–2.0）
+     * @param speed     起步速度倍率（夾入 1.0–2.0）
      * @param leaseMs   0＝無租約；&gt;0＝超時未 beat 即自動放手
      */
     public GaitWalker(GaitProgram prog, Sender sender, int[] startPose, float speed, long leaseMs) {

@@ -43,6 +43,15 @@ public final class IkTransition {
             }
             return fbStepDeg(p < 0 ? -1 : 1, Math.abs(p), hold);
         }
+        if (IkPose.isSignedKind(kind)) {
+            // 踢腿／側弓步／半蹲／屈臂前伸／跪姿前傾：-100…+100。
+            int p = Math.max(-100, Math.min(100, pct));
+            if (p == 0) {
+                return Math.max(signedStepDeg(kind, -1, 0, hold),
+                        signedStepDeg(kind, 1, 0, hold));
+            }
+            return signedStepDeg(kind, p < 0 ? -1 : 1, Math.abs(p), hold);
+        }
         int p = Math.max(0, Math.min(100, pct));
         int lo = Math.min(90, (p / 10) * 10);
         if (lo == p && p > 0) lo = Math.max(0, p - 10);
@@ -68,6 +77,23 @@ public final class IkTransition {
         int max = 1;
         for (int i = 0; i < 20; i++) {
             if (!IkPose.affects("fb", i)) continue;
+            int d = Math.abs(b[i] - a[i]);
+            if (d > max) max = d;
+        }
+        return max;
+    }
+
+    /** 帶符號動作每 10% 嘅參考角度差（sign＝-1 鏡像／+1 原方向）。 */
+    private static int signedStepDeg(String kind, int sign, int mag, int[] hold) {
+        int p = Math.max(0, Math.min(100, mag));
+        int lo = Math.min(90, (p / 10) * 10);
+        if (lo == p && p > 0) lo = Math.max(0, p - 10);
+        int[] a = IkPose.computeSigned(kind, sign * lo, IkPose.bootPose(), hold);
+        int[] b = IkPose.computeSigned(kind, sign * Math.min(100, lo + 10),
+                IkPose.bootPose(), hold);
+        int max = 1;
+        for (int i = 0; i < 20; i++) {
+            if (!IkPose.affects(kind, i)) continue;
             int d = Math.abs(b[i] - a[i]);
             if (d > max) max = d;
         }

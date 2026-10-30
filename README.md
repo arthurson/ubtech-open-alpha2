@@ -90,12 +90,14 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   (`servo/modify-id`, chest cmd10 — honours the chest left/right bus wiring),
   and single-servo firmware flash (`servo/upgrade`, 7168-byte `.bin` gate).
   IK action card: squat / squat 2 (official “蹲式” deep-squat pose) /
-  left-right split on 0–100 sliders, plus one merged front/back split slider
-  (−100…+100, default 0, same as ubx-player.html: −100 = left leg forward,
-  +100 = right leg forward), starting from the boot stand-up pose
-  (robotStandup; servo 19 head yaw at 120); dragging sets the target and the
-  robot moves 10% every 120 ms at constant speed (0→100 in ~1200 ms, four
-  sliders mutually exclusive).
+  left-right split on 0–100 sliders; merged front/back split, laugh, kick,
+  side lunge (Sirius), half squat (Hulu), bent-arm reach (Hamlet) and
+  kneeling lean (Kneel). The signed sliders run −100…+100: positive is the
+  original pose (or right kick), negative is the mirrored pose (or left kick),
+  0 is the boot pose. All start from the boot stand-up pose (robotStandup;
+  servo 19 head yaw at 120); dragging sets the target and the robot moves 10%
+  every 120 ms at constant speed (0→100 in ~1200 ms, sliders mutually
+  exclusive).
   A "Direct transition" switch controls action changes: off (default) returns
   to the boot pose at the same speed before moving to the new action; on blends
   the 20 servo angles straight from the current A pose to the B pose at the
@@ -109,8 +111,8 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   only the 10 leg servos 7–16; squat 2 and left-right split drive the legs plus
   shoulder roll 2/5 (targets 180/60 and 140/100 respectively); the two forward
   splits drive the legs plus shoulder pitch 1/4 (left-forward 90/70,
-  right-forward 170/150). Head 19/20, hands 17/18 and elbows 3/6 are never
-  touched by IK, so they keep their current/manual values throughout. Switching
+  right-forward 170/150). Laugh and kick drive arms and legs 1–16 but keep
+  hands/head; the four single-keyframe poses drive all 20 axes. Switching
   between actions leaves axes the new action does not drive at their current
   values (the off-mode return to boot only moves the new action's axes), so the
   arms do not drop.
@@ -127,16 +129,18 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   injected via `gamepad/key`/`gamepad/axis`). The mapping table has two
   sections; `gamepad/key`/`gamepad/axis` stay available for direct scripting.
   Action values support 22-axis `servo1-22±` stepping (hold to repeat,
-  release to stop; same calibration limits as the servo tab), leg IK poses
+  release to stop; same calibration limits as the servo tab), IK poses
   (`ik:squat±` / `ik:ysquat±` / `ik:lr±` / `ik:fb±` merged front/back split:
   `−` moves toward -100 = left-forward, `+` toward +100 = right-forward,
-  0 = boot pose; legacy `ik:fsplit±` / `ik:fsplit2±` mappings are migrated
-  automatically, and `ik:fb±` is now the merged action (the old left-forward
-  alias was retired); hold to move in 10% steps / 120 ms from the actual pose
-  until 0%/100% (fb: -100%/+100%); switching actions first returns the old
-  action to 0% at the same speed, and axes the new action does not drive stay
-  put; panel taps carry a per-press seq, so a quick tap stays one step even if
-  the HTTP up request reaches the server before the slow down request),
+  0 = boot pose; plus `ik:laugh±` / `ik:kick±` / `ik:sirius±` / `ik:hulu±` /
+  `ik:hamlet±` / `ik:kneel±`, where negative is the mirrored pose / left kick;
+  legacy `ik:fsplit±` / `ik:fsplit2±` mappings are migrated automatically,
+  and `ik:fb±` is now the merged action (the old left-forward alias was
+  retired); hold to move in 10% steps / 120 ms from the actual pose until
+  0%/100% (signed actions: -100%/+100%); switching actions first returns the
+  old action to 0% at the same speed, and axes the new action does not drive
+  stay put; panel taps carry a per-press seq, so a quick tap stays one step
+  even if the HTTP up request reaches the server before the slow down request),
   local-music function keys
   (incl. random track) / random yoga / system ringtones (named /
   default call tone) / head-eye-mouth LEDs / all-lights-off / photo + face &
@@ -154,9 +158,10 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   not yet validated on hardware, so support the robot by hand on the first try.
   `walk/start?dir=fwd|back` selects the direction; asking for the opposite
   direction while walking hard-stops first, then restarts from the current pose;
-  holding both directions at once cancels out and stops. Speed 0.5–2.0x
-  (1.0x = the .ubx's own speed), live: map `walk:fwd` / `walk:back` onto a stick
-  direction and the deflection is the speed (0.5x→2.0x), or keep it on a button
+  holding both directions at once cancels out and stops. Speed 1.0–2.0x
+  (1.0x = the .ubx's own speed; a 300 ms frame floor caps the actual walk at
+  ~1.33x on hardware), live: map `walk:fwd` / `walk:back` onto a stick
+  direction and the deflection is the speed (1.0x→2.0x), or keep it on a button
   and add `walk:fast` / `walk:slow` (stick deflection or full button). A 700 ms lease (`walk/start` heartbeat, key-hold
   beat) stops the robot if the page dies, the key-up is lost or the pad
   disconnects; any normal action/`ubx/stop` pre-empts the walk.

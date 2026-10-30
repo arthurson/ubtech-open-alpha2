@@ -143,6 +143,19 @@ public final class IkTransitionTest {
         eq(true, ysWithin, "switch return each tick <= ref");
         eq(returnPose, last, "switch return final pose");
 
+        // 新增帶符號動作（kick／sirius／hulu／hamlet／kneel）：-100…+100，
+        // 參考步長同 0% 兩邊都要有；-50→+50 要 10 格。
+        for (String sk : new String[]{"kick", "sirius", "hulu", "hamlet", "kneel"}) {
+            eq(true, IkTransition.kindStepDeg(sk, 50, boot) > 0, sk + " kindStepDeg +50 > 0");
+            eq(true, IkTransition.kindStepDeg(sk, -50, boot) > 0, sk + " kindStepDeg -50 > 0");
+            int[] s100 = IkPose.computeSigned(sk, 100, boot, null);
+            int[] s10 = IkPose.computeSigned(sk, 10, boot, null);
+            eq(true, IkTransition.manualSteps(s100, s10, sk, 10, boot) > 1,
+                    sk + " manualSteps 100->10 > 1");
+        }
+        eq(10, IkTransition.pctSteps(-50, 50, 10), "signed pctSteps -50->+50");
+        eq(5, IkTransition.pctSteps(0, -50, 10), "signed pctSteps 0->-50");
+
         System.out.println("IkTransitionTest: passed=" + passed + " failed=" + failed);
         if (failed > 0) System.exit(1);
     }

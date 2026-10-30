@@ -54,10 +54,11 @@ import java.util.Map;
  * servo&lt;1-22&gt;+／servo&lt;1-22&gt;-（單步 jog，步長 {@link #SERVO_JOG_STEP}，
  * 撳住連走）／ik:squat±／ik:ysquat±／ik:lr±／ik:fb±（前後一字馬二合一：
  * − 向 -100＝左前、+ 向 +100＝右前、0＝企姿；舊 ik:fsplit±／ik:fsplit2±
- * 載入時自動遷移）
- * （腳部 IK 動作，經 {@link IkPose}；
+ * 載入時自動遷移）／ik:laugh±／ik:kick±／ik:sirius±／ik:hulu±／
+ * ik:hamlet±／ik:kneel±（帶符號動作：− 向 -100＝鏡像／左踢、+ 向 +100＝原姿勢）
+ * （IK 動作，經 {@link IkPose}；
  * 同 servo 一樣撳住連走，每步 10%（每格 120ms，同 Web IK 卡一致），
- * 到 0%／100%（fb 係 -100%／+100%）自動停；由非 0% pose 開始時會由實際 pose 均速過渡，
+ * 到 0%／100%（帶符號動作係 -100%／+100%）自動停；由非 0% pose 開始時會由實際 pose 均速過渡，
  * 轉動作先均速回 0% 再行新動作，唔會突然跳）／
  * walk:fwd（按住向前行，放手企停；步態＝.ubx，見 {@link WalkCenter}）／walk:back（按住向後行）／walk:fast／walk:slow
  * （行路時加速／減速；搖桿向按偏轉量，掣＝全速；fwd 掛搖桿向＝偏轉量即速度）／
@@ -516,7 +517,7 @@ public final class GamepadCenter {
     /**
      * 行路動作值：{@code walk:fwd}（按住向前行，放手企停）／{@code walk:back}（按住向後行，
      * 放手企停；前後同時撳住互相抵消即收步）／{@code walk:fast}／{@code walk:slow}
-     * （行路期間加速／減速；掣＝全速，搖桿向＝按偏轉量 1x→2x／1x→0.5x）。
+     * （行路期間加速／減速；掣＝全速，搖桿向＝按偏轉量 1x→2x；最慢 1x）。
      * 步態來自 .ubx（見 {@link WalkCenter}）。
      */
     public static boolean isWalkAction(String a) {
@@ -537,6 +538,7 @@ public final class GamepadCenter {
      * pir_toggle／accel_toggle／xiaozhi_toggle／vosk_toggle／vosk:&lt;id&gt;／
      * eq:&lt;preset&gt;／radio:&lt;uuid或名&gt;／servo1-22±／
      * ik:squat±／ik:ysquat±／ik:lr±／ik:fb±（前後一字馬二合一）／
+     * ik:laugh±／ik:kick±／ik:sirius±／ik:hulu±／ik:hamlet±／ik:kneel±／
      * 舊 ik:fsplit±／ik:fsplit2±／action:&lt;非空&gt;。
      * servo／IK 步進撳住連走（jogServo／ikStep 通用）。
      * 單個動作唔可以含換行（一鍵多功能用換行分隔，見 splitMultiAction）。
@@ -660,7 +662,10 @@ public final class GamepadCenter {
 
     /**
      * IK 動作值：{@code ik:squat+/-}／{@code ik:ysquat+/-}／{@code ik:lr+/-}／
-     * {@code ik:fb+/-}（前後一字馬二合一：− 向 -100＝左前、+ 向 +100＝右前）。
+     * {@code ik:fb+/-}（前後一字馬二合一：− 向 -100＝左前、+ 向 +100＝右前）／
+     * {@code ik:laugh+/-}／{@code ik:kick+/-}／{@code ik:sirius+/-}／
+     * {@code ik:hulu+/-}／{@code ik:hamlet+/-}／{@code ik:kneel+/-}
+     * （帶符號動作：− 向 -100＝鏡像／左踢、+ 向 +100＝原姿勢／右踢）。
      * 舊 {@code ik:fsplit+/-}（左前）／{@code ik:fsplit2+/-}（右前）仍然接受，
      * 載入舊映射時會自動遷移成 {@code ik:fb∓}／{@code ik:fb±}。
      * 同 servo jog 一樣撳住連走，每步 {@link #IK_STEP_PCT}%（每格 120ms），
@@ -677,12 +682,16 @@ public final class GamepadCenter {
         String kind = rest.substring(0, rest.length() - 1);
         return "squat".equals(kind) || "ysquat".equals(kind)
                 || "lr".equals(kind) || "fsplit".equals(kind)
-                || "fsplit2".equals(kind) || "fb".equals(kind);
+                || "fsplit2".equals(kind) || "fb".equals(kind)
+                || "laugh".equals(kind) || "kick".equals(kind)
+                || "sirius".equals(kind) || "hulu".equals(kind)
+                || "hamlet".equals(kind) || "kneel".equals(kind);
     }
 
     /**
-     * ik 動作拆 kind（squat／ysquat／lr／fb；fsplit／fsplit2 係舊映射）；
-     * 非法回 null。{@code fb} 保留做二合一帶符號動作，唔再 normalize 做 fsplit。
+     * ik 動作拆 kind（squat／ysquat／lr／fb／laugh／kick／sirius／hulu／
+     * hamlet／kneel；fsplit／fsplit2 係舊映射）；非法回 null。
+     * {@code fb} 保留做二合一帶符號動作，唔再 normalize 做 fsplit。
      */
     private static String ikKindOf(String a) {
         if (!isIkAction(a)) return null;
@@ -1922,8 +1931,8 @@ public final class GamepadCenter {
     // -- 按住行路（walk:fwd／back／fast／slow）------------------------------------
     // 登記「邊粒鍵／搖桿向喺度撳住咩」；放手（stopRepeats）移除，冇 fwd／back 撳住即收步；
     // fwd 同 back 同時撳住＝互相抵消即收步，放開其中一個就跟返仲撳住嗰個方向重新起步。
-    // 速度：fwd／back 掣＝預設速度；掛搖桿向＝偏轉量 0.5x→2.0x（幾何，半偏≈1x）；
-    // fast／slow ＝ ×(1+t)／×(1−0.5t)（t＝掣 1、搖桿向由閾值至滿偏 0→1）。
+    // 速度：fwd／back 掣＝預設速度；掛搖桿向＝偏轉量 1.0x→2.0x（幾何，半偏≈1.41x）；
+    // fast／slow ＝ ×(1+t)／×(1−0.5t)（t＝掣 1、搖桿向由閾值至滿偏 0→1；下限 1x）。
     // 每 120ms 續租約；本機撳住（robotHeld）無上限，網頁／腳本（無可靠 key-up）最長 15 秒。
     private static final int WALK_UNATTENDED_MAX_TICKS = 125;
     private final Map<String, String> walkHolds = new LinkedHashMap<>();
@@ -2047,7 +2056,7 @@ public final class GamepadCenter {
             float t = analog ? stickT(repeatDeflOfTag(tag)) : 1f;
             String k = e.getValue();
             if ("fwd".equals(k) || "back".equals(k)) {
-                if (analog) base = 0.5f * (float) Math.pow(4.0, t);
+                if (analog) base = (float) Math.pow(2.0, t);
             } else if ("fast".equals(k)) {
                 mul *= 1f + t;
             } else if ("slow".equals(k)) {
@@ -2134,7 +2143,7 @@ public final class GamepadCenter {
         }
     }
 
-    /** 單條 IK 連走；到 0%／100%（fb 係 -100%／+100%）或連續 3 次送唔出即自己停。 */
+    /** 單條 IK 連走；到 0%／100%（帶符號動作係 -100%／+100%）或連續 3 次送唔出即自己停。 */
     private synchronized void startIkRepeatTag(final String tag, final String kind,
             final int sign, float defl) {
         try {
@@ -2295,8 +2304,10 @@ public final class GamepadCenter {
      * IK 行一步：0% base 固定係官方開機 robotStandup 企姿（同 Web IK 卡
      * {@code IK_BOOT_POSE} 一致）。+/− 共用一個當前動作百分比；轉動作即由
      * 0% 重計（同 IK 卡 slider 互斥），所以按新動作嘅 − 會先回開機企姿。
-     * {@code fb}（前後一字馬二合一）唔同：pct 係 -100…+100，− 向 -100
-     * （左前）、+ 向 +100（右前）、0＝企姿，中途過 0 會直接連續過渡。
+     * 帶符號動作（{@code fb}／{@code kick}／{@code sirius}／{@code hulu}／
+     * {@code hamlet}／{@code kneel}）唔同：pct 係 -100…+100，− 向 -100
+     * （左前／鏡像／左踢）、+ 向 +100（右前／原姿勢／右踢）、0＝企姿，
+     * 中途過 0 會直接連續過渡。
      *
      * <p>唔會再由 boot pose 直接跳去目標：任何一步都係由目前實際 pose
      * 以每格 120ms 均速過渡（同 slider 一樣）；轉動作先將舊動作控制嘅軸
@@ -2305,10 +2316,11 @@ public final class GamepadCenter {
     private synchronized boolean executeIkStep(String kind, int sign, int stepPct) {
         if (kind == null || sign == 0) return false;
         int step = Math.max(1, stepPct);
-        boolean fb = "fb".equals(kind);
+        boolean signed = "fb".equals(kind) || IkPose.isSignedKind(kind);
         int basePct = kind.equals(ikActiveKind) ? ikActivePct : 0;
         int target = basePct + (sign > 0 ? step : -step);
-        if (target < (fb ? -100 : 0)) target = fb ? -100 : 0;
+        int minPct = signed ? -100 : 0;
+        if (target < minPct) target = minPct;
         if (target > 100) target = 100;
 
         boolean retargeted = false;
@@ -2679,8 +2691,10 @@ public final class GamepadCenter {
                     + "sonar_toggle/pir_toggle/accel_toggle/"
                     + "xiaozhi_toggle/vosk_toggle/vosk:<id>/eq:<preset>/radio:<uuid或名>/"
                     + "servo1-22+/servo1-22-/ik:squat+/ik:squat-/"
-                    + "ik:ysquat+/ik:ysquat-/ik:lr+/ik:lr-/"
-                    + "ik:fb+/ik:fb-/walk:fwd/walk:back/walk:fast/walk:slow/action:<id>, got: " + action);
+                    + "ik:ysquat+/ik:ysquat-/ik:lr+/ik:lr-/ik:fb+/ik:fb-/"
+                    + "ik:laugh+/ik:laugh-/ik:kick+/ik:kick-/ik:sirius+/ik:sirius-/"
+                    + "ik:hulu+/ik:hulu-/ik:hamlet+/ik:hamlet-/ik:kneel+/ik:kneel-/"
+                    + "walk:fwd/walk:back/walk:fast/walk:slow/action:<id>, got: " + action);
         }
         Map<String, String> mapping = loadMapping(side);
         mapping.put(key, action);

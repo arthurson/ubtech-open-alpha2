@@ -1,12 +1,14 @@
 package com.open.alpha2;
 
 /**
- * 腳部 IK 動作位姿（蹲下／蹲式／左右一字馬／前後一字馬二合一）——Java 版。
+ * IK 動作位姿（蹲下／蹲式／左右一字馬／前後一字馬二合一；大笑／踢腿／
+ * 側弓步／半蹲／屈臂前伸／跪姿前傾）——Java 版。
  *
  * <p>同 {@code app/src/main/assets/web/app-ik.js} 一字不差咁移植：同一組
  * URDF 連桿參數、校準 offset、ankle 補償、damped least-squares 解，
- * 連 multi-start 同 clamp 次序都照跟。Web IK 卡同手柄／鍵盤映射共用同一套
- * 結果，所以兩邊做同一個百分比，落到舵機嘅 20 軸位姿應該一樣。</p>
+ * 連 multi-start 同 clamp 次序都照跟。新增動作直接用 ubx-player.html
+ * 已計好嘅路徑／關鍵幀，帶符號動作負數行鏡像。Web IK 卡同手柄／鍵盤映射
+ * 共用同一套結果，所以兩邊做同一個百分比，落到舵機嘅 20 軸位姿應該一樣。</p>
  *
  * <p>0% base 係官方開機 robotStandup 企姿（{@link #BOOT_POSE}），唔再跟
  * 舵機格／現時位姿走：pct 0 回開機企姿，100 到已測試嘅最終 pose。
@@ -17,8 +19,9 @@ package com.open.alpha2;
  *
  * <p>每個動作只控制相關舵機：蹲下只郁腳 7-16；蹲式／左右一字馬郁腳
  * 7-16 加肩 roll 2/5；左前／右前一字馬郁腳 7-16 加肩 pitch 1/4（雙臂
- * 前後擺）。頭 19/20、手 17/18、肘 3/6 唔屬於任何 IK 動作，
- * {@link #compute(String, int, int[], int[])} 會用目前實際值保留佢哋。</p>
+ * 前後擺）；大笑／踢腿郁 1-16；側弓步／半蹲／屈臂前伸／跪姿前傾用官方
+ * 單關鍵幀 20 軸 pose。{@link #compute(String, int, int[], int[])} 會用
+ * 目前實際值保留該動作唔控制嘅軸。</p>
  */
 public final class IkPose {
 
@@ -115,9 +118,170 @@ public final class IkPose {
             120, 120, 177, 95, 105, 120, 120, 120, 120, 120
     };
 
+    /**
+     * 官方「大笑」（1487230160190）16 軸 × 25 點路徑表（同 app-ik.js
+     * {@code IK_LAUGH_TABLE}）。由 ubx-player.html 嘅手／腳末端 IK 取樣，
+     * 中間點線性內插；app 直接內嵌結果，唔使搬全身 FK／IK 過嚟。
+     */
+    private static final int[][] LAUGH_TABLE = {
+            {114, 205, 119, 116, 38, 114, 120, 65, 145, 135, 120, 120, 175, 95, 105, 120},
+            {109, 204, 123, 123, 39, 113, 120, 68, 142, 139, 120, 120, 172, 99, 100, 120},
+            {107, 203, 131, 129, 40, 109, 121, 72, 139, 143, 120, 120, 168, 102, 96, 120},
+            {107, 201, 143, 133, 41, 102, 121, 76, 138, 146, 121, 119, 163, 104, 93, 119},
+            {107, 200, 157, 136, 42, 92, 121, 81, 138, 148, 121, 119, 158, 104, 90, 119},
+            {106, 199, 168, 140, 43, 84, 122, 86, 138, 151, 121, 119, 152, 104, 88, 119},
+            {103, 198, 177, 144, 43, 77, 122, 92, 139, 153, 121, 119, 146, 102, 86, 119},
+            {99, 197, 183, 151, 42, 74, 123, 98, 141, 154, 122, 118, 139, 100, 85, 118},
+            {94, 197, 186, 158, 42, 73, 123, 104, 144, 155, 122, 118, 132, 96, 84, 118},
+            {89, 195, 185, 162, 43, 75, 123, 107, 143, 157, 122, 118, 129, 98, 82, 118},
+            {84, 194, 183, 167, 44, 77, 123, 109, 142, 159, 122, 118, 127, 99, 80, 118},
+            {80, 192, 182, 171, 44, 79, 123, 112, 141, 161, 122, 118, 124, 100, 78, 118},
+            {75, 191, 180, 176, 45, 80, 123, 115, 140, 163, 122, 118, 120, 101, 76, 118},
+            {70, 189, 179, 180, 45, 82, 123, 118, 140, 164, 122, 117, 117, 101, 74, 118},
+            {65, 188, 178, 185, 46, 84, 123, 121, 140, 166, 122, 117, 113, 101, 73, 118},
+            {60, 187, 176, 189, 47, 86, 123, 125, 140, 167, 122, 117, 110, 101, 72, 118},
+            {55, 186, 175, 194, 47, 88, 123, 128, 141, 168, 122, 117, 106, 100, 71, 118},
+            {49, 186, 171, 200, 47, 90, 123, 131, 139, 171, 122, 117, 103, 101, 69, 118},
+            {42, 187, 166, 205, 48, 92, 124, 134, 138, 173, 123, 116, 100, 102, 66, 117},
+            {35, 187, 162, 211, 48, 94, 124, 138, 137, 175, 123, 116, 96, 103, 64, 117},
+            {28, 188, 157, 216, 48, 96, 125, 141, 137, 177, 123, 115, 93, 103, 62, 116},
+            {21, 188, 152, 222, 48, 99, 125, 145, 137, 179, 124, 114, 90, 103, 61, 116},
+            {14, 189, 147, 228, 48, 101, 126, 149, 137, 180, 124, 113, 86, 103, 59, 115},
+            {7, 189, 142, 233, 47, 103, 127, 153, 137, 182, 124, 112, 83, 103, 57, 115},
+            {0, 190, 137, 239, 47, 105, 128, 157, 138, 183, 125, 111, 79, 103, 56, 114}
+    };
+
+    /** 官方「左踢式」／「右踢式」頭 4 格（同 app-ik.js IK_KICK_L／R_POSE）。 */
+    private static final int[][] KICK_L_POSE = {
+            {120, 205, 120, 120, 35, 115, 120, 65, 145, 135, 120, 120, 175, 95, 105, 120},
+            {121, 179, 120, 119, 72, 115, 129, 54, 131, 137, 143, 127, 173, 80, 117, 133},
+            {121, 179, 120, 119, 72, 115, 134, 26, 83, 156, 122, 127, 173, 80, 117, 133},
+            {120, 120, 120, 120, 120, 120, 163, 47, 129, 141, 124, 127, 175, 84, 115, 137}
+    };
+    private static final int[][] KICK_R_POSE = {
+            {120, 205, 120, 120, 35, 115, 120, 65, 145, 135, 120, 120, 175, 95, 105, 120},
+            {120, 168, 120, 120, 61, 120, 113, 62, 160, 123, 104, 107, 187, 111, 102, 94},
+            {120, 168, 120, 120, 61, 120, 113, 62, 160, 123, 104, 106, 214, 158, 84, 118},
+            {120, 120, 120, 120, 120, 120, 113, 62, 156, 125, 100, 77, 193, 111, 99, 116}
+    };
+    private static final double[] KICK_L_CUM = kickCum(KICK_L_POSE);
+    private static final double[] KICK_R_CUM = kickCum(KICK_R_POSE);
+
+    /** 官方單關鍵幀姿勢（同 ubx-player.html「姿勢」slider 工廠）。 */
+    private static final int[] SIRIUS_POSE = {
+            129, 98, 170, 123, 128, 120, 171, 92, 178, 129,
+            172, 125, 206, 197, 37, 128, 120, 120, 110, 113
+    };
+    private static final int[] HULU_POSE = {
+            122, 88, 123, 120, 118, 57, 103, 53, 112, 152,
+            107, 98, 204, 162, 75, 85, 120, 120, 173, 97
+    };
+    private static final int[] HAMLET_POSE = {
+            71, 164, 150, 166, 34, 90, 144, 57, 139, 133,
+            141, 134, 176, 101, 101, 127, 120, 120, 84, 120
+    };
+    private static final int[] KNEEL_POSE = {
+            195, 205, 117, 55, 35, 123, 169, 175, 115, 201,
+            139, 117, 187, 177, 105, 115, 120, 120, 120, 120
+    };
+
+    /** 左右鏡像 pair（index 1-based；17/18 值不變、19 240-x、20 不變）。 */
+    private static final int[] MIRROR_PAIR = {
+            0, 4, 5, 6, 1, 2, 3, 12, 13, 14, 15, 16, 7, 8, 9, 10, 11, 18, 17, 19, 20
+    };
+
     /** 開機企姿副本（IK 0% base；避免 caller 改到常數）。 */
     public static int[] bootPose() {
         return BOOT_POSE.clone();
+    }
+
+    /** 按 16 軸角度變化量做路徑長度參數化（同 app-ik.js ikKickPrep）。 */
+    private static double[] kickCum(int[][] frames) {
+        double[] c = new double[frames.length];
+        double total = 0;
+        for (int i = 0; i < frames.length - 1; i++) {
+            double s = 0;
+            for (int k = 0; k < 16; k++) s += Math.abs(frames[i + 1][k] - frames[i][k]);
+            total += s;
+            c[i + 1] = total;
+        }
+        if (total > 0) {
+            for (int i = 0; i < c.length; i++) c[i] /= total;
+        }
+        return c;
+    }
+
+    /**
+     * 帶符號 IK 動作：slider -100…+100；負＝鏡像／左踢，正＝原姿勢／右踢。
+     * {@code fb} 係舊二合一 alias，唔在此列（由呼叫方先處理）。
+     */
+    public static boolean isSignedKind(String kind) {
+        String k = normalizeKind(kind);
+        return "kick".equals(k) || "sirius".equals(k) || "hulu".equals(k)
+                || "hamlet".equals(k) || "kneel".equals(k);
+    }
+
+    private static int[] mirrorPose(int[] pose) {
+        int[] out = new int[20];
+        for (int j = 1; j <= 20; j++) {
+            int x = pose[MIRROR_PAIR[j] - 1];
+            out[j - 1] = (j == 17 || j == 18 || j == 20) ? x : 240 - x;
+        }
+        return out;
+    }
+
+    private static double[] laughTarget(int pct) {
+        int p = Math.max(0, Math.min(100, pct));
+        int n = LAUGH_TABLE.length - 1;
+        double x = p / 100.0 * n;
+        int j = Math.min(n - 1, (int) Math.floor(x));
+        double f = x - j;
+        double[] out = new double[16];
+        for (int i = 0; i < 16; i++) {
+            out[i] = LAUGH_TABLE[j][i] + (LAUGH_TABLE[j + 1][i] - LAUGH_TABLE[j][i]) * f;
+        }
+        return out;
+    }
+
+    private static double[] kickTarget(boolean left, int pct) {
+        int p = Math.max(0, Math.min(100, Math.abs(pct)));
+        double u = p / 100.0;
+        int[][] frames = left ? KICK_L_POSE : KICK_R_POSE;
+        double[] cum = left ? KICK_L_CUM : KICK_R_CUM;
+        int s = 0;
+        while (s < frames.length - 2 && u > cum[s + 1]) s++;
+        double f = (u - cum[s]) / (cum[s + 1] - cum[s]);
+        double[] out = new double[16];
+        for (int i = 0; i < 16; i++) {
+            out[i] = frames[s][i] + (frames[s + 1][i] - frames[s][i]) * f;
+        }
+        return out;
+    }
+
+    private static int[] poseLaugh(double[] base, int pct) {
+        int p = Math.max(0, Math.min(100, pct));
+        double[] t = laughTarget(p);
+        double w = Math.min(1, p / 8.0);
+        double[] out = base.clone();
+        for (int i = 0; i < 16; i++) out[i] = base[i] + (t[i] - base[i]) * w;
+        return clampPose(out, intOf(base));
+    }
+
+    private static int[] poseKick(double[] base, int pct, boolean left) {
+        int p = Math.max(0, Math.min(100, Math.abs(pct)));
+        double[] t = kickTarget(left, p);
+        double w = Math.min(1, p / 8.0);
+        double[] out = base.clone();
+        for (int i = 0; i < 16; i++) out[i] = base[i] + (t[i] - base[i]) * w;
+        return clampPose(out, intOf(base));
+    }
+
+    private static int[] poseFixed(double[] base, int pct, int[] pose, boolean mirror) {
+        int[] target = mirror ? mirrorPose(pose) : pose;
+        double w = Math.min(100, Math.abs(pct)) / 100.0;
+        double[] out = base.clone();
+        for (int i = 0; i < 20; i++) out[i] = base[i] + (target[i] - base[i]) * w;
+        return clampPose(out, intOf(base));
     }
 
     // ---- 3D 小工具（只做腳鏈） ----
@@ -445,16 +609,24 @@ public final class IkPose {
         return out;
     }
 
-    // ---- 五種動作（同 app-ik.js ikPoseSquat／ikPoseYSquat／ikPoseLr／ikPoseFb） ----
+    // ---- IK 動作（同 app-ik.js 嘅 ikPose* 函數） ----
 
     /**
      * 呢個 IK 動作會唔會控制 index（0-based）嗰粒舵機？
      * 腳 7-16（index 6-15）全部動作都會控制；蹲式／左右一字馬
      * 另外控制 2/5（index 1/4）肩 roll；前後一字馬（fsplit／fsplit2／fb
-     * 二合一）另外控制 1/4（index 0/3）肩 pitch 前後擺。其他軸完全唔郁。
+     * 二合一）另外控制 1/4（index 0/3）肩 pitch 前後擺。大笑／踢腿控制
+     * 1-16（index 0-15）；側弓步／半蹲／屈臂前伸／跪姿前傾控制全部 20 軸。
      */
     public static boolean affects(String kind, int index) {
         kind = normalizeKind(kind);
+        if ("sirius".equals(kind) || "hulu".equals(kind)
+                || "hamlet".equals(kind) || "kneel".equals(kind)) {
+            return index >= 0 && index < 20;
+        }
+        if ("laugh".equals(kind) || "kick".equals(kind)) {
+            return index >= 0 && index < 16;
+        }
         if (index >= 6 && index <= 15) return true;
         if (index == 1 || index == 4) {
             return "ysquat".equals(kind) || "lr".equals(kind);
@@ -521,9 +693,11 @@ public final class IkPose {
     /**
      * 計 20 軸 IK 目標位姿。
      *
-     * @param kind "squat"／"ysquat"／"lr"／"fsplit"／"fsplit2"
-     *             （"fb" 係 fsplit 嘅相容別名；其他一律回 base）
-     * @param pct  0–100（0＝base）
+     * @param kind "squat"／"ysquat"／"lr"／"fsplit"／"fsplit2"／
+     *             "laugh"／"kick"／"sirius"／"hulu"／"hamlet"／"kneel"
+     *             （"fb" 係 fsplit 嘅相容別名；負百分比請用
+     *             {@link #computeSigned}；其他一律回 base）
+     * @param pct  0–100（0＝base；帶符號動作嘅正方向）
      * @param base 20 軸 base pose（1–20 號舵機）
      */
     public static int[] compute(String kind, int pct, int[] base) {
@@ -537,6 +711,12 @@ public final class IkPose {
         if ("fsplit".equals(kind) || "fsplit2".equals(kind)) {
             return poseFb(b, p, fsplitEnd(b, kind), kind);
         }
+        if ("laugh".equals(kind)) return poseLaugh(b, p);
+        if ("kick".equals(kind)) return poseKick(b, p, false);
+        if ("sirius".equals(kind)) return poseFixed(b, p, SIRIUS_POSE, false);
+        if ("hulu".equals(kind)) return poseFixed(b, p, HULU_POSE, false);
+        if ("hamlet".equals(kind)) return poseFixed(b, p, HAMLET_POSE, false);
+        if ("kneel".equals(kind)) return poseFixed(b, p, KNEEL_POSE, false);
         return clampPose(b, base);
     }
 
@@ -578,23 +758,52 @@ public final class IkPose {
         return clampPose(toDouble(pose), base);
     }
 
+    /** 帶符號動作目標（pct 用絕對值；mirror＝負方向）。 */
+    private static int[] computeSignedKind(String kind, int pct, int[] base, boolean mirror) {
+        int p = Math.max(0, Math.min(100, pct));
+        double[] b = toDouble(base);
+        if (p <= 0) return clampPose(b, base);
+        if ("kick".equals(kind)) return poseKick(b, p, mirror);
+        if ("sirius".equals(kind)) return poseFixed(b, p, SIRIUS_POSE, mirror);
+        if ("hulu".equals(kind)) return poseFixed(b, p, HULU_POSE, mirror);
+        if ("hamlet".equals(kind)) return poseFixed(b, p, HAMLET_POSE, mirror);
+        if ("kneel".equals(kind)) return poseFixed(b, p, KNEEL_POSE, mirror);
+        return clampPose(b, base);
+    }
+
     /**
-     * Gamepad／IK 過渡用：{@code kind} 係 {@code fb} 時 {@code pct} 用帶符號
-     * -100…+100（負＝左前、正＝右前）；其他動作照舊 0…100。
+     * Gamepad／IK 過渡用：{@code kind} 係 {@code fb} 或帶符號動作
+     * （kick／sirius／hulu／hamlet／kneel）時 {@code pct} 用 -100…+100
+     * （負＝鏡像／左踢）；其他動作照舊 0…100。
      */
     public static int[] computeSigned(String kind, int pct, int[] base, int[] current) {
         if ("fb".equals(kind)) return computeFb(pct, base, current);
+        kind = normalizeKind(kind);
+        if (isSignedKind(kind)) {
+            int p = Math.max(-100, Math.min(100, pct));
+            int[] pose = computeSignedKind(kind, Math.abs(p), base, p < 0);
+            if (current != null) {
+                for (int i = 0; i < 20 && i < current.length; i++) {
+                    if (!affects(kind, i)) pose[i] = current[i];
+                }
+            }
+            return clampPose(toDouble(pose), base);
+        }
         return compute(kind, pct, base, current);
     }
 
     /**
-     * 動作名：squat／ysquat／lr／fsplit／fsplit2。
-     * {@code fb} 亦接受（Gamepad 二合一用 {@link #computeSigned}）。
+     * 動作名：squat／ysquat／lr／fsplit／fsplit2／laugh／kick／sirius／
+     * hulu／hamlet／kneel。{@code fb} 亦接受（Gamepad 二合一用
+     * {@link #computeSigned}）。
      */
     public static boolean isKind(String kind) {
         kind = normalizeKind(kind);
         return "squat".equals(kind) || "ysquat".equals(kind)
                 || "lr".equals(kind) || "fsplit".equals(kind)
-                || "fsplit2".equals(kind);
+                || "fsplit2".equals(kind) || "laugh".equals(kind)
+                || "kick".equals(kind) || "sirius".equals(kind)
+                || "hulu".equals(kind) || "hamlet".equals(kind)
+                || "kneel".equals(kind);
     }
 }
