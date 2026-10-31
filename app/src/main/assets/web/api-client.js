@@ -1069,13 +1069,13 @@ const Alpha2Api = (function() {
   // ── upload ──────────────────────────────────────────────
   // ── walk ──────────────────────────────────────────────
   function walkSpeed(params) {
-    if (params && params.value != null) assertRange(Number(params.value), 0.5, 2.0, 'value');
+    if (params && params.value != null) assertRange(Number(params.value), 1.0, 2.0, 'value');
     // 設預設行路速度（同時即時套用於行緊嘅路）
     return api('walk/speed', params);
   }
 
   function walkStart(params) {
-    if (params && params.speed != null) assertRange(Number(params.speed), 0.5, 2.0, 'speed');
+    if (params && params.speed != null) assertRange(Number(params.speed), 1.0, 2.0, 'speed');
     if (params && params.dir != null) assertEnum(params.dir, ['fwd', 'back'], 'dir');
     // 按住向前行／向後行：未行就起步，行緊就續租約並更新速度
     return api('walk/start', params);
