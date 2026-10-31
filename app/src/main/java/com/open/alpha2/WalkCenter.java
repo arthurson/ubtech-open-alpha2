@@ -41,6 +41,13 @@ public final class WalkCenter {
     /** 租約：本機按鍵／面板每 ~120–250ms 續期，超過就當放手。 */
     public static final long LEASE_MS = 700;
     public static final float DEFAULT_SPEED = 1.0f;
+    /**
+     * 放手後呢段時間內，同方向嘅 hold（walk/start）當「放手前已經喺途中嘅過期續租請求」，
+     * 唔重新起步。網頁每 250ms 送 walk/start、放手送 walk/stop，兩者走唔同連線／線程，
+     * walk/start 可以喺 walk/stop 之後先到，會令已經收步嘅路被「截停再起」，
+     * 變成放手之後仲行多一輪租約（~700ms）再收步。
+     */
+    public static final long STALE_START_MS = 350;
 
     private final Context appContext;
     private final UbxPlayer ubxPlayer;
@@ -51,6 +58,8 @@ public final class WalkCenter {
     private volatile String loadErrorBack = "";
     private volatile float baseSpeed = DEFAULT_SPEED;
     private volatile String lastError = "";
+    private volatile long releasedAtMs;
+    private volatile String releasedName = "";
 
     public WalkCenter(Context context, UbxPlayer ubxPlayer) {
         this.appContext = context.getApplicationContext();
@@ -161,6 +170,12 @@ public final class WalkCenter {
         }
         float sp = GaitWalker.clampSpeed(speed);
         String want = back ? UbxPlayer.WALK_BACK : UbxPlayer.WALK_FWD;
+        // 放手後收步線程好快就完（放手即結束，舵機自己行返 home），所以呢度唔可以
+        // 靠 isWalking()：過期續租喺線程完咗之後先到，一樣要擋，否則會當新一次按下重新起步。
+        if (want.equals(releasedName)
+                && android.os.SystemClock.elapsedRealtime() - releasedAtMs < STALE_START_MS) {
+            return true; // 放手前已送出嘅過期續租：忽略
+        }
         if (ubxPlayer.isWalking() && !ubxPlayer.isWalkFinishing()) {
             if (want.equals(ubxPlayer.walkName())) {
                 ubxPlayer.setWalkSpeed(sp);
@@ -196,7 +211,13 @@ public final class WalkCenter {
 
     /** 放手：收步回企定（線程自己完結）。 */
     public void release() {
-        if (ubxPlayer.isWalking()) ubxPlayer.releaseWalk();
+        if (ubxPlayer.isWalking()) {
+            if (!ubxPlayer.isWalkFinishing()) {
+                releasedName = ubxPlayer.walkName();
+                releasedAtMs = android.os.SystemClock.elapsedRealtime();
+            }
+            ubxPlayer.releaseWalk();
+        }
     }
 
     /** 硬停：即刻截停，舵機保持末位姿。 */
