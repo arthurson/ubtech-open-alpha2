@@ -655,6 +655,7 @@ const I18N = {
   xiaozhi_send_text_error:    { zh: "送出失敗",             en: "Failed to send" },
   xiaozhi_stop_all_btn:       { zh: "⏹ 全部停止",           en: "⏹ Stop All" },
   xiaozhi_tts_engine_label:      { zh: "語音輸出：",         en: "Voice output:" },
+  xiaozhi_filler_heading:        { zh: "💃 講嘢時隨機動作",   en: "💃 Random move while speaking" },
   xiaozhi_tts_engine_xiaozhi_btn: { zh: "小智",              en: "XiaoZhi" },
 
   // -- advanced tab --

@@ -11782,6 +11782,111 @@
         "operationId": "xiaozhiBootVoice_set"
       }
     },
+    "/api/xiaozhi/filler_action/get": {
+      "get": {
+        "tags": [
+          "xiaozhi"
+        ],
+        "summary": "查詢小智講嘢時隨機動作開關 (filler gesture at TTS start, default true)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "狀態",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "xiaozhiFillerAction_get"
+      }
+    },
+    "/api/xiaozhi/filler_action/set": {
+      "get": {
+        "tags": [
+          "xiaozhi"
+        ],
+        "summary": "設定小智講嘢時隨機動作開關 (filler gesture at TTS start, persistent)",
+        "description": "false = TTS start lights the mouth LED only, the robot does not move. 面板 token 啟用後要帶 panel_token（401 即未解鎖），見 PanelAuth。",
+        "parameters": [
+          {
+            "name": "enabled",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "已設定",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "xiaozhiFillerAction_set"
+      }
+    },
     "/api/xiaozhi/send_text": {
       "get": {
         "tags": [
