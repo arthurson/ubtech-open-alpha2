@@ -52,16 +52,18 @@ var GAMEPAD_KIND_KEYS = { none: "gamepad_kind_none", stop: "gamepad_kind_stop",
   voice: "gamepad_kind_voice", action: "gamepad_kind_action" };
 
 // IK 動作（值＝ik:<kind>±；同 servo jog 一樣撳住連走，每步 10%）。
-// 同後端 GamepadCenter.isIkAction／IkPose 對齊。帶符號動作：
-// ik:fb+ 向 +100（右前）、ik:fb- 向 -100（左前）；
-// ik:kick／sirius／hulu／hamlet／kneel 亦係 -100…+100，0＝企姿。
-// 舊 ik:fsplit±／ik:fsplit2± 由後端 loadMapping 自動遷移。
-var GAMEPAD_IK_FNS = ["ik:squat+", "ik:squat-", "ik:ysquat+", "ik:ysquat-",
-                      "ik:lr+", "ik:lr-", "ik:fb+", "ik:fb-",
-                      "ik:laugh+", "ik:laugh-", "ik:kick+", "ik:kick-",
-                      "ik:sirius+", "ik:sirius-", "ik:hulu+", "ik:hulu-",
-                      "ik:hamlet+", "ik:hamlet-", "ik:kneel+", "ik:kneel-"];
-var GAMEPAD_IK_RE = "squat|ysquat|lr|fb|fsplit2?|laugh|kick|sirius|hulu|hamlet|kneel";
+// 同後端 GamepadCenter.isIkAction／IkPose 對齊，次序同 Web IK 卡 slider（蹲仰、蹲劈、踢腿、側弓步、半蹲、屈臂前伸、前後）。
+// 二合一（-100…+100，0＝企姿）：ik:squatlean+ 向 +100（蹲下）、ik:squatlean- 向 -100（大笑）；
+// ik:squatsplit+ 向 +100（左右一字馬）、ik:squatsplit- 向 -100（蹲式）；
+// ik:fb+ 向 +100（右前）、ik:fb- 向 -100（左前）。
+// ik:kick／sirius／hulu／hamlet 亦係 -100…+100，0＝企姿（側弓步／屈臂前伸方向已同 slider 對調）。
+// 舊 ik:squat±／ik:laugh±／ik:ysquat±／ik:lr±／ik:fsplit±／ik:fsplit2± 由後端 loadMapping 自動遷移；
+// 跪姿前傾（ik:kneel±）已移除。
+var GAMEPAD_IK_FNS = ["ik:squatlean+", "ik:squatlean-", "ik:squatsplit+", "ik:squatsplit-",
+                      "ik:kick+", "ik:kick-", "ik:sirius+", "ik:sirius-",
+                      "ik:hulu+", "ik:hulu-", "ik:hamlet+", "ik:hamlet-",
+                      "ik:fb+", "ik:fb-"];
+var GAMEPAD_IK_RE = "squatlean|squatsplit|squat|ysquat|lr|fb|fsplit2?|laugh|kick|sirius|hulu|hamlet";
 
 function gamepadIkLabel(v) {
   var m = new RegExp("^ik:(" + GAMEPAD_IK_RE + ")([+-])$").exec(v || "");
@@ -71,6 +73,14 @@ function gamepadIkLabel(v) {
     return t("ik_name_fb") + (m[2] === "+"
       ? " + (" + t("ik_dir_right") + ")"
       : " − (" + t("ik_dir_left") + ")");
+  }
+  // 蹲仰／蹲劈二合一：同 fb 一樣標明 +／− 向邊個動作
+  if (kind === "squatlean" || kind === "squatsplit") {
+    var pos = kind === "squatlean" ? "squat" : "lr";
+    var neg = kind === "squatlean" ? "laugh" : "ysquat";
+    return t("ik_name_" + kind) + (m[2] === "+"
+      ? " + (" + t("ik_name_" + pos) + ")"
+      : " − (" + t("ik_name_" + neg) + ")");
   }
   return t("ik_name_" + kind) + (m[2] === "+" ? " +" : " −");
 }
@@ -693,11 +703,17 @@ function gamepadActionGroupOf(id) {
   return "其他";
 }
 
-// 舊左前／右前 mapping 併入二合一 fb（同 GamepadCenter.loadMapping 一致）：
-// fsplit+（左前）→ fb-、fsplit- → fb+、fsplit2+（右前）→ fb+、fsplit2- → fb-。
+// 舊 mapping 併入二合一（同 GamepadCenter.loadMapping 一致）：
+// fsplit+（左前）→ fb-、fsplit- → fb+、fsplit2+（右前）→ fb+、fsplit2- → fb-；
+// squat± → squatlean±、laugh± → squatlean∓；lr± → squatsplit±、ysquat± → squatsplit∓。
 function gamepadCanonicalIkFn(kind, dir) {
-  if (kind === "fsplit") return "ik:fb" + (dir === "+" ? "-" : "+");
+  var inv = dir === "+" ? "-" : "+";
+  if (kind === "fsplit") return "ik:fb" + inv;
   if (kind === "fsplit2") return "ik:fb" + dir;
+  if (kind === "squat") return "ik:squatlean" + dir;
+  if (kind === "laugh") return "ik:squatlean" + inv;
+  if (kind === "lr") return "ik:squatsplit" + dir;
+  if (kind === "ysquat") return "ik:squatsplit" + inv;
   return "ik:" + kind + dir;
 }
 
@@ -709,7 +725,7 @@ function gamepadParseValue(v) {
     ringSel: "ring_phone", ledPart: "head", ledPreset: "flash", ledColor: "1",
     ledSpeed: "500", cameraFn: "camera_photo", sensorFn: "sonar_toggle",
     voiceFn: "xiaozhi_toggle", radioFn: "radio_toggle", eqPreset: "normal", actionId: "",
-    ikFn: "ik:squat+", walkFn: "walk:fwd" };
+    ikFn: "ik:squatlean+", walkFn: "walk:fwd" };
   if (!v) return out;
   if (v === "none" || v === "stop") {
     out.kind = v;
@@ -1804,7 +1820,7 @@ function gamepadReadSubRowValue(side, k, idx) {
   }
   if (kind === "ik") {
     var ik = document.getElementById(gamepadSubId("gpIkSel", side, k, idx));
-    return (ik && ik.value) ? ik.value : "ik:squat+";
+    return (ik && ik.value) ? ik.value : "ik:squatlean+";
   }
   if (kind === "music") {
     var mu = document.getElementById(gamepadSubId("gpMusicSel", side, k, idx));

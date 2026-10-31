@@ -79,9 +79,10 @@ adb -s <serial> forward tcp:8888 tcp:8888
   逐顆固件版本（`servo/version`，胸板 cmd14）及硬件資訊（`servo/hardware`，
   cmd33）、舵機 ID 變更（`servo/modify-id`，胸板 cmd10——跟足胸板左右 bus
   接線），以及單顆舵機韌體燒錄（`servo/upgrade`，7168-byte `.bin` 閘）。
-  IK 動作卡：蹲下／蹲式（官方 1509004868066 最深格）／左右一字馬三條
-  0–100 slider；另加前後一字馬、大笑、踢腿、側弓步（Sirius）、半蹲
-  （Hulu）、屈臂前伸（Hamlet）、跪姿前傾（Kneel）。帶符號 slider 係
+  IK 動作卡：蹲仰（−100＝大笑、+100＝蹲下）、蹲劈（−100＝蹲式〔官方
+  1509004868066 最深格〕、+100＝左右一字馬）兩條二合一 slider；另加踢腿、
+  側弓步（Sirius）、半蹲（Hulu）、屈臂前伸（Hamlet）
+  同前後一字馬（排最尾）。帶符號 slider 係
   −100…+100：正數＝原姿勢（或右踢）、負數＝鏡像（或左踢）、0＝企姿。
   全部由開機企姿（robotStandup；#19 頭左右用 120）開始；拖動設定目標，
   機械人每 120ms 行 10%（0→100 約 1200ms 均速），各條互斥。
@@ -94,7 +95,7 @@ adb -s <serial> forward tcp:8888 tcp:8888
   控制腳 7–16 共 10 顆舵機；蹲式／左右一字馬控制腳 7–16 加肩 roll 2/5
   （目標分別 180/60 同 140/100）；左前／右前一字馬控制腳 7–16 加肩
   pitch 1/4（左前 90/70、右前 170/150，雙臂前後擺）。大笑／踢腿控制
-  1–16 號但保持手／頭；側弓步／半蹲／屈臂前伸／跪姿前傾用官方單關鍵幀
+  1–16 號但保持手／頭；側弓步／半蹲／屈臂前伸用官方單關鍵幀
   20 軸 pose。轉動作時新動作唔控制嘅軸會保持目前值（直接轉移閂、先回
   企姿嗰段亦只郁新動作嘅軸），雙手唔會跌落。
   開機安全：企姿同 START 握手完成之前，API 會拒絕會令
@@ -108,10 +109,12 @@ adb -s <serial> forward tcp:8888 tcp:8888
   熄邊只記唔做。手柄圖／全鍵盤圖即時亮燈，映射表分兩區；`gamepad/key`／
   `gamepad/axis` 後端保留畀脚本直調。動作值支援 22 軸 `servo1-22±` 步進
   （撳住連走、放手停；跟 servo tab 同一套校準大小值）、IK 動作
-  （`ik:squat±`／`ik:ysquat±`／`ik:lr±`／`ik:fb±` 前後一字馬二合一：
-  `−` 向 -100＝左前、`+` 向 +100＝右前、0＝企姿；另加 `ik:laugh±`／
-  `ik:kick±`／`ik:sirius±`／`ik:hulu±`／`ik:hamlet±`／`ik:kneel±`，
-  負數＝鏡像／左踢；舊 `ik:fsplit±`／`ik:fsplit2±` 映射會自動遷移，
+  （同 Web IK 卡 slider 一致嘅二合一：`ik:squatlean±` `−`＝大笑／`+`＝蹲下、
+  `ik:squatsplit±` `−`＝蹲式／`+`＝左右一字馬、`ik:fb±` `−`＝左前／`+`＝右前，
+  0＝企姿；另加 `ik:kick±`／`ik:sirius±`／`ik:hulu±`／`ik:hamlet±`，
+  負數＝鏡像／左踢（側弓步／屈臂前伸方向已對調）；舊 `ik:squat±`／`ik:laugh±`／
+  `ik:ysquat±`／`ik:lr±`／`ik:fsplit±`／`ik:fsplit2±` 映射會自動遷移
+  （`ik:kneel±` 已移除，載入時掉走），
   `ik:fb±` 而家就係二合一（舊左前別名已退役）；撳住每步 10%／120ms，
   由實際 pose 均速行到 0%／100%（帶符號動作係 -100%／+100%）；
   轉動作先以同一速度回舊動作 0%，新動作唔控制嘅軸保持原位；面板每次
@@ -235,10 +238,14 @@ enable/disable 喺小智分頁；開機自動連線係實驗分頁嘅開機語�
 
 - 生成器及閘門：`generate-api-client.py`、`generate-mcp-tools.py`、
   `check-openapi-drift.py`、`check-api-client-routes.py`、
-  `check-spec-copies.py`（見上面 HTTP 接口）。
+  `check-spec-copies.py`（見上面 HTTP 接口）、
+  `strip-web-comments.js`（CI 預建步驟，清走 `assets/web/*` 的註解；
+  加 `--ci` 才執行，本地跑不會污染原始碼）。
 - 單元測試跑手（零依賴，經 `javac`／`java` 即編即跑）：
   `test-apivalidator.py`（`ApiValidator`＋顏色追蹤＋EQ 三套）、
-  `test-serialcodec.py`（`SerialFrameCodec`）。
+  `test-serialcodec.py`（`SerialFrameCodec`）、
+  `test-headkeypoller.py`（`HeadKeyPoller`＋`HeadKeyMgr`——臨時 android stub，
+  所以 `--offline` 也能跑）。
 - 離線 `.ubx` 分析工具：`ubx_scan.py`（關鍵幀／軌掃描）、`ubx_anatomy.py`
   （邊啲舵機郁）、`ubx_phase.py`（逐關節步態相位）、`ubx_gaitdiff.py`／
   `ubx_armcheck.py`／`ubx_tail.py`（版本對比）、`ubx_gate.py`（官方分發模擬）、
@@ -263,7 +270,7 @@ enable/disable 喺小智分頁；開機自動連線係實驗分頁嘅開機語�
 ```
 open-alpha2/
 ├── app/                            ← com.open.alpha2 (UI server, API, all centers)
-│   ├── src/main/java/com/open/alpha2/  ← MainActivity wiring + ~69 classes:
+│   ├── src/main/java/com/open/alpha2/  ← MainActivity wiring + ~73 classes:
 │   │   Action/Speech/Audio/Music centers, ApiDispatcher/ApiValidator,
 │   │   UbxApi/ChestQuery/ChestUpgrade/ServoUpgrade, Camera/FaceTrack/
 │   │   ColorTrack centers, Led/Sonar/DeviceStatus, Gamepad/Gesture,

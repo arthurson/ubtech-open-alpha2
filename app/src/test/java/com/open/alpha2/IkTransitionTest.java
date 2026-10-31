@@ -143,9 +143,9 @@ public final class IkTransitionTest {
         eq(true, ysWithin, "switch return each tick <= ref");
         eq(returnPose, last, "switch return final pose");
 
-        // 新增帶符號動作（kick／sirius／hulu／hamlet／kneel）：-100…+100，
+        // 新增帶符號動作（kick／sirius／hulu／hamlet）：-100…+100，
         // 參考步長同 0% 兩邊都要有；-50→+50 要 10 格。
-        for (String sk : new String[]{"kick", "sirius", "hulu", "hamlet", "kneel"}) {
+        for (String sk : new String[]{"kick", "sirius", "hulu", "hamlet", "squatlean", "squatsplit"}) {
             eq(true, IkTransition.kindStepDeg(sk, 50, boot) > 0, sk + " kindStepDeg +50 > 0");
             eq(true, IkTransition.kindStepDeg(sk, -50, boot) > 0, sk + " kindStepDeg -50 > 0");
             int[] s100 = IkPose.computeSigned(sk, 100, boot, null);

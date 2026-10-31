@@ -44,9 +44,11 @@ public final class GaitWalker implements Runnable {
     public static final int WALK_MIN_UPDATE_MS = 300;
     /**
      * 實機按住連行：步態每格 move 時間 ÷ 送出間隔。略 &gt; 1 令舵機未到位已接住下一格，
-     * 唔會喺每格尾停一停等命令（送出有抖動時最明顯）；代價係幅度略收（約 7%）。
+     * 唔會喺每格尾停一停等命令（送出有抖動時最明顯）。但過大會令舵機尚未到上一格目標
+     * 已收到下一格（方向可能相反），喺循環接駁位（尤其是 wrap 點）出現彈跳；1.05f 已足夠
+     * 覆蓋送出抖動，同時大幅減少接駁位彈跳。
      */
-    public static final float WALK_MOVE_OVERLAP = 1.15f;
+    public static final float WALK_MOVE_OVERLAP = 1.05f;
     private static final float MAX_MOVE_OVERLAP = 1.5f;
 
     private static final int MAX_SEND_FAILS = 5;
@@ -254,12 +256,17 @@ public final class GaitWalker implements Runnable {
         }
     }
 
-    /** 收步期間等舵機行完：忽略放手，只認 interrupt。 */
+    /**
+     * 收步期間等舵機行完：已放手（releaseReq）則不再等收步完成，盡快結束線程
+     * （放手即停；舵機已收到 home 指令會繼續郁返企定，唔會半途停）；否則只認 interrupt。
+     */
     private void sleepQuiet(long deadline) throws InterruptedException {
         while (true) {
+            if (releaseReq) return;
             long rem = deadline - nowMs();
             if (rem <= 0) return;
             synchronized (lock) {
+                if (releaseReq) return;
                 lock.wait(Math.min(rem, WAIT_SLICE_MS));
             }
         }

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Open Alpha2</title>
-<link rel="stylesheet" href="style.css?v=20261024a">
+<link rel="stylesheet" href="style.css?v=20261031a">
 </head>
 <body>
 
@@ -213,20 +213,20 @@
           <input type="range" id="walkSpeed" min="1" max="2" step="0.1" value="1" style="vertical-align:middle">
           <span id="walkSpeedVal">1.0x</span></label>
       </div>
-      <div class="hint" data-i18n="walk_card_hint">按住就行，放手即收步企定。</div>
     </section>
   </div>
 
   <!-- ============ TAB: SERVO ============ -->
   <div id="tab-servo" class="tab-page">
     <!-- IK 動作：全部 slider 由開機企姿（robotStandup）開始，0=企姿、100=已測試 pose；
-         前後一字馬以及踢腿／側弓步／半蹲／屈臂前伸／跪姿前傾係帶符號
+         蹲仰（大笑 −／蹲下 +）、蹲劈（蹲式 −／左右一字馬 +）、前後一字馬，
+         以及踢腿／側弓步／半蹲／屈臂前伸係帶符號
          （-100＝另一邊／鏡像、+100＝原方向，0＝企姿，同 ubx-player.html 一樣）。
          拖動設定目標，機械人每 120ms 行 10%（0→100 約 1200ms 均速），
          每步預覽＋送 /api/servo/all；無關舵機保持目前／手動值。
          蹲下只郁腳 7-16；蹲式／左右一字馬郁腳 7-16 + 肩 roll 2/5；
          前後一字馬郁腳 7-16 + 肩 pitch 1/4；大笑／踢腿郁 1-16；
-         側弓步／半蹲／屈臂前伸／跪姿前傾用官方單關鍵幀 20 軸 pose。
+         側弓步／半蹲／屈臂前伸用官方單關鍵幀 20 軸 pose。
          放手唔會跳，會繼續行到目標。
          「直接轉移」閂：切換動作先回企姿；開：A pose 直接均速過渡去 B pose。 -->
     <section class="card" id="ikCard">
@@ -242,34 +242,16 @@
         </label>
       </div>
       <div class="ik-row">
-        <span data-i18n="ik_squat">蹲下</span>
-        <input type="range" id="ikSquat" min="0" max="100" step="1" value="0"
-               oninput="onIkSlider('squat', this.value, event)" onchange="onIkSliderCommit('squat', this.value, event)">
-        <b id="ikSquatVal" class="mono">0</b>
+        <span data-i18n="ik_squat_lean">蹲仰</span>
+        <input type="range" id="ikLaughSquat" min="-100" max="100" step="1" value="0"
+               oninput="onIkComboSlider('ikLaughSquat', this.value, event)" onchange="onIkComboSliderCommit('ikLaughSquat', this.value, event)">
+        <b id="ikLaughSquatVal" class="mono">0</b>
       </div>
       <div class="ik-row">
-        <span data-i18n="ik_ysquat">蹲式</span>
-        <input type="range" id="ikYSquat" min="0" max="100" step="1" value="0"
-               oninput="onIkSlider('ysquat', this.value, event)" onchange="onIkSliderCommit('ysquat', this.value, event)">
-        <b id="ikYSquatVal" class="mono">0</b>
-      </div>
-      <div class="ik-row">
-        <span data-i18n="ik_split_lr">左右一字馬</span>
-        <input type="range" id="ikSplitLR" min="0" max="100" step="1" value="0"
-               oninput="onIkSlider('lr', this.value, event)" onchange="onIkSliderCommit('lr', this.value, event)">
-        <b id="ikSplitLRVal" class="mono">0</b>
-      </div>
-      <div class="ik-row">
-        <span data-i18n="ik_split_fb">前後一字馬</span>
-        <input type="range" id="ikSplitFB" min="-100" max="100" step="1" value="0"
-               oninput="onIkFbSlider(this.value, event)" onchange="onIkFbSliderCommit(this.value, event)">
-        <b id="ikSplitFBVal" class="mono">0</b>
-      </div>
-      <div class="ik-row">
-        <span data-i18n="ik_laugh">大笑</span>
-        <input type="range" id="ikLaugh" min="0" max="100" step="1" value="0"
-               oninput="onIkSlider('laugh', this.value, event)" onchange="onIkSliderCommit('laugh', this.value, event)">
-        <b id="ikLaughVal" class="mono">0</b>
+        <span data-i18n="ik_squat_split">蹲劈</span>
+        <input type="range" id="ikYSplit" min="-100" max="100" step="1" value="0"
+               oninput="onIkComboSlider('ikYSplit', this.value, event)" onchange="onIkComboSliderCommit('ikYSplit', this.value, event)">
+        <b id="ikYSplitVal" class="mono">0</b>
       </div>
       <div class="ik-row">
         <span data-i18n="ik_kick">踢腿</span>
@@ -296,13 +278,11 @@
         <b id="ikHamletVal" class="mono">0</b>
       </div>
       <div class="ik-row">
-        <span data-i18n="ik_kneel">跪姿前傾</span>
-        <input type="range" id="ikKneel" min="-100" max="100" step="1" value="0"
-               oninput="onIkSlider('kneel', this.value, event)" onchange="onIkSliderCommit('kneel', this.value, event)">
-        <b id="ikKneelVal" class="mono">0</b>
+        <span data-i18n="ik_split_fb">前後一字馬</span>
+        <input type="range" id="ikSplitFB" min="-100" max="100" step="1" value="0"
+               oninput="onIkComboSlider('ikSplitFB', this.value, event)" onchange="onIkComboSliderCommit('ikSplitFB', this.value, event)">
+        <b id="ikSplitFBVal" class="mono">0</b>
       </div>
-      <p class="hint" data-i18n="ik_split_fb_hint">前後一字馬：−100＝左腳踏前、右腳踏後（右臂前擺）；+100＝右腳踏前、左腳踏後（左臂前擺）；0＝企姿。</p>
-      <p class="hint" data-i18n="ik_signed_hint">踢腿／側弓步／半蹲／屈臂前伸／跪姿前傾：−100＝另一邊（鏡像），+100＝原姿勢，0＝企姿；腳掌貼地，建議先由低百分比試。</p>
       <p id="ikStatus" class="hint"></p>
     </section>
 
@@ -1422,15 +1402,15 @@
        3. 中間檔案之間沒有排序依賴（function hoisting），保持原 section 順序方便對照。
      尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
      所以全部 <script src> 一定要行完先到那個 inline script。 -->
-<script src="app-core.js?v=20261029a"></script>
+<script src="app-core.js?v=20261031a"></script>
 <script src="api-client.js?v=20261021a"></script>
 <script src="app-status.js?v=20261020a"></script>
 <script src="app-actions.js?v=20261021b"></script>
 <script src="app-speech.js?v=20261017a"></script>
 <script src="app-vosk.js?v=20261001a"></script>
 <script src="app-servo.js?v=20261025b"></script>
-<script src="app-ik.js?v=20261029a"></script>
-<script src="app-gamepad.js?v=20261029a"></script>
+<script src="app-ik.js?v=20261031a"></script>
+<script src="app-gamepad.js?v=20261031a"></script>
 <script src="app-led.js?v=20261001a"></script>
 <script src="app-camera.js?v=20261017b"></script>
 <script src="app-xiaozhi.js?v=20261017a"></script>

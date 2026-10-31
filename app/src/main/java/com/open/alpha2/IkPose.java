@@ -180,10 +180,6 @@ public final class IkPose {
             71, 164, 150, 166, 34, 90, 144, 57, 139, 133,
             141, 134, 176, 101, 101, 127, 120, 120, 84, 120
     };
-    private static final int[] KNEEL_POSE = {
-            195, 205, 117, 55, 35, 123, 169, 175, 115, 201,
-            139, 117, 187, 177, 105, 115, 120, 120, 120, 120
-    };
 
     /** 左右鏡像 pair（index 1-based；17/18 值不變、19 240-x、20 不變）。 */
     private static final int[] MIRROR_PAIR = {
@@ -218,7 +214,42 @@ public final class IkPose {
     public static boolean isSignedKind(String kind) {
         String k = normalizeKind(kind);
         return "kick".equals(k) || "sirius".equals(k) || "hulu".equals(k)
-                || "hamlet".equals(k) || "kneel".equals(k);
+                || "hamlet".equals(k);
+    }
+
+    /**
+     * 二合一動作（Gamepad／Web IK 卡共用語義，-100…+100，0＝企姿）：
+     * fb（負＝fsplit 左前、正＝fsplit2 右前）、squatlean（負＝laugh 大笑、正＝squat 蹲下）、
+     * squatsplit（負＝ysquat 蹲式、正＝lr 左右一字馬）。
+     */
+    public static boolean isComboKind(String kind) {
+        return "fb".equals(kind) || "squatlean".equals(kind) || "squatsplit".equals(kind);
+    }
+
+    private static String comboNeg(String kind) {
+        if ("squatlean".equals(kind)) return "laugh";
+        if ("squatsplit".equals(kind)) return "ysquat";
+        return "fsplit";
+    }
+
+    private static String comboPos(String kind) {
+        if ("squatlean".equals(kind)) return "squat";
+        if ("squatsplit".equals(kind)) return "lr";
+        return "fsplit2";
+    }
+
+    /** 二合一目標位姿；唔控制嘅軸用 {@code current}（可為 null）。 */
+    public static int[] computeCombo(String kind, int signedPct, int[] base, int[] current) {
+        int p = Math.max(-100, Math.min(100, signedPct));
+        int[] pose = p < 0 ? compute(comboNeg(kind), -p, base)
+                : p > 0 ? compute(comboPos(kind), p, base)
+                : compute(comboNeg(kind), 0, base);
+        if (current != null) {
+            for (int i = 0; i < 20 && i < current.length; i++) {
+                if (!affects(kind, i)) pose[i] = current[i];
+            }
+        }
+        return clampPose(toDouble(pose), base);
     }
 
     private static int[] mirrorPose(int[] pose) {
@@ -616,12 +647,14 @@ public final class IkPose {
      * 腳 7-16（index 6-15）全部動作都會控制；蹲式／左右一字馬
      * 另外控制 2/5（index 1/4）肩 roll；前後一字馬（fsplit／fsplit2／fb
      * 二合一）另外控制 1/4（index 0/3）肩 pitch 前後擺。大笑／踢腿控制
-     * 1-16（index 0-15）；側弓步／半蹲／屈臂前伸／跪姿前傾控制全部 20 軸。
+     * 1-16（index 0-15）；側弓步／半蹲／屈臂前伸控制全部 20 軸。
      */
     public static boolean affects(String kind, int index) {
+        if ("squatlean".equals(kind)) return affects("laugh", index) || affects("squat", index);
+        if ("squatsplit".equals(kind)) return affects("ysquat", index) || affects("lr", index);
         kind = normalizeKind(kind);
         if ("sirius".equals(kind) || "hulu".equals(kind)
-                || "hamlet".equals(kind) || "kneel".equals(kind)) {
+                || "hamlet".equals(kind)) {
             return index >= 0 && index < 20;
         }
         if ("laugh".equals(kind) || "kick".equals(kind)) {
@@ -694,7 +727,7 @@ public final class IkPose {
      * 計 20 軸 IK 目標位姿。
      *
      * @param kind "squat"／"ysquat"／"lr"／"fsplit"／"fsplit2"／
-     *             "laugh"／"kick"／"sirius"／"hulu"／"hamlet"／"kneel"
+     *             "laugh"／"kick"／"sirius"／"hulu"／"hamlet"
      *             （"fb" 係 fsplit 嘅相容別名；負百分比請用
      *             {@link #computeSigned}；其他一律回 base）
      * @param pct  0–100（0＝base；帶符號動作嘅正方向）
@@ -713,10 +746,9 @@ public final class IkPose {
         }
         if ("laugh".equals(kind)) return poseLaugh(b, p);
         if ("kick".equals(kind)) return poseKick(b, p, false);
-        if ("sirius".equals(kind)) return poseFixed(b, p, SIRIUS_POSE, false);
+        if ("sirius".equals(kind)) return poseFixed(b, p, SIRIUS_POSE, true);  // 正向＝原本嘅鏡像（同 app-ik.js 對調）
         if ("hulu".equals(kind)) return poseFixed(b, p, HULU_POSE, false);
-        if ("hamlet".equals(kind)) return poseFixed(b, p, HAMLET_POSE, false);
-        if ("kneel".equals(kind)) return poseFixed(b, p, KNEEL_POSE, false);
+        if ("hamlet".equals(kind)) return poseFixed(b, p, HAMLET_POSE, true);  // 正向＝原本嘅鏡像（同 app-ik.js 對調）
         return clampPose(b, base);
     }
 
@@ -764,20 +796,20 @@ public final class IkPose {
         double[] b = toDouble(base);
         if (p <= 0) return clampPose(b, base);
         if ("kick".equals(kind)) return poseKick(b, p, mirror);
-        if ("sirius".equals(kind)) return poseFixed(b, p, SIRIUS_POSE, mirror);
+        if ("sirius".equals(kind)) return poseFixed(b, p, SIRIUS_POSE, !mirror); // sirius／hamlet 正負對調
         if ("hulu".equals(kind)) return poseFixed(b, p, HULU_POSE, mirror);
-        if ("hamlet".equals(kind)) return poseFixed(b, p, HAMLET_POSE, mirror);
-        if ("kneel".equals(kind)) return poseFixed(b, p, KNEEL_POSE, mirror);
+        if ("hamlet".equals(kind)) return poseFixed(b, p, HAMLET_POSE, !mirror);
         return clampPose(b, base);
     }
 
     /**
      * Gamepad／IK 過渡用：{@code kind} 係 {@code fb} 或帶符號動作
-     * （kick／sirius／hulu／hamlet／kneel）時 {@code pct} 用 -100…+100
+     * （kick／sirius／hulu／hamlet）時 {@code pct} 用 -100…+100
      * （負＝鏡像／左踢）；其他動作照舊 0…100。
      */
     public static int[] computeSigned(String kind, int pct, int[] base, int[] current) {
         if ("fb".equals(kind)) return computeFb(pct, base, current);
+        if (isComboKind(kind)) return computeCombo(kind, pct, base, current);
         kind = normalizeKind(kind);
         if (isSignedKind(kind)) {
             int p = Math.max(-100, Math.min(100, pct));
@@ -794,16 +826,16 @@ public final class IkPose {
 
     /**
      * 動作名：squat／ysquat／lr／fsplit／fsplit2／laugh／kick／sirius／
-     * hulu／hamlet／kneel。{@code fb} 亦接受（Gamepad 二合一用
+     * hulu／hamlet。{@code fb}／{@code squatlean}／{@code squatsplit} 亦接受（Gamepad 二合一用
      * {@link #computeSigned}）。
      */
     public static boolean isKind(String kind) {
+        if (isComboKind(kind)) return true;
         kind = normalizeKind(kind);
         return "squat".equals(kind) || "ysquat".equals(kind)
                 || "lr".equals(kind) || "fsplit".equals(kind)
                 || "fsplit2".equals(kind) || "laugh".equals(kind)
                 || "kick".equals(kind) || "sirius".equals(kind)
-                || "hulu".equals(kind) || "hamlet".equals(kind)
-                || "kneel".equals(kind);
+                || "hulu".equals(kind) || "hamlet".equals(kind);
     }
 }

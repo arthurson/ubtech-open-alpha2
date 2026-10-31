@@ -231,22 +231,18 @@ public final class IkPoseTest {
                 IkPose.computeSigned("kick", -100, boot, null), "boot.-100.kick");
         eq(pose("120,168,120,120,61,120,113,62,160,123,104,106,205,143,90,110,120,120,120,120"),
                 IkPose.computeSigned("kick", 50, boot, null), "boot.+50.kick");
-        eq(pose("129,98,170,123,128,120,171,92,178,129,172,125,206,197,37,128,120,120,110,113"),
-                IkPose.computeSigned("sirius", 100, boot, null), "boot.+100.sirius");
         eq(pose("117,112,120,111,142,70,115,34,43,203,112,69,148,62,111,68,120,120,130,113"),
+                IkPose.computeSigned("sirius", 100, boot, null), "boot.+100.sirius");
+        eq(pose("129,98,170,123,128,120,171,92,178,129,172,125,206,197,37,128,120,120,110,113"),
                 IkPose.computeSigned("sirius", -100, boot, null), "boot.-100.sirius");
         eq(pose("122,88,123,120,118,57,103,53,112,152,107,98,204,162,75,85,120,120,165,105"),
                 IkPose.computeSigned("hulu", 100, boot, null), "boot.+100.hulu");
         eq(pose("120,122,183,118,152,117,142,36,78,165,155,137,187,128,88,133,120,120,75,105"),
                 IkPose.computeSigned("hulu", -100, boot, null), "boot.-100.hulu");
-        eq(pose("71,164,150,166,34,90,144,57,139,133,141,134,176,101,101,127,120,120,84,120"),
-                IkPose.computeSigned("hamlet", 100, boot, null), "boot.+100.hamlet");
         eq(pose("74,206,150,169,76,90,106,64,139,139,113,96,183,101,107,99,120,120,156,120"),
+                IkPose.computeSigned("hamlet", 100, boot, null), "boot.+100.hamlet");
+        eq(pose("71,164,150,166,34,90,144,57,139,133,141,134,176,101,101,127,120,120,84,120"),
                 IkPose.computeSigned("hamlet", -100, boot, null), "boot.-100.hamlet");
-        eq(pose("195,205,117,55,35,123,169,175,115,201,139,117,187,177,105,115,120,120,120,120"),
-                IkPose.computeSigned("kneel", 100, boot, null), "boot.+100.kneel");
-        eq(pose("185,205,117,45,35,123,123,53,63,135,125,71,65,125,39,101,120,120,120,120"),
-                IkPose.computeSigned("kneel", -100, boot, null), "boot.-100.kneel");
         // 0% 一律回開機企姿。
         eq(boot, IkPose.compute("laugh", 0, boot), "boot.0.laugh");
         eq(boot, IkPose.computeSigned("kick", 0, boot, null), "boot.0.kick");
@@ -281,7 +277,9 @@ public final class IkPoseTest {
         eq(true, IkPose.isKind("sirius"), "kind.sirius");
         eq(true, IkPose.isKind("hulu"), "kind.hulu");
         eq(true, IkPose.isKind("hamlet"), "kind.hamlet");
-        eq(true, IkPose.isKind("kneel"), "kind.kneel");
+        eq(false, IkPose.isKind("kneel"), "kind.kneel.removed");
+        eq(true, IkPose.isKind("squatlean"), "kind.squatlean");
+        eq(true, IkPose.isKind("squatsplit"), "kind.squatsplit");
         eq(true, IkPose.isSignedKind("kick"), "signed.kick");
         eq(true, IkPose.isSignedKind("sirius"), "signed.sirius");
         eq(false, IkPose.isSignedKind("laugh"), "signed.laugh");
@@ -289,6 +287,20 @@ public final class IkPoseTest {
         eq(false, IkPose.isKind("bogus"), "kind.bogus");
         eq(IkPose.compute("fsplit", 100, boot), IkPose.compute("fb", 100, boot),
                 "kind.fb.alias.pose");
+
+        // 二合一 squatlean（-＝laugh、+＝squat）／squatsplit（-＝ysquat、+＝lr）：
+        // 同 Web IK 卡 蹲仰／蹲劈 slider 一致，0＝企姿。
+        eq(IkPose.compute("laugh", 60, boot), IkPose.computeSigned("squatlean", -60, boot, null), "combo.squatlean.-60=laugh60");
+        eq(IkPose.compute("squat", 60, boot), IkPose.computeSigned("squatlean", 60, boot, null), "combo.squatlean.+60=squat60");
+        eq(IkPose.compute("ysquat", 40, boot), IkPose.computeSigned("squatsplit", -40, boot, null), "combo.squatsplit.-40=ysquat40");
+        eq(IkPose.compute("lr", 40, boot), IkPose.computeSigned("squatsplit", 40, boot, null), "combo.squatsplit.+40=lr40");
+        eq(boot, IkPose.computeSigned("squatlean", 0, boot, null), "combo.squatlean.0");
+        eq(boot, IkPose.computeSigned("squatsplit", 0, boot, null), "combo.squatsplit.0");
+        eq(IkPose.computeFb(-30, boot), IkPose.computeSigned("fb", -30, boot, null), "combo.fb.regression");
+        eq(true, IkPose.isComboKind("squatlean") && IkPose.isComboKind("squatsplit") && IkPose.isComboKind("fb"), "combo.isComboKind");
+        eq(false, IkPose.isComboKind("squat"), "combo.squat.notCombo");
+        eq(true, IkPose.affects("squatlean", 0) && IkPose.affects("squatlean", 15) && !IkPose.affects("squatlean", 16), "combo.squatlean.affects");
+        eq(true, IkPose.affects("squatsplit", 1) && IkPose.affects("squatsplit", 6), "combo.squatsplit.affects");
 
         System.out.println("IkPoseTest: passed=" + passed + " failed=" + failed);
         if (failed > 0) System.exit(1);

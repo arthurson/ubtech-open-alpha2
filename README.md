@@ -89,10 +89,11 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   chest cmd14) and hardware info (`servo/hardware`, cmd33), servo ID changer
   (`servo/modify-id`, chest cmd10 — honours the chest left/right bus wiring),
   and single-servo firmware flash (`servo/upgrade`, 7168-byte `.bin` gate).
-  IK action card: squat / squat 2 (official “蹲式” deep-squat pose) /
-  left-right split on 0–100 sliders; merged front/back split, laugh, kick,
-  side lunge (Sirius), half squat (Hulu), bent-arm reach (Hamlet) and
-  kneeling lean (Kneel). The signed sliders run −100…+100: positive is the
+  IK action card: two merged sliders — Squat–Lean (−100 = laugh, +100 =
+  squat) and Squat–Split (−100 = squat 2 / official “蹲式” deep-squat pose,
+  +100 = left-right split) — then kick, side lunge (Sirius), half squat
+  (Hulu), bent-arm reach (Hamlet) and the merged
+  front/back split (last). The signed sliders run −100…+100: positive is the
   original pose (or right kick), negative is the mirrored pose (or left kick),
   0 is the boot pose. All start from the boot stand-up pose (robotStandup;
   servo 19 head yaw at 120); dragging sets the target and the robot moves 10%
@@ -130,11 +131,13 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   sections; `gamepad/key`/`gamepad/axis` stay available for direct scripting.
   Action values support 22-axis `servo1-22±` stepping (hold to repeat,
   release to stop; same calibration limits as the servo tab), IK poses
-  (`ik:squat±` / `ik:ysquat±` / `ik:lr±` / `ik:fb±` merged front/back split:
-  `−` moves toward -100 = left-forward, `+` toward +100 = right-forward,
-  0 = boot pose; plus `ik:laugh±` / `ik:kick±` / `ik:sirius±` / `ik:hulu±` /
-  `ik:hamlet±` / `ik:kneel±`, where negative is the mirrored pose / left kick;
-  legacy `ik:fsplit±` / `ik:fsplit2±` mappings are migrated automatically,
+  (merged, same as the IK card sliders: `ik:squatlean±` `−` = laugh / `+` = squat,
+  `ik:squatsplit±` `−` = squat 2 / `+` = left-right split, `ik:fb±` `−` = left-forward /
+  `+` = right-forward, 0 = boot pose; plus `ik:kick±` / `ik:sirius±` / `ik:hulu±` /
+  `ik:hamlet±`, where negative is the mirrored pose / left kick (Sirius and Hamlet
+  directions are swapped vs. earlier versions); legacy `ik:squat±` / `ik:laugh±` /
+  `ik:ysquat±` / `ik:lr±` / `ik:fsplit±` / `ik:fsplit2±` mappings are migrated automatically
+  (`ik:kneel±` was removed and is dropped),
   and `ik:fb±` is now the merged action (the old left-forward alias was
   retired); hold to move in 10% steps / 120 ms from the actual pose until
   0%/100% (signed actions: -100%/+100%); switching actions first returns the
@@ -298,10 +301,14 @@ tab; boot auto-connect is the Experiment tab's boot-voice mode.
 
 - Generators & gates: `generate-api-client.py`, `generate-mcp-tools.py`,
   `check-openapi-drift.py`, `check-api-client-routes.py`,
-  `check-spec-copies.py` (see HTTP API above).
+  `check-spec-copies.py` (see HTTP API above),
+  `strip-web-comments.js` (CI pre-build step — strips comments from
+  `assets/web/*`; no-op locally unless run with `--ci`).
 - Unit-test runners (zero-dependency, compile + run via `javac`/`java`):
   `test-apivalidator.py` (`ApiValidator` + colour-track + EQ suites),
-  `test-serialcodec.py` (`SerialFrameCodec` suite).
+  `test-serialcodec.py` (`SerialFrameCodec` suite),
+  `test-headkeypoller.py` (`HeadKeyPoller` + `HeadKeyMgr` — temporary Android
+  stubs so it runs under `--offline`).
 - Offline `.ubx` analysis tools: `ubx_scan.py` (keyframe/track scan),
   `ubx_anatomy.py` (which servos move), `ubx_phase.py` (per-joint gait
   phase), `ubx_gaitdiff.py` / `ubx_armcheck.py` / `ubx_tail.py` (version
@@ -333,7 +340,7 @@ tab; boot auto-connect is the Experiment tab's boot-voice mode.
 ```
 open-alpha2/
 ├── app/                            ← com.open.alpha2 (UI server, API, all centers)
-│   ├── src/main/java/com/open/alpha2/  ← MainActivity wiring + ~69 classes:
+│   ├── src/main/java/com/open/alpha2/  ← MainActivity wiring + ~73 classes:
 │   │   Action/Speech/Audio/Music centers, ApiDispatcher/ApiValidator,
 │   │   UbxApi/ChestQuery/ChestUpgrade/ServoUpgrade, Camera/FaceTrack/
 │   │   ColorTrack centers, Led/Sonar/DeviceStatus, Gamepad/Gesture,

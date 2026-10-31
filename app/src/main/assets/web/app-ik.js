@@ -1,6 +1,6 @@
 // Open Alpha2 — Servo tab: IK action card
 // (squat / squat 2 / left-right split / front-back split / laugh / kick /
-//  Sirius side lunge / Hulu half squat / Hamlet bent-arm reach / Kneel)
+//  Sirius side lunge / Hulu half squat / Hamlet bent-arm reach)
 //
 // Ported from alpha2_description/web/ubx-player.html (the sliders that were
 // tested against the URDF + real robot). The leg FK parameters come from
@@ -10,7 +10,7 @@
 //
 // The controls are mutually exclusive and all start from the boot stand-up
 // pose (0 = robotStandup, 100 = the tested IK pose). The front-back split and
-// the new kick / Sirius / Hulu / Hamlet / Kneel sliders run -100…+100:
+// the new kick / Sirius / Hulu / Hamlet sliders run -100…+100:
 // negative = left-forward / mirrored / left kick, positive = right-forward /
 // original pose / right kick, 0 = boot pose. Dragging sets the target; the
 // robot moves 10% every 120 ms at constant speed (0→100 in 1200 ms), previews
@@ -30,7 +30,7 @@
 //   left-forward / right-fwd : legs 7-16 + shoulder pitch 1/4
 //                              (left 90/70, right 170/150)
 //   laugh / kick             : arms and legs 1-16 (hands/head untouched)
-//   Sirius/Hulu/Hamlet/Kneel : all 20 axes (official single-keyframe poses)
+//   Sirius/Hulu/Hamlet : all 20 axes (official single-keyframe poses)
 // Head 19/20, hands 17/18 and elbows 3/6 keep their current/manual values for
 // the whole IK move except the four single-keyframe poses.
 //
@@ -89,12 +89,12 @@ var IK_YSQUAT_ARM_L = 60;
 //   蹲式／左右一字馬：腳 7-16 + 肩 roll 2/5（12 顆）
 //   前後一字馬（二合一）：腳 7-16 + 肩 pitch 1/4（12 顆）
 //   大笑／踢腿：手臂＋腳 1-16（16 顆）
-//   側弓步／半蹲／屈臂前伸／跪姿前傾：全 20 軸
+//   側弓步／半蹲／屈臂前伸：全 20 軸
 var IK_LEG_AXES = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 var IK_ARM_LEG_AXES = [1, 2, 3, 4, 5, 6].concat(IK_LEG_AXES);
 var IK_ALL_AXES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 var IK_KINDS = ["squat", "ysquat", "lr", "fsplit", "fsplit2",
-                "laugh", "kick", "sirius", "hulu", "hamlet", "kneel"];
+                "laugh", "kick", "sirius", "hulu", "hamlet"];
 var IK_KIND_AXES = {
   squat: IK_LEG_AXES,
   ysquat: [2, 5].concat(IK_LEG_AXES),
@@ -105,8 +105,7 @@ var IK_KIND_AXES = {
   kick: IK_ARM_LEG_AXES,
   sirius: IK_ALL_AXES,
   hulu: IK_ALL_AXES,
-  hamlet: IK_ALL_AXES,
-  kneel: IK_ALL_AXES
+  hamlet: IK_ALL_AXES
 };
 var IK_FSPLIT_FWD = 0.078;
 var IK_FSPLIT_BACK = 0.087;
@@ -130,7 +129,7 @@ function ikIsFSplit(kind) {
 function ikIsSignedKind(kind) {
   kind = ikNormalizeKind(kind);
   return kind === "kick" || kind === "sirius" || kind === "hulu"
-      || kind === "hamlet" || kind === "kneel";
+      || kind === "hamlet";
 }
 function ikMinPct(kind) {
   return ikIsSignedKind(kind) ? -100 : 0;
@@ -238,11 +237,11 @@ var IK_HAMLET_POSE = [
   71, 164, 150, 166, 34, 90, 144, 57, 139, 133,
   141, 134, 176, 101, 101, 127, 120, 120, 84, 120
 ];
-var IK_KNEEL_POSE = [
-  195, 205, 117, 55, 35, 123, 169, 175, 115, 201,
-  139, 117, 187, 177, 105, 115, 120, 120, 120, 120
-];
 var IK_MIRROR_PAIR = [0, 4, 5, 6, 1, 2, 3, 12, 13, 14, 15, 16, 7, 8, 9, 10, 11, 18, 17, 19, 20];
+// 側弓步／屈臂前伸：正負方向對調（+100＝原本嘅鏡像姿勢、-100＝原本嘅原姿勢）。
+// 必須放喺 IK_MIRROR_PAIR 之後；其他動作（踢腿／半蹲）方向不變。
+IK_SIRIUS_POSE = ikMirrorPose(IK_SIRIUS_POSE);
+IK_HAMLET_POSE = ikMirrorPose(IK_HAMLET_POSE);
 var IK_KICK_L = ikKickPrep(IK_KICK_L_POSE);
 var IK_KICK_R = ikKickPrep(IK_KICK_R_POSE);
 
@@ -608,47 +607,58 @@ var ikSliderEngaged = { squat: false, ysquat: false, lr: false, fsplit: false, f
 
 function ikSliderId(kind) {
   kind = ikNormalizeKind(kind);
-  if (kind === "squat") return "ikSquat";
-  if (kind === "ysquat") return "ikYSquat";
-  if (kind === "lr") return "ikSplitLR";
-  if (kind === "laugh") return "ikLaugh";
+  if (kind === "squat" || kind === "laugh") return "ikLaughSquat"; // 蹲仰：-100＝大笑、+100＝蹲下
+  if (kind === "ysquat" || kind === "lr") return "ikYSplit";        // 蹲劈：-100＝蹲式、+100＝左右一字馬
   if (kind === "kick") return "ikKick";
   if (kind === "sirius") return "ikSirius";
   if (kind === "hulu") return "ikHulu";
   if (kind === "hamlet") return "ikHamlet";
-  if (kind === "kneel") return "ikKneel";
   return "ikSplitFB";   // 左前（fsplit）／右前（fsplit2）二合一，-100…+100
 }
 function ikValId(kind) {
   kind = ikNormalizeKind(kind);
-  if (kind === "squat") return "ikSquatVal";
-  if (kind === "ysquat") return "ikYSquatVal";
-  if (kind === "lr") return "ikSplitLRVal";
-  if (kind === "laugh") return "ikLaughVal";
+  if (kind === "squat" || kind === "laugh") return "ikLaughSquatVal";
+  if (kind === "ysquat" || kind === "lr") return "ikYSplitVal";
   if (kind === "kick") return "ikKickVal";
   if (kind === "sirius") return "ikSiriusVal";
   if (kind === "hulu") return "ikHuluVal";
   if (kind === "hamlet") return "ikHamletVal";
-  if (kind === "kneel") return "ikKneelVal";
   return "ikSplitFBVal";
 }
 
-// 前後一字馬 slider 係二合一：負＝左前（fsplit）、正＝右前（fsplit2）、0＝企姿（同 ubx-player.html）。
+// 二合一 slider（-100…+100，同 ubx-player.html）：負＝neg 動作、正＝pos 動作、0＝企姿。
+//   蹲仰：-100＝大笑、+100＝蹲下；蹲劈：-100＝蹲式、+100＝左右一字馬；前後：-100＝左前、+100＝右前。
+var IK_COMBOS = {
+  ikLaughSquat: { neg: "laugh",  pos: "squat" },
+  ikYSplit:     { neg: "ysquat", pos: "lr" },
+  ikSplitFB:    { neg: "fsplit", pos: "fsplit2" }
+};
+// kind 屬於邊條二合一 slider（回傳 slider id），唔屬於就 null。
+function ikComboIdOf(kind) {
+  kind = ikNormalizeKind(kind);
+  for (var id in IK_COMBOS) {
+    if (IK_COMBOS[id].neg === kind || IK_COMBOS[id].pos === kind) return id;
+  }
+  return null;
+}
 // 回傳呢個動作 pct 對應嘅 slider 帶符號值；null＝slider 而家顯示緊另一邊嘅值，唔可以覆蓋。
-function ikFbSigned(kind, pct) {
-  var sg = ikNormalizeKind(kind) === "fsplit2" ? 1 : -1;
+function ikComboSigned(kind, pct) {
+  kind = ikNormalizeKind(kind);
+  var id = ikComboIdOf(kind);
+  var sg = IK_COMBOS[id].pos === kind ? 1 : -1;
   if (pct > 0) return sg * pct;
-  var sl = document.getElementById("ikSplitFB");
+  var sl = document.getElementById(id);
   var raw = sl ? (parseInt(sl.value, 10) || 0) : 0;
   return (raw !== 0 && (raw > 0) !== (sg > 0)) ? null : 0;
 }
-// 帶符號值 → 要驅動嘅動作：<0 左前、>0 右前；0 就跟返而家行緊／等緊切換嘅前後動作。
-function ikFbKindFor(v) {
-  if (v < 0) return "fsplit";
-  if (v > 0) return "fsplit2";
-  if (ikSwitchTo && ikIsFSplit(ikSwitchTo.kind)) return ikSwitchTo.kind;
-  if (ikActive && ikIsFSplit(ikActive)) return ikActive;
-  return "fsplit";
+// 帶符號值 → 要驅動嘅動作：<0 neg、>0 pos；0 就跟返而家行緊／等緊切換嘅同組動作。
+function ikComboKindFor(id, v) {
+  var c = IK_COMBOS[id];
+  if (v < 0) return c.neg;
+  if (v > 0) return c.pos;
+  if (ikSwitchTo && ikComboIdOf(ikSwitchTo.kind) === id) return ikSwitchTo.kind;
+  if (ikActive && ikComboIdOf(ikActive) === id) return ikActive;
+  return c.neg;
 }
 function ikName(kind) {
   return t("ik_name_" + ikNormalizeKind(kind));
@@ -685,8 +695,8 @@ function ikReadGridPose() {
 function ikSetSliderValue(kind, v) {
   var slider = document.getElementById(ikSliderId(kind));
   var label = document.getElementById(ikValId(kind));
-  if (ikIsFSplit(ikNormalizeKind(kind))) {
-    v = ikFbSigned(kind, v);
+  if (ikComboIdOf(kind)) {
+    v = ikComboSigned(kind, v);
     if (v === null) return;
   }
   if (slider) slider.value = v;
@@ -703,8 +713,8 @@ function ikSliderValue(kind) {
   var v = el ? parseInt(el.value, 10) : 0;
   if (isNaN(v)) return 0;
   kind = ikNormalizeKind(kind);
-  if (kind === "fsplit") return Math.max(0, -v);    // 負＝左前
-  if (kind === "fsplit2") return Math.max(0, v);    // 正＝右前
+  var cid = ikComboIdOf(kind);                       // 二合一：負＝neg 動作、正＝pos 動作
+  if (cid) return Math.max(0, (IK_COMBOS[cid].pos === kind ? 1 : -1) * v);
   return v;
 }
 function ikEnsureFSplitEnd(kind) {
@@ -730,7 +740,6 @@ function ikPoseBase(kind, pct) {
   if (kind === "sirius") return ikPoseFixed(base, pct, IK_SIRIUS_POSE);
   if (kind === "hulu") return ikPoseFixed(base, pct, IK_HULU_POSE);
   if (kind === "hamlet") return ikPoseFixed(base, pct, IK_HAMLET_POSE);
-  if (kind === "kneel") return ikPoseFixed(base, pct, IK_KNEEL_POSE);
   return base.slice();
 }
 
@@ -1316,8 +1325,8 @@ function ikApplySliderTarget(kind, value) {
   var pct = Math.max(ikMinPct(kind), Math.min(100, parseInt(value, 10) || 0));
   var label = document.getElementById(ikValId(kind));
   if (label) {
-    if (ikIsFSplit(ikNormalizeKind(kind))) {
-      var shown = ikFbSigned(kind, pct);
+    if (ikComboIdOf(kind)) {
+      var shown = ikComboSigned(kind, pct);
       if (shown !== null) label.textContent = shown;
     } else {
       label.textContent = pct;
@@ -1436,15 +1445,18 @@ function onIkSliderCommit(kind, value, ev) {
   ikApplySliderTarget(kind, value);
 }
 
-// 前後一字馬（二合一，-100…+100）：負數行左前、正數行右前，0 行返企姿。
-function onIkFbSlider(value, ev) {
+// 二合一 slider（-100…+100）：負數行 neg 動作、正數行 pos 動作，0 行返企姿。
+function onIkComboSlider(id, value, ev) {
   var v = Math.max(-100, Math.min(100, parseInt(value, 10) || 0));
-  onIkSlider(ikFbKindFor(v), Math.abs(v), ev);
+  onIkSlider(ikComboKindFor(id, v), Math.abs(v), ev);
 }
-function onIkFbSliderCommit(value, ev) {
+function onIkComboSliderCommit(id, value, ev) {
   var v = Math.max(-100, Math.min(100, parseInt(value, 10) || 0));
-  onIkSliderCommit(ikFbKindFor(v), Math.abs(v), ev);
+  onIkSliderCommit(ikComboKindFor(id, v), Math.abs(v), ev);
 }
+// 舊 API 相容
+function onIkFbSlider(value, ev) { onIkComboSlider("ikSplitFB", value, ev); }
+function onIkFbSliderCommit(value, ev) { onIkComboSliderCommit("ikSplitFB", value, ev); }
 
 function ikSendPose(pose, timeMs, kind, pct, live, trans) {
   var job = {

@@ -465,7 +465,7 @@ pre {
   padding: 6px 0;
 }
 
-/* IK 動作 card：label / slider / 百分比，跟 servo slider row 對齊 */
+/* IK 動作 card：名稱 / slider / 數值同一行，跟 servo slider row 對齊 */
 .ik-row {
   display: grid;
   grid-template-columns: 130px 1fr 56px;

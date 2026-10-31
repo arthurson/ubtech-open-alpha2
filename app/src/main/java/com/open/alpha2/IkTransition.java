@@ -34,17 +34,17 @@ public final class IkTransition {
      * 同 app-ik.js {@code ikKindStepDeg()} 同一算法。
      */
     public static int kindStepDeg(String kind, int pct, int[] hold) {
-        if ("fb".equals(kind)) {
-            // 前後一字馬二合一：pct -100…+100（負＝左前、正＝右前）。
+        if (IkPose.isComboKind(kind)) {
+            // 二合一（fb／squatlean／squatsplit）：pct -100…+100（負＝neg 動作、正＝pos 動作）。
             // 0% 回企姿時兩邊都可能係起點，用較大嘅參考步長，避免格數偏少。
             int p = Math.max(-100, Math.min(100, pct));
             if (p == 0) {
-                return Math.max(fbStepDeg(-1, 0, hold), fbStepDeg(1, 0, hold));
+                return Math.max(fbStepDeg(kind, -1, 0, hold), fbStepDeg(kind, 1, 0, hold));
             }
-            return fbStepDeg(p < 0 ? -1 : 1, Math.abs(p), hold);
+            return fbStepDeg(kind, p < 0 ? -1 : 1, Math.abs(p), hold);
         }
         if (IkPose.isSignedKind(kind)) {
-            // 踢腿／側弓步／半蹲／屈臂前伸／跪姿前傾：-100…+100。
+            // 踢腿／側弓步／半蹲／屈臂前伸：-100…+100。
             int p = Math.max(-100, Math.min(100, pct));
             if (p == 0) {
                 return Math.max(signedStepDeg(kind, -1, 0, hold),
@@ -66,17 +66,17 @@ public final class IkTransition {
         return max;
     }
 
-    /** 二合一前後一字馬每 10% 嘅參考角度差（sign＝-1 左前／+1 右前）。 */
-    private static int fbStepDeg(int sign, int mag, int[] hold) {
+    /** 二合一動作每 10% 嘅參考角度差（sign＝-1 neg 動作／+1 pos 動作）。 */
+    private static int fbStepDeg(String kind, int sign, int mag, int[] hold) {
         int p = Math.max(0, Math.min(100, mag));
         int lo = Math.min(90, (p / 10) * 10);
         if (lo == p && p > 0) lo = Math.max(0, p - 10);
-        int[] a = IkPose.computeSigned("fb", sign * lo, IkPose.bootPose(), hold);
-        int[] b = IkPose.computeSigned("fb", sign * Math.min(100, lo + 10),
+        int[] a = IkPose.computeSigned(kind, sign * lo, IkPose.bootPose(), hold);
+        int[] b = IkPose.computeSigned(kind, sign * Math.min(100, lo + 10),
                 IkPose.bootPose(), hold);
         int max = 1;
         for (int i = 0; i < 20; i++) {
-            if (!IkPose.affects("fb", i)) continue;
+            if (!IkPose.affects(kind, i)) continue;
             int d = Math.abs(b[i] - a[i]);
             if (d > max) max = d;
         }

@@ -52,10 +52,12 @@ import java.util.Map;
  * vosk_toggle／vosk:&lt;id&gt;（Vosk 監聽／切包 toggle，經 VoskApi）／eq:&lt;preset&gt;（EQ toggle，經 AudioCenter）／
  * radio:&lt;uuid或名&gt;（收藏電台直播，經 AudioCenter）／
  * servo&lt;1-22&gt;+／servo&lt;1-22&gt;-（單步 jog，步長 {@link #SERVO_JOG_STEP}，
- * 撳住連走）／ik:squat±／ik:ysquat±／ik:lr±／ik:fb±（前後一字馬二合一：
- * − 向 -100＝左前、+ 向 +100＝右前、0＝企姿；舊 ik:fsplit±／ik:fsplit2±
- * 載入時自動遷移）／ik:laugh±／ik:kick±／ik:sirius±／ik:hulu±／
- * ik:hamlet±／ik:kneel±（帶符號動作：− 向 -100＝鏡像／左踢、+ 向 +100＝原姿勢）
+ * 撳住連走）／ik:squatlean±（蹲仰二合一：− 向 -100＝大笑、+ 向 +100＝蹲下）／
+ * ik:squatsplit±（蹲劈二合一：− 向 -100＝蹲式、+ 向 +100＝左右一字馬）／
+ * ik:fb±（前後一字馬二合一：− 向 -100＝左前、+ 向 +100＝右前、0＝企姿；
+ * 舊 ik:fsplit±／ik:fsplit2±／ik:squat±／ik:laugh±／ik:ysquat±／ik:lr± 載入時自動遷移）／
+ * ik:kick±／ik:sirius±／ik:hulu±／ik:hamlet±（帶符號動作：− 向 -100＝鏡像／左踢、
+ * + 向 +100＝原姿勢；側弓步／屈臂前伸方向同 Web IK 卡一致）
  * （IK 動作，經 {@link IkPose}；
  * 同 servo 一樣撳住連走，每步 10%（每格 120ms，同 Web IK 卡一致），
  * 到 0%／100%（帶符號動作係 -100%／+100%）自動停；由非 0% pose 開始時會由實際 pose 均速過渡，
@@ -537,9 +539,9 @@ public final class GamepadCenter {
      * camera_photo／face_toggle／color_toggle／video_toggle／sonar_toggle／
      * pir_toggle／accel_toggle／xiaozhi_toggle／vosk_toggle／vosk:&lt;id&gt;／
      * eq:&lt;preset&gt;／radio:&lt;uuid或名&gt;／servo1-22±／
-     * ik:squat±／ik:ysquat±／ik:lr±／ik:fb±（前後一字馬二合一）／
-     * ik:laugh±／ik:kick±／ik:sirius±／ik:hulu±／ik:hamlet±／ik:kneel±／
-     * 舊 ik:fsplit±／ik:fsplit2±／action:&lt;非空&gt;。
+     * ik:squatlean±／ik:squatsplit±／ik:fb±（二合一）／
+     * ik:kick±／ik:sirius±／ik:hulu±／ik:hamlet±／
+     * 舊 ik:squat±／ik:ysquat±／ik:lr±／ik:laugh±／ik:fsplit±／ik:fsplit2±／action:&lt;非空&gt;。
      * servo／IK 步進撳住連走（jogServo／ikStep 通用）。
      * 單個動作唔可以含換行（一鍵多功能用換行分隔，見 splitMultiAction）。
      */
@@ -661,10 +663,10 @@ public final class GamepadCenter {
     }
 
     /**
-     * IK 動作值：{@code ik:squat+/-}／{@code ik:ysquat+/-}／{@code ik:lr+/-}／
+     * IK 動作值：{@code ik:squatlean+/-}（蹲仰：− 大笑、+ 蹲下）／
+     * {@code ik:squatsplit+/-}（蹲劈：− 蹲式、+ 左右一字馬）／
      * {@code ik:fb+/-}（前後一字馬二合一：− 向 -100＝左前、+ 向 +100＝右前）／
-     * {@code ik:laugh+/-}／{@code ik:kick+/-}／{@code ik:sirius+/-}／
-     * {@code ik:hulu+/-}／{@code ik:hamlet+/-}／{@code ik:kneel+/-}
+     * {@code ik:kick+/-}／{@code ik:sirius+/-}／{@code ik:hulu+/-}／{@code ik:hamlet+/-}
      * （帶符號動作：− 向 -100＝鏡像／左踢、+ 向 +100＝原姿勢／右踢）。
      * 舊 {@code ik:fsplit+/-}（左前）／{@code ik:fsplit2+/-}（右前）仍然接受，
      * 載入舊映射時會自動遷移成 {@code ik:fb∓}／{@code ik:fb±}。
@@ -683,14 +685,15 @@ public final class GamepadCenter {
         return "squat".equals(kind) || "ysquat".equals(kind)
                 || "lr".equals(kind) || "fsplit".equals(kind)
                 || "fsplit2".equals(kind) || "fb".equals(kind)
+                || "squatlean".equals(kind) || "squatsplit".equals(kind)
                 || "laugh".equals(kind) || "kick".equals(kind)
                 || "sirius".equals(kind) || "hulu".equals(kind)
-                || "hamlet".equals(kind) || "kneel".equals(kind);
+                || "hamlet".equals(kind);
     }
 
     /**
-     * ik 動作拆 kind（squat／ysquat／lr／fb／laugh／kick／sirius／hulu／
-     * hamlet／kneel；fsplit／fsplit2 係舊映射）；非法回 null。
+     * ik 動作拆 kind（squatlean／squatsplit／fb／kick／sirius／hulu／hamlet；
+     * squat／ysquat／lr／laugh／fsplit／fsplit2 係舊映射，載入時遷移）；非法回 null。
      * {@code fb} 保留做二合一帶符號動作，唔再 normalize 做 fsplit。
      */
     private static String ikKindOf(String a) {
@@ -721,6 +724,14 @@ public final class GamepadCenter {
         String kind = a.substring(3, n - 1);
         if ("fsplit".equals(kind)) return "ik:fb" + (dir == '+' ? "-" : "+");
         if ("fsplit2".equals(kind)) return "ik:fb" + dir;
+        // 蹲仰／蹲劈二合一（跟 Web IK 卡）：squat／laugh 併入 squatlean（+＝蹲下、−＝大笑），
+        // lr／ysquat 併入 squatsplit（+＝左右一字馬、−＝蹲式）；保留「向該動作行」嘅語義。
+        if ("squat".equals(kind)) return "ik:squatlean" + dir;
+        if ("laugh".equals(kind)) return "ik:squatlean" + (dir == '+' ? "-" : "+");
+        if ("lr".equals(kind)) return "ik:squatsplit" + dir;
+        if ("ysquat".equals(kind)) return "ik:squatsplit" + (dir == '+' ? "-" : "+");
+        // 跪姿前傾已移除：舊映射改做 none（呼叫方會掉走該段）。
+        if ("kneel".equals(kind)) return "none";
         return a;
     }
 
@@ -729,7 +740,12 @@ public final class GamepadCenter {
         java.util.List<String> parts = splitMultiAction(multi);
         if (parts.isEmpty()) return multi;
         java.util.List<String> out = new java.util.ArrayList<String>(parts.size());
-        for (String p : parts) out.add(migrateIkAction(p));
+        for (String p : parts) {
+            String m = migrateIkAction(p);
+            if ("none".equals(m) && !"none".equals(p)) continue; // 已移除嘅動作（kneel）掉走
+            out.add(m);
+        }
+        if (out.isEmpty()) return "none";
         return joinMultiAction(out);
     }
 
@@ -795,6 +811,7 @@ public final class GamepadCenter {
                 // 一鍵多功能：逐段做遷移＋修正（單值即一段，邏輯一致）。
                 java.util.List<String> parts = splitMultiAction(v);
                 java.util.List<String> fixed = new java.util.ArrayList<String>();
+                boolean droppedIk = false;
                 for (String pv : parts) {
                     // 追蹤 toggle 正名遷移（face_stop／face_start→face_toggle，color 同理；兩邊通用）。
                     if ("face_stop".equals(pv) || "face_start".equals(pv)) pv = "face_toggle";
@@ -808,9 +825,12 @@ public final class GamepadCenter {
                         if (dg < '3' || dg > '5') pv = dp[0] + ":dual:3";
                     }
                     // 舊左前／右前 IK 動作併入二合一 fb（保留方向）。
+                    String origPv = pv;
                     pv = migrateIkAction(pv);
+                    if ("none".equals(pv) && !"none".equals(origPv)) { droppedIk = true; continue; }
                     fixed.add(pv);
                 }
+                if (fixed.isEmpty() && droppedIk) fixed.add("none");
                 // 上限收緊（如 8→3）舊存檔超長唔好成個掉，截斷保留前面。
                 if (fixed.size() > MAX_ACTIONS_PER_KEY) {
                     fixed = fixed.subList(0, MAX_ACTIONS_PER_KEY);
@@ -2304,8 +2324,8 @@ public final class GamepadCenter {
      * IK 行一步：0% base 固定係官方開機 robotStandup 企姿（同 Web IK 卡
      * {@code IK_BOOT_POSE} 一致）。+/− 共用一個當前動作百分比；轉動作即由
      * 0% 重計（同 IK 卡 slider 互斥），所以按新動作嘅 − 會先回開機企姿。
-     * 帶符號動作（{@code fb}／{@code kick}／{@code sirius}／{@code hulu}／
-     * {@code hamlet}／{@code kneel}）唔同：pct 係 -100…+100，− 向 -100
+     * 帶符號動作（{@code fb}／{@code squatlean}／{@code squatsplit}／{@code kick}／
+     * {@code sirius}／{@code hulu}／{@code hamlet}）唔同：pct 係 -100…+100，− 向 -100
      * （左前／鏡像／左踢）、+ 向 +100（右前／原姿勢／右踢）、0＝企姿，
      * 中途過 0 會直接連續過渡。
      *
@@ -2316,7 +2336,7 @@ public final class GamepadCenter {
     private synchronized boolean executeIkStep(String kind, int sign, int stepPct) {
         if (kind == null || sign == 0) return false;
         int step = Math.max(1, stepPct);
-        boolean signed = "fb".equals(kind) || IkPose.isSignedKind(kind);
+        boolean signed = IkPose.isComboKind(kind) || IkPose.isSignedKind(kind);
         int basePct = kind.equals(ikActiveKind) ? ikActivePct : 0;
         int target = basePct + (sign > 0 ? step : -step);
         int minPct = signed ? -100 : 0;
@@ -2690,10 +2710,10 @@ public final class GamepadCenter {
                     + "camera_photo/face_toggle/color_toggle/video_toggle/"
                     + "sonar_toggle/pir_toggle/accel_toggle/"
                     + "xiaozhi_toggle/vosk_toggle/vosk:<id>/eq:<preset>/radio:<uuid或名>/"
-                    + "servo1-22+/servo1-22-/ik:squat+/ik:squat-/"
-                    + "ik:ysquat+/ik:ysquat-/ik:lr+/ik:lr-/ik:fb+/ik:fb-/"
-                    + "ik:laugh+/ik:laugh-/ik:kick+/ik:kick-/ik:sirius+/ik:sirius-/"
-                    + "ik:hulu+/ik:hulu-/ik:hamlet+/ik:hamlet-/ik:kneel+/ik:kneel-/"
+                    + "servo1-22+/servo1-22-/ik:squatlean+/ik:squatlean-/"
+                    + "ik:squatsplit+/ik:squatsplit-/ik:kick+/ik:kick-/"
+                    + "ik:sirius+/ik:sirius-/ik:hulu+/ik:hulu-/"
+                    + "ik:hamlet+/ik:hamlet-/ik:fb+/ik:fb-/"
                     + "walk:fwd/walk:back/walk:fast/walk:slow/action:<id>, got: " + action);
         }
         Map<String, String> mapping = loadMapping(side);
