@@ -357,6 +357,14 @@ public final class ApiDispatcher {
             case "speech/cur_tts_voice":
                 return ttsCenter.curTtsVoice();
 
+            // TTS 音高／語速預設值 (1.0＝正常，範圍 0.5–2.0)。speech/tts 無帶
+            // pitch／rate 時用；對話管線亦跟。body 在 TtsCenter。
+            case "speech/tts_prosody/get":
+                return ttsCenter.getTtsProsody();
+
+            case "speech/tts_prosody/set":
+                return ttsCenter.setTtsProsody(query);
+
             // TTS 跟隨 Vosk 開關（語音 tab 手動／自動選擇；body 在 TtsCenter；
             // 薄 delegate，不要在這裡加 logic）。
             case "speech/cur_tts_follow_vosk":

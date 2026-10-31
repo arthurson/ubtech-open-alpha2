@@ -2119,6 +2119,30 @@
             "description": "BCP-47 tag (speech/tts_languages 回傳)"
           },
           {
+            "name": "pitch",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "float",
+              "minimum": 0.5,
+              "maximum": 2.0,
+              "example": 1.0
+            },
+            "description": "音高 (TextToSpeech.setPitch，1.0＝正常)。無帶＝speech/tts_prosody 預設值；超出範圍 HTTP 400"
+          },
+          {
+            "name": "rate",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "float",
+              "minimum": 0.5,
+              "maximum": 2.0,
+              "example": 1.0
+            },
+            "description": "語速 (TextToSpeech.setSpeechRate，1.0＝正常)。無帶＝speech/tts_prosody 預設值；超出範圍 HTTP 400"
+          },
+          {
             "$ref": "#/components/parameters/PanelToken"
           }
         ],
@@ -2669,6 +2693,134 @@
           }
         },
         "operationId": "speechCurTtsVoice_get"
+      }
+    },
+    "/api/speech/tts_prosody/get": {
+      "get": {
+        "tags": [
+          "speech"
+        ],
+        "summary": "查詢 TTS 音高／語速預設值 (1.0＝正常)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "目前預設值 (未設定＝1.0)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "pitch": {
+                          "type": "number",
+                          "example": 1.0
+                        },
+                        "rate": {
+                          "type": "number",
+                          "example": 1.0
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "speechTtsProsodyGet_get"
+      }
+    },
+    "/api/speech/tts_prosody/set": {
+      "get": {
+        "tags": [
+          "speech"
+        ],
+        "summary": "設定 TTS 音高／語速預設值 (持久化；speech/tts 無帶 pitch/rate 時用，對話 TTS 亦跟)",
+        "parameters": [
+          {
+            "name": "pitch",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "float",
+              "minimum": 0.5,
+              "maximum": 2.0
+            },
+            "description": "音高預設值 (1.0＝正常)。無帶＝保留舊值"
+          },
+          {
+            "name": "rate",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "float",
+              "minimum": 0.5,
+              "maximum": 2.0
+            },
+            "description": "語速預設值 (1.0＝正常)。無帶＝保留舊值"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "已寫入，回新預設值",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "pitch": {
+                          "type": "number",
+                          "example": 1.0
+                        },
+                        "rate": {
+                          "type": "number",
+                          "example": 1.0
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "speechTtsProsodySet_get"
       }
     },
     "/api/speech/cur_tts_follow_vosk": {

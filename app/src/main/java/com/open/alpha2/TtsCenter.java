@@ -43,6 +43,14 @@ public final class TtsCenter {
      *  即刻還原），唔使清。 */
     private static final String PREF_ANDROID_TTS_FOLLOW_VOSK = "android_tts_follow_vosk";
 
+    /** TTS 音高／語速預設值 (TextToSpeech.setPitch/setSpeechRate，1.0＝正常)。
+     *  speech/tts_prosody/set 寫入；speech/tts 無帶 pitch/rate 時用它，
+     *  對話管線 speakAndroidTts() 亦用它。範圍見 ApiValidator.TTS_PROSODY_MIN/MAX。
+     *  TextToSpeech 嘅 pitch/rate 係實例狀態，所以每次 speak 前都重設一次，
+     *  唔會令一次 speech/tts 嘅值漏落下一句。 */
+    private static final String PREF_ANDROID_TTS_PITCH = "android_tts_pitch";
+    private static final String PREF_ANDROID_TTS_RATE = "android_tts_rate";
+
     public static final int TTS_DATA_CHECK_REQUEST_CODE = 0x7454; // "T T" leetspeak-ish, 只是要一個穩定、未用過的 code
 
     private final Activity activity;
@@ -683,6 +691,7 @@ public final class TtsCenter {
                 Log.w(TAG, "speakAndroidTts setLanguage failed", e);
             }
         }
+        applyProsody(tts, ttsPitchPref(), ttsRatePref());
         try {
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "semantic_tts");
             return true;
@@ -715,8 +724,9 @@ public final class TtsCenter {
      *  不要求 lang 相符）；找不到先跌回 lang 路。空就照舊只用 lang。
      *  跟隨 Vosk 開＋lang／voice 都無帶（前端自動模式個測試掣就係咁送）：
      *  改跟當前 Vosk 模型解出嚟個聲讀；解唔到就沿用引擎目前語言（唔報錯）。
-     *  明確帶咗 lang／voice（Blockly／curl）一律優先，唔受跟隨影響。 */
-    public String speakPanelTts(String text, String lang, String voice) {
+     *  明確帶咗 lang／voice（Blockly／curl）一律優先，唔受跟隨影響。
+     *  pitch／rate（可 null）：null＝用 speech/tts_prosody 預設值。 */
+    public String speakPanelTts(String text, String lang, String voice, Float pitch, Float rate) {
         if (androidTts == null || !androidTtsReady) {
             return "Android TTS not ready";
         }
@@ -748,6 +758,9 @@ public final class TtsCenter {
                 }
             }
         }
+        applyProsody(androidTts,
+                pitch != null ? pitch : ttsPitchPref(),
+                rate != null ? rate : ttsRatePref());
         LedCenter.startMouthLedForTts();
         try {
             androidTts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "panel_tts");
@@ -975,6 +988,55 @@ public final class TtsCenter {
         prefs().edit().putBoolean(PREF_ANDROID_TTS_FOLLOW_VOSK, enabled).apply();
         return HttpServer.ApiResponse.ok(ttsFollowStatusJson());
     }
+
+    // -- TTS 音高／語速 (speech/tts_prosody/get|set) -----------------------------
+
+    private float floatPref(String key) {
+        try {
+            float v = prefs().getFloat(key, 1.0f);
+            if (Float.isNaN(v) || v < ApiValidator.TTS_PROSODY_MIN || v > ApiValidator.TTS_PROSODY_MAX) {
+                return 1.0f;
+            }
+            return v;
+        } catch (Throwable t) {
+            return 1.0f;
+        }
+    }
+
+    float ttsPitchPref() { return floatPref(PREF_ANDROID_TTS_PITCH); }
+
+    float ttsRatePref() { return floatPref(PREF_ANDROID_TTS_RATE); }
+
+    /** 每次 speak 前設定 pitch／rate；引擎唔支援就記 warning 照讀，唔靜音。 */
+    private static void applyProsody(TextToSpeech tts, float pitch, float rate) {
+        try {
+            if (tts.setPitch(pitch) != TextToSpeech.SUCCESS) {
+                Log.w(TAG, "setPitch failed: " + pitch);
+            }
+            if (tts.setSpeechRate(rate) != TextToSpeech.SUCCESS) {
+                Log.w(TAG, "setSpeechRate failed: " + rate);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "applyProsody failed", t);
+        }
+    }
+
+    private String ttsProsodyJson() {
+        return "{\"ok\":true,\"pitch\":" + ttsPitchPref() + ",\"rate\":" + ttsRatePref() + "}";
+    }
+
+    public HttpServer.ApiResponse getTtsProsody() {
+        return HttpServer.ApiResponse.ok(ttsProsodyJson());
+    }
+
+    /** pitch／rate 都係可選，無帶就保留舊值。 */
+    public HttpServer.ApiResponse setTtsProsody(Map<String, String> query) {
+        Float pitch = ApiValidator.optionalTtsProsody(query, "pitch");
+        Float rate = ApiValidator.optionalTtsProsody(query, "rate");
+        android.content.SharedPreferences.Editor e = prefs().edit();
+        if (pitch != null) e.putFloat(PREF_ANDROID_TTS_PITCH, pitch);
+        if (rate != null) e.putFloat(PREF_ANDROID_TTS_RATE, rate);
+        e.apply();
+        return HttpServer.ApiResponse.ok(ttsProsodyJson());
+    }
 }
-
-
