@@ -3,7 +3,7 @@
 > Language: English (this file) | [繁體中文](README_zh-Hant.md)
 
 `com.open.alpha2` — an Android app that runs on the UBTECH Alpha2 robot
-(`versionName "beta 8"` / `versionCode 8`) and turns it into a remotely
+(`versionName "beta 8.1"` / `versionCode 9`) and turns it into a remotely
 controllable device. On boot the app starts an HTTP + WebSocket server on port
 `8888`; opening `http://<robot-ip>:8888/` from any browser on the same Wi-Fi
 gives you the full control panel. A Blockly programming page lives at
@@ -59,8 +59,8 @@ touching the robot. APK size: a clean build is ~5.5 MB — plain incremental
 rebuilds leave stale entries behind and bloat it (harmless at runtime);
 run `./gradlew clean assembleDebug --offline` before shipping.
 CI (`build-apk.yml`, Temurin JDK 11 + Node 20) strips web comments, builds
-the same APK and publishes it as artifact `open-alpha2-beta8-apk`
-(file `open-alpha2-beta8.apk`, 7-day retention, latest 3 kept). Prebuilt `.so` files
+the same APK and publishes it as artifact `open-alpha2-beta8.1-apk`
+(file `open-alpha2-beta8.1.apk`, 7-day retention, latest 3 kept). Prebuilt `.so` files
 (`head_led`/`head_key_mgr`/`serial_port`) live in
 `sdk-module/hardware-direct/src/main/jniLibs`; `libeasyopus.so` is compiled
 from `app/src/main/cpp` via CMake. Vosk + JNA AARs are vendored in
@@ -356,7 +356,7 @@ open-alpha2/
 │   ├── src/test/java/…             ← ApiValidatorTest + ColorTrackTest + MusicEqTest
 │   │                                  (run via scripts/test-apivalidator.py)
 │   ├── libs/                       ← vendored vosk-android + JNA AARs (v7a)
-│   └── build.gradle                ← versionName "beta 8", armeabi-v7a only
+│   └── build.gradle                ← versionName "beta 8.1", armeabi-v7a only
 ├── sdk-module/hardware-direct/     ← serial ports (/dev/ttyS1+S3), LED/pad JNI,
 │                                      wire protocol, .ubx parse/play/speed-shifted music
 │   └── src/test/java/…             ← SerialFrameCodecTest (scripts/test-serialcodec.py)
@@ -372,8 +372,8 @@ open-alpha2/
 
 - `build-apk` (push to main/master + PR + manual): JDK 11 → install
   `platforms;android-25` + `build-tools;30.0.3` → strip web comments →
-  `assembleDebug` → upload APK artifact `open-alpha2-beta8-apk`
-  (file `open-alpha2-beta8.apk`, 7-day retention, latest 3 kept).
+  `assembleDebug` → upload APK artifact `open-alpha2-beta8.1-apk`
+  (file `open-alpha2-beta8.1.apk`, 7-day retention, latest 3 kept).
 - `check-openapi` (push/PR touching spec, code, client, scripts or web spec
   copies): spec/code drift, client freshness (`--check` ×2: api-client +
   MCP), client→route prefix match, YAML validity, unit tests

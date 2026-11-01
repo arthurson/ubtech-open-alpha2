@@ -493,6 +493,11 @@ const I18N = {
   // Google TTS 每個語言多把聲，選完語言再選聲（無具體語言就成行收起）。
   // 顯示跟足 Google 系統設定：「語音 I、II、III…」編號（英文面板就 "Voice I…"）。
   tts_android_voice_label: { zh: "聲音：", en: "Voice:" },
+  tts_pitch_label: { zh: "音高：", en: "Pitch:" },
+  tts_rate_label: { zh: "語速：", en: "Rate:" },
+  tts_prosody_reset_btn: { zh: "重設", en: "Reset" },
+  tts_prosody_hint: { zh: "1.0＝正常。設定會保存，之後「說話」同對話語音都跟呢個值。",
+                      en: "1.0 = normal. Saved on the robot; used by Speak and by dialogue TTS." },
   tts_android_voice_name: { zh: "語音", en: "Voice" },
   tts_android_voice_keep_option: { zh: "（預設聲）", en: "(Default voice)" },
   tts_android_voice_loading: { zh: "載入聲音中…", en: "Loading voices…" },
@@ -655,7 +660,7 @@ const I18N = {
   xiaozhi_send_text_error:    { zh: "送出失敗",             en: "Failed to send" },
   xiaozhi_stop_all_btn:       { zh: "⏹ 全部停止",           en: "⏹ Stop All" },
   xiaozhi_tts_engine_label:      { zh: "語音輸出：",         en: "Voice output:" },
-  xiaozhi_filler_heading:        { zh: "💃 講嘢時隨機動作",   en: "💃 Random move while speaking" },
+  xiaozhi_filler_heading:        { zh: "💃 隨機動作",         en: "💃 Random move" },
   xiaozhi_tts_engine_xiaozhi_btn: { zh: "小智",              en: "XiaoZhi" },
 
   // -- advanced tab --

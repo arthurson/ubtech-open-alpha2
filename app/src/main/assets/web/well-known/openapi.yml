@@ -25,14 +25,14 @@ info:
 或 `?panel_token=`。
 
     '
-  version: beta 8
+  version: beta 8.1
   contact:
     name: Open Alpha2
     url: https://github.com/arthurson/ubtech-open-alpha2
   license:
     name: GPL-3.0-only
     url: https://www.gnu.org/licenses/gpl-3.0.html
-  x-generated: '2026-10-14'
+  x-generated: '2026-11-01'
 servers:
 - url: http://{robotIp}:8888
   description: 機械人本機 HTTP Server (同 WiFi 直連)
@@ -99,7 +99,7 @@ paths:
                 $ref: '#/components/schemas/StatusResponse'
               example:
                 ok: true
-                appVersion: beta 8
+                appVersion: beta 8.1
                 chestAvailable: true
                 headerAvailable: true
                 androidTtsReady: true

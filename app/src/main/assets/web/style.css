@@ -2094,4 +2094,6 @@ body.gp-fs-open { overflow: hidden; }
   -webkit-touch-callout: none; /* 長按唔彈 callout＋唔震（JS 另有 touchstart 非被動攔截） */
 }
 
-
+/* TTS 音高／語速 slider 行：label 固定闊度，slider 撐滿，讀數靠右 */
+.tts-prosody-row label { min-width: 3.2em; }
+.tts-prosody-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
