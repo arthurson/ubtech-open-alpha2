@@ -2,3 +2,8 @@
 # 2026-09-09 新增：CI 同本地同一個版本，唔好浮動。
 # 本機實測 6.0.3（python -c "import yaml" 過到 drift 全套）。
 pyyaml==6.0.3
+# 2026-11 新增：ONNX policy 工具（scripts/policy_tool.py、scripts/test-policy.py）。
+# 本機實測組合；只係 policy 打包／測試需要，build APK 同其他 scripts 唔使。
+numpy==2.4.4
+onnx==1.23.2
+onnxruntime==1.24.4

@@ -209,6 +209,15 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   servos, LEDs, plus standard logic/math/text/variables/functions and
   ready-made examples; EN + Traditional Chinese block messages.
 
+## ONNX policy (Microduck-style)
+
+Load a `policy.onnx` exported from [`ubtech-alpha2-urdf`](https://github.com/arthurson/ubtech-alpha2-urdf)
+(`rl/`) and run it on the robot: `scripts/policy_tool.py pack` → `adb push` →
+`/api/policy/{list,load,start,stop,status}`. Pure-Java ONNX inference (API 19 safe, MLP subset),
+manifest + SHA-256 + on-robot selftest, dry-run by default, hard safety envelope. **Unverified on
+hardware.** Policies run at their own training rate; period < 200 ms (e.g. 50 Hz, which was erratic on the real robot) needs the
+experimental `fast=true` (dry-run it first: `policy/status` reports inference/send timing and overruns). Details: [docs/onnx-policy.md](docs/onnx-policy.md).
+
 ## Voice interaction
 
 - Offline speech recognition via Vosk (models live on the sdcard and are

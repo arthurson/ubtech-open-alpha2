@@ -156,6 +156,15 @@ adb -s <serial> forward tcp:8888 tcp:8888
   LED，另有標準邏輯／數學／文字／變數／自訂函式及現成範例；積木介面支援
   EN＋繁中。
 
+## ONNX policy（Microduck 式部署）
+
+載入由 [`ubtech-alpha2-urdf`](https://github.com/arthurson/ubtech-alpha2-urdf)（`rl/`）導出嘅
+`policy.onnx` 喺機上運行：`scripts/policy_tool.py pack` → `adb push` →
+`/api/policy/{list,load,start,stop,status}`。純 Java ONNX 推論（API 19 可用，MLP 子集）、
+manifest＋SHA-256＋機上 selftest、預設 dry-run、硬安全包絡。**未經實機驗證**；policy 按自己訓練頻率運行，
+period < 200ms（例如 50 Hz，實機會亂震）要用實驗性 `fast=true`（先 dry-run：`policy/status` 會報推論／送出耗時同 overrun）。詳見
+[docs/onnx-policy.md](docs/onnx-policy.md)。
+
 ## 語音互動
 
 - 離線語音辨識用 Vosk（模型放在 sdcard 並自動偵測；Vosk 需要 API 21＋，

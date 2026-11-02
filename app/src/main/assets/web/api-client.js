@@ -671,6 +671,38 @@ const Alpha2Api = (function() {
     return api('led/wifi/set', params);
   }
 
+  // ── policy ──────────────────────────────────────────────
+  function policyDelete(params) {
+    // 刪除機上 policy 目錄
+    return api('policy/delete', params);
+  }
+
+  function policyList(params) {
+    // 列出機上已有嘅 policy 目錄
+    return api('policy/list', params);
+  }
+
+  function policyLoad(params) {
+    // 載入並驗證 policy（manifest、sha256、算子支援、機上 selftest）
+    return api('policy/load', params);
+  }
+
+  function policyStart(params) {
+    if (params && params.max_speed_dps != null) assertRange(Number(params.max_speed_dps), 10, 300, 'max_speed_dps');
+    // 開始運行已載入嘅 policy（預設 dry-run；已經跑緊就續租約）
+    return api('policy/start', params);
+  }
+
+  function policyStatus(params) {
+    // Policy 狀態（載入資料、資格、運行中觀測／action／servo 目標、結束原因）
+    return api('policy/status', params);
+  }
+
+  function policyStop(params) {
+    // 硬停 policy（舵機保持末位姿；只停 policy）
+    return api('policy/stop', params);
+  }
+
   // ── radio ──────────────────────────────────────────────
   function audioRadioFavoritesAdd(params) {
     // 收藏電台（已存在即補齊欄位）
@@ -1323,6 +1355,12 @@ const Alpha2Api = (function() {
     ledPadSet,
     ledStateGet,
     ledWifiSet,
+    policyDelete,
+    policyList,
+    policyLoad,
+    policyStart,
+    policyStatus,
+    policyStop,
     audioRadioFavoritesAdd,
     audioRadioFavoritesList,
     audioRadioFavoritesRemove,
