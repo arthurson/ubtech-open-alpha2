@@ -348,6 +348,11 @@ public final class DirectSerialPort {
 
     public boolean isAvailable() { return running.get() && input != null && output != null; }
 
+    private volatile boolean quietTx = false;
+
+    /** true＝送出時唔寫 TX debug log（高頻控制用；用完要設返 false）。 */
+    public void setQuietTx(boolean quiet) { quietTx = quiet; }
+
     public synchronized boolean send(byte cmd, byte[] param) {
         OutputStream out = output;
         if (!isAvailable() || out == null) return false;
@@ -355,7 +360,8 @@ public final class DirectSerialPort {
             byte[] frame = SerialFrameCodec.encode(cmd, param);
             out.write(frame);
             out.flush();
-            Log.d(TAG, "TX(" + openedPath + ") " + SerialFrameCodec.toHex(frame));
+            // 高頻（50Hz policy）時唔砌 hex 字串／唔寫 logcat：每幀少一次分配同 IO。
+            if (!quietTx) Log.d(TAG, "TX(" + openedPath + ") " + SerialFrameCodec.toHex(frame));
             return true;
         } catch (IOException e) {
             Log.w(TAG, "send failed: " + e.getMessage());

@@ -226,6 +226,25 @@ public final class DeviceStatus implements SensorEventListener {
     private Sensor accelerometerSensor;
     private volatile boolean accelerometerEnabled = false;
 
+    // ONNX policy（PolicyCenter）用嘅平滑加速度：每個 sample 更新一次 EMA（alpha 0.1，~100Hz 下
+    // 時間常數約 100ms；只想濾走抖動／震動，唔係動態加速度估計）。同 WS 圖表節流無關——節流只影響
+    // publish，EMA 喺節流前更新。
+    private static final float ACCEL_EMA_ALPHA = 0.1f;
+    private final float[] accelEma = new float[3];
+    private boolean accelEmaInit = false;
+    private long accelEmaAtMs = 0;
+
+    /** 平滑後加速度 [x,y,z]（m/s²）；sensor 未開或讀數過期（&gt; maxAgeMs）回 null。 */
+    public double[] accelSmoothed(long maxAgeMs) {
+        synchronized (accelEma) {
+            if (!accelEmaInit) return null;
+            if (android.os.SystemClock.elapsedRealtime() - accelEmaAtMs > maxAgeMs) return null;
+            return new double[] {accelEma[0], accelEma[1], accelEma[2]};
+        }
+    }
+
+    public boolean hasAccelerometer() { return accelerometerSensor != null; }
+
     /**
      * Turns the accelerometer feed on/off. Safe to call repeatedly - a no-op if already
      * in the requested state. registerListener()/unregisterListener() must run on a
@@ -249,6 +268,7 @@ public final class DeviceStatus implements SensorEventListener {
             sensorManager.registerListener(this, accelerometerSensor, SensorManager.SENSOR_DELAY_NORMAL);
         } else {
             sensorManager.unregisterListener(this, accelerometerSensor);
+            synchronized (accelEma) { accelEmaInit = false; }
         }
         accelerometerEnabled = enabled;
     }
@@ -265,6 +285,19 @@ public final class DeviceStatus implements SensorEventListener {
     public void onSensorChanged(SensorEvent event) {
         if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER) {
             return;
+        }
+        synchronized (accelEma) {
+            if (!accelEmaInit) {
+                accelEma[0] = event.values[0];
+                accelEma[1] = event.values[1];
+                accelEma[2] = event.values[2];
+                accelEmaInit = true;
+            } else {
+                for (int i = 0; i < 3; i++) {
+                    accelEma[i] += ACCEL_EMA_ALPHA * (event.values[i] - accelEma[i]);
+                }
+            }
+            accelEmaAtMs = android.os.SystemClock.elapsedRealtime();
         }
         // Rate-limited (every ~2s) rather than per-sample: confirms whether the sensor
         // itself is actually delivering events at all, without flooding logcat - a

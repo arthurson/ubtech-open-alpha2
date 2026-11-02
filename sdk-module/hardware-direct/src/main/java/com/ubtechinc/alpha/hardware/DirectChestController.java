@@ -38,6 +38,8 @@ public final class DirectChestController {
     public boolean open() { return port.open(); }
     public void close() { port.close(); }
     public boolean isAvailable() { return port.isAvailable(); }
+    /** 高頻控制（policy fast 模式）時關閉每幀 TX log。 */
+    public void setQuietTx(boolean quiet) { port.setQuietTx(quiet); }
     public void setFrameListener(DirectSerialPort.OnFrameListener l) { port.addListener(l); }
 
     /** 單舵機：用本 package 的 DeveloperPacketData 打包，保持與原廠完全一致 */

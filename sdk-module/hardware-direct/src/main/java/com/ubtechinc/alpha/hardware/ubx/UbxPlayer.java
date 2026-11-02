@@ -534,6 +534,45 @@ public final class UbxPlayer {
         return true;
     }
 
+    /**
+     * 通用長任務入口（ONNX policy 迴圈）：喺 play 線程跑 {@code body}，所以 {@link #stop()} 搶佔
+     * （interrupt＝硬停，舵機保持末位姿）同 {@link #isPlaying()} 判斷全部自動適用，同
+     * {@link #startWalk} 一樣。{@code body} 必須響應 interrupt。已有播放／行路／配樂就回 false
+     * （{@link #lastError()} 有原因）。
+     */
+    public synchronized boolean startTask(final String name, final Runnable body) {
+        if ((playThread != null && playThread.isAlive())
+                || (voiceThread != null && voiceThread.isAlive())) {
+            lastError = "already playing " + currentName;
+            return false;
+        }
+        if (body == null) {
+            lastError = "no task body";
+            return false;
+        }
+        stopReq = false;
+        voiceStopReq = false;
+        framesSent = 0;
+        framesTotal = 0;
+        currentName = name != null ? name : "task";
+        walker = null;          // 唔可以留低上一次嘅 GaitWalker，否則 isWalking() 會誤報
+        lastError = "";
+        voiceSong = "";
+        final int gen = ++playbackGen;
+        playThread = new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    body.run();
+                } finally {
+                    Log.i(TAG, "task end " + currentName + " gen=" + gen);
+                }
+            }
+        }, "ubx-task");
+        playThread.start();
+        Log.i(TAG, "task start " + currentName);
+        return true;
+    }
+
     /** 行緊路？（含收步中；收步完線程結束即 false）。 */
     public boolean isWalking() {
         GaitWalker w = walker;

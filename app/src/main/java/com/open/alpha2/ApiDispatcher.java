@@ -63,6 +63,7 @@ public final class ApiDispatcher {
     private final ApkDownloadController apkDownloadController;
     private final GamepadCenter gamepadCenter;
     private final WalkCenter walkCenter;
+    private final PolicyCenter policyCenter;
 
     public ApiDispatcher(Context context, Host host, XiaozhiBridge.HostState sensorState,
             ActionDirect actionDirect, UbxApi ubxApi, ChestQuery chestQuery,
@@ -73,7 +74,7 @@ public final class ApiDispatcher {
             GrammarCenter grammarCenter, UbxPlayer ubxPlayer, MusicController musicController,
             LocalAlpha2Services localServices, SonarCenter sonarCenter,
             ActionsPackController actionsPackController, ApkDownloadController apkDownloadController,
-            GamepadCenter gamepadCenter, WalkCenter walkCenter) {
+            GamepadCenter gamepadCenter, WalkCenter walkCenter, PolicyCenter policyCenter) {
         this.appContext = context.getApplicationContext();
         this.host = host;
         this.sensorState = sensorState;
@@ -101,6 +102,7 @@ public final class ApiDispatcher {
         this.apkDownloadController = apkDownloadController;
         this.gamepadCenter = gamepadCenter;
         this.walkCenter = walkCenter;
+        this.policyCenter = policyCenter;
     }
 
     // directChestReady() 內聯：經 appContext 不用 Activity（各 center 自帶副本）。
@@ -308,6 +310,20 @@ public final class ApiDispatcher {
                 return walkCenter.speedResponse(query);
             case "walk/status":
                 return walkCenter.statusResponse();
+
+            // -- ONNX policy（Microduck 式部署；見 PolicyCenter、docs/onnx-policy.md）--------------
+            case "policy/list":
+                return policyCenter.listResponse();
+            case "policy/load":
+                return policyCenter.loadResponse(query);
+            case "policy/start":
+                return policyCenter.startResponse(query);
+            case "policy/stop":
+                return policyCenter.stopResponse();
+            case "policy/delete":
+                return policyCenter.deleteResponse(query);
+            case "policy/status":
+                return policyCenter.statusResponse();
 
             // -- Speech / TTS -----------------------------------------------------------
             // engine: android only (only engine that speaks). nuance/iflytek

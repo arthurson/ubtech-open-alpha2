@@ -76,6 +76,10 @@
       "description": "按住向前行／向後行（步態＝.ubx，後行＝前行步態時間反轉；放手即收步企定；速度 1.0–2.0x，步態 300ms 下限令實際最快約 1.33x；租約守護）"
     },
     {
+      "name": "policy",
+      "description": "ONNX policy 部署（Microduck 式 policy.onnx＋manifest.json，純 Java 推論；預設 dry-run 排練，真機要 dry=false 並通過硬件速率／sha256／selftest 檢查；見 docs/onnx-policy.md）"
+    },
+    {
       "name": "gamepad",
       "description": "BT 手柄／鍵盤（機器人直連 HID；映射分手柄／鍵盤兩邊）"
     },
@@ -2071,6 +2075,315 @@
           }
         },
         "operationId": "walkStatus_get"
+      }
+    },
+    "/api/policy/list": {
+      "get": {
+        "tags": [
+          "policy"
+        ],
+        "summary": "列出機上已有嘅 policy 目錄",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "policy 名單",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PolicyList"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "policyList_get"
+      }
+    },
+    "/api/policy/load": {
+      "post": {
+        "tags": [
+          "policy"
+        ],
+        "summary": "載入並驗證 policy（manifest、sha256、算子支援、機上 selftest）",
+        "description": "載入唔會郁舵機。跑緊嘅 policy 要先 stop。真機資格喺 status 嘅 realRunAllowed／realRunBlock。",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$"
+            },
+            "description": "policy 目錄名（<externalFilesDir>/policies/<name>/）"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Policy 狀態",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PolicyStatus"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "policyLoad_post"
+      }
+    },
+    "/api/policy/start": {
+      "post": {
+        "tags": [
+          "policy"
+        ],
+        "summary": "開始運行已載入嘅 policy（預設 dry-run；已經跑緊就續租約）",
+        "description": "開機企姿完成前回 {ok:false,error:booting}。真機（dry=false）要求：sha256 吻合、selftest 通過、加速度計有數、命令位姿已知；control_hz 對應 period < 200ms 嘅高頻 policy（例如 50Hz，實機測試會亂震）另要 fast=true（實驗：實機穩定性未驗證，錯過節拍太多會 overrun 即停）。Policy 永遠按自己嘅 control_hz 跑。會搶佔正在播放嘅普通動作；任何停止（stop／其他動作／fall／lease／max_run）都係硬停，舵機保持末位姿。",
+        "parameters": [
+          {
+            "name": "dry",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "description": "true（預設）＝排練：照常計算 obs／action／servo 目標但唔送去舵機；false＝真機運行（要 manifest 通過 sha256、selftest 檢查）"
+          },
+          {
+            "name": "fast",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "實驗性高頻模式：容許 period < 200ms（下限 20ms）嘅 policy 真機運行。提高線程優先級、關閉每幀 TX log、啟用 overrun 偵測。實機穩定性未驗證——先固定／吊住機身，並由低 max_speed_dps 開始。"
+          },
+          {
+            "name": "max_speed_dps",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 300
+            },
+            "description": "覆寫 manifest 嘅速度包絡（°/s，每格每軸變化 ≤ 此值 × move 時間）；唔帶＝用 manifest（預設 90）。逐步加大去測試，唔使重新打包。"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Policy 狀態",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PolicyStatus"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "policyStart_post"
+      }
+    },
+    "/api/policy/stop": {
+      "post": {
+        "tags": [
+          "policy"
+        ],
+        "summary": "硬停 policy（舵機保持末位姿；只停 policy）",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Policy 狀態",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PolicyStatus"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "policyStop_post"
+      }
+    },
+    "/api/policy/delete": {
+      "post": {
+        "tags": [
+          "policy"
+        ],
+        "summary": "刪除機上 policy 目錄",
+        "description": "跑緊嘅 policy 要先 stop。回傳更新後嘅名單（同 policy/list）。",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$"
+            },
+            "description": "policy 目錄名"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "policy 名單",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PolicyList"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "policyDelete_post"
+      }
+    },
+    "/api/policy/status": {
+      "get": {
+        "tags": [
+          "policy"
+        ],
+        "summary": "Policy 狀態（載入資料、資格、運行中觀測／action／servo 目標、結束原因）",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Policy 狀態",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PolicyStatus"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "policyStatus_get"
       }
     },
     "/api/speech/tts": {
@@ -12062,6 +12375,138 @@
         "operationId": "uploadMusic_post"
       }
     },
+    "/upload/policy": {
+      "post": {
+        "tags": [
+          "upload",
+          "policy"
+        ],
+        "summary": "上載 ONNX policy（zip 或單個 .onnx），server 驗證後即載入",
+        "description": "kind=zip（預設）：zip 內取 policy.onnx（或唯一一個 *.onnx）、ref.json、manifest.json、selftest.json，其餘檔（model.zip、meta.json、*.pth…）唔會讀；kind=onnx：body 就係 .onnx。冇 manifest.json 就按 query 參數生成（obs 缺省由模型輸入維度推斷：43=stand、65=walk，walk 要 ref.json）；SHA-256 由 server 計。驗證（算子支援、維度、ref、manifest）通過先覆蓋同名舊目錄，失敗唔留低任何檔。跑緊嘅 policy 要先 stop。成功回傳 PolicyStatus。",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$"
+            },
+            "description": "policy 目錄名"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "zip",
+                "onnx"
+              ],
+              "default": "zip"
+            }
+          },
+          {
+            "name": "obs",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "stand",
+                "walk"
+              ],
+              "default": "auto"
+            },
+            "description": "只喺冇 manifest.json 時用"
+          },
+          {
+            "name": "control_hz",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 100,
+              "default": 50
+            },
+            "description": "policy 訓練時嘅決策頻率（只喺冇 manifest.json 時用）"
+          },
+          {
+            "name": "act_scale",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 0.6
+            },
+            "description": "缺省 stand 0.3／walk 0.2（rad）"
+          },
+          {
+            "name": "max_speed_dps",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 300,
+              "default": 90
+            }
+          },
+          {
+            "name": "accel_axes",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "+x+y+z"
+            },
+            "description": "加速度計軸→頭部座標（未實機驗證）"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "已儲存並載入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PolicyStatus"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "uploadPolicy_post"
+      }
+    },
     "/upload/chest": {
       "post": {
         "tags": [
@@ -12440,6 +12885,150 @@
           "loadedBack": {
             "type": "boolean",
             "description": "後行步態檔已載入"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "PolicyList": {
+        "type": "object",
+        "properties": {
+          "dir": {
+            "type": "string",
+            "description": "policy 根目錄（adb push 目的地）"
+          },
+          "policies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PolicyStatus": {
+        "type": "object",
+        "properties": {
+          "loaded": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "obs": {
+            "type": "string",
+            "enum": [
+              "stand",
+              "walk"
+            ]
+          },
+          "obsDim": {
+            "type": "integer",
+            "description": "43（stand）或 65（walk，殘差＋ref）"
+          },
+          "controlHz": {
+            "type": "number",
+            "description": "policy 訓練時嘅決策頻率"
+          },
+          "periodMs": {
+            "type": "integer"
+          },
+          "actScale": {
+            "type": "number"
+          },
+          "hashVerified": {
+            "type": "boolean"
+          },
+          "selftestOk": {
+            "type": "boolean",
+            "description": "機上推論同 onnxruntime 對照向量吻合（<=2e-5）；冇 selftest.json 時 false"
+          },
+          "selftestPresent": {
+            "type": "boolean",
+            "description": "有 selftest.json（有就必須通過先准真機；面板上載冇）"
+          },
+          "warnings": {
+            "type": "string",
+            "description": "例如冇 selftest（未同 onnxruntime 對照過）"
+          },
+          "selftest": {
+            "type": "string"
+          },
+          "realRunAllowed": {
+            "type": "boolean"
+          },
+          "realRunBlock": {
+            "type": "string",
+            "description": "唔准真機嘅原因（sha256／selftest 未過、period 低過 20ms 等；高頻 policy 要 fast 唔算 block，見 needsFast）"
+          },
+          "needsFast": {
+            "type": "boolean",
+            "description": "period < 200ms：真機要 policy/start?fast=true"
+          },
+          "fast": {
+            "type": "boolean",
+            "description": "最近一次運行用咗 fast 模式"
+          },
+          "overruns": {
+            "type": "integer",
+            "description": "累計遲到格數（遲過 period/2）；視窗內太多會以 overrun 結束"
+          },
+          "maxStepUs": {
+            "type": "integer",
+            "description": "單格（推論＋送出）最長耗時（微秒）；高頻下應遠低於 period"
+          },
+          "maxSendUs": {
+            "type": "integer",
+            "description": "單次送出最長耗時（微秒）"
+          },
+          "periodMsEff": {
+            "type": "integer",
+            "description": "實際使用嘅格長（ms）"
+          },
+          "maxSpeedDps": {
+            "type": "number",
+            "description": "實際使用嘅速度包絡（°/s）"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "dry": {
+            "type": "boolean",
+            "description": "最近一次運行係咪排練"
+          },
+          "accelAvailable": {
+            "type": "boolean"
+          },
+          "accelEnabled": {
+            "type": "boolean"
+          },
+          "steps": {
+            "type": "integer"
+          },
+          "tiltDeg": {
+            "type": "number",
+            "description": "由頭部加速度計估計嘅軀幹傾角（未實機驗證軸對應）"
+          },
+          "inferUs": {
+            "type": "integer"
+          },
+          "action": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "最近一個 action（20，已 clip 到 [-1,1]）"
+          },
+          "servo": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "最近一個送出（或 dry 計出）嘅 20 軸 servo 目標角度（已過速度包絡）"
+          },
+          "endReason": {
+            "type": "string",
+            "description": "上一次結束原因：stopped／lease／max_run／fall／gravity_invalid／bad_action／pose_unknown／send_failed／overrun／error"
           },
           "error": {
             "type": "string"
