@@ -12,7 +12,8 @@ package com.ubtechinc.alpha.hardware.policy;
  * <ul>
  *   <li>目標 clamp 入校準範圍；非有限數值（NaN/Inf）即停（{@code bad_action}）。</li>
  *   <li>速度包絡：每格每軸變化 ≤ maxSpeedDps × move時間，防第一步由開機姿勢直接跳去 policy 目標。</li>
- *   <li>傾角超 {@code tiltLimitRad}（同訓練 env 嘅 fallen 準則 40° 一致）即停（{@code fall}），舵機保持末位姿。</li>
+ *   <li>傾角連續 {@code fallConsecutive}（預設 3）格超過 {@code tiltLimitRad}（同訓練 env 嘅 fallen 準則
+ *       40° 一致）即停（{@code fall}），舵機保持末位姿。</li>
  *   <li>重力讀數連續失效 {@code maxBadGravity} 次即停（{@code gravity_invalid}）。</li>
  *   <li>租約：超過 leaseMs 冇 {@link #beat()} 即停（{@code lease}）；上限 maxRunMs（{@code max_run}）。</li>
  *   <li>送出連續失敗 5 次即停（{@code send_failed}）；線程被 interrupt＝硬停（{@code stopped}）。</li>
@@ -77,6 +78,7 @@ public final class PolicyRunner implements Runnable {
         public boolean dry = false;                // true＝只計算唔送 servo
         public int overrunWindow = 50;             // 最近幾多格內計遲到
         public int overrunLimit = 10;              // 遲到格數達呢個值即停（"overrun"）
+        public int fallConsecutive = 3;            // 連續幾多格傾角超標先當 fall（濾走單次尖峰）
         public Ref ref;                            // obsDim==65 先用
     }
 
@@ -94,6 +96,11 @@ public final class PolicyRunner implements Runnable {
     private volatile float[] lastAction = new float[Alpha2PolicyIo.N];
     private volatile int[] lastServo = new int[Alpha2PolicyIo.N];
     private volatile long lastInferUs;
+    // 診斷 trace：最近 TRACE_N 步，每步 11 欄（見 TRACE_COLS）；停低後俾面板顯示／複製。
+    public static final int TRACE_N = 64;
+    public static final String[] TRACE_COLS = {"step", "tiltDeg", "gx", "gy", "gz", "ax", "ay", "az", "maxAct", "maxDeltaDeg", "stepMs"};
+    private final float[][] trace = new float[TRACE_N][TRACE_COLS.length];
+    private int traceCount = 0;
     private volatile int overruns;          // 累計遲到格數（遲過 period/2）
     private volatile long maxStepUs;        // 單格（推論＋送出）最長耗時
     private volatile long maxSendUs;        // 單次送出最長耗時
@@ -122,6 +129,15 @@ public final class PolicyRunner implements Runnable {
     }
 
     public void beat() { lastBeatMs = System.currentTimeMillis(); }
+
+    /**
+     * 起線程前先標記「運行中」：否則 startTask 返回後、線程真正跑起前嘅一刻 isRunning() 係 false，
+     * 面板會以為冇運行而唔啟動心跳（租約 5 秒後過期＝「行咗幾步就停」嘅成因之一）。
+     * startTask 失敗要 {@link #cancelStart()}。
+     */
+    public void markStarting() { endReason = ""; lastBeatMs = System.currentTimeMillis(); running = true; }
+
+    public void cancelStart() { running = false; }
     public boolean isRunning() { return running; }
     public String endReason() { return endReason; }
     public int steps() { return steps; }
@@ -130,6 +146,21 @@ public final class PolicyRunner implements Runnable {
     public int[] lastServo() { return lastServo.clone(); }
     public long lastInferUs() { return lastInferUs; }
     public int overruns() { return overruns; }
+
+    /** 最近（最多 TRACE_N）步嘅診斷記錄，由舊到新；非有限值＝NaN。 */
+    public synchronized float[][] trace() {
+        int n = Math.min(traceCount, TRACE_N);
+        float[][] out = new float[n][];
+        for (int i = 0; i < n; i++) out[i] = trace[(traceCount - n + i) % TRACE_N].clone();
+        return out;
+    }
+
+    private synchronized float[] traceRow() {
+        float[] r = trace[traceCount % TRACE_N];
+        java.util.Arrays.fill(r, Float.NaN);
+        traceCount++;
+        return r;
+    }
     public long maxStepUs() { return maxStepUs; }
     public long maxSendUs() { return maxSendUs; }
     public Config config() { return cfg; }
@@ -159,7 +190,8 @@ public final class PolicyRunner implements Runnable {
         float[] prev = new float[Alpha2PolicyIo.N];
         double[] q0 = Alpha2PolicyIo.qDefault();
         double[] gLast = null;
-        int badG = 0, sendFails = 0, t = 0;
+        int badG = 0, sendFails = 0, t = 0, fallRun = 0;
+        synchronized (this) { traceCount = 0; }
         int moveMs = Math.max(20, Math.round(cfg.periodMs * cfg.moveOverlap));
         double maxStepDeg = cfg.maxSpeedDps * moveMs / 1000.0;
         // walk：ref 隨真實時間推進（period/dt 格／步），唔係固定一格——period 同 ref.dt 唔同都對得上。
@@ -175,7 +207,12 @@ public final class PolicyRunner implements Runnable {
             if (cfg.leaseMs > 0 && now - lastBeatMs > cfg.leaseMs) return "lease";
 
             double[] q = Alpha2PolicyIo.servoToQ(cur);
-            double[] g = Alpha2PolicyIo.gravityBase(accel.accel(), cfg.axes, q[18], q[19]);
+            double[] aRaw = accel.accel();
+            double[] g = Alpha2PolicyIo.gravityBase(aRaw, cfg.axes, q[18], q[19]);
+            float[] row = traceRow();
+            row[0] = t;
+            if (aRaw != null) { row[5] = (float) aRaw[0]; row[6] = (float) aRaw[1]; row[7] = (float) aRaw[2]; }
+            if (g != null) { row[2] = (float) g[0]; row[3] = (float) g[1]; row[4] = (float) g[2]; }
             if (g == null) {
                 if (++badG >= cfg.maxBadGravity || gLast == null) return "gravity_invalid";
                 g = gLast;
@@ -185,7 +222,11 @@ public final class PolicyRunner implements Runnable {
             }
             double tilt = Alpha2PolicyIo.tiltRad(g);
             tiltDeg = Math.toDegrees(tilt);
-            if (tilt > cfg.tiltLimitRad) return "fall";
+            row[1] = (float) tiltDeg;
+            // 連續 fallConsecutive 格超標先停：單次尖峰（行路時嘅線加速度）唔算跌。
+            // 起步嗰格（t==0）已經超標＝開始時已經倒／歪咗，唔准郁，即停。
+            if (tilt > cfg.tiltLimitRad) { if (t == 0 || ++fallRun >= cfg.fallConsecutive) return "fall"; }
+            else fallRun = 0;
 
             float[] obs = cfg.obsDim == Alpha2PolicyIo.OBS_WALK
                     ? Alpha2PolicyIo.obsWalk(q, prev, g, cfg.ref.at(t * framesPerStep), cfg.ref.phase(t * framesPerStep))
@@ -198,6 +239,9 @@ public final class PolicyRunner implements Runnable {
                 if (act[i] > 1f) act[i] = 1f;
                 if (act[i] < -1f) act[i] = -1f;
             }
+            float maxAct = 0f;
+            for (float x : act) maxAct = Math.max(maxAct, Math.abs(x));
+            row[8] = maxAct;
             double[] base = cfg.obsDim == Alpha2PolicyIo.OBS_WALK ? cfg.ref.at(t * framesPerStep) : q0;
             int[] want = Alpha2PolicyIo.qToServo(Alpha2PolicyIo.targetQ(base, act, cfg.actScale), cfg.lo, cfg.hi);
             int[] cmd = new int[Alpha2PolicyIo.N];
@@ -208,6 +252,9 @@ public final class PolicyRunner implements Runnable {
                 if (d < -lim) d = -lim;
                 cmd[i] = (int) (cur[i] + d);
             }
+            int md = 0;
+            for (int i = 0; i < cmd.length; i++) md = Math.max(md, Math.abs(cmd[i] - cur[i]));
+            row[9] = md;
             lastAction = act;
             lastServo = cmd.clone();
             if (!cfg.dry) {
@@ -228,6 +275,7 @@ public final class PolicyRunner implements Runnable {
             steps = t;
 
             long stepUs = (System.nanoTime() - s0) / 1000;
+            row[10] = stepUs / 1000f;
             if (stepUs > maxStepUs) maxStepUs = stepUs;
 
             next += cfg.periodMs;

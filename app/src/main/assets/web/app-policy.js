@@ -7,6 +7,7 @@
 var polTimer = null;        // 運行中狀態輪詢
 var polLast = null;         // 最近一次 PolicyStatus（轉語言重畫用）
 var polBusy = false;        // 上載中
+var polStartAt = 0;         // 最近一次成功按「開始」嘅時間（ms）：之後幾秒內即使狀態未顯示 running 都照樣輪詢＋心跳
 
 function polEl(id) { return document.getElementById(id); }
 
@@ -211,6 +212,8 @@ function polStart() {
   const p = { dry: dry ? "true" : "false", fast: fast ? "true" : "false" };
   const sp = polEl("polSpeed").value;
   if (sp) p.max_speed_dps = sp;
+  const tl = polEl("polTilt").value;
+  if (tl) p.tilt_limit_deg = tl;
   if (!dry && !confirm(t("pol_confirm_real"))) return Promise.resolve();
   return Alpha2Api.policyStart(p).then(function (res) {
     if (!res || !res.ok) {
@@ -218,26 +221,38 @@ function polStart() {
       return res;
     }
     polSetOutRaw("");
+    polStartAt = Date.now();
     polApplyStatus(res, false);
+    polEnsurePolling(true);            // 唔靠回應嘅 running 欄位（可能追唔上），一定開輪詢＋心跳
     return res;
   });
 }
 
 function polStop() {
+  polStartAt = 0;
   return Alpha2Api.policyStop().then(function (res) {
     polApplyStatus(res, false);
     return res;
   });
 }
 
+// 運行中每 500ms 叫一次 policy/start＝續租約（後端：已經跑緊就只續租約並回狀態，唔會重開）。
+// 淨係叫 policy/status 唔會續租約，租約（預設 5 秒）一到 policy 就以 lease 停低——
+// 呢個係「行咗半步就停」嘅成因。分頁入咗背景／瀏覽器關閉／斷網 ⇒ 冇心跳 ⇒ 自動停（保護機制，故意）。
+function polRecentlyStarted() { return Date.now() - polStartAt < 3000; }
+
 function polPollOnce() {
-  return Alpha2Api.policyStatus().then(function (res) {
+  // 運行中（或剛按開始、狀態未追上）：policy/beat＝續租約＋回狀態；唔會啟動，冇運行就等同 status。
+  const beat = (polLast && polLast.running) || polRecentlyStarted();
+  const p = beat ? Alpha2Api.policyBeat() : Alpha2Api.policyStatus();
+  return p.then(function (res) {
     polApplyStatus(res, false);
     return res;
   });
 }
 
 function polEnsurePolling(running) {
+  running = running || polRecentlyStarted();
   if (running && !polTimer) polTimer = setInterval(polPollOnce, 500);
   if (!running && polTimer) { clearInterval(polTimer); polTimer = null; }
 }
@@ -293,6 +308,37 @@ function polRender() {
   if (!res.running && res.endReason) l2.push(t("pol_end") + " " + polEndReasonText(res.endReason));
   if (res.error) l2.push("⚠️ " + res.error);
   live.textContent = l2.join("\n");
+  polRenderTrace(res);
+}
+
+// 停低後顯示最近 12 步診斷（欄位：step tilt° g(xyz) 加速度(xyz) 最大|action| 最大servo變化° 單格ms）。
+function polRenderTrace(res) {
+  const pre = polEl("polTrace"), row = polEl("polDiagRow");
+  if (!pre || !row) return;
+  if (res.running || !res.trace || !res.trace.length) {
+    pre.style.display = "none"; row.style.display = "none";
+    return;
+  }
+  const f = function (v, d) { return v === null || v === undefined ? "  -  " : Number(v).toFixed(d); };
+  const lines = [res.traceCols.join("\t")];
+  res.trace.slice(-12).forEach(function (r) {
+    lines.push([r[0], f(r[1], 1), f(r[2], 2), f(r[3], 2), f(r[4], 2), f(r[5], 1), f(r[6], 1), f(r[7], 1), f(r[8], 2), f(r[9], 0), f(r[10], 1)].join("\t"));
+  });
+  pre.textContent = lines.join("\n");
+  pre.style.display = "block";
+  row.style.display = "flex";
+}
+
+// 複製診斷（http 區網冇 navigator.clipboard，用 textarea＋execCommand；失敗就留低 textarea 俾人手動複製）。
+function polCopyDiag() {
+  const ta = polEl("polDiag");
+  if (!ta || !polLast) return;
+  ta.value = JSON.stringify(polLast);
+  ta.style.display = "block";
+  ta.focus(); ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  polSetOutRaw(ok ? t("pol_copied") : t("pol_copy_manual"));
 }
 
 function polApplyUiLanguage() {

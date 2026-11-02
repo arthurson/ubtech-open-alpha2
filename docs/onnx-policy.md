@@ -27,7 +27,7 @@ Panel → **實驗 / Experimental** tab → **🧠 ONNX Policy** (turn the card 
    / end reason are shown; **Stop** is a hard stop. Uploads made from the panel have no `selftest.json`,
    so the panel shows "not cross-checked against onnxruntime" — use `policy_tool.py pack` if you want that.
 
-API: `POST /upload/policy`, `policy/{list,load,start,stop,status,delete}`.
+API: `POST /upload/policy`, `policy/{list,load,start,beat,stop,status,delete}`.
 
 ## Pipeline (command line)
 
@@ -108,6 +108,17 @@ accel_axes, ref, max_speed_dps, max_run_s, lease_ms, tilt_limit_deg, onnx_sha256
   accelerometer data, hash + selftest checks (+ `fast=true` for period < 200 ms).
 * Per-step, per-axis change ≤ `max_speed_dps` × move time (default 90°/s; the official gait peaks at
   60°/s), so the first step from the boot pose cannot jump to the policy target.
+* Lease: a running policy needs a heartbeat every `lease_ms` (default 5 s): `POST policy/beat` (renews
+  and returns the status; never starts anything). The panel sends it every 500 ms while running — plain
+  `policy/status` polling does **not** renew. Without heartbeats the run ends with `lease`, so a
+  closed/backgrounded tab or lost connection stops the robot.
+* Fall guard: tilt must exceed `tilt_limit_deg` (default 40°, override with `policy/start?tilt_limit_deg=`)
+  for **3 consecutive steps** (immediately if already over the limit at step 0) — single spikes from
+  walking accelerations are ignored. The accelerometer axis mapping is unverified, so a wrong mapping
+  looks like a fall.
+* Diagnostics: after a run ends, `policy/status` carries `endReason` and the last 64 steps (`trace`:
+  step, tilt°, gravity xyz, smoothed accel xyz, max |action|, max servo change°, step ms); the panel
+  shows the last 12 and has a *Copy diagnostics* button. Also `adb logcat -s PolicyCenter`.
 * Stops (servos hold the last pose): tilt > `tilt_limit_deg` (`fall`), invalid gravity ×3
   (`gravity_invalid`), NaN/Inf action (`bad_action`), 5 send failures (`send_failed`), lease expiry
   (`lease`, renewed by calling `policy/start` again), missed beats (`overrun`), `max_run_s`, `policy/stop`, or any other

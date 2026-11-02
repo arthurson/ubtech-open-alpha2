@@ -672,6 +672,11 @@ const Alpha2Api = (function() {
   }
 
   // ── policy ──────────────────────────────────────────────
+  function policyBeat(params) {
+    // 續租約（心跳）並回 policy 狀態；冇運行就唔做任何嘢（唔會啟動）
+    return api('policy/beat', params);
+  }
+
   function policyDelete(params) {
     // 刪除機上 policy 目錄
     return api('policy/delete', params);
@@ -688,6 +693,7 @@ const Alpha2Api = (function() {
   }
 
   function policyStart(params) {
+    if (params && params.tilt_limit_deg != null) assertRange(Number(params.tilt_limit_deg), 10, 60, 'tilt_limit_deg');
     if (params && params.max_speed_dps != null) assertRange(Number(params.max_speed_dps), 10, 300, 'max_speed_dps');
     // 開始運行已載入嘅 policy（預設 dry-run；已經跑緊就續租約）
     return api('policy/start', params);
@@ -1355,6 +1361,7 @@ const Alpha2Api = (function() {
     ledPadSet,
     ledStateGet,
     ledWifiSet,
+    policyBeat,
     policyDelete,
     policyList,
     policyLoad,

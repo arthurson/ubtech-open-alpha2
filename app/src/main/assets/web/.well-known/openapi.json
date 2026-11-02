@@ -2201,6 +2201,16 @@
             "description": "實驗性高頻模式：容許 period < 200ms（下限 20ms）嘅 policy 真機運行。提高線程優先級、關閉每幀 TX log、啟用 overrun 偵測。實機穩定性未驗證——先固定／吊住機身，並由低 max_speed_dps 開始。"
           },
           {
+            "name": "tilt_limit_deg",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 60
+            },
+            "description": "覆寫傾角上限（°，預設 40）。傾角連續 3 格超標即 fall 停機；加速度計軸對應未驗證，誤判時可臨時放寬。"
+          },
+          {
             "name": "max_speed_dps",
             "in": "query",
             "schema": {
@@ -2287,6 +2297,50 @@
           }
         },
         "operationId": "policyStop_post"
+      }
+    },
+    "/api/policy/beat": {
+      "post": {
+        "tags": [
+          "policy"
+        ],
+        "summary": "續租約（心跳）並回 policy 狀態；冇運行就唔做任何嘢（唔會啟動）",
+        "description": "運行中嘅 policy 要每 lease_ms（預設 5 秒）內收到一次心跳，否則以 lease 結束（保護：分頁背景／斷線／關閉就停）。面板運行中每 500ms 叫一次。淨係叫 policy/status 唔會續租約。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Policy 狀態",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PolicyStatus"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "policyBeat_post"
       }
     },
     "/api/policy/delete": {
@@ -12988,6 +13042,28 @@
           "maxSpeedDps": {
             "type": "number",
             "description": "實際使用嘅速度包絡（°/s）"
+          },
+          "tiltLimitDeg": {
+            "type": "number",
+            "description": "實際使用嘅傾角上限（°）"
+          },
+          "traceCols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "trace 欄位名（只喺停低後出現）"
+          },
+          "trace": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "nullable": true
+              }
+            },
+            "description": "停低後最近 64 步診斷（step、tiltDeg、重力 xyz、原始平滑加速度 xyz、最大 |action|、最大 servo 變化、單格耗時 ms）；用嚟判斷點解停"
           },
           "running": {
             "type": "boolean"
