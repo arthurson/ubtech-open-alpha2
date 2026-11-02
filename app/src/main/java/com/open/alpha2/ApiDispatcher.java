@@ -320,6 +320,8 @@ public final class ApiDispatcher {
                 return policyCenter.startResponse(query);
             case "policy/stop":
                 return policyCenter.stopResponse();
+            case "policy/beat":
+                return policyCenter.beatResponse();
             case "policy/delete":
                 return policyCenter.deleteResponse(query);
             case "policy/status":

@@ -213,7 +213,7 @@ public final class PolicyCenter {
         return r != null && r.isRunning();
     }
 
-    private synchronized HttpServer.ApiResponse start(boolean dry, boolean fast, float speedOverride) {
+    private synchronized HttpServer.ApiResponse start(boolean dry, boolean fast, float speedOverride, float tiltOverride) {
         Loaded l = loaded;
         if (l == null) return HttpServer.ApiResponse.badRequest("no policy loaded (policy/load first)");
         if (running()) { runner.beat(); return statusResponse(); }   // 同 walk/start 一樣：再叫即續租約
@@ -248,7 +248,7 @@ public final class PolicyCenter {
             c.hi[i] = ApiValidator.servoCalMax(i + 1);
         }
         c.maxSpeedDps = speedOverride > 0 ? speedOverride : m.maxSpeedDps;
-        c.tiltLimitRad = Math.toRadians(m.tiltLimitDeg);
+        c.tiltLimitRad = Math.toRadians(tiltOverride > 0 ? tiltOverride : m.tiltLimitDeg);
         c.leaseMs = m.leaseMs;
         c.maxRunMs = m.maxRunS * 1000L;
         c.dry = dry;
@@ -293,11 +293,18 @@ public final class PolicyCenter {
                     if (quiet) chest.setQuietTx(true);
                     fr.run();
                 } finally {
+                    // adb logcat -s PolicyCenter 睇結束原因（面板亦會顯示）
+                    float[][] tr = fr.trace();
+                    float[] last = tr.length > 0 ? tr[tr.length - 1] : null;
+                    Log.i(TAG, "policy end reason=" + fr.endReason() + " steps=" + fr.steps()
+                            + (last != null ? " lastTilt=" + last[1] + " lastAccel=" + last[5] + "," + last[6] + "," + last[7] : ""));
                     if (quiet) chest.setQuietTx(false);
                 }
             }
         };
+        fr.markStarting();     // 回應 status 前就要見到 running=true（見 PolicyRunner.markStarting）
         if (!ubxPlayer.startTask("policy:" + m.name + (dry ? " (dry)" : "") + (fast ? " [fast]" : ""), task)) {
+            fr.cancelStart();
             lastError = ubxPlayer.lastError();
             return HttpServer.ApiResponse.error("cannot start policy: " + lastError);
         }
@@ -508,7 +515,18 @@ public final class PolicyCenter {
         boolean fast = ApiValidator.optionalBoolean(query, "fast", false);
         // 速度包絡覆寫（°/s）：逐步加大去測試，唔使重新打包；0＝用 manifest 值。
         float sp = ApiValidator.optionalFloatRange(query, "max_speed_dps", 10, PolicyManifest.MAX_SPEED_DPS_CAP, 0f);
-        return start(dry, fast, sp);
+        float tilt = ApiValidator.optionalFloatRange(query, "tilt_limit_deg", 10, 60, 0f);
+        return start(dry, fast, sp, tilt);
+    }
+
+    /**
+     * policy/beat：只係續租約並回狀態；冇運行就乜都唔做（唔會啟動）——面板心跳專用，
+     * 避免用 policy/start 做心跳時喺 policy 剛結束嘅一刻意外重新開跑。
+     */
+    public HttpServer.ApiResponse beatResponse() {
+        PolicyRunner r = runner;
+        if (r != null && r.isRunning()) r.beat();
+        return statusResponse();
     }
 
     /** policy/stop：硬停（舵機保持末位姿）。只停 policy，唔會掂其他播放。 */
@@ -564,6 +582,29 @@ public final class PolicyCenter {
             sb.append(",\"maxSendUs\":").append(r.maxSendUs());
             sb.append(",\"periodMsEff\":").append(r.config().periodMs);
             sb.append(",\"maxSpeedDps\":").append(r.config().maxSpeedDps);
+            sb.append(",\"tiltLimitDeg\":").append(String.format(java.util.Locale.US, "%.1f", Math.toDegrees(r.config().tiltLimitRad)));
+            if (!run) {
+                // 停低後附最近 64 步診斷（欄位見 traceCols；非有限值＝null）
+                sb.append(",\"traceCols\":[");
+                for (int i = 0; i < PolicyRunner.TRACE_COLS.length; i++) {
+                    if (i > 0) sb.append(',');
+                    sb.append('"').append(PolicyRunner.TRACE_COLS[i]).append('"');
+                }
+                sb.append("],\"trace\":[");
+                float[][] tr = r.trace();
+                for (int i = 0; i < tr.length; i++) {
+                    if (i > 0) sb.append(',');
+                    sb.append('[');
+                    for (int j = 0; j < tr[i].length; j++) {
+                        if (j > 0) sb.append(',');
+                        float v = tr[i][j];
+                        if (Float.isNaN(v) || Float.isInfinite(v)) sb.append("null");
+                        else sb.append(String.format(java.util.Locale.US, "%.3f", v));
+                    }
+                    sb.append(']');
+                }
+                sb.append(']');
+            }
             sb.append(",\"action\":").append(arr(r.lastAction()));
             sb.append(",\"servo\":").append(arr(r.lastServo()));
             sb.append(",\"endReason\":\"").append(run ? "" : JsonUtil.esc(r.endReason())).append('"');

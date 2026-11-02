@@ -1206,12 +1206,19 @@
           <label class="switch-label"><input type="checkbox" id="polFast"> <span data-i18n="pol_fast">fast（period &lt; 200ms，實驗）</span></label>
           <label><span data-i18n="pol_speed">速度上限 °/s（留空＝policy 設定）</span>
             <input id="polSpeed" type="number" min="10" max="300" step="any" style="width:5em"></label>
+          <label><span data-i18n="pol_tilt_limit">傾角上限 °（留空＝40）</span>
+            <input id="polTilt" type="number" min="10" max="60" step="any" style="width:5em"></label>
         </div>
         <div class="row" style="margin-top:6px">
           <button id="polStartBtn" onclick="polStart()" data-i18n="pol_start_btn" disabled>▶ 開始</button>
           <button class="danger-btn" onclick="polStop()" data-i18n="pol_stop_btn">■ 停止</button>
         </div>
         <p class="hint" style="margin-top:6px;white-space:pre-wrap" id="polLive"></p>
+        <pre id="polTrace" class="hint" style="display:none;overflow-x:auto;font-size:11px;margin:4px 0"></pre>
+        <div class="row" id="polDiagRow" style="display:none">
+          <button class="secondary" onclick="polCopyDiag()" data-i18n="pol_copy_diag">📋 複製診斷</button>
+        </div>
+        <textarea id="polDiag" readonly style="display:none;width:100%;height:6em;font-size:11px"></textarea>
       </div>
     </section>
 
@@ -1497,7 +1504,7 @@
        3. 中間檔案之間沒有排序依賴（function hoisting），保持原 section 順序方便對照。
      尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
      所以全部 <script src> 一定要行完先到那個 inline script。 -->
-<script src="app-core.js?v=20261031a"></script>
+<script src="app-core.js?v=20261102a"></script>
 <script src="api-client.js?v=20261021a"></script>
 <script src="app-status.js?v=20261020a"></script>
 <script src="app-actions.js?v=20261021b"></script>
@@ -1519,7 +1526,7 @@
 <script src="app-chest.js?v=20261017a"></script>
 <script src="app-actions-pack.js?v=20261001a"></script>
 <script src="app-apk.js?v=20261001a"></script>
-<script src="app-policy.js?v=20261102a"></script>
+<script src="app-policy.js?v=20261102b"></script>
 <script src="app-log.js?v=20261025b"></script>
 
 <!-- ============================================================

@@ -391,8 +391,29 @@ public final class PolicyRunnerTest {
         r = make("zero43.onnx", cfg(20), s, new double[][] {{-9.81 * Math.sin(tot), 0, 9.81 * Math.cos(tot)}}, def);
         runFor(r, 3000);
         eq("fall", r.endReason(), "tilt 60 deg => fall");
-        eq(0, s.n(), "fall: nothing sent");
+        eq(0, s.n(), "fall at start: nothing sent");
+        float[][] tr = r.trace();
+        check(tr.length == 1, "fall at start: trace has 1 row (" + tr.length + ")");
+        check(tr.length > 0 && Math.abs(tr[tr.length - 1][1] - 60) < 1e-3 && Math.abs(tr[0][7] - 9.81 * Math.cos(tot)) < 1e-3, "fall: trace holds tilt and raw accel");
         check(Math.abs(r.tiltDeg() - 60) < 1e-6, "fall: tilt reported");
+
+        // 5b) 單次尖峰唔算跌：第 2 格傾角 60°，其餘正常 ⇒ 繼續跑
+        s = new Sink();
+        c = cfg(20); c.maxRunMs = 300;
+        r = make("zero43.onnx", c, s, new double[][] {UPRIGHT, {-9.81 * Math.sin(tot), 0, 9.81 * Math.cos(tot)}, UPRIGHT}, def);
+        runFor(r, 3000);
+        eq("max_run", r.endReason(), "single tilt spike does not stop the run");
+        check(s.n() >= 5, "spike: kept sending");
+        // 5b2) 持續傾倒：先企直，之後一直 60° ⇒ 連續 3 格超標先停（已送 3 格）
+        s = new Sink();
+        r = make("zero43.onnx", cfg(20), s, new double[][] {UPRIGHT, {-9.81 * Math.sin(tot), 0, 9.81 * Math.cos(tot)}}, def);
+        runFor(r, 3000);
+        eq("fall", r.endReason(), "sustained tilt stops with fall");
+        eq(3, s.n(), "sustained tilt: 3 steps sent before stop");
+        eq(4, r.trace().length, "sustained tilt: trace has 4 rows");
+        // 5c) trace 欄位／行數
+        check(r.trace().length > 0 && r.trace()[0].length == PolicyRunner.TRACE_COLS.length, "trace row width");
+        check(r.trace().length <= PolicyRunner.TRACE_N, "trace is bounded");
 
         // 6) 重力無效
         s = new Sink();
@@ -442,6 +463,19 @@ public final class PolicyRunnerTest {
         t.interrupt(); t.join(3000);
         eq("stopped", r.endReason(), "interrupt => stopped");
         check(!r.isRunning(), "not running after interrupt");
+
+        // 10b) markStarting：線程未跑前 isRunning 已經 true；cancelStart 還原
+        s = new Sink();
+        c = cfg(20); c.maxRunMs = 200;
+        r = make("zero43.onnx", c, s, new double[][] {UPRIGHT}, def);
+        check(!r.isRunning(), "not running before markStarting");
+        r.markStarting();
+        check(r.isRunning(), "running right after markStarting (before the thread starts)");
+        r.cancelStart();
+        check(!r.isRunning(), "cancelStart resets running");
+        r.markStarting();
+        runFor(r, 3000);
+        check(!r.isRunning(), "running cleared after the run ends");
 
         // 11) dry：唔送，但照推進
         s = new Sink();
