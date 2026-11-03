@@ -324,6 +324,10 @@ public final class ApiDispatcher {
                 return policyCenter.beatResponse();
             case "policy/delete":
                 return policyCenter.deleteResponse(query);
+            case "policy/switch":
+                return policyCenter.switchResponse(query);
+            case "policy/unload":
+                return policyCenter.unloadResponse(query);
             case "policy/status":
                 return policyCenter.statusResponse();
 

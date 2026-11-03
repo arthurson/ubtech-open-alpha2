@@ -1,5 +1,9 @@
 package com.ubtechinc.alpha.hardware.policy;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
 /**
  * Policy 控制迴圈（純 Java；由 {@code UbxPlayer.startTask} 放入 play 線程執行，所以原有
  * {@code ubxPlayer.stop()} 搶佔／{@code isPlaying()} 判斷自動適用，同 {@code GaitWalker} 一樣）。
@@ -21,6 +25,18 @@ package com.ubtechinc.alpha.hardware.policy;
  *       （{@code overrun}）——高頻（50Hz）下算或送唔切，繼續跑只會令 policy 喺錯嘅時序下控制機身。</li>
  * </ul>
  * 任何停止都係「舵機保持末位姿」，唔會自動收步（同 {@code ubx/stop} 語義一致）。</p>
+ *
+ * <p>get-up policy（{@link Config#getup}）：由躺低企返起身。起步前（真機）要確認真係躺住喺啱嘅一面（否則 {@code not_lying}，
+ * 唔郁舵機）；先用速度包絡擺去 ref 第 0 格（≥1 秒，同訓練 SETTLE 一致），之後 ref 唔循環、播完維持末格；ref 播緊期間唔查跌倒，
+ * 播完後再撐 {@code hold_s} 秒先完成：有 {@code then} 就交俾嗰個預載 policy，否則 {@code done} 停機（舵機保持企姿）。
+ * 播完後仍然傾倒（傾角連續超標）照舊 {@code fall}，等於「冇企起身」。</p>
+ *
+ * <p>多 policy 預載＋即時切換（Microduck 式 hot-swap）：runner 持有一組 {@link Slot}（已載入嘅 policy，
+ * 各自帶自己嘅 {@link Config}：period／act_scale／obs 類型／ref／速度包絡），同一時間只有一個 slot 控制機身。
+ * {@link #requestSwitch} 喺下一格開頭生效（唔打斷進行中嘅格）：換入新 slot 嘅 period／move 時間／速度包絡，
+ * walk ref 由頭（起步段）開始，而 {@code prev action} 會由上一格嘅目標 q 換算成新 policy 嘅 action 單位
+ * （{@link #convertPrev}），令新 policy 見到同上一個目標一致嘅「上一個動作」。Lease／max_run／overrun 等會話級
+ * 設定沿用起步 slot。</p>
  */
 public final class PolicyRunner implements Runnable {
 
@@ -60,6 +76,21 @@ public final class PolicyRunner implements Runnable {
             return o;
         }
         double phase(double pos) { return pos >= loopA ? 2 * Math.PI * (pos - loopA) / (loopB - loopA) : -1; }
+        /** get-up 用（唔循環）：位置 pos 嘅 ref，格間線性內插，超出末格就維持末格姿勢（同 GetUpEnv.ref_q 一致）。 */
+        double[] atHold(double pos) {
+            int last = q.length - 1;
+            if (pos <= 0) return q[0];
+            if (pos >= last) return q[last];
+            int i = (int) Math.floor(pos);
+            double f = pos - i;
+            if (f < 1e-9) return q[i];
+            double[] a = q[i], b = q[i + 1], o = new double[Alpha2PolicyIo.N];
+            for (int k = 0; k < o.length; k++) o[k] = a[k] + f * (b[k] - a[k]);
+            return o;
+        }
+        /** ref 總格數 T。 */
+        public int frames() { return q.length; }
+        public double dtSec() { return dtSec; }
     }
 
     /** 設定（由 manifest 轉入）。 */
@@ -80,10 +111,36 @@ public final class PolicyRunner implements Runnable {
         public int overrunLimit = 10;              // 遲到格數達呢個值即停（"overrun"）
         public int fallConsecutive = 3;            // 連續幾多格傾角超標先當 fall（濾走單次尖峰）
         public Ref ref;                            // obsDim==65 先用
+        // get-up（由躺低企返起身；ref 唔循環，obs 尾二格係 [progress, over]）
+        public boolean getup = false;
+        public String lying = "";                  // 要求起步時躺住嘅方向 "back"／"front"（真機先查；dry 唔查）
+        public double holdS = 3.0;                 // ref 播完後再撐幾耐先當完成
+        public String then = "";                   // 完成後交俾嘅預載 slot 名（空＝停機："done"）
     }
 
-    private final OnnxMlp model;
-    private final Config cfg;
+    /** get-up 起步前先慢慢擺去 ref 第 0 格（同訓練 env 嘅 SETTLE 一致：先喺地上守 1 秒），最長等咁耐。 */
+    static final long GETUP_SETTLE_MIN_MS = 1000, GETUP_SETTLE_MAX_MS = 6000;
+
+    /** 一個已載入嘅 policy（名＋模型＋佢自己嘅設定）。同一 runner 內 name 唯一。 */
+    public static final class Slot {
+        public final String name;
+        public final OnnxMlp model;
+        public final Config cfg;
+        public Slot(String name, OnnxMlp model, Config cfg) {
+            if (name == null || name.isEmpty() || model == null || cfg == null) throw new IllegalArgumentException("null arg");
+            this.name = name; this.model = model; this.cfg = cfg;
+        }
+    }
+
+    static final String DEFAULT_SLOT = "policy";
+    private static final int SWITCH_LOG_N = 16;
+
+    private final CopyOnWriteArrayList<Slot> slots = new CopyOnWriteArrayList<Slot>();
+    private volatile Slot active;                  // 而家控制機身嘅 slot
+    private volatile String pendingSwitch;         // 下一格開頭要換入嘅 slot 名（null＝冇）
+    private volatile int switches;                 // 已生效嘅切換次數
+    private final List<String> switchLog = new ArrayList<String>();   // 最近 SWITCH_LOG_N 次："step:from>to"
+    private final Config cfg;                      // 會話級設定（lease／max_run／dry／overrun…），取自起步 slot
     private final Sender sender;
     private final AccelSource accel;
     private final PoseSource poseSrc;
@@ -105,10 +162,40 @@ public final class PolicyRunner implements Runnable {
     private volatile long maxStepUs;        // 單格（推論＋送出）最長耗時
     private volatile long maxSendUs;        // 單次送出最長耗時
 
+    /** 單 policy（舊 API）：等同只有一個叫 {@value #DEFAULT_SLOT} 嘅 slot。 */
     public PolicyRunner(OnnxMlp model, Config cfg, Sender sender, AccelSource accel, PoseSource pose) {
-        if (model == null || cfg == null || sender == null || accel == null || pose == null) {
+        this(singleSlot(model, cfg), DEFAULT_SLOT, sender, accel, pose);
+    }
+
+    private static List<Slot> singleSlot(OnnxMlp model, Config cfg) {
+        if (model == null || cfg == null) throw new IllegalArgumentException("null arg");
+        List<Slot> l = new ArrayList<Slot>();
+        l.add(new Slot(DEFAULT_SLOT, model, cfg));
+        return l;
+    }
+
+    /** 多 policy：{@code init} 係預載嘅 slot（名唯一），{@code activeName} 係起步嗰個。 */
+    public PolicyRunner(List<Slot> init, String activeName, Sender sender, AccelSource accel, PoseSource pose) {
+        if (init == null || init.isEmpty() || activeName == null || sender == null || accel == null || pose == null) {
             throw new IllegalArgumentException("null arg");
         }
+        Slot start = null;
+        for (Slot sl : init) {
+            checkSlot(sl);
+            for (Slot o : slots) if (o.name.equals(sl.name)) throw new IllegalArgumentException("duplicate slot " + sl.name);
+            slots.add(sl);
+            if (sl.name.equals(activeName)) start = sl;
+        }
+        if (start == null) throw new IllegalArgumentException("active slot not preloaded: " + activeName);
+        this.active = start;
+        this.cfg = start.cfg;
+        this.sender = sender; this.accel = accel; this.poseSrc = pose;
+    }
+
+    /** 每個 slot 嘅設定驗證（同舊單 policy 構造器一致）。 */
+    private static void checkSlot(Slot sl) {
+        Config cfg = sl.cfg;
+        OnnxMlp model = sl.model;
         if (cfg.lo == null || cfg.hi == null || cfg.lo.length < 20 || cfg.hi.length < 20) {
             throw new IllegalArgumentException("need servo limits for 20 axes");
         }
@@ -121,11 +208,81 @@ public final class PolicyRunner implements Runnable {
         if (cfg.obsDim == Alpha2PolicyIo.OBS_WALK && cfg.ref == null) {
             throw new IllegalArgumentException("walk policy (obs 65) needs a ref");
         }
+        if (cfg.getup && cfg.obsDim != Alpha2PolicyIo.OBS_WALK) throw new IllegalArgumentException("getup policy needs obs 65");
+        if (cfg.getup && !(cfg.holdS >= 0)) throw new IllegalArgumentException("hold_s < 0");
         if (cfg.obsDim != Alpha2PolicyIo.OBS_STAND && cfg.obsDim != Alpha2PolicyIo.OBS_WALK) {
             throw new IllegalArgumentException("unsupported obs_dim " + cfg.obsDim + " (43 or 65)");
         }
         if (cfg.periodMs < 1) throw new IllegalArgumentException("period_ms < 1");
-        this.model = model; this.cfg = cfg; this.sender = sender; this.accel = accel; this.poseSrc = pose;
+    }
+
+    // -- 多 policy：預載／切換 ------------------------------------------------
+
+    private Slot find(String name) {
+        for (Slot s : slots) if (s.name.equals(name)) return s;
+        return null;
+    }
+
+    /** 而家控制機身嘅 slot 名。 */
+    public String activeName() { return active.name; }
+    /** 已排隊、下一格先生效嘅切換目標（冇＝null）。 */
+    public String pendingSwitch() { return pendingSwitch; }
+    /** 已生效嘅切換次數。 */
+    public int switches() { return switches; }
+    /** 預載咗嘅 slot 名（載入次序）。 */
+    public List<String> slotNames() {
+        List<String> n = new ArrayList<String>();
+        for (Slot s : slots) n.add(s.name);
+        return n;
+    }
+    /** 最近嘅切換記錄（舊→新），每項 "step:from>to"。 */
+    public synchronized List<String> switchLog() { return new ArrayList<String>(switchLog); }
+
+    /**
+     * 要求喺下一格開頭切換去已預載嘅 slot。回空字串＝已接受（切去而家嗰個＝冇事做）；否則係拒絕原因。
+     * 唔會喺呢度打斷進行中嘅格——由控制線程喺格與格之間換入，所以任何線程都可以安全呼叫。
+     */
+    public String requestSwitch(String name) {
+        if (name == null || find(name) == null) return "policy not preloaded in this run: " + name;
+        if (!running) return "not running";
+        pendingSwitch = name.equals(active.name) ? null : name;
+        return "";
+    }
+
+    /** 加入（或取代同名但未被用緊嘅）slot；而家用緊／排緊切換嘅唔准取代，throw IllegalStateException。 */
+    public synchronized void putSlot(Slot sl) {
+        checkSlot(sl);
+        Slot old = find(sl.name);
+        if (old != null) {
+            if (old == active || sl.name.equals(pendingSwitch)) throw new IllegalStateException("slot in use: " + sl.name);
+            slots.remove(old);
+        }
+        slots.add(sl);
+    }
+
+    /** 移除 slot；而家用緊／排緊切換嘅唔准，throw IllegalStateException。冇呢個 slot 回 false。 */
+    public synchronized boolean removeSlot(String name) {
+        Slot old = find(name);
+        if (old == null) return false;
+        if (old == active || name.equals(pendingSwitch)) throw new IllegalStateException("slot in use: " + name);
+        slots.remove(old);
+        return true;
+    }
+
+    /**
+     * 切換時嘅「上一個動作」換算：新 policy 要見到同上一個目標 q 一致嘅 prev action，即
+     * {@code (lastTarget - newBase) / newActScale}，clip 到 [-1,1]（超出範圍＝新 policy 夠唔到嗰個目標）。
+     */
+    static float[] convertPrev(double[] lastTarget, double[] newBase, double newActScale) {
+        float[] p = new float[Alpha2PolicyIo.N];
+        if (lastTarget == null) return p;
+        for (int i = 0; i < p.length; i++) {
+            double a = (lastTarget[i] - newBase[i]) / newActScale;
+            if (a > 1) a = 1;
+            if (a < -1) a = -1;
+            p[i] = (float) a;
+        }
+        return p;
     }
 
     public void beat() { lastBeatMs = System.currentTimeMillis(); }
@@ -163,7 +320,7 @@ public final class PolicyRunner implements Runnable {
     }
     public long maxStepUs() { return maxStepUs; }
     public long maxSendUs() { return maxSendUs; }
-    public Config config() { return cfg; }
+    public Config config() { return active.cfg; }
 
     @Override
     public void run() {
@@ -183,6 +340,12 @@ public final class PolicyRunner implements Runnable {
         }
     }
 
+    /** policy 嘅殘差基準：walk＝ref 位置 pos 嘅 q，stand＝預設姿勢 q0。 */
+    private static double[] baseOf(Config c, double pos, double[] q0) {
+        if (c.getup) return c.ref.atHold(pos);
+        return c.obsDim == Alpha2PolicyIo.OBS_WALK ? c.ref.at(pos) : q0;
+    }
+
     private String loop(long t0) throws InterruptedException {
         int[] cur = poseSrc.pose();
         if (cur == null) return "pose_unknown";
@@ -192,10 +355,16 @@ public final class PolicyRunner implements Runnable {
         double[] gLast = null;
         int badG = 0, sendFails = 0, t = 0, fallRun = 0;
         synchronized (this) { traceCount = 0; }
-        int moveMs = Math.max(20, Math.round(cfg.periodMs * cfg.moveOverlap));
-        double maxStepDeg = cfg.maxSpeedDps * moveMs / 1000.0;
+        Slot sl = active;
+        Config sc = sl.cfg;                   // 而家 slot 嘅設定（切換時換）
+        int moveMs = Math.max(20, Math.round(sc.periodMs * sc.moveOverlap));
+        double maxStepDeg = sc.maxSpeedDps * moveMs / 1000.0;
         // walk：ref 隨真實時間推進（period/dt 格／步），唔係固定一格——period 同 ref.dt 唔同都對得上。
-        double framesPerStep = cfg.ref != null ? cfg.ref.framesPerStep(cfg.periodMs) : 1.0;
+        double framesPerStep = sc.ref != null ? sc.ref.framesPerStep(sc.periodMs) : 1.0;
+        int ts = 0;                           // 呢個 slot 入面嘅步數（ref 位置用；切換時歸零）
+        boolean settling = sc.getup;          // get-up：先擺去 ref 第 0 格（唔行 policy、ref 唔前進）
+        int settleSteps = 0;
+        double[] lastTarget = null;           // 上一格 policy 嘅目標 q（切換時換算 prev action）
         long next = System.currentTimeMillis();
         boolean[] lateRing = new boolean[Math.max(1, cfg.overrunWindow)];
         int ringIdx = 0, lateInWindow = 0;
@@ -206,9 +375,48 @@ public final class PolicyRunner implements Runnable {
             if (now - t0 > cfg.maxRunMs) return "max_run";
             if (cfg.leaseMs > 0 && now - lastBeatMs > cfg.leaseMs) return "lease";
 
+            // 切換：喺格開頭生效（上一格嘅 move 已經送出，唔會打斷）。
+            String pend = pendingSwitch;
+            if (pend != null) {
+                pendingSwitch = null;
+                Slot ns = find(pend);
+                if (ns != null && ns != sl) {
+                    Config nc = ns.cfg;
+                    prev = convertPrev(lastTarget, baseOf(nc, 0, q0), nc.actScale);
+                    String from = sl.name;
+                    sl = ns; sc = nc; active = ns;
+                    moveMs = Math.max(20, Math.round(sc.periodMs * sc.moveOverlap));
+                    maxStepDeg = sc.maxSpeedDps * moveMs / 1000.0;
+                    framesPerStep = sc.ref != null ? sc.ref.framesPerStep(sc.periodMs) : 1.0;
+                    ts = 0;
+                    settling = nc.getup; settleSteps = 0;
+                    fallRun = 0;
+                    lastTarget = null;
+                    next = now;                                   // period 變咗：重設節拍同遲到統計
+                    java.util.Arrays.fill(lateRing, false);
+                    lateInWindow = 0;
+                    switches++;
+                    synchronized (this) {
+                        if (switchLog.size() >= SWITCH_LOG_N) switchLog.remove(0);
+                        switchLog.add(t + ":" + from + ">" + ns.name);
+                    }
+                }
+            }
+
+            // get-up：ref 位置（settle 期間釘喺第 0 格）；ref 播完再撐 hold_s 就完成。
+            double pos = settling ? 0.0 : ts * framesPerStep;
+            if (sc.getup && !settling) {
+                double total = sc.ref.frames() + sc.holdS / sc.ref.dtSec();
+                if (pos >= total) {
+                    Slot nx = sc.then.isEmpty() ? null : find(sc.then);
+                    if (nx != null && nx != sl) { pendingSwitch = nx.name; continue; }   // 交俾 then（下一輪開頭換入）
+                    return "done";
+                }
+            }
+
             double[] q = Alpha2PolicyIo.servoToQ(cur);
             double[] aRaw = accel.accel();
-            double[] g = Alpha2PolicyIo.gravityBase(aRaw, cfg.axes, q[18], q[19]);
+            double[] g = Alpha2PolicyIo.gravityBase(aRaw, sc.axes, q[18], q[19]);
             float[] row = traceRow();
             row[0] = t;
             if (aRaw != null) { row[5] = (float) aRaw[0]; row[6] = (float) aRaw[1]; row[7] = (float) aRaw[2]; }
@@ -225,14 +433,20 @@ public final class PolicyRunner implements Runnable {
             row[1] = (float) tiltDeg;
             // 連續 fallConsecutive 格超標先停：單次尖峰（行路時嘅線加速度）唔算跌。
             // 起步嗰格（t==0）已經超標＝開始時已經倒／歪咗，唔准郁，即停。
-            if (tilt > cfg.tiltLimitRad) { if (t == 0 || ++fallRun >= cfg.fallConsecutive) return "fall"; }
+            // get-up：起步已躺低，ref 播緊期間唔查跌（訓練 env 都唔因跌倒終止）；起步前（真機）要確認真係躺住喺啱嘅一面。
+            boolean guRun = sc.getup && pos < sc.ref.frames();
+            if (sc.getup && ts == 0 && settleSteps == 0 && !cfg.dry && !sc.lying.equals(Alpha2PolicyIo.lyingKind(g))) return "not_lying";
+            if (guRun) fallRun = 0;
+            else if (tilt > sc.tiltLimitRad) { if (t == 0 || ++fallRun >= cfg.fallConsecutive) return "fall"; }
             else fallRun = 0;
 
-            float[] obs = cfg.obsDim == Alpha2PolicyIo.OBS_WALK
-                    ? Alpha2PolicyIo.obsWalk(q, prev, g, cfg.ref.at(t * framesPerStep), cfg.ref.phase(t * framesPerStep))
+            float[] obs = sc.getup
+                    ? Alpha2PolicyIo.obsGetUp(q, prev, g, sc.ref.atHold(pos), pos / sc.ref.frames(), pos >= sc.ref.frames())
+                    : sc.obsDim == Alpha2PolicyIo.OBS_WALK
+                    ? Alpha2PolicyIo.obsWalk(q, prev, g, sc.ref.at(ts * framesPerStep), sc.ref.phase(ts * framesPerStep))
                     : Alpha2PolicyIo.obsStand(q, prev, g);
             long i0 = System.nanoTime();
-            float[] act = model.run(obs);
+            float[] act = settling ? new float[Alpha2PolicyIo.N] : sl.model.run(obs);   // settle＝零殘差，直接守 ref[0]
             lastInferUs = (System.nanoTime() - i0) / 1000;
             for (int i = 0; i < act.length; i++) {
                 if (Float.isNaN(act[i]) || Float.isInfinite(act[i])) return "bad_action";
@@ -242,8 +456,10 @@ public final class PolicyRunner implements Runnable {
             float maxAct = 0f;
             for (float x : act) maxAct = Math.max(maxAct, Math.abs(x));
             row[8] = maxAct;
-            double[] base = cfg.obsDim == Alpha2PolicyIo.OBS_WALK ? cfg.ref.at(t * framesPerStep) : q0;
-            int[] want = Alpha2PolicyIo.qToServo(Alpha2PolicyIo.targetQ(base, act, cfg.actScale), cfg.lo, cfg.hi);
+            double[] base = baseOf(sc, pos, q0);
+            double[] tq = Alpha2PolicyIo.targetQ(base, act, sc.actScale);
+            lastTarget = tq;
+            int[] want = Alpha2PolicyIo.qToServo(tq, sc.lo, sc.hi);
             int[] cmd = new int[Alpha2PolicyIo.N];
             for (int i = 0; i < cmd.length; i++) {
                 long d = want[i] - cur[i];
@@ -272,16 +488,25 @@ public final class PolicyRunner implements Runnable {
             cur = cmd;
             prev = act;
             t++;
+            if (settling) {
+                settleSteps++;
+                long ms = (long) settleSteps * sc.periodMs;
+                boolean reached = true;
+                for (int i = 0; i < cmd.length; i++) if (Math.abs(cmd[i] - want[i]) > 1) reached = false;
+                if ((ms >= GETUP_SETTLE_MIN_MS && reached) || ms >= GETUP_SETTLE_MAX_MS) settling = false;
+            } else {
+                ts++;
+            }
             steps = t;
 
             long stepUs = (System.nanoTime() - s0) / 1000;
             row[10] = stepUs / 1000f;
             if (stepUs > maxStepUs) maxStepUs = stepUs;
 
-            next += cfg.periodMs;
+            next += sc.periodMs;
             long wait = next - System.currentTimeMillis();
             // 遲到＝比預定時間晚過半個 period（高頻下代表算／送唔切）；視窗內太多即停。
-            boolean late = wait < -(cfg.periodMs / 2);
+            boolean late = wait < -(sc.periodMs / 2);
             if (lateRing[ringIdx]) lateInWindow--;
             lateRing[ringIdx] = late;
             if (late) { lateInWindow++; overruns++; }

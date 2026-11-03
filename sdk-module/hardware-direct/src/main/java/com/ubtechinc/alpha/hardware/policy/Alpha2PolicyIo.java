@@ -148,7 +148,34 @@ public final class Alpha2PolicyIo {
         return o;
     }
 
-    /** 由 action（已 clip 到 [-1,1]）算目標 q。base＝q0（stand）或 ref_q（walk 殘差）。 */
+    /**
+     * get-up obs（65）＝stand obs（43）＋ (ref_q − q0)（20）＋ [min(t/T,1), t>=T ? 1 : 0]
+     * （同 ubtech-alpha2-urdf rl/alpha2_env.py 嘅 GetUpEnv._gobs 一致；t＝ref 格位置，T＝ref 總格數）。
+     */
+    public static float[] obsGetUp(double[] q, float[] prevAct, double[] g, double[] refQ, double progress, boolean over) {
+        float[] s = obsStand(q, prevAct, g);
+        float[] o = new float[OBS_WALK];
+        System.arraycopy(s, 0, o, 0, OBS_STAND);
+        double[] q0 = qDefault();
+        for (int i = 0; i < N; i++) o[OBS_STAND + i] = (float) (refQ[i] - q0[i]);
+        o[63] = (float) Math.min(Math.max(progress, 0.0), 1.0);
+        o[64] = over ? 1f : 0f;
+        return o;
+    }
+
+    /** 躺低方向：重力喺機身座標嘅 x 分量主導。GetUpEnv 嘅起始姿勢：back＝(-1,0,0)，front＝(+1,0,0)。 */
+    public static final String LYING_BACK = "back", LYING_FRONT = "front";
+    public static final double LYING_X_MIN = 0.8;      // |g_x| ≥ 0.8（離躺平 ≤ ~37°）先當躺低
+
+    /** @return "back"／"front"（躺低）；否則 ""（企住、側躺或唔明）。 */
+    public static String lyingKind(double[] g) {
+        if (g == null || g.length < 3) return "";
+        if (g[0] <= -LYING_X_MIN) return LYING_BACK;
+        if (g[0] >= LYING_X_MIN) return LYING_FRONT;
+        return "";
+    }
+
+    /** 由 action（已 clip 到 [-1,1]）算目標 q。base＝q0（stand）或 ref_q（walk／get-up 殘差）。 */
     public static double[] targetQ(double[] base, float[] action, double actScale) {
         double[] t = new double[N];
         for (int i = 0; i < N; i++) {

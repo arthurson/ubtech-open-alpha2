@@ -22,7 +22,10 @@ import java.io.FileInputStream;
 import java.io.InputStream;
 import java.security.MessageDigest;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -40,12 +43,21 @@ import java.util.zip.ZipInputStream;
  * 真機要明確 {@code dry=false}，而且 manifest 必須通過 sha256 吻合、selftest 通過、加速度計有數、
  * 命令位姿已知。Policy 永遠按自己訓練嘅 control_hz 跑；period &lt; 200ms（例如 50 Hz）嘅高頻
  * policy 真機要再加 {@code fast=true}（實驗：實機穩定性未驗證，靠 overrun 偵測自保）。</p>
+ *
+ * <p>多 policy 預載＋即時切換（Microduck 式 hot-swap）：{@code policy/load} 係「加入預載組（bank）」而唔係取代，
+ * 最多 {@link #MAX_BANK} 個／合共 {@link #MAX_BANK_BYTES} bytes（呢個上限係 Alpha2 自己定嘅，Microduck 冇公開硬上限）。
+ * 同一時間只有一個 policy 控制機身；{@code policy/switch} 喺運行中即時切換（下一格開頭生效，換入新 policy 嘅
+ * period／速度包絡／ref，prev action 由上一個目標換算，見 {@link PolicyRunner}）。真機運行只會預載「有資格」
+ * 嘅 policy（通過 sha256／selftest，非 fast 唔含高頻 policy）；唔合資格嘅會留喺 bank 但唔入 runner，切換被拒。</p>
  */
 public final class PolicyCenter {
     private static final String TAG = "PolicyCenter";
     private static final int ACCEL_MAX_AGE_MS = 500;
     private static final long MAX_ONNX_BYTES = 4L * 1024 * 1024;
     private static final long MAX_SMALL_BYTES = 2L * 1024 * 1024;
+    /** 預載組上限（Alpha2 自訂，防記憶體耗盡；每個 .onnx 另受 MAX_ONNX_BYTES 限制）。 */
+    public static final int MAX_BANK = 8;
+    public static final long MAX_BANK_BYTES = 16L * 1024 * 1024;
 
     private static final class Loaded {
         PolicyManifest man;
@@ -59,6 +71,7 @@ public final class PolicyCenter {
         String selftestInfo = "";
         String realBlock = "";   // 非空＝唔准真機（原因；唔計 fast）
         boolean needsFast;       // period < 200ms：真機要 fast=true
+        long onnxBytes;          // policy.onnx 檔案大小（bank 總量上限用）
         String fastBlock = "";   // 非空＝連 fast 都唔准（例如 period < 20ms）
     }
 
@@ -66,10 +79,15 @@ public final class PolicyCenter {
     private final UbxPlayer ubxPlayer;
     private final DeviceStatus deviceStatus;
 
+    /** 預載組（bank）：name → 已驗證嘅 policy。同步靠 synchronized(this)。 */
+    private final Map<String, Loaded> bank = new LinkedHashMap<String, Loaded>();
+    /** 揀咗嘅 policy：下一次 start 嘅目標；運行中跟住最近一次 switch，面板顯示用。 */
     private volatile Loaded loaded;
     private volatile PolicyRunner runner;
     private volatile boolean runnerDry = true;
     private volatile boolean runnerFast = false;
+    private volatile float runSpeedOverride = 0f;   // 本次運行嘅覆寫（之後預載嘅 policy 都跟）
+    private volatile float runTiltOverride = 0f;
     private volatile String lastError = "";
 
     public PolicyCenter(Context context, UbxPlayer ubxPlayer, DeviceStatus deviceStatus) {
@@ -117,6 +135,9 @@ public final class PolicyCenter {
         m.schema = o.optInt("schema", 1);
         m.name = o.optString("name", "");
         m.obs = o.optString("obs", "stand");
+        m.task = o.optString("task", "");
+        m.holdS = o.optDouble("hold_s", m.holdS);
+        m.then = o.optString("then", "");
         m.obsDim = o.optInt("obs_dim", 0);
         m.actionDim = o.optInt("action_dim", 20);
         m.actScale = o.optDouble("act_scale", m.actScale);
@@ -154,10 +175,11 @@ public final class PolicyCenter {
             if (!l.man.sha256.equals(digest)) throw new IllegalArgumentException("policy.onnx sha256 mismatch (manifest " + l.man.sha256 + ", file " + digest + ")");
             l.hashOk = true;
         }
+        l.onnxBytes = onnx.length;
         l.model = OnnxMlp.load(onnx);
         if (l.model.inputDim() != l.man.obsDim) throw new IllegalArgumentException("model input " + l.model.inputDim() + " != manifest obs_dim " + l.man.obsDim);
         if (l.model.outputDim() != Alpha2PolicyIo.N) throw new IllegalArgumentException("model output " + l.model.outputDim() + " != 20");
-        if ("walk".equals(l.man.obs)) {
+        if ("walk".equals(l.man.obs) || "getup".equals(l.man.obs)) {
             JSONObject r = new JSONObject(new String(readAll(new File(dir, l.man.ref), MAX_SMALL_BYTES), "UTF-8"));
             JSONArray qa = r.getJSONArray("q");
             double[][] q = new double[qa.length()][];
@@ -166,8 +188,13 @@ public final class PolicyCenter {
                 q[i] = new double[row.length()];
                 for (int j = 0; j < row.length(); j++) q[i][j] = row.getDouble(j);
             }
-            JSONArray lp = r.getJSONArray("loop");
-            l.ref = new PolicyRunner.Ref(q, lp.getInt(0), lp.getInt(1), r.optDouble("dt", 0.02));
+            if ("getup".equals(l.man.obs)) {
+                // get-up：ref 唔循環（播完維持末格）；loop 參數 runner 唔用，填成全段。
+                l.ref = new PolicyRunner.Ref(q, 0, q.length, r.optDouble("dt", 0.02));
+            } else {
+                JSONArray lp = r.getJSONArray("loop");
+                l.ref = new PolicyRunner.Ref(q, lp.getInt(0), lp.getInt(1), r.optDouble("dt", 0.02));
+            }
         }
         runSelftest(l, new File(dir, "selftest.json"));
         String[] why = new String[1];
@@ -213,7 +240,59 @@ public final class PolicyCenter {
         return r != null && r.isRunning();
     }
 
-    private synchronized HttpServer.ApiResponse start(boolean dry, boolean fast, float speedOverride, float tiltOverride) {
+    /** 真機（非 dry）時，呢個 policy 可唔可以入 runner：通過資格檢查，而且高頻 policy 要本次運行有 fast。 */
+    private static boolean eligible(Loaded b, boolean dry, boolean fast) {
+        return dry || (b.realBlock.isEmpty() && (!b.needsFast || fast));
+    }
+
+    private static String ineligibleReason(Loaded b, boolean fast) {
+        if (!b.realBlock.isEmpty()) return b.realBlock;
+        if (b.needsFast && !fast) return "high-rate policy (period " + b.man.periodMs() + " ms < " + PolicyManifest.MIN_PERIOD_MS
+                + " ms floor) needs a run started with fast=true";
+        return "";
+    }
+
+    /** 每個 policy 自己嘅 runner 設定（period／act_scale／ref／速度包絡…）；speed／tilt 覆寫套用於所有 slot。 */
+    private PolicyRunner.Config buildConfig(Loaded l, boolean dry, float speedOverride, float tiltOverride) {
+        PolicyRunner.Config c = new PolicyRunner.Config();
+        PolicyManifest m = l.man;
+        // Policy 永遠按自己嘅 control_hz 跑（唔放慢）；非 fast 且 period < 200ms 嘅只可能係 dry（真機已擋）。
+        c.periodMs = Math.max(m.periodMs(), dry ? 1 : PolicyManifest.FAST_MIN_PERIOD_MS);
+        c.moveOverlap = (float) m.moveOverlap;
+        c.actScale = m.actScale;
+        c.obsDim = m.obsDim;
+        c.axes = Alpha2PolicyIo.parseAxes(m.accelAxes);
+        c.lo = new int[Alpha2PolicyIo.N];
+        c.hi = new int[Alpha2PolicyIo.N];
+        for (int i = 0; i < Alpha2PolicyIo.N; i++) {
+            c.lo[i] = ApiValidator.servoCalMin(i + 1);
+            c.hi[i] = ApiValidator.servoCalMax(i + 1);
+        }
+        c.maxSpeedDps = speedOverride > 0 ? speedOverride : m.maxSpeedDps;
+        c.tiltLimitRad = Math.toRadians(tiltOverride > 0 ? tiltOverride : m.tiltLimitDeg);
+        c.leaseMs = m.leaseMs;
+        c.maxRunMs = m.maxRunS * 1000L;
+        c.dry = dry;
+        c.ref = l.ref;
+        if ("getup".equals(m.obs)) {
+            c.getup = true;
+            c.lying = m.lyingSide();
+            c.holdS = m.holdS;
+            c.then = m.then;
+            // 運行時間至少夠：settle（最長 6 s）＋ ref ＋ hold ＋ 餘裕，唔好俾 manifest 嘅 max_run_s 提早切斷起身動作。
+            long need = (long) ((6.0 + l.ref.frames() * l.ref.dtSec() + m.holdS + 10.0) * 1000);
+            if (c.maxRunMs < need) c.maxRunMs = need;
+        }
+        return c;
+    }
+
+    private synchronized HttpServer.ApiResponse start(String name, boolean dry, boolean fast, float speedOverride, float tiltOverride) {
+        // 可選 name：由預載組揀起步 policy（運行中再叫 start 只係續租約，唔改揀選——要換就用 policy/switch）。
+        if (name != null && !name.isEmpty() && !running()) {
+            Loaded pick = bank.get(name);
+            if (pick == null) return HttpServer.ApiResponse.badRequest("policy not preloaded: " + name + " (policy/load first)");
+            loaded = pick;
+        }
         Loaded l = loaded;
         if (l == null) return HttpServer.ApiResponse.badRequest("no policy loaded (policy/load first)");
         if (running()) { runner.beat(); return statusResponse(); }   // 同 walk/start 一樣：再叫即續租約
@@ -233,30 +312,18 @@ public final class PolicyCenter {
             q.put("on", "true");
             deviceStatus.accelerometerSet(q);
         }
-        PolicyRunner.Config c = new PolicyRunner.Config();
         PolicyManifest m = l.man;
-        // Policy 永遠按自己嘅 control_hz 跑（唔放慢）；非 fast 且 period < 200ms 嘅只可能係 dry（上面已擋真機）。
-        c.periodMs = Math.max(m.periodMs(), dry ? 1 : PolicyManifest.FAST_MIN_PERIOD_MS);
-        c.moveOverlap = (float) m.moveOverlap;
-        c.actScale = m.actScale;
-        c.obsDim = m.obsDim;
-        c.axes = Alpha2PolicyIo.parseAxes(m.accelAxes);
-        c.lo = new int[Alpha2PolicyIo.N];
-        c.hi = new int[Alpha2PolicyIo.N];
-        for (int i = 0; i < Alpha2PolicyIo.N; i++) {
-            c.lo[i] = ApiValidator.servoCalMin(i + 1);
-            c.hi[i] = ApiValidator.servoCalMax(i + 1);
+        PolicyRunner.Config c = buildConfig(l, dry, speedOverride, tiltOverride);
+        // 預載組入面全部合資格嘅 policy 一齊入 runner（起步嗰個一定合資格：上面已擋）。
+        List<PolicyRunner.Slot> slots = new ArrayList<PolicyRunner.Slot>();
+        for (Loaded b : bank.values()) {
+            if (!eligible(b, dry, fast)) continue;
+            slots.add(new PolicyRunner.Slot(b.man.name, b.model, b == l ? c : buildConfig(b, dry, speedOverride, tiltOverride)));
         }
-        c.maxSpeedDps = speedOverride > 0 ? speedOverride : m.maxSpeedDps;
-        c.tiltLimitRad = Math.toRadians(tiltOverride > 0 ? tiltOverride : m.tiltLimitDeg);
-        c.leaseMs = m.leaseMs;
-        c.maxRunMs = m.maxRunS * 1000L;
-        c.dry = dry;
-        c.ref = l.ref;
         final boolean fdry = dry;
         PolicyRunner r;
         try {
-            r = new PolicyRunner(l.model, c, new PolicyRunner.Sender() {
+            r = new PolicyRunner(slots, m.name, new PolicyRunner.Sender() {
                 @Override public boolean send(int[] angles, int timeMs) {
                     try {
                         if (chest.playAllServos(angles, (short) timeMs)) {
@@ -283,7 +350,7 @@ public final class PolicyCenter {
         // 普通動作播放中：搶佔（同 WalkCenter 一致）。
         if (ubxPlayer.isPlaying()) ubxPlayer.stop();
         final PolicyRunner fr = r;
-        final boolean quiet = !dry && c.periodMs < PolicyManifest.MIN_PERIOD_MS;
+        final boolean quiet = !dry && fast;        // fast＝實驗高頻模式：關閉每幀 TX log（切換後可能跑 20ms policy）
         Runnable task = new Runnable() {
             @Override public void run() {
                 try {
@@ -311,10 +378,65 @@ public final class PolicyCenter {
         runner = r;
         runnerDry = dry;
         runnerFast = fast;
+        runSpeedOverride = speedOverride;
+        runTiltOverride = tiltOverride;
         lastError = "";
         return statusResponse();
     }
 
+
+    // -- 預載組（bank）-------------------------------------------------------
+
+    /** 呢個 policy 而家係咪運行會話入面用緊／排緊切換嘅目標（用緊嘅唔准取代／移除）。 */
+    private boolean inUse(String name) {
+        PolicyRunner r = runner;
+        return r != null && r.isRunning() && (name.equals(r.activeName()) || name.equals(r.pendingSwitch()));
+    }
+
+    /** 檢查加入 l 會唔會超出預載組上限（唔改任何嘢）。呼叫者持鎖。 */
+    private void bankCheck(Loaded l) {
+        String n = l.man.name;
+        if (!bank.containsKey(n) && bank.size() >= MAX_BANK) {
+            throw new IllegalArgumentException("preload bank full (" + MAX_BANK + " policies): policy/unload one first");
+        }
+        long total = l.onnxBytes;
+        for (Loaded b : bank.values()) if (!b.man.name.equals(n)) total += b.onnxBytes;
+        if (total > MAX_BANK_BYTES) {
+            throw new IllegalArgumentException("preload bank too large (" + total + " > " + MAX_BANK_BYTES + " bytes of .onnx): policy/unload one first");
+        }
+    }
+
+    /** 加入／取代預載組；運行中同步入 runner（取代同名閒置 slot；用緊嘅 policy 唔准取代）。呼叫者持鎖。 */
+    private void bankPut(Loaded l) {
+        bankCheck(l);
+        String n = l.man.name;
+        PolicyRunner r = runner;
+        if (r != null && r.isRunning()) {
+            try {
+                if (eligible(l, runnerDry, runnerFast)) {
+                    r.putSlot(new PolicyRunner.Slot(n, l.model, buildConfig(l, runnerDry, runSpeedOverride, runTiltOverride)));
+                } else {
+                    r.removeSlot(n);        // 新版唔合資格：舊版都唔應該留喺 runner
+                }
+            } catch (IllegalStateException e) {
+                throw new IllegalArgumentException("policy '" + n + "' is in use by the running session: policy/switch to another one first");
+            }
+        }
+        bank.put(n, l);
+    }
+
+    /** 由預載組（同運行中嘅 runner）移除；呼叫者持鎖，並且已經確認唔係用緊。 */
+    private void bankRemove(String name) {
+        PolicyRunner r = runner;
+        if (r != null && r.isRunning()) {
+            try { r.removeSlot(name); } catch (IllegalStateException e) { /* inUse 已擋；競態下保守保留 */ return; }
+        }
+        bank.remove(name);
+        Loaded cur = loaded;
+        if (cur != null && name.equals(cur.man.name)) {
+            loaded = bank.isEmpty() ? null : bank.values().iterator().next();
+        }
+    }
 
     // -- 上載／刪除（面板 ONNX 輸入介面）-----------------------------------------
 
@@ -354,7 +476,7 @@ public final class PolicyCenter {
         try {
             String name = ApiValidator.require(query, "name");
             if (!PolicyManifest.validName(name)) return HttpServer.ApiResponse.badRequest("bad policy name");
-            if (running()) return HttpServer.ApiResponse.badRequest("policy running: stop it before uploading");
+            if (inUse(name)) return HttpServer.ApiResponse.badRequest("policy '" + name + "' is in use by the running session: switch away or stop it before replacing it");
             String kind = ApiValidator.optionalEnum(query, "kind", new String[] {"zip", "onnx"}, "zip");
             Map<String, byte[]> files = new HashMap<String, byte[]>();
             if ("onnx".equals(kind)) {
@@ -428,12 +550,15 @@ public final class PolicyCenter {
                 Loaded l;
                 synchronized (this) {
                     l = loadFrom(staging, name);            // 驗證（結構／算子／ref／sha）過先覆蓋舊目錄
+                    bankCheck(l);                           // 預載組超限就唔好動舊目錄
                     File dst = new File(root, name);
                     if (dst.exists()) deleteRecursive(dst);
                     if (!staging.renameTo(dst)) return HttpServer.ApiResponse.error("cannot move policy into place");
                     committed = true;
                     l.dir = dst.getAbsolutePath();
-                    loaded = l;
+                    bankPut(l);
+                    // 閒置：揀呢個做下次起步；運行中：只加入預載組（要用就 policy/switch）。
+                    if (!running() || (loaded != null && name.equals(loaded.man.name))) loaded = l;
                     lastError = "";
                 }
             } finally {
@@ -461,13 +586,12 @@ public final class PolicyCenter {
     public HttpServer.ApiResponse deleteResponse(Map<String, String> query) {
         String name = ApiValidator.require(query, "name");
         if (!PolicyManifest.validName(name)) return HttpServer.ApiResponse.badRequest("bad policy name");
-        if (running()) return HttpServer.ApiResponse.badRequest("policy running: stop it first");
+        if (inUse(name)) return HttpServer.ApiResponse.badRequest("policy '" + name + "' is in use by the running session: switch away or stop it first");
         synchronized (this) {
             File dir = new File(policiesDir(), name);
             if (!dir.isDirectory()) return HttpServer.ApiResponse.badRequest("policy not found: " + name);
             deleteRecursive(dir);
-            Loaded l = loaded;
-            if (l != null && name.equals(l.man.name)) loaded = null;
+            bankRemove(name);
         }
         return listResponse();
     }
@@ -488,15 +612,28 @@ public final class PolicyCenter {
                 }
             }
         }
+        StringBuilder pre = new StringBuilder("[");
+        synchronized (this) {
+            boolean f2 = true;
+            for (String n : bank.keySet()) {
+                if (!f2) pre.append(',');
+                pre.append('"').append(JsonUtil.esc(n)).append('"');
+                f2 = false;
+            }
+        }
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"dir\":\"" + JsonUtil.esc(policiesDir().getAbsolutePath())
-                + "\",\"policies\":" + sb.append(']') + "}");
+                + "\",\"policies\":" + sb.append(']') + ",\"loaded\":" + pre.append(']') + "}");
     }
 
     public HttpServer.ApiResponse loadResponse(Map<String, String> query) {
         String name = ApiValidator.require(query, "name");
-        if (running()) return HttpServer.ApiResponse.badRequest("policy running: stop it before loading another");
+        if (inUse(name)) return HttpServer.ApiResponse.badRequest("policy '" + name + "' is in use by the running session: switch away or stop it before reloading it");
         try {
-            loaded = load(name);
+            synchronized (this) {
+                Loaded l = load(name);
+                bankPut(l);                                  // 加入預載組（唔取代其他已載入嘅）
+                if (!running() || (loaded != null && name.equals(loaded.man.name))) loaded = l;
+            }
             lastError = "";
         } catch (IllegalArgumentException e) {
             lastError = String.valueOf(e.getMessage());
@@ -509,6 +646,42 @@ public final class PolicyCenter {
         return statusResponse();
     }
 
+    /**
+     * policy/switch?name=：即時切換去預載組入面嘅另一個 policy（Microduck 式 hot-swap）。
+     * 運行中：喺下一格開頭生效（回應當刻 status 會見到 pendingSwitch，之後 active 變成新名）；
+     * 真機運行只可以切去「有資格」嘅 policy。閒置：只係揀呢個做下次 policy/start 嘅目標。
+     */
+    public HttpServer.ApiResponse switchResponse(Map<String, String> query) {
+        String name = ApiValidator.require(query, "name");
+        synchronized (this) {
+            Loaded l = bank.get(name);
+            if (l == null) return HttpServer.ApiResponse.badRequest("policy not preloaded: " + name + " (policy/load first)");
+            PolicyRunner r = runner;
+            if (r != null && r.isRunning()) {
+                if (!eligible(l, runnerDry, runnerFast)) {
+                    return HttpServer.ApiResponse.badRequest("switch refused: " + ineligibleReason(l, runnerFast));
+                }
+                String err = r.requestSwitch(name);
+                if (!err.isEmpty()) return HttpServer.ApiResponse.badRequest("switch refused: " + err);
+            }
+            loaded = l;
+            lastError = "";
+        }
+        return statusResponse();
+    }
+
+    /** policy/unload?name=：由預載組移除（磁碟檔案保留）。運行中用緊／排緊切換嘅唔准。 */
+    public HttpServer.ApiResponse unloadResponse(Map<String, String> query) {
+        String name = ApiValidator.require(query, "name");
+        if (!PolicyManifest.validName(name)) return HttpServer.ApiResponse.badRequest("bad policy name");
+        synchronized (this) {
+            if (inUse(name)) return HttpServer.ApiResponse.badRequest("policy '" + name + "' is in use by the running session: switch away first");
+            if (!bank.containsKey(name)) return HttpServer.ApiResponse.badRequest("policy not preloaded: " + name);
+            bankRemove(name);
+        }
+        return statusResponse();
+    }
+
     /** policy/start：dry 預設 true（排練）；真機 dry=false。已經跑緊＝續租約。 */
     public HttpServer.ApiResponse startResponse(Map<String, String> query) {
         boolean dry = ApiValidator.optionalBoolean(query, "dry", true);
@@ -516,7 +689,7 @@ public final class PolicyCenter {
         // 速度包絡覆寫（°/s）：逐步加大去測試，唔使重新打包；0＝用 manifest 值。
         float sp = ApiValidator.optionalFloatRange(query, "max_speed_dps", 10, PolicyManifest.MAX_SPEED_DPS_CAP, 0f);
         float tilt = ApiValidator.optionalFloatRange(query, "tilt_limit_deg", 10, 60, 0f);
-        return start(dry, fast, sp, tilt);
+        return start(ApiValidator.optional(query, "name", ""), dry, fast, sp, tilt);
     }
 
     /**
@@ -571,6 +744,32 @@ public final class PolicyCenter {
         sb.append(",\"running\":").append(run);
         sb.append(",\"dry\":").append(runnerDry);
         sb.append(",\"fast\":").append(runnerFast);
+        // 預載組：每個 policy 一項（active＝運行會話而家控制機身；selected＝下次起步／最近揀嘅；inRun＝已入 runner）
+        String activeNow = r != null ? r.activeName() : "";
+        List<String> inRunNames = run ? r.slotNames() : new ArrayList<String>();
+        sb.append(",\"bankMax\":").append(MAX_BANK).append(",\"bank\":[");
+        synchronized (this) {
+            boolean firstB = true;
+            for (Loaded b : bank.values()) {
+                PolicyManifest bm = b.man;
+                if (!firstB) sb.append(',');
+                firstB = false;
+                sb.append("{\"name\":\"").append(JsonUtil.esc(bm.name)).append('"');
+                sb.append(",\"obs\":\"").append(bm.obs).append("\",\"obsDim\":").append(bm.obsDim);
+                sb.append(",\"task\":\"").append(JsonUtil.esc(bm.effectiveTask())).append('"');
+                sb.append(",\"then\":\"").append(JsonUtil.esc(bm.then)).append('"');
+                sb.append(",\"controlHz\":").append(bm.controlHz).append(",\"periodMs\":").append(bm.periodMs());
+                sb.append(",\"actScale\":").append(bm.actScale);
+                sb.append(",\"needsFast\":").append(b.needsFast);
+                sb.append(",\"realRunAllowed\":").append(b.realBlock.isEmpty());
+                sb.append(",\"realRunBlock\":\"").append(JsonUtil.esc(b.realBlock)).append('"');
+                sb.append(",\"selected\":").append(l != null && bm.name.equals(l.man.name));
+                sb.append(",\"active\":").append(run && bm.name.equals(activeNow));
+                sb.append(",\"inRun\":").append(inRunNames.contains(bm.name));
+                sb.append('}');
+            }
+        }
+        sb.append(']');
         sb.append(",\"accelAvailable\":").append(deviceStatus.hasAccelerometer());
         sb.append(",\"accelEnabled\":").append(deviceStatus.isAccelerometerEnabled());
         if (r != null) {
@@ -580,6 +779,17 @@ public final class PolicyCenter {
             sb.append(",\"overruns\":").append(r.overruns());
             sb.append(",\"maxStepUs\":").append(r.maxStepUs());
             sb.append(",\"maxSendUs\":").append(r.maxSendUs());
+            sb.append(",\"active\":\"").append(JsonUtil.esc(activeNow)).append('"');
+            String pendingSw = r.pendingSwitch();
+            sb.append(",\"pendingSwitch\":\"").append(pendingSw == null ? "" : JsonUtil.esc(pendingSw)).append('"');
+            sb.append(",\"switches\":").append(r.switches());
+            sb.append(",\"switchLog\":[");
+            List<String> swl = r.switchLog();
+            for (int i = 0; i < swl.size(); i++) {
+                if (i > 0) sb.append(',');
+                sb.append('"').append(JsonUtil.esc(swl.get(i))).append('"');
+            }
+            sb.append(']');
             sb.append(",\"periodMsEff\":").append(r.config().periodMs);
             sb.append(",\"maxSpeedDps\":").append(r.config().maxSpeedDps);
             sb.append(",\"tiltLimitDeg\":").append(String.format(java.util.Locale.US, "%.1f", Math.toDegrees(r.config().tiltLimitRad)));

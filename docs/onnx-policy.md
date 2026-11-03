@@ -27,7 +27,78 @@ Panel → **實驗 / Experimental** tab → **🧠 ONNX Policy** (turn the card 
    / end reason are shown; **Stop** is a hard stop. Uploads made from the panel have no `selftest.json`,
    so the panel shows "not cross-checked against onnxruntime" — use `policy_tool.py pack` if you want that.
 
-API: `POST /upload/policy`, `policy/{list,load,start,beat,stop,status,delete}`.
+API: `POST /upload/policy`, `policy/{list,load,unload,switch,start,beat,stop,status,delete}`.
+
+## Preload several policies and hot-swap (Microduck-style)
+
+`policy/load` **adds** a policy to a preload bank instead of replacing the previous one (max 8 policies /
+16 MB of `.onnx` in total — a limit chosen for this robot, Microduck publishes no hard cap). Only one
+policy drives the robot at any time; `policy/switch?name=` changes which one, **while running**:
+
+```bash
+for n in stand walk-5hz kick; do curl -X POST "http://<robot>:8888/api/policy/load?name=$n"; done
+curl -X POST 'http://<robot>:8888/api/policy/start?name=stand&dry=false'   # starts on "stand"
+curl -X POST 'http://<robot>:8888/api/policy/switch?name=walk-5hz'          # takes effect at the next step
+curl -X POST 'http://<robot>:8888/api/policy/switch?name=stand'
+curl -X POST 'http://<robot>:8888/api/policy/unload?name=kick'              # files stay on disk
+```
+
+What happens at a switch (all inside `PolicyRunner`, at a step boundary — a step in flight is never cut):
+
+* The new policy brings its **own** `control_hz`/period, move time, `act_scale`, speed envelope and obs
+  type (43 stand / 65 walk), so stand and walk policies can be mixed even though their obs differ.
+* A walk policy's `ref` restarts from its start segment (frame 0), same as starting it from standing.
+* `prev action` (part of the obs) is **converted**: `(last_target_q − new_base) / new_act_scale`, clipped
+  to [−1, 1], so the new policy sees the same "last target" the old one produced instead of a stale value
+  in the wrong action units.
+* Lease, `max_run_s`, overrun and fall-guard settings stay those of the policy the run started with;
+  `--speed`/`tilt_limit_deg` overrides apply to every policy in the run.
+* Real runs only preload **eligible** policies (hash + selftest OK; period < 200 ms only with
+  `fast=true`). Others stay in the bank but `switch` to them is refused with the reason. Dry runs
+  preload everything.
+* `policy/load`, `upload/policy` and `policy/delete` work during a run for policies that are *not*
+  active/pending; the active one can't be replaced, unloaded or deleted until you switch away.
+* `status` has `bank[]` (per policy: `selected`, `active`, `inRun`, `needsFast`, …), `active`,
+  `pendingSwitch`, `switches` and `switchLog`.
+
+Switching is only as good as the policies are compatible: a stand policy that was never trained to start
+from mid-stride will see an out-of-distribution pose if you cut in from walking. For clean transitions
+train a transition/"recover" policy (what Microduck's runtime does) rather than relying on the speed
+envelope alone.
+
+## Get-up policies (lying → standing)
+
+`obs: "getup"` runs policies trained by `GetUpEnv` in `ubtech-alpha2-urdf` (`task` = `getup_back` or
+`getup_front`, i.e. lying on the back / on the front). Contract, identical to `rl/alpha2_env.py`:
+
+* obs (65) = stand obs (43) + `(ref_q − q0)` (20) + `[min(t/T, 1), 1 once t ≥ T]`; `t` = reference frame, `T` = number of frames.
+* target = `ref_q(t) + act_scale·a` (`act_scale` 0.2). The reference does **not** loop: after the last frame its
+  final pose is held. `ref.json` needs `q` and `dt` only (no `loop`).
+* Before the policy starts the robot first moves to reference frame 0 (≥ 1 s, like the training `SETTLE`),
+  zero residual, through the speed envelope.
+* The fall guard is **suspended while the reference plays** (the robot starts on the floor; training never
+  terminates on a fall). After the reference ends the robot must hold `hold_s` (default 3 s = training `HOLD`);
+  if the tilt is still above `tilt_limit_deg` for several steps the run ends with `fall` — i.e. the get-up failed.
+  Otherwise it ends `done` (servos hold the standing pose) or, if the manifest has `"then": "<policy>"`, hands
+  over to that preloaded policy (e.g. a stand policy) and keeps running.
+* **Real runs refuse to start unless the robot is lying on the right side** (`not_lying`, servos untouched):
+  gravity in the body frame must be ≈ (−1,0,0) for `getup_back`, ≈ (+1,0,0) for `getup_front` (|g_x| ≥ 0.8).
+  Dry runs skip this so you can rehearse standing up. This relies on the accelerometer axis mapping
+  (`accel_axes`), which is still unverified on hardware — check `gravity` in the diagnostics first.
+* There is deliberately **no automatic "fell → get up"** trigger: a false fall detection (wrong axis mapping)
+  would start a get-up from standing. Start it yourself with `policy/start?name=getup-back-v1&dry=false&fast=true`
+  once the robot is really lying down; with `then` set, one start takes it all the way to a stand policy.
+
+```bash
+python3 scripts/policy_tool.py pack --obs getup --control-hz 50 --name getup-back-v1 \
+    --onnx getup_back/<run>/policy.onnx --ref getup_back/<run>/ref.json --out getup-back-v1
+# optional: --then stand-5hz   (hand over to a preloaded stand policy when finished)
+```
+
+`pack` reads `getup` (back/front) and `hold` from `ref.json`, and raises `max_speed_dps` automatically: the
+official BackStand/FrontStand references reach ~250 °/s at joint level, so the default 90 °/s envelope would
+cut the trajectory short and the robot would not get up. Like every policy trained with `DECIM=10`, these are
+**50 Hz** policies, so real runs need `fast=true` (experimental, not validated on hardware).
 
 ## Pipeline (command line)
 
@@ -130,3 +201,10 @@ accel_axes, ref, max_speed_dps, max_run_s, lease_ms, tilt_limit_deg, onnx_sha256
 scripts/requirements.txt` and a JDK): generates fixtures with onnxruntime, checks the Java runner
 against it (< 2e-5; real `walk_forward.onnx` fixture included), the gravity/servo math against an
 independent derivation, manifest validation, and runner safety behavior with a fake sender.
+
+The suite also covers multi-policy hot-swap: slot validation, switching at step boundaries, per-slot
+period/move time, `ref` restart, `prev action` conversion (a continuity test with an "echo" policy proves
+the target does not jump across a switch), and the in-use guards for replace/remove.
+
+Get-up coverage: obs/ref contract (`[progress, over]`), settle phase, fall guard suspended while the reference plays
+and active afterwards, `then` hand-over, the lying-side precondition (both wrong-side and upright refused), and manifest rules.
