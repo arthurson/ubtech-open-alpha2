@@ -688,14 +688,14 @@ const Alpha2Api = (function() {
   }
 
   function policyLoad(params) {
-    // 載入並驗證 policy（manifest、sha256、算子支援、機上 selftest）
+    // 載入並驗證 policy（manifest、sha256、算子支援、機上 selftest），加入預載組
     return api('policy/load', params);
   }
 
   function policyStart(params) {
     if (params && params.tilt_limit_deg != null) assertRange(Number(params.tilt_limit_deg), 10, 60, 'tilt_limit_deg');
     if (params && params.max_speed_dps != null) assertRange(Number(params.max_speed_dps), 10, 300, 'max_speed_dps');
-    // 開始運行已載入嘅 policy（預設 dry-run；已經跑緊就續租約）
+    // 開始運行預載組入面嘅 policy（預設 dry-run；已經跑緊就續租約）
     return api('policy/start', params);
   }
 
@@ -707,6 +707,16 @@ const Alpha2Api = (function() {
   function policyStop(params) {
     // 硬停 policy（舵機保持末位姿；只停 policy）
     return api('policy/stop', params);
+  }
+
+  function policySwitch(params) {
+    // 切換 policy（預載組內；運行中即時生效，閒置＝揀選）
+    return api('policy/switch', params);
+  }
+
+  function policyUnload(params) {
+    // 由預載組移除 policy（磁碟檔案保留）
+    return api('policy/unload', params);
   }
 
   // ── radio ──────────────────────────────────────────────
@@ -1368,6 +1378,8 @@ const Alpha2Api = (function() {
     policyStart,
     policyStatus,
     policyStop,
+    policySwitch,
+    policyUnload,
     audioRadioFavoritesAdd,
     audioRadioFavoritesList,
     audioRadioFavoritesRemove,

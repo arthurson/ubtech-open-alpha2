@@ -522,6 +522,305 @@ public final class PolicyRunnerTest {
         catch (IllegalArgumentException e) { check(true, "obs_dim mismatch rejected"); }
     }
 
+
+    // ---- 多 policy 預載＋即時切換 ------------------------------------------------
+
+    private static PolicyRunner.Slot slot(String name, String model, PolicyRunner.Config c) throws Exception {
+        return new PolicyRunner.Slot(name, OnnxMlp.load(bytes(model)), c);
+    }
+
+    private static boolean waitFor(java.util.concurrent.Callable<Boolean> cond, long ms) throws Exception {
+        long end = System.currentTimeMillis() + ms;
+        while (System.currentTimeMillis() < end) {
+            if (cond.call()) return true;
+            Thread.sleep(10);
+        }
+        return cond.call();
+    }
+
+    private static void testHotSwap() throws Exception {
+        final int[] def = Alpha2PolicyIo.servoDefault();
+        double[] q0 = Alpha2PolicyIo.qDefault();
+
+        // convertPrev：目標 q → 新 policy 嘅 action 單位（clip、null 安全）
+        double[] tgt = new double[20], base = q0.clone();
+        for (int i = 0; i < 20; i++) tgt[i] = q0[i] + (i == 0 ? 0.1 : (i == 1 ? 0.5 : (i == 2 ? -0.5 : 0.0)));
+        float[] cp = PolicyRunner.convertPrev(tgt, base, 0.2);
+        check(Math.abs(cp[0] - 0.5f) < 1e-6 && cp[1] == 1f && cp[2] == -1f && cp[3] == 0f, "convertPrev: scale + clip");
+        check(java.util.Arrays.equals(new float[20], PolicyRunner.convertPrev(null, base, 0.2)), "convertPrev: null target => zeros");
+
+        // 兩個 slot：stand（zero43，20ms）＋ walk（walkconst65，40ms，ref 同預設姿勢差 0.2 rad）
+        PolicyRunner.Config a = cfg(20); a.maxRunMs = 8000; a.maxSpeedDps = 100000;
+        PolicyRunner.Config w = cfg(40); w.maxRunMs = 8000; w.maxSpeedDps = 100000;
+        w.obsDim = 65; w.actScale = 0.2;
+        double[][] rq = new double[8][];
+        for (int i = 0; i < 8; i++) {
+            rq[i] = q0.clone();
+            for (int j = 0; j < 20; j++) rq[i][j] += i == 0 ? 0.2 : 0.4;
+        }
+        w.ref = new PolicyRunner.Ref(rq, 2, 6);
+        int[] wantWalk0 = Alpha2PolicyIo.qToServo(rq[0], LO, HI);
+        check(!java.util.Arrays.equals(def, wantWalk0), "hot-swap fixture: walk frame 0 differs from stand");
+
+        final Sink s = new Sink();
+        List<PolicyRunner.Slot> init = new ArrayList<PolicyRunner.Slot>();
+        init.add(slot("stand", "zero43.onnx", a));
+        init.add(slot("walk", "walkconst65.onnx", w));
+        final PolicyRunner r = new PolicyRunner(init, "stand", s, fixed(UPRIGHT), poseOf(def));
+        eq("stand", r.activeName(), "hot-swap: starts on the requested slot");
+        eq(java.util.Arrays.asList("stand", "walk"), r.slotNames(), "hot-swap: both slots preloaded");
+        eq("not running", r.requestSwitch("walk"), "requestSwitch before run is refused");
+        Thread th = new Thread(r);
+        r.markStarting();
+        th.start();
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return s.n() >= 3; } }, 2000), "hot-swap: stand running");
+        check(java.util.Arrays.equals(def, s.last()), "hot-swap: stand holds default stance");
+        check(r.requestSwitch("nope").length() > 0, "requestSwitch: unknown slot refused");
+        eq("", r.requestSwitch("stand"), "requestSwitch: same slot is a no-op");
+        check(r.pendingSwitch() == null, "requestSwitch: same slot leaves nothing pending");
+        eq("", r.requestSwitch("walk"), "requestSwitch: accepted");
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return "walk".equals(r.activeName()); } }, 2000), "hot-swap: switched to walk");
+        eq(1, r.switches(), "hot-swap: one switch");
+        eq(40, r.config().periodMs, "hot-swap: config() follows the active slot");
+        check(r.pendingSwitch() == null, "hot-swap: pending cleared");
+        eq(1, r.switchLog().size(), "hot-swap: switch logged");
+        check(r.switchLog().get(0).endsWith(":stand>walk"), "hot-swap: log has from>to (" + r.switchLog() + ")");
+        Thread.sleep(250);
+        // walk ref 由頭開始：第一個同 stand 唔同嘅 command ＝ ref frame 0 對應嘅 servo；之後 move 時間＝40*1.05
+        int firstWalk = -1;
+        synchronized (s.sent) {
+            for (int i = 0; i < s.sent.size(); i++) if (!java.util.Arrays.equals(def, s.sent.get(i))) { firstWalk = i; break; }
+            check(firstWalk >= 0 && java.util.Arrays.equals(wantWalk0, s.sent.get(firstWalk)), "hot-swap: walk starts at ref frame 0");
+            eq(Integer.valueOf(21), s.ms.get(0), "hot-swap: stand move time 20*1.05");
+            eq(Integer.valueOf(42), s.ms.get(s.ms.size() - 1), "hot-swap: walk move time 40*1.05");
+        }
+        // 切返 stand（會話中途多次切換）
+        eq("", r.requestSwitch("stand"), "requestSwitch back accepted");
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return "stand".equals(r.activeName()); } }, 2000), "hot-swap: switched back to stand");
+        eq(2, r.switches(), "hot-swap: two switches");
+        eq(20, r.config().periodMs, "hot-swap: period back to 20");
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return java.util.Arrays.equals(def, s.last()); } }, 2000), "hot-swap: stand returns to default stance");
+
+
+        // prev action 換算（integration）：stand 以 const43 長期輸出 q0+0.3*B；切去「action＝prev action」嘅 echo65
+        // walk slot 後，新 policy 要見到換算後嘅 prev，令佢喺切換後繼續指向同一個目標（連貫），而唔係跳去 ref。
+        double[] Bc = new double[20];
+        String[] bs2 = new String(Files.readAllBytes(fx.resolve("const43.txt")), "UTF-8").trim().split(" ");
+        for (int i = 0; i < 20; i++) Bc[i] = Float.parseFloat(bs2[i]);
+        double[] tq = new double[20], rq0 = new double[20];
+        for (int i = 0; i < 20; i++) { tq[i] = q0[i] + 0.3 * Bc[i]; rq0[i] = q0[i] + 0.1; }
+        int[] wantCont = Alpha2PolicyIo.qToServo(tq, LO, HI), wantRef = Alpha2PolicyIo.qToServo(rq0, LO, HI);
+        check(!java.util.Arrays.equals(wantCont, wantRef), "continuity fixture: target differs from ref frame 0");
+        PolicyRunner.Config cs = cfg(20); cs.maxRunMs = 8000; cs.maxSpeedDps = 100000;
+        PolicyRunner.Config ce = cfg(40); ce.maxRunMs = 8000; ce.maxSpeedDps = 100000;
+        ce.obsDim = 65; ce.actScale = 0.6;
+        double[][] rr = new double[8][];
+        for (int i = 0; i < 8; i++) rr[i] = rq0.clone();
+        ce.ref = new PolicyRunner.Ref(rr, 2, 6);
+        final Sink s2 = new Sink();
+        List<PolicyRunner.Slot> init2 = new ArrayList<PolicyRunner.Slot>();
+        init2.add(slot("constant", "const43.onnx", cs));
+        init2.add(slot("echo", "echo65.onnx", ce));
+        final PolicyRunner r2 = new PolicyRunner(init2, "constant", s2, fixed(UPRIGHT), poseOf(def));
+        Thread th2 = new Thread(r2);
+        r2.markStarting();
+        th2.start();
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return s2.n() >= 3; } }, 2000), "continuity: constant slot running");
+        eq("", r2.requestSwitch("echo"), "continuity: switch accepted");
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return "echo".equals(r2.activeName()); } }, 2000), "continuity: switched to echo");
+        int before = s2.n();
+        Thread.sleep(300);
+        th2.interrupt(); th2.join(3000);
+        boolean allCont = true, anyRef = false;
+        synchronized (s2.sent) {
+            check(s2.sent.size() > before + 2, "continuity: echo slot sent frames");
+            for (int[] f : s2.sent) { if (!java.util.Arrays.equals(wantCont, f)) allCont = false; if (java.util.Arrays.equals(wantRef, f)) anyRef = true; }
+        }
+        check(allCont, "continuity: every command across the switch keeps the same target (prev action converted)");
+        check(!anyRef, "continuity: no jump to ref frame 0 (prev action was not zeroed)");
+
+        // 使用中嘅 slot 唔准取代／移除；空閒嘅可以
+        try { r.removeSlot("stand"); check(false, "remove active slot refused"); }
+        catch (IllegalStateException e) { check(true, "remove active slot refused"); }
+        try { r.putSlot(slot("stand", "zero43.onnx", cfg(20))); check(false, "replace active slot refused"); }
+        catch (IllegalStateException e) { check(true, "replace active slot refused"); }
+        r.putSlot(slot("extra", "zero43.onnx", cfg(20)));
+        eq(3, r.slotNames().size(), "putSlot adds a new slot while running");
+        eq("", r.requestSwitch("extra"), "a slot added mid-run can be switched to");
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return "extra".equals(r.activeName()); } }, 2000), "hot-swap: switched to mid-run slot");
+        check(r.removeSlot("walk"), "idle slot can be removed");
+        check(!r.removeSlot("walk"), "removing a missing slot reports false");
+        r.putSlot(slot("stand", "zero43.onnx", cfg(20)));      // stand 而家閒置＝可以取代（更新 policy）
+        eq(2, r.slotNames().size(), "idle slot replaced in place");
+
+        th.interrupt(); th.join(3000);
+        eq("stopped", r.endReason(), "hot-swap: interrupt still hard-stops");
+
+        // 構造器驗證
+        try {
+            List<PolicyRunner.Slot> dup = new ArrayList<PolicyRunner.Slot>();
+            dup.add(slot("x", "zero43.onnx", cfg(20))); dup.add(slot("x", "zero43.onnx", cfg(20)));
+            new PolicyRunner(dup, "x", new Sink(), fixed(UPRIGHT), poseOf(def));
+            check(false, "duplicate slot name rejected");
+        } catch (IllegalArgumentException e) { check(true, "duplicate slot name rejected"); }
+        try {
+            List<PolicyRunner.Slot> one = new ArrayList<PolicyRunner.Slot>();
+            one.add(slot("x", "zero43.onnx", cfg(20)));
+            new PolicyRunner(one, "y", new Sink(), fixed(UPRIGHT), poseOf(def));
+            check(false, "unknown start slot rejected");
+        } catch (IllegalArgumentException e) { check(true, "unknown start slot rejected"); }
+        try {
+            List<PolicyRunner.Slot> bad = new ArrayList<PolicyRunner.Slot>();
+            bad.add(slot("ok", "zero43.onnx", cfg(20))); bad.add(slot("walk", "walkconst65.onnx", cfg(20)));
+            new PolicyRunner(bad, "ok", new Sink(), fixed(UPRIGHT), poseOf(def));
+            check(false, "every slot is validated (obs_dim mismatch)");
+        } catch (IllegalArgumentException e) { check(true, "every slot is validated (obs_dim mismatch)"); }
+
+        // 單 policy 舊 API 行為不變（slot 名 "policy"）
+        PolicyRunner single = make("zero43.onnx", cfg(20), new Sink(), new double[][] {UPRIGHT}, def);
+        eq("policy", single.activeName(), "legacy ctor: single default slot");
+        eq(0, single.switches(), "legacy ctor: no switches");
+    }
+
+
+    // ---- get-up（由躺低企返起身）---------------------------------------------------
+
+    /** 令 gravityBase 得出「躺低」嘅加速度（頭 yaw/pitch 取預設姿勢）：back＝g_base(-1,0,0)，front＝(+1,0,0)。 */
+    private static double[] lyingAccel(String side, int[] def) {
+        double[] q = Alpha2PolicyIo.servoToQ(def);
+        double cp = Math.cos(q[19]), sp = Math.sin(q[19]);
+        double s = "back".equals(side) ? 1 : -1;
+        return new double[] {s * 9.81 * cp, 0, s * 9.81 * sp};
+    }
+
+    private static double[][] accelSeq(double[] lying, int nLying, double[] then) {
+        double[][] a = new double[nLying + 1][];
+        for (int i = 0; i < nLying; i++) a[i] = lying;
+        a[nLying] = then;
+        return a;
+    }
+
+    private static PolicyRunner.Config getupCfg(double[][] rq, double holdS) {
+        PolicyRunner.Config c = cfg(20);
+        c.obsDim = 65; c.actScale = 0.2; c.maxSpeedDps = 100000; c.maxRunMs = 20000;
+        c.getup = true; c.lying = "back"; c.holdS = holdS;
+        c.ref = new PolicyRunner.Ref(rq, 0, rq.length, 0.02);
+        return c;
+    }
+
+    private static void testGetUp() throws Exception {
+        final int[] def = Alpha2PolicyIo.servoDefault();
+        double[] q0 = Alpha2PolicyIo.qDefault();
+        final int T = 12, SETTLE = 50;                 // settle 最少 1000ms／20ms
+        double[][] rq = new double[T][];
+        for (int i = 0; i < T; i++) {
+            rq[i] = q0.clone();
+            for (int j = 0; j < 18; j++) rq[i][j] += 0.3 * (T - 1 - i) / (T - 1);   // 頭（18/19）唔郁，令 lying 加速度一直成立
+        }
+        // -- 契約：obs helper、躺低判斷
+        float[] go = Alpha2PolicyIo.obsGetUp(q0, new float[20], new double[] {0, 0, -1}, rq[3], 0.25, false);
+        check(go.length == 65 && go[63] == 0.25f && go[64] == 0f, "obsGetUp: tail = [progress, over=0]");
+        go = Alpha2PolicyIo.obsGetUp(q0, new float[20], new double[] {0, 0, -1}, rq[3], 7.0, true);
+        check(go[63] == 1f && go[64] == 1f, "obsGetUp: progress clipped to 1, over=1");
+        check(Math.abs(go[43 + 3] - (float) (rq[3][3] - q0[3])) < 1e-6, "obsGetUp: (ref - q0) block");
+        eq("back", Alpha2PolicyIo.lyingKind(new double[] {-1, 0, 0}), "lying back = g(-1,0,0)");
+        eq("front", Alpha2PolicyIo.lyingKind(new double[] {1, 0, 0}), "lying front = g(+1,0,0)");
+        eq("", Alpha2PolicyIo.lyingKind(new double[] {0, 0, -1}), "upright is not lying");
+        eq("", Alpha2PolicyIo.lyingKind(new double[] {0, 1, 0}), "on the side is not back/front");
+        eq("back", Alpha2PolicyIo.lyingKind(Alpha2PolicyIo.gravityBase(lyingAccel("back", def), new int[] {1, 2, 3},
+                Alpha2PolicyIo.servoToQ(def)[18], Alpha2PolicyIo.servoToQ(def)[19])), "lyingAccel(back) round-trips through gravityBase");
+        eq("front", Alpha2PolicyIo.lyingKind(Alpha2PolicyIo.gravityBase(lyingAccel("front", def), new int[] {1, 2, 3},
+                Alpha2PolicyIo.servoToQ(def)[18], Alpha2PolicyIo.servoToQ(def)[19])), "lyingAccel(front) round-trips through gravityBase");
+
+        // -- manifest
+        PolicyManifest m = man();
+        m.obs = "getup"; m.obsDim = 65; m.ref = "ref.json"; m.actScale = 0.2;
+        try { m.validate(); check(false, "getup manifest needs a task"); } catch (IllegalArgumentException e) { check(true, "getup manifest needs a task"); }
+        m.task = "getup_back"; m.validate();
+        eq("getup_back", m.effectiveTask(), "manifest task");
+        eq("back", m.lyingSide(), "manifest lyingSide(back)");
+        m.task = "getup_front";
+        eq("front", m.lyingSide(), "manifest lyingSide(front)");
+        m.task = "walk";
+        try { m.validate(); check(false, "getup obs with walk task rejected"); } catch (IllegalArgumentException e) { check(true, "getup obs with walk task rejected"); }
+        m.task = "getup_back"; m.then = "stand-a"; m.validate();
+        m.then = "bad name";
+        try { m.validate(); check(false, "bad then name rejected"); } catch (IllegalArgumentException e) { check(true, "bad then name rejected"); }
+        PolicyManifest sm = man(); sm.then = "x";
+        try { sm.validate(); check(false, "then only for getup"); } catch (IllegalArgumentException e) { check(true, "then only for getup"); }
+        PolicyManifest sm2 = man(); sm2.task = "getup_back";
+        try { sm2.validate(); check(false, "stand obs with getup task rejected"); } catch (IllegalArgumentException e) { check(true, "stand obs with getup task rejected"); }
+        try { PolicyManifest nm = man(); nm.obs = "getup"; nm.obsDim = 65; nm.task = "getup_back"; nm.validate(); check(false, "getup needs ref"); }
+        catch (IllegalArgumentException e) { check(true, "getup needs ref"); }
+
+        // -- 真機（非 dry）：起步前要確認躺住喺啱嘅一面
+        PolicyRunner.Config c = getupCfg(rq, 0.1); c.dry = false;
+        Sink s = new Sink();
+        PolicyRunner r = make("echo63.onnx", c, s, new double[][] {UPRIGHT}, def);
+        runFor(r, 3000);
+        eq("not_lying", r.endReason(), "real run refused while upright");
+        eq(0, s.n(), "real run refused: servos untouched");
+        c = getupCfg(rq, 0.1); c.dry = false; s = new Sink();
+        r = make("echo63.onnx", c, s, new double[][] {lyingAccel("front", def)}, def);
+        runFor(r, 3000);
+        eq("not_lying", r.endReason(), "real back-getup refused when lying on the front");
+        eq(0, s.n(), "wrong side: servos untouched");
+
+        // -- 躺低（back）真機：echo63 令 action[0..1]＝[progress, over]，驗證 obs 尾二格同 ref 推進
+        c = getupCfg(rq, 0.1); c.dry = false; s = new Sink();
+        r = make("echo63.onnx", c, s, accelSeq(lyingAccel("back", def), SETTLE + T + 2, UPRIGHT), def);
+        runFor(r, 20000);
+        eq("done", r.endReason(), "get-up completes with done");
+        int[] ref0 = Alpha2PolicyIo.qToServo(rq[0], LO, HI);
+        synchronized (s.sent) {
+            check(s.sent.size() >= SETTLE + T, "get-up: settle + ref + hold steps sent (" + s.sent.size() + ")");
+            boolean settleOk = true;
+            for (int i = 0; i < SETTLE; i++) if (!java.util.Arrays.equals(ref0, s.sent.get(i))) settleOk = false;
+            check(settleOk, "get-up: settle holds ref frame 0 (zero residual) for the first second");
+            double[] tgtEnd = rq[T - 1].clone(); tgtEnd[0] += 0.2; tgtEnd[1] += 0.2;           // progress=1, over=1
+            check(java.util.Arrays.equals(Alpha2PolicyIo.qToServo(tgtEnd, LO, HI), s.sent.get(s.sent.size() - 1)),
+                    "get-up: end of run = last ref pose + 0.2*[progress=1, over=1]");
+            double[] tgtMid = rq[6].clone(); tgtMid[0] += 0.2 * (6.0 / T);                      // progress=0.5, over=0
+            int[] wantMid = Alpha2PolicyIo.qToServo(tgtMid, LO, HI);
+            boolean mid = false;
+            for (int[] f : s.sent) if (java.util.Arrays.equals(wantMid, f)) mid = true;
+            check(mid, "get-up: mid-run obs progress = t/T with over=0 (ref advances 1 frame/step)");
+        }
+
+        // -- fall guard：ref 播緊唔查；播完仍然傾倒＝冇起到身
+        c = getupCfg(rq, 0.1); c.dry = true;
+        r = make("walkconst65.onnx", c, new Sink(), new double[][] {lyingAccel("back", def)}, def);
+        runFor(r, 20000);
+        eq("fall", r.endReason(), "still lying after the reference => fall (failed get-up)");
+        check(r.steps() >= SETTLE + T, "no fall verdict during settle/reference (steps=" + r.steps() + ")");
+
+        // -- dry 唔查躺低；then 交接
+        PolicyRunner.Config g = getupCfg(rq, 0.1); g.dry = true; g.then = "hold";
+        PolicyRunner.Config hc = cfg(20); hc.dry = true; hc.maxRunMs = 20000;
+        List<PolicyRunner.Slot> sl = new ArrayList<PolicyRunner.Slot>();
+        sl.add(slot("up", "walkconst65.onnx", g));
+        sl.add(slot("hold", "zero43.onnx", hc));
+        final double[][] acc = accelSeq(lyingAccel("back", def), SETTLE + T + 1, UPRIGHT);
+        final int[] ai = {0};
+        final PolicyRunner r2 = new PolicyRunner(sl, "up", new Sink(), new PolicyRunner.AccelSource() {
+            @Override public double[] accel() { return acc[Math.min(ai[0]++, acc.length - 1)]; }
+        }, poseOf(def));
+        Thread th = new Thread(r2);
+        r2.markStarting();
+        th.start();
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return "hold".equals(r2.activeName()); } }, 10000),
+                "get-up hands over to the `then` policy when done");
+        check(r2.isRunning(), "run continues after the hand-over");
+        check(r2.switchLog().size() == 1 && r2.switchLog().get(0).endsWith(":up>hold"), "hand-over logged (" + r2.switchLog() + ")");
+        th.interrupt(); th.join(3000);
+        eq("stopped", r2.endReason(), "interrupt still stops after hand-over");
+
+        // -- getup 需要 obs 65 + ref
+        PolicyRunner.Config bad = cfg(20); bad.getup = true;
+        try { make("zero43.onnx", bad, new Sink(), new double[][] {UPRIGHT}, def); check(false, "getup with obs 43 rejected"); }
+        catch (IllegalArgumentException e) { check(true, "getup with obs 43 rejected"); }
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length < 1) { System.out.println("usage: PolicyRunnerTest <fixtures-dir>"); System.exit(2); }
         fx = Paths.get(args[0]);
@@ -529,6 +828,8 @@ public final class PolicyRunnerTest {
         testIo();
         testManifest();
         testRunner();
+        testHotSwap();
+        testGetUp();
         System.out.println("passed=" + passed + " failed=" + failed);
         System.exit(failed == 0 ? 0 : 1);
     }

@@ -66,7 +66,7 @@ tags:
 - name: walk
   description: 按住向前行／向後行（步態＝.ubx，後行＝前行步態時間反轉；放手即收步企定；速度 1.0–2.0x，步態 300ms 下限令實際最快約 1.33x；租約守護）
 - name: policy
-  description: ONNX policy 部署（Microduck 式 policy.onnx＋manifest.json，純 Java 推論；預設 dry-run 排練，真機要 dry=false 並通過硬件速率／sha256／selftest 檢查；見 docs/onnx-policy.md）
+  description: ONNX policy 部署（Microduck 式 policy.onnx＋manifest.json，純 Java 推論；可預載多個 policy 並運行中即時切換（policy/load 加入預載組、policy/switch 切換）；預設 dry-run 排練，真機要 dry=false 並通過硬件速率／sha256／selftest 檢查；見 docs/onnx-policy.md）
 - name: gamepad
   description: BT 手柄／鍵盤（機器人直連 HID；映射分手柄／鍵盤兩邊）
 - name: xiaozhi
@@ -1260,8 +1260,8 @@ paths:
     post:
       tags:
       - policy
-      summary: 載入並驗證 policy（manifest、sha256、算子支援、機上 selftest）
-      description: 載入唔會郁舵機。跑緊嘅 policy 要先 stop。真機資格喺 status 嘅 realRunAllowed／realRunBlock。
+      summary: 載入並驗證 policy（manifest、sha256、算子支援、機上 selftest），加入預載組
+      description: 載入唔會郁舵機。係「加入預載組」而唔係取代：之前載入嘅 policy 仍然留低（上限 8 個／合共 16 MB .onnx，超出要先 policy/unload）。閒置時，新載入嘅會成為下次 policy/start 嘅目標；運行中載入只係加入預載組（合資格就同步入 runner），唔改變而家控制機身嘅 policy，要用就 policy/switch。運行中用緊（或排緊切換）嘅 policy 唔准重新載入。真機資格喺 status 嘅 realRunAllowed／realRunBlock。
       parameters:
       - name: name
         in: query
@@ -1291,9 +1291,16 @@ paths:
     post:
       tags:
       - policy
-      summary: 開始運行已載入嘅 policy（預設 dry-run；已經跑緊就續租約）
-      description: 開機企姿完成前回 {ok:false,error:booting}。真機（dry=false）要求：sha256 吻合、selftest 通過、加速度計有數、命令位姿已知；control_hz 對應 period < 200ms 嘅高頻 policy（例如 50Hz，實機測試會亂震）另要 fast=true（實驗：實機穩定性未驗證，錯過節拍太多會 overrun 即停）。Policy 永遠按自己嘅 control_hz 跑。會搶佔正在播放嘅普通動作；任何停止（stop／其他動作／fall／lease／max_run）都係硬停，舵機保持末位姿。
+      summary: 開始運行預載組入面嘅 policy（預設 dry-run；已經跑緊就續租約）
+      description: get-up policy（manifest obs=getup）要真機運行時躺住喺啱嘅一面（否則 not_lying，唔郁舵機），先擺去 ref 第 0 格，再播 ref（唔循環），完成後交俾 manifest 嘅 then 或停機（done）。預載組入面全部合資格嘅 policy 會一齊入 runner（真機：通過 sha256／selftest，而且高頻 policy 要本次 fast=true），同一時間只有一個控制機身，運行中用 policy/switch 即時切換。開機企姿完成前回 {ok:false,error:booting}。真機（dry=false）要求：sha256 吻合、selftest 通過、加速度計有數、命令位姿已知；control_hz 對應 period < 200ms 嘅高頻 policy（例如 50Hz，實機測試會亂震）另要 fast=true（實驗：實機穩定性未驗證，錯過節拍太多會 overrun 即停）。Policy 永遠按自己嘅 control_hz 跑。會搶佔正在播放嘅普通動作；任何停止（stop／其他動作／fall／lease／max_run）都係硬停，舵機保持末位姿。
       parameters:
+      - name: name
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$'
+        description: 起步 policy（要喺預載組入面）；缺省＝最近揀嘅／載入嘅。已經跑緊再叫 start 只係續租約，唔改揀選（換 policy 用 policy/switch）。
       - name: dry
         in: query
         schema:
@@ -1389,7 +1396,7 @@ paths:
       tags:
       - policy
       summary: 刪除機上 policy 目錄
-      description: 跑緊嘅 policy 要先 stop。回傳更新後嘅名單（同 policy/list）。
+      description: 同時由預載組移除。運行中用緊（或排緊切換）嘅 policy 唔准刪，其他閒置嘅可以。回傳更新後嘅名單（同 policy/list）。
       parameters:
       - name: name
         in: query
@@ -1415,6 +1422,68 @@ paths:
                 - $ref: '#/components/schemas/OkWrapper'
                 - $ref: '#/components/schemas/PolicyList'
       operationId: policyDelete_post
+  /api/policy/switch:
+    post:
+      tags:
+      - policy
+      summary: 切換 policy（預載組內；運行中即時生效，閒置＝揀選）
+      description: 運行中：喺下一格開頭生效（唔打斷進行中嘅格），status 會先見 pendingSwitch，之後 active 變成新名；換入新 policy 嘅 period／move 時間／速度包絡，walk ref 由起步段重新開始，prev action 由上一個目標 q 換算成新 policy 嘅 action 單位（令新 policy 見到連貫嘅上一個動作）。真機運行只可以切去有資格嘅 policy（高頻 policy 要本次運行 fast=true）。Lease、max_run、overrun 等會話級設定沿用起步 policy。閒置：只係揀呢個做下次 policy/start 嘅目標。
+      parameters:
+      - name: name
+        in: query
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$'
+        description: 預載組內嘅 policy 名（未載入要先 policy/load）
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: Policy 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - $ref: '#/components/schemas/PolicyStatus'
+      operationId: policySwitch_post
+  /api/policy/unload:
+    post:
+      tags:
+      - policy
+      summary: 由預載組移除 policy（磁碟檔案保留）
+      description: 運行中用緊（或排緊切換）嘅 policy 唔准移除，要先 policy/switch 去另一個。移除咗揀選中嘅 policy 會自動改揀預載組內另一個。
+      parameters:
+      - name: name
+        in: query
+        required: true
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$'
+        description: 預載組內嘅 policy 名
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: Policy 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - $ref: '#/components/schemas/PolicyStatus'
+      operationId: policyUnload_post
   /api/policy/status:
     get:
       tags:
@@ -7355,7 +7424,7 @@ paths:
       - upload
       - policy
       summary: 上載 ONNX policy（zip 或單個 .onnx），server 驗證後即載入
-      description: kind=zip（預設）：zip 內取 policy.onnx（或唯一一個 *.onnx）、ref.json、manifest.json、selftest.json，其餘檔（model.zip、meta.json、*.pth…）唔會讀；kind=onnx：body 就係 .onnx。冇 manifest.json 就按 query 參數生成（obs 缺省由模型輸入維度推斷：43=stand、65=walk，walk 要 ref.json）；SHA-256 由 server 計。驗證（算子支援、維度、ref、manifest）通過先覆蓋同名舊目錄，失敗唔留低任何檔。跑緊嘅 policy 要先 stop。成功回傳 PolicyStatus。
+      description: kind=zip（預設）：zip 內取 policy.onnx（或唯一一個 *.onnx）、ref.json、manifest.json、selftest.json，其餘檔（model.zip、meta.json、*.pth…）唔會讀；kind=onnx：body 就係 .onnx。冇 manifest.json 就按 query 參數生成（obs 缺省由模型輸入維度推斷：43=stand、65=walk，walk 要 ref.json）；SHA-256 由 server 計。驗證（算子支援、維度、ref、manifest）通過先覆蓋同名舊目錄，失敗唔留低任何檔。成功即加入預載組（同 policy/load）。運行中用緊嘅同名 policy 唔准覆蓋，要先 switch 走或 stop。成功回傳 PolicyStatus。
       parameters:
       - name: name
         in: query
@@ -7691,6 +7760,11 @@ components:
           type: array
           items:
             type: string
+        loaded:
+          type: array
+          items:
+            type: string
+          description: 而家喺預載組（已驗證、可即時切換）嘅 policy 名
     PolicyStatus:
       type: object
       properties:
@@ -7794,7 +7868,64 @@ components:
           description: 最近一個送出（或 dry 計出）嘅 20 軸 servo 目標角度（已過速度包絡）
         endReason:
           type: string
-          description: 上一次結束原因：stopped／lease／max_run／fall／gravity_invalid／bad_action／pose_unknown／send_failed／overrun／error
+          description: 上一次結束原因：stopped／lease／max_run／fall／gravity_invalid／bad_action／pose_unknown／send_failed／overrun／done（get-up 完成）／not_lying（get-up 起步時唔係躺住喺啱嘅一面）／error
+        bankMax:
+          type: integer
+          description: 預載組上限（個數）
+        bank:
+          type: array
+          description: 預載組：每個已載入嘅 policy 一項
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              obs:
+                type: string
+                enum: [stand, walk, getup]
+              task:
+                type: string
+                description: stand／walk／getup_back（躺背起身）／getup_front（躺面起身）
+              then:
+                type: string
+                description: get-up 完成後交俾嘅預載 policy 名；空＝停機（舵機保持企姿）
+              obsDim:
+                type: integer
+              controlHz:
+                type: number
+              periodMs:
+                type: integer
+              actScale:
+                type: number
+              needsFast:
+                type: boolean
+              realRunAllowed:
+                type: boolean
+              realRunBlock:
+                type: string
+              selected:
+                type: boolean
+                description: 下次 policy/start 嘅目標（運行中＝最近一次 switch 嘅目標）
+              active:
+                type: boolean
+                description: 運行中而家控制機身
+              inRun:
+                type: boolean
+                description: 已喺運行中嘅 runner（真機非 fast 時唔合資格嘅唔入，switch 會被拒）
+        active:
+          type: string
+          description: 最近一次運行而家（或結束時）控制機身嘅 policy 名
+        pendingSwitch:
+          type: string
+          description: 已排隊、下一格開頭先生效嘅切換目標；空＝冇
+        switches:
+          type: integer
+          description: 本次運行已生效嘅切換次數
+        switchLog:
+          type: array
+          items:
+            type: string
+          description: 最近 16 次切換，每項 "step:from>to"
         error:
           type: string
     OkWrapper:

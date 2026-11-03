@@ -29,7 +29,7 @@ RUNNER_SRC = (ROOT / "sdk-module/hardware-direct/src/main/java/com/ubtechinc/alp
 MIN_PERIOD_MS = 200          # 同 PolicyManifest.MIN_PERIOD_MS 一致（一般真機運行下限；50Hz 實機測試會亂震）
 FAST_MIN_PERIOD_MS = 20      # 同 PolicyManifest.FAST_MIN_PERIOD_MS 一致（chest move 時間下限）
 SELFTEST_TOL = 2e-5          # 同 Microduck parity 容差同級
-OBS_DIM = {"stand": 43, "walk": 65}
+OBS_DIM = {"stand": 43, "walk": 65, "getup": 65}   # getup：由躺低企返起身（ref 唔循環；obs 尾二格係 [progress, over]）
 
 
 def supported_ops():
@@ -95,11 +95,41 @@ def cmd_pack(a):
     shutil.copyfile(onnx_path, out / "policy.onnx")
     man = {
         "schema": 1, "name": a.name, "obs": a.obs, "obs_dim": din, "action_dim": 20,
-        "act_scale": a.act_scale if a.act_scale is not None else (0.2 if a.obs == "walk" else 0.3),
+        "act_scale": a.act_scale if a.act_scale is not None else (0.3 if a.obs == "stand" else 0.2),
         "control_hz": hz, "move_overlap": 1.05, "accel_axes": a.accel_axes,
-        "max_speed_dps": a.max_speed_dps, "max_run_s": 60, "lease_ms": 5000, "tilt_limit_deg": 40,
+        "max_speed_dps": a.max_speed_dps if a.max_speed_dps is not None else 90, "max_run_s": 60, "lease_ms": 5000, "tilt_limit_deg": 40,
         "onnx_sha256": hashlib.sha256(onnx_path.read_bytes()).hexdigest(), "notes": a.notes,
     }
+    if a.obs == "getup":
+        if not a.ref:
+            raise SystemExit("getup policy 需要 --ref ref.json（rl/ref/backstand.json 或 frontstand.json）")
+        ref = json.load(open(a.ref))
+        q = ref.get("q")
+        dt = ref.get("dt", 0.02)
+        if not q or len(q[0]) != 20 or not (0.001 <= dt <= 1.0):
+            raise SystemExit("ref.json 格式錯（需要 q: Tx20 rad，dt: 秒）")
+        side = a.task.replace("getup_", "") if a.task else ref.get("getup")
+        if side not in ("back", "front"):
+            raise SystemExit("getup policy 要講明邊面：--task getup_back|getup_front（或 ref.json 有 getup: back|front）")
+        if a.task and ref.get("getup") and ref["getup"] != side:
+            raise SystemExit(f"--task {a.task} 同 ref.json 嘅 getup={ref['getup']} 唔一致")
+        hold_s = a.hold_s if a.hold_s is not None else (ref["hold"] * dt if "hold" in ref else 3.0)
+        # 官方起身動作嘅關節峰值速度可達 ~250°/s：速度包絡細過 ref 會削走軌跡（起唔到身），所以缺省按 ref 加大（上限 300）。
+        peak = max(abs(q[i + 1][j] - q[i][j]) for i in range(len(q) - 1) for j in range(20)) * 180.0 / 3.141592653589793 / dt
+        if a.max_speed_dps is None:
+            man["max_speed_dps"] = int(min(300, max(90, -(-peak * 1.2 // 10) * 10)))
+        elif a.max_speed_dps < peak:
+            print(f"注意: --max-speed-dps {a.max_speed_dps:g} < ref 峰值速度 {peak:.0f}°/s：速度包絡會削走起身軌跡，通常起唔到身。", file=sys.stderr)
+        man["task"] = "getup_" + side
+        man["hold_s"] = round(hold_s, 3)
+        if a.then:
+            man["then"] = a.then
+        # 運行時間：settle（最長 6 s）＋ ref ＋ hold ＋ 餘裕
+        man["max_run_s"] = int(min(600, max(60, 6 + len(q) * dt + hold_s + 20)))
+        shutil.copyfile(a.ref, out / "ref.json")
+        man["ref"] = "ref.json"
+    elif a.then or a.task or a.hold_s is not None:
+        raise SystemExit("--task/--hold-s/--then 只適用於 --obs getup")
     if a.obs == "walk":
         if not a.ref:
             raise SystemExit("walk policy 需要 --ref ref.json")
@@ -177,6 +207,18 @@ def cmd_make_fixtures(a):
     # 4) walk 用 65->20 常量（需要 ref）
     save("walkconst65.onnx", [helper.make_node("Gemm", ["obs", "W", "B"], ["action"], transB=1)],
          [I(np.zeros((20, 65), np.float32), "W"), I(np.zeros(20, np.float32), "B")], 65, 20)
+    # 4b) echo65：action ＝ obs 入面嘅 prev action（obs[20:40]）——測 hot-swap 切換時 prev action 嘅換算
+    We = np.zeros((20, 65), np.float32)
+    for i in range(20):
+        We[i, 20 + i] = 1.0
+    save("echo65.onnx", [helper.make_node("Gemm", ["obs", "W", "B"], ["action"], transB=1)],
+         [I(We, "W"), I(np.zeros(20, np.float32), "B")], 65, 20)
+    # 4c) echo63：action[0..1] ＝ obs[63..64]（get-up 嘅 [progress, over]），其餘 0——測 get-up obs 尾二格
+    Wg = np.zeros((20, 65), np.float32)
+    Wg[0, 63] = 1.0
+    Wg[1, 64] = 1.0
+    save("echo63.onnx", [helper.make_node("Gemm", ["obs", "W", "B"], ["action"], transB=1)],
+         [I(Wg, "W"), I(np.zeros(20, np.float32), "B")], 65, 20)
     # 5) 真實 SB3 匯出嘅 walk policy（URDF repo 嘅 walk_forward.onnx，已複製入 test resources）
     wf = ROOT / "sdk-module/hardware-direct/src/test/resources/policy/walk_forward.onnx"
     shutil.copyfile(wf, out / "walk_forward.onnx")
@@ -192,10 +234,13 @@ def main():
     p.add_argument("--name", required=True)
     p.add_argument("--obs", choices=list(OBS_DIM), default="stand")
     p.add_argument("--control-hz", type=float, required=True, help="policy 訓練時嘅決策頻率（<=3.33 可穩定真機；更高要 fast=true；<=50 且 period>=20ms）")
-    p.add_argument("--max-speed-dps", type=float, default=90, help="速度包絡（°/s，<=300）；50Hz policy 通常要加大，亦可喺 policy/start 覆寫")
+    p.add_argument("--max-speed-dps", type=float, default=None, help="速度包絡（°/s，<=300；缺省 90，getup 缺省按 ref 峰值速度自動加大）；亦可喺 policy/start 覆寫")
     p.add_argument("--act-scale", type=float, default=None)
     p.add_argument("--accel-axes", default="+x+y+z", help="加速度計軸→頭部座標，例如 -y+x+z（未實機驗證，預設同 URDF 假設）")
     p.add_argument("--ref")
+    p.add_argument("--task", choices=["getup_back", "getup_front"], help="getup：由邊面躺低起身（缺省由 ref.json 嘅 getup 欄位推）")
+    p.add_argument("--hold-s", type=float, default=None, help="getup：ref 播完後再撐幾秒先完成（缺省＝ref.json 嘅 hold×dt，再缺省 3）")
+    p.add_argument("--then", default="", help="getup 完成後交俾邊個預載 policy（例如 stand policy 名）；缺省＝停機")
     p.add_argument("--notes", default="")
     p.add_argument("--out", required=True)
     p.set_defaults(fn=cmd_pack)

@@ -26,7 +26,10 @@ public final class PolicyManifest {
 
     public int schema = 1;
     public String name = "";
-    public String obs = "stand";          // stand｜walk
+    public String obs = "stand";          // stand｜walk｜getup（getup＝由躺低企返起身，ref 唔循環）
+    public String task = "";              // stand｜walk｜getup_back｜getup_front（空＝由 obs 推；getup 必須講明邊面）
+    public double holdS = 3.0;            // getup：ref 播完後再撐企幾耐先當完成（訓練 env 嘅 HOLD 150 格×0.02s）
+    public String then = "";              // getup 完成後交俾邊個預載 policy（空＝停機，舵機保持企姿）
     public int obsDim;
     public int actionDim = 20;
     public double actScale = 0.3;
@@ -42,6 +45,15 @@ public final class PolicyManifest {
     public String notes = "";
 
     public int periodMs() { return (int) Math.round(1000.0 / controlHz); }
+
+    /** task 欄位（空＝由 obs 推：stand／walk；getup 冇得推，要明寫）。 */
+    public String effectiveTask() { return task == null || task.isEmpty() ? ("getup".equals(obs) ? "" : obs) : task; }
+
+    /** getup 要求起步時躺住嘅方向："back"／"front"；非 getup 回空。 */
+    public String lyingSide() {
+        String t = effectiveTask();
+        return "getup_back".equals(t) ? "back" : "getup_front".equals(t) ? "front" : "";
+    }
 
     public boolean realRunAllowed(String[] reason) { return realRunAllowed(reason, false); }
 
@@ -78,15 +90,24 @@ public final class PolicyManifest {
         if (!validName(name)) {
             throw new IllegalArgumentException("bad name (start with a letter/digit, then A-Za-z0-9._- , 1-48 chars, no \"..\")");
         }
-        if (!"stand".equals(obs) && !"walk".equals(obs)) throw new IllegalArgumentException("obs must be stand|walk");
-        int want = "walk".equals(obs) ? Alpha2PolicyIo.OBS_WALK : Alpha2PolicyIo.OBS_STAND;
+        if (!"stand".equals(obs) && !"walk".equals(obs) && !"getup".equals(obs)) throw new IllegalArgumentException("obs must be stand|walk|getup");
+        int want = "stand".equals(obs) ? Alpha2PolicyIo.OBS_STAND : Alpha2PolicyIo.OBS_WALK;
         if (obsDim != want) throw new IllegalArgumentException("obs_dim " + obsDim + " != " + want + " for obs=" + obs);
         if (actionDim != Alpha2PolicyIo.N) throw new IllegalArgumentException("action_dim must be 20");
         if (!(actScale > 0 && actScale <= 0.6)) throw new IllegalArgumentException("act_scale must be in (0,0.6] rad");
         if (!(controlHz > 0 && controlHz <= 100)) throw new IllegalArgumentException("control_hz must be in (0,100]");
         if (!(moveOverlap >= 1.0 && moveOverlap <= 1.5)) throw new IllegalArgumentException("move_overlap must be in [1,1.5]");
         Alpha2PolicyIo.parseAxes(accelAxes);
-        if ("walk".equals(obs) && (ref == null || ref.isEmpty())) throw new IllegalArgumentException("walk policy needs ref");
+        if (("walk".equals(obs) || "getup".equals(obs)) && (ref == null || ref.isEmpty())) throw new IllegalArgumentException(obs + " policy needs ref");
+        String t = effectiveTask();
+        if ("getup".equals(obs)) {
+            if (!"getup_back".equals(t) && !"getup_front".equals(t)) throw new IllegalArgumentException("getup policy needs task getup_back|getup_front");
+        } else if (!t.equals(obs)) {
+            throw new IllegalArgumentException("task " + t + " does not match obs " + obs);
+        }
+        if (!(holdS >= 0 && holdS <= 30)) throw new IllegalArgumentException("hold_s must be 0..30");
+        if (!then.isEmpty() && !validName(then)) throw new IllegalArgumentException("bad 'then' policy name");
+        if (!then.isEmpty() && !"getup".equals(obs)) throw new IllegalArgumentException("'then' only applies to getup policies");
         if (ref != null && !ref.isEmpty() && !ref.matches("[A-Za-z0-9._-]{1,64}")) throw new IllegalArgumentException("bad ref filename");
         if (!(maxSpeedDps > 0 && maxSpeedDps <= MAX_SPEED_DPS_CAP)) throw new IllegalArgumentException("max_speed_dps must be in (0," + MAX_SPEED_DPS_CAP + "]");
         if (maxRunS < 1 || maxRunS > 600) throw new IllegalArgumentException("max_run_s must be 1..600");

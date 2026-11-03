@@ -205,6 +205,68 @@ function polDelete() {
   });
 }
 
+// ── 預載組：切換／卸載 ───────────────────────────────────────────────────────
+function polSwitch(name) {
+  return Alpha2Api.policySwitch({ name: name }).then(function (res) {
+    if (!res || !res.ok) { polSetOutRaw(t("pol_switch_fail") + ((res && (res.error || res.message)) || "?")); return res; }
+    polSetOutRaw("");
+    polApplyStatus(res, false);
+    return res;
+  });
+}
+
+function polUnload(name) {
+  return Alpha2Api.policyUnload({ name: name }).then(function (res) {
+    if (!res || !res.ok) { polSetOutRaw(t("pol_unload_fail") + ((res && (res.error || res.message)) || "?")); return res; }
+    polSetOutRaw("");
+    polApplyStatus(res, false);
+    return res;
+  });
+}
+
+// 預載組列表：每個 policy 一行（名＋規格＋標籤＋切換／卸載）。名只含 [A-Za-z0-9._-]，仍用 textContent。
+function polRenderBank(res) {
+  const box = polEl("polBank");
+  if (!box) return;
+  box.textContent = "";
+  const bank = (res && res.bank) || [];
+  if (!bank.length) {
+    const p = document.createElement("p");
+    p.className = "hint";
+    p.textContent = t("pol_bank_empty", { max: (res && res.bankMax) || 8 });
+    box.appendChild(p);
+    return;
+  }
+  bank.forEach(function (b) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.style.alignItems = "center";
+    const label = document.createElement("span");
+    label.style.flex = "1";
+    const tags = [];
+    if (b.active) tags.push("▶ " + t("pol_tag_active"));
+    else if (b.selected) tags.push("● " + t("pol_tag_selected"));
+    if (res.running && res.pendingSwitch === b.name) tags.push("⏳ " + t("pol_tag_pending"));
+    if (res.running && !b.inRun) tags.push("⛔ " + t("pol_tag_not_in_run"));
+    if (b.needsFast) tags.push("⚡");
+    label.textContent = b.name + " · " + (b.task && b.task !== b.obs ? b.task : b.obs) + " · " + b.controlHz + " Hz" + (tags.length ? "  " + tags.join(" ") : "");
+    row.appendChild(label);
+    const sw = document.createElement("button");
+    sw.className = "secondary";
+    sw.textContent = res.running ? t("pol_switch_btn") : t("pol_select_btn");
+    sw.disabled = !!(res.running ? (b.active || !b.inRun) : b.selected);
+    sw.onclick = function () { polSwitch(b.name); };
+    row.appendChild(sw);
+    const un = document.createElement("button");
+    un.className = "danger-btn";
+    un.textContent = t("pol_unload_btn");
+    un.disabled = !!(res.running && (b.active || res.pendingSwitch === b.name));
+    un.onclick = function () { polUnload(b.name); };
+    row.appendChild(un);
+    box.appendChild(row);
+  });
+}
+
 // ── 運行 ────────────────────────────────────────────────────────────────────
 function polStart() {
   const dry = !!polEl("polDry").checked;
@@ -282,6 +344,7 @@ function polRender() {
   const info = polEl("polInfo"), live = polEl("polLive");
   const startBtn = polEl("polStartBtn");
   if (!info || !live) return;
+  polRenderBank(res);
   if (!res || !res.loaded) {
     info.textContent = t("pol_none_loaded");
     live.textContent = "";
@@ -302,7 +365,8 @@ function polRender() {
   const l2 = [];
   l2.push((res.running ? "▶ " + t("pol_running") : "■ " + t("pol_idle")) + (res.running ? (res.dry ? " (dry)" : "") + (res.fast ? " [fast]" : "") : ""));
   if (typeof res.steps === "number") {
-    l2.push(t("pol_steps") + " " + res.steps + " · " + t("pol_tilt") + " " + res.tiltDeg + "° · " + t("pol_period") + " " + res.periodMsEff + " ms");
+    l2.push(t("pol_steps") + " " + res.steps + " · " + t("pol_tilt") + " " + res.tiltDeg + "° · " + t("pol_period") + " " + res.periodMsEff + " ms" +
+      (res.active ? " · ▶ " + res.active : "") + (res.switches ? " · " + t("pol_switch_count") + " " + res.switches : ""));
     l2.push(t("pol_infer") + " " + res.inferUs + " µs · " + t("pol_maxstep") + " " + res.maxStepUs + " µs · " + t("pol_maxsend") + " " + res.maxSendUs + " µs · " + t("pol_overruns") + " " + res.overruns);
   }
   if (!res.running && res.endReason) l2.push(t("pol_end") + " " + polEndReasonText(res.endReason));
