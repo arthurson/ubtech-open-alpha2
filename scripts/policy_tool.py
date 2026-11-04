@@ -29,7 +29,7 @@ RUNNER_SRC = (ROOT / "sdk-module/hardware-direct/src/main/java/com/ubtechinc/alp
 MIN_PERIOD_MS = 200          # 同 PolicyManifest.MIN_PERIOD_MS 一致（一般真機運行下限；50Hz 實機測試會亂震）
 FAST_MIN_PERIOD_MS = 20      # 同 PolicyManifest.FAST_MIN_PERIOD_MS 一致（chest move 時間下限）
 SELFTEST_TOL = 2e-5          # 同 Microduck parity 容差同級
-OBS_DIM = {"stand": 43, "walk": 65, "getup": 65}   # getup：由躺低企返起身（ref 唔循環；obs 尾二格係 [progress, over]）
+OBS_DIM = {"stand": 43, "walk": 65, "getup": 65, "unified": 68}   # getup：由躺低企返起身（ref 唔循環；obs 尾二格係 [progress, over]）
 
 
 def supported_ops():
@@ -49,14 +49,23 @@ def validate_onnx(path, obs):
     ins = [i for i in m.graph.input if i.name not in inits]
     if len(ins) != 1:
         raise SystemExit(f"policy 必須得 1 個 runtime input（recurrent/stateful 未支援），而家有: {[i.name for i in ins]}")
-    if len(m.graph.output) != 1:
-        raise SystemExit("policy 必須得 1 個 output")
     dims = lambda v: [d.dim_value for d in v.type.tensor_type.shape.dim]
-    din, dout = dims(ins[0])[-1], dims(m.graph.output[0])[-1]
+    if obs == "unified":
+        outs = {o.name: dims(o)[-1] for o in m.graph.output}
+        if set(outs) != {"action", "delta"}:
+            raise SystemExit(f"unified policy 必須有兩個 output：action 同 delta，而家有: {sorted(outs)}")
+        for k, v in outs.items():
+            if v != 20:
+                raise SystemExit(f"output {k} 維度要係 20，ONNX 係 {v}")
+        din = dims(ins[0])[-1]
+    else:
+        if len(m.graph.output) != 1:
+            raise SystemExit("policy 必須得 1 個 output（統一格式用 --obs unified，有 action＋delta 兩個）")
+        din, dout = dims(ins[0])[-1], dims(m.graph.output[0])[-1]
+        if dout != 20:
+            raise SystemExit(f"output 維度要係 20，ONNX 係 {dout}")
     if din != OBS_DIM[obs]:
         raise SystemExit(f"obs={obs} 要求 input 維度 {OBS_DIM[obs]}，ONNX 係 {din}")
-    if dout != 20:
-        raise SystemExit(f"output 維度要係 20，ONNX 係 {dout}")
     sup = supported_ops()
     bad = sorted({n.op_type for n in m.graph.node} - sup)
     if bad:
@@ -75,15 +84,29 @@ def selftest_cases(path, iname, din, n=8, seed=0):
     cases = []
     for _ in range(n):
         x = (rng.normal(0, 0.3, (1, din))).astype(np.float32)
-        y = s.run(None, {iname: x})[0][0]
-        cases.append({"obs": [float(v) for v in x[0]], "action": [float(v) for v in y]})
+        ys = s.run(None, {iname: x})
+        names = [o.name for o in s.get_outputs()]
+        y = ys[names.index("action")][0] if "action" in names else ys[0][0]
+        case = {"obs": [float(v) for v in x[0]], "action": [float(v) for v in y]}
+        if "delta" in names:                          # 統一格式：delta（rad）亦要對得上
+            case["delta"] = [float(v) for v in ys[names.index("delta")][0]]
+        cases.append(case)
     return {"tol": SELFTEST_TOL, "cases": cases}
 
 
 def cmd_pack(a):
     onnx_path = pathlib.Path(a.onnx)
     iname, din = validate_onnx(onnx_path, a.obs)
-    hz = a.control_hz
+    meta = json.load(open(a.meta)) if a.meta else {}
+    task = a.task or (meta.get("task") if a.obs == "unified" else None)
+    hz = a.control_hz or (1.0 / meta["ctrl_dt"] if meta.get("ctrl_dt") else None)
+    if not hz:
+        raise SystemExit("要 --control-hz（或者 --meta 有 ctrl_dt）")
+    if a.obs == "unified" and task not in ("stand", "walk", "walk_ref", "getup_back", "getup_front"):
+        raise SystemExit("unified policy 要 --task stand|walk|walk_ref|getup_back|getup_front（或者 --meta 有 task）")
+    if a.task and a.obs not in ("getup", "unified", "walk"):
+        raise SystemExit("--task 只適用於 --obs getup／unified／walk")
+    is_getup = a.obs == "getup" or (a.obs == "unified" and str(task).startswith("getup_"))
     period = round(1000.0 / hz)
     if period < FAST_MIN_PERIOD_MS:
         raise SystemExit(f"control_hz={hz} → period {period} ms < {FAST_MIN_PERIOD_MS} ms：chest 協議做唔到")
@@ -95,12 +118,27 @@ def cmd_pack(a):
     shutil.copyfile(onnx_path, out / "policy.onnx")
     man = {
         "schema": 1, "name": a.name, "obs": a.obs, "obs_dim": din, "action_dim": 20,
-        "act_scale": a.act_scale if a.act_scale is not None else (0.3 if a.obs == "stand" else 0.2),
+        "act_scale": a.act_scale if a.act_scale is not None else (
+            float(meta["act_scale"]) if a.obs == "unified" and meta.get("act_scale") else
+            ({"stand": 0.3, "walk": 0.5}.get(task, 0.2) if a.obs == "unified" else (0.3 if a.obs == "stand" else 0.2))),
         "control_hz": hz, "move_overlap": 1.05, "accel_axes": a.accel_axes,
         "max_speed_dps": a.max_speed_dps if a.max_speed_dps is not None else 90, "max_run_s": 60, "lease_ms": 5000, "tilt_limit_deg": 40,
         "onnx_sha256": hashlib.sha256(onnx_path.read_bytes()).hexdigest(), "notes": a.notes,
     }
-    if a.obs == "getup":
+    if a.obs == "unified":
+        man["task"] = task
+        man["gait_period_s"] = a.gait_period_s
+        cfg = meta.get("cfg") or {}
+        cm = [cfg.get("cmd_vx", meta.get("cmd_vx", 0.05)), cfg.get("cmd_vy", meta.get("cmd_vy", 0.03)), cfg.get("cmd_wz", meta.get("cmd_wz", 0.4))]
+        man["cmd_max"] = [float(v) for v in cm]
+        # 統一格式嘅 policy 每步最多可以郁 act_scale rad：速度包絡要夠大，否則 runtime 會削走訓練時冇嘅限制。
+        step_s = period * man.get("move_overlap", 1.05) / 1000.0
+        need = man["act_scale"] * 180.0 / 3.141592653589793 / step_s * 1.1
+        if a.max_speed_dps is None and task in ("stand", "walk", "walk_ref"):
+            man["max_speed_dps"] = int(min(300, max(90, -(-need // 10) * 10)))
+        if need > 300:
+            print(f"注意: act_scale {man['act_scale']} rad／{period} ms 步需要 ~{need:.0f}°/s，超過 300°/s 上限：滿幅動作會被削。", file=sys.stderr)
+    if is_getup:
         if not a.ref:
             raise SystemExit("getup policy 需要 --ref ref.json（rl/ref/backstand.json 或 frontstand.json）")
         ref = json.load(open(a.ref))
@@ -108,11 +146,11 @@ def cmd_pack(a):
         dt = ref.get("dt", 0.02)
         if not q or len(q[0]) != 20 or not (0.001 <= dt <= 1.0):
             raise SystemExit("ref.json 格式錯（需要 q: Tx20 rad，dt: 秒）")
-        side = a.task.replace("getup_", "") if a.task else ref.get("getup")
+        side = task.replace("getup_", "") if task else ref.get("getup")
         if side not in ("back", "front"):
             raise SystemExit("getup policy 要講明邊面：--task getup_back|getup_front（或 ref.json 有 getup: back|front）")
-        if a.task and ref.get("getup") and ref["getup"] != side:
-            raise SystemExit(f"--task {a.task} 同 ref.json 嘅 getup={ref['getup']} 唔一致")
+        if task and ref.get("getup") and ref["getup"] != side:
+            raise SystemExit(f"--task {task} 同 ref.json 嘅 getup={ref['getup']} 唔一致")
         hold_s = a.hold_s if a.hold_s is not None else (ref["hold"] * dt if "hold" in ref else 3.0)
         # 官方起身動作嘅關節峰值速度可達 ~250°/s：速度包絡細過 ref 會削走軌跡（起唔到身），所以缺省按 ref 加大（上限 300）。
         peak = max(abs(q[i + 1][j] - q[i][j]) for i in range(len(q) - 1) for j in range(20)) * 180.0 / 3.141592653589793 / dt
@@ -128,11 +166,13 @@ def cmd_pack(a):
         man["max_run_s"] = int(min(600, max(60, 6 + len(q) * dt + hold_s + 20)))
         shutil.copyfile(a.ref, out / "ref.json")
         man["ref"] = "ref.json"
-    elif a.then or a.task or a.hold_s is not None:
-        raise SystemExit("--task/--hold-s/--then 只適用於 --obs getup")
-    if a.obs == "walk":
+    elif a.then or a.hold_s is not None:
+        raise SystemExit("--hold-s/--then 只適用於 get-up policy")
+    if a.obs == "walk" and a.task:
+        man["task"] = a.task          # 舊格式 walk（ref 模仿）亦可以叫 walk_ref
+    if a.obs == "walk" or (a.obs == "unified" and task == "walk_ref"):
         if not a.ref:
-            raise SystemExit("walk policy 需要 --ref ref.json")
+            raise SystemExit("walk／walk_ref policy 需要 --ref ref.json")
         ref = json.load(open(a.ref))
         q, loop = ref["q"], ref["loop"]
         if not q or len(q[0]) != 20 or not (0 <= loop[0] < loop[1] <= len(q)):
@@ -141,7 +181,7 @@ def cmd_pack(a):
         man["ref"] = "ref.json"
     (out / "manifest.json").write_text(json.dumps(man, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     (out / "selftest.json").write_text(json.dumps(selftest_cases(onnx_path, iname, din)) + "\n", encoding="utf-8")
-    print(f"OK -> {out}  (obs {din} -> action 20, period {period} ms, sha256 {man['onnx_sha256'][:12]}…)")
+    print(f"OK -> {out}  (obs {din} -> {'action+delta 20' if a.obs == 'unified' else 'action 20'}, period {period} ms, sha256 {man['onnx_sha256'][:12]}…)")
 
 
 def cmd_make_fixtures(a):
@@ -219,6 +259,32 @@ def cmd_make_fixtures(a):
     Wg[1, 64] = 1.0
     save("echo63.onnx", [helper.make_node("Gemm", ["obs", "W", "B"], ["action"], transB=1)],
          [I(Wg, "W"), I(np.zeros(20, np.float32), "B")], 65, 20)
+    # 4d) 統一格式（obs 68；兩個輸出 action＋delta，delta＝scale×action）
+    def save2(name, nodes, inits, outs=("action", "delta"), din=68, dout=20):
+        g = helper.make_graph(nodes, "g", [helper.make_tensor_value_info("obs", TensorProto.FLOAT, [1, din])],
+                              [helper.make_tensor_value_info(o, TensorProto.FLOAT, [1, dout]) for o in outs], inits)
+        m = helper.make_model(g, opset_imports=[helper.make_opsetid("", 17)])
+        m.ir_version = 8
+        onnx.checker.check_model(m)
+        onnx.save(m, str(out / name))
+
+    # uni_const：action＝常數 B（唔受 obs 影響），delta＝0.3×B（stand 嘅 SCALE）
+    Bc = (0.5 * np.sin(np.arange(20))).astype(np.float32)
+    save2("uni_const.onnx", [helper.make_node("Gemm", ["obs", "W", "B"], ["action"], transB=1),
+                             helper.make_node("Mul", ["action", "S"], ["delta"])],
+          [I(np.zeros((20, 68), np.float32), "W"), I(Bc, "B"), I(np.array([0.3], np.float32), "S")])
+    (out / "uni_const.txt").write_text(" ".join(repr(float(v)) for v in Bc))
+    # uni_probe：action[0..2]＝速度指令 obs[43:46]，[3..4]＝phase obs[46:48]，[5]＝基準目標−q0 嘅第 0 軸 obs[48]；delta＝0.5×action
+    Wp = np.zeros((20, 68), np.float32)
+    for k, col in enumerate((43, 44, 45, 46, 47, 48)):
+        Wp[k, col] = 1.0
+    save2("uni_probe.onnx", [helper.make_node("Gemm", ["obs", "W", "B"], ["action"], transB=1),
+                             helper.make_node("Mul", ["action", "S"], ["delta"])],
+          [I(Wp, "W"), I(np.zeros(20, np.float32), "B"), I(np.array([0.5], np.float32), "S")])
+    # multi_noaction：兩個輸出但冇一個叫 action（要被拒）
+    save2("multi_noaction.onnx", [helper.make_node("Gemm", ["obs", "W", "B"], ["a"], transB=1),
+                                  helper.make_node("Identity", ["a"], ["b"])],
+          [I(np.zeros((20, 43), np.float32), "W"), I(np.zeros(20, np.float32), "B")], outs=("a", "b"), din=43)
     # 5) 真實 SB3 匯出嘅 walk policy（URDF repo 嘅 walk_forward.onnx，已複製入 test resources）
     wf = ROOT / "sdk-module/hardware-direct/src/test/resources/policy/walk_forward.onnx"
     shutil.copyfile(wf, out / "walk_forward.onnx")
@@ -233,12 +299,14 @@ def main():
     p.add_argument("--onnx", required=True)
     p.add_argument("--name", required=True)
     p.add_argument("--obs", choices=list(OBS_DIM), default="stand")
-    p.add_argument("--control-hz", type=float, required=True, help="policy 訓練時嘅決策頻率（<=3.33 可穩定真機；更高要 fast=true；<=50 且 period>=20ms）")
+    p.add_argument("--control-hz", type=float, default=None, help="policy 訓練時嘅決策頻率（<=3.33 可穩定真機；更高要 fast=true；<=50 且 period>=20ms）")
     p.add_argument("--max-speed-dps", type=float, default=None, help="速度包絡（°/s，<=300；缺省 90，getup 缺省按 ref 峰值速度自動加大）；亦可喺 policy/start 覆寫")
     p.add_argument("--act-scale", type=float, default=None)
     p.add_argument("--accel-axes", default="+x+y+z", help="加速度計軸→頭部座標，例如 -y+x+z（未實機驗證，預設同 URDF 假設）")
     p.add_argument("--ref")
-    p.add_argument("--task", choices=["getup_back", "getup_front"], help="getup：由邊面躺低起身（缺省由 ref.json 嘅 getup 欄位推）")
+    p.add_argument("--task", choices=["stand", "walk", "walk_ref", "getup_back", "getup_front"], help="unified 必須；getup：由邊面躺低起身（缺省由 ref.json 嘅 getup 欄位推）；舊格式 walk 可寫 walk_ref")
+    p.add_argument("--meta", help="訓練輸出嘅 meta.json（unified：取 ctrl_dt→control_hz、act_scale、task、cfg.cmd_vx/vy/wz）")
+    p.add_argument("--gait-period-s", type=float, default=1.0, help="unified stand／walk：自由運行時鐘週期（訓練 GAIT_PERIOD，缺省 1.0）")
     p.add_argument("--hold-s", type=float, default=None, help="getup：ref 播完後再撐幾秒先完成（缺省＝ref.json 嘅 hold×dt，再缺省 3）")
     p.add_argument("--then", default="", help="getup 完成後交俾邊個預載 policy（例如 stand policy 名）；缺省＝停機")
     p.add_argument("--notes", default="")

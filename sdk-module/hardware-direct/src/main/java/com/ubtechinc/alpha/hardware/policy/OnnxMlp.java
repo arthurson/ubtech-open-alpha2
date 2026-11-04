@@ -47,6 +47,8 @@ public final class OnnxMlp {
     private final Map<String, T> consts = new HashMap<String, T>();
     private String inputName = "";
     private String outputName = "";
+    private final List<String> outputNames = new ArrayList<String>();
+    private final Map<String, Integer> outputDims = new HashMap<String, Integer>();
     private int inputDim;
     private int outputDim;
     private int opset = 13;
@@ -57,6 +59,11 @@ public final class OnnxMlp {
     public int outputDim() { return outputDim; }
     public String inputName() { return inputName; }
     public String outputName() { return outputName; }
+    /** 所有輸出名（多輸出 policy，例如統一格式嘅 action＋delta）。 */
+    public List<String> outputNames() { return new ArrayList<String>(outputNames); }
+    public boolean hasOutput(String name) { return outputDims.containsKey(name); }
+    /** 指定輸出嘅維度；冇呢個輸出回 -1。 */
+    public int outputDim(String name) { Integer d = outputDims.get(name); return d == null ? -1 : d; }
 
     // ---------------------------------------------------------------- 讀 protobuf
 
@@ -184,12 +191,20 @@ public final class OnnxMlp {
         inputName = inputs.get(idx);
         int[] id = inputDims.get(idx);
         inputDim = id.length > 0 ? id[id.length - 1] : 0;
-        if (outputs.size() != 1) {
-            throw new IllegalArgumentException("model must have exactly one output, got " + outputs.size());
+        if (outputs.isEmpty()) throw new IllegalArgumentException("model has no output");
+        // 一個輸出：照舊。多輸出：必須有一個叫 "action"（主輸出）——統一格式嘅 action＋delta。
+        int pi = 0;
+        if (outputs.size() > 1) {
+            pi = outputs.indexOf("action");
+            if (pi < 0) throw new IllegalArgumentException("model has " + outputs.size() + " outputs but none is named 'action' (exactly one output, or one named 'action', is required)");
         }
-        outputName = outputs.get(0);
-        int[] od = outputDimsL.get(0);
-        outputDim = od.length > 0 ? od[od.length - 1] : 0;
+        for (int i = 0; i < outputs.size(); i++) {
+            int[] od = outputDimsL.get(i);
+            outputNames.add(outputs.get(i));
+            outputDims.put(outputs.get(i), od.length > 0 ? od[od.length - 1] : 0);
+        }
+        outputName = outputs.get(pi);
+        outputDim = outputDims.get(outputName);
     }
 
     /** 回 dims（動態維度＝-1）；name 放入 nm[0]。 */
@@ -381,6 +396,9 @@ public final class OnnxMlp {
         }
         if (inputDim <= 0) throw new IllegalArgumentException("input dim must be static, got " + inputDim);
         if (outputDim <= 0) throw new IllegalArgumentException("output dim must be static, got " + outputDim);
+        for (String on : outputNames) {
+            if (outputDims.get(on) <= 0) throw new IllegalArgumentException("output '" + on + "' dim must be static, got " + outputDims.get(on));
+        }
         // 試跑一次零輸入，儘早抓結構錯（形狀不符、缺張量）。
         run(new float[inputDim]);
     }
@@ -389,6 +407,19 @@ public final class OnnxMlp {
 
     /** 單次推論。輸入長度必須等於 {@link #inputDim()}；回新陣列（長度 {@link #outputDim()}）。 */
     public float[] run(float[] obs) {
+        Map<String, T> env = exec(obs);
+        return take(env, outputName, outputDim);
+    }
+
+    /** 單次推論，回全部輸出（名 → 值，次序同 graph.output）。統一格式 policy 用：{@code action}＋{@code delta}。 */
+    public Map<String, float[]> runAll(float[] obs) {
+        Map<String, T> env = exec(obs);
+        Map<String, float[]> r = new java.util.LinkedHashMap<String, float[]>();
+        for (String on : outputNames) r.put(on, take(env, on, outputDims.get(on)));
+        return r;
+    }
+
+    private Map<String, T> exec(float[] obs) {
         if (obs == null || obs.length != inputDim) {
             throw new IllegalArgumentException("obs length " + (obs == null ? -1 : obs.length)
                     + " != model input " + inputDim);
@@ -396,11 +427,13 @@ public final class OnnxMlp {
         Map<String, T> env = new HashMap<String, T>(consts);
         env.put(inputName, new T(obs.clone(), new int[] {1, inputDim}));
         for (Node n : nodes) exec(n, env);
-        T out = env.get(outputName);
-        if (out == null) throw new IllegalStateException("output tensor not produced: " + outputName);
-        if (out.d.length != outputDim) {
-            throw new IllegalStateException("output length " + out.d.length + " != " + outputDim);
-        }
+        return env;
+    }
+
+    private static float[] take(Map<String, T> env, String name, int dim) {
+        T out = env.get(name);
+        if (out == null) throw new IllegalStateException("output tensor not produced: " + name);
+        if (out.d.length != dim) throw new IllegalStateException("output '" + name + "' length " + out.d.length + " != " + dim);
         return out.d.clone();
     }
 

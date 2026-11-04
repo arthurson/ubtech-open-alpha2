@@ -328,6 +328,12 @@ public final class ApiDispatcher {
                 return policyCenter.switchResponse(query);
             case "policy/unload":
                 return policyCenter.unloadResponse(query);
+            case "policy/period":
+                return policyCenter.periodResponse(query);
+            case "policy/role":
+                return policyCenter.roleResponse(query);
+            case "policy/command":
+                return policyCenter.commandResponse(query);
             case "policy/status":
                 return policyCenter.statusResponse();
 

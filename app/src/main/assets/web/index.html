@@ -1201,16 +1201,35 @@
         <p class="hint" style="white-space:pre-wrap" id="polInfo">—</p>
         <h4 data-i18n="pol_bank_heading" style="margin:8px 0 4px">⚡ 預載組（可運行中即時切換）</h4>
         <div id="polBank" style="margin:4px 0"></div>
+        <div class="row" id="polRoles" style="flex-wrap:wrap;align-items:center;margin:4px 0"></div>
+        <div id="polCmdBox" style="display:none;margin:6px 0">
+          <div class="row" style="flex-wrap:wrap;align-items:center">
+            <b data-i18n="pol_cmd_label">速度指令</b>
+            <label>vx <input id="polVx" type="range" step="0.005" value="0" oninput="polCmdInput()"> <span id="polVxV">0</span> m/s</label>
+            <label>vy <input id="polVy" type="range" step="0.005" value="0" oninput="polCmdInput()"> <span id="polVyV">0</span> m/s</label>
+            <label>wz <input id="polWz" type="range" step="0.01" value="0" oninput="polCmdInput()"> <span id="polWzV">0</span> rad/s</label>
+            <button class="danger-btn" onclick="polCmdStop()" data-i18n="pol_cmd_stop">停</button>
+          </div>
+          <p class="hint" style="margin:2px 0" data-i18n="pol_cmd_hint">統一格式 walk policy 嘅速度指令（vx 向前、vy 向左、wz 逆時針）；範圍係該 policy 訓練時嘅上限。要持續更新——面板會每 0.6 秒重送，離線或超過 1.5 秒冇更新就自動歸零。</p>
+        </div>
 
         <h4 data-i18n="pol_run_heading" style="margin:8px 0 4px">▶ 運行</h4>
         <div class="row" style="flex-wrap:wrap">
           <label class="switch-label"><input type="checkbox" id="polDry" checked> <span data-i18n="pol_dry">排練 dry-run（唔郁舵機）</span></label>
           <label class="switch-label"><input type="checkbox" id="polFast"> <span data-i18n="pol_fast">fast（period &lt; 200ms，實驗）</span></label>
+          <label class="switch-label"><input type="checkbox" id="polAutoRecover"> <span data-i18n="pol_auto_recover">跌倒自動起身（需預載 getup policy；實驗）</span></label>
           <label><span data-i18n="pol_speed">速度上限 °/s（留空＝policy 設定）</span>
             <input id="polSpeed" type="number" min="10" max="300" step="any" style="width:5em"></label>
           <label><span data-i18n="pol_tilt_limit">傾角上限 °（留空＝40）</span>
             <input id="polTilt" type="number" min="10" max="60" step="any" style="width:5em"></label>
         </div>
+        <div class="row" style="flex-wrap:wrap;align-items:center;margin-top:6px">
+          <label><span data-i18n="pol_period">決策週期 ms（50–500，留空＝policy 自己嘅）</span>
+            <input id="polPeriod" type="number" min="50" max="500" step="10" style="width:5em"></label>
+          <button class="secondary" onclick="polApplyPeriod()" data-i18n="pol_period_apply">套用</button>
+          <span id="polPeriodPresets"></span>
+        </div>
+        <p class="hint" style="margin:2px 0" data-i18n="pol_period_hint">運行中按「套用」或預設值即時改（下一格生效，動作軌跡連續）；未運行時用於下次「開始」。慢過訓練頻率屬分佈外——逐級加大，睇 tilt／診斷嘅穩定性。</p>
         <div class="row" style="margin-top:6px">
           <button id="polStartBtn" onclick="polStart()" data-i18n="pol_start_btn" disabled>▶ 開始</button>
           <button class="danger-btn" onclick="polStop()" data-i18n="pol_stop_btn">■ 停止</button>

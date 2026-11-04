@@ -1301,6 +1301,46 @@ paths:
           type: string
           pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$'
         description: 起步 policy（要喺預載組入面）；缺省＝最近揀嘅／載入嘅。已經跑緊再叫 start 只係續租約，唔改揀選（換 policy 用 policy/switch）。
+      - name: role
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [stand, walk, walk_ref, getup_back, getup_front]
+        description: 角色（manifest 嘅 task）：用呢個角色而家對應嘅 policy 起步，同 name 二揀一
+      - name: auto_recover
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+        description: 跌倒自動起身（opt-in）：行緊（非 get-up）policy 時跌低並穩定躺住（back／front）recover_dwell_ms 毫秒，就切去預載嘅 getup_back／getup_front policy（完成後按其 manifest 嘅 then 交接）。跌低期間唔郁舵機。每次運行最多 recover_max 次（get-up 後仍然傾倒都計），用晒或者側躺等咗太耐就照舊 fall 停機。需要預載（真機＝合資格，50 Hz get-up policy 要 fast=true）getup policy。加速度計軸映射未驗證時誤判跌倒會喺企住時啟動起身，所以預設關閉。
+      - name: recover_max
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 2
+        description: auto_recover：每次運行最多自動起身幾多次
+      - name: recover_dwell_ms
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 500
+          maximum: 10000
+          default: 1500
+        description: auto_recover：要穩定躺住幾耐先起身（過濾跌落途中嘅過渡姿勢）
+      - name: period_ms
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 50
+          maximum: 500
+        description: 決策週期覆寫（ms），套用於本次運行所有 policy，用嚟試測 policy 幾慢仲穩。缺省＝各 policy 自己嘅 control_hz。Ref 仍按真實時間前進，所以動作嘅牆鐘速度唔變，只係「幾耐決定一次」變；policy 係喺原本頻率訓練，慢過訓練頻率屬分佈外。真機（非 dry）低過 200 ms 要 fast=true。
       - name: dry
         in: query
         schema:
@@ -1431,11 +1471,18 @@ paths:
       parameters:
       - name: name
         in: query
-        required: true
+        required: false
         schema:
           type: string
           pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$'
-        description: 預載組內嘅 policy 名（未載入要先 policy/load）
+        description: 預載組內嘅 policy 名（未載入要先 policy/load）。同 role 二揀一
+      - name: role
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [stand, walk, walk_ref, getup_back, getup_front]
+        description: 角色（manifest 嘅 task）：切去呢個角色而家對應嘅 policy（明確綁定優先，否則最後載入嘅同角色 policy），唔使記具體名。同 name 二揀一
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -1484,6 +1531,127 @@ paths:
                 - $ref: '#/components/schemas/OkWrapper'
                 - $ref: '#/components/schemas/PolicyStatus'
       operationId: policyUnload_post
+  /api/policy/role:
+    post:
+      tags:
+      - policy
+      summary: 綁定角色去預載組入面一個 policy
+      description: 角色＝manifest 嘅 task（stand／walk／getup_back／getup_front）。綁定後 policy/switch?role=walk、policy/start?role=stand 就唔使記具體名。冇綁定嘅角色用「最後載入嘅同角色 policy」。name 留空＝解除綁定。policy 被卸載會自動解除。status 嘅 roles 顯示每個角色而家對應邊個。
+      parameters:
+      - name: role
+        in: query
+        required: true
+        schema:
+          type: string
+          enum: [stand, walk, walk_ref, getup_back, getup_front]
+        description: 角色
+      - name: name
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$'
+        description: 預載組內嘅 policy 名（task 要同角色一致）；留空＝解除綁定
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: Policy 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - $ref: '#/components/schemas/PolicyStatus'
+      operationId: policyRole_post
+  /api/policy/command:
+    post:
+      tags:
+      - policy
+      summary: 速度指令（統一格式 walk policy）
+      description: vx m/s 向前、vy m/s 向左、wz rad/s 逆時針（同 ubtech-alpha2-urdf 訓練嘅指令一致），各軸按該 policy 嘅 manifest cmd_max 截斷。指令要持續更新：超過 status.commandTimeoutMs（預設 1500 ms）冇再叫就自動歸零，客戶端死咗機器就會停低。只喺運行中接受；非統一格式 walk 嘅 policy 忽略指令。全部留空／0＝停。
+      parameters:
+      - name: vx
+        in: query
+        required: false
+        schema:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+        description: 向前速度 m/s（負＝後退）
+      - name: vy
+        in: query
+        required: false
+        schema:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+        description: 向左速度 m/s（負＝向右）
+      - name: wz
+        in: query
+        required: false
+        schema:
+          type: number
+          minimum: -4
+          maximum: 4
+          default: 0
+        description: 轉向角速度 rad/s（正＝逆時針）
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: Policy 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - $ref: '#/components/schemas/PolicyStatus'
+      operationId: policyCommand_post
+  /api/policy/period:
+    post:
+      tags:
+      - policy
+      summary: 運行中即時改決策週期（50..500 ms）
+      description: 下一格開頭生效。Ref 位置係累加嘅，所以動作軌跡連續，只係決策次數變；move 時間、速度包絡（°/步）、遲到判定都跟新週期。ms=0 清除覆寫（用返各 policy 自己嘅 period）。真機非 fast 運行唔准低過 200 ms，亦唔准清除覆寫令預載 policy 跌返去自己嘅高頻 period。只可喺運行中用（起步時用 policy/start 嘅 period_ms）。
+      parameters:
+      - name: ms
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 500
+        description: 決策週期（ms）：50..500，或 0＝清除覆寫
+      - $ref: '#/components/parameters/PanelToken'
+      responses:
+        '401':
+          description: 面板 token 缺／錯（僅啟用後）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkWrapper'
+        '200':
+          description: Policy 狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/OkWrapper'
+                - $ref: '#/components/schemas/PolicyStatus'
+      operationId: policyPeriod_post
   /api/policy/status:
     get:
       tags:
@@ -7820,7 +7988,41 @@ components:
           description: 單次送出最長耗時（微秒）
         periodMsEff:
           type: integer
-          description: 實際使用嘅格長（ms）
+          description: 實際使用嘅決策週期（ms）：有覆寫＝覆寫值，否則係運行中 policy 自己嘅 period
+        periodOverrideMs:
+          type: integer
+          description: 決策週期覆寫（ms，50..500）；0＝冇覆寫
+        roles:
+          type: object
+          description: 每個角色而家對應嘅 policy 名（空字串＝冇）
+          properties:
+            stand:
+              type: string
+            walk:
+              type: string
+            walk_ref:
+              type: string
+            getup_back:
+              type: string
+            getup_front:
+              type: string
+        command:
+          type: array
+          items:
+            type: number
+          description: 而家實際生效嘅速度指令 [vx m/s, vy m/s, wz rad/s]（按 cmd_max 截斷；過期歸零；非統一格式 walk 一律 0）
+        commandTimeoutMs:
+          type: integer
+          description: 指令冇更新幾耐就自動歸零（ms）
+        autoRecover:
+          type: boolean
+          description: 本次運行有冇啟用跌倒自動起身
+        recoveries:
+          type: integer
+          description: 本次運行已自動起身（含重試）幾多次
+        fallen:
+          type: boolean
+          description: 而家係咪跌低等起身中（唔行 policy、唔送舵機）
         maxSpeedDps:
           type: number
           description: 實際使用嘅速度包絡（°/s）
@@ -7882,13 +8084,18 @@ components:
                 type: string
               obs:
                 type: string
-                enum: [stand, walk, getup]
+                enum: [stand, walk, getup, unified]
               task:
                 type: string
-                description: stand／walk／getup_back（躺背起身）／getup_front（躺面起身）
+                description: stand／walk（統一格式＝速度指令行走；舊格式＝ref 模仿）／walk_ref（模仿官方步態）／getup_back（躺背起身）／getup_front（躺面起身）
               then:
                 type: string
                 description: get-up 完成後交俾嘅預載 policy 名；空＝停機（舵機保持企姿）
+              cmdMax:
+                type: array
+                items:
+                  type: number
+                description: 統一格式 walk：速度指令上限 [vx m/s, vy m/s, wz rad/s]（manifest cmd_max）
               obsDim:
                 type: integer
               controlHz:
