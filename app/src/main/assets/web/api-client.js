@@ -677,6 +677,14 @@ const Alpha2Api = (function() {
     return api('policy/beat', params);
   }
 
+  function policyCommand(params) {
+    if (params && params.vx != null) assertRange(Number(params.vx), -2, 2, 'vx');
+    if (params && params.vy != null) assertRange(Number(params.vy), -2, 2, 'vy');
+    if (params && params.wz != null) assertRange(Number(params.wz), -4, 4, 'wz');
+    // 速度指令（統一格式 walk policy）
+    return api('policy/command', params);
+  }
+
   function policyDelete(params) {
     // 刪除機上 policy 目錄
     return api('policy/delete', params);
@@ -692,7 +700,23 @@ const Alpha2Api = (function() {
     return api('policy/load', params);
   }
 
+  function policyPeriod(params) {
+    if (params && params.ms != null) assertRange(Number(params.ms), 0, 500, 'ms');
+    // 運行中即時改決策週期（50..500 ms）
+    return api('policy/period', params);
+  }
+
+  function policyRole(params) {
+    if (params && params.role != null) assertEnum(params.role, ['stand', 'walk', 'walk_ref', 'getup_back', 'getup_front'], 'role');
+    // 綁定角色去預載組入面一個 policy
+    return api('policy/role', params);
+  }
+
   function policyStart(params) {
+    if (params && params.role != null) assertEnum(params.role, ['stand', 'walk', 'walk_ref', 'getup_back', 'getup_front'], 'role');
+    if (params && params.recover_max != null) assertRange(Number(params.recover_max), 1, 5, 'recover_max');
+    if (params && params.recover_dwell_ms != null) assertRange(Number(params.recover_dwell_ms), 500, 10000, 'recover_dwell_ms');
+    if (params && params.period_ms != null) assertRange(Number(params.period_ms), 50, 500, 'period_ms');
     if (params && params.tilt_limit_deg != null) assertRange(Number(params.tilt_limit_deg), 10, 60, 'tilt_limit_deg');
     if (params && params.max_speed_dps != null) assertRange(Number(params.max_speed_dps), 10, 300, 'max_speed_dps');
     // 開始運行預載組入面嘅 policy（預設 dry-run；已經跑緊就續租約）
@@ -710,6 +734,7 @@ const Alpha2Api = (function() {
   }
 
   function policySwitch(params) {
+    if (params && params.role != null) assertEnum(params.role, ['stand', 'walk', 'walk_ref', 'getup_back', 'getup_front'], 'role');
     // 切換 policy（預載組內；運行中即時生效，閒置＝揀選）
     return api('policy/switch', params);
   }
@@ -1372,9 +1397,12 @@ const Alpha2Api = (function() {
     ledStateGet,
     ledWifiSet,
     policyBeat,
+    policyCommand,
     policyDelete,
     policyList,
     policyLoad,
+    policyPeriod,
+    policyRole,
     policyStart,
     policyStatus,
     policyStop,

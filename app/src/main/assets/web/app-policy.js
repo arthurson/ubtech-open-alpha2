@@ -225,7 +225,84 @@ function polUnload(name) {
 }
 
 // 預載組列表：每個 policy 一行（名＋規格＋標籤＋切換／卸載）。名只含 [A-Za-z0-9._-]，仍用 textContent。
+// 速度指令（統一格式 walk）：滑桿範圍＝該 policy 嘅 cmd_max；持續重送（runtime 過 timeout 會歸零）。
+let polCmdSentAt = 0;
+let polCmdFor = "";
+function polCmdVals() {
+  return { vx: Number(polEl("polVx").value) || 0, vy: Number(polEl("polVy").value) || 0, wz: Number(polEl("polWz").value) || 0 };
+}
+function polCmdShow() {
+  const v = polCmdVals();
+  polEl("polVxV").textContent = v.vx.toFixed(3);
+  polEl("polVyV").textContent = v.vy.toFixed(3);
+  polEl("polWzV").textContent = v.wz.toFixed(2);
+}
+function polSendCmd() {
+  polCmdSentAt = Date.now();
+  return Alpha2Api.policyCommand(polCmdVals()).then(function (res) {
+    if (res && res.ok) polApplyStatus(res, false);
+    else polSetOutRaw(t("pol_cmd_fail") + ((res && (res.error || res.message)) || "?"));
+    return res;
+  });
+}
+function polCmdInput() { polCmdShow(); return polSendCmd(); }
+function polCmdStop() {
+  ["polVx", "polVy", "polWz"].forEach(function (id) { polEl(id).value = 0; });
+  polCmdShow();
+  return polSendCmd();
+}
+function polRenderCmd(res) {
+  const box = polEl("polCmdBox");
+  if (!box) return;
+  const act = (res && res.running) ? (res.bank || []).filter(function (b) { return b.active && b.cmdMax && b.task === "walk"; })[0] : null;
+  box.style.display = act ? "" : "none";
+  if (!act) { polCmdFor = ""; return; }
+  if (polCmdFor !== act.name) {                       // 換咗 policy：重設範圍同歸零
+    polCmdFor = act.name;
+    [["polVx", act.cmdMax[0]], ["polVy", act.cmdMax[1]], ["polWz", act.cmdMax[2]]].forEach(function (p) {
+      const el = polEl(p[0]); el.min = -p[1]; el.max = p[1]; el.value = 0;
+    });
+    polCmdShow();
+  }
+  const v = polCmdVals();
+  if ((v.vx || v.vy || v.wz) && Date.now() - polCmdSentAt > 600) polSendCmd();
+}
+
+// 角色快速切換：stand／walk／walk_ref／getup_back／getup_front → 而家對應嘅 policy（status.roles）
+function polSwitchRole(role) {
+  return Alpha2Api.policySwitch({ role: role }).then(function (res) {
+    if (!res || !res.ok) { polSetOutRaw(t("pol_switch_fail") + ((res && (res.error || res.message)) || "?")); return res; }
+    polSetOutRaw("");
+    polApplyStatus(res, false);
+    return res;
+  });
+}
+
+function polRenderRoles(res) {
+  const box = polEl("polRoles");
+  if (!box) return;
+  box.textContent = "";
+  const roles = (res && res.roles) || {};
+  const lab = document.createElement("span");
+  lab.textContent = t("pol_roles_label");
+  box.appendChild(lab);
+  ["stand", "walk", "walk_ref", "getup_back", "getup_front"].forEach(function (role) {
+    const b = document.createElement("button");
+    b.className = "secondary";
+    const name = roles[role] || "";
+    b.textContent = role;
+    b.title = name || t("pol_role_none");
+    const inRun = (res.bank || []).some(function (x) { return x.name === name && (!res.running || x.inRun); });
+    b.disabled = !name || !inRun || !!(res.running && res.active === name);
+    b.onclick = function () { polSwitchRole(role); };
+    box.appendChild(b);
+  });
+}
+
 function polRenderBank(res) {
+  polInitPeriodPresets();
+  polRenderRoles(res);
+  polRenderCmd(res);
   const box = polEl("polBank");
   if (!box) return;
   box.textContent = "";
@@ -276,6 +353,9 @@ function polStart() {
   if (sp) p.max_speed_dps = sp;
   const tl = polEl("polTilt").value;
   if (tl) p.tilt_limit_deg = tl;
+  const pr = polEl("polPeriod").value;
+  if (pr) p.period_ms = pr;
+  if (polEl("polAutoRecover").checked) p.auto_recover = "true";
   if (!dry && !confirm(t("pol_confirm_real"))) return Promise.resolve();
   return Alpha2Api.policyStart(p).then(function (res) {
     if (!res || !res.ok) {
@@ -287,6 +367,34 @@ function polStart() {
     polApplyStatus(res, false);
     polEnsurePolling(true);            // 唔靠回應嘅 running 欄位（可能追唔上），一定開輪詢＋心跳
     return res;
+  });
+}
+
+// 決策週期：運行中即時改（下一格生效）；未運行只記低（polStart 會帶 period_ms）。
+function polApplyPeriod(v) {
+  const inp = polEl("polPeriod");
+  if (v != null) inp.value = v;
+  const ms = inp.value === "" ? 0 : Number(inp.value);
+  if (!(ms === 0 || (ms >= 50 && ms <= 500))) { polSetOutRaw(t("pol_period_fail") + "50–500"); return Promise.resolve(); }
+  if (!polLast || !polLast.running) { polSetOutRaw(t("pol_period_next")); return Promise.resolve(); }
+  return Alpha2Api.policyPeriod({ ms: ms }).then(function (res) {
+    if (!res || !res.ok) { polSetOutRaw(t("pol_period_fail") + ((res && (res.error || res.message)) || "?")); return res; }
+    polSetOutRaw("");
+    polApplyStatus(res, false);
+    return res;
+  });
+}
+
+function polInitPeriodPresets() {
+  const box = polEl("polPeriodPresets");
+  if (!box || box.firstChild) return;
+  [50, 100, 150, 200, 300, 400, 500].forEach(function (v) {
+    const b = document.createElement("button");
+    b.className = "secondary";
+    b.textContent = String(v);
+    b.style.minWidth = "3em";
+    b.onclick = function () { polApplyPeriod(v); };
+    box.appendChild(b);
   });
 }
 
@@ -366,9 +474,11 @@ function polRender() {
   l2.push((res.running ? "▶ " + t("pol_running") : "■ " + t("pol_idle")) + (res.running ? (res.dry ? " (dry)" : "") + (res.fast ? " [fast]" : "") : ""));
   if (typeof res.steps === "number") {
     l2.push(t("pol_steps") + " " + res.steps + " · " + t("pol_tilt") + " " + res.tiltDeg + "° · " + t("pol_period") + " " + res.periodMsEff + " ms" +
-      (res.active ? " · ▶ " + res.active : "") + (res.switches ? " · " + t("pol_switch_count") + " " + res.switches : ""));
+      (res.active ? " · ▶ " + res.active : "") + (res.periodOverrideMs ? " · ⏱ " + res.periodOverrideMs + " ms" : "") +
+      (res.autoRecover ? " · 🛟 " + t("pol_recoveries") + " " + res.recoveries : "") + (res.switches ? " · " + t("pol_switch_count") + " " + res.switches : ""));
     l2.push(t("pol_infer") + " " + res.inferUs + " µs · " + t("pol_maxstep") + " " + res.maxStepUs + " µs · " + t("pol_maxsend") + " " + res.maxSendUs + " µs · " + t("pol_overruns") + " " + res.overruns);
   }
+  if (res.running && res.fallen) l2.push(t("pol_fallen"));
   if (!res.running && res.endReason) l2.push(t("pol_end") + " " + polEndReasonText(res.endReason));
   if (res.error) l2.push("⚠️ " + res.error);
   live.textContent = l2.join("\n");

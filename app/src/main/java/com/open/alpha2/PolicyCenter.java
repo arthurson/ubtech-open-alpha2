@@ -79,6 +79,10 @@ public final class PolicyCenter {
     private final UbxPlayer ubxPlayer;
     private final DeviceStatus deviceStatus;
 
+    /** 角色＝manifest 嘅 task：可以用「換 walk」代替記具體名。 */
+    public static final String[] ROLES = {"stand", "walk", "walk_ref", "getup_back", "getup_front"};
+    /** 明確綁定：role → policy 名（未綁就用「最後載入嘅同角色 policy」）。同步靠 synchronized(this)。 */
+    private final Map<String, String> roleBind = new HashMap<String, String>();
     /** 預載組（bank）：name → 已驗證嘅 policy。同步靠 synchronized(this)。 */
     private final Map<String, Loaded> bank = new LinkedHashMap<String, Loaded>();
     /** 揀咗嘅 policy：下一次 start 嘅目標；運行中跟住最近一次 switch，面板顯示用。 */
@@ -88,6 +92,7 @@ public final class PolicyCenter {
     private volatile boolean runnerFast = false;
     private volatile float runSpeedOverride = 0f;   // 本次運行嘅覆寫（之後預載嘅 policy 都跟）
     private volatile float runTiltOverride = 0f;
+    private volatile int runPeriodOverride = 0;       // 本次運行嘅決策週期覆寫（ms，0＝policy 自己嘅）
     private volatile String lastError = "";
 
     public PolicyCenter(Context context, UbxPlayer ubxPlayer, DeviceStatus deviceStatus) {
@@ -138,6 +143,12 @@ public final class PolicyCenter {
         m.task = o.optString("task", "");
         m.holdS = o.optDouble("hold_s", m.holdS);
         m.then = o.optString("then", "");
+        m.gaitPeriodS = o.optDouble("gait_period_s", m.gaitPeriodS);
+        JSONArray cm = o.optJSONArray("cmd_max");
+        if (cm != null) {
+            m.cmdMax = new double[cm.length()];
+            for (int i = 0; i < m.cmdMax.length; i++) m.cmdMax[i] = cm.optDouble(i, -1);
+        }
         m.obsDim = o.optInt("obs_dim", 0);
         m.actionDim = o.optInt("action_dim", 20);
         m.actScale = o.optDouble("act_scale", m.actScale);
@@ -179,7 +190,11 @@ public final class PolicyCenter {
         l.model = OnnxMlp.load(onnx);
         if (l.model.inputDim() != l.man.obsDim) throw new IllegalArgumentException("model input " + l.model.inputDim() + " != manifest obs_dim " + l.man.obsDim);
         if (l.model.outputDim() != Alpha2PolicyIo.N) throw new IllegalArgumentException("model output " + l.model.outputDim() + " != 20");
-        if ("walk".equals(l.man.obs) || "getup".equals(l.man.obs)) {
+        if (l.man.isUnified() && (!l.model.hasOutput("action") || !l.model.hasOutput("delta")
+                || l.model.outputDim("action") != Alpha2PolicyIo.N || l.model.outputDim("delta") != Alpha2PolicyIo.N)) {
+            throw new IllegalArgumentException("unified policy needs ONNX outputs 'action' and 'delta' (20 each), got " + l.model.outputNames());
+        }
+        if ("walk".equals(l.man.obs) || "getup".equals(l.man.obs) || (l.man.isUnified() && !l.man.ref.isEmpty())) {
             JSONObject r = new JSONObject(new String(readAll(new File(dir, l.man.ref), MAX_SMALL_BYTES), "UTF-8"));
             JSONArray qa = r.getJSONArray("q");
             double[][] q = new double[qa.length()][];
@@ -188,7 +203,7 @@ public final class PolicyCenter {
                 q[i] = new double[row.length()];
                 for (int j = 0; j < row.length(); j++) q[i][j] = row.getDouble(j);
             }
-            if ("getup".equals(l.man.obs)) {
+            if ("getup".equals(l.man.obs) || !l.man.lyingSide().isEmpty()) {
                 // get-up：ref 唔循環（播完維持末格）；loop 參數 runner 唔用，填成全段。
                 l.ref = new PolicyRunner.Ref(q, 0, q.length, r.optDouble("dt", 0.02));
             } else {
@@ -225,6 +240,12 @@ public final class PolicyCenter {
                 float[] got = l.model.run(obs);
                 if (got.length != aa.length()) { l.selftestInfo = "action length mismatch"; return; }
                 for (int j = 0; j < got.length; j++) worst = Math.max(worst, Math.abs(got[j] - aa.getDouble(j)));
+                JSONArray da = c.optJSONArray("delta");            // 統一格式：第二個輸出一樣要對得上
+                if (da != null && l.model.hasOutput("delta")) {
+                    float[] dg = l.model.runAll(obs).get("delta");
+                    if (dg.length != da.length()) { l.selftestInfo = "delta length mismatch"; return; }
+                    for (int j = 0; j < dg.length; j++) worst = Math.max(worst, Math.abs(dg[j] - da.getDouble(j)));
+                }
             }
             l.selftestInfo = "max|err|=" + worst + " tol=" + tol + " cases=" + cs.length();
             l.selftestOk = worst <= tol;
@@ -241,13 +262,18 @@ public final class PolicyCenter {
     }
 
     /** 真機（非 dry）時，呢個 policy 可唔可以入 runner：通過資格檢查，而且高頻 policy 要本次運行有 fast。 */
-    private static boolean eligible(Loaded b, boolean dry, boolean fast) {
-        return dry || (b.realBlock.isEmpty() && (!b.needsFast || fast));
+    /** 實際決策週期（ms）：有覆寫用覆寫，否則 policy 自己嘅。 */
+    private static int effPeriodMs(Loaded b, int ov) { return ov > 0 ? ov : b.man.periodMs(); }
+
+    private static boolean needsFastEff(Loaded b, int ov) { return effPeriodMs(b, ov) < PolicyManifest.MIN_PERIOD_MS; }
+
+    private static boolean eligible(Loaded b, boolean dry, boolean fast, int ov) {
+        return dry || (b.realBlock.isEmpty() && (!needsFastEff(b, ov) || fast));
     }
 
-    private static String ineligibleReason(Loaded b, boolean fast) {
+    private static String ineligibleReason(Loaded b, boolean fast, int ov) {
         if (!b.realBlock.isEmpty()) return b.realBlock;
-        if (b.needsFast && !fast) return "high-rate policy (period " + b.man.periodMs() + " ms < " + PolicyManifest.MIN_PERIOD_MS
+        if (needsFastEff(b, ov) && !fast) return "high-rate (period " + effPeriodMs(b, ov) + " ms < " + PolicyManifest.MIN_PERIOD_MS
                 + " ms floor) needs a run started with fast=true";
         return "";
     }
@@ -274,9 +300,21 @@ public final class PolicyCenter {
         c.maxRunMs = m.maxRunS * 1000L;
         c.dry = dry;
         c.ref = l.ref;
-        if ("getup".equals(m.obs)) {
+        if (m.isUnified()) {
+            c.unified = true;
+            c.task = m.effectiveTask();
+            c.gaitPeriodS = m.gaitPeriodS;
+            c.cmdMax = m.cmdMax.clone();
+        }
+        if (!m.lyingSide().isEmpty()) {
             c.getup = true;
             c.lying = m.lyingSide();
+            if (m.isUnified()) {
+                // 統一格式：T 個控制步（ceil((len-1)·dt/ctrl_dt)+1）＝ T·ctrl_dt/dt 格 ref
+                double ctrlDt = 1.0 / m.controlHz;
+                int steps = (int) Math.ceil((l.ref.frames() - 1) * l.ref.dtSec() / ctrlDt - 1e-9) + 1;
+                c.getupEndFrames = steps * ctrlDt / l.ref.dtSec();
+            }
             c.holdS = m.holdS;
             c.then = m.then;
             // 運行時間至少夠：settle（最長 6 s）＋ ref ＋ hold ＋ 餘裕，唔好俾 manifest 嘅 max_run_s 提早切斷起身動作。
@@ -286,7 +324,8 @@ public final class PolicyCenter {
         return c;
     }
 
-    private synchronized HttpServer.ApiResponse start(String name, boolean dry, boolean fast, float speedOverride, float tiltOverride) {
+    private synchronized HttpServer.ApiResponse start(String name, boolean dry, boolean fast, float speedOverride, float tiltOverride, int periodOverride,
+                                                      boolean autoRecover, int recoverMax, int recoverDwellMs) {
         // 可選 name：由預載組揀起步 policy（運行中再叫 start 只係續租約，唔改揀選——要換就用 policy/switch）。
         if (name != null && !name.isEmpty() && !running()) {
             Loaded pick = bank.get(name);
@@ -300,8 +339,8 @@ public final class PolicyCenter {
         final DirectChestController chest = HardwareDirectManager.get(appContext).chest();
         if (!dry) {
             if (!l.realBlock.isEmpty()) return HttpServer.ApiResponse.badRequest("real run refused: " + l.realBlock + " (use dry=true to rehearse)");
-            if (l.needsFast && !fast) return HttpServer.ApiResponse.badRequest("real run refused: high-rate policy (period "
-                    + l.man.periodMs() + " ms < " + PolicyManifest.MIN_PERIOD_MS
+            if (needsFastEff(l, periodOverride) && !fast) return HttpServer.ApiResponse.badRequest("real run refused: high-rate (period "
+                    + effPeriodMs(l, periodOverride) + " ms < " + PolicyManifest.MIN_PERIOD_MS
                     + " ms stable-gait floor) needs fast=true (experimental; keep the robot supported/harnessed, start with a low max_speed_dps)");
             if (!chest.isAvailable()) return HttpServer.ApiResponse.error("chest not available");
             if (!ubxPlayer.poseKnown()) return HttpServer.ApiResponse.badRequest("servo pose unknown: stand up first (boot stand-up or play an action)");
@@ -317,7 +356,7 @@ public final class PolicyCenter {
         // 預載組入面全部合資格嘅 policy 一齊入 runner（起步嗰個一定合資格：上面已擋）。
         List<PolicyRunner.Slot> slots = new ArrayList<PolicyRunner.Slot>();
         for (Loaded b : bank.values()) {
-            if (!eligible(b, dry, fast)) continue;
+            if (!eligible(b, dry, fast, periodOverride)) continue;
             slots.add(new PolicyRunner.Slot(b.man.name, b.model, b == l ? c : buildConfig(b, dry, speedOverride, tiltOverride)));
         }
         final boolean fdry = dry;
@@ -347,9 +386,29 @@ public final class PolicyCenter {
         } catch (IllegalArgumentException e) {
             return HttpServer.ApiResponse.badRequest(e.getMessage());
         }
+        // 跌倒自動起身（opt-in）：用角色解析 getup_back／getup_front，要喺 runner 入面（真機＝合資格）先算。
+        if (autoRecover) {
+            Loaded lb = resolveRole("getup_back"), lf = resolveRole("getup_front");
+            String back = null, front = null;
+            for (PolicyRunner.Slot sl : slots) {
+                if (lb != null && sl.name.equals(lb.man.name)) back = sl.name;
+                if (lf != null && sl.name.equals(lf.man.name)) front = sl.name;
+            }
+            if (back == null && front == null) {
+                return HttpServer.ApiResponse.badRequest("auto_recover: no eligible getup_back/getup_front policy in the preload bank"
+                        + " (a real run needs fast=true for 50 Hz get-up policies)");
+            }
+            try {
+                r.enableAutoRecover(back, front, recoverMax);
+                r.setRecoverTiming(recoverDwellMs, Math.max(10000, recoverDwellMs * 4L));
+            } catch (IllegalArgumentException e) {
+                return HttpServer.ApiResponse.badRequest(e.getMessage());
+            }
+        }
         // 普通動作播放中：搶佔（同 WalkCenter 一致）。
         if (ubxPlayer.isPlaying()) ubxPlayer.stop();
         final PolicyRunner fr = r;
+        if (periodOverride > 0) fr.requestPeriod(periodOverride);
         final boolean quiet = !dry && fast;        // fast＝實驗高頻模式：關閉每幀 TX log（切換後可能跑 20ms policy）
         Runnable task = new Runnable() {
             @Override public void run() {
@@ -380,6 +439,7 @@ public final class PolicyCenter {
         runnerFast = fast;
         runSpeedOverride = speedOverride;
         runTiltOverride = tiltOverride;
+        runPeriodOverride = periodOverride;
         lastError = "";
         return statusResponse();
     }
@@ -413,7 +473,7 @@ public final class PolicyCenter {
         PolicyRunner r = runner;
         if (r != null && r.isRunning()) {
             try {
-                if (eligible(l, runnerDry, runnerFast)) {
+                if (eligible(l, runnerDry, runnerFast, runPeriodOverride)) {
                     r.putSlot(new PolicyRunner.Slot(n, l.model, buildConfig(l, runnerDry, runSpeedOverride, runTiltOverride)));
                 } else {
                     r.removeSlot(n);        // 新版唔合資格：舊版都唔應該留喺 runner
@@ -425,6 +485,31 @@ public final class PolicyCenter {
         bank.put(n, l);
     }
 
+    /** 角色對應嘅 policy：有明確綁定（而且仲喺預載組、角色吻合）就用佢，否則用最後載入嘅同角色 policy。呼叫者持鎖。 */
+    private Loaded resolveRole(String role) {
+        String bound = roleBind.get(role);
+        if (bound != null) {
+            Loaded b = bank.get(bound);
+            if (b != null && role.equals(b.man.effectiveTask())) return b;
+        }
+        Loaded found = null;
+        for (Loaded b : bank.values()) if (role.equals(b.man.effectiveTask())) found = b;
+        return found;
+    }
+
+    /** name／role 二揀一：回傳 policy 名；兩個都冇回 ""；錯誤時 throw IllegalArgumentException（dispatcher 轉 400）。 */
+    private String nameOrRole(Map<String, String> query) {
+        String name = ApiValidator.optional(query, "name", "");
+        String role = ApiValidator.optionalEnum(query, "role", ROLES, "");
+        if (!name.isEmpty() && !role.isEmpty()) throw new IllegalArgumentException("give either 'name' or 'role', not both");
+        if (role.isEmpty()) return name;
+        synchronized (this) {
+            Loaded l = resolveRole(role);
+            if (l == null) throw new IllegalArgumentException("no preloaded policy with role " + role + " (policy/load one whose manifest task is " + role + ")");
+            return l.man.name;
+        }
+    }
+
     /** 由預載組（同運行中嘅 runner）移除；呼叫者持鎖，並且已經確認唔係用緊。 */
     private void bankRemove(String name) {
         PolicyRunner r = runner;
@@ -432,6 +517,8 @@ public final class PolicyCenter {
             try { r.removeSlot(name); } catch (IllegalStateException e) { /* inUse 已擋；競態下保守保留 */ return; }
         }
         bank.remove(name);
+        java.util.Iterator<Map.Entry<String, String>> bi = roleBind.entrySet().iterator();
+        while (bi.hasNext()) if (name.equals(bi.next().getValue())) bi.remove();
         Loaded cur = loaded;
         if (cur != null && name.equals(cur.man.name)) {
             loaded = bank.isEmpty() ? null : bank.values().iterator().next();
@@ -652,14 +739,15 @@ public final class PolicyCenter {
      * 真機運行只可以切去「有資格」嘅 policy。閒置：只係揀呢個做下次 policy/start 嘅目標。
      */
     public HttpServer.ApiResponse switchResponse(Map<String, String> query) {
-        String name = ApiValidator.require(query, "name");
+        String name = nameOrRole(query);
+        if (name.isEmpty()) return HttpServer.ApiResponse.badRequest("name or role required");
         synchronized (this) {
             Loaded l = bank.get(name);
             if (l == null) return HttpServer.ApiResponse.badRequest("policy not preloaded: " + name + " (policy/load first)");
             PolicyRunner r = runner;
             if (r != null && r.isRunning()) {
-                if (!eligible(l, runnerDry, runnerFast)) {
-                    return HttpServer.ApiResponse.badRequest("switch refused: " + ineligibleReason(l, runnerFast));
+                if (!eligible(l, runnerDry, runnerFast, runPeriodOverride)) {
+                    return HttpServer.ApiResponse.badRequest("switch refused: " + ineligibleReason(l, runnerFast, runPeriodOverride));
                 }
                 String err = r.requestSwitch(name);
                 if (!err.isEmpty()) return HttpServer.ApiResponse.badRequest("switch refused: " + err);
@@ -667,6 +755,78 @@ public final class PolicyCenter {
             loaded = l;
             lastError = "";
         }
+        return statusResponse();
+    }
+
+    /**
+     * policy/period?ms=：運行中即時改決策週期（50..500 ms；0＝清除覆寫，用返各 policy 自己嘅 period）。
+     * 下一格開頭生效；ref 仍按真實時間前進，所以動作軌跡連續，只係「幾耐決定一次」變。真機非 fast 運行唔准低過 200 ms
+     * （同 policy/start 一樣），亦唔准清除覆寫令有 policy 跌返去自己嘅高頻 period。
+     */
+    public HttpServer.ApiResponse periodResponse(Map<String, String> query) {
+        int ms = ApiValidator.optionalInt(query, "ms", -1);
+        if (ms != 0 && (ms < 50 || ms > 500)) return HttpServer.ApiResponse.badRequest("ms must be 0 (policy's own period) or 50..500");
+        synchronized (this) {
+            PolicyRunner r = runner;
+            if (r == null || !r.isRunning()) return HttpServer.ApiResponse.badRequest("not running (set period_ms on policy/start to start with an override)");
+            if (!runnerDry && !runnerFast) {
+                if (ms > 0 && ms < PolicyManifest.MIN_PERIOD_MS) {
+                    return HttpServer.ApiResponse.badRequest("period " + ms + " ms < " + PolicyManifest.MIN_PERIOD_MS
+                            + " ms needs a run started with fast=true");
+                }
+                if (ms == 0) {
+                    for (String n : r.slotNames()) {
+                        Loaded b = bank.get(n);
+                        if (b != null && b.man.periodMs() < PolicyManifest.MIN_PERIOD_MS) {
+                            return HttpServer.ApiResponse.badRequest("policy '" + n + "' has its own period " + b.man.periodMs()
+                                    + " ms < " + PolicyManifest.MIN_PERIOD_MS + " ms: keep an override >= 200 or restart with fast=true");
+                        }
+                    }
+                }
+            }
+            String err = r.requestPeriod(ms);
+            if (!err.isEmpty()) return HttpServer.ApiResponse.badRequest(err);
+            runPeriodOverride = ms;
+            lastError = "";
+        }
+        return statusResponse();
+    }
+
+    /**
+     * policy/role?role=&name=：綁定角色（stand／walk／getup_back／getup_front）去預載組入面一個 policy（task 要吻合）；
+     * name 留空＝解除綁定（之後用「最後載入嘅同角色 policy」）。之後 policy/switch?role=walk 就唔使記具體名。
+     */
+    public HttpServer.ApiResponse roleResponse(Map<String, String> query) {
+        String role = ApiValidator.optionalEnum(query, "role", ROLES, "");
+        if (role.isEmpty()) return HttpServer.ApiResponse.badRequest("role required (" + java.util.Arrays.toString(ROLES) + ")");
+        String name = ApiValidator.optional(query, "name", "");
+        synchronized (this) {
+            if (name.isEmpty()) {
+                roleBind.remove(role);
+            } else {
+                Loaded b = bank.get(name);
+                if (b == null) return HttpServer.ApiResponse.badRequest("policy not preloaded: " + name + " (policy/load first)");
+                if (!role.equals(b.man.effectiveTask())) {
+                    return HttpServer.ApiResponse.badRequest("policy '" + name + "' has task " + b.man.effectiveTask() + ", not " + role);
+                }
+                roleBind.put(role, name);
+            }
+        }
+        return statusResponse();
+    }
+
+    /**
+     * policy/command?vx=&vy=&wz=：速度指令（vx m/s 向前、vy m/s 向左、wz rad/s 逆時針），畀統一格式嘅 walk policy。
+     * 各軸按該 policy 嘅 cmd_max 截斷；指令要持續更新，超過 commandTimeoutMs（預設 1500 ms）冇更新就自動歸零。
+     * 只喺運行中接受；非 walk policy 會忽略指令（obs 入面係 0）。全部留空／0＝停。
+     */
+    public HttpServer.ApiResponse commandResponse(Map<String, String> query) {
+        float vx = ApiValidator.optionalFloatRange(query, "vx", -2.0, 2.0, 0f);
+        float vy = ApiValidator.optionalFloatRange(query, "vy", -2.0, 2.0, 0f);
+        float wz = ApiValidator.optionalFloatRange(query, "wz", -4.0, 4.0, 0f);
+        PolicyRunner r = runner;
+        if (r == null || !r.isRunning()) return HttpServer.ApiResponse.badRequest("not running");
+        r.setCommand(vx, vy, wz);
         return statusResponse();
     }
 
@@ -689,7 +849,13 @@ public final class PolicyCenter {
         // 速度包絡覆寫（°/s）：逐步加大去測試，唔使重新打包；0＝用 manifest 值。
         float sp = ApiValidator.optionalFloatRange(query, "max_speed_dps", 10, PolicyManifest.MAX_SPEED_DPS_CAP, 0f);
         float tilt = ApiValidator.optionalFloatRange(query, "tilt_limit_deg", 10, 60, 0f);
-        return start(ApiValidator.optional(query, "name", ""), dry, fast, sp, tilt);
+        // 決策週期覆寫（ms）：50..500，用嚟試測 policy 幾慢仲穩；0／唔填＝用 policy 自己嘅 control_hz。
+        int period = ApiValidator.optionalIntRange(query, "period_ms", 50, 500, 0);
+        // 跌倒自動起身（opt-in，預設關）：跌低並穩定躺住就切去預載嘅 getup_back／getup_front policy。
+        boolean autoRecover = ApiValidator.optionalBoolean(query, "auto_recover", false);
+        int recoverMax = ApiValidator.optionalIntRange(query, "recover_max", 1, 5, 2);
+        int recoverDwell = ApiValidator.optionalIntRange(query, "recover_dwell_ms", 500, 10000, 1500);
+        return start(nameOrRole(query), dry, fast, sp, tilt, period, autoRecover, recoverMax, recoverDwell);
     }
 
     /**
@@ -758,6 +924,9 @@ public final class PolicyCenter {
                 sb.append(",\"obs\":\"").append(bm.obs).append("\",\"obsDim\":").append(bm.obsDim);
                 sb.append(",\"task\":\"").append(JsonUtil.esc(bm.effectiveTask())).append('"');
                 sb.append(",\"then\":\"").append(JsonUtil.esc(bm.then)).append('"');
+                if (bm.isUnified()) {
+                    sb.append(",\"cmdMax\":[").append(bm.cmdMax[0]).append(',').append(bm.cmdMax[1]).append(',').append(bm.cmdMax[2]).append(']');
+                }
                 sb.append(",\"controlHz\":").append(bm.controlHz).append(",\"periodMs\":").append(bm.periodMs());
                 sb.append(",\"actScale\":").append(bm.actScale);
                 sb.append(",\"needsFast\":").append(b.needsFast);
@@ -770,6 +939,16 @@ public final class PolicyCenter {
             }
         }
         sb.append(']');
+        // 角色（manifest task）對應而家邊個 policy：明確綁定優先，否則最後載入嘅同角色 policy；冇＝空字串
+        synchronized (this) {
+            sb.append(",\"roles\":{");
+            for (int i = 0; i < ROLES.length; i++) {
+                Loaded rb = resolveRole(ROLES[i]);
+                if (i > 0) sb.append(',');
+                sb.append('"').append(ROLES[i]).append("\":\"").append(rb == null ? "" : JsonUtil.esc(rb.man.name)).append('"');
+            }
+            sb.append('}');
+        }
         sb.append(",\"accelAvailable\":").append(deviceStatus.hasAccelerometer());
         sb.append(",\"accelEnabled\":").append(deviceStatus.isAccelerometerEnabled());
         if (r != null) {
@@ -790,7 +969,14 @@ public final class PolicyCenter {
                 sb.append('"').append(JsonUtil.esc(swl.get(i))).append('"');
             }
             sb.append(']');
-            sb.append(",\"periodMsEff\":").append(r.config().periodMs);
+            double[] cmdNow = r.command();
+            sb.append(",\"command\":[").append(cmdNow[0]).append(',').append(cmdNow[1]).append(',').append(cmdNow[2]).append(']');
+            sb.append(",\"commandTimeoutMs\":").append(r.commandTimeoutMs());
+            sb.append(",\"autoRecover\":").append(r.autoRecover());
+            sb.append(",\"recoveries\":").append(r.recoveries());
+            sb.append(",\"fallen\":").append(r.fallen());
+            sb.append(",\"periodMsEff\":").append(r.effectivePeriodMs());
+            sb.append(",\"periodOverrideMs\":").append(r.periodOverrideMs());
             sb.append(",\"maxSpeedDps\":").append(r.config().maxSpeedDps);
             sb.append(",\"tiltLimitDeg\":").append(String.format(java.util.Locale.US, "%.1f", Math.toDegrees(r.config().tiltLimitRad)));
             if (!run) {

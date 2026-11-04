@@ -163,6 +163,32 @@ public final class Alpha2PolicyIo {
         return o;
     }
 
+    /** 統一 obs 長度（ubtech-alpha2-urdf rl/alpha2_env.py：全部 task 共用）。 */
+    public static final int OBS_UNIFIED = 68;
+
+    /**
+     * 統一 obs（68）：[0:20] q−q0，[20:40] prev action，[40:43] 重力，[43:46] 速度指令 (vx m/s, vy m/s, wz rad/s)，
+     * [46:48] phase 特徵，[48:68] 基準目標 − q0（stand／walk＝0；walk_ref／get-up＝ref−q0）。
+     */
+    public static float[] obsUnified(double[] q, float[] prevAct, double[] g, double[] cmd, double ph0, double ph1, double[] target) {
+        float[] s = obsStand(q, prevAct, g);
+        float[] o = new float[OBS_UNIFIED];
+        System.arraycopy(s, 0, o, 0, OBS_STAND);
+        if (cmd != null) for (int i = 0; i < 3; i++) o[OBS_STAND + i] = (float) cmd[i];
+        o[46] = (float) ph0;
+        o[47] = (float) ph1;
+        double[] q0 = qDefault();
+        for (int i = 0; i < N; i++) o[48 + i] = (float) (target[i] - q0[i]);
+        return o;
+    }
+
+    /** 統一格式嘅目標 q：基準 ＋ delta（弧度；policy 嘅第二個輸出，＝SCALE×action）。 */
+    public static double[] targetQDelta(double[] base, float[] delta) {
+        double[] t = new double[N];
+        for (int i = 0; i < N; i++) t[i] = base[i] + delta[i];
+        return t;
+    }
+
     /** 躺低方向：重力喺機身座標嘅 x 分量主導。GetUpEnv 嘅起始姿勢：back＝(-1,0,0)，front＝(+1,0,0)。 */
     public static final String LYING_BACK = "back", LYING_FRONT = "front";
     public static final double LYING_X_MIN = 0.8;      // |g_x| ≥ 0.8（離躺平 ≤ ~37°）先當躺低

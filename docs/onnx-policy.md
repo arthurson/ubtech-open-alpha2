@@ -100,6 +100,117 @@ official BackStand/FrontStand references reach ~250 °/s at joint level, so the 
 cut the trajectory short and the robot would not get up. Like every policy trained with `DECIM=10`, these are
 **50 Hz** policies, so real runs need `fast=true` (experimental, not validated on hardware).
 
+## Changing the decision period (50–500 ms) to find what is still stable
+
+A policy is trained at one decision rate (`control_hz`); the robot's serial bus only takes a step every
+≥200 ms reliably. To find out how slow (or fast) a given policy still behaves, override the period instead
+of re-packing it:
+
+```bash
+curl -X POST 'http://<robot>:8888/api/policy/start?name=walk-50hz&dry=true&period_ms=100'   # start at 100 ms
+curl -X POST 'http://<robot>:8888/api/policy/period?ms=200'                                    # change it live
+curl -X POST 'http://<robot>:8888/api/policy/period?ms=0'                                      # back to the policy's own
+```
+
+The panel has the same: a *Decision period* field (applied on Start) plus preset buttons 50 … 500 that change
+it instantly while running.
+
+What changes and what does not:
+
+* The reference (walk/get-up) still advances in **real time** (`period / dt` frames per step; the position is
+  accumulated, so changing the period mid-run does not make the trajectory jump). The wall-clock speed of the
+  motion is unchanged; only *how often the policy decides* changes.
+* Move time (`period × move_overlap`), the speed envelope per step (°/step) and the overrun detection follow the
+  new period. The override applies to every policy in the run (also after a `policy/switch`).
+* Real runs (non-dry): below 200 ms still needs `fast=true`; a non-fast run can't be pushed below 200 ms live and
+  can't clear the override if that would drop a preloaded 50 Hz policy back to its own 20 ms.
+* It does **not** retrain anything: the policy still expects `prev action`, `q − q0` etc. at its training rate, so
+  slower than that is out-of-distribution. Step it up gradually (e.g. 20 → 50 → 100 → 200 → 300 …), watch `tilt`,
+  `maxAct` and `overruns` in the status/diagnostics, and keep `dry=true` first. Where it stops being stable is the
+  period you should retrain at (set `DECIM` accordingly in `alpha2_env.py`).
+
+## Roles: "switch to walk" without remembering names
+
+A policy's manifest `task` is its role: `stand`, `walk`, `getup_back`, `getup_front` (`obs: stand|walk` imply
+the task of the same name; get-up policies must say which side). `status.roles` shows which preloaded policy
+currently answers each role: an explicit binding if you made one, otherwise the **last loaded** policy with that
+task.
+
+```bash
+curl -X POST 'http://<robot>:8888/api/policy/start?role=stand&dry=false'     # same as name=<whatever stand policy>
+curl -X POST 'http://<robot>:8888/api/policy/switch?role=walk'               # hot-swap by role
+curl -X POST 'http://<robot>:8888/api/policy/role?role=walk&name=walk-5hz'  # pin a role to one policy
+curl -X POST 'http://<robot>:8888/api/policy/role?role=walk'                 # unpin
+```
+
+`name` and `role` are alternatives (giving both is an error). Unloading a policy drops its bindings. The panel
+has one button per role under the preload list.
+
+## Auto get-up after a fall (opt-in)
+
+`policy/start?...&auto_recover=true` (panel: *Auto get-up after a fall*) lets the runner react to a fall while a
+non-get-up policy is running:
+
+1. The tilt guard trips as before (several consecutive steps over `tilt_limit_deg`). Instead of ending the run
+   the robot goes **fallen**: no policy inference, no servo frames — the servos just hold the last pose.
+2. If gravity then stays clearly on the back or front (|g_x| ≥ 0.8) for `recover_dwell_ms` (default 1500 ms,
+   500–10000 — this filters the transient poses while falling), the runner switches to the preloaded
+   `getup_back` / `getup_front` policy for that side (resolved by role at start) through the normal switch path.
+3. The get-up runs as described above and then follows its manifest `then` (typically your stand policy), so the
+   run carries on. `recover_max` (default 2, 1–5) bounds attempts per run; a get-up that ends still tilted counts
+   as a failed attempt and retries until the budget is used.
+4. It ends with `fall` exactly as before when: no get-up policy exists for that side, the budget is used up, the
+   robot is lying on its side / not settled within ~10 s, or it was **already tilted at the first step** (that is
+   not a fall — it started on the floor; use the get-up policy explicitly).
+
+It is off by default because it is only as reliable as the accelerometer axis mapping (still unverified on
+hardware): a false "fallen" reading while standing would start a get-up from standing. Real runs need the
+get-up policies to be eligible too (50 Hz get-up policies need `fast=true`). Status: `autoRecover`, `recoveries`,
+`fallen`.
+
+## Unified format (obs 68, `action` + `delta`, velocity command) — `obs: "unified"`
+
+Policies trained by the current `ubtech-alpha2-urdf` `rl/alpha2_env.py` (all tasks share one layout, control
+step `CTRL_DT` = 0.1 s). The runtime builds exactly the vector the web player builds:
+
+| obs | meaning |
+|---|---|
+| `[0:20]` | joint position − q_default (rad) |
+| `[20:40]` | previous **action** output (−1..1) |
+| `[40:43]` | gravity direction in the base frame |
+| `[43:46]` | velocity command (vx m/s forward, vy m/s left, wz rad/s CCW); zeros unless task `walk` |
+| `[46:48]` | phase: `stand`/`walk` = sin, cos of a free-running clock (`gait_period_s`, default 1 s); `walk_ref` = sin, cos of the reference loop (0, 0 before the loop starts); get-up = `[min(t/T,1), 1 once t ≥ T]` |
+| `[48:68]` | base target − q_default (0 for stand/walk; reference − q_default for `walk_ref`/get-up) |
+
+The ONNX has **two outputs**: `action` (goes back into obs) and `delta` (= `SCALE`·action, rad). Target =
+`q_default + obs[48:68] + delta` (clamped to the servo limits). Tasks (`task` in the manifest, also the roles):
+`stand`, `walk` (velocity command), `walk_ref`, `getup_back`, `getup_front`. Get-up keeps the behaviour described
+above (lying check, settle, `then`, fall guard suspended while the reference plays); `T = ceil((len−1)·dt/CTRL_DT)+1`
+control steps.
+
+```bash
+python3 scripts/policy_tool.py pack --obs unified --meta <run>/meta.json --onnx <run>/policy.onnx \
+    --name walk-v1 --out walk-v1                          # task/ctrl_dt/act_scale/cmd_max come from meta.json
+# walk_ref and get-up also need  --ref <run>/ref.json ;  get-up optionally  --then <stand policy>
+curl -X POST 'http://<robot>:8888/api/policy/start?role=walk&dry=true'
+curl -X POST 'http://<robot>:8888/api/policy/command?vx=0.05&vy=0&wz=0.2'   # keep refreshing, see below
+```
+
+* **Velocity command**: `policy/command` (panel: sliders under the preload list). Each axis is clamped to the
+  policy's `cmd_max` (taken from `meta.json` `cfg.cmd_vx/vy/wz`), and the command **decays to zero if it is not
+  refreshed within `commandTimeoutMs` (1500 ms)** — a dead client stops the robot. The panel resends every 0.6 s.
+  Other tasks ignore it.
+* **Selftest** checks both outputs against onnxruntime; the on-device inference supports multi-output graphs
+  (the output named `action` is primary).
+* **Speed envelope**: a full-scale step is `SCALE` rad per 100 ms (stand 0.3 → ~170°/s, walk 0.5 → ~270°/s), so
+  `pack` raises `max_speed_dps` for unified stand/walk policies (cap 300) instead of the 90°/s default, which
+  would clip steps the policy was trained to make. If it prints a warning, the policy asks for more than the
+  protocol allows.
+* **Timing**: 100 ms is below the 200 ms stable floor, so a real run needs `fast=true` (experimental) — or run
+  with `period_ms=200` (out-of-distribution, but it needs no `fast`). With a period override the free-running
+  gait clock and the reference advance in **real time**, only the decision rate changes.
+* Legacy 43/65 formats (`obs: stand|walk|getup`) keep working side by side, including in the same preload bank.
+
 ## Pipeline (command line)
 
 ```
@@ -208,3 +319,15 @@ the target does not jump across a switch), and the in-use guards for replace/rem
 
 Get-up coverage: obs/ref contract (`[progress, over]`), settle phase, fall guard suspended while the reference plays
 and active afterwards, `then` hand-over, the lying-side precondition (both wrong-side and upright refused), and manifest rules.
+
+
+Period override coverage: validation (20..1000 floor/cap in the runner, 50..500 in the API), override before start and live,
+ref continuity across a live change (ends exactly at the last pose with progress=1/over=1), and move time following the period.
+
+Roles/fall hook coverage: enable-time validation, fall without the hook still stops, back/front side selection, no servo
+frames while waiting, side-lying and exhausted attempts end with `fall`, started-lying refused, `then` hand-back, and the
+PolicyCenter role resolution/binding and `auto_recover` start rules.
+
+Unified coverage: multi-output `OnnxMlp`, slot validation, `target = q0 + delta`, command wiring + clamp + expiry + non-walk
+ignore, phase clock / loop phase, get-up progress in control steps, legacy ↔ unified switching; PolicyCenter e2e (pack → load →
+selftest of both outputs → roles → command API → get-up hand-over).

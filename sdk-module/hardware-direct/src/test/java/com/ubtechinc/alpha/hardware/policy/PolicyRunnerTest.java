@@ -821,6 +821,331 @@ public final class PolicyRunnerTest {
         catch (IllegalArgumentException e) { check(true, "getup with obs 43 rejected"); }
     }
 
+
+    // ---- 決策週期覆寫（50..500ms 試穩定性）---------------------------------------------
+
+    private static void testPeriodOverride() throws Exception {
+        final int[] def = Alpha2PolicyIo.servoDefault();
+        double[] q0 = Alpha2PolicyIo.qDefault();
+        final int T = 12, SETTLE = 50;
+        double[][] rq = new double[T][];
+        for (int i = 0; i < T; i++) {
+            rq[i] = q0.clone();
+            for (int j = 0; j < 18; j++) rq[i][j] += 0.3 * (T - 1 - i) / (T - 1);
+        }
+        // 範圍驗證
+        PolicyRunner.Config c0 = getupCfg(rq, 0.1); c0.dry = true;
+        PolicyRunner r0 = make("walkconst65.onnx", c0, new Sink(), new double[][] {UPRIGHT}, def);
+        check(r0.requestPeriod(5).length() > 0, "requestPeriod: below the chest floor refused");
+        check(r0.requestPeriod(5000).length() > 0, "requestPeriod: above the cap refused");
+        eq("", r0.requestPeriod(250), "requestPeriod: 250 accepted");
+        eq(250, r0.periodOverrideMs(), "requestPeriod: override stored");
+        eq("", r0.requestPeriod(0), "requestPeriod: 0 clears");
+        eq(0, r0.periodOverrideMs(), "requestPeriod: cleared");
+
+        // 起步前設定：ref 仍按真實時間走，所以步數按週期比例減少（settle 1s＋8…frames＋hold）
+        PolicyRunner.Config ca = getupCfg(rq, 0.1); ca.dry = true;
+        PolicyRunner ra = make("walkconst65.onnx", ca, new Sink(), new double[][] {UPRIGHT}, def);
+        runFor(ra, 20000);
+        eq("done", ra.endReason(), "baseline get-up completes at 20 ms");
+        int base = ra.steps();
+        PolicyRunner.Config cb = getupCfg(rq, 0.1); cb.dry = true;
+        PolicyRunner rb = make("walkconst65.onnx", cb, new Sink(), new double[][] {UPRIGHT}, def);
+        eq("", rb.requestPeriod(40), "override before start accepted");
+        runFor(rb, 20000);
+        eq("done", rb.endReason(), "get-up completes at a 40 ms override");
+        eq(40, rb.effectivePeriodMs(), "effective period = override");
+        check(rb.steps() >= 28 && rb.steps() <= 42 && rb.steps() < base * 0.7,
+                "40 ms override: ~half the decisions for the same wall-clock motion (base " + base + " -> " + rb.steps() + ")");
+
+        // 運行中改週期：ref 位置累加所以軌跡連續（照樣行到末格＋[progress=1, over=1]），move 時間跟新週期
+        PolicyRunner.Config cc = getupCfg(rq, 0.1); cc.dry = false;
+        final Sink s = new Sink();
+        final PolicyRunner rc = make("echo63.onnx", cc, s, accelSeq(lyingAccel("back", def), SETTLE + 4, UPRIGHT), def);
+        Thread th = new Thread(rc);
+        rc.markStarting();
+        th.start();
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return s.n() >= 55; } }, 5000), "live: running past settle");
+        eq("", rc.requestPeriod(40), "live: period change accepted");
+        th.join(15000);
+        eq("done", rc.endReason(), "live: get-up still completes after the period change");
+        eq(40, rc.effectivePeriodMs(), "live: effective period updated");
+        double[] tgtEnd = rq[T - 1].clone(); tgtEnd[0] += 0.2; tgtEnd[1] += 0.2;
+        synchronized (s.sent) {
+            check(java.util.Arrays.equals(Alpha2PolicyIo.qToServo(tgtEnd, LO, HI), s.sent.get(s.sent.size() - 1)),
+                    "live: trajectory continuous — ends at the last ref pose with progress=1, over=1");
+            check(s.ms.contains(Integer.valueOf(21)) && s.ms.contains(Integer.valueOf(42)), "live: move time follows the period (21 then 42 ms)");
+            eq(Integer.valueOf(42), s.ms.get(s.ms.size() - 1), "live: last move uses 40*1.05 ms");
+        }
+    }
+
+
+    // ---- 跌倒自動起身（auto recover）-------------------------------------------------
+
+    private static PolicyRunner.AccelSource seqAccel(final double[][] a) {
+        final int[] i = {0};
+        return new PolicyRunner.AccelSource() {
+            @Override public double[] accel() { return a[Math.min(i[0]++, a.length - 1)]; }
+        };
+    }
+
+    private static double[][] fallSeq(double[] lying, int upright, int lyingN, double[] after) {
+        double[][] a = new double[upright + lyingN + 1][];
+        for (int k = 0; k < upright; k++) a[k] = UPRIGHT;
+        for (int k = 0; k < lyingN; k++) a[upright + k] = lying;
+        a[upright + lyingN] = after;
+        return a;
+    }
+
+    private static PolicyRunner recoverRunner(double[][] accel, Sink s, int max, long dwell, long giveUp, boolean enable) throws Exception {
+        final int[] def = Alpha2PolicyIo.servoDefault();
+        double[] q0 = Alpha2PolicyIo.qDefault();
+        int T = 12;
+        double[][] rq = new double[T][];
+        for (int i = 0; i < T; i++) {
+            rq[i] = q0.clone();
+            for (int j = 0; j < 18; j++) rq[i][j] += 0.3 * (T - 1 - i) / (T - 1);
+        }
+        PolicyRunner.Config st = cfg(20); st.dry = false; st.maxRunMs = 20000; st.maxSpeedDps = 100000;
+        PolicyRunner.Config ub = getupCfg(rq, 0.1); ub.dry = false; ub.then = "stand";
+        PolicyRunner.Config uf = getupCfg(rq, 0.1); uf.dry = false; uf.lying = "front"; uf.then = "stand";
+        List<PolicyRunner.Slot> sl = new ArrayList<PolicyRunner.Slot>();
+        sl.add(slot("stand", "zero43.onnx", st));
+        sl.add(slot("up-back", "walkconst65.onnx", ub));
+        sl.add(slot("up-front", "walkconst65.onnx", uf));
+        PolicyRunner r = new PolicyRunner(sl, "stand", s, seqAccel(accel), poseOf(def));
+        if (enable) { r.enableAutoRecover("up-back", "up-front", max); r.setRecoverTiming(dwell, giveUp); }
+        return r;
+    }
+
+    private static void testAutoRecover() throws Exception {
+        final int[] def = Alpha2PolicyIo.servoDefault();
+        // -- 啟用驗證
+        PolicyRunner v = recoverRunner(new double[][] {UPRIGHT}, new Sink(), 2, 100, 400, false);
+        for (int k = 0; k < 4; k++) {
+            try {
+                if (k == 0) v.enableAutoRecover(null, null, 1);
+                if (k == 1) v.enableAutoRecover("nope", null, 1);
+                if (k == 2) v.enableAutoRecover("stand", null, 1);               // 唔係 getup
+                if (k == 3) v.enableAutoRecover("up-front", "up-back", 1);        // 躺邊面對錯
+                check(false, "enableAutoRecover validation #" + k);
+            } catch (IllegalArgumentException e) { check(true, "enableAutoRecover validation #" + k); }
+        }
+        try { v.enableAutoRecover("up-back", null, 0); check(false, "recover max >= 1"); } catch (IllegalArgumentException e) { check(true, "recover max >= 1"); }
+        check(!v.autoRecover(), "not enabled by default");
+
+        // -- 冇啟用：跌低照舊即停
+        Sink s = new Sink();
+        PolicyRunner r = recoverRunner(fallSeq(lyingAccel("back", def), 10, 500, UPRIGHT), s, 2, 100, 400, false);
+        runFor(r, 5000);
+        eq("fall", r.endReason(), "auto recover off: a fall still stops the run");
+
+        // -- 啟用：跌 back → 穩定 dwell 後切去 up-back，完成後 then 交返 stand；跌低期間唔送 servo
+        s = new Sink();
+        final PolicyRunner rb = recoverRunner(fallSeq(lyingAccel("back", def), 10, 12, UPRIGHT), s, 2, 100, 400, true);
+        Thread th = new Thread(rb);
+        rb.markStarting();
+        th.start();
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return rb.recoveries() == 1; } }, 5000), "fell on the back => recovery started");
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return "stand".equals(rb.activeName()) && rb.switches() >= 2; } }, 15000),
+                "get-up finished and handed over to `then` (stand) (log " + rb.switchLog() + ")");
+        check(rb.switchLog().size() == 2 && rb.switchLog().get(0).endsWith(":stand>up-back") && rb.switchLog().get(1).endsWith(":up-back>stand"),
+                "switch log: stand>up-back then up-back>stand (" + rb.switchLog() + ")");
+        check(rb.isRunning() && !rb.fallen(), "run continues after recovery, no longer 'fallen'");
+        th.interrupt(); th.join(3000);
+        eq("stopped", rb.endReason(), "recovered run stops normally");
+
+        // -- 跌 front → 揀 up-front
+        s = new Sink();
+        final PolicyRunner rf = recoverRunner(fallSeq(lyingAccel("front", def), 10, 12, UPRIGHT), s, 2, 100, 400, true);
+        th = new Thread(rf);
+        rf.markStarting();
+        th.start();
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return rf.switchLog().size() >= 1; } }, 5000), "front fall switched");
+        check(rf.switchLog().get(0).endsWith(":stand>up-front"), "lying on the front picks the front get-up (" + rf.switchLog() + ")");
+        th.interrupt(); th.join(3000);
+
+        // -- 跌低期間唔郁舵機（等 dwell 時）
+        s = new Sink();
+        final PolicyRunner rw = recoverRunner(fallSeq(lyingAccel("back", def), 10, 500, UPRIGHT), s, 2, 3000, 6000, true);
+        final Sink sw = s;
+        th = new Thread(rw);
+        rw.markStarting();
+        th.start();
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return rw.fallen(); } }, 5000), "fallen state entered");
+        int n0 = s.n();
+        Thread.sleep(300);
+        eq(n0, sw.n(), "no servo frames while waiting to recover");
+        eq(0, rw.switches(), "still waiting (dwell not reached)");
+        th.interrupt(); th.join(3000);
+
+        // -- 側躺：唔係 back／front → 唔起身，等夠 giveUp 就停機
+        s = new Sink();
+        PolicyRunner rs = recoverRunner(fallSeq(new double[] {0, -9.81, 0}, 10, 500, UPRIGHT), s, 2, 100, 400, true);
+        runFor(rs, 5000);
+        eq("fall", rs.endReason(), "lying on the side: no recovery, run stops with fall");
+        eq(0, rs.recoveries(), "side lying: no recovery attempted");
+
+        // -- 用晒次數：起身後仍然傾倒 → fall
+        s = new Sink();
+        PolicyRunner rx = recoverRunner(fallSeq(lyingAccel("back", def), 10, 100000, UPRIGHT), s, 1, 100, 400, true);
+        runFor(rx, 20000);
+        eq("fall", rx.endReason(), "still fallen after the get-up and no attempts left => fall");
+        eq(1, rx.recoveries(), "exactly one recovery attempt");
+
+        // -- 起步已躺低（t==0）：唔係「跌」，照舊即停
+        s = new Sink();
+        PolicyRunner r0 = recoverRunner(fallSeq(lyingAccel("back", def), 0, 500, UPRIGHT), s, 2, 100, 400, true);
+        runFor(r0, 3000);
+        eq("fall", r0.endReason(), "started lying down: refused, not recovered");
+        eq(0, s.n(), "started lying: servos untouched");
+    }
+
+
+    // ---- 統一格式（obs 68，ONNX 兩個輸出 action＋delta，速度指令）----------------------------
+
+    private static PolicyRunner.Config ucfg(String task, int periodMs, double scale) {
+        PolicyRunner.Config c = cfg(periodMs);
+        c.unified = true; c.task = task; c.obsDim = 68; c.actScale = scale; c.maxSpeedDps = 100000; c.maxRunMs = 20000; c.dry = false;
+        return c;
+    }
+
+    private static int[] uTarget(double[] base, double[] deltaFirst) {
+        double[] t = base.clone();
+        for (int i = 0; i < deltaFirst.length; i++) t[i] += deltaFirst[i];
+        return Alpha2PolicyIo.qToServo(t, LO, HI);
+    }
+
+    private static void testUnified() throws Exception {
+        final int[] def = Alpha2PolicyIo.servoDefault();
+        double[] q0 = Alpha2PolicyIo.qDefault();
+
+        // -- OnnxMlp：多輸出
+        OnnxMlp m = OnnxMlp.load(bytes("uni_const.onnx"));
+        eq(java.util.Arrays.asList("action", "delta"), m.outputNames(), "multi-output: names in graph order");
+        check(m.hasOutput("delta") && m.outputDim("delta") == 20 && m.outputDim("nope") == -1, "multi-output: dims by name");
+        eq(20, m.outputDim(), "multi-output: primary = action");
+        java.util.Map<String, float[]> all = m.runAll(new float[68]);
+        float[] a = all.get("action"), d = all.get("delta");
+        check(a.length == 20 && d.length == 20 && Math.abs(d[1] - 0.3f * a[1]) < 1e-6 && java.util.Arrays.equals(a, m.run(new float[68])), "multi-output: runAll == run + delta = 0.3*action");
+        try { OnnxMlp.load(bytes("multi_noaction.onnx")); check(false, "several outputs without 'action' rejected"); }
+        catch (IllegalArgumentException e) { check(e.getMessage().contains("action"), "several outputs without 'action' rejected"); }
+
+        // -- slot 驗證
+        PolicyRunner.Config bad = ucfg("stand", 100, 0.3);
+        try { make("zero43.onnx", bad, new Sink(), new double[][] {UPRIGHT}, def); check(false, "unified needs a 68-in/2-out model"); } catch (IllegalArgumentException e) { check(true, "unified needs a 68-in/2-out model"); }
+        PolicyRunner.Config bad2 = ucfg("walk_ref", 100, 0.2);
+        try { make("uni_probe.onnx", bad2, new Sink(), new double[][] {UPRIGHT}, def); check(false, "walk_ref needs a ref"); } catch (IllegalArgumentException e) { check(true, "walk_ref needs a ref"); }
+        PolicyRunner.Config bad3 = ucfg("stand", 100, 0.3); bad3.obsDim = 65;
+        try { make("uni_const.onnx", bad3, new Sink(), new double[][] {UPRIGHT}, def); check(false, "unified obs_dim must be 68"); } catch (IllegalArgumentException e) { check(true, "unified obs_dim must be 68"); }
+
+        // -- stand：target ＝ q0 ＋ delta（delta＝0.3×B）
+        String[] bs = new String(Files.readAllBytes(fx.resolve("uni_const.txt")), "UTF-8").trim().split(" ");
+        double[] dB = new double[20];
+        for (int i = 0; i < 20; i++) dB[i] = 0.3 * Float.parseFloat(bs[i]);
+        Sink s = new Sink();
+        PolicyRunner r = make("uni_const.onnx", ucfg("stand", 100, 0.3), s, new double[][] {UPRIGHT}, def);
+        runFor(r, 450);
+        check(s.n() >= 3, "unified stand runs (" + s.n() + " frames)");
+        check(java.util.Arrays.equals(uTarget(q0, dB), s.last()), "unified stand: command = q0 + delta (the delta output, not act_scale*action)");
+
+        // -- probe：速度指令／phase／基準目標
+        double[] cm = {0.05, 0.03, 0.4};
+        // 指令只喺 walk 用，按 cmd_max 截斷，過 timeout 歸零
+        PolicyRunner.Config wc = ucfg("walk", 100, 0.5);
+        s = new Sink();
+        r = make("uni_probe.onnx", wc, s, new double[][] {UPRIGHT}, def);
+        r.setCommand(0.04, -0.02, 0.3);
+        r.setCommandTimeoutMs(350);
+        eq(0.04, r.command()[0], "command(): current value for the active walk slot");
+        runFor(r, 900);
+        synchronized (s.sent) {
+            check(s.sent.size() >= 7, "walk probe frames (" + s.sent.size() + ")");
+            // frame 0：phase 0 → sin 0, cos 1；cmd 在效；delta＝0.5×[cmd0,cmd1,cmd2, sin, cos, tgt0]
+            check(java.util.Arrays.equals(uTarget(q0, new double[] {0.5 * 0.04, 0.5 * -0.02, 0.5 * 0.3, 0.0, 0.5, 0.0}), s.sent.get(0)),
+                    "walk: frame 0 = q0 + 0.5*[cmd, sin0, cos0, 0]");
+            // frame 5：clock 0.5 s → sin π ≈ 0, cos π = -1；指令已過期（350 ms）→ 0
+            check(java.util.Arrays.equals(uTarget(q0, new double[] {0.0, 0.0, 0.0, 0.5 * Math.sin(Math.PI), 0.5 * Math.cos(Math.PI), 0.0}), s.sent.get(5)),
+                    "walk: frame 5 = free-running gait clock (1 s period, real time) and the stale command is zero");
+        }
+        // 截斷到 cmd_max
+        PolicyRunner.Config wc2 = ucfg("walk", 100, 0.5);
+        s = new Sink();
+        r = make("uni_probe.onnx", wc2, s, new double[][] {UPRIGHT}, def);
+        r.setCommand(1.0, -1.0, 5.0);
+        runFor(r, 250);
+        synchronized (s.sent) {
+            check(java.util.Arrays.equals(uTarget(q0, new double[] {0.5 * cm[0], -0.5 * cm[1], 0.5 * cm[2], 0.0, 0.5, 0.0}), s.sent.get(0)), "walk: command clamped to cmd_max");
+        }
+        // 非 walk task 唔睇指令
+        s = new Sink();
+        r = make("uni_probe.onnx", ucfg("stand", 100, 0.3), s, new double[][] {UPRIGHT}, def);
+        r.setCommand(0.04, 0.02, 0.3);
+        runFor(r, 250);
+        synchronized (s.sent) {
+            check(java.util.Arrays.equals(uTarget(q0, new double[] {0, 0, 0, 0.0, 0.5, 0.0}), s.sent.get(0)), "stand: velocity command ignored (zeros in obs)");
+        }
+        try { r.setCommand(Double.NaN, 0, 0); check(false, "NaN command refused"); } catch (IllegalArgumentException e) { check(true, "NaN command refused"); }
+
+        // -- walk_ref：循環 ref 嘅相位同基準目標（ref 一個循環窗口 [2,6)，dt 0.02，100ms 一步＝5 格）
+        double[][] rq = new double[8][];
+        for (int i = 0; i < 8; i++) { rq[i] = q0.clone(); for (int j = 0; j < 18; j++) rq[i][j] += 0.2; }
+        PolicyRunner.Config rc = ucfg("walk_ref", 100, 0.2);
+        rc.ref = new PolicyRunner.Ref(rq, 2, 6, 0.02);
+        s = new Sink();
+        r = make("uni_probe.onnx", rc, s, new double[][] {UPRIGHT}, def);
+        runFor(r, 450);
+        synchronized (s.sent) {
+            check(s.sent.size() >= 3, "walk_ref frames (" + s.sent.size() + ")");
+            // frame 0：pos 0 < loop start → phase (0,0)；obs[48]＝ref−q0 ＝0.2（第 0 軸）→ action5＝0.2 → delta5＝0.1
+            double[] d0 = new double[6]; d0[5] = 0.5 * 0.2;
+            check(java.util.Arrays.equals(uTarget(rq[0], d0), s.sent.get(0)), "walk_ref: frame 0 = ref + delta (phase (0,0) before the loop window)");
+            // frame 1：pos 5 → 相位 2π(5-2)/4 ＝ 3π/2：sin −1, cos ≈ 0
+            double[] d1 = new double[6]; d1[3] = 0.5 * Math.sin(1.5 * Math.PI); d1[4] = 0.5 * Math.cos(1.5 * Math.PI); d1[5] = 0.5 * 0.2;
+            check(java.util.Arrays.equals(uTarget(rq[0], d1), s.sent.get(1)), "walk_ref: frame 1 phase = 3π/2 on the reference loop (all ref rows equal, so the base is rq[0])");
+        }
+
+        // -- get-up（統一）：進度以「控制步」計：T 步 ＝ T×ctrl_dt／ref.dt 格；settle 1 s；完成後 done
+        double[][] gq = new double[12][];
+        for (int i = 0; i < 12; i++) { gq[i] = q0.clone(); for (int j = 0; j < 18; j++) gq[i][j] += 0.3 * (11 - i) / 11.0; }
+        PolicyRunner.Config gc = ucfg("getup_back", 100, 0.2);
+        gc.getup = true; gc.lying = "back"; gc.holdS = 0.1;
+        gc.ref = new PolicyRunner.Ref(gq, 0, gq.length, 0.02);
+        gc.getupEndFrames = 4 * 0.1 / 0.02;                // T＝ceil((12-1)*0.02/0.1)+1 ＝ 4 控制步 ＝ 20 格
+        s = new Sink();
+        r = make("uni_probe.onnx", gc, s, accelSeq(lyingAccel("back", def), 13, UPRIGHT), def);
+        runFor(r, 8000);
+        eq("done", r.endReason(), "unified get-up completes with done");
+        synchronized (s.sent) {
+            check(s.sent.size() >= 15, "unified get-up frames (" + s.sent.size() + ")");
+            int[] ref0 = Alpha2PolicyIo.qToServo(gq[0], LO, HI);
+            boolean settleOk = true;
+            for (int i = 0; i < 10; i++) if (!java.util.Arrays.equals(ref0, s.sent.get(i))) settleOk = false;
+            check(settleOk, "unified get-up: settle holds ref frame 0 for 1 s (10 control steps)");
+            // 第 3 個控制步（ts 2）：pos 10 → progress 0.5（j3）、over 0（j4）
+            double[] g2 = new double[6]; g2[3] = 0.5 * 0.5; g2[4] = 0.0; g2[5] = 0.5 * (gq[10][0] - q0[0]);
+            check(java.util.Arrays.equals(uTarget(gq[10], g2), s.sent.get(12)), "unified get-up: progress = t/T in control steps (0.5 at step 2 of T=4)");
+            // 最後：pos 20 → progress 1、over 1；ref 持住末格
+            double[] g4 = new double[6]; g4[3] = 0.5; g4[4] = 0.5; g4[5] = 0.5 * (gq[11][0] - q0[0]);
+            check(java.util.Arrays.equals(uTarget(gq[11], g4), s.sent.get(s.sent.size() - 1)), "unified get-up: ends with progress=1, over=1 on the held last pose");
+        }
+
+        // -- 統一格式喺多 slot 入面同舊格式混用：切換時 prev action 用 act_scale 換算
+        PolicyRunner.Config u1 = ucfg("stand", 100, 0.3);
+        PolicyRunner.Config l1 = cfg(100); l1.maxRunMs = 20000; l1.dry = false;
+        List<PolicyRunner.Slot> sl = new ArrayList<PolicyRunner.Slot>();
+        sl.add(slot("u-stand", "uni_const.onnx", u1));
+        sl.add(slot("old-stand", "zero43.onnx", l1));
+        final PolicyRunner mr = new PolicyRunner(sl, "u-stand", new Sink(), fixed(UPRIGHT), poseOf(def));
+        Thread th = new Thread(mr);
+        mr.markStarting();
+        th.start();
+        Thread.sleep(250);
+        eq("", mr.requestSwitch("old-stand"), "unified <-> legacy: switch accepted");
+        check(waitFor(new java.util.concurrent.Callable<Boolean>() { public Boolean call() { return "old-stand".equals(mr.activeName()); } }, 3000), "unified <-> legacy: switched");
+        th.interrupt(); th.join(3000);
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length < 1) { System.out.println("usage: PolicyRunnerTest <fixtures-dir>"); System.exit(2); }
         fx = Paths.get(args[0]);
@@ -830,6 +1155,9 @@ public final class PolicyRunnerTest {
         testRunner();
         testHotSwap();
         testGetUp();
+        testPeriodOverride();
+        testAutoRecover();
+        testUnified();
         System.out.println("passed=" + passed + " failed=" + failed);
         System.exit(failed == 0 ? 0 : 1);
     }
