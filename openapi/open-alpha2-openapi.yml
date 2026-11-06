@@ -25,7 +25,7 @@ info:
 或 `?panel_token=`。
 
     '
-  version: beta 8.1
+  version: beta 9
   contact:
     name: Open Alpha2
     url: https://github.com/arthurson/ubtech-open-alpha2
@@ -101,7 +101,7 @@ paths:
                 $ref: '#/components/schemas/StatusResponse'
               example:
                 ok: true
-                appVersion: beta 8.1
+                appVersion: beta 9
                 chestAvailable: true
                 headerAvailable: true
                 androidTtsReady: true
