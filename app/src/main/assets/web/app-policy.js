@@ -356,7 +356,6 @@ function polStart() {
   const pr = polEl("polPeriod").value;
   if (pr) p.period_ms = pr;
   if (polEl("polAutoRecover").checked) p.auto_recover = "true";
-  if (!dry && !confirm(t("pol_confirm_real"))) return Promise.resolve();
   return Alpha2Api.policyStart(p).then(function (res) {
     if (!res || !res.ok) {
       polSetOutRaw(t("pol_start_fail") + ((res && (res.error || res.message)) || "?"));

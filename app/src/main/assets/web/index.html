@@ -1149,7 +1149,7 @@
     <!-- ============ ONNX Policy（實驗 tab：資源下載卡下面） ============ -->
     <!-- 上載 policy.onnx（zip，或 .onnx＋ref.json 由瀏覽器自動打包）→ 載入 → 排練／真機運行。
          後端 PolicyCenter＋/upload/policy＋policy/*；契約同限制見 docs/onnx-policy.md。
-         預設 dry-run（唔郁舵機）；真機要取消 dry 並再確認；period<300ms（例如 50Hz）要 fast。 -->
+         預設 dry-run（唔郁舵機）；真機要取消 dry；period<300ms（例如 50Hz）要 fast。 -->
     <section class="card">
       <div class="row" style="justify-content:space-between;align-items:center">
         <h2 style="margin:0" data-i18n="pol_heading">🧠 ONNX Policy</h2>
@@ -1507,6 +1507,7 @@
     <h2 data-i18n="event_log_heading">即時事件 Log (WebSocket)</h2>
     <div class="row">
       <button onclick="clearLog()" data-i18n="clear_log_btn">清空 Log</button>
+      <button class="secondary" id="copyLogBtn" onclick="copyLog()" data-i18n="copy_log_btn">複製 Log</button>
       <label class="switch-label"><span data-i18n="auto_scroll_label">自動捲動</span>
         <span class="toggle-switch">
           <input type="checkbox" id="autoScroll" checked>
@@ -1525,7 +1526,7 @@
        3. 中間檔案之間沒有排序依賴（function hoisting），保持原 section 順序方便對照。
      尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
      所以全部 <script src> 一定要行完先到那個 inline script。 -->
-<script src="app-core.js?v=20261102a"></script>
+<script src="app-core.js?v=20261106b"></script>
 <script src="api-client.js?v=20261021a"></script>
 <script src="app-status.js?v=20261020a"></script>
 <script src="app-actions.js?v=20261021b"></script>
@@ -1547,8 +1548,8 @@
 <script src="app-chest.js?v=20261017a"></script>
 <script src="app-actions-pack.js?v=20261001a"></script>
 <script src="app-apk.js?v=20261001a"></script>
-<script src="app-policy.js?v=20261102b"></script>
-<script src="app-log.js?v=20261025b"></script>
+<script src="app-policy.js?v=20261106a"></script>
+<script src="app-log.js?v=20261106b"></script>
 
 <!-- ============================================================
      Sample: 4角度傾側控制頭/眼 LED
