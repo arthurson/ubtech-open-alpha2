@@ -244,6 +244,45 @@ function clearLog() {
   document.getElementById("eventLog").innerHTML = "";
 }
 
+/** 複製目前 Event Log 畫面內容到剪貼簿（DOM 最多保留 MAX_LOG_LINES 行，所以只複製
+ *  畫面所見的內容）。用 textContent 取回已渲染文字，時間／type／data 格式與畫面一致。 */
+function copyLog() {
+  const log = document.getElementById("eventLog");
+  if (!log) return;
+  const lines = [];
+  for (let i = 0; i < log.children.length; i++) {
+    lines.push(log.children[i].textContent);
+  }
+  const text = lines.join("\n") + (lines.length ? "\n" : "");
+  const btn = document.getElementById("copyLogBtn");
+  function done() {
+    if (!btn) return;
+    btn.textContent = t("log_copied");
+    setTimeout(function () { btn.textContent = t("copy_log_btn"); }, 1500);
+  }
+  // 舊 WebView（http 區網）冇 navigator.clipboard，用 textarea＋execCommand fallback。
+  function fallback() {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+      done();
+    } catch (e) {
+      showError("copy", e);
+    }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else {
+    fallback();
+  }
+}
+
 function escapeHtml(s) {
   const div = document.createElement("div");
   div.textContent = s;

@@ -22,8 +22,8 @@ Panel → **實驗 / Experimental** tab → **🧠 ONNX Policy** (turn the card 
    Without a `manifest.json` the server builds one from these fields (obs inferred from the model:
    43 = stand, 65 = walk) and computes the SHA-256 itself. The upload is validated (supported ops,
    dims, ref) before it replaces an existing policy of the same name; a failed upload leaves nothing behind.
-3. **Run**: *dry-run* is on by default (servos untouched); untick it for a real run (a confirmation
-   dialog follows). Period < 200 ms policies need the *fast* box. Live steps / tilt / timing / overruns
+3. **Run**: *dry-run* is on by default (servos untouched); untick it for a real run. Period < 200 ms
+   policies need the *fast* box. Live steps / tilt / timing / overruns
    / end reason are shown; **Stop** is a hard stop. Uploads made from the panel have no `selftest.json`,
    so the panel shows "not cross-checked against onnxruntime" — use `policy_tool.py pack` if you want that.
 

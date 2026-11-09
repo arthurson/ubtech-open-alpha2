@@ -435,7 +435,6 @@ const I18N = {
   pol_start_btn: { zh: "▶ 開始", en: "▶ Start" },
   pol_stop_btn: { zh: "■ 停止", en: "■ Stop" },
   pol_start_fail: { zh: "❌ 開始失敗：", en: "❌ Start failed: " },
-  pol_confirm_real: { zh: "真機運行：舵機會郁。機身已固定／吊住？手放喺停止掣上？", en: "REAL RUN: the servos will move. Is the robot held or harnessed, with your hand on Stop?" },
   pol_running: { zh: "運行中", en: "Running" },
   pol_idle: { zh: "已停", en: "Stopped" },
   pol_steps: { zh: "步數", en: "steps" },
@@ -879,6 +878,8 @@ const I18N = {
   // -- event log --
   event_log_heading:     { zh: "即時事件 Log (WebSocket)", en: "Live Event Log (WebSocket)" },
   clear_log_btn:         { zh: "清空 Log",         en: "Clear Log" },
+  copy_log_btn:          { zh: "複製 Log",         en: "Copy Log" },
+  log_copied:            { zh: "已複製 ✓",         en: "Copied ✓" },
   auto_scroll_label:     { zh: "自動捲動",         en: "Auto-scroll" },
 };
 
