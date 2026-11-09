@@ -1243,6 +1243,37 @@
       </div>
     </section>
 
+    <!-- 舵機開關（實驗）：關閉時先以 cmd6 使該舵機脫力，其後任何指令（包括 .ubx、IK、手柄）
+         都不會再發送至該舵機；開啟時以 cmd6 讀取目前位置，再以 cmd05 寫回同一位置以恢復上力。
+         後端見 UbxApi.servoEnableSetResponse。與其他進階卡一致：預設收起，
+         總開關（servoEnableCardEnabled）開啟後才顯示內容，不記錄狀態。 -->
+    <section class="card" id="servoEnableCard">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0" data-i18n="servo_enable_heading">🔌 舵機開關</h2>
+        <label class="switch-label">
+          <span class="toggle-switch">
+            <input type="checkbox" id="servoEnableCardEnabled" onchange="servoEnableCardToggle()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
+      <p id="servoEnableCardDisabledHint" class="hint" data-i18n="servo_enable_disabled_hint">開啟後才會顯示舵機開關</p>
+      <div id="servoEnableCardBody" style="display:none">
+        <p class="hint" data-i18n="servo_enable_hint">x</p>
+        <div class="row" style="gap:12px">
+          <span class="hint" data-i18n="servo_enable_legend_on">🔵 開啟</span>
+          <span class="hint" data-i18n="servo_enable_legend_off">⚪ 關閉（脫力）</span>
+        </div>
+        <div class="row">
+          <button class="secondary" onclick="servoEnablePreset('all-on')" data-i18n="servo_enable_all_on">全部開啟</button>
+          <button class="secondary" onclick="servoEnablePreset('default')" data-i18n="servo_enable_default">預設（1–20 開啟）</button>
+          <button class="secondary" onclick="servoEnablePreset('all-off')" data-i18n="servo_enable_all_off">全部關閉</button>
+          <span id="servoEnableStatus" class="hint"></span>
+        </div>
+        <div id="servoEnablePanel" class="servo-enable-grid"></div>
+      </div>
+    </section>
+
     <!-- ============ 群控鏡像（實驗 tab 新卡，資源下載卡下面） ============ -->
     <!-- 純前端 fan-out：瀏覽器直接 fetch 每部機 :8888（後端已開 CORS *），唔經本機轉發，
          所以唔使改 Java／OpenAPI。前提：全部機同一個 Wi-Fi。 -->
