@@ -90,6 +90,131 @@ function onVolumeChangedEvent(data) {
   });
 }
 
+// ---------------- Servo on/off switches ----------------
+//
+// 後端（ServoEnableMask）為唯一狀態來源：已關閉的舵機不會有任何 TX/RX。
+// 此處只負責 (1) 同步狀態、(2) 建立開關面板、(3) 收起已關閉舵機的滑桿列與空白組。
+// 預設 1–20 開啟、21–22 關閉；後端尚未回應（載入中或斷線）時使用預設值，因此不會顯示 21/22。
+const SERVO_ENABLE_DEFAULT_ON = 20;
+const servoEnabledState = {};
+(function () {
+  for (let i = 1; i <= 22; i++) servoEnabledState[i] = i <= SERVO_ENABLE_DEFAULT_ON;
+})();
+
+function isServoEnabled(id) {
+  return servoEnabledState[id] !== false;
+}
+
+/** 根據 servoEnabledState 收起或顯示舵機分頁的滑桿列、整組皆關閉的組標題，以及進階微調格。 */
+function applyServoEnabledToUi() {
+  // 只收起滑桿列與微調格；開關卡本身的 .servo-sw 不可收起，
+  // 否則關閉後連開啟按鈕都會消失，無法再次點擊。
+  document.querySelectorAll("[data-servo-id]:not(.servo-sw)").forEach(function (el) {
+    const id = parseInt(el.getAttribute("data-servo-id"), 10);
+    el.style.display = isServoEnabled(id) ? "" : "none";
+  });
+  SERVO_GROUPS.forEach(function (group) {
+    const anyOn = group.ids.some(isServoEnabled);
+    document.querySelectorAll('[data-servo-group="' + group.key + '"]').forEach(function (g) {
+      g.style.display = anyOn ? "" : "none";
+    });
+  });
+  document.querySelectorAll("#servoEnablePanel button[data-servo-id]").forEach(function (btn) {
+    const id = parseInt(btn.getAttribute("data-servo-id"), 10);
+    const on = isServoEnabled(id);
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.title = on ? "ON" : "OFF";
+  });
+}
+
+function servoEnableSetStatus(text) {
+  const el = document.getElementById("servoEnableStatus");
+  if (el) el.textContent = text || "";
+}
+
+/** 用後端回覆（{enabled:[ids]}）覆蓋本地狀態。 */
+function servoEnableAdopt(json) {
+  if (!json || !json.ok || !Array.isArray(json.enabled)) return false;
+  if (Array.isArray(json.failed) && json.failed.length) {
+    servoEnableSetStatus(t("servo_enable_partial") + json.failed.join(","));
+  }
+  const on = {};
+  json.enabled.forEach(function (i) { on[i] = true; });
+  for (let i = 1; i <= 22; i++) servoEnabledState[i] = !!on[i];
+  applyServoEnabledToUi();
+  return true;
+}
+
+function syncServoEnable() {
+  return Alpha2Api.servoEnableGet({}).then(function (json) {
+    servoEnableAdopt(json);
+    return json;
+  }).catch(function () { return null; });
+}
+
+/** 開啟或關閉一批舵機；成功後更新 UI（以後端回覆為準），失敗時顯示錯誤。 */
+function servoSetEnabled(ids, on) {
+  servoEnableSetStatus("");
+  return Alpha2Api.servoEnable({ ids: ids.join(","), on: on }).then(function (json) {
+    if (!servoEnableAdopt(json)) {
+      servoEnableSetStatus(t("servo_enable_failed") + ((json && json.error) || "?"));
+      applyServoEnabledToUi();
+    }
+    return json;
+  }).catch(function (e) {
+    servoEnableSetStatus(t("servo_enable_failed") + e);
+    applyServoEnabledToUi();
+  });
+}
+
+function servoEnablePreset(kind) {
+  const all = [];
+  for (let i = 1; i <= 22; i++) all.push(i);
+  if (kind === "all-on") return servoSetEnabled(all, true);
+  if (kind !== "all-on" && !window.confirm(t("servo_enable_confirm"))) return Promise.resolve(null);
+  if (kind === "all-off") return servoSetEnabled(all, false);
+  // 預設：1–20 開啟，21–22 關閉（兩個請求，依序執行）。
+  return servoSetEnabled(all.slice(0, SERVO_ENABLE_DEFAULT_ON), true).then(function () {
+    return servoSetEnabled(all.slice(SERVO_ENABLE_DEFAULT_ON), false);
+  });
+}
+
+/** 實驗分頁舵機開關卡的總開關（與 panelAuthCardToggle 寫法一致）：預設收起，不記錄狀態。
+ *  開啟時同時與後端同步一次，確保顯示最新的開啟／關閉狀態。 */
+function servoEnableCardToggle() {
+  const enabled = document.getElementById("servoEnableCardEnabled");
+  const body = document.getElementById("servoEnableCardBody");
+  const hint = document.getElementById("servoEnableCardDisabledHint");
+  const on = !!(enabled && enabled.checked);
+  if (body) body.style.display = on ? "block" : "none";
+  if (hint) hint.style.display = on ? "none" : "block";
+  if (on) syncServoEnable();
+}
+
+function buildServoEnablePanel() {
+  const wrap = document.getElementById("servoEnablePanel");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  // 與舵機固件卡一致的排版：1–22 順序排列成 22 格，每格顯示編號與舵機名稱。
+  for (let id = 1; id <= 22; id++) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "servo-sw";
+    btn.setAttribute("data-servo-id", id);
+    btn.innerHTML = "<span>#" + id + "</span><span>" + servoNameOf(id) + "</span>";
+    btn.addEventListener("click", function () {
+      if (btn.disabled) return;
+      // 以後端狀態為準：目前為開啟則切換為關閉，反之亦然。
+      btn.disabled = true;
+      Promise.resolve(servoSetEnabled([id], !isServoEnabled(id))).then(function () { btn.disabled = false; },
+                                                                       function () { btn.disabled = false; });
+    });
+    wrap.appendChild(btn);
+  }
+  applyServoEnabledToUi();
+}
+
 // ---------------- Servos: grouped sliders (head / arms / legs) ----------------
 //
 // Each servo is now a single <input type="range"> instead of a plain number box.
@@ -141,6 +266,7 @@ function buildServoGridInto(wrapId, sliderPrefix, valPrefix, sendFn, readPrefix)
   SERVO_GROUPS.forEach(function (group) {
     const groupEl = document.createElement("div");
     groupEl.className = "servo-group";
+    groupEl.setAttribute("data-servo-group", group.key);
 
     const title = document.createElement("div");
     title.className = "servo-group-title";
@@ -151,6 +277,7 @@ function buildServoGridInto(wrapId, sliderPrefix, valPrefix, sendFn, readPrefix)
       const cal = SERVO_CALIBRATION[id];
       const row = document.createElement("div");
       row.className = "servo-slider-row" + (readPrefix ? " has-readout" : "");
+      row.setAttribute("data-servo-id", id);
       row.innerHTML =
           "<span class=\"servo-slider-label\">#" + id + " " + servoNameOf(id) + "</span>" +
           "<input type=\"range\" id=\"" + sliderPrefix + id + "\" min=\"" + cal.min + "\" max=\"" + cal.max + "\" value=\"" + cal.home + "\">" +
@@ -258,12 +385,16 @@ function buildServoGridInto(wrapId, sliderPrefix, valPrefix, sendFn, readPrefix)
 
     wrap.appendChild(groupEl);
   });
+  // 重建 grid 之後即刻按目前開關狀態收埋關咗嘅行（reload／換語言都唔會彈返出嚟）。
+  applyServoEnabledToUi();
 }
 
 function buildServoGrid() {
   buildServoGridInto("servoGroups", "servoSlider_", "servoSliderVal_", function (id, angle, timeMs) {
     return Alpha2Api.servoOne({id: id, angle: angle, time: timeMs});
   }, "servoAngleVal_");
+  buildServoEnablePanel();
+  syncServoEnable();
 }
 
 /** 一次過讀全部 22 軸即時角度（servo/back-angle-all：cmd 0x17 純讀，
@@ -283,7 +414,7 @@ function servoReadAllAngles() {
       if (status) status.textContent = t("servo_read_failed_prefix") + (res && res.error ? res.error : "?");
       return res;
     }
-    const failed = res.failed || [];
+    const failed = (res.failed || []).filter(function (i) { return isServoEnabled(i); });
     for (let i = 1; i <= 22; i++) {
       const cell = document.getElementById("servoAngleVal_" + i);
       if (!cell) continue;
@@ -450,6 +581,7 @@ function buildAdvTuner() {
       const name = servoNameOf(id);
       const cell = document.createElement("div");
       cell.className = "servo-tuner-cell";
+      cell.setAttribute("data-servo-id", id);
       cell.style.cssText = "border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--card-bg)";
     cell.innerHTML =
       '<div style="font-weight:600;font-size:12px">#' + id + ' ' + name + '</div>' +
@@ -466,6 +598,8 @@ function buildAdvTuner() {
     groupEl.appendChild(subGrid);
     grid.appendChild(groupEl);
   });
+  // 按舵機開關收埋關咗嘅格（tuner 係開咗先建，所以每次建完都要套一次）。
+  try { if (typeof applyServoEnabledToUi === "function") applyServoEnabledToUi(); } catch (e) {}
   grid.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   grid.addEventListener('selectstart', function(e){ e.preventDefault(); });
   // init 格留 "-"（未知），不填計出來的 0 — 填 0 會覆蓋掉出廠 trim。

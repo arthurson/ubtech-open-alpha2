@@ -221,6 +221,18 @@ const I18N = {
   servo_read_hint:       { zh: "讀指定一顆或一次過讀全部舵機即時角度（0x17 純讀，唔寫回），顯示在對應行右邊；讀不到顯示 -。全部約 1 秒，讀取時請固定好機械人。",
                            en: "Reads one or all live servo angles (0x17 read-only, no write-back) into their rows; unreadable joints show -. All takes ~1s; keep the robot secured." },
   servo_reading_hint:    { zh: "讀取中…",             en: "Reading…" },
+  servo_enable_heading:  { zh: "🔌 舵機開關",          en: "🔌 Servo switches" },
+  servo_enable_disabled_hint: { zh: "開啟後才會顯示舵機開關", en: "Turn on to show the servo switches" },
+  servo_enable_hint:     { zh: "預設 1–20 為開啟、21–22 為關閉。關閉時會即時發送 cmd6 使該舵機脫力，其後任何指令（包括 .ubx、IK、手柄）都不會再發送至該舵機，舵機分頁的滑桿亦會隱藏；開啟時會讀取目前位置，並以 cmd05 寫回同一位置以恢復上力。狀態會被記錄，重啟後仍然保持。⚠ 腿部或手部舵機關閉後會失去支撐，請先托住機身或將機械人放平。",
+                           en: "Default: 1–20 on, 21–22 off. Turning a servo off sends cmd6 immediately to release it; afterwards nothing (.ubx, IK, gamepad included) is sent to it, and its slider on the Servo tab is hidden. Turning it on reads the current position and writes it back with cmd05 to restore torque. The state is saved and persists across restarts. ⚠ A limb loses support when its servos are off - hold the robot or lay it flat first." },
+  servo_enable_legend_on: { zh: "🔵 開啟",             en: "🔵 On" },
+  servo_enable_legend_off: { zh: "⚪ 關閉（脫力）",    en: "⚪ Off (released)" },
+  servo_enable_partial:  { zh: "⚠ 部分舵機沒有回應（已關閉的舵機仍會保持封鎖）：#", en: "⚠ Some servos did not answer (disabled ones remain blocked): #" },
+  servo_enable_confirm:  { zh: "部分舵機將會脫力，肢體可能下墜。是否確定？", en: "Some servos will be released and limbs may drop. Continue?" },
+  servo_enable_failed:   { zh: "❌ 切換失敗：",          en: "❌ Switch failed: " },
+  servo_enable_all_on:   { zh: "全部開啟",             en: "All on" },
+  servo_enable_default:  { zh: "預設（1–20 開啟）",    en: "Default (1–20 on)" },
+  servo_enable_all_off:  { zh: "全部關閉",             en: "All off" },
   servo_read_done:       { zh: "✅ 已更新",            en: "✅ Updated" },
   servo_read_failed_prefix: { zh: "❌ 讀取失敗：",     en: "❌ Read failed: " },
   // -- servo tab: IK action card --
@@ -949,6 +961,7 @@ function setUiLanguage(lang) {
   // would reset every slider back to its calibrated home position and lose whatever
   // angle the person currently has dialled in.
   relabelServoGrid();
+  try { if (typeof buildServoEnablePanel === "function") buildServoEnablePanel(); } catch (e) {}
   // 進階 Tuner 同步重建以更新每格中英對照（範圍/角度/偏移）
   try {
     const advEnabled = document.getElementById("advTunerEnabled");

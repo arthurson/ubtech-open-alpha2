@@ -4,6 +4,7 @@ import android.content.Context;
 import android.util.Log;
 
 import com.ubtechinc.alpha.hardware.HardwareDirectManager;
+import com.ubtechinc.alpha.hardware.ServoEnableMask;
 import com.ubtechinc.alpha.hardware.ubx.UbxFile;
 import com.ubtechinc.alpha.hardware.ubx.UbxParser;
 import com.ubtechinc.alpha.hardware.ubx.UbxPlayer;
@@ -38,6 +39,105 @@ public final class UbxApi {
         this.ubxPlayer = ubxPlayer;
         this.actionDirect = actionDirect;
         this.chestQuery = chestQuery;
+        // 舵機啟用遮罩：由 SharedPreferences 還原（冇存過＝預設 1-20 開、21-22 關）。
+        try {
+            android.content.SharedPreferences sp = appContext.getSharedPreferences(SERVO_ENABLE_PREFS, Context.MODE_PRIVATE);
+            ServoEnableMask.setMask(sp.getInt(SERVO_ENABLE_KEY, ServoEnableMask.DEFAULT_MASK));
+        } catch (Throwable t) {
+            Log.w(TAG, "servo enable mask restore failed, using default", t);
+        }
+    }
+
+    private static final String SERVO_ENABLE_PREFS = "servo_enable";
+    private static final String SERVO_ENABLE_KEY = "mask";
+
+    private static HttpServer.ApiResponse servoEnableJson() {
+        int m = ServoEnableMask.getMask();
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"mask\":").append(m);
+        sb.append(",\"enabled\":[").append(ServoEnableMask.toCsv(m)).append(']');
+        sb.append(",\"default\":[").append(ServoEnableMask.toCsv(ServoEnableMask.DEFAULT_MASK)).append("]}");
+        return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    /** servo/enable/get：查舵機啟用狀態（面板入頁同步用）。 */
+    public HttpServer.ApiResponse servoEnableGetResponse() {
+        return servoEnableJson();
+    }
+
+    /** 關舵機前最後讀到嘅角度（cmd6）；開返時讀唔到先用呢個做 cmd05 嘅目標。 */
+    private final Integer[] servoOffAngle = new Integer[ServoEnableMask.COUNT + 1];
+
+    /**
+     * servo/enable：ids=CSV（id 1-22）、on=true/false。狀態寫入 SharedPreferences，重啟保持。
+     *
+     * <p>OFF：對每顆「而家係開」嘅舵機先打一發 cmd6（令佢脫力，同時記低角度），
+     * <b>之後</b>先改 mask——mask 一改，呢粒就唔會再有任何 TX/RX（含 .ubx／IK／gamepad）。
+     * 次序一定係先讀後關，否則 cmd6 會被自己條閘擋住。</p>
+     *
+     * <p>ON：先改 mask，再對每顆「而家係關」嘅舵機 cmd6 讀返現位、cmd05 寫返同一個位
+     * 恢復上力（讀唔到就用關嗰陣記低嘅角度）。已經開／已經關嘅會略過，唔重複發指令。</p>
+     */
+    public synchronized HttpServer.ApiResponse servoEnableSetResponse(Map<String, String> query) {
+        String idsCsv = ApiValidator.require(query, "ids");
+        boolean on = ApiValidator.requireBoolean(query, "on");
+        int bits;
+        try {
+            bits = ServoEnableMask.parseIds(idsCsv);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("parameter 'ids': " + e.getMessage());
+        }
+        if (bits == 0) throw new IllegalArgumentException("parameter 'ids' must contain at least one id");
+        int before = ServoEnableMask.getMask();
+        StringBuilder done = new StringBuilder();
+        StringBuilder failed = new StringBuilder();
+        if (!on) {
+            // 1) 先對仲開緊嘅脫力（cmd6）。讀唔到都照關（唔再發指令係硬保證），只係報 failed。
+            for (int id = 1; id <= ServoEnableMask.COUNT; id++) {
+                if ((bits & (1 << (id - 1))) == 0 || (before & (1 << (id - 1))) == 0) continue;
+                Integer angle = (chestQuery == null) ? null : readServoAbsLive(id);
+                if (angle != null) {
+                    servoOffAngle[id] = angle;
+                    if (done.length() > 0) done.append(',');
+                    done.append(id);
+                } else {
+                    if (failed.length() > 0) failed.append(',');
+                    failed.append(id);
+                }
+            }
+            // 2) 之後先閘住。
+            ServoEnableMask.setMask(before & ~bits);
+        } else {
+            ServoEnableMask.setMask(before | bits);
+            for (int id = 1; id <= ServoEnableMask.COUNT; id++) {
+                if ((bits & (1 << (id - 1))) == 0 || (before & (1 << (id - 1))) != 0) continue;
+                Integer angle = (chestQuery == null) ? null : readServoAbsLive(id);
+                if (angle == null) angle = servoOffAngle[id];
+                boolean ok = angle != null && servoSendOneCode(id, angle, 20)
+                        == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
+                StringBuilder target = ok ? done : failed;
+                if (target.length() > 0) target.append(',');
+                target.append(id);
+            }
+        }
+        try {
+            appContext.getSharedPreferences(SERVO_ENABLE_PREFS, Context.MODE_PRIVATE)
+                    .edit().putInt(SERVO_ENABLE_KEY, ServoEnableMask.getMask()).apply();
+        } catch (Throwable t) {
+            Log.w(TAG, "servo enable mask persist failed", t);
+        }
+        Log.i(TAG, "servo enable mask -> " + ServoEnableMask.toCsv(ServoEnableMask.getMask())
+                + " (" + (on ? "restored" : "released") + "=[" + done + "] failed=[" + failed + "])");
+        int m = ServoEnableMask.getMask();
+        StringBuilder sb = new StringBuilder("{\"ok\":true,\"mask\":").append(m);
+        sb.append(",\"enabled\":[").append(ServoEnableMask.toCsv(m)).append(']');
+        sb.append(",\"default\":[").append(ServoEnableMask.toCsv(ServoEnableMask.DEFAULT_MASK)).append(']');
+        sb.append(",\"").append(on ? "restored" : "released").append("\":[").append(done).append(']');
+        sb.append(",\"failed\":[").append(failed).append("]}");
+        return HttpServer.ApiResponse.ok(sb.toString());
+    }
+
+    private static HttpServer.ApiResponse servoDisabledResponse(int id) {
+        return HttpServer.ApiResponse.ok("{\"ok\":false,\"error\":\"servo_disabled\",\"id\":" + id + "}");
     }
 
     public HttpServer.ApiResponse ubxListResponse() {
@@ -158,6 +258,7 @@ public final class UbxApi {
     }
 
     public HttpServer.ApiResponse servoSendOne(int id, int angle, int timeMs) {
+        if (!ServoEnableMask.isEnabled(id)) return servoDisabledResponse(id);
         UbxErrorCode.API_ERROR_CODE code = servoSendOneCode(id, angle, timeMs);
         if (code != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
             return HttpServer.ApiResponse.error("direct not ready");
@@ -193,6 +294,7 @@ public final class UbxApi {
         // 超限即 400。
         int angle = ApiValidator.requireIntRange(query, "angle", ApiValidator.SERVO_ANGLE_MIN, ApiValidator.SERVO_ANGLE_MAX);
         int time = ApiValidator.optionalIntRange(query, "time", ApiValidator.SERVO_TIME_MIN_MS, ApiValidator.SERVO_TIME_MAX_MS, 1000);
+        if (!ServoEnableMask.isEnabled(id)) return servoDisabledResponse(id);
         Integer trim = null;
         if (query.containsKey("trim") && query.get("trim") != null && !query.get("trim").isEmpty()) {
             try {

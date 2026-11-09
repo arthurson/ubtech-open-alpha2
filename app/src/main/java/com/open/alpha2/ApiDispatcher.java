@@ -448,6 +448,10 @@ public final class ApiDispatcher {
                 return ubxApi.servoAllResponse(query);
             case "servo/calibrate":
                 return ubxApi.servoCalibrateResponse(query);
+            case "servo/enable":
+                return ubxApi.servoEnableSetResponse(query);
+            case "servo/enable/get":
+                return ubxApi.servoEnableGetResponse();
             // threshold state 經 sonarCenter 直調。
             case "servo/sonar":
                 return sonarCenter.servoSonarResponse(query);

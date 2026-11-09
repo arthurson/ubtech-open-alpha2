@@ -656,6 +656,8 @@ public final class ChestQuery {
      */
     public Integer queryServoAbsAngle(int id, long timeoutMs) {
         if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return null;
+        // 舵機已關：唔發 RX 查詢（呢條 raw 幀唔經 DirectChestController，要喺度自己攔）。
+        if (!com.ubtechinc.alpha.hardware.ServoEnableMask.isEnabled(id)) return null;
         if (!chestReady()) {
             Log.w(TAG, "queryServoAbsAngle: chest not ready (pure-direct)");
             return null;
@@ -708,6 +710,8 @@ public final class ChestQuery {
      */
     public Integer queryServoBackAngle(int id, long timeoutMs) {
         if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return null;
+        // 舵機已關：唔發 RX 查詢（呢條 raw 幀唔經 DirectChestController，要喺度自己攔）。
+        if (!com.ubtechinc.alpha.hardware.ServoEnableMask.isEnabled(id)) return null;
         if (!chestReady()) {
             Log.w(TAG, "queryServoBackAngle: chest not ready (pure-direct)");
             return null;

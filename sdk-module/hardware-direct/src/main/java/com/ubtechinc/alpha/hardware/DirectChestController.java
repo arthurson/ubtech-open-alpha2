@@ -45,6 +45,8 @@ public final class DirectChestController {
     /** 單舵機：用本 package 的 DeveloperPacketData 打包，保持與原廠完全一致 */
     public boolean setSingleServo(byte id, int angle, short time) {
         if (id < 1 || id > 22) return false;
+        // 舵機已關：唔發 TX（見 ServoEnableMask）。
+        if (!ServoEnableMask.isEnabled(id)) return false;
         // 角度單位同 servo/one 一致（0-255；MCP schema 同 spec 上限）：唔鉗位直接
         // 截 byte 會 wrap 猛扯。time 照舊下限 20，上限跟 spec 32767。
         angle = clampAngle(angle);
@@ -84,6 +86,18 @@ public final class DirectChestController {
     private boolean sendAllServos(int[] angles, short time, byte cmd) {
         if (angles == null || (angles.length != 20 && angles.length != 22)) return false;
         time = clampTime(time);
+        if (!ServoEnableMask.allCoreEnabled()) {
+            // 1-20 有舵機關咗：cmd3/52 全幀會連關咗嗰粒一齊寫，所以改為逐粒 cmd05，
+            // 只發已啟用嘅軸（同 time；幀之間有串口序列，動作略有先後）。
+            boolean any = false, ok = true;
+            for (int i = 0; i < angles.length; i++) {
+                int id = i + 1;
+                if (!ServoEnableMask.isEnabled(id)) continue;
+                any = true;
+                ok &= setSingleServo((byte) id, angles[i], time);
+            }
+            return any && ok;
+        }
         int[] first20 = angles.length == 20 ? angles : java.util.Arrays.copyOf(angles, 20);
         DeveloperPacketData p = new DeveloperPacketData(22);
         for (int a : first20) {
@@ -92,8 +106,9 @@ public final class DirectChestController {
         p.putShort_(time);
         boolean ok = port.send(cmd, p.getBuffer());
         if (angles.length == 22) {
-            boolean ok21 = setSingleServo((byte) 21, angles[20], time);
-            boolean ok22 = setSingleServo((byte) 22, angles[21], time);
+            // 21/22 各自按啟用狀態發；關咗就跳過（唔當失敗）。
+            boolean ok21 = !ServoEnableMask.isEnabled(21) || setSingleServo((byte) 21, angles[20], time);
+            boolean ok22 = !ServoEnableMask.isEnabled(22) || setSingleServo((byte) 22, angles[21], time);
             return ok && ok21 && ok22;
         }
         return ok;
@@ -124,6 +139,7 @@ public final class DirectChestController {
     /** 讀舵機角度 (cmd 13) - 回幀走 OnFrameListener 解析 */
     public boolean readServo(byte servoId) {
         if (servoId < 1 || servoId > 22) return false;
+        if (!ServoEnableMask.isEnabled(servoId)) return false;
         return port.send(RobotWire.CHEST_CMD_READ_SERVO, new byte[]{servoId});
     }
 
@@ -136,6 +152,7 @@ public final class DirectChestController {
      */
     public boolean writeServoTrim(byte servoId, int trim) {
         if (servoId < 1 || servoId > 22) return false;
+        if (!ServoEnableMask.isEnabled(servoId)) return false;
         if (trim < -32768) trim = -32768;
         if (trim > 32767) trim = 32767;
         byte[] p = new byte[]{servoId, (byte) ((trim >> 8) & 0xFF), (byte) (trim & 0xFF)};
@@ -150,6 +167,7 @@ public final class DirectChestController {
     public boolean modifyServoId(byte oldId, byte newId) {
         if (oldId < 1 || oldId > 22) return false;
         if (newId < 1 || newId > 22) return false;
+        if (!ServoEnableMask.isEnabled(oldId) || !ServoEnableMask.isEnabled(newId)) return false;
         return port.send(RobotWire.CHEST_CMD_MODIFY_SERVO_ID, new byte[]{oldId, newId});
     }
 
@@ -160,6 +178,7 @@ public final class DirectChestController {
      */
     public boolean readMotorVersion(byte servoId) {
         if (servoId < 1 || servoId > 22) return false;
+        if (!ServoEnableMask.isEnabled(servoId)) return false;
         return port.send(RobotWire.CHEST_CMD_READ_MOTOR_VERSION, new byte[]{servoId});
     }
 
@@ -170,6 +189,7 @@ public final class DirectChestController {
      */
     public boolean readMotorHardware(byte servoId) {
         if (servoId < 1 || servoId > 22) return false;
+        if (!ServoEnableMask.isEnabled(servoId)) return false;
         return port.send(RobotWire.CHEST_CMD_READ_MOTOR_HARDWARE, new byte[]{servoId});
     }
 
@@ -181,6 +201,7 @@ public final class DirectChestController {
      */
     public boolean startMotorUpdate(byte servoId, int fileLen) {
         if (servoId < 1 || servoId > 22) return false;
+        if (!ServoEnableMask.isEnabled(servoId)) return false;
         if (fileLen <= 0) return false;
         byte[] p = new byte[5];
         p[0] = servoId;
@@ -199,6 +220,7 @@ public final class DirectChestController {
      */
     public boolean updateMotorPage(byte servoId, int seq, byte[] data64) {
         if (servoId < 1 || servoId > 22) return false;
+        if (!ServoEnableMask.isEnabled(servoId)) return false;
         if (data64 == null || data64.length > 64 || seq < 0 || seq > 0xFFFF) return false;
         byte[] p = new byte[68];
         p[0] = servoId;

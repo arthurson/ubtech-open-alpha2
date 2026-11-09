@@ -5616,6 +5616,97 @@
         "operationId": "servoSonar_get"
       }
     },
+    "/api/servo/enable": {
+      "get": {
+        "tags": [
+          "servo"
+        ],
+        "summary": "開關舵機（關咗嘅舵機唔再有任何 TX/RX，狀態寫入 SharedPreferences 重啟保持）",
+        "description": "預設 1-20 開、21-22 關。關咗之後嗰粒 servo/one、servo/all（該軸略過）、trim、改 ID、升級同所有讀取（cmd 13/6/0x17/14/33）一律唔發。1-20 有舵機關咗時 servo/all 同動作播放改為逐粒 cmd05 只發已啟用嘅軸。OFF＝先對嗰粒打 cmd6 令佢脫力（並記低角度），之後閘住，連 .ubx／IK／gamepad 都唔會再發到佢；ON＝cmd6 讀返現位再 cmd05 寫返同一位恢復上力（已開／已關嘅略過）。回覆 released／restored＝成功嘅 id，failed＝讀唔到／發唔到嘅 id（OFF 時 failed 嘅都照閘住）。",
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "舵機 id（1-22），逗號分隔，例如 21,22"
+          },
+          {
+            "name": "on",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "true＝開，false＝關"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, mask, enabled:[id…], default:[id…], released|restored:[id…], failed:[id…]}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "servoEnable_get"
+      }
+    },
+    "/api/servo/enable/get": {
+      "get": {
+        "tags": [
+          "servo"
+        ],
+        "summary": "查詢舵機啟用狀態（面板入頁同步用）",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, mask, enabled:[id…], default:[id…]}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "servoEnableGet_get"
+      }
+    },
     "/api/servo/sonar/get": {
       "get": {
         "tags": [

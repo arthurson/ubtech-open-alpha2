@@ -852,6 +852,16 @@ const Alpha2Api = (function() {
     return api('servo/calibrate', params);
   }
 
+  function servoEnable(params) {
+    // 開關舵機（關咗嘅舵機唔再有任何 TX/RX，狀態寫入 SharedPreferences 重啟保持）
+    return api('servo/enable', params);
+  }
+
+  function servoEnableGet(params) {
+    // 查詢舵機啟用狀態（面板入頁同步用）
+    return api('servo/enable/get', params);
+  }
+
   function servoHardware(params) {
     if (params && params.id != null) assertRange(Number(params.id), 1, 22, 'id');
     // 讀單顆舵機硬件資訊（胸 cmd33 live query，純讀）
@@ -1428,6 +1438,8 @@ const Alpha2Api = (function() {
     servoBackAngle,
     servoBackAngleAll,
     servoCalibrate,
+    servoEnable,
+    servoEnableGet,
     servoHardware,
     servoHardwareAll,
     servoModifyId,
