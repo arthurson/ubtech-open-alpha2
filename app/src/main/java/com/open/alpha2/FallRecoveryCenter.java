@@ -17,26 +17,24 @@ import java.util.Map;
 /**
  * 跌倒自己起身看門狗（fall/*）。
  *
- * <p>同 {@code PolicyCenter} 嘅 {@code auto_recover} 唔同：呢個係 app 層、獨立於 policy 會話嘅
- * 看門狗。開啟後會自己開加速度計、喺背景每 100ms 睇一次機身傾角；確認穩定躺喺 back／front
- * 之後，直接啟動預載嘅 {@code getup_back}／{@code getup_front} policy。所以就算只係播緊內建
- * 動作、行緊路、或者根本冇 policy session，都可以自動起身（前提係 getup policy 已經
- * {@code policy/load} 入預載組）。</p>
+ * <p>app 層、獨立於 policy 會話嘅看門狗。開啟後會自己開加速度計、喺背景每 100ms 睇一次機身
+ * 傾角；確認穩定躺喺 back／front 之後，直接播放機身內建動作 {@code BackStand}（仰躺）／
+ * {@code FrontStand}（趴住）。所以就算只係播緊內建動作、行緊路、或者根本冇 policy session，
+ * 都可以自動起身，**唔需要 ONNX policy**。</p>
  *
  * <p>安全設計：</p>
  * <ul>
  *   <li>預設關閉，開啟狀態記喺 SharedPreferences（重開 app 會繼續生效）。</li>
  *   <li>一定要先見到企直 2 秒先武裝；開啟功能／開機嗰刻如果已經躺低，唔會即刻郁。</li>
  *   <li>躺穩 {@code dwell_ms}（預設 1500ms）先開始，側躺或者未穩定就唔郁。</li>
- *   <li>每次跌倒最多 {@code max_attempts}（預設 2）次；啟動失敗即刻停，唔會無限重試。</li>
- *   <li>有 policy 正在運行（包括 PolicyCenter 自己嘅 auto_recover）就保持 DISARMED，避免搶控制。
- *       自動起身自己開嗰個 getup policy 例外，會幫佢續租約。</li>
- *   <li>真機運行 getup policy 要合資格（sha256／selftest）；50 Hz getup policy 要 {@code fast=true}。</li>
+ *   <li>每次跌倒最多 {@code max_attempts}（預設 2）次；動作播唔到即刻停，唔會無限重試。</li>
+ *   <li>有 policy 正在運行就保持 DISARMED／放棄今次起身，避免同 {@code PolicyRunner} 自己嘅
+ *       auto-recover 搶控制。</li>
  * </ul>
  *
- * <p><b>未經實機驗證</b>：加速度計軸映射同 getup policy 一樣仲未喺硬件確認；軸映射錯會令
- * 企住都當跌低。所以預設關閉，真機試之前請吊住／扶住機身，先睇 {@code fall/status} 嘅
- * {@code tiltDeg}／{@code side} 啱唔啱。</p>
+ * <p><b>未經實機驗證</b>：加速度計軸映射同 BackStand／FrontStand 動作都仲未喺硬件確認；
+ * 軸映射錯會令企住都當跌低。所以預設關閉，真機試之前請吊住／扶住機身，先睇
+ * {@code fall/status} 嘅 {@code tiltDeg}／{@code side} 啱唔啱。</p>
  */
 public final class FallRecoveryCenter {
     private static final String TAG = "FallRecovery";
@@ -44,41 +42,44 @@ public final class FallRecoveryCenter {
     private static final String KEY_ON = "on";
     private static final String KEY_DWELL = "dwell_ms";
     private static final String KEY_MAX = "max_attempts";
-    private static final String KEY_FAST = "fast";
     private static final String KEY_AXES = "axes";
 
     private static final long POLL_MS = 100;
     private static final long ACCEL_MAX_AGE_MS = 500;
-    private static final long BEAT_MS = 1000;
+    /** 起身動作剛開始時 UbxPlayer 可能未咁快 mark playing；呢段時間當佢運行緊，避免誤重試。 */
+    private static final long RECOVERY_START_GRACE_MS = 1500;
 
     private final Context appContext;
     private final DeviceStatus deviceStatus;
     private final UbxPlayer ubxPlayer;
+    private final ActionDirect actionDirect;
     private final PolicyCenter policyCenter;
     private final SharedPreferences prefs;
     private final FallRecoveryDetector detector;
 
     private volatile boolean enabled;
-    private volatile boolean fast;
     private volatile String axesOverride = "";
     private volatile int recoveries;
+    private volatile String lastAction = "";
+    private volatile long recoveryStartedAtMs = -1;
+    private volatile boolean manualRecovery;
     private volatile String lastError = "";
     private volatile String lastEvent = "idle";
     private volatile int generation;
     private Thread worker;
 
     public FallRecoveryCenter(Context context, DeviceStatus deviceStatus, UbxPlayer ubxPlayer,
-                              PolicyCenter policyCenter) {
+                              ActionDirect actionDirect, PolicyCenter policyCenter) {
         this.appContext = context.getApplicationContext();
         this.deviceStatus = deviceStatus;
         this.ubxPlayer = ubxPlayer;
+        this.actionDirect = actionDirect;
         this.policyCenter = policyCenter;
         this.prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 
         FallRecoveryDetector.Config c = new FallRecoveryDetector.Config();
         c.dwellMs = clamp(prefs.getInt(KEY_DWELL, (int) c.dwellMs), 500, 10000);
         c.maxAttempts = clamp(prefs.getInt(KEY_MAX, c.maxAttempts), 1, 5);
-        this.fast = prefs.getBoolean(KEY_FAST, false);
         String ax = prefs.getString(KEY_AXES, "");
         this.axesOverride = validAxesOrEmpty(ax);
         this.detector = new FallRecoveryDetector(c);
@@ -185,34 +186,30 @@ public final class FallRecoveryCenter {
         sb.append(",\"attempts\":").append(detector.attempts());
         sb.append(",\"maxAttempts\":").append(c.maxAttempts);
         sb.append(",\"dwellMs\":").append(c.dwellMs);
-        sb.append(",\"fast\":").append(fast);
         sb.append(",\"axes\":\"").append(JsonUtil.esc(effectiveAxes())).append('"');
         sb.append(",\"axesOverride\":\"").append(JsonUtil.esc(axesOverride)).append('"');
         sb.append(",\"accelAvailable\":").append(deviceStatus.hasAccelerometer());
         sb.append(",\"accelEnabled\":").append(deviceStatus.isAccelerometerEnabled());
         sb.append(",\"accelValid\":").append(deviceStatus.accelSmoothed(ACCEL_MAX_AGE_MS) != null);
         sb.append(",\"policyRunning\":").append(policyCenter.policyRunning());
-        sb.append(",\"getupBack\":\"").append(JsonUtil.esc(policyCenter.getUpPolicyName("back"))).append('"');
-        sb.append(",\"getupFront\":\"").append(JsonUtil.esc(policyCenter.getUpPolicyName("front"))).append('"');
-        sb.append(",\"getupBackNeedsFast\":").append(policyCenter.getUpNeedsFast("back"));
-        sb.append(",\"getupFrontNeedsFast\":").append(policyCenter.getUpNeedsFast("front"));
+        sb.append(",\"actionPlaying\":").append(actionDirect.isPlaying());
+        sb.append(",\"backStandAvailable\":").append(actionDirect.hasAction("BackStand"));
+        sb.append(",\"frontStandAvailable\":").append(actionDirect.hasAction("FrontStand"));
+        sb.append(",\"lastAction\":\"").append(JsonUtil.esc(lastAction)).append('"');
         sb.append(",\"lastEvent\":\"").append(JsonUtil.esc(detector.lastEvent())).append('"');
         sb.append(",\"lastError\":\"").append(JsonUtil.esc(err)).append('"');
-        sb.append(",\"lastPolicyEnd\":\"").append(JsonUtil.esc(policyCenter.lastEndReason())).append('"');
         sb.append('}');
         return HttpServer.ApiResponse.ok(sb.toString());
     }
 
     /**
      * fall/set：{@code on}、{@code dwell_ms}（500–10000）、{@code max_attempts}（1–5）、
-     * {@code fast}、{@code axes}（空＝自動用 getup policy manifest 嘅 accel_axes）。
-     * 全部 optional；唔傳就保持現值。
+     * {@code axes}（空＝預設 {@code +x+y+z}）。全部 optional；唔傳就保持現值。
      */
     public synchronized HttpServer.ApiResponse setResponse(Map<String, String> query) {
         boolean on = ApiValidator.optionalBoolean(query, "on", enabled);
         int dwell = ApiValidator.optionalIntRange(query, "dwell_ms", 500, 10000, (int) detector.config().dwellMs);
         int max = ApiValidator.optionalIntRange(query, "max_attempts", 1, 5, detector.config().maxAttempts);
-        boolean f = ApiValidator.optionalBoolean(query, "fast", fast);
         String ax = ApiValidator.optional(query, "axes", axesOverride);
         if (!ax.isEmpty()) {
             try {
@@ -234,12 +231,10 @@ public final class FallRecoveryCenter {
             }
             lastEvent = "config";
         }
-        fast = f;
         axesOverride = ax;
         prefs.edit()
                 .putInt(KEY_DWELL, dwell)
                 .putInt(KEY_MAX, max)
-                .putBoolean(KEY_FAST, f)
                 .putString(KEY_AXES, ax)
                 .apply();
 
@@ -250,16 +245,15 @@ public final class FallRecoveryCenter {
     }
 
     /**
-     * fall/recover：手動即刻起身。{@code side=back|front} 可選（唔傳就用偵測到嘅最後一面）；
-     * {@code fast} 可選（覆寫本次啟動）。就算看門狗關閉都用得，方便扶正／測試 getup policy。
+     * fall/recover：手動即刻起身。{@code side=back|front} 可選（唔傳就用偵測到嘅最後一面）。
+     * 就算看門狗關閉都用得，方便扶正／測試 BackStand／FrontStand 動作。
      */
     public HttpServer.ApiResponse recoverResponse(Map<String, String> query) {
         String side = ApiValidator.optionalEnum(query, "side", new String[] {"back", "front"}, detector.side());
-        boolean f = ApiValidator.optionalBoolean(query, "fast", fast);
         if (side == null || side.isEmpty()) {
             return HttpServer.ApiResponse.badRequest("not lying on back/front (side unknown); give side=back or side=front");
         }
-        String err = startGetUpNow(side, f, false);
+        String err = startGetUpNow(side, false);
         if (err != null) return HttpServer.ApiResponse.badRequest(err);
         return statusResponse();
     }
@@ -277,19 +271,31 @@ public final class FallRecoveryCenter {
 
     private String effectiveAxes() {
         String a = axesOverride;
-        if (a == null || a.isEmpty()) a = policyCenter.getUpAxesAuto();
         if (a == null || a.isEmpty()) a = "+x+y+z";
         return a;
     }
 
-    private String startGetUpNow(String side, boolean fastMode, boolean auto) {
-        String err = policyCenter.startGetUp(side, fastMode);
+    private String startGetUpNow(String side, boolean auto) {
+        String action = FallRecoveryDetector.getUpAction(side);
+        String err = null;
+        if (action.isEmpty()) {
+            err = "not lying on back/front (side unknown); give side=back or side=front";
+        } else if (!actionDirect.hasAction(action)) {
+            err = action + " action not found in /sdcard/actions";
+        } else if (actionDirect.playActionDirect(action)
+                != UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
+            err = "cannot start " + action + " action";
+        }
         if (err == null) {
             recoveries++;
+            recoveryStartedAtMs = SystemClock.elapsedRealtime();
+            manualRecovery = !auto;
+            lastAction = action;
             lastError = "";
-            lastEvent = auto ? "auto recovery started (" + side + ")" : "manual recovery started (" + side + ")";
+            lastEvent = auto ? "auto recovery started (" + action + ")" : "manual recovery started (" + action + ")";
             Log.i(TAG, lastEvent);
         } else {
+            manualRecovery = false;
             lastError = err;
             lastEvent = (auto ? "auto" : "manual") + " recovery failed";
             Log.w(TAG, "get-up " + side + " not started: " + err);
@@ -298,8 +304,13 @@ public final class FallRecoveryCenter {
         return err;
     }
 
+    /** RECOVERING 期間：起身動作係咪仲運行緊（開頭俾少少 grace 等 UbxPlayer mark playing）。 */
+    private boolean recoveryActionActive(long nowMs) {
+        if (actionDirect.isPlaying()) return true;
+        return recoveryStartedAtMs > 0 && nowMs - recoveryStartedAtMs < RECOVERY_START_GRACE_MS;
+    }
+
     private void loop(int gen) {
-        long lastBeat = 0;
         String lastState = "";
         String lastPublishedEvent = "";
         while (enabled && gen == generation) {
@@ -331,35 +342,29 @@ public final class FallRecoveryCenter {
                 }
 
                 boolean policyRunning = policyCenter.policyRunning();
-                FallRecoveryDetector.Event ev = detector.update(now, gravity, policyRunning);
+                // 起身途中如果有 policy 開始控制：放棄今次起身（PolicyCenter 會停咗我哋個動作），
+                // 等 policy 完結、機身企返直先重新武裝。
+                if (policyRunning && detector.state() == FallRecoveryDetector.State.RECOVERING) {
+                    detector.fail("policy started; watchdog gave way");
+                }
+                // 手動 fall/recover 嘅動作播完（或超過 grace）就清旗；避免之後嘅普通動作
+                // （例如跳舞）令 detector 長期 DISARMED。
+                if (manualRecovery && !actionDirect.isPlaying()
+                        && now - recoveryStartedAtMs >= RECOVERY_START_GRACE_MS) {
+                    manualRecovery = false;
+                }
+                boolean actionActive = manualRecovery
+                        || (detector.state() == FallRecoveryDetector.State.RECOVERING
+                            && recoveryActionActive(now));
+                // 起身動作播緊（自動或手動）／有 policy 控制：非 RECOVERING 時 detector 保持
+                // DISARMED，避免搶控制或者手動 fall/recover 之後再自動重複播。
+                boolean busy = actionActive
+                        || (policyRunning && detector.state() != FallRecoveryDetector.State.RECOVERING);
+                FallRecoveryDetector.Event ev = detector.update(now, gravity, busy);
                 if (ev == FallRecoveryDetector.Event.START_RECOVERY) {
                     String side = detector.side();
-                    String err = startGetUpNow(side, fast, true);
+                    String err = startGetUpNow(side, true);
                     detector.onRecoveryStarted(err == null, err);
-                }
-
-                // 自動起身自己開嘅 getup policy：幫佢續租約（manifest lease 預設 5 秒）。
-                // 一旦企返直（detector 離開 RECOVERING）就唔再續，等 policy 自己完／lease 停，
-                // 唔會留一個冇人看住嘅 policy 長跑。
-                if (detector.state() == FallRecoveryDetector.State.RECOVERING
-                        && policyCenter.policyRunning()) {
-                    if (now - lastBeat >= BEAT_MS) {
-                        policyCenter.beatPolicy();
-                        lastBeat = now;
-                    }
-                } else {
-                    lastBeat = 0;
-                }
-
-                // getup policy 完咗但仲未企直：把 runner 嘅結束原因寫入 status；not_lying 直接
-                // fail（軸映射錯／面數錯，重試同一面只會浪費次數）。
-                if (detector.state() == FallRecoveryDetector.State.RECOVERING
-                        && !detector.awaitingStart() && !policyCenter.policyRunning()) {
-                    String end = policyCenter.lastEndReason();
-                    if ("not_lying".equals(end)) {
-                        detector.fail("get-up refused: not lying on the expected side ("
-                                + detector.side() + "); check accel_axes / fall/status side");
-                    }
                 }
 
                 String st = detector.state().name();

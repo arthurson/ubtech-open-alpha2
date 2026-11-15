@@ -55,7 +55,6 @@ function fallApplyStatus(res, fromEvent) {
     fallSetInput("fallEnabled", !!res.enabled);
     fallSetInput("fallDwell", res.dwellMs != null ? res.dwellMs : 1500);
     fallSetInput("fallAttempts", res.maxAttempts != null ? res.maxAttempts : 2);
-    fallSetInput("fallFast", !!res.fast);
     fallSetInput("fallAxes", res.axesOverride || "");
   }
 
@@ -66,18 +65,16 @@ function fallApplyStatus(res, fromEvent) {
   if (res.tiltDeg != null) bits.push(t("fall_tilt") + " " + Number(res.tiltDeg).toFixed(1) + "°");
   bits.push(t("fall_recoveries") + " " + (res.recoveries || 0));
   if (res.attempts != null) bits.push(t("fall_attempts_used") + " " + res.attempts + "/" + (res.maxAttempts || "?"));
+  if (res.lastAction) bits.push(t("fall_action") + " " + res.lastAction);
   if (res.policyRunning) bits.push("▶ " + t("fall_policy_running"));
 
   const warns = [];
   if (res.accelAvailable === false) warns.push(t("fall_accel_missing"));
   else if (res.accelEnabled === false) warns.push(t("fall_accel_off"));
-  if (!res.getupBack && !res.getupFront) warns.push(t("fall_no_getup"));
-  else {
-    const sideNeedsFast = (res.side === "back" && res.getupBackNeedsFast)
-      || (res.side === "front" && res.getupFrontNeedsFast)
-      || (!res.side && (res.getupBackNeedsFast || res.getupFrontNeedsFast));
-    if (sideNeedsFast && !res.fast) warns.push(t("fall_needs_fast"));
-  }
+  const missing = [];
+  if (res.backStandAvailable === false) missing.push("BackStand");
+  if (res.frontStandAvailable === false) missing.push("FrontStand");
+  if (missing.length) warns.push(t("fall_no_action") + " (" + missing.join(", ") + ")");
   if (res.lastError) warns.push("⚠️ " + res.lastError);
 
   const out = bits.join(" · ") + (warns.length ? "\n" + warns.join("\n") : "");
@@ -127,7 +124,6 @@ function fallApply() {
     on: String(!!fallEl("fallEnabled").checked),
     dwell_ms: String(Math.round(dwell)),
     max_attempts: String(Math.round(attempts)),
-    fast: String(!!fallEl("fallFast").checked),
     axes: axes
   }).then(function (res) {
     if (!res || !res.ok) {

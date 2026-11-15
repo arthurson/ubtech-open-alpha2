@@ -405,8 +405,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // ONNX policy（policies/<name>/policy.onnx＋manifest.json；預設 dry-run 排練）。
         policyCenter = new PolicyCenter(this, ubxPlayer, deviceStatus);
         // 跌倒自己起身看門狗（app 層，獨立於 policy 會話；開關記喺 SharedPreferences，
-        // 預設關）。佢會用預載嘅 getup_back／getup_front policy，所以喺 policyCenter 之後起。
-        fallRecoveryCenter = new FallRecoveryCenter(this, deviceStatus, ubxPlayer, policyCenter);
+        // 預設關）。用內建 BackStand／FrontStand 動作，唔使 policy；policyCenter 只用嚟讓路。
+        fallRecoveryCenter = new FallRecoveryCenter(this, deviceStatus, ubxPlayer, actionDirect, policyCenter);
         // dispatcher 包全部上面 controller (+speechCenter 做 Host；sensorState
         // 繼續經 this——TTS／sonar 全部轉交給對應 center；servo/sonar 直調
         // sonarCenter)。

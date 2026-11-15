@@ -264,72 +264,6 @@ public final class PolicyCenter {
     /** 跌倒看門狗用：runner 而家有冇 policy 喺度控制機身。 */
     public boolean policyRunning() { return running(); }
 
-    /** 跌倒看門狗用：心跳續租約（唔會啟動／切換任何 policy）。 */
-    public void beatPolicy() {
-        PolicyRunner r = runner;
-        if (r != null && r.isRunning()) r.beat();
-    }
-
-    /** 跌倒看門狗用：最近一次（或運行中嘅）runner 結束原因；冇 runner 回空字串。 */
-    public String lastEndReason() {
-        PolicyRunner r = runner;
-        return r == null ? "" : r.endReason();
-    }
-
-    /** 跌倒看門狗用：而家 role 對應邊個預載 policy（冇就空字串）。 */
-    public synchronized String getUpPolicyName(String side) {
-        Loaded l = resolveRole("getup_" + side);
-        return l == null ? "" : l.man.name;
-    }
-
-    /** 跌倒看門狗用：getup policy manifest 嘅 accel_axes（冇就空字串＝用預設）。 */
-    public synchronized String getUpAxesAuto() {
-        Loaded l = resolveRole("getup_back");
-        if (l == null) l = resolveRole("getup_front");
-        return l == null ? "" : l.man.accelAxes;
-    }
-
-    /** 跌倒看門狗用：呢面 getup policy 係咪高頻（真機要 fast=true）。 */
-    public synchronized boolean getUpNeedsFast(String side) {
-        Loaded l = resolveRole("getup_" + side);
-        return l != null && needsFastEff(l, 0);
-    }
-
-    /**
-     * 跌倒看門狗用：直接真機啟動 {@code getup_back}／{@code getup_front}（唔經 HTTP）。
-     * 成功回 null；失敗回錯誤字串（呼叫方寫入 status／log，唔好無限重試）。
-     *
-     * <p>唔會對已經運行緊嘅 policy 做 switch：跌低自動起身只會喺冇 policy 控制時接手，
-     * 避免同 {@code PolicyRunner} 自己嘅 auto-recover 搶。</p>
-     */
-    public String startGetUp(String side, boolean fast) {
-        if (!Alpha2PolicyIo.LYING_BACK.equals(side) && !Alpha2PolicyIo.LYING_FRONT.equals(side)) {
-            return "side must be back or front";
-        }
-        synchronized (this) {
-            if (running()) return "another policy is already running";
-            Loaded l = resolveRole("getup_" + side);
-            if (l == null) return "no preloaded getup_" + side + " policy";
-            if (!l.realBlock.isEmpty()) return l.realBlock;
-            if (needsFastEff(l, 0) && !fast) {
-                return "high-rate get-up policy (period " + effPeriodMs(l, 0) + " ms) needs fast=true";
-            }
-            HttpServer.ApiResponse res = start(l.man.name, false, fast, 0f, 0f, 0, false, 0, 1500);
-            if (res.status != 200) return bodyError(res.body);
-            if (!res.body.contains("\"ok\":true")) return bodyError(res.body);
-            if (!res.body.contains("\"running\":true")) return "get-up policy did not start";
-            return null;
-        }
-    }
-
-    private static String bodyError(String body) {
-        try {
-            return new JSONObject(body).optString("error", "get-up start failed");
-        } catch (Exception e) {
-            return "get-up start failed";
-        }
-    }
-
     /** 真機（非 dry）時，呢個 policy 可唔可以入 runner：通過資格檢查，而且高頻 policy 要本次運行有 fast。 */
     /** 實際決策週期（ms）：有覆寫用覆寫，否則 policy 自己嘅。 */
     private static int effPeriodMs(Loaded b, int ov) { return ov > 0 ? ov : b.man.periodMs(); }
@@ -389,8 +323,8 @@ public final class PolicyCenter {
             // 運行時間至少夠：settle（最長 6 s）＋ ref ＋ hold ＋ 餘裕，唔好俾 manifest 嘅 max_run_s 提早切斷起身動作。
             long need = (long) ((6.0 + l.ref.frames() * l.ref.dtSec() + m.holdS + 10.0) * 1000);
             if (c.maxRunMs < need) c.maxRunMs = need;
-            // get-up 通常長過 manifest 預設 5 秒 lease：唔應該要面板心跳先起得完。
-            // （FallRecoveryCenter 自動起身會自己續租；手動 fall/recover 冇面板 heartbeat 都要行得完。）
+            // get-up policy 通常長過 manifest 預設 5 秒 lease：手動 policy/start
+            // （冇面板 heartbeat）都要行得完，唔好中途 lease 停。
             if (c.leaseMs < need) c.leaseMs = need;
         }
         return c;

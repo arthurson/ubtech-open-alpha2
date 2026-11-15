@@ -135,7 +135,7 @@ components:
         - name: fall_recovery
           payload:
             type: fall_recovery
-            data: { enabled: true, state: ARMED, side: "", tiltDeg: 3.2, recoveries: 0, attempts: 0, maxAttempts: 2, dwellMs: 1500, fast: false, policyRunning: false, lastError: "" }
+            data: { enabled: true, state: ARMED, side: "", tiltDeg: 3.2, recoveries: 0, attempts: 0, maxAttempts: 2, dwellMs: 1500, actionPlaying: false, backStandAvailable: true, frontStandAvailable: true, lastAction: "", policyRunning: false, lastError: "" }
     ClientPing:
       name: ClientPing
       payload:

@@ -81,7 +81,7 @@
     },
     {
       "name": "fall",
-      "description": "跌倒自己起身看門狗（加速度計偵測穩定躺平 → 自動啟動預載 getup_back／getup_front policy；app 層、獨立於 policy 會話，面板關閉後仍然運作；預設關閉，軸映射未經實機驗證）"
+      "description": "跌倒自己起身看門狗（加速度計偵測穩定躺平 → 自動播放內建 BackStand／FrontStand 動作，唔使 ONNX policy；app 層、獨立於 policy 會話，面板關閉後仍然運作；預設關閉，軸映射未經實機驗證）"
     },
     {
       "name": "gamepad",
@@ -2850,7 +2850,7 @@
           "fall"
         ],
         "summary": "跌倒自己起身看門狗狀態",
-        "description": "回傳開關、狀態機（DISARMED／ARMED／FALLEN／RECOVERING／FAILED）、偵測到嘅躺低方向（back／front）、傾角、自動起身次數、getup policy 綁定／fast 需求、加速度計同 policy 運行狀態。看門狗喺機械人度自己跑，唔需要面板開住；狀態改變亦會經 WebSocket fall_recovery event 推送。",
+        "description": "回傳開關、狀態機（DISARMED／ARMED／FALLEN／RECOVERING／FAILED）、偵測到嘅躺低方向（back／front）、傾角、自動起身次數、BackStand／FrontStand 動作是否存在、加速度計同 policy 運行狀態。看門狗喺機械人度自己跑，唔需要面板開住；狀態改變亦會經 WebSocket fall_recovery event 推送。",
         "parameters": [
           {
             "$ref": "#/components/parameters/PanelToken"
@@ -2893,11 +2893,11 @@
         "tags": [
           "fall"
         ],
-        "summary": "設定跌倒自己起身（開關／躺穩時間／嘗試次數／fast／加速度軸）",
-        "description": "全部參數 optional，唔傳就保持現值。on=true 會自動開加速度計（sensor 未開的話）。dwell_ms 500–10000（預設 1500，過濾跌落途中嘅過渡姿勢）；max_attempts 1–5（預設 2）；fast=true 先可以真機跑 50 Hz getup policy；axes 留空＝自動用預載 getup policy manifest 嘅 accel_axes，否則格式 +x+y+z。開啟狀態記喺 SharedPreferences，app 重開／機械人重啟後仍然生效。",
+        "summary": "設定跌倒自己起身（開關／躺穩時間／嘗試次數／加速度軸）",
+        "description": "全部參數 optional，唔傳就保持現值。on=true 會自動開加速度計（sensor 未開的話）。dwell_ms 500–10000（預設 1500，過濾跌落途中嘅過渡姿勢）；max_attempts 1–5（預設 2）；axes 留空＝+x+y+z，否則格式 +x+y+z。起身用內建 BackStand／FrontStand 動作，唔使 ONNX policy。開啟狀態記喺 SharedPreferences，app 重開／機械人重啟後仍然生效。",
         "parameters": [
           {
-            "name": true,
+            "name": "on",
             "in": "query",
             "required": false,
             "schema": {
@@ -2915,7 +2915,7 @@
               "maximum": 10000,
               "default": 1500
             },
-            "description": "要穩定躺喺 back／front 幾耐先啟動 getup"
+            "description": "要穩定躺喺 back／front 幾耐先播放起身動作"
           },
           {
             "name": "max_attempts",
@@ -2930,16 +2930,6 @@
             "description": "每次跌倒最多自動起身幾多次"
           },
           {
-            "name": "fast",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false
-            },
-            "description": "實驗性高頻模式（50 Hz getup policy 真機運行需要）"
-          },
-          {
             "name": "axes",
             "in": "query",
             "required": false,
@@ -2947,7 +2937,7 @@
               "type": "string",
               "pattern": "^$|^[+-][xyzXYZ][+-][xyzXYZ][+-][xyzXYZ]$"
             },
-            "description": "加速度計軸映射；留空＝自動用 getup policy manifest 嘅 accel_axes（再冇就用 +x+y+z）"
+            "description": "加速度計軸映射；留空＝+x+y+z"
           },
           {
             "$ref": "#/components/parameters/PanelToken"
@@ -2991,7 +2981,7 @@
           "fall"
         ],
         "summary": "手動即刻起身",
-        "description": "唔理看門狗開關，直接啟動 side=back／front 對應嘅預載 getup policy。side 留空就用最近偵測到嘅躺低方向；兩樣都冇就回 400。getup policy 起步時會自己再驗一次躺低方向（唔啱就 not_lying，唔郁舵機）。必須先 policy/load 入預載組，而且真機要合資格（sha256／selftest；50 Hz 要 fast=true）。",
+        "description": "唔理看門狗開關，直接播放 side=back／front 對應嘅內建動作（back→BackStand、front→FrontStand）。side 留空就用最近偵測到嘅躺低方向；兩樣都冇就回 400。動作要喺機身 /sdcard/actions 度搵到；播唔到就回 400，唔會郁舵機。",
         "parameters": [
           {
             "name": "side",
@@ -3005,15 +2995,6 @@
               ]
             },
             "description": "躺低方向；留空＝用最近偵測到嘅方向"
-          },
-          {
-            "name": "fast",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            },
-            "description": "本次啟動用 fast（缺省＝看門狗設定）"
           },
           {
             "$ref": "#/components/parameters/PanelToken"
@@ -14033,7 +14014,7 @@
           },
           "recoveries": {
             "type": "integer",
-            "description": "今次開啟以嚟成功啟動過幾多次起身"
+            "description": "今次開啟以嚟成功啟動過幾多次起身動作"
           },
           "attempts": {
             "type": "integer",
@@ -14047,17 +14028,13 @@
             "type": "integer",
             "description": "要穩定躺幾耐先起身（ms）"
           },
-          "fast": {
-            "type": "boolean",
-            "description": "自動起身係咪用 fast（50 Hz getup policy 必需）"
-          },
           "axes": {
             "type": "string",
             "description": "實際用嘅加速度軸映射"
           },
           "axesOverride": {
             "type": "string",
-            "description": "用戶設定嘅軸映射；空＝自動用 getup policy manifest"
+            "description": "用戶設定嘅軸映射；空＝+x+y+z"
           },
           "accelAvailable": {
             "type": "boolean"
@@ -14073,19 +14050,21 @@
             "type": "boolean",
             "description": "而家有 policy 控制緊（看門狗會讓路）"
           },
-          "getupBack": {
+          "actionPlaying": {
+            "type": "boolean",
+            "description": "UbxPlayer 而家有冇動作播放緊"
+          },
+          "backStandAvailable": {
+            "type": "boolean",
+            "description": "機身 /sdcard/actions 有冇 BackStand（仰躺起身）動作"
+          },
+          "frontStandAvailable": {
+            "type": "boolean",
+            "description": "機身 /sdcard/actions 有冇 FrontStand（趴住起身）動作"
+          },
+          "lastAction": {
             "type": "string",
-            "description": "角色 getup_back 而家對應嘅預載 policy 名；空＝冇"
-          },
-          "getupFront": {
-            "type": "string",
-            "description": "角色 getup_front 而家對應嘅預載 policy 名；空＝冇"
-          },
-          "getupBackNeedsFast": {
-            "type": "boolean"
-          },
-          "getupFrontNeedsFast": {
-            "type": "boolean"
+            "description": "最近啟動嘅起身動作（BackStand／FrontStand）；空＝未試過"
           },
           "lastEvent": {
             "type": "string",
@@ -14093,11 +14072,7 @@
           },
           "lastError": {
             "type": "string",
-            "description": "最近錯誤（啟動失敗／側躺／軸映射錯…）"
-          },
-          "lastPolicyEnd": {
-            "type": "string",
-            "description": "PolicyRunner 最近一次結束原因（not_lying 代表 getup 起步時躺錯面）"
+            "description": "最近錯誤（動作唔存在／播放失敗／側躺／軸映射錯…）"
           }
         }
       },
