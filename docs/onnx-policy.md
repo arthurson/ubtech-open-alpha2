@@ -168,33 +168,34 @@ hardware): a false "fallen" reading while standing would start a get-up from sta
 get-up policies to be eligible too (50 Hz get-up policies need `fast=true`). Status: `autoRecover`, `recoveries`,
 `fallen`.
 
-## Standalone fall watchdog (`fall/*`, app level)
+## Standalone fall watchdog (`fall/*`, app level, actions)
 
 The policy runner's `auto_recover` only exists inside a `policy/start` session. The Status
 tab also has an app-level watchdog that runs even with no policy session (while a built-in
-action is playing, while walking, or while idle):
+action is playing, while walking, or while idle). It does **not** use ONNX policies: it
+plays the built-in `BackStand` (lying on its back) / `FrontStand` (face down) action.
 
-* `fall/set?on=true&dwell_ms=1500&max_attempts=2&fast=false&axes=...` enables it and saves
-  the setting in `SharedPreferences` (it survives app/robot restarts). It keeps the
-  accelerometer registered while enabled. `axes` blank means "use the preloaded getup
-  policy's manifest `accel_axes`, else `+x+y+z`".
+* `fall/set?on=true&dwell_ms=1500&max_attempts=2&axes=...` enables it and saves the setting
+  in `SharedPreferences` (it survives app/robot restarts). It keeps the accelerometer
+  registered while enabled. `axes` blank means `+x+y+z`.
 * The state machine (`FallRecoveryDetector`, pure Java) starts **DISARMED** and only arms
   after 2 s upright. A fall is a tilt ≥ 55° for 300 ms; after that the robot must lie
-  clearly on its back or front (`|g_x| ≥ 0.8`) for `dwell_ms` before the matching
-  `getup_back` / `getup_front` policy is started. Side-lying (or not settling) gives up
-  after 10 s without moving the servos.
-* While an automatic get-up is running the watchdog renews the runner lease itself (the
-  manifest's `lease_ms` is 5 s by default); it stops renewing once the robot is upright, so
-  an unattended policy does not keep running. It also hands over to `then` normally.
+  clearly on its back or front (`|g_x| ≥ 0.8`) for `dwell_ms` before the matching action
+  is played. Side-lying (or not settling) gives up after 10 s without moving the servos.
+  The actions must exist in `/sdcard/actions`; `fall/status` reports
+  `backStandAvailable` / `frontStandAvailable`.
+* While the action is playing the watchdog waits for it to finish; once the robot is
+  upright for 800 ms it re-arms. If the action ends while the robot is still down, it
+  waits `dwell_ms` and retries up to `max_attempts`; an action that cannot be started
+  fails immediately.
 * It stands down (`DISARMED`) while any other policy is running, so it cannot fight the
-  runner's own `auto_recover`.
-* `fall/recover?side=back|front` triggers a get-up manually (works even when the watchdog
+  runner's own `auto_recover`. A policy started during a get-up aborts that get-up.
+* `fall/recover?side=back|front` plays the action manually (works even when the watchdog
   is off); `fall/status` reports `state` (`DISARMED`/`ARMED`/`FALLEN`/`RECOVERING`/
-  `FAILED`), `side`, `tiltDeg`, attempts, recoveries, the bound getup policies, `fast`
-  requirements and the last error; `fall/reset` clears `FAILED`.
-* **Same caveats as the policy hook**: the accelerometer axis mapping and the get-up
-  policies are unverified on hardware. Keep the robot supported/harnessed. 50 Hz get-up
-  policies need `fast=true`. Off by default.
+  `FAILED`), `side`, `tiltDeg`, attempts, recoveries, action availability and the last
+  error; `fall/reset` clears `FAILED`.
+* **Caveats**: the accelerometer axis mapping and the Neuron BackStand/FrontStand actions
+  are unverified on hardware. Keep the robot supported/harnessed. Off by default.
 
 ## Unified format (obs 68, `action` + `delta`, velocity command) — `obs: "unified"`
 
@@ -355,8 +356,8 @@ ref continuity across a live change (ends exactly at the last pose with progress
 Roles/fall hook coverage: enable-time validation, fall without the hook still stops, back/front side selection, no servo
 frames while waiting, side-lying and exhausted attempts end with `fall`, started-lying refused, `then` hand-back, and the
 PolicyCenter role resolution/binding and `auto_recover` start rules. The standalone watchdog adds `FallRecoveryDetector`
-tests: arm-only-after-upright, fall confirmation/dwell, back/front side selection, side-lying give-up, start-failure and
-attempt-budget limits, policy hand-over disarming, and config validation.
+tests: arm-only-after-upright, fall confirmation/dwell, back/front action mapping (BackStand/FrontStand), side-lying
+give-up, start-failure and attempt-budget limits, policy hand-over disarming, and config validation.
 
 Unified coverage: multi-output `OnnxMlp`, slot validation, `target = q0 + delta`, command wiring + clamp + expiry + non-walk
 ignore, phase clock / loop phase, get-up progress in control steps, legacy ↔ unified switching; PolicyCenter e2e (pack → load →

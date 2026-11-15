@@ -1030,6 +1030,12 @@ public final class PolicyRunnerTest {
         FallRecoveryDetector d = new FallRecoveryDetector(cfg);
         long t = 0;
 
+        // -- 躺低方向 → 內建起身動作（唔使 ONNX policy）
+        eq("BackStand", FallRecoveryDetector.getUpAction("back"), "fall: back => BackStand");
+        eq("FrontStand", FallRecoveryDetector.getUpAction("front"), "fall: front => FrontStand");
+        eq("", FallRecoveryDetector.getUpAction(""), "fall: unknown side => no action");
+        eq("", FallRecoveryDetector.getUpAction(null), "fall: null side => no action");
+
         // -- 要企直 armMs 先武裝；傾角確認 + 躺穩 dwell 之後先要求起身
         eq(FallRecoveryDetector.State.DISARMED, d.state(), "fall: starts disarmed");
         t = 0; d.update(t, up, false);

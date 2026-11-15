@@ -528,7 +528,7 @@ const Alpha2Api = (function() {
   function fallSet(params) {
     if (params && params.dwell_ms != null) assertRange(Number(params.dwell_ms), 500, 10000, 'dwell_ms');
     if (params && params.max_attempts != null) assertRange(Number(params.max_attempts), 1, 5, 'max_attempts');
-    // 設定跌倒自己起身（開關／躺穩時間／嘗試次數／fast／加速度軸）
+    // 設定跌倒自己起身（開關／躺穩時間／嘗試次數／加速度軸）
     return api('fall/set', params);
   }
 

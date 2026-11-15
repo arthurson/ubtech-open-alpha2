@@ -224,14 +224,16 @@ experimental `fast=true` (dry-run it first: `policy/status` reports inference/se
 The Status tab has an **off-by-default** fall watchdog that is independent of a policy
 session. While enabled it keeps the accelerometer on, polls tilt in the background, and
 after the robot has been stably lying on its back or front for `dwell_ms` (default 1.5 s)
-it starts the preloaded `getup_back` / `getup_front` policy. This works while playing a
-built-in action or walking, not only inside `policy/start`. `fall/set` toggles it and
-sets `dwell_ms`, `max_attempts`, `fast` and `axes`; `fall/recover` gets up immediately;
-`fall/status` reports state/side/tilt/errors. The enable flag is persisted. Safety: it
-only arms after 2 s upright (so enabling while already down does nothing), ignores
-side-lying, caps attempts, and stands down while another policy runs. The accelerometer
-axis mapping and get-up policies are still **unverified on hardware** — support or
-harness the robot before relying on it.
+it plays the built-in `BackStand` / `FrontStand` action (they must exist in
+`/sdcard/actions`; the panel warns if they don't). This works while playing a built-in
+action or walking, not only inside `policy/start`, and **needs no ONNX policy**.
+`fall/set` toggles it and sets `dwell_ms`, `max_attempts` and `axes`; `fall/recover` gets
+up immediately; `fall/status` reports state/side/tilt, whether the two actions exist,
+and errors. The enable flag is persisted. Safety: it only arms after 2 s upright (so
+enabling while already down does nothing), ignores side-lying, caps attempts, and stands
+down while another policy runs. The accelerometer axis mapping and the two Neuron get-up
+actions are still **unverified on hardware** — support or harness the robot before
+relying on it.
 
 ## Voice interaction
 

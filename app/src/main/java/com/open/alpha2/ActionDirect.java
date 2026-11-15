@@ -413,6 +413,11 @@ public final class ActionDirect {
         return HttpServer.ApiResponse.ok(sb.toString());
     }
 
+    /** 動作喺唔喺度（跌倒看門狗查 BackStand／FrontStand 用；id／中英文名皆可）。 */
+    public boolean hasAction(String nameOrId) {
+        return resolveActionFile(nameOrId) != null;
+    }
+
     /** UbxPlayer 有無播緊嘢（ColorTrackCenter 行路跟用：播緊行路動作嗰陣唔發頭舵機＋唔疊新步）。 */
     public boolean isPlaying() {
         try {

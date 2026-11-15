@@ -4,13 +4,14 @@ package com.ubtechinc.alpha.hardware.policy;
  * 跌倒自動起身嘅純狀態機（無 Android 依賴，可單元測試）。
  *
  * <p>輸入係平滑後嘅加速度計讀數，經 {@link Alpha2PolicyIo#gravityBase} 轉做機身座標重力方向，
- * 再用 tilt 同 {@link Alpha2PolicyIo#lyingKind} 判斷企直／仰躺／趴住。狀態：</p>
+ * 再用 tilt 同 {@link Alpha2PolicyIo#lyingKind} 判斷企直／仰躺／趴住。起身用機身內建動作
+ * （{@link #getUpAction(String)}：仰躺＝BackStand、趴住＝FrontStand），唔使 ONNX policy。狀態：</p>
  *
  * <pre>
  * DISARMED --企直 armMs--> ARMED --傾角過 fallTiltDeg 持續 fallConfirmMs--> FALLEN
- * FALLEN --躺穩 dwellMs--> RECOVERING（回傳 START_RECOVERY，由外面真機啟動 getup policy）
+ * FALLEN --躺穩 dwellMs--> RECOVERING（回傳 START_RECOVERY，由外面播放起身動作）
  * RECOVERING --企返直 recoverUprightMs--> ARMED
- * RECOVERING --policy 完但仍然躺住，仲有次數--> FALLEN（再等 dwellMs 重試）
+ * RECOVERING --動作完但仍然躺住，仲有次數--> FALLEN（再等 dwellMs 重試）
  * 任何狀態 --企返直 armMs--> ARMED（FAILED 亦靠呢條路重新武裝）
  * </pre>
  *
@@ -28,7 +29,7 @@ public final class FallRecoveryDetector {
 
     public enum State { DISARMED, ARMED, FALLEN, RECOVERING, FAILED }
 
-    /** update() 回傳：NONE＝冇事；START_RECOVERY＝而家應該啟動對應 side 嘅 getup policy。 */
+    /** update() 回傳：NONE＝冇事；START_RECOVERY＝而家應該播放對應 side 嘅起身動作。 */
     public enum Event { NONE, START_RECOVERY }
 
     public static final class Config {
@@ -44,11 +45,11 @@ public final class FallRecoveryDetector {
         public long dwellMs = 1500L;
         /** 側躺／未穩定躺平超過呢個時間就放棄（唔郁舵機）。 */
         public long settleGiveUpMs = 10000L;
-        /** 單次 getup policy 最長等幾耐（policy 自己都會有 max_run）。 */
+        /** 單次起身動作最長等幾耐（動作卡住唔完都唔會無限等）。 */
         public long recoverTimeoutMs = 30000L;
         /** getup 後要企直幾耐先當成功。 */
         public long recoverUprightMs = 800L;
-        /** 每次跌倒最多自動起身幾多次（1–5，同 policy auto_recover 嘅 recover_max 上限一致）。 */
+        /** 每次跌倒最多自動起身幾多次（1–5）。 */
         public int maxAttempts = 2;
 
         public Config copy() {
@@ -79,6 +80,13 @@ public final class FallRecoveryDetector {
                 throw new IllegalArgumentException("maxAttempts must be 1..5");
             }
         }
+    }
+
+    /** 躺低方向對應嘅內建起身動作 id：仰躺（back）→ BackStand，趴住（front）→ FrontStand。 */
+    public static String getUpAction(String side) {
+        if (Alpha2PolicyIo.LYING_BACK.equals(side)) return "BackStand";
+        if (Alpha2PolicyIo.LYING_FRONT.equals(side)) return "FrontStand";
+        return "";
     }
 
     private Config cfg;
@@ -140,16 +148,17 @@ public final class FallRecoveryDetector {
      *
      * @param nowMs      單調時鐘（elapsedRealtime 或測試用時間）
      * @param gravity    機身座標重力方向（單位向量，企直＝(0,0,-1)）；null＝加速度讀數無效
-     * @param policyRunning 而家有冇 policy 正在運行（今次自動起身自己嗰個唔算「外面」）
-     * @return {@link Event#START_RECOVERY} 代表外面應該啟動 {@link #side()} 嘅 getup policy，
-     *         之後必須 call {@link #onRecoveryStarted(boolean, String)} 報告結果。
+     * @param getupRunning RECOVERING 期間＝今次起身動作仲運行緊；其他狀態傳 true 代表外面有
+     *        policy 控制緊或者起身動作已經播緊（會保持 DISARMED，避免搶控制）
+     * @return {@link Event#START_RECOVERY} 代表外面應該播放 {@link #getUpAction(String)}
+     *         對應嘅動作，之後必須 call {@link #onRecoveryStarted(boolean, String)} 報告結果。
      */
-    public synchronized Event update(long nowMs, double[] gravity, boolean policyRunning) {
-        // 外面有 policy 控制緊：保持 DISARMED，避免同 PolicyRunner 自己嘅 auto-recover 搶。
-        // RECOVERING 係今次自動起身自己開嘅 policy，要繼續睇到佢完成。
-        if (policyRunning && state != State.RECOVERING) {
+    public synchronized Event update(long nowMs, double[] gravity, boolean getupRunning) {
+        // 外面有 policy 控制緊／起身動作播緊：保持 DISARMED，避免搶控制或者重複播放。
+        // RECOVERING 係今次自動起身自己開嘅動作，要繼續睇到佢完成。
+        if (getupRunning && state != State.RECOVERING) {
             if (state != State.DISARMED) {
-                resetInternal("policy");
+                resetInternal("busy");
             }
             return Event.NONE;
         }
@@ -224,13 +233,13 @@ public final class FallRecoveryDetector {
 
             case RECOVERING: {
                 if (!valid) {
-                    // 讀數暫時無效：唔好當「policy 完咗仍然躺住」而重試；等 timeout 自保。
-                    if (policyRunning && nowMs - recoverSince >= cfg.recoverTimeoutMs) {
+                    // 讀數暫時無效：唔好當「動作完咗仍然躺住」而重試；等 timeout 自保。
+                    if (getupRunning && nowMs - recoverSince >= cfg.recoverTimeoutMs) {
                         failInternal("get-up timed out");
                     }
                     return Event.NONE;
                 }
-                // 先睇係咪已經企返直（getup policy 可能已經完成／交咗俾 stand policy）。
+                // 先睇係咪已經企返直（起身動作可能已經完成）。
                 boolean upright = tiltDeg <= cfg.armTiltDeg;
                 if (upright) {
                     if (uprightSince < 0) uprightSince = nowMs;
@@ -247,13 +256,13 @@ public final class FallRecoveryDetector {
                     uprightSince = -1;
                 }
                 if (awaitingStart) return Event.NONE;  // 等外面報告啟動結果
-                if (policyRunning) {
+                if (getupRunning) {
                     if (nowMs - recoverSince >= cfg.recoverTimeoutMs) {
                         failInternal("get-up timed out");
                     }
                     return Event.NONE;
                 }
-                // policy 已完結但仲未企直：仲有次數就返 FALLEN 再等 dwellMs 重試。
+                // 起身動作已完結但仲未企直：仲有次數就返 FALLEN 再等 dwellMs 重試。
                 if (upright) return Event.NONE;        // 已經企直，只係未夠 recoverUprightMs
                 if (attempts < cfg.maxAttempts) {
                     state = State.FALLEN;
@@ -288,7 +297,7 @@ public final class FallRecoveryDetector {
         }
     }
 
-    /** 外面啟動 getup policy 後報告結果；失敗會轉 FAILED（唔會無限重試）。 */
+    /** 外面啟動起身動作後報告結果；失敗會轉 FAILED（唔會無限重試）。 */
     public synchronized void onRecoveryStarted(boolean ok, String error) {
         if (state != State.RECOVERING) return;
         awaitingStart = false;
@@ -300,7 +309,7 @@ public final class FallRecoveryDetector {
         }
     }
 
-    /** 外部判定失敗（例如 getup policy 回報 not_lying）：轉 FAILED，等企返直先重新武裝。 */
+    /** 外部判定失敗（例如起身動作播唔到）：轉 FAILED，等企返直先重新武裝。 */
     public synchronized void fail(String error) {
         failInternal(error == null || error.isEmpty() ? "failed" : error);
     }
