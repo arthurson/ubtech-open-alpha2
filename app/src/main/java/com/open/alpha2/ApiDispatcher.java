@@ -64,6 +64,7 @@ public final class ApiDispatcher {
     private final GamepadCenter gamepadCenter;
     private final WalkCenter walkCenter;
     private final PolicyCenter policyCenter;
+    private final FallRecoveryCenter fallRecoveryCenter;
 
     public ApiDispatcher(Context context, Host host, XiaozhiBridge.HostState sensorState,
             ActionDirect actionDirect, UbxApi ubxApi, ChestQuery chestQuery,
@@ -74,7 +75,8 @@ public final class ApiDispatcher {
             GrammarCenter grammarCenter, UbxPlayer ubxPlayer, MusicController musicController,
             LocalAlpha2Services localServices, SonarCenter sonarCenter,
             ActionsPackController actionsPackController, ApkDownloadController apkDownloadController,
-            GamepadCenter gamepadCenter, WalkCenter walkCenter, PolicyCenter policyCenter) {
+            GamepadCenter gamepadCenter, WalkCenter walkCenter, PolicyCenter policyCenter,
+            FallRecoveryCenter fallRecoveryCenter) {
         this.appContext = context.getApplicationContext();
         this.host = host;
         this.sensorState = sensorState;
@@ -103,6 +105,7 @@ public final class ApiDispatcher {
         this.gamepadCenter = gamepadCenter;
         this.walkCenter = walkCenter;
         this.policyCenter = policyCenter;
+        this.fallRecoveryCenter = fallRecoveryCenter;
     }
 
     // directChestReady() 內聯：經 appContext 不用 Activity（各 center 自帶副本）。
@@ -336,6 +339,16 @@ public final class ApiDispatcher {
                 return policyCenter.commandResponse(query);
             case "policy/status":
                 return policyCenter.statusResponse();
+
+            // -- 跌倒自己起身看門狗（app 層，獨立於 policy 會話；見 FallRecoveryCenter）----------
+            case "fall/status":
+                return fallRecoveryCenter.statusResponse();
+            case "fall/set":
+                return fallRecoveryCenter.setResponse(query);
+            case "fall/recover":
+                return fallRecoveryCenter.recoverResponse(query);
+            case "fall/reset":
+                return fallRecoveryCenter.resetResponse();
 
             // -- Speech / TTS -----------------------------------------------------------
             // engine: android only (only engine that speaks). nuance/iflytek

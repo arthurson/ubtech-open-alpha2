@@ -165,6 +165,17 @@ manifest＋SHA-256＋機上 selftest、預設 dry-run、硬安全包絡。**未�
 period < 200ms（例如 50 Hz，實機會亂震）要用實驗性 `fast=true`（先 dry-run：`policy/status` 會報推論／送出耗時同 overrun）。詳見
 [docs/onnx-policy.md](docs/onnx-policy.md)。
 
+### 跌倒自己起身看門狗（`fall/*`）
+
+狀態 tab 有個**預設關閉**、獨立於 policy 會話嘅跌倒看門狗。開啟後會保持加速度計開住、
+背景每 100ms 睇傾角；確認穩定躺喺 back／front 達 `dwell_ms`（預設 1.5 秒）之後，就啟動
+預載嘅 `getup_back`／`getup_front` policy。所以播緊內建動作、行緊路都有效，唔限於
+`policy/start` 會話。`fall/set` 負責開關同 `dwell_ms`／`max_attempts`／`fast`／`axes`；
+`fall/recover` 即刻起身；`fall/status` 回報狀態／躺低方向／傾角／錯誤。開關狀態會持久化。
+安全設計：要先企直 2 秒先武裝（所以已經躺低先開功能唔會即刻郁）、側躺唔郁、次數有上限、
+有其他 policy 運行時會讓路。加速度軸映射同 get-up policy 仍然**未經實機驗證**——真機試之前
+請扶住／吊住機身。
+
 ## 語音互動
 
 - 離線語音辨識用 Vosk（模型放在 sdcard 並自動偵測；Vosk 需要 API 21＋，

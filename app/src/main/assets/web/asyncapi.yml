@@ -70,6 +70,7 @@ components:
               - chest_rcv
               - chest_upgrade_done
               - chest_upgrade_progress
+              - fall_recovery
               - gamepad_axis
               - gamepad_bt
               - gamepad_key
@@ -131,6 +132,10 @@ components:
           payload:
             type: volume_changed
             data: { volume: 6, max: 15 }
+        - name: fall_recovery
+          payload:
+            type: fall_recovery
+            data: { enabled: true, state: ARMED, side: "", tiltDeg: 3.2, recoveries: 0, attempts: 0, maxAttempts: 2, dwellMs: 1500, fast: false, policyRunning: false, lastError: "" }
     ClientPing:
       name: ClientPing
       payload:

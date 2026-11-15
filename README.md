@@ -73,7 +73,8 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
 - Status (📊) — language switch, media volume, system/device info (battery,
   Wi-Fi/Bluetooth, robot UUID, chest firmware), sonar chart, PIR sensor with
   optional alert (red LED + ringtone), accelerometer live chart and optional
-  4-direction tilt → head/eye LED.
+  4-direction tilt → head/eye LED, plus the fall self-recovery watchdog
+  (`fall/status|set|recover|reset`; off by default — see below).
 - Actions (🕺) — action list with category sub-tabs, play/stop, playback speed
   slider (0.5–2.0x; servo and mp3 playback both follow the speed). Action
   chips are coloured by category (sub-category colour first, main-category
@@ -217,6 +218,20 @@ Load a `policy.onnx` exported from [`ubtech-alpha2-urdf`](https://github.com/art
 manifest + SHA-256 + on-robot selftest, dry-run by default, hard safety envelope. **Unverified on
 hardware.** Policies run at their own training rate; period < 200 ms (e.g. 50 Hz, which was erratic on the real robot) needs the
 experimental `fast=true` (dry-run it first: `policy/status` reports inference/send timing and overruns). Details: [docs/onnx-policy.md](docs/onnx-policy.md).
+
+### Fall self-recovery watchdog (`fall/*`)
+
+The Status tab has an **off-by-default** fall watchdog that is independent of a policy
+session. While enabled it keeps the accelerometer on, polls tilt in the background, and
+after the robot has been stably lying on its back or front for `dwell_ms` (default 1.5 s)
+it starts the preloaded `getup_back` / `getup_front` policy. This works while playing a
+built-in action or walking, not only inside `policy/start`. `fall/set` toggles it and
+sets `dwell_ms`, `max_attempts`, `fast` and `axes`; `fall/recover` gets up immediately;
+`fall/status` reports state/side/tilt/errors. The enable flag is persisted. Safety: it
+only arms after 2 s upright (so enabling while already down does nothing), ignores
+side-lying, caps attempts, and stands down while another policy runs. The accelerometer
+axis mapping and get-up policies are still **unverified on hardware** — support or
+harness the robot before relying on it.
 
 ## Voice interaction
 
