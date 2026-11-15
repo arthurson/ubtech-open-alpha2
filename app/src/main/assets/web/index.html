@@ -173,6 +173,36 @@
       </div>
       <p class="hint" id="tiltLedHint"></p>
     </section>
+
+    <!-- 跌倒自己起身（app 層看門狗）：同 ONNX policy 會話無關，開咗之後就算只係播緊
+         內建動作／行緊路都會喺跌低後自動啟動預載 getup policy。後端 FallRecoveryCenter，
+         API fall/status|set|recover|reset；開關記喺 SharedPreferences（app 重開仍生效）。 -->
+    <section class="card" id="fallCard">
+      <h2 data-i18n="fall_heading">🛟 跌倒自己起身</h2>
+      <div class="row">
+        <label class="switch-label">
+          <span class="toggle-switch">
+            <input type="checkbox" id="fallEnabled" onchange="fallToggle()">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+        <span data-i18n="fall_toggle_label">跌低後自動起身（實驗）</span>
+      </div>
+      <p class="hint" data-i18n="fall_hint">開啟後用加速度計偵測穩定躺平（仰躺／趴住），自動運行已預載嘅 getup_back／getup_front policy。需要相應 getup policy 已經「載入」；50 Hz policy 要開 fast。軸映射未經實機驗證，試之前請扶住／吊住機身。</p>
+      <div class="row" style="flex-wrap:wrap;align-items:center">
+        <label><span data-i18n="fall_dwell">躺穩時間 ms</span>
+          <input id="fallDwell" type="number" min="500" max="10000" step="100" style="width:6em"></label>
+        <label><span data-i18n="fall_attempts">最多嘗試</span>
+          <input id="fallAttempts" type="number" min="1" max="5" step="1" style="width:4em"></label>
+        <label class="switch-label"><input type="checkbox" id="fallFast"> <span data-i18n="fall_fast">fast（實驗）</span></label>
+        <label><span data-i18n="fall_axes">加速度軸（空＝自動）</span>
+          <input id="fallAxes" type="text" placeholder="+x+y+z" style="width:6em"></label>
+        <button class="secondary" onclick="fallApply()" data-i18n="fall_apply">套用</button>
+        <button class="secondary" onclick="fallRecoverNow()" data-i18n="fall_now">立即起身</button>
+        <button class="danger-btn" onclick="fallReset()" data-i18n="fall_reset">重設</button>
+      </div>
+      <p class="hint" style="white-space:pre-wrap" id="fallStatusOut">—</p>
+    </section>
   </div>
 
   <!-- ============ TAB: ACTIONS ============ -->
@@ -1557,8 +1587,8 @@
        3. 中間檔案之間沒有排序依賴（function hoisting），保持原 section 順序方便對照。
      尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
      所以全部 <script src> 一定要行完先到那個 inline script。 -->
-<script src="app-core.js?v=20261106b"></script>
-<script src="api-client.js?v=20261021a"></script>
+<script src="app-core.js?v=20261115a"></script>
+<script src="api-client.js?v=20261115a"></script>
 <script src="app-status.js?v=20261020a"></script>
 <script src="app-actions.js?v=20261021b"></script>
 <script src="app-speech.js?v=20261017a"></script>
@@ -1580,7 +1610,8 @@
 <script src="app-actions-pack.js?v=20261001a"></script>
 <script src="app-apk.js?v=20261001a"></script>
 <script src="app-policy.js?v=20261106a"></script>
-<script src="app-log.js?v=20261106b"></script>
+<script src="app-fall.js?v=20261115a"></script>
+<script src="app-log.js?v=20261115a"></script>
 
 <!-- ============================================================
      Sample: 4角度傾側控制頭/眼 LED

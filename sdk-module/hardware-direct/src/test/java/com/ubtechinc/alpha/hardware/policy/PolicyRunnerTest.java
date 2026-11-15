@@ -1002,6 +1002,142 @@ public final class PolicyRunnerTest {
     }
 
 
+    // ---- 跌倒看門狗狀態機（FallRecoveryDetector，純數學）-------------------------------------
+
+    private static FallRecoveryDetector.Config fdCfg() {
+        FallRecoveryDetector.Config c = new FallRecoveryDetector.Config();
+        c.armMs = 1000;
+        c.fallConfirmMs = 200;
+        c.dwellMs = 500;
+        c.settleGiveUpMs = 3000;
+        c.recoverUprightMs = 300;
+        c.recoverTimeoutMs = 5000;
+        c.maxAttempts = 2;
+        return c;
+    }
+
+    private static double[] tiltGravity(double deg) {
+        double r = Math.toRadians(deg);
+        return new double[] {Math.sin(r), 0, -Math.cos(r)};
+    }
+
+    private static void testFallDetector() {
+        final double[] up = {0, 0, -1};
+        final double[] back = {-1, 0, 0};
+        final double[] front = {1, 0, 0};
+        final double[] side = {0, -1, 0};
+        final FallRecoveryDetector.Config cfg = fdCfg();
+        FallRecoveryDetector d = new FallRecoveryDetector(cfg);
+        long t = 0;
+
+        // -- 要企直 armMs 先武裝；傾角確認 + 躺穩 dwell 之後先要求起身
+        eq(FallRecoveryDetector.State.DISARMED, d.state(), "fall: starts disarmed");
+        t = 0; d.update(t, up, false);
+        t = 999; d.update(t, up, false);
+        eq(FallRecoveryDetector.State.DISARMED, d.state(), "fall: upright 999 ms < armMs");
+        t = 1000; d.update(t, up, false);
+        eq(FallRecoveryDetector.State.ARMED, d.state(), "fall: upright long enough => armed");
+        t = 1100; d.update(t, tiltGravity(60), false);
+        eq(FallRecoveryDetector.State.ARMED, d.state(), "fall: 60 deg 100 ms < fallConfirmMs");
+        t = 1300; d.update(t, tiltGravity(60), false);
+        eq(FallRecoveryDetector.State.FALLEN, d.state(), "fall: sustained tilt => fallen");
+        t = 1400; d.update(t, back, false);
+        eq("back", d.side(), "fall: lying side detected");
+        t = 1800; eq(FallRecoveryDetector.Event.NONE, d.update(t, back, false), "fall: dwell not reached");
+        t = 1900; eq(FallRecoveryDetector.Event.START_RECOVERY, d.update(t, back, false), "fall: dwell reached => start get-up");
+        eq(1, d.attempts(), "fall: attempt counted");
+        d.onRecoveryStarted(true, null);
+        eq(FallRecoveryDetector.State.RECOVERING, d.state(), "fall: recovery running");
+        t = 2000; eq(FallRecoveryDetector.Event.NONE, d.update(t, back, true), "fall: own policy still running, no retrigger");
+        t = 2100; d.update(t, up, true);
+        eq(FallRecoveryDetector.State.RECOVERING, d.state(), "fall: upright 100 ms < recoverUprightMs");
+        t = 2400; d.update(t, up, true);
+        eq(FallRecoveryDetector.State.ARMED, d.state(), "fall: recovered => armed");
+        // 起身交咗俾外面嘅 stand policy：一見到其他 policy 控制就 disarm，避免搶。
+        t = 2500; d.update(t, up, true);
+        eq(FallRecoveryDetector.State.DISARMED, d.state(), "fall: external policy => disarmed");
+        t = 3500; d.update(t, up, false);
+        eq(FallRecoveryDetector.State.DISARMED, d.state(), "fall: still disarmed after policy ends");
+        t = 4500; d.update(t, up, false);
+        eq(FallRecoveryDetector.State.ARMED, d.state(), "fall: re-arms after the policy ends");
+
+        // -- 一開啟就已經躺低：唔會自動起身
+        d.reset();
+        t = 0;
+        FallRecoveryDetector.Event e = FallRecoveryDetector.Event.NONE;
+        for (int i = 0; i < 100; i++) { t += 100; e = d.update(t, back, false); }
+        eq(FallRecoveryDetector.Event.NONE, e, "fall: lying at enable never auto-starts");
+        eq(FallRecoveryDetector.State.DISARMED, d.state(), "fall: lying at enable stays disarmed");
+        eq("", d.side(), "fall: lying at enable has no side");
+
+        // -- 側躺：等 settleGiveUpMs 之後 FAILED，唔郁舵機
+        d = new FallRecoveryDetector(fdCfg());
+        t = 0; d.update(t, up, false);
+        t = 1000; d.update(t, up, false);                 // armed
+        t = 1200; d.update(t, tiltGravity(60), false);    // 100 ms
+        t = 1400; d.update(t, tiltGravity(60), false);    // 200 ms -> fallen
+        t = 1500; d.update(t, side, false);
+        eq("", d.side(), "fall: side-lying has no get-up side");
+        t = 4500; e = d.update(t, side, false);
+        eq(FallRecoveryDetector.State.FAILED, d.state(), "fall: side-lying gives up");
+        eq(FallRecoveryDetector.Event.NONE, e, "fall: side-lying never asks for get-up");
+        check(d.lastError().contains("side-lying"), "fall: side-lying error says why");
+        // 扶返直先重新武裝
+        t = 5500; d.update(t, up, false);
+        t = 6500; d.update(t, up, false);
+        eq(FallRecoveryDetector.State.ARMED, d.state(), "fall: upright after failure re-arms");
+
+        // -- 啟動失敗：FAILED（唔會無限重試）
+        d = new FallRecoveryDetector(fdCfg());
+        t = 0; d.update(t, up, false);
+        t = 1000; d.update(t, up, false);
+        t = 1200; d.update(t, tiltGravity(60), false);
+        t = 1400; d.update(t, tiltGravity(60), false);
+        t = 1500; d.update(t, front, false);
+        t = 2000; eq(FallRecoveryDetector.Event.START_RECOVERY, d.update(t, front, false), "fall: front lying asks get-up");
+        eq("front", d.side(), "fall: front side reported");
+        d.onRecoveryStarted(false, "no getup policy");
+        eq(FallRecoveryDetector.State.FAILED, d.state(), "fall: start failure => failed");
+        check(d.lastError().contains("no getup policy"), "fall: start failure keeps the reason");
+        t = 2100; e = d.update(t, front, false);
+        eq(FallRecoveryDetector.Event.NONE, e, "fall: failed does not retry while lying");
+        t = 3100; d.update(t, up, false);
+        t = 4100; d.update(t, up, false);
+        eq(FallRecoveryDetector.State.ARMED, d.state(), "fall: failed re-arms after upright");
+
+        // -- 兩次 getup 都未完就 FAILED；policy 自己結束唔會搶
+        d = new FallRecoveryDetector(fdCfg());
+        t = 0; d.update(t, up, false);
+        t = 1000; d.update(t, up, false);
+        t = 1200; d.update(t, tiltGravity(60), false);
+        t = 1400; d.update(t, tiltGravity(60), false);
+        t = 1500; d.update(t, back, false);
+        t = 2000; eq(FallRecoveryDetector.Event.START_RECOVERY, d.update(t, back, false), "fall: retry test first start");
+        d.onRecoveryStarted(true, null);
+        t = 2100; d.update(t, back, false);              // policy ended, still lying => FALLEN again
+        eq(FallRecoveryDetector.State.FALLEN, d.state(), "fall: failed get-up returns to fallen for a retry");
+        t = 2600; e = d.update(t, back, false);          // re-detect the lying side, dwell starts here
+        eq(FallRecoveryDetector.Event.NONE, e, "fall: retry waits for dwell again");
+        t = 3100; e = d.update(t, back, false);
+        eq(FallRecoveryDetector.Event.START_RECOVERY, e, "fall: retry asks get-up again");
+        eq(2, d.attempts(), "fall: second attempt counted");
+        d.onRecoveryStarted(true, null);
+        t = 3200; e = d.update(t, back, false);
+        eq(FallRecoveryDetector.State.FAILED, d.state(), "fall: attempts exhausted => failed");
+        check(d.lastError().contains("upright"), "fall: exhausted error says why");
+
+        // -- 設定驗證
+        FallRecoveryDetector.Config bad = fdCfg();
+        bad.maxAttempts = 0;
+        try { new FallRecoveryDetector(bad); check(false, "fall: maxAttempts 0 rejected"); }
+        catch (IllegalArgumentException ok) { check(true, "fall: maxAttempts 0 rejected"); }
+        bad = fdCfg();
+        bad.armTiltDeg = 60; bad.fallTiltDeg = 55;
+        try { new FallRecoveryDetector(bad); check(false, "fall: arm >= fall rejected"); }
+        catch (IllegalArgumentException ok) { check(true, "fall: arm >= fall rejected"); }
+    }
+
+
     // ---- 統一格式（obs 68，ONNX 兩個輸出 action＋delta，速度指令）----------------------------
 
     private static PolicyRunner.Config ucfg(String task, int periodMs, double scale) {
@@ -1157,6 +1293,7 @@ public final class PolicyRunnerTest {
         testGetUp();
         testPeriodOverride();
         testAutoRecover();
+        testFallDetector();
         testUnified();
         System.out.println("passed=" + passed + " failed=" + failed);
         System.exit(failed == 0 ? 0 : 1);

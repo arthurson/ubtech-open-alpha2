@@ -166,6 +166,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     private GamepadCenter gamepadCenter;
     private WalkCenter walkCenter;
     private PolicyCenter policyCenter;
+    private FallRecoveryCenter fallRecoveryCenter;
 
     // -- XiaozhiBridge.HostState (宿主縫)：TTS 兩法轉交 SpeechCenter，sonar 四法
     // 轉交 SonarCenter（delegate＋null-guard；MCP 4 tool 經這裡照讀）。 --
@@ -403,6 +404,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         gamepadCenter.attachWalkCenter(walkCenter);
         // ONNX policy（policies/<name>/policy.onnx＋manifest.json；預設 dry-run 排練）。
         policyCenter = new PolicyCenter(this, ubxPlayer, deviceStatus);
+        // 跌倒自己起身看門狗（app 層，獨立於 policy 會話；開關記喺 SharedPreferences，
+        // 預設關）。佢會用預載嘅 getup_back／getup_front policy，所以喺 policyCenter 之後起。
+        fallRecoveryCenter = new FallRecoveryCenter(this, deviceStatus, ubxPlayer, policyCenter);
         // dispatcher 包全部上面 controller (+speechCenter 做 Host；sensorState
         // 繼續經 this——TTS／sonar 全部轉交給對應 center；servo/sonar 直調
         // sonarCenter)。
@@ -411,7 +415,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 chestUpgrade, servoUpgrade, ttsCenter, voskApi, ledCenter, semanticCenter, deviceStatus,
                 cameraApi, audioCenter, ringtoneCenter, micCenter, robot, grammarCenter,
                 ubxPlayer, musicController, localServices, sonarCenter, actionsPackController,
-                apkDownloadController, gamepadCenter, walkCenter, policyCenter);
+                apkDownloadController, gamepadCenter, walkCenter, policyCenter, fallRecoveryCenter);
 
         // 播歌指示燈（disco 開住播歌）同「小智已連線」燈共用胸口同一盞 mute 燈，
         // 由 XiaozhiBridge 做 OR。起喺 xiaozhiBridge 之後。
@@ -1109,6 +1113,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         if (gamepadCenter != null) gamepadCenter.shutdown();
         if (ubxPlayer != null) ubxPlayer.stopVoice();
         if (micCenter != null) micCenter.shutdownMicHold();
+        if (fallRecoveryCenter != null) fallRecoveryCenter.shutdown();
         if (deviceStatus != null) deviceStatus.setAccelerometerEnabled(false);
         if (ttsCenter != null) ttsCenter.shutdown();
         if (localServices != null) {

@@ -513,6 +513,30 @@ const Alpha2Api = (function() {
     return api('ubx/stop', params);
   }
 
+  // ── fall ──────────────────────────────────────────────
+  function fallRecover(params) {
+    if (params && params.side != null) assertEnum(params.side, ['back', 'front'], 'side');
+    // 手動即刻起身
+    return api('fall/recover', params);
+  }
+
+  function fallReset(params) {
+    // 重設跌倒自己起身狀態機
+    return api('fall/reset', params);
+  }
+
+  function fallSet(params) {
+    if (params && params.dwell_ms != null) assertRange(Number(params.dwell_ms), 500, 10000, 'dwell_ms');
+    if (params && params.max_attempts != null) assertRange(Number(params.max_attempts), 1, 5, 'max_attempts');
+    // 設定跌倒自己起身（開關／躺穩時間／嘗試次數／fast／加速度軸）
+    return api('fall/set', params);
+  }
+
+  function fallStatus(params) {
+    // 跌倒自己起身看門狗狀態
+    return api('fall/status', params);
+  }
+
   // ── gamepad ──────────────────────────────────────────────
   function gamepadAxis(params) {
     if (params && params.lx != null) assertRange(Number(params.lx), -1, 1, 'lx');
@@ -1382,6 +1406,10 @@ const Alpha2Api = (function() {
     ubxSpeed,
     ubxStatus,
     ubxStop,
+    fallRecover,
+    fallReset,
+    fallSet,
+    fallStatus,
     gamepadAxis,
     gamepadBt,
     gamepadConfigGet,

@@ -213,6 +213,10 @@ function appendLog(msg) {
   if (msg.type === "accel" && msg.data) {
     onAccelSample(msg.data);
   }
+  // 跌倒自己起身看門狗狀態（FallRecoveryCenter 喺狀態／錯誤改變時 publish；面板亦會輪詢）。
+  if (msg.type === "fall_recovery" && msg.data && typeof fallApplyStatus === "function") {
+    try { fallApplyStatus(msg.data, true); } catch (e) { /* ignore */ }
+  }
   // 小智 (XiaoZhi) AI 對話 - 全部 xiaozhi_* event type 交給 app-xiaozhi.js 的
   // xiaozhiHandleEvent() 統一處理 (state/stt/llm/tts/mcp/system/alert), 這裡僅
   // 做 dispatch, 不在這個檔案重複寫渲染邏輯。app-xiaozhi.js 雖然在 index.html
@@ -317,6 +321,7 @@ window.addEventListener("DOMContentLoaded", function () {
   if (typeof syncSonarUi === "function") syncSonarUi();
   if (typeof syncPirUi === "function") syncPirUi();
   if (typeof syncAccelToggle === "function") syncAccelToggle();
+  if (typeof fallInit === "function") fallInit();
   connectWs();
   musicInit();
   if (typeof radioInit === "function") radioInit();
