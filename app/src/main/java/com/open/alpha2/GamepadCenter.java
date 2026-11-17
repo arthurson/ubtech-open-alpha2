@@ -1102,7 +1102,7 @@ public final class GamepadCenter {
             return true;
         }
         String action = mappedActionOf(norm, logical);
-        boolean taken = executeAction(norm, logical, action);
+        boolean taken = executeAction(norm, logical, action, true);
         // 撳住 servo jog／IK 即排連走（首步上面已行，跟住每 120ms 一步；掣全速；
         // 一鍵多功能入面有幾多相關段就排幾多條，放手一次過停）。
         if (taken) startRepeats(norm, logical, action, 1f, true);
@@ -1328,6 +1328,14 @@ public final class GamepadCenter {
      * servo 首步喺各段即行，連走由調用方經 startServoRepeats 續行（見下）。
      */
     private boolean executeAction(String side, String key, String action) {
+        return executeAction(side, key, action, false);
+    }
+
+    /**
+     * @param localWalk true＝本機直連手柄／鍵盤（key-up 可靠，行路用 lease=0）；
+     *                  false＝網頁／腳本注入（行路用租約＋15 秒上限）。
+     */
+    private boolean executeAction(String side, String key, String action, boolean localWalk) {
         java.util.List<String> parts = splitMultiAction(action);
         if (parts.isEmpty()) return true;
         boolean anyReal = false;
@@ -1341,7 +1349,7 @@ public final class GamepadCenter {
             if ("none".equals(p)) continue;
             boolean ok;
             try {
-                ok = executeSingleAction(side, key, p, i);
+                ok = executeSingleAction(side, key, p, i, localWalk);
             } catch (Throwable t) {
                 Log.w(TAG, "executeMulti part failed: " + p, t);
                 ok = false;
@@ -1353,6 +1361,11 @@ public final class GamepadCenter {
 
     /** 執行單個映射動作（按鍵單發＋axis jog 共用）。回 true＝已處理。 */
     private boolean executeSingleAction(String side, String key, String action, int idx) {
+        return executeSingleAction(side, key, action, idx, false);
+    }
+
+    private boolean executeSingleAction(String side, String key, String action, int idx,
+            boolean localWalk) {
         if (action == null) return false;
         String a = action.trim();
         try {
@@ -1361,6 +1374,8 @@ public final class GamepadCenter {
             // 動作（＋蹲下站起回位）、TTS、本地音樂、電台、鈴聲、頭／眼／咀燈。
             // 各路獨立 try（邊路炸唔阻其他路），taken 跟動作主體。
             if (a.equals("stop")) {
+                // 明確 stop：唔好俾 120ms 後嘅 keep-walking 兜底續返。
+                suppressWalkAutoRestart();
                 UbxErrorCode.API_ERROR_CODE code = actionDirect.stopActionWithRecovery();
                 noteActionStarted();
                 try {
@@ -1418,8 +1433,13 @@ public final class GamepadCenter {
                 if (wc == null) return false;
                 if (a.equals("walk:fwd") || a.equals("walk:back")) {
                     boolean back = a.equals("walk:back");
+                    // 用戶明確再撳行路方向：解除 stop／動作嘅自動續行抑制。
+                    walkAutoRestartSuppressed = false;
                     if (walkHeld(back ? "fwd" : "back")) return true;
-                    return wc.hold(wc.baseSpeed(), back);
+                    // 本機手柄 key-up 可靠 → lease=0，唔靠心跳；網頁／腳本行租約。
+                    return localWalk
+                            ? wc.holdLocal(wc.baseSpeed(), back)
+                            : wc.hold(wc.baseSpeed(), back);
                 }
                 return true;
             }
@@ -1732,6 +1752,9 @@ public final class GamepadCenter {
                 if (name.isEmpty()) return false;
                 // 動作檔接管全身位姿：IK 百分比唔再有效。
                 resetIkState();
+                // 動作接管全身位姿：唔好俾 keep-walking 兜底喺動作播完後續行，
+                // 要用戶放手再撳先恢復（同 README「動作搶佔行路」一致）。
+                suppressWalkAutoRestart();
                 // 真返回值：缺文件／胸口唔通即 false，面板 taken 照實顯示。
                 boolean ok = actionDirect.playActionDirect(name)
                         == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED;
@@ -1902,9 +1925,12 @@ public final class GamepadCenter {
             }
         }
         boolean walkChanged = false;
+        long seenAt = android.os.SystemClock.elapsedRealtime();
         for (String tag : new java.util.ArrayList<String>(walkHolds.keySet())) {
             if (tag.equals(base) || tag.startsWith(base + "#")) {
                 repeatDefl.put(tag, v);
+                // 網頁 on-screen 搖桿每 ~200ms 送 axis；呢個就係佢嘅心跳。
+                walkSeen.put(tag, seenAt);
                 walkChanged = true;
             }
         }
@@ -1953,15 +1979,30 @@ public final class GamepadCenter {
     // fwd 同 back 同時撳住＝互相抵消即收步，放開其中一個就跟返仲撳住嗰個方向重新起步。
     // 速度：fwd／back 掣＝預設速度；掛搖桿向＝偏轉量 1.0x→2.0x（幾何，半偏≈1.41x）；
     // fast／slow ＝ ×(1+t)／×(1−0.5t)（t＝掣 1、搖桿向由閾值至滿偏 0→1；下限 1x）。
-    // 每 120ms 續租約；本機撳住（robotHeld）無上限，網頁／腳本（無可靠 key-up）最長 15 秒。
-    private static final int WALK_UNATTENDED_MAX_TICKS = 125;
+    // 本機撳住（robotHeld）用 lease=0，key-up 即停，唔靠心跳續租；網頁／腳本
+    // （無可靠 key-up）每 120ms 續租約，但 15 秒內冇再收到 down／心跳就自動放手。
+    // 網頁 on-screen 手柄要按住行路時每 3 秒補一次 down（見 app-gamepad.js），
+    // 後端會 reset 呢個 15 秒計時，所以長按唔會行幾步就停。
+    private static final long WALK_UNATTENDED_LEASE_MS = 15000;
     private final Map<String, String> walkHolds = new LinkedHashMap<>();
     private final Map<String, Boolean> walkAnalog = new LinkedHashMap<>();
+    /** 呢個 hold 係咪本機直連手柄（lease=0；false＝網頁／腳本）。 */
+    private final Map<String, Boolean> walkLocal = new LinkedHashMap<>();
+    /** 網頁／腳本 hold 最後一次收到 down／心跳嘅時間（elapsedRealtime）。 */
+    private final Map<String, Long> walkSeen = new LinkedHashMap<>();
+    /** 每次登記遞增；舊 beat tick 唔可以 drop 同名嘅新登記（heartbeat 會重新登記）。 */
+    private final Map<String, Long> walkSeq = new LinkedHashMap<>();
+    private long walkSeqCounter;
     private final Map<String, java.util.concurrent.ScheduledFuture<?>> walkBeats =
             new LinkedHashMap<>();
     private volatile WalkCenter walkCenter;
     /** 前後同按互相抵消而收咗步（放開其中一個後要跟返仲撳住嗰個方向重新起步）。 */
     private boolean walkCancelled;
+    /**
+     * 明確 stop／播動作搶佔咗行路：撳住嘅 walk hold 唔好即刻自動續返，
+     * 要放手再撳（或重新起步）才恢復。防止 keep-walking 兜底令 stop 失效。
+     */
+    private volatile boolean walkAutoRestartSuppressed;
 
     /** MainActivity 建好 WalkCenter 後掛入（避免改建構子簽名）。 */
     public void attachWalkCenter(WalkCenter w) {
@@ -1980,40 +2021,95 @@ public final class GamepadCenter {
 
     private synchronized void startWalkHolds(final String side, String key, String multi,
             float defl, final boolean robotHeld) {
-        stopWalkHolds(side, key);
+        // 重新登記（長按重複 down／網頁心跳 down）唔可以經 stopWalkHolds()：
+        // 嗰度會喺移除舊 tag 同加新 tag 之間叫 afterWalkChange()，見到暫時冇
+        // fwd 就 release()，跟住補返 tag 又唔會重新起步——結果就係長按行幾步
+        // 就停。呢度先靜靜移除同名舊 tag，加晒新 tag 之後才 sync 一次。
+        java.util.List<String> oldTags = new java.util.ArrayList<String>();
+        boolean hadDirTag = false;
+        String base = side + ":" + key;
+        for (String tag : walkHolds.keySet()) {
+            if (tag.equals(base) || tag.startsWith(base + "#")) {
+                oldTags.add(tag);
+                String d = walkHolds.get(tag);
+                if ("fwd".equals(d) || "back".equals(d)) hadDirTag = true;
+            }
+        }
+        for (String tag : oldTags) removeWalkTag(tag);
+
         java.util.List<String> parts = splitMultiAction(multi);
         boolean analog = isStickKey(key);
+        boolean hasDirTag = false;
+        final long now = android.os.SystemClock.elapsedRealtime();
         for (int i = 0; i < parts.size(); i++) {
             String p = parts.get(i);
             if (!isWalkAction(p)) continue;
-            final String tag = (i == 0) ? (side + ":" + key) : (side + ":" + key + "#" + i);
-            walkHolds.put(tag, p.substring(5));
+            final String dir = p.substring(5);
+            final boolean dirTag = "fwd".equals(dir) || "back".equals(dir);
+            if (dirTag) hasDirTag = true;
+            final String tag = (i == 0) ? base : (base + "#" + i);
+            final long seq = ++walkSeqCounter;
+            walkHolds.put(tag, dir);
             walkAnalog.put(tag, analog);
+            walkLocal.put(tag, robotHeld);
+            walkSeen.put(tag, now);
+            walkSeq.put(tag, seq);
             repeatDefl.put(tag, Math.max(0f, Math.min(1f, defl)));
-            final int[] ticks = new int[1];
+            final int[] noInput = new int[1];
             try {
                 walkBeats.put(tag, servoRepeatPool.scheduleAtFixedRate(new Runnable() {
                     @Override public void run() {
-                        WalkCenter wc = walkCenter;
-                        if (wc == null) return;
-                        boolean lost = !robotHeld && ++ticks[0] > WALK_UNATTENDED_MAX_TICKS;
-                        if (robotHeld && !hasPhysicalInput()) lost = true; // 藍牙斷線：key-up 永遠唔會嚟
-                        if (lost) {
-                            Log.i(TAG, "walk hold dropped (lost key-up): " + tag);
-                            dropWalkTag(tag);
-                            return;
+                        // scheduleAtFixedRate 一拋 exception 就會成條 task 取消；
+                        // 呢個 tick 係長按行路嘅命脈，任何 Throwable 都吞咗再等下一 tick。
+                        try {
+                            WalkCenter wc = walkCenter;
+                            if (wc == null) return;
+                            boolean lost;
+                            if (robotHeld) {
+                                // 藍牙斷線：key-up 永遠唔會嚟。連續 3 tick（~360ms）都
+                                // 搵唔到實體輸入才放手，避免 InputDevice 列表瞬變誤殺。
+                                if (hasPhysicalInput()) {
+                                    noInput[0] = 0;
+                                    lost = false;
+                                } else {
+                                    lost = ++noInput[0] >= 3;
+                                }
+                            } else {
+                                Long seen = walkSeenOf(tag);
+                                lost = seen == null
+                                        || android.os.SystemClock.elapsedRealtime() - seen
+                                        > WALK_UNATTENDED_LEASE_MS;
+                            }
+                            if (lost) {
+                                synchronized (GamepadCenter.this) {
+                                    // 同名 tag 可能已經被新一次 down／心跳重新登記；舊 tick
+                                    // 唔可以 drop 新登記。
+                                    Long cur = walkSeq.get(tag);
+                                    if (cur == null || cur.longValue() != seq) return;
+                                    Log.i(TAG, "walk hold dropped (lost key-up): " + tag);
+                                    dropWalkTag(tag);
+                                }
+                                return;
+                            }
+                            if (dirTag) maintainWalk();
+                            else wc.beat();
+                        } catch (Throwable t) {
+                            Log.w(TAG, "walk beat tick failed: " + tag, t);
                         }
-                        wc.beat();
                     }
                 }, SERVO_REPEAT_MS, SERVO_REPEAT_MS, java.util.concurrent.TimeUnit.MILLISECONDS));
             } catch (Throwable t) {
                 Log.w(TAG, "startWalkHolds schedule failed", t);
             }
         }
-        applyWalkSpeed();
+        // 新撳嘅方向鍵（唔係長按重複 down／心跳）解除 stop／動作嘅自動續行抑制。
+        if (hasDirTag && oldTags.isEmpty()) walkAutoRestartSuppressed = false;
+        // 只有 fast／slow 修飾鍵：唔好 release 行緊嘅路（可能係面板 walk/start 起嘅）。
+        if (hasDirTag || hadDirTag) afterWalkChange();
+        else applyWalkSpeed();
     }
 
-    /** 放手：移除該鍵全部 walk 登記；冇 fwd 撳住即收步。回 true＝之前真有登記。 */
+    /** 放手：移除該鍵全部 walk 登記；冇 fwd／back 撳住即收步。回 true＝之前真有登記。 */
     private synchronized boolean stopWalkHolds(String side, String key) {
         String base = side + ":" + key;
         java.util.List<String> tags = new java.util.ArrayList<String>();
@@ -2025,6 +2121,25 @@ public final class GamepadCenter {
         return !tags.isEmpty();
     }
 
+    /** 網頁 on-screen 手柄按住行路時補心跳：只 reset 15 秒計時，唔重播動作。 */
+    private synchronized boolean renewWalkHold(String side, String key) {
+        String base = side + ":" + key;
+        long now = android.os.SystemClock.elapsedRealtime();
+        boolean any = false;
+        for (String tag : walkHolds.keySet()) {
+            if (tag.equals(base) || tag.startsWith(base + "#")) {
+                walkSeen.put(tag, now);
+                any = true;
+            }
+        }
+        if (any) maintainWalk();
+        return any;
+    }
+
+    private synchronized Long walkSeenOf(String tag) {
+        return walkSeen.get(tag);
+    }
+
     private synchronized void dropWalkTag(String tag) {
         removeWalkTag(tag);
         afterWalkChange();
@@ -2033,6 +2148,9 @@ public final class GamepadCenter {
     private void removeWalkTag(String tag) {
         walkHolds.remove(tag);
         walkAnalog.remove(tag);
+        walkLocal.remove(tag);
+        walkSeen.remove(tag);
+        walkSeq.remove(tag);
         repeatDefl.remove(tag);
         java.util.concurrent.ScheduledFuture<?> f = walkBeats.remove(tag);
         if (f != null) {
@@ -2056,13 +2174,70 @@ public final class GamepadCenter {
             wc.release();
             return;
         }
-        // 只剩一個方向：若係因抵消而收咗步，就按該方向重新起步；否則只更新速度。
+        // 只剩一個方向：若係因抵消而收咗步，就按該方向重新起步；否則更新速度，
+        // 兼夾確保路真係行緊（心跳／租約／其他播放搶佔過之後，仍然撳住就續返）。
         if (walkCancelled) {
             walkCancelled = false;
-            wc.hold(computeWalkSpeed(), b);
+            if (!walkAutoRestartSuppressed) startOrHold(wc, b);
         } else {
             applyWalkSpeed();
+            maintainWalk();
         }
+    }
+
+    /** stop／播動作搶佔行路：撳住嘅 hold 暫時唔自動續行（放手再撳即恢復）。 */
+    private synchronized void suppressWalkAutoRestart() {
+        walkAutoRestartSuppressed = true;
+    }
+
+    /**
+     * 方向 hold 嘅 120ms tick：行緊就更新速度＋續租約；停咗而唔係有動作播緊
+     * （例如租約過期、Walker 線程意外完結）就重新起步。呢度係「撳住就 keep 住行」
+     * 嘅兜底，唔靠單次 keydown 成功。
+     */
+    private synchronized void maintainWalk() {
+        WalkCenter wc = walkCenter;
+        if (wc == null) return;
+        boolean f = walkHeld("fwd");
+        boolean b = walkHeld("back");
+        if (f == b) return;      // 冇方向／前後抵消由 afterWalkChange 處理
+        if (walkCancelled) {
+            walkCancelled = false;
+            if (!walkAutoRestartSuppressed) startOrHold(wc, b);
+            return;
+        }
+        if (wc.isWalking(b)) {
+            wc.setSpeed(computeWalkSpeed());
+            wc.beat();
+            return;
+        }
+        // 有普通動作／其他播放：讓路（並記住係被搶佔，唔好播完即刻續行）。
+        if (wc.isOtherPlaying()) {
+            walkAutoRestartSuppressed = true;
+            return;
+        }
+        // stop／動作搶佔過：等用戶放手再撳（新方向 down 會清旗）。
+        if (walkAutoRestartSuppressed) return;
+        startOrHold(wc, b);
+    }
+
+    /** 按呢個方向嘅來源揀 holdLocal（本機）定 hold（網頁／腳本租約）。 */
+    private void startOrHold(WalkCenter wc, boolean back) {
+        float sp = computeWalkSpeed();
+        if (walkDirIsLocal(back)) wc.holdLocal(sp, back);
+        else wc.hold(sp, back);
+    }
+
+    /** 該方向有冇本機直連手柄 hold（同方向網頁 hold 同時存在時以本機為準）。 */
+    private synchronized boolean walkDirIsLocal(boolean back) {
+        String dir = back ? "back" : "fwd";
+        for (Map.Entry<String, String> e : walkHolds.entrySet()) {
+            if (dir.equals(e.getValue())
+                    && Boolean.TRUE.equals(walkLocal.get(e.getKey()))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 按而家撳住嘅 fwd／back／fast／slow 計出目標速度（未夾範圍；WalkCenter 會 clamp）。 */
@@ -2107,9 +2282,15 @@ public final class GamepadCenter {
                 android.view.InputDevice d = android.view.InputDevice.getDevice(id);
                 if (d == null || d.isVirtual()) continue;
                 int src = d.getSources();
-                if ((src & android.view.InputDevice.SOURCE_GAMEPAD) == android.view.InputDevice.SOURCE_GAMEPAD
-                        || (src & android.view.InputDevice.SOURCE_JOYSTICK) == android.view.InputDevice.SOURCE_JOYSTICK
-                        || (src & android.view.InputDevice.SOURCE_KEYBOARD) == android.view.InputDevice.SOURCE_KEYBOARD) {
+                // DPAD-only 遙控（部分平價 BT 手柄）唔會報 GAMEPAD／JOYSTICK／
+                // KEYBOARD，淨係 SOURCE_DPAD；漏咗就會當斷線，行幾步就放手。
+                int mask = android.view.InputDevice.SOURCE_GAMEPAD
+                        | android.view.InputDevice.SOURCE_JOYSTICK
+                        | android.view.InputDevice.SOURCE_KEYBOARD
+                        | android.view.InputDevice.SOURCE_DPAD;
+                if ((src & mask) != 0) return true;
+                // source 報 0 但實際收鍵嘅裝置：用 keyboardType 做後備。
+                if (d.getKeyboardType() != android.view.InputDevice.KEYBOARD_TYPE_NONE) {
                     return true;
                 }
             }
@@ -2787,6 +2968,31 @@ public final class GamepadCenter {
         return down != null && up != null && up.longValue() > down.longValue();
     }
 
+    private static String keyOkJson(String side, String key, boolean pressed,
+            String mapped, boolean taken, String extra) {
+        return "{\"ok\":true,\"side\":\"" + side + "\""
+                + ",\"key\":\"" + MainActivity.jsonSafe(key) + "\""
+                + ",\"pressed\":" + pressed
+                + ",\"action\":\"" + MainActivity.jsonSafe(mapped) + "\""
+                + ",\"taken\":" + taken
+                + (extra == null ? "" : "," + extra) + "}";
+    }
+
+    /** 該鍵而家有冇任何 repeat／hold 登記（walk／servo／IK）。 */
+    private synchronized boolean hasRepeatsFor(String side, String key) {
+        String base = side + ":" + key;
+        for (String tag : walkHolds.keySet()) {
+            if (tag.equals(base) || tag.startsWith(base + "#")) return true;
+        }
+        for (String tag : servoRepeaters.keySet()) {
+            if (tag.equals(base) || tag.startsWith(base + "#")) return true;
+        }
+        for (String tag : ikRepeaters.keySet()) {
+            if (tag.equals(base) || tag.startsWith(base + "#")) return true;
+        }
+        return false;
+    }
+
     /** gamepad/key：注入按鍵（side 唔帶就按 source 猜：keyboard→kb，其餘 pad）。 */
     public HttpServer.ApiResponse keyResponse(Map<String, String> query) {
         String key = ApiValidator.require(query, "key");
@@ -2834,6 +3040,20 @@ public final class GamepadCenter {
         boolean hasSeq = seq >= 0;
         // 放開：停連走＋不上動作（避免按住連發播兩次），但事件照記、前端燈照跟。
         if (pressed) {
+            // 同一個 seq 嘅第二個 down＝按住心跳（網頁長按行路每 3 秒補一次）
+            // 或重複 down，不是新撳：只續 hold，唔重播動作／唔重新起步。
+            if (hasSeq && keySeqMatchesDown(hk, seq)) {
+                if (keyUpSeqAlready(hk, seq)) {
+                    // up 已到（心跳遲到）：乜都唔做，避免放手後又行。
+                    return HttpServer.ApiResponse.ok(
+                            keyOkJson(side, key, true, mapped, false, "\"repeat\":true,\"stale\":true"));
+                }
+                boolean renewed = renewWalkHold(side, key);
+                if (renewed || hasRepeatsFor(side, key)) {
+                    return HttpServer.ApiResponse.ok(
+                            keyOkJson(side, key, true, mapped, renewed, "\"repeat\":true"));
+                }
+            }
             noteKeyDownStart(hk);
             if (hasSeq) noteKeyDownSeq(hk, seq);
             taken = executeAction(side, key, mapped);
@@ -2870,11 +3090,7 @@ public final class GamepadCenter {
                     + " seq=" + seq + " " + seqState(hk) + " taken=" + taken);
         }
         publishKey(key, pressed, source, mapped, taken);
-        return HttpServer.ApiResponse.ok("{\"ok\":true,\"side\":\"" + side + "\""
-                + ",\"key\":\"" + MainActivity.jsonSafe(key) + "\""
-                + ",\"pressed\":" + pressed
-                + ",\"action\":\"" + MainActivity.jsonSafe(mapped) + "\""
-                + ",\"taken\":" + taken + "}");
+        return HttpServer.ApiResponse.ok(keyOkJson(side, key, pressed, mapped, taken, null));
     }
 
     /** gamepad/axis：搖桿連續量（-1..1，死區＋節流，驅頭 19/20）。 */
@@ -3135,8 +3351,9 @@ public final class GamepadCenter {
             }
             String mapped = padMap != null ? padMap.get(dirKey) : null;
             if (!isMappedValue(mapped)) return false;
-            boolean taken = executeAction(SIDE_PAD, dirKey, mapped);
-            if (taken) startRepeats(SIDE_PAD, dirKey, mapped, defl, "robot".equals(source));
+            boolean robotStick = "robot".equals(source);
+            boolean taken = executeAction(SIDE_PAD, dirKey, mapped, robotStick);
+            if (taken) startRepeats(SIDE_PAD, dirKey, mapped, defl, robotStick);
             publishKey(dirKey, true, source, mapped, taken);
             return taken;
         }
@@ -3340,6 +3557,10 @@ public final class GamepadCenter {
             walkBeats.clear();
             walkHolds.clear();
             walkAnalog.clear();
+            walkLocal.clear();
+            walkSeen.clear();
+            walkSeq.clear();
+            walkAutoRestartSuppressed = false;
             if (walkCenter != null) walkCenter.release();
             servoRepeatPool.shutdownNow();
         } catch (Throwable ignored) {

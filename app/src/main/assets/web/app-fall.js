@@ -1,158 +1,41 @@
 // Open Alpha2 — client logic (app-fall.js)
-// 跌倒自己起身卡：顯示／設定 app 層 FallRecoveryCenter（fall/status|set|recover|reset）。
-// 看門狗喺機械人度自己跑，唔需要開住呢個頁；呢度只係設定同狀態顯示。
-
-let fallPollTimer = null;
-let fallLast = null;
-let fallApiError = "";
+// 跌倒後自動起身：加速度計卡片內的單一開關（fall/set?on=）。看門狗在機械人端獨立運行（FallRecoveryCenter），
+// 開關狀態保存於機身 SharedPreferences；此處僅負責同步開關狀態，並在開啟失敗時顯示原因。
+// 其餘參數（dwell_ms／max_attempts／axes）以及 fall/recover、fall/reset、fall/status 仍以 API 提供。
 
 function fallEl(id) { return document.getElementById(id); }
 
+// 進入頁面時同步：讀取機身實際的開關狀態。
 function fallInit() {
-  if (!fallEl("fallEnabled")) return;
-  fallPoll();
-  if (fallPollTimer) clearInterval(fallPollTimer);
-  // 每秒問一次狀態（API 純讀，唔會續租約／改狀態）；分頁隱藏時停問，慳機。
-  fallPollTimer = setInterval(function () {
-    if (!document.hidden) fallPoll();
-  }, 1000);
-}
-
-function fallPoll() {
+  if (!fallEl("fallEnabled")) return Promise.resolve(null);
   return Alpha2Api.fallStatus().then(function (res) {
-    fallApplyStatus(res, false);
+    fallApplyStatus(res);
     return res;
   }).catch(function () { return null; });
 }
 
-function fallSetInput(id, value) {
-  const el = fallEl(id);
-  if (!el || document.activeElement === el) return; // 用戶打緊字唔好搶
-  if (el.type === "checkbox") {
-    if (!!el.checked !== !!value) el.checked = !!value;
-  } else if (String(el.value) !== String(value)) {
-    el.value = value;
-  }
-}
-
-function fallSideText(side) {
-  if (side === "back") return t("fall_side_back");
-  if (side === "front") return t("fall_side_front");
-  return "";
-}
-
-function fallStateText(state) {
-  const key = "fall_state_" + state;
-  const txt = t(key);
-  return txt === key ? state : txt;
-}
-
-/** 由 API 回應／WebSocket fall_recovery event 更新卡。fromEvent=true 時唔覆寫用戶輸入。 */
-function fallApplyStatus(res, fromEvent) {
+// 依據 API 回應或 WebSocket fall_recovery 事件同步開關（以後端實際狀態為準）。
+function fallApplyStatus(res) {
   if (!res || !res.ok) return;
-  fallLast = res;
-  if (!fromEvent) {
-    fallSetInput("fallEnabled", !!res.enabled);
-    fallSetInput("fallDwell", res.dwellMs != null ? res.dwellMs : 1500);
-    fallSetInput("fallAttempts", res.maxAttempts != null ? res.maxAttempts : 2);
-    fallSetInput("fallAxes", res.axesOverride || "");
-  }
-
-  const bits = [];
-  bits.push(t("fall_status") + ": " + fallStateText(res.state || "DISARMED"));
-  const side = fallSideText(res.side || "");
-  if (side) bits.push(side);
-  if (res.tiltDeg != null) bits.push(t("fall_tilt") + " " + Number(res.tiltDeg).toFixed(1) + "°");
-  bits.push(t("fall_recoveries") + " " + (res.recoveries || 0));
-  if (res.attempts != null) bits.push(t("fall_attempts_used") + " " + res.attempts + "/" + (res.maxAttempts || "?"));
-  if (res.lastAction) bits.push(t("fall_action") + " " + res.lastAction);
-  if (res.policyRunning) bits.push("▶ " + t("fall_policy_running"));
-
-  const warns = [];
-  if (res.accelAvailable === false) warns.push(t("fall_accel_missing"));
-  else if (res.accelEnabled === false) warns.push(t("fall_accel_off"));
-  const missing = [];
-  if (res.backStandAvailable === false) missing.push("BackStand");
-  if (res.frontStandAvailable === false) missing.push("FrontStand");
-  if (missing.length) warns.push(t("fall_no_action") + " (" + missing.join(", ") + ")");
-  if (res.lastError) warns.push("⚠️ " + res.lastError);
-
-  const out = bits.join(" · ") + (warns.length ? "\n" + warns.join("\n") : "");
-  const el = fallEl("fallStatusOut");
-  if (el) el.textContent = fallApiError ? (fallApiError + "\n" + out) : out;
+  const el = fallEl("fallEnabled");
+  if (el && !!el.checked !== !!res.enabled) el.checked = !!res.enabled;
 }
 
 function fallToggle() {
-  const on = !!fallEl("fallEnabled").checked;
-  fallApiError = "";
+  const el = fallEl("fallEnabled");
+  const hint = fallEl("fallHint");
+  const on = !!el.checked;
+  if (hint) hint.textContent = "";
   return Alpha2Api.fallSet({ on: String(on) }).then(function (res) {
     if (!res || !res.ok) {
-      // 開唔到（例如冇加速度計）：checkbox 彈返正確狀態。
-      const el = fallEl("fallEnabled");
-      if (el) el.checked = !on;
-      fallApiError = "❌ " + ((res && (res.error || res.message)) || "?");
-      if (fallLast) fallApplyStatus(fallLast, true);
-      else { const out = fallEl("fallStatusOut"); if (out) out.textContent = fallApiError; }
+      // 開啟失敗（例如設備沒有加速度計）：開關還原，並顯示原因。
+      el.checked = !on;
+      if (hint) hint.textContent = "❌ " + ((res && (res.error || res.message)) || "?");
       return res;
     }
-    fallApplyStatus(res, false);
-    return res;
-  });
-}
-
-function fallApply() {
-  const dwell = Number(fallEl("fallDwell").value || 1500);
-  const attempts = Number(fallEl("fallAttempts").value || 2);
-  const axes = (fallEl("fallAxes").value || "").trim();
-  if (!(dwell >= 500 && dwell <= 10000)) {
-    fallApiError = "❌ dwell_ms 500–10000";
-    if (fallLast) fallApplyStatus(fallLast, true);
-    return Promise.resolve(null);
-  }
-  if (!(attempts >= 1 && attempts <= 5)) {
-    fallApiError = "❌ max_attempts 1–5";
-    if (fallLast) fallApplyStatus(fallLast, true);
-    return Promise.resolve(null);
-  }
-  if (axes && !/^[+-][xyzXYZ][+-][xyzXYZ][+-][xyzXYZ]$/.test(axes)) {
-    fallApiError = "❌ axes 格式：+x+y+z";
-    if (fallLast) fallApplyStatus(fallLast, true);
-    return Promise.resolve(null);
-  }
-  fallApiError = "";
-  return Alpha2Api.fallSet({
-    on: String(!!fallEl("fallEnabled").checked),
-    dwell_ms: String(Math.round(dwell)),
-    max_attempts: String(Math.round(attempts)),
-    axes: axes
-  }).then(function (res) {
-    if (!res || !res.ok) {
-      fallApiError = "❌ " + ((res && (res.error || res.message)) || "?");
-      if (fallLast) fallApplyStatus(fallLast, true);
-      return res;
-    }
-    fallApplyStatus(res, false);
-    return res;
-  });
-}
-
-function fallRecoverNow() {
-  fallApiError = "";
-  return Alpha2Api.fallRecover({}).then(function (res) {
-    if (!res || !res.ok) {
-      fallApiError = "❌ " + ((res && (res.error || res.message)) || "?");
-      if (fallLast) fallApplyStatus(fallLast, true);
-      return res;
-    }
-    fallApplyStatus(res, false);
-    return res;
-  });
-}
-
-function fallReset() {
-  fallApiError = "";
-  return Alpha2Api.fallReset({}).then(function (res) {
-    if (res && res.ok) fallApplyStatus(res, false);
+    fallApplyStatus(res);
+    // 開啟後會自動開啟加速度計：同步加速度計的開關狀態。
+    if (typeof syncAccelToggle === "function") syncAccelToggle();
     return res;
   });
 }

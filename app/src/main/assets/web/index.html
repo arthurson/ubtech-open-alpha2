@@ -172,35 +172,19 @@
         <span data-i18n="tilt_led_toggle_label">4角度傾側著頭/眼LED</span>
       </div>
       <p class="hint" id="tiltLedHint"></p>
-    </section>
 
-    <!-- 跌倒自己起身（app 層看門狗）：同 ONNX policy 會話無關，開咗之後就算只係播緊
-         內建動作／行緊路都會喺跌低後自動播放 BackStand／FrontStand。後端 FallRecoveryCenter，
-         API fall/status|set|recover|reset；開關記喺 SharedPreferences（app 重開仍生效）。 -->
-    <section class="card" id="fallCard">
-      <h2 data-i18n="fall_heading">🛟 跌倒自己起身</h2>
-      <div class="row">
+      <!-- 跌倒後自動起身（app 層看門狗，後端為 FallRecoveryCenter；fall/set 的開關狀態保存於 SharedPreferences）。
+           開啟時會自動開啟加速度計。介面僅保留此開關，其餘參數透過 API 設定（fall/set|recover|reset|status）。 -->
+      <div class="row" style="margin-top:8px;">
         <label class="switch-label">
           <span class="toggle-switch">
             <input type="checkbox" id="fallEnabled" onchange="fallToggle()">
             <span class="toggle-track"></span>
           </span>
         </label>
-        <span data-i18n="fall_toggle_label">跌低後自動起身（實驗）</span>
+        <span data-i18n="fall_toggle_label">跌倒後自動起身</span>
       </div>
-      <p class="hint" data-i18n="fall_hint">開啟後用加速度計偵測穩定躺平（仰躺／趴住），自動播放內建 BackStand／FrontStand 起身動作（唔使用 ONNX policy）。動作要喺機身 /sdcard/actions 度搵到。軸映射未經實機驗證，試之前請扶住／吊住機身。</p>
-      <div class="row" style="flex-wrap:wrap;align-items:center">
-        <label><span data-i18n="fall_dwell">躺穩時間 ms</span>
-          <input id="fallDwell" type="number" min="500" max="10000" step="100" style="width:6em"></label>
-        <label><span data-i18n="fall_attempts">最多嘗試</span>
-          <input id="fallAttempts" type="number" min="1" max="5" step="1" style="width:4em"></label>
-        <label><span data-i18n="fall_axes">加速度軸（空＝+x+y+z）</span>
-          <input id="fallAxes" type="text" placeholder="+x+y+z" style="width:6em"></label>
-        <button class="secondary" onclick="fallApply()" data-i18n="fall_apply">套用</button>
-        <button class="secondary" onclick="fallRecoverNow()" data-i18n="fall_now">立即起身</button>
-        <button class="danger-btn" onclick="fallReset()" data-i18n="fall_reset">重設</button>
-      </div>
-      <p class="hint" style="white-space:pre-wrap" id="fallStatusOut">—</p>
+      <p class="hint" id="fallHint"></p>
     </section>
   </div>
 
@@ -1211,7 +1195,7 @@
           <label><span data-i18n="pol_scale">act_scale</span>
             <input id="polScale" type="number" min="0.01" max="0.6" step="any" placeholder="auto" style="width:5em"></label>
           <label><span data-i18n="pol_axes">加速度軸</span>
-            <input id="polAxes" type="text" value="+x+y+z" style="width:5em"></label>
+            <input id="polAxes" type="text" value="-y+x+z" style="width:5em"></label>
         </div>
         <p class="hint" data-i18n="pol_upload_note">以上參數只喺冇 manifest.json 時使用。</p>
         <div class="row">
@@ -1557,7 +1541,7 @@
     <section class="card">
       <h3>ℹ️ Open Alpha2 版本</h3>
       <div class="row">
-        <button onclick="window.open('https://github.com/arthurson/ubtech-open-alpha2/releases','_blank','noopener')" style="font-weight:700;">Open Alpha2 beta 9 ↗</button>
+        <button onclick="window.open('https://github.com/arthurson/ubtech-open-alpha2/releases','_blank','noopener')" style="font-weight:700;">Open Alpha2 beta 8.2 ↗</button>
       </div>
     </section>
   </div>
@@ -1586,7 +1570,7 @@
        3. 中間檔案之間沒有排序依賴（function hoisting），保持原 section 順序方便對照。
      尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
      所以全部 <script src> 一定要行完先到那個 inline script。 -->
-<script src="app-core.js?v=20261115b"></script>
+<script src="app-core.js?v=20261115c"></script>
 <script src="api-client.js?v=20261115a"></script>
 <script src="app-status.js?v=20261020a"></script>
 <script src="app-actions.js?v=20261021b"></script>
@@ -1609,7 +1593,7 @@
 <script src="app-actions-pack.js?v=20261001a"></script>
 <script src="app-apk.js?v=20261001a"></script>
 <script src="app-policy.js?v=20261106a"></script>
-<script src="app-fall.js?v=20261115b"></script>
+<script src="app-fall.js?v=20261115c"></script>
 <script src="app-log.js?v=20261115a"></script>
 
 <!-- ============================================================

@@ -25,7 +25,7 @@ info:
 或 `?panel_token=`。
 
     '
-  version: beta 9
+  version: beta 8.2
   contact:
     name: Open Alpha2
     url: https://github.com/arthurson/ubtech-open-alpha2
@@ -103,7 +103,7 @@ paths:
                 $ref: '#/components/schemas/StatusResponse'
               example:
                 ok: true
-                appVersion: beta 9
+                appVersion: beta 8.2
                 chestAvailable: true
                 headerAvailable: true
                 androidTtsReady: true
@@ -1706,7 +1706,7 @@ paths:
       tags:
       - fall
       summary: 設定跌倒自己起身（開關／躺穩時間／嘗試次數／加速度軸）
-      description: '全部參數 optional，唔傳就保持現值。on=true 會自動開加速度計（sensor 未開的話）。dwell_ms 500–10000（預設 1500，過濾跌落途中嘅過渡姿勢）；max_attempts 1–5（預設 2）；axes 留空＝+x+y+z，否則格式 +x+y+z。起身用內建 BackStand／FrontStand 動作，唔使 ONNX policy。開啟狀態記喺 SharedPreferences，app 重開／機械人重啟後仍然生效。'
+      description: '全部參數均為選填，未傳入則保持現值。on=true 時，若加速度計尚未開啟，會自動開啟。dwell_ms 範圍 500–10000（預設 1500，用於過濾跌落途中的過渡姿勢）；max_attempts 範圍 1–5（預設 2）；axes 留空則使用 -y+x+z（sensor y 為前後方向：+y 為趴住，對應 FrontStand；-y 為仰躺，對應 BackStand），否則格式須為 +x+y+z。起身使用內建的 BackStand／FrontStand 動作，無需 ONNX policy。開啟狀態保存於 SharedPreferences，app 或機械人重啟後仍然有效。'
       parameters:
       - name: 'on'
         in: query
@@ -1738,7 +1738,7 @@ paths:
         schema:
           type: string
           pattern: '^$|^[+-][xyzXYZ][+-][xyzXYZ][+-][xyzXYZ]$'
-        description: 加速度計軸映射；留空＝+x+y+z
+        description: 加速度計軸映射；留空則使用 -y+x+z
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -7831,8 +7831,8 @@ paths:
         in: query
         schema:
           type: string
-          default: +x+y+z
-        description: 加速度計軸→頭部座標（未實機驗證）
+          default: -y+x+z
+        description: 加速度計軸→頭部座標（sensor y 為前後方向：+y 趴住，-y 仰躺；舊預設 +x+y+z 有誤）
       - $ref: '#/components/parameters/PanelToken'
       requestBody:
         required: true
@@ -8360,7 +8360,7 @@ components:
           description: 實際用嘅加速度軸映射
         axesOverride:
           type: string
-          description: 用戶設定嘅軸映射；空＝+x+y+z
+          description: 用戶設定的軸映射；空則使用 -y+x+z
         accelAvailable:
           type: boolean
         accelEnabled:

@@ -213,9 +213,9 @@ function appendLog(msg) {
   if (msg.type === "accel" && msg.data) {
     onAccelSample(msg.data);
   }
-  // 跌倒自己起身看門狗狀態（FallRecoveryCenter 喺狀態／錯誤改變時 publish；面板亦會輪詢）。
+  // 跌倒後自動起身的開關狀態（FallRecoveryCenter 於狀態改變時發佈；僅用於同步加速度計卡片的開關）。
   if (msg.type === "fall_recovery" && msg.data && typeof fallApplyStatus === "function") {
-    try { fallApplyStatus(msg.data, true); } catch (e) { /* ignore */ }
+    try { fallApplyStatus(msg.data); } catch (e) { /* ignore */ }
   }
   // 小智 (XiaoZhi) AI 對話 - 全部 xiaozhi_* event type 交給 app-xiaozhi.js 的
   // xiaozhiHandleEvent() 統一處理 (state/stt/llm/tts/mcp/system/alert), 這裡僅

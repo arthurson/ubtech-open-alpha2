@@ -32,9 +32,9 @@ import java.util.Map;
  *       auto-recover 搶控制。</li>
  * </ul>
  *
- * <p><b>未經實機驗證</b>：加速度計軸映射同 BackStand／FrontStand 動作都仲未喺硬件確認；
- * 軸映射錯會令企住都當跌低。所以預設關閉，真機試之前請吊住／扶住機身，先睇
- * {@code fall/status} 嘅 {@code tiltDeg}／{@code side} 啱唔啱。</p>
+ * <p>加速度計軸映射已按實機修正（預設 {@code -y+x+z}：sensor y 為前後方向，+y 趴住，-y 仰躺）；BackStand／FrontStand 動作尚未在硬件上確認；
+ * 軸映射錯誤會令機身站立時也被判定為跌倒，因此預設關閉。實機測試前請吊住或扶住機身，並先檢查
+ * {@code fall/status} 中的 {@code tiltDeg}／{@code side} 是否正確。</p>
  */
 public final class FallRecoveryCenter {
     private static final String TAG = "FallRecovery";
@@ -204,7 +204,7 @@ public final class FallRecoveryCenter {
 
     /**
      * fall/set：{@code on}、{@code dwell_ms}（500–10000）、{@code max_attempts}（1–5）、
-     * {@code axes}（空＝預設 {@code +x+y+z}）。全部 optional；唔傳就保持現值。
+     * {@code axes}（留空則使用預設 {@code -y+x+z}，sensor y 為前後方向：+y 趴住，-y 仰躺）。全部為選填；未傳入則保持現值。
      */
     public synchronized HttpServer.ApiResponse setResponse(Map<String, String> query) {
         boolean on = ApiValidator.optionalBoolean(query, "on", enabled);
@@ -271,7 +271,7 @@ public final class FallRecoveryCenter {
 
     private String effectiveAxes() {
         String a = axesOverride;
-        if (a == null || a.isEmpty()) a = "+x+y+z";
+        if (a == null || a.isEmpty()) a = FallRecoveryDetector.DEFAULT_AXES;
         return a;
     }
 

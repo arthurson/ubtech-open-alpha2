@@ -173,6 +173,20 @@ public final class PolicyRunnerTest {
         double[] gm = Alpha2PolicyIo.gravityBase(new double[] {9.81, 0, 0}, Alpha2PolicyIo.parseAxes("+z+y-x"), 0, 0);
         // head_z = -sensor_x? "+z+y-x": head x<-sensor z, head y<-sensor y, head z<- -sensor x ⇒ az=-9.81 ⇒ g_z=+1（倒轉）
         check(Math.abs(gm[2] - 1) < 1e-9, "axis remap applied");
+        // 跌倒偵測預設軸（實機：sensor y 為前後方向，+y＝趴住 FrontStand，-y＝仰躺 BackStand；左右跌倒為 sensor x）
+        int[] fax = Alpha2PolicyIo.parseAxes(FallRecoveryDetector.DEFAULT_AXES);
+        eq("-y+x+z", FallRecoveryDetector.DEFAULT_AXES, "fall default axes");
+        eq("-y+x+z", Alpha2PolicyIo.DEFAULT_ACCEL_AXES, "policy default axes");
+        eq("-y+x+z", new PolicyManifest().accelAxes, "manifest default axes");
+        check(java.util.Arrays.equals(Alpha2PolicyIo.parseAxes(""), Alpha2PolicyIo.parseAxes("-y+x+z")), "empty axes => default");
+        check(java.util.Arrays.equals(Alpha2PolicyIo.parseAxes(null), new int[] {-2, 1, 3}), "null axes => -y+x+z");
+        eq("front", Alpha2PolicyIo.lyingKind(Alpha2PolicyIo.gravityBase(new double[] {0, 9.81, 0}, fax, 0, 0)), "fall axes: sensor y+ => front");
+        eq("back", Alpha2PolicyIo.lyingKind(Alpha2PolicyIo.gravityBase(new double[] {0, -9.81, 0}, fax, 0, 0)), "fall axes: sensor y- => back");
+        eq("", Alpha2PolicyIo.lyingKind(Alpha2PolicyIo.gravityBase(new double[] {9.81, 0, 0}, fax, 0, 0)), "fall axes: sensor x+ (side) => no get-up");
+        eq("", Alpha2PolicyIo.lyingKind(Alpha2PolicyIo.gravityBase(new double[] {-9.81, 0, 0}, fax, 0, 0)), "fall axes: sensor x- (side) => no get-up");
+        eq("", Alpha2PolicyIo.lyingKind(Alpha2PolicyIo.gravityBase(new double[] {0, 0, 9.81}, fax, 0, 0)), "fall axes: upright => not lying");
+        double[] gUp = Alpha2PolicyIo.gravityBase(new double[] {0, 0, 9.81}, fax, 0, 0);
+        check(Math.abs(Alpha2PolicyIo.tiltRad(gUp)) < 1e-9, "fall axes: upright tilt 0");
         for (String bad : new String[] {"+x+x+z", "xyz", "+x+y", "+a+y+z", "+x+y+z+x"}) {
             try { Alpha2PolicyIo.parseAxes(bad); check(false, "bad axes " + bad); }
             catch (IllegalArgumentException ex) { check(true, "bad axes rejected " + bad); }

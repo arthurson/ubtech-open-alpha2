@@ -66,11 +66,22 @@ public final class Alpha2PolicyIo {
     }
 
     /**
-     * 解析加速度計軸對應，例如 "+x+y+z"（預設）、"-y+x+z"。三個記號依序代表 head 座標系嘅
+     * 加速度計軸映射預設（sensor → head 座標 x 前／y 左／z 上），由 fall recovery 與 policy 共用。
+     * 實機驗證：機身前後方向為 sensor y 軸（+y＝趴住／front，-y＝仰躺／back），左右方向為 sensor x，
+     * 因此 head x 取 sensor -y、head y 取 sensor +x、head z 取 sensor +z（右手系）。
+     * 舊預設 {@code +x+y+z} 有誤（前後與左右互換）。
+     */
+    public static final String DEFAULT_ACCEL_AXES = "-y+x+z";
+
+    /** 舊的（有誤）預設值；已保存的 manifest／設定若出現此值，視為預設並自動改用 {@link #DEFAULT_ACCEL_AXES}。 */
+    public static final String LEGACY_ACCEL_AXES = "+x+y+z";
+
+    /**
+     * 解析加速度計軸對應，例如 "-y+x+z"（預設，見 {@link #DEFAULT_ACCEL_AXES}）。三個記號依序代表 head 座標系的
      * x(前)、y(左)、z(上) 分別取自 sensor 嘅邊個軸同正負。回 [±(1..3)]×3。
      */
     public static int[] parseAxes(String s) {
-        if (s == null || s.isEmpty()) s = "+x+y+z";
+        if (s == null || s.isEmpty()) s = DEFAULT_ACCEL_AXES;
         int[] m = new int[3];
         int k = 0;
         for (int i = 0; i + 1 < s.length() && k < 3; i += 2) {
