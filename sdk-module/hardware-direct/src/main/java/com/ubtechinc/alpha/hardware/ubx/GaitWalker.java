@@ -78,6 +78,9 @@ public final class GaitWalker implements Runnable {
     private int[] prevPose;
     private boolean sentAny;
     private int sendFails;
+    private boolean lastEmitOk;
+    /** 步態期間連續送失敗「欠咗」嘅時間（ms）：下一格成功送出時加落 move 時間，等舵機有時間行埋兩格距離。 */
+    private int carryMs;
 
     /**
      * @param startPose 已知嘅當前指令姿勢（20 軸）；未知傳 null（當 home）
@@ -189,7 +192,11 @@ public final class GaitWalker implements Runnable {
             if (guard > dur) dur = guard;
             if (dur < minUpdateMs) dur = minUpdateMs;
             // move 時間略長過送出間隔（moveOverlap）：舵機持續郁，唔喺格尾停低等下一格
-            if (!emit(prog.cycle[i], clampMs(Math.round(dur * (double) moveOverlap)))) return;
+            // 上一格送出失敗（串口忙）→ 舵機仲喺舊目標，今格要行兩格距離：move 時間補返欠嘅時間，
+            // 否則同一個 400ms 內行雙倍幅度，實機即「彈」一下
+            int move = clampMs(Math.round(dur * (double) moveOverlap) + (long) carryMs);
+            if (!emit(prog.cycle[i], move)) return;
+            carryMs = lastEmitOk ? 0 : carryMs + dur;
             frameIdx = i;
             next = advance(next, dur, nowMs());
             if (!waitUntil(next)) break;
@@ -223,6 +230,7 @@ public final class GaitWalker implements Runnable {
 
     private boolean emit(int[] pose, int dur) {
         boolean ok = sender.send(pose.clone(), dur);
+        lastEmitOk = ok;
         if (ok) {
             sendFails = 0;
             sentAny = true;

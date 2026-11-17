@@ -166,7 +166,7 @@ Bilingual (EN/Traditional Chinese), 10 tabs, live updates over WebSocket, no ref
   (1.0x = the .ubx's own speed; a 300 ms frame floor caps the actual walk at
   ~1.33x on hardware), live: map `walk:fwd` / `walk:back` onto a stick
   direction and the deflection is the speed (1.0x→2.0x), or keep it on a button
-  and add `walk:fast` / `walk:slow` (stick deflection or full button). A 700 ms lease (`walk/start` heartbeat, key-hold
+  and add `walk:fast` / `walk:slow` (stick deflection or full button). A 1.5 s lease (`walk/start` heartbeat, key-hold
   beat) stops the robot if the page dies, the key-up is lost or the pad
   disconnects; any normal action/`ubx/stop` pre-empts the walk.
 - Speech (🗣️) — conversation UI (type-to-test `speech/semantic_simulate`), Vosk

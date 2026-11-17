@@ -138,7 +138,7 @@ function drawSonarChart() {
   ctx.restore();
   ctx.fillStyle = "#a855f7";
   ctx.font = "11px sans-serif";
-  ctx.fillText("門檻 " + sonarThresholdCm + " cm", 6, midY - 6);
+  ctx.fillText(t("sonar_threshold_label", { n: sonarThresholdCm }), 6, midY - 6);
 
   if (sonarHistory.length < 2) return;
 

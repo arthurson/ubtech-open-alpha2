@@ -44,8 +44,10 @@ public final class GaitWalkerTest {
     private static final class FakeSender implements GaitWalker.Sender {
         final List<Rec> sent = new ArrayList<Rec>();
         volatile boolean fail;
+        volatile int failNext;   // 之後 N 次送出失敗（偶發失敗）
         @Override public boolean send(int[] angles, int timeMs) {
             if (fail) return false;
+            if (failNext > 0) { failNext--; return false; }
             synchronized (sent) {
                 sent.add(new Rec(angles.clone(), timeMs, System.nanoTime() / 1000000L));
             }
@@ -260,6 +262,31 @@ public final class GaitWalkerTest {
             check(!t.isAlive(), "send-fail: thread gives up");
             eq("send-failed", w.endReason(), "send-fail: endReason");
             eq(0, fs.size(), "send-fail: nothing recorded");
+        }
+
+        // ---- 8b) 偶發送失敗：下一格 move 時間補返欠嘅一格，之後回復正常 ----
+        {
+            FakeSender fs = new FakeSender();
+            GaitWalker w = new GaitWalker(prog(30), fs, null, 1.0f, 0);
+            Thread t = start(w);
+            long until = nowMs() + 2000;
+            while (fs.size() < 5 && nowMs() < until) Thread.sleep(5);
+            int before = fs.size();
+            fs.failNext = 1;
+            Thread.sleep(250);
+            w.release();
+            t.join(2000);
+            int n = fs.size();
+            check(n > before + 3, "send-hiccup: keeps walking after one dropped frame");
+            eq("released", w.endReason(), "send-hiccup: not aborted");
+            int doubled = 0, normal = 0;
+            for (int k = before; k < n - 1; k++) {      // 最後一格係收步 home，唔計
+                int ms = fs.get(k).ms;
+                if (ms >= 55 && ms <= 65) doubled++;
+                else if (ms >= 25 && ms <= 35) normal++;
+            }
+            eq(1, doubled, "send-hiccup: exactly one compensated (2x) frame");
+            check(normal >= 2, "send-hiccup: frames back to normal after");
         }
 
         // ---- 9) 收步時間 = 偏差 × msPerUnit（夾 [min,max]）----

@@ -200,7 +200,9 @@ function voskRenderCatalogBtns() {
     if (c.downloaded) {
       const chip = document.createElement("span");
       chip.className = "hint";
-      chip.textContent = "✓ " + voskLangName(c) + "（" + t("vosk_dl_transcribe_only") + ")";
+      chip.textContent = "✓ " + voskLangName(c) + (uiLang === "en"
+        ? " (" + t("vosk_dl_transcribe_only") + ")"
+        : "（" + t("vosk_dl_transcribe_only") + "）");
       chip.title = c.id;
       list.appendChild(chip);
       shown++;

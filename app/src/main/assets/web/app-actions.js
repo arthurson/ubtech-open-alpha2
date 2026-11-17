@@ -289,7 +289,7 @@ function renderActionList() {
   renderActionChips("actionList", filtered, displayNameOf, function (a) {
     document.getElementById("actionName").value = a.nameEn || a.nameCn;
     playAction();
-  }, "(沒有動作 / 服務未初始化)", actionChipColor);
+  }, t("actions_empty_hint"), actionChipColor);
 }
 
 function playAction() {

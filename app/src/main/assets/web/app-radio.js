@@ -17,6 +17,25 @@ function radioInit() {
   // 共用頻譜/音量/EQ/隨機動作已在 shared 卡，無需額外初始化；狀態由 radioRefreshStatus 同步至 sharedNowPlaying
 }
 
+// 搜尋／播放狀態行（#radioSearchStatus）嘅文字由 t() 拼出，轉語言時要按同一條規則重拼：
+// 所以記住「產生文字嘅函數」而唔係寫死嘅字串。fn 為 null 即清空。
+let radioStatusFn = null;
+function radioSetStatus(fn) {
+  radioStatusFn = fn || null;
+  const el = document.getElementById("radioSearchStatus");
+  if (el) el.textContent = radioStatusFn ? radioStatusFn() : "";
+}
+
+// 轉語言（由 setUiLanguage 呼叫）：狀態行、播放中字、收藏、搜尋結果全部就地重畫，唔問後端。
+function radioApplyUiLanguage() {
+  const el = document.getElementById("radioSearchStatus");
+  if (el && radioStatusFn) el.textContent = radioStatusFn();
+  const np = document.getElementById("radioNowPlaying");
+  if (np) np.textContent = radioCurrentName ? "🔊 " + radioCurrentName : t("radio_now_playing_none");
+  radioRenderFavorites();
+  radioRenderList();
+}
+
 // ── 收藏 ─────────────────────────────────────────────
 // 後端為準（多瀏覽器共用同一份機身收藏）；本機不另做 localStorage 鏡像
 // （連到機械人＝連到後端，離線根本開唔到面板）。
@@ -154,11 +173,10 @@ function radioRenderFavorites() {
 function radioSearch() {
   const input = document.getElementById("radioSearchInput");
   const container = document.getElementById("radioListContainer");
-  const statusEl = document.getElementById("radioSearchStatus");
   if (!input || !container) return;
   const q = (input.value || "").trim();
   if (!q) {
-    if (statusEl) statusEl.textContent = t("radio_search_empty_hint");
+    radioSetStatus(function () { return t("radio_search_empty_hint"); });
     return;
   }
   container.innerHTML = "";
@@ -166,16 +184,17 @@ function radioSearch() {
   loading.className = "hint";
   loading.textContent = t("radio_search_loading");
   container.appendChild(loading);
-  if (statusEl) statusEl.textContent = "";
+  radioSetStatus(null);
   clearError();
   Alpha2Api.audioRadioSearch( { query: q }).then(function (res) {
     if (res.ok) {
       radioStations = res.stations || [];
-      if (statusEl) {
-        statusEl.textContent = radioStations.length === 0
+      const nFound = radioStations.length;
+      radioSetStatus(function () {
+        return nFound === 0
           ? t("radio_search_no_result")
-          : t("radio_search_found_prefix") + radioStations.length + t("radio_search_found_suffix");
-      }
+          : t("radio_search_found_prefix") + nFound + t("radio_search_found_suffix");
+      });
       radioRenderList();
       return;
     }
@@ -190,7 +209,6 @@ function radioSearch() {
 // 前端直連 fallback — 用瀏覽器網絡直接問 radio-browser.info，繞過機械人 DNS/無外網問題
 function radioSearchFrontendFallback(q) {
   const container = document.getElementById("radioListContainer");
-  const statusEl = document.getElementById("radioSearchStatus");
   // 依次嘗試幾個 mirror，de1 → all → de2
   const mirrors = [
     "https://de1.api.radio-browser.info",
@@ -201,7 +219,7 @@ function radioSearchFrontendFallback(q) {
 
   function tryNextMirror() {
     if (mirrorIdx >= mirrors.length) {
-      if (statusEl) statusEl.textContent = t("radio_search_no_result") + t("radio_no_internet_suffix");
+      radioSetStatus(function () { return t("radio_search_no_result") + t("radio_no_internet_suffix"); });
       if (container) {
         container.innerHTML = "";
         const p = document.createElement("p");
@@ -234,11 +252,12 @@ function radioSearchFrontendFallback(q) {
           hls: s.hls || 0
         };
       });
-      if (statusEl) {
-        statusEl.textContent = radioStations.length === 0
+      const nFoundFb = radioStations.length;
+      radioSetStatus(function () {
+        return nFoundFb === 0
           ? t("radio_search_no_result")
-          : t("radio_search_found_prefix") + radioStations.length + t("radio_search_found_suffix") + "（經瀏覽器直連）";
-      }
+          : t("radio_search_found_prefix") + nFoundFb + t("radio_search_found_suffix") + t("radio_via_browser_suffix");
+      });
       radioRenderList();
     }).catch(function (err) {
       // 試試一個 mirror
@@ -298,8 +317,7 @@ function radioPlay(name) {
   if (!targetName || !targetName.trim()) return;
   const cleanName = targetName.trim();
   clearError();
-  const statusEl = document.getElementById("radioSearchStatus");
-  if (statusEl) statusEl.textContent = t("radio_playing_prefix") + cleanName + "…";
+  radioSetStatus(function () { return t("radio_playing_prefix") + cleanName + "…"; });
   if (typeof sharedActiveSource !== "undefined") sharedActiveSource = "radio";
   if (typeof musicCurrentName !== "undefined") { musicCurrentName = null; }
   if (typeof musicHasLoadedTrack !== "undefined") musicHasLoadedTrack = false;
@@ -319,14 +337,16 @@ function radioPlay(name) {
       if (res.ok) {
         radioCurrentName = res.playing || cleanName;
         radioRefreshStatus();
-        if (statusEl) statusEl.textContent = t("radio_play_ok_prefix") + (res.playing || cleanName);
+        const playedName = res.playing || cleanName;
+        radioSetStatus(function () { return t("radio_play_ok_prefix") + playedName; });
         return;
       }
       Alpha2Api.audioRadioPlay( { name: cleanName }).then(function (res2) {
         if (!res2.ok) return;
         radioCurrentName = res2.playing || cleanName;
         radioRefreshStatus();
-        if (statusEl) statusEl.textContent = t("radio_play_ok_prefix") + (res2.playing || cleanName);
+        const playedName2 = res2.playing || cleanName;
+        radioSetStatus(function () { return t("radio_play_ok_prefix") + playedName2; });
       });
     });
     return;
@@ -336,7 +356,8 @@ function radioPlay(name) {
     if (!res.ok) return;
     radioCurrentName = res.playing || cleanName;
     radioRefreshStatus();
-    if (statusEl) statusEl.textContent = t("radio_play_ok_prefix") + (res.playing || cleanName);
+    const playedName3 = res.playing || cleanName;
+    radioSetStatus(function () { return t("radio_play_ok_prefix") + playedName3; });
   });
 }
 
@@ -351,8 +372,7 @@ function radioStop() {
     radioRenderList();
     if (typeof radioRenderFavorites === "function") radioRenderFavorites();
     if (typeof musicRenderList === "function") musicRenderList();
-    const statusEl = document.getElementById("radioSearchStatus");
-    if (statusEl) statusEl.textContent = t("radio_stopped");
+    radioSetStatus(function () { return t("radio_stopped"); });
     if (typeof updateSharedNowPlaying === "function" && !musicCurrentName) {
       updateSharedNowPlaying(t("music_now_playing_none"), false);
     }

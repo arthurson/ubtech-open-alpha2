@@ -226,7 +226,7 @@ async function refreshSupportedSizes() {
   try {
     const res = await Alpha2Api.cameraSupportedSizes();
     if (!res.ok) { if (hint) hint.textContent = t("cam_read_fail", { msg: res.error || "" }); return; }
-    if (hint) hint.textContent = "Preview: " + (res.preview||[]).join(", ") + " | Picture: " + (res.picture||[]).join(", ") + " | FPS range: " + (res.fpsRanges||[]).join(", ") + " | 當前: " + res.current;
+    if (hint) hint.textContent = "Preview: " + (res.preview||[]).join(", ") + " | Picture: " + (res.picture||[]).join(", ") + " | FPS range: " + (res.fpsRanges||[]).join(", ") + " | " + t("cam_current_label") + ": " + res.current;
     if (res.preview && res.preview.length && sel) {
       const cur = sel.value;
       // 過濾掉已取消的低解像度
@@ -1023,7 +1023,7 @@ async function colorTrackWalkChanged() {
   // 平地＋清空＋有人睇住先開：開即部機會行，browser confirm 閘一閘（誤掂唔會即刻行）。
   if (on && !colorTrackWalkFollow) {
     const ok = window.confirm
-      ? window.confirm(t("walk_follow_label") + "：機械人會行路跟目標。平地、清空、有人睇住先好開。確定？")
+      ? window.confirm(t("walk_follow_confirm", { label: t("walk_follow_label") }))
       : true;
     if (!ok) { if (toggle) toggle.checked = false; return; }
   }
