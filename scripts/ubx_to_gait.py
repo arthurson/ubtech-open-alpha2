@@ -51,6 +51,10 @@ MIN_MS_PER_UNIT = 5      # 步態每格最快限速（≈200 單位/秒；2x 時
 CYCLE_SMOOTH = 0.12      # 循環姿勢首尾環形 [w,1-2w,w] 平滑（0＝唔平滑）：削走每 400ms 方向急轉
                          # 嘅尖角；w=0.12 約令格邊速度突變 RMS -25%，幅度平均收 ~10%，
                          # 同時令循環首尾（wrap 點）更接近，減少「接駁位彈一彈」
+SEAM_SMOOTH = 0.25       # 循環首格（c[0]＝每 19 格／約 4 步一次嘅接駁位）額外局部平滑權重（0＝唔做）：
+                         # 原檔該格有肩／膝／踝 4 軸同時急轉（±17~20 單位／格），加速度係全循環平均嘅
+                         # ~1.9x（官方檔本身 ~2.2x），實機表現為每行幾步彈一彈；只動 c[0]，
+                         # 尖峰 193→99，其他格不變，任何軸最多移 ~7 單位
 
 
 def load_helpers():
@@ -91,6 +95,16 @@ def smooth_cycle(cycle, w=CYCLE_SMOOTH):
         a = [int(round((1 - 2 * w) * cur[j] + w * prv[j] + w * nxt[j])) for j in range(20)]
         out.append((a, cycle[i][1]))
     return out
+
+
+def smooth_seam(cycle, w=SEAM_SMOOTH):
+    """只對 c[0]（循環接駁位）做一次 [w,1-2w,w] 環形平滑；其他格原封不動。"""
+    if w <= 0:
+        return cycle
+    n = len(cycle)
+    prv, cur, nxt = cycle[n - 1][0], cycle[0][0], cycle[1][0]
+    a = [int(round((1 - 2 * w) * cur[j] + w * prv[j] + w * nxt[j])) for j in range(20)]
+    return [(a, cycle[0][1])] + list(cycle[1:])
 
 
 # 左右對稱配對 (右舵機號, 左舵機號, sigma)，舵機號 1-based。
@@ -262,7 +276,7 @@ def build(path):
     p = find_period(angles)
     if p is None:
         raise SystemExit("搵唔到步態週期（容差 %d）" % CYCLE_TOL)
-    cycle = symmetrize_cycle(smooth_cycle(main[:p]), home)   # 先平滑，再左右對稱（幅度先會真係相等）
+    cycle = symmetrize_cycle(smooth_seam(smooth_cycle(main[:p])), home)   # 先平滑（含接駁位），再左右對稱（幅度先會真係相等）
 
     clamp_cal(h, lead, "leadIn")
     clamp_cal(h, cycle, "cycle")
