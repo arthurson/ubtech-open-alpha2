@@ -37,7 +37,7 @@ public final class PolicyManifest {
     public double actScale = 0.3;
     public double controlHz;
     public double moveOverlap = 1.05;
-    public String accelAxes = "+x+y+z";
+    public String accelAxes = Alpha2PolicyIo.DEFAULT_ACCEL_AXES;
     public String ref = "";               // walk 用，相對 manifest 嘅檔名
     public double maxSpeedDps = 90;
     public int maxRunS = 60;

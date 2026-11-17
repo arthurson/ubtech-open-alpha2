@@ -30,8 +30,10 @@ import java.util.Map;
  * （{@link GaitWalker#WALK_MIN_UPDATE_MS}，快過會唔穩），所以 &gt;1.33x 會受下限保護、
  * 唔會再加快。</p>
  *
- * <p>安全：行路由租約守護——超過 {@link #LEASE_MS} 冇續期（{@link #hold} 再叫）即自動放手，
- * 所以網頁死機／key-up 遺失／藍牙斷線唔會一路行落去。普通動作播放經
+ * <p>安全：網頁／腳本行路由租約守護——超過 {@link #LEASE_MS} 冇續期（{@link #hold} 再叫）
+ * 即自動放手，所以網頁死機／key-up 遺失／藍牙斷線唔會一路行落去。本機直連手柄
+ * key-up 可靠，用 {@link #holdLocal}（lease=0）避免心跳線程受阻時「行幾步就停」；
+ * 藍牙斷線另有 GamepadCenter 嘅實體輸入 watchdog。普通動作播放經
  * {@code ubxPlayer.stop()} 搶佔，行路亦因此自動被截停。</p>
  */
 public final class WalkCenter {
@@ -159,11 +161,28 @@ public final class WalkCenter {
     }
 
     /**
+     * 按住（本機手柄）：未行就起步，行緊同方向就更新速度＋續租約；行緊相反方向就
+     * 先硬停再起步。本機 key-up 可靠，所以用 lease=0（唔靠心跳；心跳線程受阻都唔會
+     * 行幾步就停），亦唔受 {@link #STALE_START_MS} 嘅網頁續租去重影響（本機事件有序，
+     * 放開再撳同一方向要即刻起返步）。
+     *
+     * @param back true＝向後行；false＝向前行
+     * @return true＝行緊（或已起步）；false＝起唔到（lastError 有原因）
+     */
+    public synchronized boolean holdLocal(float speed, boolean back) {
+        return holdInternal(speed, back, 0L, true);
+    }
+
+    /**
      * 按住：未行就起步，行緊同方向就續租約＋更新速度；行緊相反方向就先硬停再起步。
      * @param back true＝向後行；false＝向前行
      * @return true＝行緊（或已起步）；false＝起唔到（lastError 有原因）
      */
     public synchronized boolean hold(float speed, boolean back) {
+        return holdInternal(speed, back, LEASE_MS, false);
+    }
+
+    private boolean holdInternal(float speed, boolean back, long leaseMs, boolean localHold) {
         if (!MainActivity.isBootServoReady()) {
             lastError = "booting";
             return false;
@@ -172,12 +191,14 @@ public final class WalkCenter {
         String want = back ? UbxPlayer.WALK_BACK : UbxPlayer.WALK_FWD;
         // 放手後收步線程好快就完（放手即結束，舵機自己行返 home），所以呢度唔可以
         // 靠 isWalking()：過期續租喺線程完咗之後先到，一樣要擋，否則會當新一次按下重新起步。
-        if (want.equals(releasedName)
+        // 本機手柄事件有序，冇「舊 walk/start 遲到」問題，所以 localHold 唔經呢個閘。
+        if (!localHold && want.equals(releasedName)
                 && android.os.SystemClock.elapsedRealtime() - releasedAtMs < STALE_START_MS) {
             return true; // 放手前已送出嘅過期續租：忽略
         }
         if (ubxPlayer.isWalking() && !ubxPlayer.isWalkFinishing()) {
             if (want.equals(ubxPlayer.walkName())) {
+                ubxPlayer.setWalkLeaseMs(leaseMs);
                 ubxPlayer.setWalkSpeed(sp);
                 ubxPlayer.beatWalk();
                 return true;
@@ -194,9 +215,14 @@ public final class WalkCenter {
         if (ubxPlayer.isPlaying() && !ubxPlayer.isWalking()) ubxPlayer.stop();
         // 若正收步（已放手）：startWalk 內部會截停再起。
         boolean ok = ubxPlayer.startWalk(prog, HardwareDirectManager.get(appContext).chest(),
-                sp, LEASE_MS, want);
+                sp, leaseMs, want);
         lastError = ok ? "" : ubxPlayer.lastError();
         return ok;
+    }
+
+    /** 有普通動作／其他播放行緊（唔係行路）？連行 tick 見到就唔搶返步。 */
+    public boolean isOtherPlaying() {
+        return ubxPlayer.isPlaying() && !ubxPlayer.isWalking();
     }
 
     /** 速度續更（行緊先有效）。 */

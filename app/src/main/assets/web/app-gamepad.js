@@ -2187,6 +2187,50 @@ function gamepadDiagHolders(hk, excludePid) {
   return c;
 }
 
+// 按住行路心跳：後端對網頁／腳本 hold 有 15 秒上限；本機手柄唔受影響。
+// 按住期間每 3 秒補同一個 seq 嘅 down，後端認得係重複 down，只續 hold、
+// 唔重播動作。只對「全 walk 段」嘅映射開（有 action／servo 段重發會重播，
+// 所以唔可以心跳）。
+var __gpDiagBeat = {};
+
+function isWalkOnlyAction(act) {
+  if (!act) return false;
+  var parts = String(act).split(/[\r\n]+/);
+  var hasDir = false;
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i].trim();
+    if (!p) continue;
+    if (p.indexOf("walk:fwd") === 0 || p.indexOf("walk:back") === 0) {
+      hasDir = true;
+    } else if (p.indexOf("walk:fast") === 0 || p.indexOf("walk:slow") === 0) {
+      // 變速修飾段，重發冇害
+    } else {
+      return false;
+    }
+  }
+  return hasDir;
+}
+
+function walkHoldBeatStop(k) {
+  var t = __gpDiagBeat[k];
+  if (t) {
+    try { clearInterval(t); } catch (e) {}
+    delete __gpDiagBeat[k];
+  }
+}
+
+function walkHoldBeatStart(k, alive, send) {
+  if (__gpDiagBeat[k]) return;
+  __gpDiagBeat[k] = setInterval(function () {
+    try {
+      if (!alive()) { walkHoldBeatStop(k); return; }
+      send();
+    } catch (e) {
+      walkHoldBeatStop(k);
+    }
+  }, 3000);
+}
+
 // 收掣 up 規矩：正常一次搞掂——撳一下 WS 得返 down＋up 兩句，唔有多餘第 3 句。
 // 原理：HTTP 有回應即係後端已 stop＋publish（回應喺處理之後先寫），成功就唔使估。
 // 得第一發失敗（ok:false／掟 exception，後端未處理）先補，最多兩次；
@@ -2238,10 +2282,22 @@ function gamepadDiagPress(side, key, down, pid, seq) {
     if (others > 0) return;
     try { gamepadLightLogical(key, true, gamepadDiagCachedAction(side, key)); } catch (e) {}
     try {
+      if (isWalkOnlyAction(gamepadDiagCachedAction(side, key))) {
+        walkHoldBeatStart(hk,
+          function () { return (__gpDiagHold[hk] || 0) > 0; },
+          function () {
+            var q = { side: side, key: key, action: "down", source: "panel" };
+            if (seq != null) q.seq = seq;
+            Alpha2Api.gamepadKey(q).catch(function () {});
+          });
+      }
+    } catch (e3) {}
+    try {
       var q = { side: side, key: key, action: "down", source: "panel" };
       if (seq != null) q.seq = seq;
       Alpha2Api.gamepadKey(q).catch(function () {
         __gpDiagHold[hk] = 0;
+        try { walkHoldBeatStop(hk); } catch (e4) {}
         try { gamepadLightLogical(key, false); } catch (e2) {}
       });
     } catch (e) {}
@@ -2250,6 +2306,7 @@ function gamepadDiagPress(side, key, down, pid, seq) {
     var holders = gamepadDiagHolders(hk, pid);
     __gpDiagHold[hk] = holders;
     if (holders > 0) return;
+    try { walkHoldBeatStop(hk); } catch (e5) {}
     try { gamepadLightLogical(key, false); } catch (e) {}
     gamepadNoteLocalUp(side, key);
     gamepadDiagSendUp(side, key, hk, seq);
@@ -2265,6 +2322,7 @@ function gamepadDiagFlushHolds() {
     var side = i < 0 ? "pad" : hk.substring(0, i);
     var key = i < 0 ? hk : hk.substring(i + 1);
     if (!key) continue;
+    try { walkHoldBeatStop(hk); } catch (e5) {}
     try { gamepadLightLogical(key, false); } catch (e) {}
     gamepadNoteLocalUp(side, key);
     gamepadDiagSendUp(side, key, hk);
@@ -3327,6 +3385,17 @@ function cameraPadPress(k, isDown, pid) {
     var seq = ++__gpDiagSeq;
     __cameraPadSeq[k] = seq;
     cameraPadDraw();
+    try {
+      if (isWalkOnlyAction(__cameraPadMap ? __cameraPadMap[k] : null)) {
+        var beatKey = "campad:" + k;
+        walkHoldBeatStart(beatKey,
+          function () { return !!__cameraPadDown[k] && __cameraPadSeq[k] === seq; },
+          function () {
+            Alpha2Api.gamepadKey({ side: "pad", key: k, action: "down",
+              source: "campad", seq: seq }).catch(function () {});
+          });
+      }
+    } catch (e3) {}
     Alpha2Api.gamepadKey({ side: "pad", key: k, action: "down", source: "campad", seq: seq }).then(function (json) {
       if (json && json.taken === false) {
         __cameraPadNo[k] = Date.now();
@@ -3353,6 +3422,7 @@ function cameraPadPress(k, isDown, pid) {
     __cameraPadLit[k] = false;
     var seq = __cameraPadSeq[k];
     try { delete __cameraPadSeq[k]; } catch (e0) {}
+    try { walkHoldBeatStop("campad:" + k); } catch (e5) {}
     cameraPadDraw();
     gamepadNoteLocalUp("pad", k);
     campadSendUp(k, seq);

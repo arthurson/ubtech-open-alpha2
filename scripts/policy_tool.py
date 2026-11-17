@@ -302,7 +302,7 @@ def main():
     p.add_argument("--control-hz", type=float, default=None, help="policy 訓練時嘅決策頻率（<=3.33 可穩定真機；更高要 fast=true；<=50 且 period>=20ms）")
     p.add_argument("--max-speed-dps", type=float, default=None, help="速度包絡（°/s，<=300；缺省 90，getup 缺省按 ref 峰值速度自動加大）；亦可喺 policy/start 覆寫")
     p.add_argument("--act-scale", type=float, default=None)
-    p.add_argument("--accel-axes", default="+x+y+z", help="加速度計軸→頭部座標，例如 -y+x+z（未實機驗證，預設同 URDF 假設）")
+    p.add_argument("--accel-axes", default="-y+x+z", help="加速度計軸→頭部座標（已按實機驗證：sensor y 為前後方向，預設 -y+x+z）")
     p.add_argument("--ref")
     p.add_argument("--task", choices=["stand", "walk", "walk_ref", "getup_back", "getup_front"], help="unified 必須；getup：由邊面躺低起身（缺省由 ref.json 嘅 getup 欄位推）；舊格式 walk 可寫 walk_ref")
     p.add_argument("--meta", help="訓練輸出嘅 meta.json（unified：取 ctrl_dt→control_hz、act_scale、task、cfg.cmd_vx/vy/wz）")

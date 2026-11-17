@@ -290,8 +290,10 @@ public final class GaitWalkerTest {
             Thread t = start(w);
             Thread.sleep(150);
             w.release();
+            // 用 >= STANDING：慢機／線程未起步就 release 嘅話，可能一瞬由
+            // STANDING 跳到 DONE，5ms poll 會捉唔到剛好相等。
             check(waitFor(new java.util.concurrent.Callable<Boolean>() {
-                public Boolean call() { return w.phase() == GaitWalker.PHASE_STANDING; }
+                public Boolean call() { return w.phase() >= GaitWalker.PHASE_STANDING; }
             }, 1000), "stand-down: phase STANDING");
             check(w.isFinishing(), "stand-down: isFinishing");
             long t0 = nowMs();

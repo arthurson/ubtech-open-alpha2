@@ -155,6 +155,8 @@ public final class PolicyCenter {
         m.controlHz = o.optDouble("control_hz", 0);
         m.moveOverlap = o.optDouble("move_overlap", m.moveOverlap);
         m.accelAxes = o.optString("accel_axes", m.accelAxes);
+        // 舊版上載時會將預設值 "+x+y+z"（有誤的軸映射）寫入 manifest.json：視為舊預設，改用新預設。
+        if (Alpha2PolicyIo.LEGACY_ACCEL_AXES.equals(m.accelAxes)) m.accelAxes = Alpha2PolicyIo.DEFAULT_ACCEL_AXES;
         m.ref = o.optString("ref", "");
         m.maxSpeedDps = o.optDouble("max_speed_dps", m.maxSpeedDps);
         m.maxRunS = o.optInt("max_run_s", m.maxRunS);
@@ -623,7 +625,7 @@ public final class PolicyCenter {
                 man.put("act_scale", dec(ApiValidator.optionalFloatRange(query, "act_scale", 0.01f, 0.6f, "walk".equals(obs) ? 0.2f : 0.3f)));
                 man.put("control_hz", dec(ApiValidator.optionalFloatRange(query, "control_hz", 0.1f, 100f, 50f)));
                 man.put("max_speed_dps", dec(ApiValidator.optionalFloatRange(query, "max_speed_dps", 10f, (float) PolicyManifest.MAX_SPEED_DPS_CAP, 90f)));
-                man.put("accel_axes", ApiValidator.optional(query, "accel_axes", "+x+y+z"));
+                man.put("accel_axes", ApiValidator.optional(query, "accel_axes", Alpha2PolicyIo.DEFAULT_ACCEL_AXES));
                 if ("walk".equals(obs)) man.put("ref", "ref.json");
                 man.put("notes", "uploaded via web panel");
             }

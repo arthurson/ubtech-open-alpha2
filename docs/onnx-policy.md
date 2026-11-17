@@ -84,7 +84,7 @@ envelope alone.
 * **Real runs refuse to start unless the robot is lying on the right side** (`not_lying`, servos untouched):
   gravity in the body frame must be ≈ (−1,0,0) for `getup_back`, ≈ (+1,0,0) for `getup_front` (|g_x| ≥ 0.8).
   Dry runs skip this so you can rehearse standing up. This relies on the accelerometer axis mapping
-  (`accel_axes`), which is still unverified on hardware — check `gravity` in the diagnostics first.
+  (`accel_axes`, default `-y+x+z`: the sensor's y axis is front/back on the real robot) — check `gravity` in the diagnostics first.
 * There is deliberately **no automatic "fell → get up"** trigger: a false fall detection (wrong axis mapping)
   would start a get-up from standing. Start it yourself with `policy/start?name=getup-back-v1&dry=false&fast=true`
   once the robot is really lying down; with `then` set, one start takes it all the way to a stand policy.
@@ -177,7 +177,7 @@ plays the built-in `BackStand` (lying on its back) / `FrontStand` (face down) ac
 
 * `fall/set?on=true&dwell_ms=1500&max_attempts=2&axes=...` enables it and saves the setting
   in `SharedPreferences` (it survives app/robot restarts). It keeps the accelerometer
-  registered while enabled. `axes` blank means `+x+y+z`.
+  registered while enabled. `axes` blank means `-y+x+z` (the accelerometer's y axis is front/back: +y = face down → `FrontStand`, -y = on its back → `BackStand`).
 * The state machine (`FallRecoveryDetector`, pure Java) starts **DISARMED** and only arms
   after 2 s upright. A fall is a tilt ≥ 55° for 300 ms; after that the robot must lie
   clearly on its back or front (`|g_x| ≥ 0.8`) for `dwell_ms` before the matching action
@@ -304,9 +304,10 @@ accel_axes, ref, max_speed_dps, max_run_s, lease_ms, tilt_limit_deg, onnx_sha256
    (10 at 200 ms, linearly interpolated), so a policy trained at the same period sees the same ref.
 2. **Sensing is weak.** No IMU: one head accelerometer (smoothed, includes linear acceleration), and
    joint positions are the *commanded* pose (dead reckoning), not measured. Servo resolution is 1°.
-3. **Accelerometer axes are unverified.** The URDF assumes sensor axes = head axes; `accel_axes`
-   (e.g. `-y+x+z`) remaps them. Verify with dry-run: tilt the robot and watch `tiltDeg` in
-   `policy/status`.
+3. **Accelerometer axes.** The sensor axes are not the head axes: on the real robot the sensor y axis
+   is front/back (+y = face down, -y = on its back) and x is left/right, so the default is
+   `accel_axes=-y+x+z`. (Old manifests that stored the former default `+x+y+z` are read as the new
+   default.) Verify with dry-run: tilt the robot and watch `tiltDeg` in `policy/status`.
 4. **Runtime scope.** Pure-Java ONNX (no onnxruntime-android: it needs minSdk 21 and ~15 MB/ABI, the
    APK supports API 19). Supported ops: Gemm, MatMul, Add, Sub, Mul, Div, Neg, Relu, LeakyRelu, Elu,
    Tanh, Sigmoid, Clip, Identity, Flatten, Reshape, Cast(→float), Constant, Concat. Single input,

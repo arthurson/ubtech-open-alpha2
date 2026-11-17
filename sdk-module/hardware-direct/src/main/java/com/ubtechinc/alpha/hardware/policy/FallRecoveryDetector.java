@@ -29,6 +29,9 @@ public final class FallRecoveryDetector {
 
     public enum State { DISARMED, ARMED, FALLEN, RECOVERING, FAILED }
 
+    /** 跌倒偵測預設軸映射：與 policy 共用 {@link Alpha2PolicyIo#DEFAULT_ACCEL_AXES}（sensor y 為前後方向，+y 趴住，-y 仰躺）。 */
+    public static final String DEFAULT_AXES = Alpha2PolicyIo.DEFAULT_ACCEL_AXES;
+
     /** update() 回傳：NONE＝冇事；START_RECOVERY＝而家應該播放對應 side 嘅起身動作。 */
     public enum Event { NONE, START_RECOVERY }
 

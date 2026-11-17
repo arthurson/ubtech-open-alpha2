@@ -1087,13 +1087,15 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                     ry = event.getAxisValue(android.view.MotionEvent.AXIS_RZ);
                 } catch (Throwable ignored) {
                 }
-                if (lx != 0f || ly != 0f || rx != 0f || ry != 0f) {
-                    // pad 邊熄咗：靜默吞（唔記，免 150ms 洗版）。
-                    if (gamepadCenter.isInputEnabled(GamepadCenter.SIDE_PAD)) {
-                        gamepadCenter.handleRobotAxis(lx, ly, rx, ry, "robot");
-                    }
-                    return true;
+                // 零位事件一定要照推：搖桿彈返中去到 0 係「放手」訊號；舊 code
+                // 喺 lx/ly/rx/ry 全 0 時直接跳過，handleStickDir 永遠見唔到回中，
+                // 方向 hold 留住，再推反方向就會前後抵消／行幾步就停。
+                // applyAxis 自己每 150ms 節流發佈，唔會洗版。
+                // pad 邊熄咗：靜默吞（唔記）。
+                if (gamepadCenter.isInputEnabled(GamepadCenter.SIDE_PAD)) {
+                    gamepadCenter.handleRobotAxis(lx, ly, rx, ry, "robot");
                 }
+                return true;
             }
         } catch (Throwable t) {
             android.util.Log.w(TAG, "gamepad onGenericMotionEvent failed", t);
