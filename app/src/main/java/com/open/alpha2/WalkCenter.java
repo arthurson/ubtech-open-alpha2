@@ -40,14 +40,19 @@ public final class WalkCenter {
     private static final String TAG = "WalkCenter";
     public static final String ASSET = "gait/walk_fwd.json";
     public static final String ASSET_BACK = "gait/walk_back.json";
-    /** 租約：本機按鍵／面板每 ~120–250ms 續期，超過就當放手。 */
-    public static final long LEASE_MS = 700;
+    /**
+     * 租約：本機按鍵／面板每 ~120–250ms 續期，超過就當放手。
+     * 700ms 太貼：手機／WebView 計時器或 HTTP 偶爾遲 >450ms，租約就過期 → 步態線程收步（舵機開始
+     * 回 home）→ 遲到嘅續租再令佢「截停重起」（由起步段重行）＝行咗幾步忽然彈一下。1500ms 可容
+     * 約 5 次續租遺失，頁面死機／斷網仍然約 1.5 秒（約 4 格）內收步。
+     */
+    public static final long LEASE_MS = 1500;
     public static final float DEFAULT_SPEED = 1.0f;
     /**
      * 放手後呢段時間內，同方向嘅 hold（walk/start）當「放手前已經喺途中嘅過期續租請求」，
      * 唔重新起步。網頁每 250ms 送 walk/start、放手送 walk/stop，兩者走唔同連線／線程，
      * walk/start 可以喺 walk/stop 之後先到，會令已經收步嘅路被「截停再起」，
-     * 變成放手之後仲行多一輪租約（~700ms）再收步。
+     * 變成放手之後仲行多一輪租約（~1.5s）再收步。
      */
     public static final long STALE_START_MS = 350;
 

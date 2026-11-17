@@ -547,8 +547,8 @@
               <div class="perled-side-label" data-i18n="led_perled_right">右</div>
             </div>
             <div class="perled-pad-col">
-              <button id="padPlusBtn" class="pad-tri up" title="音量+" onclick="sysPadToggle('plus')"></button>
-              <button id="padMinusBtn" class="pad-tri down" title="音量-" onclick="sysPadToggle('minus')"></button>
+              <button id="padPlusBtn" class="pad-tri up" title="音量+" data-i18n-title="tip_vol_plus" onclick="sysPadToggle('plus')"></button>
+              <button id="padMinusBtn" class="pad-tri down" title="音量-" data-i18n-title="tip_vol_minus" onclick="sysPadToggle('minus')"></button>
             </div>
             <div class="perled-side">
               <div class="perled-strip" id="perledHeadL"></div>
@@ -622,7 +622,7 @@
         <h3 data-i18n="led_mouth_heading">嘴部 LED</h3>
         <div class="perled-center">
           <div class="perled-mouth-wrap">
-            <button id="perledMouthArc" class="perled-mouth-arc" title="咀" onclick="mouthToggle()"></button>
+            <button id="perledMouthArc" class="perled-mouth-arc" title="咀" data-i18n-title="tip_mouth" onclick="mouthToggle()"></button>
           </div>
         </div>
         <div class="row">
@@ -708,7 +708,7 @@
         <div id="crosshairMark" class="crosshair-mark"></div>
       </div>
       <!-- 回中鍵：放 joystick 右邊，取消文字，僅保留開關 -->
-      <div id="joystickAutoReturnWrap" class="joystick-auto-return-wrap" ondblclick="event.stopPropagation()" title="自動回中">
+      <div id="joystickAutoReturnWrap" class="joystick-auto-return-wrap" ondblclick="event.stopPropagation()" title="自動回中" data-i18n-title="tip_joystick_auto_return">
         <label class="switch-label" style="gap:0">
           <span class="toggle-switch">
             <input type="checkbox" id="joystickAutoReturn" checked onchange="joystickAutoReturnToggle()" onclick="event.stopPropagation()">
@@ -725,7 +725,7 @@
       <div id="fabRow" class="fab-row">
         <button id="photoFab" class="fab-btn" onclick="capturePhotoAtResolution(4208,3120, this, true)">📷</button>
         <button id="recordFab" class="fab-btn" onclick="toggleRecording()">⏺</button>
-        <button id="robotVideoFab" class="fab-btn" onclick="robotVideoToggle()" title="機端錄影 mp4">🎥</button>
+        <button id="robotVideoFab" class="fab-btn" onclick="robotVideoToggle()" title="機端錄影 mp4" data-i18n-title="tip_robot_video">🎥</button>
         <button id="micListenFab" class="fab-btn" onclick="toggleMicListen()">🎧</button>
       </div>
       <!-- 人臉追蹤框：後端 face/track/status 回 fx/fy/fw/fh（歸一化），前端按 viewport 比例畫綠框 -->
@@ -804,7 +804,7 @@
     </div>
     <!-- 講嘢時隨機動作開關 (xiaozhi/filler_action/get|set)：關咗 TTS start 只亮嘴燈，唔郁。 -->
     <div class="row" style="align-items:center">
-      <label class="switch-label" title="開啟的話，小智每次開口講嘢機械人會做一個隨機動作">
+      <label class="switch-label" title="開啟的話，小智每次開口講嘢機械人會做一個隨機動作" data-i18n-title="tip_xiaozhi_random_action">
         <span data-i18n="xiaozhi_filler_heading">💃 隨機動作</span>
         <span class="toggle-switch">
           <input type="checkbox" id="xiaozhiFillerToggle" checked onchange="xiaozhiSetFillerAction(this.checked)">
@@ -838,15 +838,15 @@
       </div>
       <div class="row">
         <label for="xiaozhiWsUrlOverride" style="flex:0 0 110px" data-i18n="xiaozhi_ota_field_ws">WebSocket 位址</label>
-        <input type="text" id="xiaozhiWsUrlOverride" placeholder="ws://your-server:8000/xiaozhi/v1/（留空自動）" style="flex:1">
+        <input type="text" id="xiaozhiWsUrlOverride" placeholder="ws://your-server:8000/xiaozhi/v1/（留空自動）" data-i18n="xz_ph_ws_url" data-i18n-attr="placeholder" style="flex:1">
       </div>
       <div class="row">
         <label for="xiaozhiDeviceIdOverride" style="flex:0 0 110px" data-i18n="xiaozhi_ota_field_mac">MAC (Device-Id)</label>
-        <input type="text" id="xiaozhiDeviceIdOverride" placeholder="aa:bb:cc:dd:ee:ff（留空自動）" style="flex:1">
+        <input type="text" id="xiaozhiDeviceIdOverride" placeholder="aa:bb:cc:dd:ee:ff（留空自動）" data-i18n="xz_ph_device_id" data-i18n-attr="placeholder" style="flex:1">
       </div>
       <div class="row">
         <label for="xiaozhiTokenOverride" style="flex:0 0 110px" data-i18n="xiaozhi_ota_field_token">Token</label>
-        <input type="text" id="xiaozhiTokenOverride" placeholder="Access Token（留空自動）" style="flex:1">
+        <input type="text" id="xiaozhiTokenOverride" placeholder="Access Token（留空自動）" data-i18n="xz_ph_token" data-i18n-attr="placeholder" style="flex:1">
       </div>
       <div class="row">
         <button id="xiaozhiOtaCustomSaveBtn" onclick="xiaozhiSaveOtaCustom()" data-i18n="xiaozhi_ota_custom_save">儲存</button>
@@ -942,7 +942,7 @@
       <button class="secondary" onclick="radioQuickSearch('jazz')">jazz</button>
       <button class="secondary" onclick="radioQuickSearch('classical')">classical</button>
       <button class="secondary" onclick="radioQuickSearch('news')">news</button>
-      <button class="secondary" onclick="radioQuickSearch('香港')">香港</button>
+      <button class="secondary" onclick="radioQuickSearch('香港')" data-i18n="radio_quick_hk">香港</button>
       <button class="secondary" onclick="radioQuickSearch('pop')">pop</button>
     </div>
     <p id="radioSearchStatus" class="hint"></p>
@@ -970,7 +970,7 @@
     <!-- 共用顯示：本地或電台，JS 同步更新 #musicNowPlaying/#radioNowPlaying/#sharedNowPlaying -->
     <div class="row" id="sharedNowPlayingRow" style="gap:8px;align-items:center;flex-wrap:wrap">
       <p id="sharedNowPlaying" class="hint" data-i18n="music_now_playing_none" style="margin:0;flex:1;min-width:120px">未播放</p>
-      <label class="switch-label" style="border-left:1px solid var(--border); padding-left:12px;" title="開啟的話，播歌/播電台期間機械人會不定時自己動，停止才停">
+      <label class="switch-label" style="border-left:1px solid var(--border); padding-left:12px;" title="開啟的話，播歌/播電台期間機械人會不定時自己動，停止才停" data-i18n-title="tip_music_filler">
         <span data-i18n="music_filler_heading">💃 隨機動作</span>
         <span class="toggle-switch">
           <input type="checkbox" id="musicFillerToggle" onchange="musicSetFillerActionEnabled(this.checked)">
@@ -978,7 +978,7 @@
         </span>
       </label>
       <span id="musicFillerStateLabel" class="hint" data-i18n="music_filler_on" style="margin:0;">開</span>
-      <label class="switch-label" style="border-left:1px solid var(--border); padding-left:12px;" title="開啟的話，播歌期間頭做水位錶、眼跟人聲轉色、嘴跟大細聲呼吸">
+      <label class="switch-label" style="border-left:1px solid var(--border); padding-left:12px;" title="開啟的話，播歌期間頭做水位錶、眼跟人聲轉色、嘴跟大細聲呼吸" data-i18n-title="tip_music_disco">
         <span data-i18n="music_disco_heading">🪩 Disco LED</span>
         <span class="toggle-switch">
           <input type="checkbox" id="musicDiscoToggle" onchange="musicSetDiscoEnabled(this.checked)">
@@ -1006,10 +1006,10 @@
       <span id="musicDurationLabel">0:00</span>
     </div>
     <div class="row" id="sharedTransportRow">
-      <button onclick="musicPlayPrev()" title="上一首">⏮</button>
+      <button onclick="musicPlayPrev()" title="上一首" data-i18n-title="tip_music_prev">⏮</button>
       <button id="musicPlayPauseBtn" onclick="musicTogglePlayPause()">▶</button>
-      <button onclick="musicPlayNext()" title="下一首">⏭</button>
-      <button onclick="musicPlayRandom()" title="隨機連播（播完自動再隨機）" data-i18n="music_random_btn">🔀</button>
+      <button onclick="musicPlayNext()" title="下一首" data-i18n-title="tip_music_next">⏭</button>
+      <button onclick="musicPlayRandom()" title="隨機連播（播完自動再隨機）" data-i18n-title="tip_music_random" data-i18n="music_random_btn">🔀</button>
       <button onclick="musicPlayAll()" data-i18n="music_playall_btn">▶ 全部</button>
       <button class="danger-btn" onclick="musicStopAll()" data-i18n="music_stop_btn">⏹ 全部停止</button>
     </div>
@@ -1132,7 +1132,7 @@
         <h4 data-i18n="vosk_dl_supported_heading" style="margin:8px 0 4px">✓ 有對話（有 matcher）</h4>
         <div id="voskCatalogSupported" style="display:flex; gap:6px; flex-wrap:wrap"></div>
         <div class="row" style="margin-top:6px">
-          <button class="secondary" id="voskUnsupportedToggleBtn" onclick="voskUnsupportedToggle()">顯示只聽寫模型 ▸</button>
+          <button class="secondary" id="voskUnsupportedToggleBtn" onclick="voskUnsupportedToggle()" data-i18n="res_dl_show_unsupported">顯示只聽寫模型 ▸</button>
         </div>
         <div id="voskUnsupportedWrap" style="display:none">
           <h4 data-i18n="vosk_dl_unsupported_heading" style="margin:8px 0 4px">無對話（只聽寫）</h4>
@@ -1180,7 +1180,7 @@
         <h4 data-i18n="pol_upload_heading" style="margin:8px 0 4px">⬆ 上載</h4>
         <p class="hint" data-i18n="pol_upload_hint">揀一個 .zip（policy.onnx＋ref.json，可含 manifest.json／selftest.json，其他檔會忽略），或者直接揀 .onnx（walk policy 同時揀 ref.json）。</p>
         <div class="row">
-          <input type="file" id="polFile" multiple accept=".onnx,.zip,.json" onchange="polFilesChanged()" style="flex:1">
+          <input type="file" id="polFile" data-file-picker multiple accept=".onnx,.zip,.json" onchange="polFilesChanged()" style="flex:1">
         </div>
         <div class="row" style="margin-top:6px">
           <input id="polName" type="text" autocomplete="off" style="flex:1" placeholder="policy 名（英數開頭，A-Za-z0-9._-）" data-i18n="pol_name_ph" data-i18n-attr="placeholder">
@@ -1459,7 +1459,7 @@
         <div class="row">
           <label data-i18n="servo_up_id_label">舵機 ID：</label>
           <input id="servoUpId" type="number" min="1" max="22" value="1" style="width:70px">
-          <input type="file" id="servoUpFile" accept=".bin">
+          <input type="file" id="servoUpFile" data-file-picker accept=".bin">
           <button onclick="servoUpUpload()" data-i18n="servo_up_upload_btn">上載</button>
         </div>
         <p id="servoUpFileStatus" class="hint"></p>
@@ -1525,7 +1525,7 @@
         </div>
         <p class="hint" style="margin-top:10px" data-i18n="chest_hint_upload">選擇 ≤112KB 的 app 小鏡像（4 字節對齊；256KB 完整鏡像包含 bootloader，不適用），選擇後將自動上傳至 /sdcard/AlphaII_CHEST_kernel.bin，再按「開始升級」：</p>
         <div class="row" style="align-items:center">
-          <input type="file" id="chestBinFile" accept=".bin" onchange="chestUpload()">
+          <input type="file" id="chestBinFile" data-file-picker accept=".bin" onchange="chestUpload()">
           <button class="secondary" onclick="chestUpgrade()" style="margin-left:8px" data-i18n="chest_btn_upgrade">開始升級</button>
         </div>
         <p id="chestUploadStatus" class="hint"></p>
@@ -1539,7 +1539,7 @@
     </section>
 
     <section class="card">
-      <h3>ℹ️ Open Alpha2 版本</h3>
+      <h3 data-i18n="about_version_heading">ℹ️ Open Alpha2 版本</h3>
       <div class="row">
         <button onclick="window.open('https://github.com/arthurson/ubtech-open-alpha2/releases','_blank','noopener')" style="font-weight:700;">Open Alpha2 beta 8.2 ↗</button>
       </div>
@@ -1570,31 +1570,31 @@
        3. 中間檔案之間沒有排序依賴（function hoisting），保持原 section 順序方便對照。
      尾段 inline <script> 會覆寫 window.onAccelSample，假設 app-accel.js 已定義原本版本——
      所以全部 <script src> 一定要行完先到那個 inline script。 -->
-<script src="app-core.js?v=20261115c"></script>
+<script src="app-core.js?v=20261117a"></script>
 <script src="api-client.js?v=20261115a"></script>
-<script src="app-status.js?v=20261020a"></script>
-<script src="app-actions.js?v=20261021b"></script>
-<script src="app-speech.js?v=20261017a"></script>
+<script src="app-status.js?v=20261117a"></script>
+<script src="app-actions.js?v=20261117a"></script>
+<script src="app-speech.js?v=20261117a"></script>
 <script src="app-vosk.js?v=20261001a"></script>
 <script src="app-servo.js?v=20261025b"></script>
 <script src="app-ik.js?v=20261031a"></script>
 <script src="app-gamepad.js?v=20261031a"></script>
-<script src="app-led.js?v=20261001a"></script>
-<script src="app-camera.js?v=20261017b"></script>
+<script src="app-led.js?v=20261117a"></script>
+<script src="app-camera.js?v=20261117a"></script>
 <script src="app-xiaozhi.js?v=20261017a"></script>
 <script src="app-music.js?v=20261001a"></script>
-<script src="app-radio.js?v=20261017a"></script>
+<script src="app-radio.js?v=20261117a"></script>
 <script src="app-archive.js?v=20261001a"></script>
 <script src="app-group.js?v=20261001a"></script>
 <script src="app-mic.js?v=20261017a"></script>
-<script src="app-accel.js?v=20261001a"></script>
+<script src="app-accel.js?v=20261117a"></script>
 <script src="app-qr.js?v=20261001a"></script>
 <script src="app-chest.js?v=20261017a"></script>
 <script src="app-actions-pack.js?v=20261001a"></script>
 <script src="app-apk.js?v=20261001a"></script>
 <script src="app-policy.js?v=20261106a"></script>
 <script src="app-fall.js?v=20261115c"></script>
-<script src="app-log.js?v=20261115a"></script>
+<script src="app-log.js?v=20261117a"></script>
 
 <!-- ============================================================
      Sample: 4角度傾側控制頭/眼 LED

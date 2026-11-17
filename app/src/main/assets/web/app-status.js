@@ -20,14 +20,14 @@ function switchTab(tabId) {
 function refreshDeviceInfo() {
   return Alpha2Api.batteryStatus().then(function (battery) {
     document.getElementById("batteryOut").textContent = battery.ok
-      ? (battery.level + "/" + battery.scale + " " + (battery.charging ? "⚡充電中" : "") + " (" + battery.status + ")")
-      : "讀取失敗";
+      ? (battery.level + "/" + battery.scale + " " + (battery.charging ? t("battery_charging") : "") + " (" + battery.status + ")")
+      : t("status_read_failed");
 
     return Alpha2Api.btStatus();
   }).then(function (bt) {
     document.getElementById("btOut").textContent = bt.ok
-      ? (bt.available ? ((bt.name || "(未命名)") + " — " + (bt.enabled ? "已開啟" : "已關閉")) : "不支援")
-      : "讀取失敗";
+      ? (bt.available ? ((bt.name || t("bt_unnamed")) + " — " + (bt.enabled ? t("bt_on") : t("bt_off"))) : t("bt_unsupported"))
+      : t("status_read_failed");
 
     return refreshMicFw().then(function () {
       return refreshBatteryFw();

@@ -897,6 +897,53 @@ const I18N = {
   copy_log_btn:          { zh: "複製 Log",         en: "Copy Log" },
   log_copied:            { zh: "已複製 ✓",         en: "Copied ✓" },
   auto_scroll_label:     { zh: "自動捲動",         en: "Auto-scroll" },
+
+  // -- 原生 <input type=file> 嘅「選擇檔案／未選擇檔案」字樣跟瀏覽器語言，唔跟面板語言，
+  //    所以隱藏原生 input，改用下面兩條 key 畫自己嘅掣＋檔名（見 enhanceFilePickers）。
+  file_choose_btn:       { zh: "📁 選擇檔案",       en: "📁 Choose file" },
+  file_none_chosen:      { zh: "未選擇檔案",         en: "No file chosen" },
+  file_n_chosen:         { zh: "已選擇 {n} 個檔案",  en: "{n} files selected" },
+
+  // -- 網絡電台／其餘補漏 --
+  radio_via_browser_suffix: { zh: "（經瀏覽器直連）", en: " (direct from browser)" },
+  radio_quick_hk:        { zh: "香港",             en: "Hong Kong" },
+  sonar_threshold_label: { zh: "門檻 {n} cm",      en: "Threshold {n} cm" },
+  actions_empty_hint:    { zh: "(沒有動作 / 服務未初始化)", en: "(No actions / service not initialised)" },
+  cam_current_label:     { zh: "當前",             en: "Current" },
+  walk_follow_confirm:   { zh: "{label}：機械人會行路跟目標。平地、清空、有人睇住先好開。確定？",
+                           en: "{label}: the robot will walk to follow the target. Only enable on flat, clear ground with someone watching. Continue?" },
+  ws_connected:          { zh: "已連接 (WebSocket live)", en: "Connected (WebSocket live)" },
+  ws_disconnected_retry: { zh: "已斷線，3秒後重連…", en: "Disconnected, reconnecting in 3 s…" },
+  battery_charging:      { zh: "⚡充電中",          en: "⚡ Charging" },
+  status_read_failed:    { zh: "讀取失敗",          en: "Read failed" },
+  bt_unnamed:            { zh: "(未命名)",          en: "(unnamed)" },
+  bt_on:                 { zh: "已開啟",            en: "On" },
+  bt_off:                { zh: "已關閉",            en: "Off" },
+  bt_unsupported:        { zh: "不支援",            en: "Not supported" },
+  speech_error_label:    { zh: "語音",              en: "Speech" },
+  led_wifi_slot_title:   { zh: "#5 wifi 位（熄未必熄到）", en: "#5 WiFi slot (may not turn fully off)" },
+  about_version_heading: { zh: "ℹ️ Open Alpha2 版本", en: "ℹ️ Open Alpha2 Version" },
+
+  // -- 按鈕／控件 tooltip（data-i18n-title） --
+  tip_vol_plus:          { zh: "音量+",            en: "Volume +" },
+  tip_vol_minus:         { zh: "音量-",            en: "Volume -" },
+  tip_mouth:             { zh: "咀",               en: "Mouth" },
+  tip_joystick_auto_return: { zh: "自動回中",       en: "Auto-centre" },
+  tip_robot_video:       { zh: "機端錄影 mp4",      en: "On-robot recording (mp4)" },
+  tip_xiaozhi_random_action: { zh: "開啟的話，小智每次開口講嘢機械人會做一個隨機動作",
+                               en: "When on, the robot performs a random action each time Xiaozhi speaks" },
+  tip_music_filler:      { zh: "開啟的話，播歌/播電台期間機械人會不定時自己動，停止才停",
+                           en: "When on, the robot moves on its own from time to time while music/radio plays, until stopped" },
+  tip_music_disco:       { zh: "開啟的話，播歌期間頭做水位錶、眼跟人聲轉色、嘴跟大細聲呼吸",
+                           en: "When on, while music plays the head shows a level meter, the eyes change colour with vocals and the mouth breathes with volume" },
+  tip_music_prev:        { zh: "上一首",            en: "Previous" },
+  tip_music_next:        { zh: "下一首",            en: "Next" },
+  tip_music_random:      { zh: "隨機連播（播完自動再隨機）", en: "Shuffle play (reshuffles automatically when finished)" },
+
+  // -- Xiaozhi 覆寫欄 placeholder --
+  xz_ph_ws_url:          { zh: "ws://your-server:8000/xiaozhi/v1/（留空自動）", en: "ws://your-server:8000/xiaozhi/v1/ (leave empty for auto)" },
+  xz_ph_device_id:       { zh: "aa:bb:cc:dd:ee:ff（留空自動）", en: "aa:bb:cc:dd:ee:ff (leave empty for auto)" },
+  xz_ph_token:           { zh: "Access Token（留空自動）", en: "Access Token (leave empty for auto)" },
 };
 
 /** Looks up a translated string for the current uiLang, falling back to zh if
@@ -930,6 +977,8 @@ function t(key, params) {
  *  entry's zh/en values contain literal HTML in that case, not plain text). */
 function applyUiLanguage() {
   document.documentElement.lang = uiLang === "en" ? "en" : "zh-Hant"; // 輔助技術／瀏覽器翻譯靠呢個判斷頁面語言
+  // 先將原生 file input 換成 i18n 掣（新生嘅掣自帶 data-i18n，下面一併翻譯）。
+  try { enhanceFilePickers(); } catch (e) { if (typeof console !== "undefined") console.warn("enhanceFilePickers:", e); }
   document.querySelectorAll("[data-i18n]").forEach(function (el) {
     const entry = I18N[el.dataset.i18n];
     if (!entry) return;
@@ -943,8 +992,50 @@ function applyUiLanguage() {
       el.textContent = text;
     }
   });
+  // data-i18n-title：只翻 title（tooltip），唔郁元素本身文字——畀已經有 data-i18n 管文字嘅元素用。
+  document.querySelectorAll("[data-i18n-title]").forEach(function (el) {
+    const entry = I18N[el.dataset.i18nTitle];
+    if (entry) el.setAttribute("title", entry[uiLang] || entry.zh);
+  });
   document.querySelectorAll("[data-ui-lang-btn]").forEach(function (btn) {
     btn.classList.toggle("active", btn.dataset.uiLangBtn === uiLang);
+  });
+  refreshFilePickers();
+}
+
+/** 原生 <input type="file"> 嘅「選擇檔案／未選擇任何檔案」字樣由瀏覽器按自己嘅介面語言畫，
+ *  面板選咗英文都會見到中文。凡帶 data-file-picker 嘅 file input：隱藏原生控件（仍然留喺 DOM，
+ *  .files／change 事件／onchange 照舊），喺佢後面加一個 i18n 按鈕＋檔名文字。冪等，可重複呼叫。 */
+function enhanceFilePickers() {
+  document.querySelectorAll('input[type="file"][data-file-picker]').forEach(function (inp) {
+    if (inp.dataset.filePickerReady) return;
+    inp.dataset.filePickerReady = "1";
+    inp.style.display = "none";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "secondary file-picker-btn";
+    btn.setAttribute("data-i18n", "file_choose_btn");
+    btn.textContent = t("file_choose_btn");
+    btn.onclick = function () { inp.click(); };
+    const name = document.createElement("span");
+    name.className = "hint file-picker-name";
+    name.style.marginLeft = "8px";
+    name.style.wordBreak = "break-all";
+    inp.parentNode.insertBefore(btn, inp.nextSibling);
+    inp.parentNode.insertBefore(name, btn.nextSibling);
+    inp._filePickerName = name;
+    inp.addEventListener("change", refreshFilePickers);
+  });
+}
+
+/** 按目前選咗嘅檔案同 uiLang 重寫所有自製 file picker 嘅檔名文字。 */
+function refreshFilePickers() {
+  document.querySelectorAll('input[type="file"][data-file-picker]').forEach(function (inp) {
+    const el = inp._filePickerName;
+    if (!el) return;
+    const f = inp.files;
+    el.textContent = (!f || f.length === 0) ? t("file_none_chosen")
+      : (f.length === 1 ? f[0].name : t("file_n_chosen", { n: f.length }));
   });
 }
 
@@ -966,6 +1057,17 @@ function setUiLanguage(lang) {
   // angle the person currently has dialled in.
   relabelServoGrid();
   try { if (typeof buildServoEnablePanel === "function") buildServoEnablePanel(); } catch (e) {}
+  // 網絡電台：狀態行／收藏／搜尋結果／播放中全部動態起，轉語言就地重畫。
+  try { if (typeof radioApplyUiLanguage === "function") radioApplyUiLanguage(); } catch (e) {}
+  // LED 色點 tooltip 同聲納圖上嘅「門檻」字都係 JS 畫出嚟。
+  try { if (typeof buildHeadColorPicker === "function") buildHeadColorPicker(); } catch (e) {}
+  try { if (typeof buildEyeColorPicker === "function") buildEyeColorPicker(); } catch (e) {}
+  try { if (typeof drawSonarChart === "function") drawSonarChart(); } catch (e) {}
+  // 電池／藍牙狀態字由後端數據拼出，重讀一次就帶住新語言。
+  try { if (typeof refreshDeviceInfo === "function") refreshDeviceInfo(); } catch (e) {}
+  // 音樂清單（空清單提示）同面板驗證狀態行都係 JS 寫入，轉語言要重畫；兩者都唔會重 build 清單。
+  try { if (typeof musicRenderList === "function") musicRenderList(); } catch (e) {}
+  try { if (typeof panelAuthRefreshStatus === "function") panelAuthRefreshStatus(); } catch (e) {}
   // 進階 Tuner 同步重建以更新每格中英對照（範圍/角度/偏移）
   try {
     const advEnabled = document.getElementById("advTunerEnabled");

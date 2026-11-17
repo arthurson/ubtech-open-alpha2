@@ -476,7 +476,7 @@ function setTtsProsody() {
     return res;
   }).catch(function (e) {
     loadTtsProsody();
-    showError("語音", String(e && e.message || e));
+    showError(t("speech_error_label"), String(e && e.message || e));
   });
 }
 

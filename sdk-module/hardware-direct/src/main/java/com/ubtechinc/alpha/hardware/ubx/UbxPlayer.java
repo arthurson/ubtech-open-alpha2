@@ -510,6 +510,7 @@ public final class UbxPlayer {
                         framesSent++;
                         return true;
                     }
+                    Log.w(TAG, "walk send rejected (playAllServos=false)");
                 } catch (Exception e) {
                     Log.w(TAG, "walk send failed: " + e.getMessage());
                 }

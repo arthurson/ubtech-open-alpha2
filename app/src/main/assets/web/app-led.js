@@ -17,13 +17,13 @@
 // whatever preset was last used, so the robot updates live as you adjust either one.
 
 const LED_COLORS = [
-  { code: 1, name: "紅", hex: "#ff3b3b" },
-  { code: 2, name: "綠", hex: "#3bff5c" },
-  { code: 3, name: "藍", hex: "#3b6bff" },
-  { code: 4, name: "黃", hex: "#ffe93b" },
-  { code: 5, name: "紫", hex: "#a83bff" },
-  { code: 6, name: "青", hex: "#3bfff0" },
-  { code: 7, name: "白", hex: "#ffffff" },
+  { code: 1, name: "紅", nameEn: "Red", hex: "#ff3b3b" },
+  { code: 2, name: "綠", nameEn: "Green", hex: "#3bff5c" },
+  { code: 3, name: "藍", nameEn: "Blue", hex: "#3b6bff" },
+  { code: 4, name: "黃", nameEn: "Yellow", hex: "#ffe93b" },
+  { code: 5, name: "紫", nameEn: "Purple", hex: "#a83bff" },
+  { code: 6, name: "青", nameEn: "Cyan", hex: "#3bfff0" },
+  { code: 7, name: "白", nameEn: "White", hex: "#ffffff" },
 ];
 
 let selectedHeadColor = 5; // 紫 - matches Alpha2Connection.beginLedEffect()'s confirmed-working payload
@@ -33,9 +33,9 @@ let lastEyePreset = "long";
 // 雙色模式三色選擇（實機 dual 出呢三組）：藍綠＝p1 藍，紅綠＝p1 黃，紅藍＝p1 紫。
 // 點解唔直接 7 色：其他 p1 出嚟都係藍綠，無得分，唔擺出嚟阻位。
 const DUAL_COLORS = [
-  { code: 3, name: "藍綠", hex: "linear-gradient(135deg, #3b6bff 50%, #3bff5c 50%)" },
-  { code: 4, name: "紅綠", hex: "linear-gradient(135deg, #ff3b3b 50%, #3bff5c 50%)" },
-  { code: 5, name: "紅藍", hex: "linear-gradient(135deg, #ff3b3b 50%, #3b6bff 50%)" },
+  { code: 3, name: "藍綠", nameEn: "Blue-Green", hex: "linear-gradient(135deg, #3b6bff 50%, #3bff5c 50%)" },
+  { code: 4, name: "紅綠", nameEn: "Red-Green", hex: "linear-gradient(135deg, #ff3b3b 50%, #3bff5c 50%)" },
+  { code: 5, name: "紅藍", nameEn: "Red-Blue", hex: "linear-gradient(135deg, #ff3b3b 50%, #3b6bff 50%)" },
 ];
 let prevHeadColor = null; // 入 dual 之前揀緊咩色，出返嚟還原
 let prevEyeColor = null;
@@ -55,7 +55,7 @@ function buildColorPicker(wrapId, getSelected, setSelected, onPick, palette) {
     dot.type = "button";
     dot.className = "color-dot" + (c.code === getSelected() ? " selected" : "");
     dot.style.background = c.hex;
-    dot.title = c.name;
+    dot.title = (uiLang === "en" && c.nameEn) ? c.nameEn : c.name;
     dot.onclick = function () {
       setSelected(c.code);
       wrap.querySelectorAll(".color-dot").forEach(function (d) { d.classList.remove("selected"); });
@@ -493,7 +493,13 @@ function perledMakeDot(num, wifi) {
   const dot = document.createElement("button");
   dot.type = "button";
   dot.className = "perled-dot" + (wifi ? " perled-wifi" : "");
-  dot.title = wifi ? "#5 wifi 位（熄未必熄到）" : "#" + num;
+  if (wifi) {
+    // 用 data-i18n-title 俾 applyUiLanguage 負責翻譯（呢粒只 build 一次，轉語言唔會重 build）。
+    dot.setAttribute("data-i18n-title", "led_wifi_slot_title");
+    dot.title = t("led_wifi_slot_title");
+  } else {
+    dot.title = "#" + num;
+  }
   return dot;
 }
 

@@ -3580,7 +3580,7 @@ function gamepadBindFullscreen() {
 }
 
 // ---------------- 按住向前行／向後行（面板掣；步態＝.ubx，見後端 WalkCenter） ----------------
-// 按住期間每 250ms 叫一次 walk/start（續租約＋帶最新速度＋方向）；後端租約 700ms，
+// 按住期間每 250ms 叫一次 walk/start（續租約＋帶最新速度＋方向）；後端租約 1500ms，
 // 所以頁面死機／斷網／切走分頁都會自動收步。放手／離開／失焦即 walk/stop。
 // 一次只認一個方向（已撳住其中一個時，另一個掣當冇撳）。
 var walkHoldTimer = null;
