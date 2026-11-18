@@ -489,6 +489,7 @@ const I18N = {
 
   // -- Fall recovery (app-level watchdog; independent of a policy session) --
   fall_toggle_label: { zh: "跌倒後自動起身", en: "Get up automatically after a fall" },
+  fall_axes_label: { zh: "加速度軸映射", en: "Accelerometer axis mapping" },
 
   tts_heading:           { zh: "語音 / TTS",       en: "Speech / TTS" },
   tts_text_placeholder:  { zh: "要說的文字",       en: "Text to speak" },
