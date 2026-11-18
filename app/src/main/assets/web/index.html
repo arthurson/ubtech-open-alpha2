@@ -184,6 +184,13 @@
         </label>
         <span data-i18n="fall_toggle_label">跌倒後自動起身</span>
       </div>
+      <div class="row" style="margin-top:4px;">
+        <span data-i18n="fall_axes_label">加速度軸映射</span>
+        <select id="fallAxes" onchange="fallAxesChange()">
+          <option value="-y+x+z">-y+x+z</option>
+          <option value="+y-x+z">+y-x+z</option>
+        </select>
+      </div>
       <p class="hint" id="fallHint"></p>
     </section>
   </div>
@@ -1593,7 +1600,7 @@
 <script src="app-actions-pack.js?v=20261001a"></script>
 <script src="app-apk.js?v=20261001a"></script>
 <script src="app-policy.js?v=20261106a"></script>
-<script src="app-fall.js?v=20261115c"></script>
+<script src="app-fall.js?v=20261117a"></script>
 <script src="app-log.js?v=20261117a"></script>
 
 <!-- ============================================================

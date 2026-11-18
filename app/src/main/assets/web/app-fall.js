@@ -5,6 +5,8 @@
 
 function fallEl(id) { return document.getElementById(id); }
 
+let fallAxesPrev = "-y+x+z"; // 上一次後端確認嘅 axes；fall/set 失敗時用嚟還原下拉
+
 // 進入頁面時同步：讀取機身實際的開關狀態。
 function fallInit() {
   if (!fallEl("fallEnabled")) return Promise.resolve(null);
@@ -19,6 +21,45 @@ function fallApplyStatus(res) {
   if (!res || !res.ok) return;
   const el = fallEl("fallEnabled");
   if (el && !!el.checked !== !!res.enabled) el.checked = !!res.enabled;
+  fallApplyAxes(res.axes);
+  if (res.axes) fallAxesPrev = res.axes;
+}
+
+// 同步軸映射下拉（以後端實際生效嘅 axes 為準）。如果係經 API 設咗唔喺選項內嘅自訂值，
+// 就臨時加一個 option，免得下拉顯示錯值。
+function fallApplyAxes(axes) {
+  const sel = fallEl("fallAxes");
+  if (!sel || !axes) return;
+  let found = false;
+  for (let i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === axes) { found = true; break; }
+  }
+  if (!found) sel.add(new Option(axes, axes));
+  if (sel.value !== axes) sel.value = axes;
+}
+
+// 切換軸映射：fall/set?axes=…，成功後 fall/reset（要再見到企直 2 秒先重新武裝，
+// 避免軸改咗之後站緊都被誤判為跌倒而即刻郁）。
+function fallAxesChange() {
+  const sel = fallEl("fallAxes");
+  const hint = fallEl("fallHint");
+  if (!sel) return Promise.resolve(null);
+  const prev = fallAxesPrev;
+  if (hint) hint.textContent = "";
+  return Alpha2Api.fallSet({ axes: sel.value }).then(function (res) {
+    if (!res || !res.ok) {
+      sel.value = prev;
+      if (hint) hint.textContent = "❌ " + ((res && (res.error || res.message)) || "?");
+      return res;
+    }
+    fallAxesPrev = sel.value;
+    fallApplyStatus(res);
+    return Alpha2Api.fallReset();
+  }).catch(function (e) {
+    sel.value = prev;
+    if (hint) hint.textContent = "❌ " + (e && e.message ? e.message : e);
+    return null;
+  });
 }
 
 function fallToggle() {
