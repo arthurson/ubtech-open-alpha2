@@ -45,10 +45,16 @@ public final class IOUtil {
 
     /** 讀足 len bytes（短了就回實際讀到的，不拋）。 */
     public static byte[] readExactly(InputStream in, int len) throws IOException {
-        byte[] out = new byte[len];
+        // 唔預先 new byte[len]：HttpServer 傳入嘅 len 來自客戶端 Content-Length，攻擊者淨係送
+        // header 就可以令我哋每條連線配置高達 32MB（幾條就 OOM，而 OutOfMemoryError 又唔係
+        // Exception，handleClient 接唔到）。由細 buffer 開始，隨資料實際到達先倍增（上限 len）。
+        byte[] out = new byte[Math.min(len, 64 * 1024)];
         int readTotal = 0;
         while (readTotal < len) {
-            int n = in.read(out, readTotal, len - readTotal);
+            if (readTotal == out.length) {
+                out = java.util.Arrays.copyOf(out, (int) Math.min((long) out.length * 2, (long) len));
+            }
+            int n = in.read(out, readTotal, out.length - readTotal);
             if (n < 0) break;
             readTotal += n;
         }

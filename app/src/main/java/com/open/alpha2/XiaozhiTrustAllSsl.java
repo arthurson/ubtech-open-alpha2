@@ -17,7 +17,12 @@ import javax.net.ssl.X509TrustManager;
 /**
  * 小智 (XiaoZhi) 專用的「全信任」SSL helper - 只給 XiaozhiClient (WebSocket) 和
  * XiaozhiOtaClient (OTA/認證碼 HTTP) 兩個類用, 不影響這個 app 裡面其他用
- * HttpsURLConnection/SSLSocketFactory 的地方 (例如 Radio Browser、camera vision)。
+ * HttpsURLConnection/SSLSocketFactory 的地方。
+ *
+ * 2026-11: 檔案下載 (動作包／APK／Vosk) 同 camera vision 上傳已經改用 BundledCaSsl
+ * (系統 CA ∪ 內建 Mozilla CA，嚴格驗證 + hostname)＋SecureDownload (redirect 白名單)，
+ * 不再經過本 class。本 class 而家剩低小智 OTA／WebSocket 兩條連線仍然 trust-all
+ * (小智伺服器憑證鏈未能喺舊機驗證前保留，詳見 docs 同 BundledCaSsl)。任何新代碼唔好用本 class。
  *
  * 背景 (2026-08): Android 5.1 (API 22, 2015 年出廠) 的系統 CA store 是出廠時的
  * snapshot, 沒得 OTA 更新, 不同機因應廠商 build 時間/有沒有自己 patch 過,

@@ -33,7 +33,15 @@ public final class OnnxMlp {
         final int[] shape;
         T(float[] d, int[] shape) { this.d = d; this.shape = shape; }
         int rank() { return shape.length; }
-        static int numel(int[] s) { int n = 1; for (int x : s) n *= x; return n; }
+        static int numel(int[] s) {
+            long n = 1;
+            for (int x : s) {
+                if (x < 0) throw new IllegalArgumentException("negative tensor dim");
+                n *= x;
+                if (n > Integer.MAX_VALUE) throw new IllegalArgumentException("tensor too large");
+            }
+            return (int) n;
+        }
     }
 
     private static final class Node {
@@ -344,16 +352,16 @@ public final class OnnxMlp {
         if (raw != null) {
             int len = raw[1] - raw[0];
             if (dtype == 1) {
-                if (len != n * 4) throw new IllegalArgumentException("float tensor size mismatch for " + nm[0]);
+                if (len != (long) n * 4) throw new IllegalArgumentException("float tensor size mismatch for " + nm[0]);
                 for (int i = 0; i < n; i++) d[i] = Float.intBitsToFloat(le32(b, raw[0] + 4 * i));
             } else if (dtype == 7) {
-                if (len != n * 8) throw new IllegalArgumentException("int64 tensor size mismatch for " + nm[0]);
+                if (len != (long) n * 8) throw new IllegalArgumentException("int64 tensor size mismatch for " + nm[0]);
                 for (int i = 0; i < n; i++) d[i] = (float) le64(b, raw[0] + 8 * i);
             } else if (dtype == 6) {
-                if (len != n * 4) throw new IllegalArgumentException("int32 tensor size mismatch for " + nm[0]);
+                if (len != (long) n * 4) throw new IllegalArgumentException("int32 tensor size mismatch for " + nm[0]);
                 for (int i = 0; i < n; i++) d[i] = (float) le32(b, raw[0] + 4 * i);
             } else if (dtype == 11) {
-                if (len != n * 8) throw new IllegalArgumentException("double tensor size mismatch for " + nm[0]);
+                if (len != (long) n * 8) throw new IllegalArgumentException("double tensor size mismatch for " + nm[0]);
                 for (int i = 0; i < n; i++) d[i] = (float) Double.longBitsToDouble(le64(b, raw[0] + 8 * i));
             } else {
                 throw new IllegalArgumentException("unsupported tensor dtype " + dtype + " (" + nm[0] + ")");

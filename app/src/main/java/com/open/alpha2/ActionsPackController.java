@@ -181,17 +181,8 @@ public final class ActionsPackController {
             java.io.InputStream in = null;
             java.io.OutputStream out = null;
             try {
-                java.net.URL url = new java.net.URL(PACK_URL);
-                conn = (java.net.HttpURLConnection) url.openConnection();
-                try {
-                    XiaozhiTrustAllSsl.applyTrustAll(conn);
-                } catch (Throwable ignore) {
-                }
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(30000);
-                conn.setInstanceFollowRedirects(true);
-                conn.setRequestProperty("User-Agent", "OpenAlpha2");
-                conn.connect();
+                // 嚴格 TLS＋redirect 白名單（見 SecureDownload）；失敗直接拋 IOException。
+                conn = SecureDownload.open(PACK_URL, SecureDownload.GITHUB_RELEASE_HOSTS, 15000, 30000, "OpenAlpha2");
                 int code = conn.getResponseCode();
                 if (code < 200 || code >= 300) {
                     throw new java.io.IOException("HTTP " + code);

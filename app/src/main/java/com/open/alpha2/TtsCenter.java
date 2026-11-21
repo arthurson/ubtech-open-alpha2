@@ -73,6 +73,9 @@ public final class TtsCenter {
     private volatile TextToSpeech androidTts;
     private volatile boolean androidTtsReady = false;
     private volatile String androidTtsEnginePkg = ""; // package of the engine androidTts is currently bound to
+    /** 每次 initAndroidTts() +1；onInit callback 用來識別自己係咪過期（見 initAndroidTts）。 */
+    private final java.util.concurrent.atomic.AtomicInteger ttsInitGen =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     // listAndroidTtsLanguages() 的 legacy fallback (SVOX Pico 沒實作
     // getVoices(), IPC 層直接 throw "NullPointerException: collection ==
@@ -522,7 +525,11 @@ public final class TtsCenter {
      *  engine's Service. androidTtsReady is set false for the duration of the rebind so
      *  speak() calls that land mid-switch fail fast (see the "speech/tts" case below)
      *  instead of silently going to whichever instance happened to still be assigned. */
-    public void initAndroidTts(String enginePackage) {
+    // synchronized：HTTP worker thread 同時切引擎時序列化「拆舊起新」——否則兩條 thread 讀到同一個
+    // old，各自 new 一個，其中一個實例冇人 shutdown（洩漏）；加 generation 令遲到嘅舊 onInit
+    // callback 唔可以覆蓋新一輪嘅 androidTtsReady／androidTtsEnginePkg。
+    public synchronized void initAndroidTts(String enginePackage) {
+        final int gen = ttsInitGen.incrementAndGet();
         TextToSpeech old = androidTts;
         androidTtsReady = false;
         if (old != null) {
@@ -535,6 +542,11 @@ public final class TtsCenter {
         // failure rather than always posting asynchronously.
         final TextToSpeech[] holder = new TextToSpeech[1];
         TextToSpeech.OnInitListener initListener = status -> {
+            if (gen != ttsInitGen.get()) {
+                // 已有更新嘅 initAndroidTts() 接管（呢個實例已被後繼 shutdown），忽略遲到 callback。
+                Log.w(TAG, "stale Android TTS init callback ignored (gen " + gen + ")");
+                return;
+            }
             androidTtsReady = (status == TextToSpeech.SUCCESS);
             if (androidTtsReady) {
                 // Use the REQUESTED enginePackage, not getDefaultEngine() - user-

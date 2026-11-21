@@ -467,6 +467,21 @@ public final class PolicyRunnerTest {
         runFor(r, 3000);
         eq("send_failed", r.endReason(), "5 send failures stop");
 
+        // 9b) 短暫送失敗（<5 次）後恢復：唔停；失敗輪次唔推進 step（t），steps 只計成功送出
+        final int[] failLeft = {3};
+        Sink flaky = new Sink() {
+            @Override public boolean send(int[] a, int t) {
+                if (failLeft[0] > 0) { failLeft[0]--; return false; }
+                return super.send(a, t);
+            }
+        };
+        c = cfg(20); c.maxRunMs = 400;
+        r = make("zero43.onnx", c, flaky, new double[][] {UPRIGHT}, def);
+        runFor(r, 3000);
+        eq("max_run", r.endReason(), "3 transient send failures tolerated");
+        check(flaky.n() > 0, "flaky: resumes sending after transient failures");
+        eq(flaky.n(), r.steps(), "flaky: failed ticks do not advance steps");
+
         // 10) interrupt＝硬停
         s = new Sink();
         c = cfg(20); c.maxRunMs = 60000;

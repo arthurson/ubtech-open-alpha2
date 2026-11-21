@@ -26,13 +26,24 @@ spec 及 Swagger UI（見 [HTTP 接口](#http-接口)）。
     網頁面板唔會顯示 PIR 卡同胸板固件升級卡。
   - 頭頂＋/－觸控鍵（`/dev/input/event0`）。
 - 機械人與瀏覽器裝置必須在同一 Wi-Fi。伺服器只用純 HTTP。
-- ⚠️ **僅限可信內網**：預設沒有認證——同網段任何人都可以播放動作、查看
-  相機、收聽咪高峰或上載韌體。切勿橋接至互聯網，亦不要放在共用大內網。
-  實驗分頁提供自選面板口令（`system/auth/*`）：啟用後，所有 `/api/*`
-  （包括讀取操作）、`/upload/*`、`/stream/*` 及 `/ws` 都必須帶上
-  `Authorization: Bearer <token>`（否則回 401＋`WWW-Authenticate`）；
-  只有 `system/auth/*` 及靜態頁保持開放。設不到 header 的 `<img>`／WebSocket
-  可用 `?panel_token=` 代替。舊 `?token=` 別名已移除（同小智 OTA `token` 撞名）。
+- ⚠️ **僅限可信內網**（純 HTTP，口令以明文傳送，同網段有人嗅探即可看到）。
+  切勿橋接至互聯網，亦不要放在共用大內網。面板**預設受口令保護**：首次啟動
+  時機械人會自動產生面板口令（`XXXXX-XXXXX`，大寫）並顯示在機身畫面，瀏覽器
+  只需輸入一次即會記住。設定後，所有 `/api/*`（包括讀取操作）、`/upload/*`、
+  `/stream/*` 及 `/ws` 都必須帶上 `Authorization: Bearer <token>`（否則回
+  401＋`WWW-Authenticate`）；只有 `system/auth/*` 及靜態頁保持開放。腳本／MCP
+  客戶端必須帶 header。設不到 header 的 `<img>`／WebSocket 可用
+  `?panel_token=` 代替。可在實驗分頁更改或清除口令（`system/auth/*`，需要
+  目前口令）；清除後重啟不會自動重新啟用，機身畫面會顯示紅色「OFF」警告。
+  清除 App 資料會重新產生口令。舊 `?token=` 別名已移除（同小智 OTA `token` 撞名）。
+- 🔒 **對外 TLS**：檔案下載（動作包、Google TTS APK、Vosk 模型）同小智 vision 上傳
+  都使用嚴格 TLS——憑證鏈**及** hostname 都會驗證，信任錨為系統 CA 加 App 內建嘅
+  Mozilla CA 清單（`app/src/main/resources/com/open/alpha2/cacert.pem`，用
+  `python scripts/update-cacert.py` 更新），所以系統 CA 過時嘅 Android 5.1 舊機都
+  毋須 trust-all。Redirect 改為手動跟隨，只容許 https／443／白名單 host；TTS APK
+  另外會對照 App 內寫死嘅 SHA-256。**已知缺口**：小智雲端 OTA 同 WebSocket 連線
+  仍然唔驗證憑證（`XiaozhiTrustAllSsl`）——喺不可信網絡，中間人可以讀取小智
+  token 同語音。如果下載出現憑證錯誤，請先檢查機械人嘅系統時間（日期錯會令驗證失敗）。
 
 ## 編譯／安裝
 

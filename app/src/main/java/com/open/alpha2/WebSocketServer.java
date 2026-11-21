@@ -201,13 +201,10 @@ public class WebSocketServer {
                     }
                 }
 
-                byte[] payload = new byte[(int) len];
-                int read = 0;
-                while (read < len) {
-                    int n = in.read(payload, read, (int) len - read);
-                    if (n < 0) return;
-                    read += n;
-                }
+                // 唔預先 new byte[len]（len 係 frame header 自報，上限 1MB × 多條連線都可以食幾十 MB）；
+                // IOUtil.readExactly 隨資料實際到達先增長。提早斷線＝讀到少過 len → 結束。
+                byte[] payload = IOUtil.readExactly(in, (int) len);
+                if (payload.length < len) return;
                 if (masked) {
                     for (int i = 0; i < payload.length; i++) {
                         payload[i] ^= mask[i % 4];

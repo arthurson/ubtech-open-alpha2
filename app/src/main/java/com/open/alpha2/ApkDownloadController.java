@@ -27,6 +27,14 @@ public final class ApkDownloadController {
     public static final String APK_URL =
             "https://github.com/arthurson/ubtech-open-alpha2/releases/download/beta/com.google.android.tts_24.9.361717975-210316629.apk";
 
+    /**
+     * APK_URL 指向檔案嘅 SHA-256（小寫 hex）。下載走 trust-all TLS（舊機 CA 過時），
+     * 靠呢個寫死嘅 hash 擋中間人換檔——換 APK_URL 嗰陣必須一齊改：
+     * {@code sha256sum com.google.android.tts_*.apk}。
+     */
+    static final String APK_SHA256 =
+            "dcf9201006d6218d79eb9b38885ff49cec70543f6b41024f32991e825775da61";
+
     private final Context appContext;
 
     private volatile String apkState = "idle";
@@ -200,23 +208,15 @@ public final class ApkDownloadController {
         }
     }
 
-    /** 下載本體（同 Vosk／動作包同一套：trust-all＋超時＋逐 0.5s 推進度）。 */
+    /** 下載本體（同 Vosk／動作包同一套：嚴格 TLS＋redirect 白名單＋超時＋逐 0.5s 推進度；完成後再驗 SHA-256）。 */
     private void downloadToTmp(File root, File tmp) throws java.io.IOException {
         java.net.HttpURLConnection conn = null;
         java.io.InputStream in = null;
         java.io.OutputStream out = null;
         try {
-            java.net.URL url = new java.net.URL(APK_URL);
-            conn = (java.net.HttpURLConnection) url.openConnection();
-            try {
-                XiaozhiTrustAllSsl.applyTrustAll(conn);
-            } catch (Throwable ignore) {
-            }
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(30000);
-            conn.setInstanceFollowRedirects(true);
-            conn.setRequestProperty("User-Agent", "OpenAlpha2");
-            conn.connect();
+            // 嚴格 TLS（系統 CA ∪ 內建 Mozilla CA）＋ https/443/host 白名單 redirect，見 SecureDownload。
+            // TLS／redirect 檢查失敗會直接拋 IOException（下載失敗），唔再靜默。
+            conn = SecureDownload.open(APK_URL, SecureDownload.GITHUB_RELEASE_HOSTS, 15000, 30000, "OpenAlpha2");
             int code = conn.getResponseCode();
             if (code < 200 || code >= 300) {
                 throw new java.io.IOException("HTTP " + code);
@@ -264,6 +264,9 @@ public final class ApkDownloadController {
                 out = null;
             }
             if (tmp.length() <= 0) throw new java.io.IOException("empty download");
+            // 先驗 hash 再放到最終檔名：唔符就拋，runDownload 嘅 catch 會刪 tmp，
+            // 唔會留低未驗證嘅 APK 俾人誤裝。
+            DownloadVerify.requireSha256(tmp, APK_SHA256);
             File done = new File(root, apkFileName());
             try {
                 done.delete();

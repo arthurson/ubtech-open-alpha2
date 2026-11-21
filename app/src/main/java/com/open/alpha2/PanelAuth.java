@@ -2,6 +2,7 @@ package com.open.alpha2;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -49,6 +50,9 @@ public final class PanelAuth {
     /** SharedPreferences key（同 MainActivity.PREFS_NAME 同一個檔案）。 */
     public static final String PREF_PANEL_TOKEN = "panel_auth_token";
 
+    /** 已做過「預設啟用」初始化（之後用戶主動清除 token＝停用，唔會再自動啟用）。 */
+    public static final String PREF_PANEL_AUTH_INIT = "panel_auth_initialized";
+
     /** 受保護 endpoint 認證 query key（只給設不到 header 的 img／WebSocket 用；/api 一律行 header）。 */
     public static final String QUERY_KEY = "panel_token";
     /**
@@ -69,6 +73,44 @@ public final class PanelAuth {
     }
 
     /** 未啟用（未設 token）即全開，不閘。 */
+    /**
+     * 預設啟用：必須喺 HttpServer.start() 之前呼叫。第一次（從未初始化過）而且冇 token 就自動產生
+     * 一個，由機身畫面顯示（見 MainActivity）；已有 token 保留；用戶之後主動清除＝停用，唔會被
+     * 重新啟用。token 同旗標用同一個 commit 寫入，唔會出現「旗標已寫但 token 未寫」。
+     * 寫入失敗只記 warn（唔 log token），伺服器照常起，等於維持舊行為。
+     */
+    public static synchronized void ensureInitialized(Context ctx) {
+        try {
+            SharedPreferences p = prefs(ctx);
+            if (p.getBoolean(PREF_PANEL_AUTH_INIT, false)) return;
+            String existing = p.getString(PREF_PANEL_TOKEN, "");
+            SharedPreferences.Editor ed = p.edit();
+            boolean generated = PanelToken.needsAutoEnable(false, existing);
+            if (generated) {
+                ed.putString(PREF_PANEL_TOKEN, PanelToken.generate(new java.security.SecureRandom()));
+            }
+            ed.putBoolean(PREF_PANEL_AUTH_INIT, true);
+            if (!ed.commit()) {
+                Log.w("PanelAuth", "ensureInitialized: commit failed, panel auth state unchanged");
+                return;
+            }
+            Log.i("PanelAuth", generated ? "panel token auto-generated (shown on device screen)"
+                    : "panel token already set, kept");
+        } catch (Exception e) {
+            Log.w("PanelAuth", "ensureInitialized failed: " + e.getMessage());
+        }
+    }
+
+    /** 機身畫面顯示用：而家嘅 token，冇（停用）或讀唔到回空字串。唔好 log。 */
+    public static String currentTokenOrEmpty(Context ctx) {
+        try {
+            String s = prefs(ctx).getString(PREF_PANEL_TOKEN, "");
+            return s == null ? "" : s;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     public static boolean isEnabled(Context ctx) {
         try {
             String s = prefs(ctx).getString(PREF_PANEL_TOKEN, "");
@@ -145,7 +187,8 @@ public final class PanelAuth {
         try {
             stored = prefs(ctx).getString(PREF_PANEL_TOKEN, "");
         } catch (Exception e) {
-            stored = "";
+            // 讀唔到 token 狀態：fail-closed。若當成「未啟用」會令已設 token 嘅面板喺 prefs 異常時失守。
+            return HttpServer.ApiResponse.unauthorized("panel auth state unavailable");
         }
         if (stored == null || stored.isEmpty()) return null;
         String bearer = bearerFromHeaders(headers);

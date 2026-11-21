@@ -91,6 +91,23 @@ public final class XiaozhiBridge {
 
     public void shutdown() {
         if (!shutdownGuard.compareAndSet(false, true)) return;
+        // 先停 mic enforcer（否則 app 結束前仍每輪 speech_SetMIC(true) 搶 mic），
+        // 再喺背景 thread 將 mic 還返機器人（唔喺 main thread 做 binder 呼叫）。
+        stopXiaozhiMicHoldEnforcer();
+        final boolean releaseMic = xiaozhiMicHeld;
+        xiaozhiMicHeld = false;
+        if (releaseMic) {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        robot.speech_SetMIC(false);
+                    } catch (Throwable t) {
+                        Log.w(TAG, "shutdown: release mic failed: " + t.getMessage());
+                    }
+                }
+            }, "xiaozhi-destroy-release-mic").start();
+        }
         if (xiaozhiClient != null) {
             // disconnect() 內部會做 sendCloseFrame() (socket write, 完成
             // WebSocket close handshake, 見 XiaozhiClient 的 case 0x8 的
@@ -1035,6 +1052,9 @@ public final class XiaozhiBridge {
                         new XiaozhiOtaClient.PollCallback() {
                             @Override
                             public void onPoll(int attemptNumber) {
+                                if (shutdownGuard.get()) {
+                                    throw new IllegalStateException("shutdown during activation");
+                                }
                                 Log.i(TAG, "XiaoZhi activation poll #" + attemptNumber);
                             }
                         });
@@ -1124,6 +1144,12 @@ public final class XiaozhiBridge {
                     }
                 }
             });
+            // OTA／配對可能喺 shutdown() 之後先完成：唔好再建立新連線（shutdown 已經斷咗線）。
+            if (shutdownGuard.get()) {
+                Log.i(TAG, "XiaoZhi activation: shutdown before connect, aborting");
+                xiaozhiActivationStatus.set(XiaozhiActivationStatus.idle());
+                return;
+            }
             xiaozhiClient.connect(wsUrl, wsToken);
             xiaozhiActivationStatus.set(XiaozhiActivationStatus.connected(xiaozhiClient.getSessionId()));
             // mute 鍵 LED = 小智連線指示燈，真正連上才亮 (按鍵當下只是即時反應，
@@ -1264,6 +1290,8 @@ public final class XiaozhiBridge {
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
+                // shutdown() 之後唔再開新 activation（否則會喺 Activity 已銷毀後重新建立連線）。
+                if (shutdownGuard.get()) return;
                 // 用戶可能在這段 delay 期間自己手動關掉了開關 - 這種情況下不應該
                 // 重連, 尊重用戶的意圖。
                 if (!xiaozhiAutoMode.get()) return;
@@ -1598,7 +1626,10 @@ public final class XiaozhiBridge {
         java.net.HttpURLConnection conn =
                 (java.net.HttpURLConnection) new java.net.URL(urlStr).openConnection();
         try {
-            XiaozhiTrustAllSsl.applyTrustAll(conn);
+            // 嚴格 TLS（系統 CA ∪ 內建 Mozilla CA）：呢條連線帶 Bearer token 同相機相片，唔可以 trust-all。
+            // 唔係 HTTPS／驗證失敗即拋 → 上面 catch 會跌返 inline。唔跟 redirect，免得 token 同相片被轉去第三方。
+            BundledCaSsl.apply(conn);
+            conn.setInstanceFollowRedirects(false);
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(30000);

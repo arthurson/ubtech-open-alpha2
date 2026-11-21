@@ -81,6 +81,8 @@ jobs:
         run: python scripts/test-headkeypoller.py
       - name: Run ONNX policy unit tests (parity vs onnxruntime)
         run: python scripts/test-policy.py
+      - name: Run GaitWalker unit tests
+        run: python scripts/test-gaitwalker.py
       - name: Check web spec copies are in sync with openapi/
         run: python scripts/check-spec-copies.py
       - name: Check version sync (build.gradle vs openapi)

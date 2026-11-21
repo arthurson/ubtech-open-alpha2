@@ -27,15 +27,32 @@ from the same port (see [HTTP API](#http-api)).
     The web panel hides the PIR card and the chest-firmware upgrade card.
   - Head +/- touch pads on `/dev/input/event0`.
 - Robot and browser must be on the same Wi-Fi. The server is plain HTTP.
-- ⚠️ **Trusted LAN only**: by default there is no auth — anyone on the
-  network can play actions, view the camera, listen to the mic, or upload
-  firmware. Do not bridge it to the internet or run it on a shared LAN.
-  The Experiment tab offers an opt-in panel token (`system/auth/*`): once
-  enabled, every `/api/*` (including reads), `/upload/*`, `/stream/*` and
-  `/ws` call needs `Authorization: Bearer <token>` (401 + `WWW-Authenticate`
-  otherwise); only `system/auth/*` and static pages stay open. `<img>`/WebSocket
-  clients that cannot set headers may use `?panel_token=` instead. The old
-  `?token=` alias is removed (it collided with the Xiaozhi OTA `token`).
+- ⚠️ **Trusted LAN only** (plain HTTP — the password is sent in clear text, so
+  anyone sniffing the LAN can read it). Do not bridge it to the internet or run
+  it on a shared LAN. The panel is **password-protected by default**: on first
+  launch the robot generates a panel token (`XXXXX-XXXXX`, uppercase) and shows
+  it on its own screen; the browser asks for it once and remembers it. Once
+  set, every `/api/*` (including reads), `/upload/*`, `/stream/*` and `/ws`
+  call needs `Authorization: Bearer <token>` (401 + `WWW-Authenticate`
+  otherwise); only `system/auth/*` and static pages stay open. Scripts/MCP
+  clients must send the header. `<img>`/WebSocket clients that cannot set
+  headers may use `?panel_token=` instead. You can change or clear the token
+  in the Experiment tab (`system/auth/*`, needs the current token); clearing
+  it is remembered across restarts and the device screen then shows a red
+  "OFF" warning. Clearing app data generates a new token. The old `?token=`
+  alias is removed (it collided with the Xiaozhi OTA `token`).
+- 🔒 **Outbound TLS**: file downloads (actions pack, Google TTS APK, Vosk
+  models) and the Xiaozhi vision upload use strict TLS — certificate chain
+  **and** hostname are verified against the system CAs plus a bundled Mozilla
+  CA list (`app/src/main/resources/com/open/alpha2/cacert.pem`, refresh with
+  `python scripts/update-cacert.py`), so old Android 5.1 devices with an
+  outdated CA store work without trust-all. Redirects are followed manually and
+  limited to https / port 443 / an allowlisted host; the TTS APK is additionally
+  checked against a SHA-256 pinned in the app. **Known gap**: the Xiaozhi
+  cloud OTA + WebSocket connections still skip certificate verification
+  (`XiaozhiTrustAllSsl`) — on an untrusted network, a man-in-the-middle could
+  read the Xiaozhi token and voice. If a download fails with a certificate
+  error, check the robot's clock first (a wrong date fails validation).
 
 ## Build / install
 

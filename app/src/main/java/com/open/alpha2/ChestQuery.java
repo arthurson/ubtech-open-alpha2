@@ -33,6 +33,9 @@ public final class ChestQuery {
     private final Context appContext;
     private final RobotStub robot;
 
+    /** servo/abs/back/trim 四組查詢各自共用單一 latch+expectId，並發會互相覆蓋，統一串行化。 */
+    private final Object servoQueryLock = new Object();
+
     // 真實胸口 MCU 韌體版本查詢 (CHEST_READ_VERSION 51 / 0x33) 用的
     // 同步等待狀態，供 queryFirmwareVersion() 阻塞等待 (HttpServer worker
     // thread，非主 thread)，onFrame() 回調一到就 countDown。
@@ -601,6 +604,12 @@ public final class ChestQuery {
      * 如本機 5/6 號硬件壞）。此方法已保證不在主 thread。
      */
     public Integer queryServoAngle(int id, long timeoutMs) {
+        synchronized (servoQueryLock) {
+            return queryServoAngleLocked(id, timeoutMs);
+        }
+    }
+
+    private Integer queryServoAngleLocked(int id, long timeoutMs) {
         if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return null;
         if (!chestReady()) {
             Log.w(TAG, "queryServoAngle: chest not ready (pure-direct)");
@@ -655,6 +664,12 @@ public final class ChestQuery {
      * 此方法已保證不在主 thread。
      */
     public Integer queryServoAbsAngle(int id, long timeoutMs) {
+        synchronized (servoQueryLock) {
+            return queryServoAbsAngleLocked(id, timeoutMs);
+        }
+    }
+
+    private Integer queryServoAbsAngleLocked(int id, long timeoutMs) {
         if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return null;
         // 舵機已關：唔發 RX 查詢（呢條 raw 幀唔經 DirectChestController，要喺度自己攔）。
         if (!com.ubtechinc.alpha.hardware.ServoEnableMask.isEnabled(id)) return null;
@@ -709,6 +724,12 @@ public final class ChestQuery {
      * 此方法已保證不在主 thread。
      */
     public Integer queryServoBackAngle(int id, long timeoutMs) {
+        synchronized (servoQueryLock) {
+            return queryServoBackAngleLocked(id, timeoutMs);
+        }
+    }
+
+    private Integer queryServoBackAngleLocked(int id, long timeoutMs) {
         if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return null;
         // 舵機已關：唔發 RX 查詢（呢條 raw 幀唔經 DirectChestController，要喺度自己攔）。
         if (!com.ubtechinc.alpha.hardware.ServoEnableMask.isEnabled(id)) return null;
@@ -762,6 +783,12 @@ public final class ChestQuery {
      * 必須經用戶明確寫入動作。此方法已保證不在主 thread。
      */
     public Boolean writeServoTrim(int id, int trim, long timeoutMs) {
+        synchronized (servoQueryLock) {
+            return writeServoTrimLocked(id, trim, timeoutMs);
+        }
+    }
+
+    private Boolean writeServoTrimLocked(int id, int trim, long timeoutMs) {
         if (id < ApiValidator.SERVO_ID_MIN || id > ApiValidator.SERVO_ID_MAX) return null;
         if (!chestReady()) {
             Log.w(TAG, "writeServoTrim: chest not ready (pure-direct)");

@@ -72,6 +72,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     // -- WiFi 指示燈 -----------------------------------------------
     private BroadcastReceiver panelUrlReceiver;
     private TextView panelLinkView;
+    /** 機身畫面顯示面板 token／停用警告（見 updatePanelAuthDisplay）。 */
+    private TextView panelAuthView;
+    private int panelAuthDefaultColor;
     private String currentPanelUrl;
     private final CameraController cameraController = new CameraController();
     private final AudioController audioController = new AudioController();
@@ -505,6 +508,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 return PanelAuth.requireAuth(MainActivity.this, query, headers);
             }
         });
+        // 預設啟用面板 token（首次自動產生，機身畫面顯示）；必須喺 server 開始收請求之前。
+        PanelAuth.ensureInitialized(this);
         httpServer.start();
         String scheme = "http";
 
@@ -560,6 +565,13 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         linkRow.addView(panelLinkView);
         linkRow.addView(copyBtn);
         root.addView(linkRow);
+
+        panelAuthView = new TextView(this);
+        panelAuthView.setTextSize(16);
+        panelAuthDefaultColor = panelAuthView.getCurrentTextColor();
+        panelAuthView.setPadding(0, topMargin, 0, topMargin);
+        root.addView(panelAuthView);
+        updatePanelAuthDisplay();
 
         ScrollView scrollView = new ScrollView(this);
         scrollView.addView(root);
@@ -1185,6 +1197,38 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
             audioCenter.stopLocalMusicPlayback();
             audioCenter.stopRadioPlayback();
             audioCenter.shutdown();
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // token 可能喺面板「實驗」分頁被改／清除，返嚟機身畫面時刷新。
+        updatePanelAuthDisplay();
+    }
+
+    /** 機身畫面顯示面板 token（撳一下複製）；停用時顯示紅色警告。必須喺 UI thread 呼叫。 */
+    private void updatePanelAuthDisplay() {
+        if (panelAuthView == null) return;
+        final String token = PanelAuth.currentTokenOrEmpty(this);
+        if (token.isEmpty()) {
+            panelAuthView.setText("Panel password: OFF\nAnyone on this network can control the robot.");
+            panelAuthView.setTextColor(Color.parseColor("#d9534f"));
+            panelAuthView.setOnClickListener(null);
+        } else {
+            panelAuthView.setText("Panel password (the browser asks for it once, UPPERCASE):\n"
+                    + token + "    (tap to copy)");
+            panelAuthView.setTextColor(panelAuthDefaultColor);
+            panelAuthView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (clipboard != null) {
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Alpha2 panel password", token));
+                        Toast.makeText(MainActivity.this, "Copied panel password", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            });
         }
     }
 

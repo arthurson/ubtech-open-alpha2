@@ -686,6 +686,13 @@ public final class PolicyRunner implements Runnable {
                     sendFails = 0;
                 } else if (++sendFails >= 5) {
                     return "send_failed";
+                } else {
+                    // 送失敗：命令位姿 cur／prev／t 唔推進（否則 obs 同真機漸行漸遠），
+                    // 照拍 pacing 後下一輪重試（同 fallen 分支一樣 continue）。
+                    next += curP;
+                    long retryWait = next - System.currentTimeMillis();
+                    if (retryWait > 0) Thread.sleep(retryWait); else next = System.currentTimeMillis();
+                    continue;
                 }
             }
             // dry＝rehearsal：假設舵機照命令到位，令 obs 繼續推進；真送出就用命令位姿（dead reckoning）。

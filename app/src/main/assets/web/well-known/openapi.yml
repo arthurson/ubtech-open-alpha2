@@ -16,7 +16,7 @@ info:
 
     即時事件 (觸摸/ASR/電池/跌落/PIR 等) 經 `GET /ws` (RFC6455 WebSocket) 推送，非輪詢。
 
-    實驗 tab 另有 opt-in 面板 token (`/api/system/auth/*`，見 PanelAuth.java)：預設關閉（全開）；
+    實驗 tab 管理面板 token (`/api/system/auth/*`，見 PanelAuth.java)：預設啟用——首次啟動自動產生 token 並顯示於機身畫面（用戶主動清除＝停用，重啟後不會自動重新啟用）；
 啟用後成個面板上鎖——全部 `/api/*`（含讀操作、其他分頁、Blockly）、全部 `/upload/*`、
 `/stream/*` 同 `/ws` 要帶認證（`Authorization: Bearer <token>` 主；設不到 header 的
 `<img>`／WebSocket 用 `?panel_token=` fallback），缺／錯回 401；淨 `system/auth/*`

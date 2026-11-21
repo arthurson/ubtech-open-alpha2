@@ -7,10 +7,11 @@ gradle cache 無 junit，不想整斷 `--offline` build。
 
 流程：找 android.jar (SDK) + javac → 編譯被測類 + Test
 → 跑 main() → 非零 exit = 失敗 (啱 CI 用)。
-跑五套：ApiValidatorTest (ApiValidator closure)＋IkPoseTest (IkPose，
+跑九套：ApiValidatorTest (ApiValidator closure)＋IkPoseTest (IkPose，
 期望值由 app-ik.js 出)＋IkTransitionTest (Gamepad IK 均速過渡數學)＋
-ColorTrackTest (ColorTrackLogic 單檔)＋MusicEqTest (MusicEq 單檔，
-後兩者連 android.jar 都唔掂)。
+ColorTrackTest (ColorTrackLogic 單檔)＋MusicEqTest (MusicEq 單檔)＋
+DownloadVerifyTest (DownloadVerify 單檔)＋IOUtilTest (IOUtil 單檔)＋PanelTokenTest (PanelToken＋ApiValidator closure)＋TlsPolicyTest (BundledCaSsl／SecureDownload，真 TLS 握手)；
+其中 ColorTrack／MusicEq／DownloadVerify／IOUtil 連 android.jar 都唔掂。
 
 用法: python scripts/test-apivalidator.py
 """
@@ -187,6 +188,111 @@ def main() -> int:
         raise SystemExit("編譯失敗 (MusicEqTest)")
     r = subprocess.run(
         [java, "-cp", str(tmp), "com.open.alpha2.MusicEqTest"],
+        capture_output=True, text=True,
+    )
+    print(r.stdout, end="")
+    if r.stderr:
+        print(r.stderr, end="", file=sys.stderr)
+    if r.returncode != 0:
+        shutil.rmtree(tmp, ignore_errors=True)
+        print("FAIL")
+        return r.returncode
+
+    # 第四套：DownloadVerifyTest (DownloadVerify 純 java.*，唔經 android stub)。
+    files4 = [
+        str(src / "DownloadVerify.java"),
+        str(testdir / "DownloadVerifyTest.java"),
+    ]
+    cp4 = [javac, "-encoding", "UTF-8", "-nowarn", "-d", str(tmp)] + files4
+    r = subprocess.run(cp4, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(r.stdout)
+        print(r.stderr)
+        raise SystemExit("編譯失敗 (DownloadVerifyTest)")
+    r = subprocess.run(
+        [java, "-cp", str(tmp), "com.open.alpha2.DownloadVerifyTest"],
+        capture_output=True, text=True,
+    )
+    print(r.stdout, end="")
+    if r.stderr:
+        print(r.stderr, end="", file=sys.stderr)
+    if r.returncode != 0:
+        shutil.rmtree(tmp, ignore_errors=True)
+        print("FAIL")
+        return r.returncode
+
+    # 第五套：IOUtilTest (IOUtil.readExactly 單檔，純 java.*，唔經 android stub)。
+    files5 = [
+        str(src / "IOUtil.java"),
+        str(testdir / "IOUtilTest.java"),
+    ]
+    cp5 = [javac, "-encoding", "UTF-8", "-nowarn", "-d", str(tmp)] + files5
+    r = subprocess.run(cp5, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(r.stdout)
+        print(r.stderr)
+        raise SystemExit("編譯失敗 (IOUtilTest)")
+    r = subprocess.run(
+        [java, "-cp", str(tmp), "com.open.alpha2.IOUtilTest"],
+        capture_output=True, text=True,
+    )
+    print(r.stdout, end="")
+    if r.stderr:
+        print(r.stderr, end="", file=sys.stderr)
+    if r.returncode != 0:
+        shutil.rmtree(tmp, ignore_errors=True)
+        print("FAIL")
+        return r.returncode
+
+    # 第六套：PanelTokenTest (PanelToken 純 java.*，但要引用 ApiValidator 驗證 token 格式，
+    # 所以同第一套一樣帶 android.jar 編 ApiValidator closure)。
+    files6 = [
+        str(src / "ApiValidator.java"),
+        str(src / "JsonUtil.java"),
+        str(src / "IOUtil.java"),
+        str(src / "HttpServer.java"),
+        str(src / "WebSocketServer.java"),
+        str(src / "EventBus.java"),
+        str(src / "PanelToken.java"),
+        str(testdir / "PanelTokenTest.java"),
+    ]
+    cp6 = [javac, "-encoding", "UTF-8", "-nowarn", "-cp", str(jar), "-d", str(tmp)] + files6
+    r = subprocess.run(cp6, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(r.stdout)
+        print(r.stderr)
+        raise SystemExit("編譯失敗 (PanelTokenTest)")
+    r = subprocess.run(
+        [java, "-cp", str(tmp), "com.open.alpha2.PanelTokenTest"],
+        capture_output=True, text=True,
+    )
+    print(r.stdout, end="")
+    if r.stderr:
+        print(r.stderr, end="", file=sys.stderr)
+    if r.returncode != 0:
+        shutil.rmtree(tmp, ignore_errors=True)
+        print("FAIL")
+        return r.returncode
+
+    # 第七套：TlsPolicyTest (BundledCaSsl／SecureDownload，純 java.*，唔經 android stub)。
+    # 用 JDK 內置 HttpsServer＋測試證書做真 TLS 握手；classpath 要加 resources
+    # (內建 CA bundle ＋ 測試證書 fixtures，見 scripts/make-tls-fixtures.py)。
+    files7 = [
+        str(src / "BundledCaSsl.java"),
+        str(src / "SecureDownload.java"),
+        str(testdir / "TlsPolicyTest.java"),
+    ]
+    cp7 = [javac, "-encoding", "UTF-8", "-nowarn", "-d", str(tmp)] + files7
+    r = subprocess.run(cp7, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(r.stdout)
+        print(r.stderr)
+        raise SystemExit("編譯失敗 (TlsPolicyTest)")
+    res_main = ROOT / "app" / "src" / "main" / "resources"
+    res_test = ROOT / "app" / "src" / "test" / "resources"
+    r = subprocess.run(
+        [java, "-cp", os.pathsep.join([str(tmp), str(res_main), str(res_test)]),
+         "com.open.alpha2.TlsPolicyTest"],
         capture_output=True, text=True,
     )
     print(r.stdout, end="")

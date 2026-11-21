@@ -279,11 +279,11 @@ public final class UbxPlayer {
                 try {
                     if (chest.playAllServos(angles, (short) s.moveMs)) {
                         poseTracker.update(angles); // 命令位姿追踪（成功发送才记）
+                        framesSent++;               // 只計成功送出嘅幀（同 walk 路徑一致）
                     }
                 } catch (Exception e) {
                     Log.w(TAG, "send failed: " + e.getMessage());
                 }
-                framesSent++;
                 elapsed += s.slotMs; // 下一槽邊界（單調，不隨發送耗時漂移）
                 long wait = monoStart + elapsed - System.nanoTime() / 1000000L;
                 if (wait > 0) {

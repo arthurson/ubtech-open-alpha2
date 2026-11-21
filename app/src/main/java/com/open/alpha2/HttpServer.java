@@ -149,6 +149,14 @@ public class HttpServer implements Runnable {
     private final StreamHandler streamHandler;
     private final RawUploadHandler rawUploadHandler;
     private final ExecutorService pool = Executors.newCachedThreadPool();
+    /**
+     * 同時處理中嘅連線上限（cached pool 每連線一條 thread，冇上限會被連線洪水拖死整個 app）。
+     * WebSocket／串流等長連線都計入；128 遠高於正常面板（幾個瀏覽器 × 每個最多 6 條）用量。
+     * 超出就直接關閉新連線。
+     */
+    static final int MAX_CONCURRENT_CLIENTS = 128;
+    private final java.util.concurrent.atomic.AtomicInteger activeClients =
+            new java.util.concurrent.atomic.AtomicInteger();
     private volatile ServerSocket serverSocket;
     private volatile boolean running = false;
     private volatile IOException bindError;
@@ -214,10 +222,23 @@ public class HttpServer implements Runnable {
             while (running) {
                 final Socket client = serverSocket.accept();
                 final String remoteAddr = String.valueOf(client.getRemoteSocketAddress());
+                if (activeClients.incrementAndGet() > MAX_CONCURRENT_CLIENTS) {
+                    activeClients.decrementAndGet();
+                    Log.w(TAG, "too many connections (>" + MAX_CONCURRENT_CLIENTS + "), rejecting " + remoteAddr);
+                    try {
+                        client.close();
+                    } catch (IOException ignored) {
+                    }
+                    continue;
+                }
                 pool.execute(new Runnable() {
                     @Override
                     public void run() {
-                        handleClient(client, remoteAddr);
+                        try {
+                            handleClient(client, remoteAddr);
+                        } finally {
+                            activeClients.decrementAndGet();
+                        }
                     }
                 });
             }
@@ -242,6 +263,8 @@ public class HttpServer implements Runnable {
             }
         } catch (java.net.SocketTimeoutException e) {
             // 閒置 keep-alive 逾時屬正常關閉，唔使 log error stack。
+        } catch (RequestLineTooLongException e) {
+            Log.w(TAG, "request line > " + MAX_REQUEST_LINE_CHARS + " chars, closing (remote=" + remoteAddr + ")");
         } catch (Exception e) {
             // The exception is fully caught here and
             // the socket is always closed in the finally block below regardless, so
@@ -603,10 +626,24 @@ public class HttpServer implements Runnable {
      *  read yet.
      */
     private static String readHttpLine(InputStream in) throws IOException {
-        return readHttpLine(in, Integer.MAX_VALUE);
+        return readHttpLine(in, MAX_REQUEST_LINE_CHARS, true);
     }
 
     private static String readHttpLine(InputStream in, int maxChars) throws IOException {
+        return readHttpLine(in, maxChars, false);
+    }
+
+    /** request line 上限（同 header 行一致 8 KiB）；超出就當異常斷線，避免無限長一行食記憶體。 */
+    private static final int MAX_REQUEST_LINE_CHARS = 8192;
+
+    /** request line 超長：屬客戶端異常（掃描／惡意），只記一行 warn，唔使 error stack。 */
+    private static final class RequestLineTooLongException extends IOException {
+        RequestLineTooLongException() {
+            super("http request line too long");
+        }
+    }
+
+    private static String readHttpLine(InputStream in, int maxChars, boolean failOnOverflow) throws IOException {
         ByteArrayOutputStream lineBuf = new ByteArrayOutputStream(128);
         int b;
         boolean sawAny = false;
@@ -617,6 +654,7 @@ public class HttpServer implements Runnable {
             }
             if (b != '\r') {
                 if (lineBuf.size() < maxChars) lineBuf.write(b);
+                else if (failOnOverflow) throw new RequestLineTooLongException();
             }
         }
         if (!sawAny) {
