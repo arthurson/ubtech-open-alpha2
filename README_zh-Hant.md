@@ -3,7 +3,7 @@
 > 語言：[English](README.md) | 繁體中文（本檔）
 
 `com.open.alpha2` —— 裝在 UBTECH Alpha2 機械人上的 Android 應用程式
-（`versionName "beta 8.2"`／`versionCode 9`），讓機械人可以被遙距操控。
+（`versionName "beta 8.3"`／`versionCode 9`），讓機械人可以被遙距操控。
 開機後會自動啟動 HTTP＋WebSocket 伺服器（port `8888`）；在同一 Wi-Fi
 下的任何瀏覽器開啟 `http://<機械人IP>:8888/`，即可使用完整控制面板。
 Blockly 編程頁面位於 `/blockly.html`；同一 port 亦提供 OpenAPI／AsyncAPI
@@ -33,8 +33,8 @@ spec 及 Swagger UI（見 [HTTP 接口](#http-接口)）。
   `/stream/*` 及 `/ws` 都必須帶上 `Authorization: Bearer <token>`（否則回
   401＋`WWW-Authenticate`）；只有 `system/auth/*` 及靜態頁保持開放。腳本／MCP
   客戶端必須帶 header。設不到 header 的 `<img>`／WebSocket 可用
-  `?panel_token=` 代替。可在實驗分頁更改或清除口令（`system/auth/*`，需要
-  目前口令）；清除後重啟不會自動重新啟用，機身畫面會顯示紅色「OFF」警告。
+  `?panel_token=` 代替。可在實驗分頁更改或停用口令（`system/auth/*`，需要
+  目前口令）；停用後重啟不會自動重新啟用，機身畫面會顯示紅色「OFF」警告。
   口令猜測按 IP 節流（同一 IP 輸入 10 個「不同」嘅錯誤口令後回 HTTP
   429＋`Retry-After`，5 秒起倍增至最多 60 秒；其他 IP 不受影響；瀏覽器重複送出
   同一個舊口令唔會被罰，仍然可以用正確口令解鎖）。清除 App 資料會重新產生口令。舊 `?token=` 別名已移除（同小智 OTA `token` 撞名）。
@@ -69,8 +69,8 @@ adb -s <serial> forward tcp:8888 tcp:8888
 編出嚟約 5.5 MB——普通增量編譯會留低廢棄 entries 而脹大
 （運行無影響）；出機前跑一次 `./gradlew clean assembleDebug --offline`
 即可。CI（`build-apk.yml`，Temurin JDK 11＋Node 20）會先剝離網頁註解再編出
-同一個 APK，以 artifact `open-alpha2-beta8.2-apk` 發佈（檔名
-`open-alpha2-beta8.2.apk`，保留 7 日，只留最近 3 個）。預編 `.so` 檔
+同一個 APK，以 artifact `open-alpha2-beta8.3-apk` 發佈（檔名
+`open-alpha2-beta8.3.apk`，保留 7 日，只留最近 3 個）。預編 `.so` 檔
 （`head_led`／`head_key_mgr`／`serial_port`）放在
 `sdk-module/hardware-direct/src/main/jniLibs`；`libeasyopus.so` 由
 `app/src/main/cpp` 經 CMake 即時編譯。Vosk 同 JNA 的 AAR 已放喺
@@ -322,7 +322,7 @@ open-alpha2/
 │   ├── src/test/java/…             ← ApiValidatorTest + ColorTrackTest + MusicEqTest
 │   │                                  (run via scripts/test-apivalidator.py)
 │   ├── libs/                       ← vendored vosk-android + JNA AARs (v7a)
-│   └── build.gradle                ← versionName "beta 8.2", armeabi-v7a only
+│   └── build.gradle                ← versionName "beta 8.3", armeabi-v7a only
 ├── sdk-module/hardware-direct/     ← serial ports (/dev/ttyS1+S3), LED/pad JNI,
 │                                      wire protocol, .ubx parse/play/speed-shifted music
 │   └── src/test/java/…             ← SerialFrameCodecTest (scripts/test-serialcodec.py)
@@ -338,8 +338,8 @@ open-alpha2/
 
 - `build-apk`（push 上 main／master＋PR＋手動）：JDK 11 → 裝
   `platforms;android-25`＋`build-tools;30.0.3` → 剝離網頁註解 →
-  `assembleDebug` → 上載 APK artifact `open-alpha2-beta8.2-apk`
-  （檔名 `open-alpha2-beta8.2.apk`，保留 7 日，只留最近 3 個）。
+  `assembleDebug` → 上載 APK artifact `open-alpha2-beta8.3-apk`
+  （檔名 `open-alpha2-beta8.3.apk`，保留 7 日，只留最近 3 個）。
 - `check-openapi`（push／PR 掂到 spec、代碼、客戶端、scripts 或網頁 spec
   副本即跑）：spec／代碼漂移、客戶端新鮮度（`--check` ×2：api-client＋
   MCP）、客戶端→路由前綴一致、YAML 合法性、單元測試

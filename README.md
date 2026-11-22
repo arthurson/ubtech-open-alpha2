@@ -3,7 +3,7 @@
 > Language: English (this file) | [繁體中文](README_zh-Hant.md)
 
 `com.open.alpha2` — an Android app that runs on the UBTECH Alpha2 robot
-(`versionName "beta 8.2"` / `versionCode 9`) and turns it into a remotely
+(`versionName "beta 8.3"` / `versionCode 9`) and turns it into a remotely
 controllable device. On boot the app starts an HTTP + WebSocket server on port
 `8888`; opening `http://<robot-ip>:8888/` from any browser on the same Wi-Fi
 gives you the full control panel. A Blockly programming page lives at
@@ -36,8 +36,8 @@ from the same port (see [HTTP API](#http-api)).
   call needs `Authorization: Bearer <token>` (401 + `WWW-Authenticate`
   otherwise); only `system/auth/*` and static pages stay open. Scripts/MCP
   clients must send the header. `<img>`/WebSocket clients that cannot set
-  headers may use `?panel_token=` instead. You can change or clear the token
-  in the Experiment tab (`system/auth/*`, needs the current token); clearing
+  headers may use `?panel_token=` instead. You can change or disable the token
+  in the Experiment tab (`system/auth/*`, needs the current token); disabling
   it is remembered across restarts and the device screen then shows a red
   "OFF" warning. Guessing is throttled per IP (after 10 *different* wrong tokens
   that IP gets HTTP 429 + `Retry-After`, 5 s doubling up to 60 s; other IPs are
@@ -82,8 +82,8 @@ touching the robot. APK size: a clean build is ~5.5 MB — plain incremental
 rebuilds leave stale entries behind and bloat it (harmless at runtime);
 run `./gradlew clean assembleDebug --offline` before shipping.
 CI (`build-apk.yml`, Temurin JDK 11 + Node 20) strips web comments, builds
-the same APK and publishes it as artifact `open-alpha2-beta8.2-apk`
-(file `open-alpha2-beta8.2.apk`, 7-day retention, latest 3 kept). Prebuilt `.so` files
+the same APK and publishes it as artifact `open-alpha2-beta8.3-apk`
+(file `open-alpha2-beta8.3.apk`, 7-day retention, latest 3 kept). Prebuilt `.so` files
 (`head_led`/`head_key_mgr`/`serial_port`) live in
 `sdk-module/hardware-direct/src/main/jniLibs`; `libeasyopus.so` is compiled
 from `app/src/main/cpp` via CMake. Vosk + JNA AARs are vendored in
@@ -405,7 +405,7 @@ open-alpha2/
 │   ├── src/test/java/…             ← ApiValidatorTest + ColorTrackTest + MusicEqTest
 │   │                                  (run via scripts/test-apivalidator.py)
 │   ├── libs/                       ← vendored vosk-android + JNA AARs (v7a)
-│   └── build.gradle                ← versionName "beta 8.2", armeabi-v7a only
+│   └── build.gradle                ← versionName "beta 8.3", armeabi-v7a only
 ├── sdk-module/hardware-direct/     ← serial ports (/dev/ttyS1+S3), LED/pad JNI,
 │                                      wire protocol, .ubx parse/play/speed-shifted music
 │   └── src/test/java/…             ← SerialFrameCodecTest (scripts/test-serialcodec.py)
@@ -421,8 +421,8 @@ open-alpha2/
 
 - `build-apk` (push to main/master + PR + manual): JDK 11 → install
   `platforms;android-25` + `build-tools;30.0.3` → strip web comments →
-  `assembleDebug` → upload APK artifact `open-alpha2-beta8.2-apk`
-  (file `open-alpha2-beta8.2.apk`, 7-day retention, latest 3 kept).
+  `assembleDebug` → upload APK artifact `open-alpha2-beta8.3-apk`
+  (file `open-alpha2-beta8.3.apk`, 7-day retention, latest 3 kept).
 - `check-openapi` (push/PR touching spec, code, client, scripts or web spec
   copies): spec/code drift, client freshness (`--check` ×2: api-client +
   MCP), client→route prefix match, YAML validity, unit tests

@@ -852,19 +852,23 @@ const I18N = {
   chest_upgrade_done_power: { zh: "✅ 燒錄完成！請先長按電源鍵關機斷電，然後重新開機，系統將開始寫入固件。電源鍵指示燈將依序顯示藍色 → 紅色 → 綠色；當綠燈持續亮起，即表示固件更新完成，此時方可再次關機並重新開機，系統將正常啟動。注意：僅重新啟動 Android 系統無效。", en: "✅ Flashing completed! Long-press the power button to power off first, then power on again to start writing the firmware. The power button LED will change in the sequence blue → red → green. When the green light stays on, the firmware update is complete. You may then power off and power on again, and the system will boot normally. Note: rebooting Android alone does not apply the update." },
 
   // -- 實驗 tab 面板 token 認證（見 PanelAuth.java，後端 system/auth/*） --
+  // 按鈕語意：未啟用＝「啟用」，已啟用＝「解鎖」，關閉認證＝「停用」。
   panel_auth_heading:    { zh: "🔐 面板認證",      en: "🔐 Panel Token" },
-  panel_auth_card_disabled_hint: { zh: "開啟先會顯示面板認證設定", en: "Turn on to show panel token settings" },
-  panel_auth_hint:       { zh: "啟用後，整個面板（全部 API＋上載，含其他分頁）要帶 token。預設啟用：首次啟動由機械人自動產生，顯示喺機身畫面。未啟用時輸入新值按儲存即啟用；已啟用時輸入現有值按儲存即解鎖（如需更換新值，先清除再儲存）。Token 記在瀏覽器，同一個面板地址跨 tab 共用。",
-                           en: "When enabled, the whole panel (all APIs + uploads, incl. other tabs) needs the token. On by default: the robot generates one at first launch and shows it on its own screen. Type a new value + Save to enable; type the current value + Save to unlock (to change it, Clear first then Save). Stored in this browser, shared across tabs of the same panel URL." },
-  panel_auth_token_placeholder: { zh: "Token（8–64 字元英數/-/_）", en: "Token (8–64 chars A-Za-z0-9/-/_)" },
-  panel_auth_set_btn:    { zh: "儲存",             en: "Save" },
-  panel_auth_clear_btn:  { zh: "清除",             en: "Clear" },
-  panel_auth_disabled:   { zh: "未啟用（同網段任何人可直接操作）", en: "Disabled (anyone on the LAN can operate directly)" },
+  panel_auth_card_disabled_hint: { zh: "開啟只會展開設定，不代表啟用／停用", en: "Turn on to show settings only — it does not enable auth" },
+  panel_auth_hint:       { zh: "預設已啟用：首次啟動時機械人會自動產生 token 並顯示在機身畫面。啟用後，整個面板（全部 API＋上載，含其他分頁）都要帶 token。未啟用時輸入新 token 按「啟用」；已啟用時輸入目前 token 按「解鎖」；按「停用」即關閉認證（未解鎖就先輸入目前 token）。要換 token：先停用，再用新 token 啟用。Token 記在瀏覽器，同一個面板地址跨 tab 共用。",
+                           en: "Enabled by default: on first launch the robot generates a token and shows it on its own screen. When enabled, the whole panel (all APIs + uploads, incl. other tabs) needs the token. While disabled, type a new token and press Enable. While enabled, type the current token and press Unlock. Press Disable to turn auth off (if still locked, type the current token first). To change the token, disable first, then enable with the new one. Stored in this browser, shared across tabs of the same panel URL." },
+  panel_auth_token_placeholder: { zh: "新 token（8–64 字元英數/-/_）", en: "New token (8–64 chars A-Za-z0-9/-/_)" },
+  panel_auth_token_current_placeholder: { zh: "目前 token（見機身畫面）", en: "Current token (shown on the robot screen)" },
+  panel_auth_enable_btn: { zh: "啟用",             en: "Enable" },
+  panel_auth_unlock_btn: { zh: "解鎖",             en: "Unlock" },
+  panel_auth_clear_btn:  { zh: "停用",             en: "Disable" },
+  panel_auth_disabled:   { zh: "已停用（同網段任何人可直接操作）", en: "Disabled (anyone on the LAN can operate directly)" },
   panel_auth_enabled_locked: { zh: "已啟用，未解鎖（面板操作會回 401）", en: "Enabled, locked (panel ops return 401)" },
   panel_auth_enabled_unlocked: { zh: "已啟用，已解鎖（成個面板會自動帶 token）", en: "Enabled, unlocked (whole panel auto-attaches the token)" },
   panel_auth_need_token: { zh: "請先輸入 Token",   en: "Enter a token first" },
-  panel_auth_set_ok:     { zh: "✅ 已儲存（已記住，成個面板可直接用）", en: "✅ Saved (remembered, whole panel now works)" },
-  panel_auth_clear_ok:   { zh: "✅ 已清除（認證已關閉）", en: "✅ Cleared (auth disabled)" },
+  panel_auth_enable_ok:  { zh: "✅ 已啟用（已記住此 token，成個面板可直接用）", en: "✅ Enabled (token remembered, whole panel now works)" },
+  panel_auth_unlock_ok:  { zh: "✅ 已解鎖（已記住此 token，成個面板可直接用）", en: "✅ Unlocked (token remembered, whole panel now works)" },
+  panel_auth_disable_ok: { zh: "✅ 已停用（認證已關閉，同網段任何人可直接操作）", en: "✅ Disabled (auth off, anyone on the LAN can operate directly)" },
   panel_auth_failed_prefix: { zh: "❌ 失敗：",     en: "❌ Failed: " },
   panel_lock_fail:       { zh: "❌ Token 不正確，請再試", en: "❌ Wrong token, try again" },
   panel_pw_show:         { zh: "顯示輸入",         en: "Show input" },
@@ -1354,10 +1358,11 @@ function directApi(path, params) {
 
 // ---------------- Panel token（實驗 tab 認證，見 PanelAuth.java） ----------------
 //
-// 範圍：opt-in，預設關＝全開。啟用後整個面板上鎖（全部 /api/*＋/upload/*＋/stream/*＋/ws
-// 要帶 token；僅 auth/*＋靜態頁開放），其他 tab／Blockly 照跟同一粒 token（下面自動帶）。
+// 範圍：預設啟用（首次啟動自動生成，顯示在機身畫面）；停用＝全開。啟用後整個面板上鎖
+// （全部 /api/*＋/upload/*＋/stream/*＋/ws 要帶 token；僅 auth/*＋靜態頁開放），
+// 其他 tab／Blockly 照跟同一粒 token（下面自動帶）。
 // token 放 localStorage（同一個 browser＋同一個面板地址跨 tab 共用，關 browser 都還記得；
-// 要忘記就按「清除」）。
+// 要忘記就按「停用」）。
 // 傳遞：/api／upload 行 Authorization: Bearer header（不入 URL／logcat，見 panelAuthHeaders）；
 // 設不到 header 的 <img>／WebSocket 先用 ?panel_token= query fallback（見 withPanelToken）。
 // 舊 ?token= 別名已移除（同小智 ota token 撞名，見 PanelAuth），curl 請用 header 或 panel_token。
@@ -1419,12 +1424,21 @@ function panelAuthCardToggle() {
   if (hint) hint.style.display = on ? "none" : "block";
 }
 
+// 最近一次 auth/status 結果：決定動作掣係「啟用」定「解鎖」。
+let panelAuthEnabledState = false;
+
 function panelAuthElements() {
   return {
     status: document.getElementById("panelAuthStatus"),
     input: document.getElementById("panelAuthInput"),
     msg: document.getElementById("panelAuthMsg"),
+    action: document.getElementById("panelAuthAction"),
   };
+}
+
+/** 未啟用＝啟用；已啟用＝解鎖（同一個輸入框，見 panelAuthSet）。 */
+function panelAuthActionKey(enabled) {
+  return enabled ? "panel_auth_unlock_btn" : "panel_auth_enable_btn";
 }
 
 function panelAuthSay(key, extra) {
@@ -1438,7 +1452,18 @@ function panelAuthRefreshStatus() {
   if (!els.status) return;
   Alpha2Api.systemAuthStatus({}).then(function (res) {
     if (!res || !res.ok) return;
-    if (!res.enabled) {
+    panelAuthEnabledState = !!res.enabled;
+    if (els.action) {
+      els.action.setAttribute("data-i18n", panelAuthActionKey(panelAuthEnabledState));
+      els.action.textContent = t(panelAuthActionKey(panelAuthEnabledState));
+    }
+    if (els.input) {
+      const phKey = panelAuthEnabledState
+        ? "panel_auth_token_current_placeholder" : "panel_auth_token_placeholder";
+      els.input.setAttribute("data-i18n", phKey);
+      els.input.placeholder = t(phKey);
+    }
+    if (!panelAuthEnabledState) {
       els.status.textContent = t("panel_auth_disabled");
       return;
     }
@@ -1455,18 +1480,19 @@ function panelAuthRefreshStatus() {
   });
 }
 
-/** 儲存（單一輸入框，一兼三職）。
+/** 啟用（未啟用時）／解鎖（已啟用時）。單一輸入框：
  * 送 token（新值）＋current（舊值證明，同一個值）：未啟用→後端忽略 current，
  * 直接啟用；已啟用＋相符現有值→後端當無改（set 同值）回 ok，前端記住＝解鎖；
- * 已啟用＋打錯→401。要換新值就先清除再儲存。成功即記住（localStorage）。 */
+ * 已啟用＋打錯→401。要換新值就先停用再啟用。成功即記住（localStorage）。 */
 function panelAuthSet() {
   const els = panelAuthElements();
   const token = els.input ? (els.input.value || "").trim() : "";
   if (!token) { panelAuthSay("panel_auth_need_token"); return; }
+  const wasEnabled = panelAuthEnabledState;
   Alpha2Api.systemAuthSet({ token: token, current: token }).then(function (res) {
     if (res && res.ok) {
       panelTokenSet(token);
-      panelAuthSay("panel_auth_set_ok");
+      panelAuthSay(wasEnabled ? "panel_auth_unlock_ok" : "panel_auth_enable_ok");
     } else {
       panelAuthSay("panel_auth_failed_prefix", res && res.error ? res.error : "?");
     }
@@ -1474,7 +1500,8 @@ function panelAuthSet() {
   });
 }
 
-/** 清除（停用）。單一輸入框：打現有值證明擁有權（防同網段人亂清）。 */
+/** 停用（清除 token）。單一輸入框：打現有值證明擁有權（防同網段人亂停用）；
+ * 已解鎖時可留空（自動用記住的 token 做 Bearer 證明）。 */
 function panelAuthClear() {
   const els = panelAuthElements();
   const current = els.input ? (els.input.value || "").trim() : "";
@@ -1482,7 +1509,7 @@ function panelAuthClear() {
     if (res && res.ok) {
       panelTokenSet(null);
       if (els.input) els.input.value = "";
-      panelAuthSay("panel_auth_clear_ok");
+      panelAuthSay("panel_auth_disable_ok");
     } else {
       panelAuthSay("panel_auth_failed_prefix", res && res.error ? res.error : "?");
     }

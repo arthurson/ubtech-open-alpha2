@@ -1043,9 +1043,10 @@
        高風險操作（直寫 chest EEPROM），預設收起，要開關展開後顯示；
        每次入頁預設關閉，不記狀態（見 uuidCardToggle()）。 -->
   <div id="tab-advanced" class="tab-page">
-    <!-- 面板 token 認證（opt-in，預設關＝全開）：啟用後整個面板上鎖
-         （全部 /api/*＋/upload/* 要帶 token；僅 auth/*＋靜態頁＋ws/stream 開放），
-         其他分頁＋Blockly 照跟同一個 token（localStorage，同 browser 通用）。
+    <!-- 面板 token 認證（預設啟用：首次啟動由機械人自動生成並顯示在機身畫面）：
+         啟用後整個面板上鎖（全部 /api/*＋/upload/* 要帶 token；僅 auth/*＋靜態頁＋
+         ws/stream 開放），其他分頁＋Blockly 照跟同一個 token（localStorage，同 browser
+         通用）。按鈕語意：未啟用＝「啟用」，已啟用＝「解鎖」，關閉認證＝「停用」。
          後端見 PanelAuth＋system/auth/*，前端 token 自動帶見 app-core.js
          withPanelToken（blockly-page.js 獨立一份）。這張卡預設收起，用開關
          展開後顯示詳情（同 UUID 卡一致，每次入頁預設關閉，不記狀態）。 -->
@@ -1059,18 +1060,18 @@
           </span>
         </label>
       </div>
-      <p id="panelAuthDisabledHint" class="hint" data-i18n="panel_auth_card_disabled_hint">開啟先會顯示面板認證設定</p>
+      <p id="panelAuthDisabledHint" class="hint" data-i18n="panel_auth_card_disabled_hint">開啟只會展開設定，不代表啟用／停用</p>
       <div id="panelAuthCardBody" style="display:none">
-      <p class="hint" data-i18n="panel_auth_hint">啟用後，整個面板（全部 API＋上載，含其他分頁）要帶 token。預設啟用：首次啟動由機械人自動產生，顯示喺機身畫面。未啟用時輸入新值按儲存即啟用；已啟用時輸入現有值按儲存即解鎖（如需更換新值，先清除再儲存）。Token 記在瀏覽器，同一個面板地址跨 tab 共用。</p>
+      <p class="hint" data-i18n="panel_auth_hint">預設已啟用：首次啟動時機械人會自動產生 token 並顯示在機身畫面。啟用後，整個面板（全部 API＋上載，含其他分頁）都要帶 token。未啟用時輸入新 token 按「啟用」；已啟用時輸入目前 token 按「解鎖」；按「停用」即關閉認證（未解鎖就先輸入目前 token）。要換 token：先停用，再用新 token 啟用。Token 記在瀏覽器，同一個面板地址跨 tab 共用。</p>
       <div class="row">
         <span id="panelAuthStatus" class="hint">-</span>
       </div>
       <div class="row">
         <input id="panelAuthInput" type="password" autocomplete="off" style="flex:1"
-               placeholder="Token（8–64 字元英數/-/_）" data-i18n="panel_auth_token_placeholder" data-i18n-attr="placeholder">
+               placeholder="新 token（8–64 字元英數/-/_）" data-i18n="panel_auth_token_placeholder" data-i18n-attr="placeholder">
         <button class="secondary" onclick="togglePwVisibility('panelAuthInput', this)" title="顯示輸入" data-i18n="panel_pw_show" data-i18n-attr="title">👁️</button>
-        <button onclick="panelAuthSet()" data-i18n="panel_auth_set_btn">儲存</button>
-        <button class="danger-btn" onclick="panelAuthClear()" data-i18n="panel_auth_clear_btn">清除</button>
+        <button id="panelAuthAction" onclick="panelAuthSet()" data-i18n="panel_auth_enable_btn">啟用</button>
+        <button class="danger-btn" onclick="panelAuthClear()" data-i18n="panel_auth_clear_btn">停用</button>
       </div>
       <p id="panelAuthMsg" class="hint"></p>
       </div>
@@ -1548,7 +1549,7 @@
     <section class="card">
       <h3 data-i18n="about_version_heading">ℹ️ Open Alpha2 版本</h3>
       <div class="row">
-        <button onclick="window.open('https://github.com/arthurson/ubtech-open-alpha2/releases','_blank','noopener')" style="font-weight:700;">Open Alpha2 beta 8.2 ↗</button>
+        <button onclick="window.open('https://github.com/arthurson/ubtech-open-alpha2/releases','_blank','noopener')" style="font-weight:700;">Open Alpha2 beta 8.3 ↗</button>
       </div>
     </section>
   </div>

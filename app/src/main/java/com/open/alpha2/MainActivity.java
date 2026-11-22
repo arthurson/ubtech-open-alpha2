@@ -9,16 +9,23 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Build;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -53,6 +60,22 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
 
     static final String PREFS_NAME = "robotpanel";
 
+    // 機身狀態頁配色：同 web panel 嘅 style.css 一致（--bg/--card-bg/--border/--text/
+    // --muted/--accent/--err），令機身畫面同瀏覽器面板睇落係同一個產品。
+    private static final int UI_BG = 0xFFF5F7FA;
+    private static final int UI_CARD = 0xFFFFFFFF;
+    private static final int UI_BORDER = 0xFFE2E6EC;
+    private static final int UI_TEXT = 0xFF1C2126;
+    private static final int UI_MUTED = 0xFF6B7280;
+    private static final int UI_ACCENT = 0xFF3B7DFF;
+    private static final int UI_ACCENT_DOWN = 0xFF2563EB;
+    private static final int UI_ERR = 0xFFDC2626;
+    private static final int UI_ERR_BG = 0xFFFEF2F2;
+    private static final int UI_ERR_BORDER = 0xFFFCA5A5;
+    private static final int UI_TOKEN_BG = 0xFFF8FAFC;
+    /** URL 同 password 用同一個字級、同一種字體。 */
+    private static final float UI_VALUE_TEXT_SP = 32f;
+
     // (蹲下站起；停止語義不變，見 actionDirect.stopActionWithRecovery())。
 
     private RobotStub robot;
@@ -72,9 +95,14 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     // -- WiFi 指示燈 -----------------------------------------------
     private BroadcastReceiver panelUrlReceiver;
     private TextView panelLinkView;
-    /** 機身畫面顯示面板 token／停用警告（見 updatePanelAuthDisplay）。 */
+    /** 機身畫面顯示面板 token（大字）／停用警告（見 updatePanelAuthDisplay）。 */
     private TextView panelAuthView;
-    private int panelAuthDefaultColor;
+    /** token 下面嗰行停用警告（啟用時收起）。 */
+    private TextView panelAuthHintView;
+    /** 密碼卡嘅 Copy 掣（同網址卡同一個樣式）。 */
+    private Button panelAuthCopyBtn;
+    /** web panel 改／清 token 時即時更新機身畫面（onResume 註冊、onPause 取消）。 */
+    private SharedPreferences.OnSharedPreferenceChangeListener panelAuthPrefListener;
     private String currentPanelUrl;
     private final CameraController cameraController = new CameraController();
     private final AudioController audioController = new AudioController();
@@ -233,6 +261,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // 機身狀態頁用自訂卡片標題；唔要系統 ActionBar 再顯示一次 "Open Alpha2"
+        //（同下面個標題重複，亦同 web panel 嘅卡片式排版唔一致）。
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
         sInstance = this;
         // 開機企姿／START 握手完成之前，先擋住外部 servo 指令。
         // 必須喺 initRobot() 起 HTTP server 之前設 false（Activity 重建時
@@ -515,39 +546,60 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
 
         // The on-device screen does NOT mirror the HTML control panel via WebView -
         // that path had unreliable CSS/JS rendering on this device's WebView build (blank/
-        // broken layout, buttons stuck disabled). Per this class's original design intent,
-        // the HTML panel at http://<robot-ip>:8888/ is the actual UI; the on-device
-        // screen is just a native status readout telling the user where to point a browser.
+        // broken layout, buttons stuck disabled). The HTML panel at http://<robot-ip>:8888/
+        // is the actual UI; this screen is a native status readout telling the user where
+        // to point a browser and which panel password to type. It deliberately reuses the
+        // web panel's light card palette and typography (see style.css) so the two do not
+        // look like different products.
         // panelUrl/linkView 為成員變量並隨網絡變化自動更新
         currentPanelUrl = scheme + "://" + ip + ":" + HttpServer.PORT + "/";
-        int pad = (int) (16 * getResources().getDisplayMetrics().density);
+
+        if (Build.VERSION.SDK_INT >= 21) {
+            getWindow().setStatusBarColor(UI_ACCENT);
+        }
+
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setBackgroundColor(UI_BG);
+        scrollView.setFillViewport(true);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad, pad, pad, pad);
+        root.setBackgroundColor(UI_BG);
+        root.setPadding(dp(18), dp(18), dp(18), dp(24));
 
         TextView titleView = new TextView(this);
-        titleView.setTextSize(16);
-        titleView.setText("Open Alpha2\n\nOpen in a browser on the same network:");
+        titleView.setText("Open Alpha2");
+        titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
+        titleView.setTextColor(UI_TEXT);
+        titleView.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(titleView);
 
-        LinearLayout linkRow = new LinearLayout(this);
-        linkRow.setOrientation(LinearLayout.HORIZONTAL);
-        linkRow.setGravity(Gravity.CENTER_VERTICAL);
-        int topMargin = (int) (8 * getResources().getDisplayMetrics().density);
-        linkRow.setPadding(0, topMargin, 0, topMargin);
+        TextView subtitleView = new TextView(this);
+        subtitleView.setText("請以同一網絡上的瀏覽器開啟以下網址\n"
+                + "Open this URL in a browser on the same network");
+        subtitleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        subtitleView.setTextColor(UI_MUTED);
+        subtitleView.setLineSpacing(dp(2), 1f);
+        subtitleView.setPadding(0, dp(4), 0, dp(14));
+        root.addView(subtitleView);
+
+        // ---- 面板網址 card：label → 數值 → Copy 掣 ----
+        LinearLayout urlCard = makeCard();
+        urlCard.addView(makeCardLabel("面板網址 · PANEL URL"));
 
         panelLinkView = new TextView(this);
         panelLinkView.setText(currentPanelUrl);
-        panelLinkView.setTextSize(16);
-        panelLinkView.setTextColor(Color.parseColor("#3b7dff"));
-        panelLinkView.setPaintFlags(panelLinkView.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
-        LinearLayout.LayoutParams linkParams = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        panelLinkView.setLayoutParams(linkParams);
+        panelLinkView.setTextSize(TypedValue.COMPLEX_UNIT_SP, UI_VALUE_TEXT_SP);
+        panelLinkView.setTextColor(UI_ACCENT);
+        panelLinkView.setTypeface(Typeface.DEFAULT_BOLD);
+        panelLinkView.setGravity(Gravity.CENTER);
+        panelLinkView.setPadding(dp(12), dp(16), dp(12), dp(16));
+        panelLinkView.setBackground(makeRoundedRect(UI_TOKEN_BG, UI_BORDER, 10));
+        panelLinkView.setLineSpacing(dp(4), 1f);
+        urlCard.addView(panelLinkView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        Button copyBtn = new Button(this);
-        copyBtn.setText("Copy");
+        Button copyUrlBtn = makePrimaryButton("複製 / Copy");
         View.OnClickListener copyAction = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -555,27 +607,65 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                 if (clipboard != null) {
                     clipboard.setPrimaryClip(ClipData.newPlainText("Alpha2 panel URL", urlToCopy));
-                    Toast.makeText(MainActivity.this, "Copied: " + urlToCopy, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "已複製網址 / URL copied", Toast.LENGTH_SHORT).show();
                 }
             }
         };
         panelLinkView.setOnClickListener(copyAction);
-        copyBtn.setOnClickListener(copyAction);
+        copyUrlBtn.setOnClickListener(copyAction);
+        urlCard.addView(makeCardActionRow(copyUrlBtn));
+        root.addView(urlCard);
 
-        linkRow.addView(panelLinkView);
-        linkRow.addView(copyBtn);
-        root.addView(linkRow);
+        // ---- 面板密碼 card：同樣係 label → 數值 → Copy 掣，字體／字級同 URL 一致 ----
+        final View.OnClickListener copyTokenAction = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String token = PanelAuth.currentTokenOrEmpty(MainActivity.this);
+                if (token.isEmpty()) return;
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (clipboard != null) {
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Alpha2 panel password", token));
+                    Toast.makeText(MainActivity.this, "已複製面板密碼 / Panel password copied", Toast.LENGTH_SHORT).show();
+                }
+            }
+        };
+
+        LinearLayout authCard = makeCard();
+        authCard.addView(makeCardLabel("面板密碼 · PANEL PASSWORD"));
 
         panelAuthView = new TextView(this);
-        panelAuthView.setTextSize(16);
-        panelAuthDefaultColor = panelAuthView.getCurrentTextColor();
-        panelAuthView.setPadding(0, topMargin, 0, topMargin);
-        root.addView(panelAuthView);
+        panelAuthView.setGravity(Gravity.CENTER);
+        panelAuthView.setTextSize(TypedValue.COMPLEX_UNIT_SP, UI_VALUE_TEXT_SP);
+        panelAuthView.setTypeface(Typeface.DEFAULT_BOLD);
+        panelAuthView.setTextColor(UI_ACCENT);
+        panelAuthView.setPadding(dp(12), dp(16), dp(12), dp(16));
+        panelAuthView.setBackground(makeRoundedRect(UI_TOKEN_BG, UI_BORDER, 10));
+        panelAuthView.setLineSpacing(dp(4), 1f);
+        panelAuthView.setOnClickListener(copyTokenAction);
+        authCard.addView(panelAuthView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        panelAuthHintView = new TextView(this);
+        panelAuthHintView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        panelAuthHintView.setTextColor(UI_MUTED);
+        panelAuthHintView.setGravity(Gravity.CENTER);
+        panelAuthHintView.setPadding(0, dp(8), 0, 0);
+        panelAuthHintView.setLineSpacing(dp(2), 1f);
+        panelAuthHintView.setVisibility(View.GONE);
+        authCard.addView(panelAuthHintView);
+
+        panelAuthCopyBtn = makePrimaryButton("複製 / Copy");
+        panelAuthCopyBtn.setOnClickListener(copyTokenAction);
+        authCard.addView(makeCardActionRow(panelAuthCopyBtn));
+
+        root.addView(authCard);
         updatePanelAuthDisplay();
 
-        ScrollView scrollView = new ScrollView(this);
         scrollView.addView(root);
         setContentView(scrollView);
+        // Theme.Material.Light 預設有 ActionBar；requestWindowFeature(FEATURE_NO_TITLE)
+        // 只保證冇標題，唔一定拆走 ActionBar，所以再明確 hide 一次。
+        if (getActionBar() != null) getActionBar().hide();
 
         Log.i(TAG, "Open Alpha2 - reachable at " + scheme + "://" + ip
                 + ":" + HttpServer.PORT + "/ from any browser on the same network");
@@ -1123,6 +1213,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         }
         // 逐個 null-guard（onCreate 中途炸/早退再 destroy）。
         mainHandler.removeCallbacks(bootVoiceRunnable);
+        unregisterPanelAuthPrefListener();
         if (gestureCenter != null) gestureCenter.shutdown();
         if (gamepadCenter != null) gamepadCenter.shutdown();
         if (ubxPlayer != null) ubxPlayer.stopVoice();
@@ -1203,33 +1294,154 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     @Override
     protected void onResume() {
         super.onResume();
-        // token 可能喺面板「實驗」分頁被改／清除，返嚟機身畫面時刷新。
+        // web panel 改／清 token 會寫同一個 SharedPreferences：註冊監聽即時刷新。
+        registerPanelAuthPrefListener();
+        // Wi-Fi IP 可能喺 pause 期間轉咗而 receiver 冇補到，入返畫面再對一次。
+        updatePanelUrlDisplay();
         updatePanelAuthDisplay();
     }
 
-    /** 機身畫面顯示面板 token（撳一下複製）；停用時顯示紅色警告。必須喺 UI thread 呼叫。 */
+    @Override
+    protected void onPause() {
+        unregisterPanelAuthPrefListener();
+        super.onPause();
+    }
+
+    /** 機身畫面顯示面板 token（大字）；停用時顯示紅色 OFF 警告。必須喺 UI thread 呼叫。 */
     private void updatePanelAuthDisplay() {
         if (panelAuthView == null) return;
         final String token = PanelAuth.currentTokenOrEmpty(this);
-        if (token.isEmpty()) {
-            panelAuthView.setText("Panel password: OFF\nAnyone on this network can control the robot.");
-            panelAuthView.setTextColor(Color.parseColor("#d9534f"));
-            panelAuthView.setOnClickListener(null);
+        final boolean enabled = !token.isEmpty();
+
+        if (enabled) {
+            panelAuthView.setText(token);
+            panelAuthView.setTextSize(TypedValue.COMPLEX_UNIT_SP, UI_VALUE_TEXT_SP);
+            panelAuthView.setTextColor(UI_ACCENT);
+            panelAuthView.setBackground(makeRoundedRect(UI_TOKEN_BG, UI_BORDER, 10));
         } else {
-            panelAuthView.setText("Panel password (the browser asks for it once, UPPERCASE):\n"
-                    + token + "    (tap to copy)");
-            panelAuthView.setTextColor(panelAuthDefaultColor);
-            panelAuthView.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                    if (clipboard != null) {
-                        clipboard.setPrimaryClip(ClipData.newPlainText("Alpha2 panel password", token));
-                        Toast.makeText(MainActivity.this, "Copied panel password", Toast.LENGTH_SHORT).show();
-                    }
-                }
-            });
+            panelAuthView.setText("OFF");
+            panelAuthView.setTextSize(TypedValue.COMPLEX_UNIT_SP, UI_VALUE_TEXT_SP);
+            panelAuthView.setTextColor(UI_ERR);
+            panelAuthView.setBackground(makeRoundedRect(UI_ERR_BG, UI_ERR_BORDER, 10));
         }
+        panelAuthView.setClickable(enabled);
+
+        if (panelAuthHintView != null) {
+            panelAuthHintView.setVisibility(enabled ? View.GONE : View.VISIBLE);
+            if (!enabled) {
+                panelAuthHintView.setText("面板認證已停用 · Auth disabled\n"
+                        + "同網段任何人都可以控制機械人\n"
+                        + "Anyone on this network can control the robot");
+            }
+        }
+        if (panelAuthCopyBtn != null) {
+            panelAuthCopyBtn.setEnabled(enabled);
+            panelAuthCopyBtn.setAlpha(enabled ? 1f : 0.4f);
+        }
+    }
+
+    /** 監聽 panel token：web panel 嘅 set／clear 同進程寫 SharedPreferences，會即時通知。 */
+    private void registerPanelAuthPrefListener() {
+        if (panelAuthPrefListener != null) return;
+        panelAuthPrefListener = new SharedPreferences.OnSharedPreferenceChangeListener() {
+            @Override
+            public void onSharedPreferenceChanged(SharedPreferences prefs, String key) {
+                if (!PanelAuth.PREF_PANEL_TOKEN.equals(key)) return;
+                // SharedPreferences 通知可能喺 HTTP server thread；UI 更新要返主 thread。
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!isFinishing() && !isDestroyed()) updatePanelAuthDisplay();
+                    }
+                });
+            }
+        };
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .registerOnSharedPreferenceChangeListener(panelAuthPrefListener);
+    }
+
+    private void unregisterPanelAuthPrefListener() {
+        if (panelAuthPrefListener == null) return;
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .unregisterOnSharedPreferenceChangeListener(panelAuthPrefListener);
+        panelAuthPrefListener = null;
+    }
+
+    // -- 機身狀態頁 UI helper（同 web panel 卡片式配色一致） ----------------------
+
+    private int dp(float value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private GradientDrawable makeRoundedRect(int fillColor, int strokeColor, float radiusDp) {
+        GradientDrawable d = new GradientDrawable();
+        d.setShape(GradientDrawable.RECTANGLE);
+        d.setColor(fillColor);
+        d.setCornerRadius(dp(radiusDp));
+        if (strokeColor != 0) d.setStroke(dp(1), strokeColor);
+        return d;
+    }
+
+    private LinearLayout makeCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(makeRoundedRect(UI_CARD, UI_BORDER, 12));
+        card.setPadding(dp(16), dp(14), dp(16), dp(14));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(12);
+        card.setLayoutParams(lp);
+        return card;
+    }
+
+    private TextView makeCardLabel(String text) {
+        TextView label = new TextView(this);
+        label.setText(text);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        label.setTextColor(UI_MUTED);
+        label.setAllCaps(false);
+        label.setPadding(0, 0, 0, dp(6));
+        return label;
+    }
+
+    /** 卡片底部動作列：兩張卡嘅 Copy 掣都用同一個位、同一個樣式。 */
+    private LinearLayout makeCardActionRow(View action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.END);
+        row.setPadding(0, dp(10), 0, 0);
+        row.addView(action);
+        return row;
+    }
+
+    private Button makePrimaryButton(String text) {
+        Button b = new Button(this);
+        b.setText(text);
+        b.setAllCaps(false);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        b.setTextColor(Color.WHITE);
+        b.setTypeface(Typeface.DEFAULT_BOLD);
+        b.setBackground(primaryButtonBackground());
+        b.setMinWidth(0);
+        b.setMinHeight(0);
+        b.setMinimumWidth(0);
+        b.setMinimumHeight(0);
+        b.setPadding(dp(14), dp(8), dp(14), dp(8));
+        if (Build.VERSION.SDK_INT >= 21) {
+            // 用自訂 flat background，唔要 framework Button 嘅 tint／升降陰影，
+            // 否則同旁邊嘅卡片唔一致。
+            b.setBackgroundTintList(null);
+            b.setStateListAnimator(null);
+            b.setElevation(0f);
+        }
+        return b;
+    }
+
+    private Drawable primaryButtonBackground() {
+        StateListDrawable states = new StateListDrawable();
+        states.addState(new int[]{android.R.attr.state_pressed},
+                makeRoundedRect(UI_ACCENT_DOWN, 0, 8));
+        states.addState(new int[]{}, makeRoundedRect(UI_ACCENT, 0, 8));
+        return states;
     }
 
     private void updatePanelUrlDisplay() {
