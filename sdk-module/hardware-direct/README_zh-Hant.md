@@ -8,7 +8,9 @@ Android library 模組：連接應用程式與 Alpha2 胸板／頭板的硬件�
 
 ## 裝置接線
 
-- 胸板 MCU：`/dev/ttyS1`；頭板 MCU：`/dev/ttyS3`；波特率 115200。
+- 5-mic（`alpha2_10005`）：胸板 MCU `/dev/ttyS1`、頭板 MCU `/dev/ttyS3`。
+  2-mic（`alpha2_10002`）：`/dev/ttySAC0`／`/dev/ttySAC1`（fallback `ttyS1`／`ttyS3`）。
+  兩者波特率都係 115200；`HardwareVersion` 讀 `ro.hardware.version` 去揀。
 - 幀格式（編解碼在 `SerialFrameCodec`，尾 `ED`）：長式
   `F8 8F LEN ID INDEX CMD PARAM SUM ED`（校驗和計 LEN＋ID＋INDEX＋CMD＋PARAM）；
   舊短式 `F8 8F LEN CMD PARAM SUM ED` 照解（fallback）。
@@ -31,6 +33,8 @@ Android library 模組：連接應用程式與 Alpha2 胸板／頭板的硬件�
 - JNI 墊片：`jni/SerialPortFile`、`jni/LedControl`、
   `jni/headkey/HeadKeyMgr`。
 - `HeadKeyPoller`——頭鍵按下／長按／放手事件。
+- `ServoEnableMask`——逐舵機開關遮罩（預設 1–20 開、21–22 關）；關咗嘅舵機
+  控制層唔會再發 TX/RX。
 - `ServoPoseTracker`——追蹤 22 軸指令位姿（收舊 20 軸或全 22 軸幀都得；
   20 軸只更新前 20 軸）。
 - `HardwareDirectManager`／`LocalAlpha2Services`——單一入口，App 在後台
@@ -42,9 +46,15 @@ Android library 模組：連接應用程式與 Alpha2 胸板／頭板的硬件�
 - `UbxPlayer`——無漂移節拍播放，支援 0.5–2.0 倍速（舵機同 mp3 配樂速度一齊跟住變）；
   `stop()` 停喺末位姿唔郁（App 層截停會再播回位動作）。
 - `VoiceStream`——動作配樂，與同一時鐘鎖定。
+- `GaitProgram`／`GaitWalker`——按住行走引擎（起步幀、循環、站姿；速度 1.0–2.0x）。
+
+ONNX policy（`...hardware/policy`，實驗性）：`OnnxMlp`（純 Java MLP 推理）、
+`PolicyManifest`、`PolicyRunner`（安全包絡、lease）、`Alpha2PolicyIo`、
+`FallRecoveryDetector`。見 `docs/onnx-policy.md`。
 
 Native libs（`src/main/jniLibs/armeabi-v7a`）：`libhead_led.so`、
-`libhead_key_mgr.so`、`libserial_port.so`。
+`libhead_key_mgr.so`、`libserial_port.so`、`libserial_port_2mic.so`、
+`libNativeClassJni.so`（2-mic 頭頂鍵）。
 
 ## 接入
 

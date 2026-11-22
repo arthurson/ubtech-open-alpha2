@@ -4,9 +4,9 @@ info:
   description: '`com.open.alpha2` 裝在 UBTECH Alpha2 機械人 (Android 5.1.1, API 22) 上的本地控制面板
     HTTP + WebSocket API。
 
-    依 `MainActivity handleApi()` / `HttpServer` 反向生成，
+    與 `ApiDispatcher` / `XiaozhiBridge` / `MainActivity` 嘅 handler 同 `HttpServer` 逐條對照維護（`scripts/check-openapi-drift.py` 把關），
 
-    覆蓋機械人全部本機能力（原 17 個 AIDL interface 功能，現經直驅實現），加上獨立的 system/xiaozhi/stream/upload
+    覆蓋機械人全部本機能力（經 hardware-direct 直驅串口／JNI 實現），加上獨立的 system/xiaozhi/stream/upload
     命名空間。
 
     預設由 `HttpServer.PORT = 8888` 以純 HTTP 提供 (`http://<robot-ip>:8888/`)，同 WiFi 任何瀏覽器可直接訪問。

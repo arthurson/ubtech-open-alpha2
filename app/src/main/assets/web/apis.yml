@@ -1,6 +1,6 @@
 aid: ubtech-open-alpha2
 name: Open Alpha2
-description: UBTECH Alpha2 本地控制面板 HTTP+WebSocket API (port 8888)，基於 17 個 AIDL 的完整映射，含動作/舵機/語音/LED/相機/音樂/小智MCP。
+description: UBTECH Alpha2 本地控制面板 HTTP+WebSocket API (port 8888)，涵蓋動作/舵機/語音/LED/相機/音樂/小智MCP。
 url: https://github.com/arthurson/ubtech-open-alpha2
 image: https://avatars.githubusercontent.com/u/32864785
 tags:

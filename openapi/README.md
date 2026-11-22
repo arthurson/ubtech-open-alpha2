@@ -14,16 +14,16 @@ implementing the lightweight "1+2" simplification:
 - Example: old `Byte.parseByte(require(query,"id"))` → new `ApiValidator.requireIntRange(query,"id",1,22)`
 - Throws `IllegalArgumentException`, converted by the outer layer into `{ok:false,error:...}` — behaviour unchanged
 
-Usage: every `case` in `MainActivity.java`'s `handleApi()` / `handleSystemApi()` /
-`handleDirectApi()` / `handleXiaozhiApi()` (plus `handleUpload()` / `handleStream()`)
-must read parameters via `ApiValidator.*` — no changes to `HttpServer` needed
+Usage: every `case` in `ApiDispatcher.java`'s `handleApi()` / `handleSystemApi()` /
+`handleDirectApi()`, `XiaozhiBridge.handleXiaozhiApi()` (plus `MainActivity.handleUpload()` /
+`handleStream()`) must read parameters via `ApiValidator.*` — no changes to `HttpServer` needed
 (`IllegalArgumentException` is converted to `400 {ok:false,error}` by the outer layer).
 
 ## 2. Frontend typed JS client (auto-generated)
 
 - Source: `openapi/open-alpha2-openapi.yml`
 - Generator: `scripts/generate-api-client.py` → `app/src/main/assets/web/api-client.js`
-- Contents: 199 typed wrappers like `Alpha2Api.servoOne({id,angle,time})` with built-in
+- Contents: 228 typed wrappers like `Alpha2Api.servoOne({id,angle,time})` with built-in
   `assertEnum` / `assertRange` (mirroring the backend validation)
 - Routing: the caller is picked automatically from the OpenAPI path prefix — `api()`
   (`/api/alpha2/*`), `sysApi()` (`/api/system/*`), `directApi()` (`/api/direct/*`),
@@ -76,7 +76,7 @@ fails generation, forcing both sides to stay aligned.
 
 ```bash
 python -c "import yaml; yaml.safe_load(open('openapi/open-alpha2-openapi.yml'))"
-python scripts/generate-api-client.py  # 199 functions
+python scripts/generate-api-client.py  # 228 functions
 ```
 
 License: GPL-3.0-only (https://github.com/arthurson/ubtech-open-alpha2)
