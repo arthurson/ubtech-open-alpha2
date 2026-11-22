@@ -191,7 +191,7 @@ public final class ServoUpgrade {
                 "{\"state\":\"start\",\"progress\":0,\"id\":" + servoId + ",\"total\":" + TOTAL_PAGES + "}");
         Log.i(TAG, "servo upgrade start id=" + servoId + " len=" + fileLen);
         resetState();
-        try { Thread.sleep(400); } catch (InterruptedException ignored) {}
+        try { Thread.sleep(400); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         try {
             if (!chestReady()) { throw new Exception("chest not ready (pure-direct)"); }
             // 16 START（推斷格式 [id][len BE32]；拒收即停，乜都未燒）。
@@ -283,7 +283,7 @@ public final class ServoUpgrade {
         }
         if (!chestReady()) {
             resetState();
-            try { Thread.sleep(800); } catch (InterruptedException ignored) {}
+            try { Thread.sleep(800); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
             if (!chestReady()) return "chest not ready (pure-direct)";
         }
         upgradeInProgress = true;

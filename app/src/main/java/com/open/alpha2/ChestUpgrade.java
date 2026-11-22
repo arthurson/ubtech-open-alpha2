@@ -265,7 +265,7 @@ public final class ChestUpgrade {
         Log.i(TAG, "chest upgrade start len=" + fileLen + " pages=" + totalPages);
         // 起始前強制復位，避免重啟後首頁即 01 失敗（殘留升級態）
         resetState();
-        try { Thread.sleep(400); } catch (InterruptedException ignored) {}
+        try { Thread.sleep(400); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         try {
             // pure-direct: 升级经 /dev/ttyS1 直发 48/49/50。
             if (!chestReady()) { throw new Exception("chest not ready (pure-direct)"); }
@@ -374,11 +374,11 @@ public final class ChestUpgrade {
         // pure-direct: 就绪即直驱串口可用，不再 waitChestReady()/binder。
         if (!chestReady()) {
             resetState();
-            try { Thread.sleep(800); } catch (InterruptedException ignored) {}
+            try { Thread.sleep(800); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
             if (!chestReady()) return "chest not ready (pure-direct)";
         }
         if (chestUpgradeStatus.startsWith("failed")) {
-            try { Thread.sleep(800); } catch (InterruptedException ignored) {}
+            try { Thread.sleep(800); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
             resetState();
         }
         chestUpgradeInProgress = true;

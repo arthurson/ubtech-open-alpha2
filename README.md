@@ -99,7 +99,9 @@ actions), and backward walking.
 - Local intent matching in 10 languages (zh/en/es/fr/ja/de/it/pt/ko/ru): per
   language 86 action intents, 13 function intents (stop, volume, Bluetooth,
   Wi-Fi, photo, music) and 200 chat intents. Unmatched input gets a fallback
-  reply with a random motion. Test without a mic: `speech/semantic_simulate`.
+  reply with a random motion (toggle it off via the panel switch or
+  `speech/semantic_random_move/set?enabled=false`; explicitly requested actions
+  are unaffected). Test without a mic: `speech/semantic_simulate`.
 - Head pads: +/- change volume; both together stop everything.
 
 ## HTTP API

@@ -86,7 +86,9 @@ uninstall。App 開機自動啟動。出貨前行 `./gradlew clean assembleDebug
 - 回覆用 Android 系統 TTS。
 - 10 種語言本地意圖匹配（zh/en/es/fr/ja/de/it/pt/ko/ru）：每種語言 86 個動作意圖、
   13 個功能意圖（停止、音量、藍牙、Wi-Fi、拍照、音樂）同 200 個閒聊意圖。
-  冇匹配就回覆備用句並做隨機動作。冇咪高峰都可測試：`speech/semantic_simulate`。
+  冇匹配就回覆備用句並做隨機動作（閒聊後嘅隨機動作可經面板開關或
+  `speech/semantic_random_move/set?enabled=false` 閂咗，明講要做嘅動作唔受影響）。
+  冇咪高峰都可測試：`speech/semantic_simulate`。
 - 頭頂鍵：＋/－調音量；兩粒同時按＝全部停止。
 
 ## HTTP 接口
