@@ -455,64 +455,19 @@ public final class ActionsPackController {
         }
     }
 
-    /** zip-slip safe：entry 必須解到 dir 之內，否則跳過。 */
+    /**
+     * zip-slip safe＋壓縮炸彈／磁碟保護，見 SafeUnzip（entry 數／單檔／總量上限、可用空間保留量）。
+     * 超限會拋 IOException，走同一條失敗路徑（staging 先解再搬，所以唔會破壞現有動作包）。
+     */
     private void unzipToDir(File zip, File dir) throws java.io.IOException {
-        String dirCanon = dir.getCanonicalPath();
-        java.util.zip.ZipInputStream zis = null;
-        try {
-            zis = new java.util.zip.ZipInputStream(
-                    new java.io.BufferedInputStream(new java.io.FileInputStream(zip)));
-            java.util.zip.ZipEntry e;
-            byte[] buf = new byte[32768];
-            while ((e = zis.getNextEntry()) != null) {
-                synchronized (this) {
-                    if (packCancel) throw new java.io.IOException("cancelled");
-                }
-                String name = e.getName();
-                // 擋絕對路徑／.. 跳出（外來 zip 不信）。
-                File f = new File(dir, name);
-                String canon = f.getCanonicalPath();
-                if (!canon.equals(dirCanon) && !canon.startsWith(dirCanon + File.separator)) {
-                    try {
-                        zis.closeEntry();
-                    } catch (Throwable ignore) {
-                    }
-                    continue;
-                }
-                if (e.isDirectory()) {
-                    f.mkdirs();
-                } else {
-                    File parent = f.getParentFile();
-                    if (parent != null) parent.mkdirs();
-                    java.io.OutputStream o = null;
-                    try {
-                        o = new java.io.BufferedOutputStream(new java.io.FileOutputStream(f));
-                        int n;
-                        while ((n = zis.read(buf)) != -1) {
-                            synchronized (this) {
-                                if (packCancel) throw new java.io.IOException("cancelled");
-                            }
-                            o.write(buf, 0, n);
-                        }
-                        o.flush();
-                    } finally {
-                        try {
-                            if (o != null) o.close();
-                        } catch (Throwable ignore) {
-                        }
-                    }
-                }
-                try {
-                    zis.closeEntry();
-                } catch (Throwable ignore) {
+        SafeUnzip.extract(zip, dir, SafeUnzip.ACTIONS, new SafeUnzip.Cancel() {
+            @Override
+            public boolean isCancelled() {
+                synchronized (ActionsPackController.this) {
+                    return packCancel;
                 }
             }
-        } finally {
-            try {
-                if (zis != null) zis.close();
-            } catch (Throwable ignore) {
-            }
-        }
+        });
     }
 
     private static String escape(String s) {

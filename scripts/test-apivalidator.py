@@ -7,10 +7,11 @@ gradle cache 無 junit，不想整斷 `--offline` build。
 
 流程：找 android.jar (SDK) + javac → 編譯被測類 + Test
 → 跑 main() → 非零 exit = 失敗 (啱 CI 用)。
-跑九套：ApiValidatorTest (ApiValidator closure)＋IkPoseTest (IkPose，
+跑十四套：ApiValidatorTest (ApiValidator closure)＋IkPoseTest (IkPose，
 期望值由 app-ik.js 出)＋IkTransitionTest (Gamepad IK 均速過渡數學)＋
 ColorTrackTest (ColorTrackLogic 單檔)＋MusicEqTest (MusicEq 單檔)＋
-DownloadVerifyTest (DownloadVerify 單檔)＋IOUtilTest (IOUtil 單檔)＋PanelTokenTest (PanelToken＋ApiValidator closure)＋TlsPolicyTest (BundledCaSsl／SecureDownload，真 TLS 握手)；
+DownloadVerifyTest (DownloadVerify 單檔)＋IOUtilTest (IOUtil 單檔)＋PanelTokenTest (PanelToken＋ApiValidator closure)＋TlsPolicyTest (BundledCaSsl／SecureDownload，真 TLS 握手)＋
+SafeUnzipTest (解壓限制)＋AuthThrottleTest (token 猜測節流)；
 其中 ColorTrack／MusicEq／DownloadVerify／IOUtil 連 android.jar 都唔掂。
 
 用法: python scripts/test-apivalidator.py
@@ -298,9 +299,73 @@ def main() -> int:
     print(r.stdout, end="")
     if r.stderr:
         print(r.stderr, end="", file=sys.stderr)
+    if r.returncode != 0:
+        shutil.rmtree(tmp, ignore_errors=True)
+        print("FAIL")
+        return r.returncode
+
+    # 第八、九套：SafeUnzipTest (解壓限制／壓縮炸彈)、AuthThrottleTest (token 猜測節流)，
+    # 兩者都係純 java.*，單檔編譯，唔經 android stub。
+    for cls, files in (
+        ("SafeUnzipTest", ["SafeUnzip.java"]),
+        ("AuthThrottleTest", ["AuthThrottle.java"]),
+    ):
+        cmd = [javac, "-encoding", "UTF-8", "-nowarn", "-d", str(tmp)] \
+            + [str(src / f) for f in files] + [str(testdir / (cls + ".java"))]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            print(r.stdout)
+            print(r.stderr)
+            raise SystemExit("編譯失敗 (" + cls + ")")
+        r = subprocess.run([java, "-cp", str(tmp), "com.open.alpha2." + cls],
+                           capture_output=True, text=True)
+        print(r.stdout, end="")
+        if r.stderr:
+            print(r.stderr, end="", file=sys.stderr)
+        if r.returncode != 0:
+            shutil.rmtree(tmp, ignore_errors=True)
+            print("FAIL")
+            return r.returncode
+
+    # 第十二至十四套：app/src/e2e 整合測試（見 app/src/e2e/README.md）。
+    # 用最小 android stub（排喺正式 source 前面，唔帶真 android.jar：佢嘅方法一 call 就拋 "Stub!"）
+    # 編譯真正嘅 HttpServer／PanelAuth 等，對真 socket 跑：HttpServer 行為、記憶體洪水（-Xmx64m）、
+    # PanelAuth 預設啟用＋token 節流。每個測試獨立輸出目錄同 JVM，順序執行（HttpServer 固定 port）。
+    e2e = ROOT / "app" / "src" / "e2e"
+    sourcepath = os.pathsep.join([str(e2e / "stubs"), str(ROOT / "app" / "src" / "main" / "java")])
+    for cls, jvm_args in (
+        ("HttpServerE2ETest", []),
+        ("HttpFloodE2ETest", ["-Xmx64m"]),
+        ("PanelAuthE2ETest", []),
+    ):
+        out = tmp / ("e2e_" + cls)
+        out.mkdir()
+        cmd = [javac, "-proc:none", "-nowarn", "-implicit:class", "-encoding", "UTF-8",
+               "-d", str(out), "-sourcepath", sourcepath,
+               str(e2e / "java" / "com" / "open" / "alpha2" / (cls + ".java"))]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            print(r.stdout)
+            print(r.stderr)
+            raise SystemExit("編譯失敗 (" + cls + ")")
+        try:
+            r = subprocess.run([java] + jvm_args + ["-cp", str(out), "com.open.alpha2." + cls],
+                               capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            shutil.rmtree(tmp, ignore_errors=True)
+            print("FAIL (timeout) " + cls)
+            return 1
+        print(r.stdout, end="")
+        if r.stderr:
+            print(r.stderr, end="", file=sys.stderr)
+        if r.returncode != 0:
+            shutil.rmtree(tmp, ignore_errors=True)
+            print("FAIL")
+            return r.returncode
+
     shutil.rmtree(tmp, ignore_errors=True)
-    print("PASS" if r.returncode == 0 else "FAIL")
-    return r.returncode
+    print("PASS")
+    return 0
 
 
 if __name__ == "__main__":

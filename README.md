@@ -39,7 +39,10 @@ from the same port (see [HTTP API](#http-api)).
   headers may use `?panel_token=` instead. You can change or clear the token
   in the Experiment tab (`system/auth/*`, needs the current token); clearing
   it is remembered across restarts and the device screen then shows a red
-  "OFF" warning. Clearing app data generates a new token. The old `?token=`
+  "OFF" warning. Guessing is throttled per IP (after 10 *different* wrong tokens
+  that IP gets HTTP 429 + `Retry-After`, 5 s doubling up to 60 s; other IPs are
+  unaffected, and a browser that keeps re-sending one stale saved token is not
+  penalised, so it can still unlock with the real token). Clearing app data generates a new token. The old `?token=`
   alias is removed (it collided with the Xiaozhi OTA `token`).
 - 🔒 **Outbound TLS**: file downloads (actions pack, Google TTS APK, Vosk
   models) and the Xiaozhi vision upload use strict TLS — certificate chain
@@ -53,6 +56,9 @@ from the same port (see [HTTP API](#http-api)).
   (`XiaozhiTrustAllSsl`) — on an untrusted network, a man-in-the-middle could
   read the Xiaozhi token and voice. If a download fails with a certificate
   error, check the robot's clock first (a wrong date fails validation).
+  Downloaded zips (actions pack, Vosk models) are extracted with zip-slip
+  protection plus limits on entry count, per-file and total uncompressed size
+  and a free-space reserve, so a malicious or corrupt zip cannot fill the SD card.
 
 ## Build / install
 

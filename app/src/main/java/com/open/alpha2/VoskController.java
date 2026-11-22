@@ -1205,66 +1205,18 @@ public final class VoskController {
         }
     }
 
-    /** zip-slip safe：entry 必須解到 root 之內，否則跳過。 */
+    /**
+     * zip-slip safe＋壓縮炸彈／磁碟保護，見 SafeUnzip（entry 數／單檔／總量上限、可用空間保留量）。
+     * 超限或失敗會拋 IOException，由 runDownload 嘅 catch 走 cleanupNewDirs 清場。
+     */
     private void unzipToRoot(File zip, File root) throws java.io.IOException {
-        String rootCanon = root.getCanonicalPath();
-        java.util.zip.ZipInputStream zis = null;
-        try {
-            zis = new java.util.zip.ZipInputStream(
-                    new java.io.BufferedInputStream(new java.io.FileInputStream(zip)));
-            java.util.zip.ZipEntry e;
-            byte[] buf = new byte[32768];
-            while ((e = zis.getNextEntry()) != null) {
-                synchronized (this) {
-                    if (dlCancel) throw new java.io.IOException("cancelled");
-                }
-                String name = e.getName();
-                // 擋絕對路徑／.. 跳出（官方包不會有，但不信外來 zip）。
-                File f = new File(root, name);
-                String canon = f.getCanonicalPath();
-                if (!canon.equals(rootCanon) && !canon.startsWith(rootCanon + File.separator)) {
-                    try {
-                        zis.closeEntry();
-                    } catch (Throwable ignore) {
-                    }
-                    continue;
-                }
-                if (e.isDirectory()) {
-                    f.mkdirs();
-                } else {
-                    File parent = f.getParentFile();
-                    if (parent != null) parent.mkdirs();
-                    java.io.OutputStream o = null;
-                    try {
-                        o = new java.io.BufferedOutputStream(new java.io.FileOutputStream(f));
-                        int n;
-                        while ((n = zis.read(buf)) != -1) {
-                            synchronized (this) {
-                                if (dlCancel) throw new java.io.IOException("cancelled");
-                            }
-                            o.write(buf, 0, n);
-                        }
-                        o.flush();
-                    } finally {
-                        try {
-                            if (o != null) o.close();
-                        } catch (Throwable ignore) {
-                        }
-                    }
-                }
-                try {
-                    zis.closeEntry();
-                } catch (Throwable ignore) {
+        SafeUnzip.extract(zip, root, SafeUnzip.VOSK, new SafeUnzip.Cancel() {
+            @Override
+            public boolean isCancelled() {
+                synchronized (VoskController.this) {
+                    return dlCancel;
                 }
             }
-        } finally {
-            try {
-                if (zis != null) zis.close();
-            } catch (Throwable ignore) {
-            }
-        }
+        });
     }
 }
-
-
-

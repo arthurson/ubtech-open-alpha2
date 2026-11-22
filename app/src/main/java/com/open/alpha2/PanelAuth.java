@@ -68,6 +68,20 @@ public final class PanelAuth {
     /** Bearer 前綴（大小寫不計，後面一格空格）。 */
     public static final String BEARER_PREFIX = "bearer ";
 
+    /** 錯誤 token 猜測節流（按來源 IP，見 AuthThrottle）。非 final：測試可換成假時鐘版本。 */
+    static volatile AuthThrottle throttle = new AuthThrottle(AuthThrottle.SYSTEM_CLOCK);
+
+    private static String ipOf(Map<String, String> headers) {
+        String v = headers == null ? null : headers.get(HttpServer.HDR_REMOTE_ADDR);
+        return v == null ? "" : v;
+    }
+
+    /** 該來源被鎖就回 429（唔驗證 token），否則 null。 */
+    private static HttpServer.ApiResponse lockedResponse(Map<String, String> headers) {
+        long ms = throttle.lockedForMs(ipOf(headers));
+        return ms > 0 ? HttpServer.ApiResponse.tooManyRequests(ms) : null;
+    }
+
     private static SharedPreferences prefs(Context ctx) {
         return ctx.getApplicationContext().getSharedPreferences(MainActivity.PREFS_NAME, Context.MODE_PRIVATE);
     }
@@ -193,16 +207,25 @@ public final class PanelAuth {
         if (stored == null || stored.isEmpty()) return null;
         String bearer = bearerFromHeaders(headers);
         String q = candidateFromQuery(query);
-        if (bearer != null && q != null && !constantEquals(bearer, q)) {
-            return HttpServer.ApiResponse.unauthorized("invalid panel token");
-        }
         String cand = bearer != null ? bearer : q;
         if (cand == null) {
+            // 冇帶 token 唔係猜測：唔罰、唔查鎖（正常用戶未輸入 token 前嘅請求會落呢度）。
             return HttpServer.ApiResponse.unauthorized("panel token required");
         }
-        if (!constantEquals(cand, stored)) {
+        // 被鎖嘅來源連正確 token 都唔驗證，否則攻擊者鎖住期間仍然可以繼續猜。
+        HttpServer.ApiResponse locked = lockedResponse(headers);
+        if (locked != null) return locked;
+        String ip = ipOf(headers);
+        if (bearer != null && q != null && !constantEquals(bearer, q)) {
+            throttle.recordFailure(ip, bearer);
+            throttle.recordFailure(ip, q);
             return HttpServer.ApiResponse.unauthorized("invalid panel token");
         }
+        if (!constantEquals(cand, stored)) {
+            throttle.recordFailure(ip, cand);
+            return HttpServer.ApiResponse.unauthorized("invalid panel token");
+        }
+        throttle.recordSuccess(ip);
         return null;
     }
 
@@ -216,9 +239,18 @@ public final class PanelAuth {
             Map<String, String> headers) {
         if (stored == null || stored.isEmpty()) return false;
         String cur = query != null ? trimOrNull(query.get(QUERY_CURRENT)) : null;
-        if (cur != null && constantEquals(cur, stored)) return true;
         String bearer = bearerFromHeaders(headers);
-        return bearer != null && constantEquals(bearer, stored);
+        if (cur == null && bearer == null) return false; // 冇帶任何 token：唔係猜測，唔罰
+        boolean ok = (cur != null && constantEquals(cur, stored))
+                || (bearer != null && constantEquals(bearer, stored));
+        String ip = ipOf(headers);
+        if (ok) {
+            throttle.recordSuccess(ip);
+        } else {
+            if (cur != null) throttle.recordFailure(ip, cur);
+            if (bearer != null) throttle.recordFailure(ip, bearer);
+        }
+        return ok;
     }
 
     // -- system/auth/* endpoints（ApiDispatcher.handleSystemApi 轉調，永遠開放） --
@@ -249,6 +281,8 @@ public final class PanelAuth {
             stored = "";
         }
         if (stored != null && !stored.isEmpty()) {
+            HttpServer.ApiResponse locked = lockedResponse(headers);
+            if (locked != null) return locked;
             if (!currentMatches(stored, query, headers)) {
                 return HttpServer.ApiResponse.unauthorized("current panel token required to change it");
             }
@@ -282,6 +316,8 @@ public final class PanelAuth {
         if (stored == null || stored.isEmpty()) {
             return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":false}");
         }
+        HttpServer.ApiResponse locked = lockedResponse(headers);
+        if (locked != null) return locked;
         if (!currentMatches(stored, query, headers)) {
             return HttpServer.ApiResponse.unauthorized("current panel token required to clear it");
         }
@@ -318,7 +354,13 @@ public final class PanelAuth {
             String bearer = bearerFromHeaders(headers);
             String q = candidateFromQuery(query);
             String cand = bearer != null ? bearer : q;
-            valid = cand != null && constantEquals(cand, stored);
+            if (cand != null) {
+                HttpServer.ApiResponse locked = lockedResponse(headers);
+                if (locked != null) return locked;
+                valid = constantEquals(cand, stored);
+                if (valid) throttle.recordSuccess(ipOf(headers));
+                else throttle.recordFailure(ipOf(headers), cand);
+            }
         }
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + ",\"valid\":" + valid + "}");
     }

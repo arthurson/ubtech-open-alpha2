@@ -136,6 +136,15 @@ public class HttpServer implements Runnable {
         /** 面板 token 閘口用（見 PanelAuth）：未帶／帶錯 token 即 401，不是 400/500。
          *  附 WWW-Authenticate: Bearer realm="panel"（標準 401 語義，curl／Swagger
          *  先至知要帶 Authorization: Bearer）。 */
+        /** 認證錯誤太多被節流（見 AuthThrottle）：429＋Retry-After（秒，向上取整）。 */
+        public static ApiResponse tooManyRequests(long retryAfterMs) {
+            long secs = Math.max(1, (retryAfterMs + 999) / 1000);
+            Map<String, String> h = new HashMap<String, String>();
+            h.put("Retry-After", String.valueOf(secs));
+            return new ApiResponse(429, "application/json; charset=utf-8",
+                    JsonUtil.okFalse("too many failed attempts, retry in " + secs + "s"), h);
+        }
+
         public static ApiResponse unauthorized(String message) {
             Map<String, String> h = new HashMap<String, String>();
             h.put("WWW-Authenticate", "Bearer realm=\"panel\"");
@@ -155,6 +164,17 @@ public class HttpServer implements Runnable {
      * 超出就直接關閉新連線。
      */
     static final int MAX_CONCURRENT_CLIENTS = 128;
+
+    /** 伺服器注入嘅內部 header（小寫 key）：連線嘅真實來源 IP。客戶端送嘅同名 header 會被覆蓋。 */
+    public static final String HDR_REMOTE_ADDR = "x-remote-addr";
+
+    private static String remoteIp(Socket socket) {
+        java.net.InetAddress a = socket.getInetAddress();
+        if (a == null) return "";
+        String h = a.getHostAddress();
+        int z = h.indexOf('%'); // IPv6 zone id
+        return z >= 0 ? h.substring(0, z) : h;
+    }
     private final java.util.concurrent.atomic.AtomicInteger activeClients =
             new java.util.concurrent.atomic.AtomicInteger();
     private volatile ServerSocket serverSocket;
@@ -318,6 +338,9 @@ public class HttpServer implements Runnable {
                         line.substring(idx + 1).trim());
             }
         }
+
+        // 認證節流（AuthThrottle）用：來源 IP 一律以 socket 為準，覆寫客戶端自己帶嚟嘅同名 header（防偽造）。
+        headers.put(HDR_REMOTE_ADDR, remoteIp(socket));
 
         // The client can explicitly ask this particular connection to close after this
         // response (still fully valid HTTP/1.1); honour that instead of always looping.
@@ -544,6 +567,7 @@ public class HttpServer implements Runnable {
         STATUS_TEXT.put(200, "OK");
         STATUS_TEXT.put(400, "Bad Request");
         STATUS_TEXT.put(401, "Unauthorized");
+        STATUS_TEXT.put(429, "Too Many Requests");
         STATUS_TEXT.put(404, "Not Found");
         STATUS_TEXT.put(500, "Internal Server Error");
         STATUS_TEXT.put(503, "Service Unavailable");

@@ -854,8 +854,8 @@ const I18N = {
   // -- 實驗 tab 面板 token 認證（見 PanelAuth.java，後端 system/auth/*） --
   panel_auth_heading:    { zh: "🔐 面板認證",      en: "🔐 Panel Token" },
   panel_auth_card_disabled_hint: { zh: "開啟先會顯示面板認證設定", en: "Turn on to show panel token settings" },
-  panel_auth_hint:       { zh: "啟用後，整個面板（全部 API＋上載，含其他分頁）要帶 token。預設關閉（全開）。未啟用時輸入新值按儲存即啟用；已啟用時輸入現有值按儲存即解鎖（如需更換新值，先清除再儲存）。Token 記在瀏覽器，同一個面板地址跨 tab 共用。",
-                           en: "When enabled, the whole panel (all APIs + uploads, incl. other tabs) needs the token. Off by default (fully open). Type a new value + Save to enable; type the current value + Save to unlock (to change it, Clear first then Save). Stored in this browser, shared across tabs of the same panel URL." },
+  panel_auth_hint:       { zh: "啟用後，整個面板（全部 API＋上載，含其他分頁）要帶 token。預設啟用：首次啟動由機械人自動產生，顯示喺機身畫面。未啟用時輸入新值按儲存即啟用；已啟用時輸入現有值按儲存即解鎖（如需更換新值，先清除再儲存）。Token 記在瀏覽器，同一個面板地址跨 tab 共用。",
+                           en: "When enabled, the whole panel (all APIs + uploads, incl. other tabs) needs the token. On by default: the robot generates one at first launch and shows it on its own screen. Type a new value + Save to enable; type the current value + Save to unlock (to change it, Clear first then Save). Stored in this browser, shared across tabs of the same panel URL." },
   panel_auth_token_placeholder: { zh: "Token（8–64 字元英數/-/_）", en: "Token (8–64 chars A-Za-z0-9/-/_)" },
   panel_auth_set_btn:    { zh: "儲存",             en: "Save" },
   panel_auth_clear_btn:  { zh: "清除",             en: "Clear" },
@@ -1545,6 +1545,9 @@ function panelLockUnlock() {
     if (res && res.ok) {
       panelTokenSet(token);
       location.reload();
+    } else if (res && res.error && /too many/i.test(res.error)) {
+      // 被節流（HTTP 429）：照實顯示要等幾耐，唔好誤報「Token 不正確」。
+      say("panel_auth_failed_prefix", res.error);
     } else {
       say("panel_lock_fail");
     }

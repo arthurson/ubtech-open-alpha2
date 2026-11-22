@@ -35,7 +35,9 @@ spec 及 Swagger UI（見 [HTTP 接口](#http-接口)）。
   客戶端必須帶 header。設不到 header 的 `<img>`／WebSocket 可用
   `?panel_token=` 代替。可在實驗分頁更改或清除口令（`system/auth/*`，需要
   目前口令）；清除後重啟不會自動重新啟用，機身畫面會顯示紅色「OFF」警告。
-  清除 App 資料會重新產生口令。舊 `?token=` 別名已移除（同小智 OTA `token` 撞名）。
+  口令猜測按 IP 節流（同一 IP 輸入 10 個「不同」嘅錯誤口令後回 HTTP
+  429＋`Retry-After`，5 秒起倍增至最多 60 秒；其他 IP 不受影響；瀏覽器重複送出
+  同一個舊口令唔會被罰，仍然可以用正確口令解鎖）。清除 App 資料會重新產生口令。舊 `?token=` 別名已移除（同小智 OTA `token` 撞名）。
 - 🔒 **對外 TLS**：檔案下載（動作包、Google TTS APK、Vosk 模型）同小智 vision 上傳
   都使用嚴格 TLS——憑證鏈**及** hostname 都會驗證，信任錨為系統 CA 加 App 內建嘅
   Mozilla CA 清單（`app/src/main/resources/com/open/alpha2/cacert.pem`，用
@@ -44,6 +46,8 @@ spec 及 Swagger UI（見 [HTTP 接口](#http-接口)）。
   另外會對照 App 內寫死嘅 SHA-256。**已知缺口**：小智雲端 OTA 同 WebSocket 連線
   仍然唔驗證憑證（`XiaozhiTrustAllSsl`）——喺不可信網絡，中間人可以讀取小智
   token 同語音。如果下載出現憑證錯誤，請先檢查機械人嘅系統時間（日期錯會令驗證失敗）。
+  下載嘅 zip（動作包、Vosk 模型）解壓時除咗防 zip-slip，亦限制 entry 數量、單檔及
+  解壓後總大小，並保留可用空間，惡意或損壞嘅 zip 唔會寫滿 SD 卡。
 
 ## 編譯／安裝
 
