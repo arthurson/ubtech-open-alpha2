@@ -52,6 +52,41 @@ public final class SemanticCenter {
     public void setCameraApi(CameraApi c) { cameraApi = c; }
     public void setSpeechStopHost(GestureCenter.Host h) { speechStopHost = h; }
 
+    /** 離線對話「隨機動作」開關 prefs key（預設開＝同以前行為一致）。
+     *  管邊樣：type=CHAT 嘅閒聊／聽唔明亂答（問法庫入面 actionId=__RANDOM__ 嗰批）
+     *  答完（TTS 後 200ms）會唔會順便做個隨機動作。用戶明講要做嘅動作
+     *  （ACTION 類／分類隨機「跳舞」）同 FUNCTION 類唔受影響，照做。
+     *  對應小智 tab 嘅 xiaozhi/filler_action 開關（見 XiaozhiConfig.fillerActionGet）。 */
+    private static final String PREF_SEMANTIC_RANDOM_MOVE_ENABLED = "semantic_random_move_enabled";
+
+    /** prefs 後補（SemanticCenter 建構時無 Context，同上面 collaborator 一樣經 setter）。
+     *  未補就當預設開。 */
+    private volatile android.content.SharedPreferences prefs;
+
+    public void setPrefs(android.content.SharedPreferences p) { prefs = p; }
+
+    public boolean isRandomMoveEnabled() {
+        try {
+            android.content.SharedPreferences p = prefs;
+            return p == null || p.getBoolean(PREF_SEMANTIC_RANDOM_MOVE_ENABLED, true);
+        } catch (Throwable e) {
+            return true;
+        }
+    }
+
+    public HttpServer.ApiResponse randomMoveGet() {
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + isRandomMoveEnabled() + "}");
+    }
+
+    public HttpServer.ApiResponse randomMoveSet(Map<String, String> query) {
+        boolean enabled = ApiValidator.requireBoolean(query, "enabled");
+        android.content.SharedPreferences p = prefs;
+        if (p != null) {
+            p.edit().putBoolean(PREF_SEMANTIC_RANDOM_MOVE_ENABLED, enabled).apply();
+        }
+        return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + "}");
+    }
+
     /** 對話語言（zh/en/es/fr/ja/de/it/pt/ko/ru；null＝未設）：vosk/load 換 model 當時經 setDialogueLang()
      *  傳入。vosk 什麼話就對什麼 matcher；十個以外（setDialogueLang 唔收，
      *  入唔到 dialogueLang）一律行英文兜底（下面 "zh".equals 以外就係呢條規則）。 */
@@ -241,7 +276,14 @@ public final class SemanticCenter {
                     // TFBOY 這類 operation 在原廠問法裡沒有固定動作 - 沿用
                     // triggerRandomFillerAction() 已有的隨機動作池 (203 個動作裡
                     // 「隨機短/長」開頭的那批, 專門用來做這種「動一下讓它生動一點」的效果)。
-                    actionId = actionDirect.resolveRandomActionId();
+                    // CHAT 閒聊／聽唔明亂答帶嘅隨機動作受「隨機動作」開關管：
+                    // 關咗就淨係 TTS（actionId=null，下面照講嘢唔郁）。
+                    // 非 CHAT（例如 ACTION 類個別 __RANDOM__）係用戶明講要做嘅，唔受開關影響。
+                    if ("CHAT".equals(finalResult.type) && !isRandomMoveEnabled()) {
+                        actionId = null;
+                    } else {
+                        actionId = actionDirect.resolveRandomActionId();
+                    }
                 }
                 // 有聲動作：成句 TTS 對白唔講（免同動作本身嘅音效搶喇叭），
                 // 直接播動作就算。注意 simulate response 照回 answer 文字

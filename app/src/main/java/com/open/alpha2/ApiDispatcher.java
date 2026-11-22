@@ -424,6 +424,11 @@ public final class ApiDispatcher {
             // -- 語義模擬 (body 在 SemanticCenter；薄 delegate，不要在這裡加 logic) --
             case "speech/semantic_simulate":
                 return semanticCenter.semanticSimulateResponse(query);
+            // 離線對話「隨機動作」開關（body 在 SemanticCenter；薄 delegate）。
+            case "speech/semantic_random_move/get":
+                return semanticCenter.randomMoveGet();
+            case "speech/semantic_random_move/set":
+                return semanticCenter.randomMoveSet(query);
             // 已移除（死 binder）：speech/stop_inject。
             // 已移除（死 binder）：speech/init_grammar、speech/start_grammar、
             // speech/stop_grammar 三個 endpoint（機身已無 iFlytek 引擎，

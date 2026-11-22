@@ -334,6 +334,7 @@ const I18N = {
   // 對話界面 (全抄小智 tab 做法, 見 app-speech.js 個
   // appendSpeechChatLine()/sendSpeechChatText() 頂部 comment)。
   speech_chat_heading:        { zh: "💬 對話界面",   en: "💬 Conversation" },
+  speech_random_move_heading: { zh: "💃 隨機動作",   en: "💃 Random move" },
   speech_chat_text_placeholder: { zh: "打字模擬 ASR 辨識結果…", en: "Type to simulate an ASR result…" },
   speech_chat_send_btn:       { zh: "送出",           en: "Send" },
   speech_chat_clear_btn:      { zh: "清空",           en: "Clear" },
@@ -935,6 +936,8 @@ const I18N = {
   tip_mouth:             { zh: "咀",               en: "Mouth" },
   tip_joystick_auto_return: { zh: "自動回中",       en: "Auto-centre" },
   tip_robot_video:       { zh: "機端錄影 mp4",      en: "On-robot recording (mp4)" },
+  tip_speech_random_move: { zh: "開啟的話，離線對話閒聊答完機械人會做一個隨機動作（明講要做的動作不受影響）",
+                            en: "When on, the robot performs a random action after offline chit-chat replies (explicitly requested actions are unaffected)" },
   tip_xiaozhi_random_action: { zh: "開啟的話，小智每次開口講嘢機械人會做一個隨機動作",
                                en: "When on, the robot performs a random action each time Xiaozhi speaks" },
   tip_music_filler:      { zh: "開啟的話，播歌/播電台期間機械人會不定時自己動，停止才停",

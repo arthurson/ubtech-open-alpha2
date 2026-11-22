@@ -464,6 +464,17 @@
         <button class="secondary" onclick="clearSpeechChatLog()" data-i18n="speech_chat_clear_btn">清空</button>
         <button class="danger-btn" onclick="xiaozhiStopAll()" data-i18n="xiaozhi_stop_all_btn">⏹ 全部停止</button>
       </div>
+      <!-- 離線對話隨機動作開關 (speech/semantic_random_move/get|set)：同小智 tab 嗰個一樣。
+           關咗閒聊／聽唔明亂答淨係講嘢唔郁；明講要做嘅動作（例如「跳舞」）照做。 -->
+      <div class="row" style="align-items:center">
+        <label class="switch-label" title="開啟的話，離線對話閒聊答完機械人會做一個隨機動作" data-i18n-title="tip_speech_random_move">
+          <span data-i18n="speech_random_move_heading">💃 隨機動作</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="speechRandomMoveToggle" checked onchange="setSpeechRandomMove(this.checked)">
+            <span class="toggle-track"></span>
+          </span>
+        </label>
+      </div>
     </section>
 
     <!-- Vosk 離線 ASR 卡：Model 放 sdcard 頂層 vosk-* 目錄（有 am/final.mdl 即算），

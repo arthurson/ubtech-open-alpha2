@@ -993,6 +993,16 @@ const Alpha2Api = (function() {
     return api('speech/offline_auto_switch', params);
   }
 
+  function speechSemanticRandomMoveGet(params) {
+    // 查詢離線對話隨機動作開關 (offline chat random move, default true)
+    return api('speech/semantic_random_move/get', params);
+  }
+
+  function speechSemanticRandomMoveSet(params) {
+    // 設定離線對話隨機動作開關 (offline chat random move, persistent)
+    return api('speech/semantic_random_move/set', params);
+  }
+
   function speechSemanticSimulate(params) {
     // 本地語意配對模擬（純本地 1000 問法配對，不經任何引擎）
     return api('speech/semantic_simulate', params);
@@ -1487,6 +1497,8 @@ const Alpha2Api = (function() {
     speechCurTtsVoice,
     speechGetDefaultGrammar,
     speechOfflineAutoSwitch,
+    speechSemanticRandomMoveGet,
+    speechSemanticRandomMoveSet,
     speechSemanticSimulate,
     speechSetMic,
     speechSetMicKeepHeld,

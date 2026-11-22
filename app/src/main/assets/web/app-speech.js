@@ -93,6 +93,7 @@ function setTtsEngine(engine) {
   loadAndroidTtsLanguages();
   loadTtsFollowVosk();
   loadTtsProsody();
+  loadSpeechRandomMove();
 }
 
 /** 選 Android TTS 引擎 (speech/tts engine=android 分支實際說話用那個系統
@@ -318,6 +319,23 @@ let currentTtsFollowVosk = false;
 let ttsFollowLastVoskModel = null;
 // 最近一次跟隨現狀（語言切換當時重畫狀態行用，唔使再問後端）。
 let ttsFollowLastStatus = null;
+
+/** 離線對話隨機動作開關 (speech/semantic_random_move/get|set)，預設開。 */
+function loadSpeechRandomMove() {
+  return Alpha2Api.speechSemanticRandomMoveGet().then(function (res) {
+    const box = document.getElementById("speechRandomMoveToggle");
+    if (box && res && res.ok) box.checked = !!res.enabled;
+  });
+}
+
+function setSpeechRandomMove(enabled) {
+  return Alpha2Api.speechSemanticRandomMoveSet({ enabled: enabled ? "true" : "false" }).then(function (res) {
+    const box = document.getElementById("speechRandomMoveToggle");
+    // 失敗就讀返後端真實狀態，唔好令個掣同後端唔一致。
+    if (box && res && res.ok) box.checked = !!res.enabled;
+    else loadSpeechRandomMove();
+  });
+}
 
 function loadTtsFollowVosk() {
   ttsFollowVoskSyncVisibility();

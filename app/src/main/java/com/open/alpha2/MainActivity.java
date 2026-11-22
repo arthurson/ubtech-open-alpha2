@@ -426,6 +426,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         semanticCenter.setDeviceStatus(deviceStatus);
         semanticCenter.setCameraApi(cameraApi);
         semanticCenter.setSpeechStopHost(this);
+        semanticCenter.setPrefs(getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE));
         // (sonarCenter 已在上面 xiaozhiBridge 之前建好；
         // dispatcher 放最尾。)
         // BT 手柄／鍵盤包（要 actionDirect＋ubxApi＋deviceStatus，A 端物理鍵＋B 端
