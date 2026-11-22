@@ -81,9 +81,11 @@ public final class SemanticCenter {
     public HttpServer.ApiResponse randomMoveSet(Map<String, String> query) {
         boolean enabled = ApiValidator.requireBoolean(query, "enabled");
         android.content.SharedPreferences p = prefs;
-        if (p != null) {
-            p.edit().putBoolean(PREF_SEMANTIC_RANDOM_MOVE_ENABLED, enabled).apply();
+        if (p == null) {
+            // setPrefs 未補（建構次序問題）：明確報錯，唔好回 ok 但冇寫入。
+            return HttpServer.ApiResponse.error("semantic prefs not ready");
         }
+        p.edit().putBoolean(PREF_SEMANTIC_RANDOM_MOVE_ENABLED, enabled).apply();
         return HttpServer.ApiResponse.ok("{\"ok\":true,\"enabled\":" + enabled + "}");
     }
 
@@ -279,7 +281,7 @@ public final class SemanticCenter {
                     // CHAT 閒聊／聽唔明亂答帶嘅隨機動作受「隨機動作」開關管：
                     // 關咗就淨係 TTS（actionId=null，下面照講嘢唔郁）。
                     // 非 CHAT（例如 ACTION 類個別 __RANDOM__）係用戶明講要做嘅，唔受開關影響。
-                    if ("CHAT".equals(finalResult.type) && !isRandomMoveEnabled()) {
+                    if (RandomMovePolicy.suppress(finalResult.type, isRandomMoveEnabled())) {
                         actionId = null;
                     } else {
                         actionId = actionDirect.resolveRandomActionId();

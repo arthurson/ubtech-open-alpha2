@@ -9,6 +9,24 @@
 </head>
 <body class="blockly-body">
 
+<!-- 面板鎖屏浮層（同 index.html 一樣）：auth 啟用＋未解鎖時由 panelLockCheck()（blockly-page.js）
+     打開（加 .open），蓋住整個積木頁不顯示內容；解鎖成功即記住 token（localStorage "panel_token"，
+     同 index.html 共用）＋reload。停用認證時永遠不出現。樣式沿用 style.css #panelLockOverlay。 -->
+<div id="panelLockOverlay">
+  <div class="panel-lock-card">
+    <h2>🔐 面板已鎖定 / Panel Locked</h2>
+    <p class="hint">認證已啟用，輸入 Token 解鎖先會顯示面板。<br>Auth is enabled — enter the token to show the panel.</p>
+    <div class="row">
+      <input id="panelLockInput" type="password" autocomplete="off" style="flex:1"
+             placeholder="Token（8–64 字元英數/-/_）/ Token (8–64 chars A-Za-z0-9/-/_)"
+             onkeydown="if(event.key==='Enter')panelLockUnlock()">
+      <button class="secondary" onclick="togglePwVisibility('panelLockInput', this)" title="顯示輸入 / Show input">👁️</button>
+      <button onclick="panelLockUnlock()">解鎖 / Unlock</button>
+    </div>
+    <p id="panelLockMsg" class="hint"></p>
+  </div>
+</div>
+
 <div id="errorBanner" class="error-banner"></div>
 
 <header class="bk-header">
@@ -101,7 +119,7 @@
 <script src="blockly-blocks.js"></script>
 <script src="blockly-toolbox.js?v=20261020a"></script>
 <script src="blockly-run.js?v=20261028a"></script>
-<script src="blockly-page.js?v=20261028a"></script>
+<script src="blockly-page.js?v=20261122a"></script>
 <!-- 型別化 API client (同 index.html 一樣, 一定要在提供 window.api 的 blockly-page.js 之後載入) -->
 <script src="api-client.js"></script>
 <!-- 群控鏡像 (同 index.html 一樣; blockly.html 冇群控 tab，淨載 mirrorFanout＋scan helper，

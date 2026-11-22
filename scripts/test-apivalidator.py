@@ -309,6 +309,7 @@ def main() -> int:
     for cls, files in (
         ("SafeUnzipTest", ["SafeUnzip.java"]),
         ("AuthThrottleTest", ["AuthThrottle.java"]),
+        ("RandomMovePolicyTest", ["RandomMovePolicy.java"]),
     ):
         cmd = [javac, "-encoding", "UTF-8", "-nowarn", "-d", str(tmp)] \
             + [str(src / f) for f in files] + [str(testdir / (cls + ".java"))]

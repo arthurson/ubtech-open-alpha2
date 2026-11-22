@@ -6,6 +6,8 @@
 const API = '/api/';
 
 function showError(context, err) {
+  // 面板鎖屏中（見下面 panelLockCheck）：未解鎖嘅 401 唔洗版，等用戶先解鎖。
+  if (window.__panelLocked) return;
   const banner = document.getElementById('errorBanner');
   let msg = (err && err.message) ? err.message : String(err);
   banner.textContent = '⚠ ' + context + ': ' + msg;
@@ -26,6 +28,12 @@ window.addEventListener('unhandledrejection', function (e) { showError('Unhandle
 // /api 行 Authorization: Bearer header（不入 URL）；<img>／WebSocket 先用 ?panel_token= fallback。
 function panelTokenGet() {
   try { return localStorage.getItem('panel_token') || ''; } catch (e) { return ''; }
+}
+function panelTokenSet(tok) {
+  try {
+    if (tok) localStorage.setItem('panel_token', tok);
+    else localStorage.removeItem('panel_token');
+  } catch (e) { /* private mode 等寫不入就當無記住，不阻操作 */ }
 }
 function panelAuthHeaders(params) {
   const tok = (params && params.panel_token) ? params.panel_token : panelTokenGet();
@@ -423,3 +431,66 @@ document.addEventListener('DOMContentLoaded', function () {
   } catch (e) { /* showError / fallback 會處理, 不緊要 */ }
 });
 
+
+
+// ---------------- 面板鎖屏浮層（同 app-core.js panelLockCheck/panelLockUnlock 一致） ----------------
+// blockly.html 唔載 app-core.js，所以獨立一份。auth 啟用＋記住嘅 token 驗不過→開浮層
+// （#panelLockOverlay）蓋住整頁；解鎖即記住 token＋reload。HTML／JS 靜態檔本身擋唔住下載，
+// 真正敏感數據靠後端全面板閘口（未解鎖 API 一律 401），浮層只係唔 show 操作面。
+// 浮層字串雙語並列（唔經 blockly-i18n，免切語言時被覆寫）。
+function panelLockSay(zh, en, extra) {
+  const msg = document.getElementById('panelLockMsg');
+  if (msg) msg.textContent = zh + ' / ' + en + (extra ? ' ' + extra : '');
+}
+
+function panelLockCheck() {
+  if (typeof Alpha2Api === 'undefined' || !Alpha2Api.systemAuthStatus) return;
+  Alpha2Api.systemAuthStatus({}).then(function (res) {
+    if (!res || !res.ok || !res.enabled) return;  // 停用＝全開，什麼都不做
+    const open = function () {
+      window.__panelLocked = true;  // 壓住 showError：後面 init 嘅 401 不洗版
+      const ov = document.getElementById('panelLockOverlay');
+      if (ov && ov.classList) ov.classList.add('open');
+      const banner = document.getElementById('errorBanner');
+      if (banner) { banner.style.display = 'none'; banner.textContent = ''; }
+    };
+    if (!panelTokenGet()) { open(); return; }  // 記住都無，直接鎖
+    // 有記住都要 verify（可能喺另一 tab 清咗／改咗）。
+    Alpha2Api.systemAuthVerify({}).then(function (v) {
+      if (!(v && v.ok && v.valid)) open();
+    });
+  });
+}
+
+/** 浮層解鎖按鈕（＋Enter）：得即記住＋reload；唔得留喺鎖屏顯示錯。 */
+function panelLockUnlock() {
+  const input = document.getElementById('panelLockInput');
+  const token = input ? (input.value || '').trim() : '';
+  if (!token) { panelLockSay('請先輸入 Token', 'Enter a token first'); return; }
+  Alpha2Api.systemAuthSet({ token: token, current: token }).then(function (res) {
+    if (res && res.ok) {
+      panelTokenSet(token);
+      location.reload();
+    } else if (res && res.error && /too many/i.test(res.error)) {
+      // 被節流（HTTP 429）：照實顯示要等幾耐，唔好誤報「Token 不正確」。
+      panelLockSay('❌ 失敗：', '❌ Failed:', res.error);
+    } else {
+      panelLockSay('❌ Token 不正確，請再試', '❌ Wrong token, try again');
+    }
+  });
+}
+
+/** 密碼框「眼仔」開關（同 app-core.js togglePwVisibility）。 */
+function togglePwVisibility(inputId, btn) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  const show = el.type !== 'text';
+  el.type = show ? 'text' : 'password';
+  if (btn) {
+    btn.textContent = show ? '🙈' : '👁️';
+    btn.title = show ? '隱藏輸入 / Hide input' : '顯示輸入 / Show input';
+  }
+}
+
+// api-client.js 喺 blockly-page.js 之後載入，所以等 DOM 齊先 check。
+document.addEventListener('DOMContentLoaded', panelLockCheck);
