@@ -29,22 +29,11 @@ public final class GaitProgram {
     public final int entryMsPerUnit;
     /** 步態每格最快限速（ms／單位），防高倍速令舵機追唔上。 */
     public final int minMsPerUnit;
-    /**
-     * 著地收步格：cycle 入面最近企定姿勢（雙腳著地）嘅格索引。放手後 {@link GaitWalker}
-     * 會繼續行到呢啲格之一先收步；空陣列＝放手即由當前姿勢收步（舊行為）。
-     */
-    public final int[] standFrames;
+    // 放手語義：放手即由當前姿勢收步（blend 返 home），唔會等企定格——{@link GaitWalker} 就係咁做。
 
     public GaitProgram(int[][] leadIn, int[] leadInMs, int[][] cycle, int[] cycleMs,
             int[] home, int blendMsPerUnit, int blendMinMs, int blendMaxMs,
             int entryMsPerUnit, int minMsPerUnit) {
-        this(leadIn, leadInMs, cycle, cycleMs, home, blendMsPerUnit, blendMinMs, blendMaxMs,
-                entryMsPerUnit, minMsPerUnit, new int[0]);
-    }
-
-    public GaitProgram(int[][] leadIn, int[] leadInMs, int[][] cycle, int[] cycleMs,
-            int[] home, int blendMsPerUnit, int blendMinMs, int blendMaxMs,
-            int entryMsPerUnit, int minMsPerUnit, int[] standFrames) {
         check(leadIn, leadInMs, "leadIn", 0);
         check(cycle, cycleMs, "cycle", 2);
         checkPose(home, "home");
@@ -65,19 +54,6 @@ public final class GaitProgram {
         this.blendMaxMs = blendMaxMs;
         this.entryMsPerUnit = entryMsPerUnit;
         this.minMsPerUnit = minMsPerUnit;
-        int[] sf = standFrames == null ? new int[0] : standFrames.clone();
-        for (int v : sf) {
-            if (v < 0 || v >= cycle.length) {
-                throw new IllegalArgumentException("standFrames index out of range: " + v);
-            }
-        }
-        this.standFrames = sf;
-    }
-
-    /** 第 i 格係咪著地收步格。 */
-    public boolean isStandFrame(int i) {
-        for (int v : standFrames) if (v == i) return true;
-        return false;
     }
 
     private static void check(int[][] frames, int[] ms, String what, int minFrames) {

@@ -218,8 +218,9 @@ public final class PolicyCenter {
         l.needsFast = l.man.periodMs() < PolicyManifest.MIN_PERIOD_MS;
         if (!l.man.realRunAllowed(why, true)) { l.fastBlock = why[0]; l.realBlock = why[0]; }
         else if (!l.hashOk) l.realBlock = "sha256 not verified";
-        else if (l.selftestPresent && !l.selftestOk) l.realBlock = "selftest failed: " + l.selftestInfo;
-        // 冇 selftest.json（面板上載）：照放行，但標明冇同 onnxruntime 對照過。
+        else if (!l.selftestPresent) l.realBlock = "no selftest.json: on-device output not cross-checked against onnxruntime (dry-run still allowed)";
+        else if (!l.selftestOk) l.realBlock = "selftest failed: " + l.selftestInfo;
+        // 冇 selftest.json：可載入同 dry-run，但唔准 real-run（有效 sha256 唔等於輸出尺度／mapping 同訓練端對齊）。
         if (!l.selftestPresent) l.warnings = "no selftest.json: on-device output not cross-checked against onnxruntime";
         return l;
     }

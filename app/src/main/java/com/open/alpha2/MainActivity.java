@@ -490,8 +490,8 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
             @Override
             public HttpServer.ApiResponse handle(String path, Map<String, String> query, String method, String body,
                     Map<String, String> headers) {
-                // 實驗 tab 面板 token 中央閘口（見 PanelAuth：opt-in，預設關＝全開；
-                // 啟用後整個面板上鎖：全部 /api/* 都要 token（Bearer header 主，
+                // 面板 token 中央閘口（見 PanelAuth：預設啟用，首次啟動自動產生 token；
+                // 用戶主動清除＝停用。啟用時整個面板上鎖：全部 /api/* 都要 token（Bearer header 主，
                 // panel_token query 為 img／ws fallback），僅 system/auth/*
                 //（解鎖入口）開放；靜態頁不經這裡，維持開放；ws／stream 各自閘）。
                 if (!PanelAuth.isOpenApi(path)) {
@@ -540,8 +540,14 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
             }
         });
         // 預設啟用面板 token（首次自動產生，機身畫面顯示）；必須喺 server 開始收請求之前。
-        PanelAuth.ensureInitialized(this);
-        httpServer.start();
+        // token 未能可靠落盤就唔開 server：否則空 token 會被當成「未啟用」，控制 API 全開（fail-open）。
+        if (PanelAuth.ensureInitialized(this)) {
+            httpServer.start();
+        } else {
+            Log.e(TAG, "PanelAuth init failed (token not persisted): HTTP control server NOT started");
+            Toast.makeText(this, "面板認證初始化失敗，HTTP 面板未啟動 / Panel auth init failed, HTTP panel not started",
+                    Toast.LENGTH_LONG).show();
+        }
         String scheme = "http";
 
         // The on-device screen does NOT mirror the HTML control panel via WebView -

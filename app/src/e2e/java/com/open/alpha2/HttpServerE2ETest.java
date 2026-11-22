@@ -93,6 +93,43 @@ public final class HttpServerE2ETest {
             check(r.contains("Retry-After: 4\r\n"), "Retry-After rounds 3500 ms up to 4 s");
             check(r.contains("too many failed attempts, retry in 4s"), "429 JSON body says how long to wait");
 
+            // --- method 限制：/api、/upload 只收 GET／POST，其他回 405＋Allow，唔交畀 handler ---
+            before = handled.get();
+            for (String m : new String[] {"PUT", "DELETE", "PATCH", "HEAD"}) {
+                r = request(m + " /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+                check(r.startsWith("HTTP/1.1 405 Method Not Allowed") && r.contains("Allow: GET, POST, OPTIONS\r\n"),
+                        m + " /api/ -> 405 with Allow header: " + r.split("\r\n")[0]);
+            }
+            check(handled.get() == before, "405 requests never reach the api handler");
+            r = request("POST /api/ping HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            check(r.startsWith("HTTP/1.1 200"), "POST /api/ still accepted");
+
+            // --- body 上限：按 endpoint 收細，超限回 413（唔交畀 handler）---
+            check(HttpServer.maxBodyFor("/api/x") == 256 * 1024, "api body limit 256KB");
+            check(HttpServer.maxBodyFor("/upload/servo-fw") == 64 * 1024, "servo-fw body limit 64KB");
+            check(HttpServer.maxBodyFor("/upload/audio") == 256 * 1024, "audio body limit 256KB");
+            check(HttpServer.maxBodyFor("/upload/chest") == 1024 * 1024, "chest body limit 1MB");
+            check(HttpServer.maxBodyFor("/upload/policy") == 12 * 1024 * 1024, "policy body limit 12MB");
+            check(HttpServer.maxBodyFor("/upload/music") == 32 * 1024 * 1024, "music body limit 32MB");
+            before = handled.get();
+            r = request("POST /api/x HTTP/1.1\r\nHost: x\r\nContent-Length: 300000\r\nConnection: close\r\n\r\n");
+            check(r.startsWith("HTTP/1.1 413 Payload Too Large"), "300000B body on /api -> 413: " + r.split("\r\n")[0]);
+            check(handled.get() == before, "413 request never reaches the api handler");
+
+            // --- 全域 in-flight body 預算（64MB）：兩個 32MB 上載佔滿，第三個回 503，釋放後恢復 ---
+            String bigUpload = "POST /upload/music?name=a.mp3 HTTP/1.1\r\nHost: x\r\nContent-Length: 33554432\r\n\r\n";
+            Socket h1 = new Socket("127.0.0.1", HttpServer.PORT);
+            Socket h2 = new Socket("127.0.0.1", HttpServer.PORT);
+            h1.getOutputStream().write(bigUpload.getBytes("ISO-8859-1")); h1.getOutputStream().flush();
+            h2.getOutputStream().write(bigUpload.getBytes("ISO-8859-1")); h2.getOutputStream().flush();
+            Thread.sleep(500);
+            r = request(bigUpload + "");
+            check(r.startsWith("HTTP/1.1 503 Service Unavailable"), "3rd concurrent 32MB upload -> 503: " + r.split("\r\n")[0]);
+            h1.close(); h2.close();
+            Thread.sleep(800);
+            r = request(bigUpload + "");
+            check(!r.startsWith("HTTP/1.1 503"), "budget released after holders disconnect (got " + r.split("\r\n")[0] + ")");
+
             // --- 同時連線上限：滿咗之後新連線即刻被關，釋放後恢復 ---
             Field counterF = HttpServer.class.getDeclaredField("activeClients");
             counterF.setAccessible(true);

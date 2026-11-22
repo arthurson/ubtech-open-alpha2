@@ -27,6 +27,9 @@ import java.util.Set;
  */
 public final class OnnxMlp {
 
+    /** 單一張量元素上限（4M float＝16MB）：MLP policy 遠細過呢個數；防畸形 shape 觸發 OOM（Error，唔會被 catch Exception 接住）。 */
+    private static final long MAX_TENSOR_ELEMS = 4L * 1024 * 1024;
+
     /** 張量：float 資料＋形狀（最多二維夠用，仍保留任意 rank 嘅 dims）。 */
     private static final class T {
         final float[] d;
@@ -37,8 +40,8 @@ public final class OnnxMlp {
             long n = 1;
             for (int x : s) {
                 if (x < 0) throw new IllegalArgumentException("negative tensor dim");
-                n *= x;
-                if (n > Integer.MAX_VALUE) throw new IllegalArgumentException("tensor too large");
+                n = Math.multiplyExact(n, (long) x);
+                if (n > MAX_TENSOR_ELEMS) throw new IllegalArgumentException("tensor too large");
             }
             return (int) n;
         }

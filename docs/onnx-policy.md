@@ -25,7 +25,7 @@ Panel → **實驗 / Experimental** tab → **🧠 ONNX Policy** (turn the card 
 3. **Run**: *dry-run* is on by default (servos untouched); untick it for a real run. Period < 200 ms
    policies need the *fast* box. Live steps / tilt / timing / overruns
    / end reason are shown; **Stop** is a hard stop. Uploads made from the panel have no `selftest.json`,
-   so the panel shows "not cross-checked against onnxruntime" — use `policy_tool.py pack` if you want that.
+   so the panel shows "not cross-checked against onnxruntime" and **real runs are refused** (dry-run still works) — use `policy_tool.py pack` to generate a `selftest.json`.
 
 API: `POST /upload/policy`, `policy/{list,load,unload,switch,start,beat,stop,status,delete}`.
 
@@ -53,7 +53,7 @@ What happens at a switch (all inside `PolicyRunner`, at a step boundary — a st
   in the wrong action units.
 * Lease, `max_run_s`, overrun and fall-guard settings stay those of the policy the run started with;
   `--speed`/`tilt_limit_deg` overrides apply to every policy in the run.
-* Real runs only preload **eligible** policies (hash + selftest OK; period < 200 ms only with
+* Real runs only preload **eligible** policies (hash + a present, passing `selftest.json`; period < 200 ms only with
   `fast=true`). Others stay in the bank but `switch` to them is refused with the reason. Dry runs
   preload everything.
 * `policy/load`, `upload/policy` and `policy/delete` work during a run for policies that are *not*

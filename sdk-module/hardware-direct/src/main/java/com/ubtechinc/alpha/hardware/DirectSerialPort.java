@@ -107,6 +107,8 @@ public final class DirectSerialPort {
 
     public synchronized boolean open() {
         if (running.get()) return true;
+        // reader 遇 EOF 自行停咗但未 close：先清走舊 stream／path 獨佔，否則 claimPath 會因舊 path 仲被佔而重開失敗
+        if (input != null || output != null || serialPortFileObj != null) closeQuietly();
         // 1) JNI 路徑（自帶 termios 配 baud）
         if (tryOpenViaJni(primaryPath) || tryOpenViaJni(altPath) || (altPath2 != null && tryOpenViaJni(altPath2))) {
             startReader();
@@ -419,7 +421,14 @@ public final class DirectSerialPort {
                         InputStream in = input;
                         if (in == null) { Thread.sleep(50); continue; }
                         int n = in.read(buf, pos, buf.length - pos);
-                        if (n <= 0) { Thread.sleep(10); continue; }
+                        if (n < 0) {
+                            // EOF（拔線／fd 失效）：唔係「暫時冇資料」。標記斷線令 isAvailable()=false，
+                            // 發送端即時失敗；stream 留俾下次 open()／close() 清理（唔喺 reader 自己 join 自己）。
+                            Log.w(TAG, "serial EOF on " + openedPath + ", reader stopping (port marked unavailable)");
+                            running.set(false);
+                            break;
+                        }
+                        if (n == 0) { Thread.sleep(10); continue; }
                         int avail = pos + n;
                         int off = 0;
                         while (off < avail) {

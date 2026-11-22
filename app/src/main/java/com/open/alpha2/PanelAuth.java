@@ -9,7 +9,8 @@ import java.security.MessageDigest;
 import java.util.Map;
 
 /**
- * 實驗 tab 面板 token 認證（opt-in，預設關閉＝全開，保持舊行為）。
+ * 面板 token 認證（預設啟用：首次啟動自動產生 token，見 {@link #ensureInitialized}；
+ * 用戶主動清除＝停用）。
  *
  * 範圍：整個面板上鎖，不再只閘實驗 tab 高危寫：
  * - 保護：全部 {@code /api/*}（alpha2／direct／system／xiaozhi——含讀操作、
@@ -91,12 +92,13 @@ public final class PanelAuth {
      * 預設啟用：必須喺 HttpServer.start() 之前呼叫。第一次（從未初始化過）而且冇 token 就自動產生
      * 一個，由機身畫面顯示（見 MainActivity）；已有 token 保留；用戶之後主動清除＝停用，唔會被
      * 重新啟用。token 同旗標用同一個 commit 寫入，唔會出現「旗標已寫但 token 未寫」。
-     * 寫入失敗只記 warn（唔 log token），伺服器照常起，等於維持舊行為。
+     * 回傳 true＝認證狀態可靠（已初始化，或今次成功持久化）；false＝寫入／讀取失敗，token 未能保證落盤，
+     * 呼叫方<b>唔可以</b>開控制 server（否則空 token 會被 requireAuth 當成「未啟用」而全開）。
      */
-    public static synchronized void ensureInitialized(Context ctx) {
+    public static synchronized boolean ensureInitialized(Context ctx) {
         try {
             SharedPreferences p = prefs(ctx);
-            if (p.getBoolean(PREF_PANEL_AUTH_INIT, false)) return;
+            if (p.getBoolean(PREF_PANEL_AUTH_INIT, false)) return true;
             String existing = p.getString(PREF_PANEL_TOKEN, "");
             SharedPreferences.Editor ed = p.edit();
             boolean generated = PanelToken.needsAutoEnable(false, existing);
@@ -106,12 +108,14 @@ public final class PanelAuth {
             ed.putBoolean(PREF_PANEL_AUTH_INIT, true);
             if (!ed.commit()) {
                 Log.w("PanelAuth", "ensureInitialized: commit failed, panel auth state unchanged");
-                return;
+                return false;
             }
             Log.i("PanelAuth", generated ? "panel token auto-generated (shown on device screen)"
                     : "panel token already set, kept");
+            return true;
         } catch (Exception e) {
             Log.w("PanelAuth", "ensureInitialized failed: " + e.getMessage());
+            return false;
         }
     }
 

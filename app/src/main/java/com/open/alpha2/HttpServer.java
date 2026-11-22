@@ -14,7 +14,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -157,13 +156,48 @@ public class HttpServer implements Runnable {
     private final ApiHandler apiHandler;
     private final StreamHandler streamHandler;
     private final RawUploadHandler rawUploadHandler;
-    private final ExecutorService pool = Executors.newCachedThreadPool();
+    // 有界 pool：最多 MAX_CONCURRENT_CLIENTS 條連線 thread ＋ 1 條 accept loop。SynchronousQueue＝唔排隊，
+    // 滿咗即 RejectedExecutionException（run() 會關連線）；空閒 thread 60 秒後回收，行為同舊 cached pool 一致。
+    private final ExecutorService pool = new java.util.concurrent.ThreadPoolExecutor(
+            0, MAX_CONCURRENT_CLIENTS + 1, 60L, TimeUnit.SECONDS,
+            new java.util.concurrent.SynchronousQueue<Runnable>());
     /**
      * 同時處理中嘅連線上限（cached pool 每連線一條 thread，冇上限會被連線洪水拖死整個 app）。
      * WebSocket／串流等長連線都計入；128 遠高於正常面板（幾個瀏覽器 × 每個最多 6 條）用量。
      * 超出就直接關閉新連線。
      */
     static final int MAX_CONCURRENT_CLIENTS = 128;
+
+    /** 全域「處理中 request body」位元組預算：讀 body 前先預留，request 處理完（或失敗）釋放；超出回 503。 */
+    static final long MAX_INFLIGHT_BODY_BYTES = 64L * 1024 * 1024;
+    private final java.util.concurrent.atomic.AtomicLong bodyInFlight = new java.util.concurrent.atomic.AtomicLong();
+    /** 本 thread 當前 request 預留咗幾多（handleClient 每個 request 完結後釋放）。 */
+    private final ThreadLocal<Long> bodyReserved = new ThreadLocal<Long>();
+
+    /**
+     * 按 endpoint 嘅 body 上限（Content-Length 超過即 413）。數字來自各 handler 實際需要：
+     * /api/* 全部 POST 都冇 request body（參數行 query／少量 JSON）→ 256KB；
+     * chest 固件 ≤112KB app 鏡像（保留 1MB，等誤傳全鏡像都攞到明確 400）；servo 固件固定 7168B；
+     * audio 係 walkie-talkie PCM chunk（幾十 KB）；policy zip 內 onnx ≤4MB＋3 個 ≤2MB 小檔 → 12MB；
+     * music 係整首歌（舊上限 32MB，唯一真正大嘅上載）。
+     */
+    static int maxBodyFor(String path) {
+        if (path.startsWith("/upload/music")) return 32 * 1024 * 1024;
+        if (path.startsWith("/upload/policy")) return 12 * 1024 * 1024;
+        if (path.startsWith("/upload/chest")) return 1024 * 1024;
+        if (path.startsWith("/upload/audio")) return 256 * 1024;
+        if (path.startsWith("/upload/servo-fw")) return 64 * 1024;
+        if (path.startsWith("/upload/")) return 64 * 1024;   // 未知 upload 路徑：handler 會回錯，唔使收大 body
+        return 256 * 1024;                                    // /api/* 同其他
+    }
+
+    private void releaseBodyBudget() {
+        Long r = bodyReserved.get();
+        if (r != null) {
+            bodyInFlight.addAndGet(-r);
+            bodyReserved.remove();
+        }
+    }
 
     /** 伺服器注入嘅內部 header（小寫 key）：連線嘅真實來源 IP。客戶端送嘅同名 header 會被覆蓋。 */
     public static final String HDR_REMOTE_ADDR = "x-remote-addr";
@@ -251,16 +285,23 @@ public class HttpServer implements Runnable {
                     }
                     continue;
                 }
-                pool.execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            handleClient(client, remoteAddr);
-                        } finally {
-                            activeClients.decrementAndGet();
+                try {
+                    pool.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                handleClient(client, remoteAddr);
+                            } finally {
+                                activeClients.decrementAndGet();
+                            }
                         }
-                    }
-                });
+                    });
+                } catch (java.util.concurrent.RejectedExecutionException rejected) {
+                    // 計數同 pool 之間嘅短暫競態（舊 thread 仲未回池）：當連線過多處理。
+                    activeClients.decrementAndGet();
+                    Log.w(TAG, "worker pool saturated, rejecting " + remoteAddr);
+                    try { client.close(); } catch (IOException ignored) { }
+                }
             }
         } catch (IOException e) {
             if (running) {
@@ -279,7 +320,11 @@ public class HttpServer implements Runnable {
             // close", disconnects, or a request can't be parsed.
             boolean keepAlive = true;
             while (keepAlive) {
-                keepAlive = handleOneRequest(socket);
+                try {
+                    keepAlive = handleOneRequest(socket);
+                } finally {
+                    releaseBodyBudget();
+                }
             }
         } catch (java.net.SocketTimeoutException e) {
             // 閒置 keep-alive 逾時屬正常關閉，唔使 log error stack。
@@ -402,7 +447,7 @@ public class HttpServer implements Runnable {
             return false; // streamHandler owns the socket lifecycle from here on.
         }
 
-        byte[] rawBody = readBody(rawIn, headers, path);
+        byte[] rawBody = readBody(socket, rawIn, headers, path);
         if (rawBody == null) return false;
 
         OutputStream out = socket.getOutputStream();
@@ -417,6 +462,18 @@ public class HttpServer implements Runnable {
             h.put("Access-Control-Max-Age", "86400");
             writeResponse(out, new ApiResponse(200, "text/plain; charset=utf-8", "", h),
                     !clientWantsClose);
+            return !clientWantsClose;
+        }
+
+        // /api、/upload 只收 GET／POST（OPTIONS 上面已處理）：PUT／DELETE／PATCH／HEAD 等唔係呢套 API 嘅語義，
+        // 之前會被當 GET 照行。注意：API 設計本身係 GET 帶 query 做動作（spec 216 GET／22 POST），
+        // 所以呢度唔做「mutation 必須 POST」，淨係收窄到實際用到嘅兩個 method。
+        if ((path.startsWith("/api/") || path.startsWith("/upload/"))
+                && !"GET".equalsIgnoreCase(method) && !"POST".equalsIgnoreCase(method)) {
+            Map<String, String> h = new HashMap<String, String>();
+            h.put("Allow", "GET, POST, OPTIONS");
+            writeResponse(out, new ApiResponse(405, "application/json; charset=utf-8",
+                    JsonUtil.okFalse("method not allowed: " + method), h), !clientWantsClose);
             return !clientWantsClose;
         }
 
@@ -524,7 +581,7 @@ public class HttpServer implements Runnable {
     }
 
     /** body 讀取（含上限）：正常回 byte[]，header 爛／超限回 null＝關線。 */
-    private static byte[] readBody(InputStream rawIn, Map<String, String> headers, String path)
+    private byte[] readBody(Socket socket, InputStream rawIn, Map<String, String> headers, String path)
             throws IOException {
         String lenStr = headers.get("content-length");
         if (lenStr == null) return new byte[0];
@@ -537,16 +594,24 @@ public class HttpServer implements Runnable {
             // connection instead of trying to guess/recover.
             return null;
         }
-        // body 上限：len 來自客戶端 Content-Length，不設限會 OOM。正常 body
-        // 最大是 /upload/audio walkie-talkie PCM chunk (幾十 KB)，32MB 留有餘裕。
-        // 胸固件只收 ≤112KB app 小鏡像；仍給 1MB（/upload/chest 專用上限），等誤傳嘅 256KB 全鏡像
-        // 都能去到 handleChestUpload 攞明確 400 原因，唔好喺呢度靜靜斷線。
-        final int maxBody = path.startsWith("/upload/chest") ? (1024 * 1024) : (32 * 1024 * 1024);
+        // body 上限：len 來自客戶端 Content-Length，按 endpoint 收細（見 maxBodyFor）；
+        // 超限回 413、預算滿回 503，然後關連線（body 未讀，唔可以 keep-alive）。
+        final int maxBody = maxBodyFor(path);
         if (len < 0 || len > maxBody) {
-            Log.w(TAG, "Rejecting request with Content-Length=" + len + " (limit " + maxBody + ")");
+            Log.w(TAG, "Rejecting request with Content-Length=" + len + " (limit " + maxBody + " for " + path + ")");
+            writeResponse(socket.getOutputStream(), new ApiResponse(413, "application/json; charset=utf-8",
+                    JsonUtil.okFalse("request body too large (limit " + maxBody + " bytes)")), false);
             return null;
         }
         if (len == 0) return new byte[0];
+        if (bodyInFlight.addAndGet(len) > MAX_INFLIGHT_BODY_BYTES) {
+            bodyInFlight.addAndGet(-len);
+            Log.w(TAG, "Rejecting request: in-flight body budget exhausted (Content-Length=" + len + ")");
+            writeResponse(socket.getOutputStream(), new ApiResponse(503, "application/json; charset=utf-8",
+                    JsonUtil.okFalse("server busy: too many large uploads in progress")), false);
+            return null;
+        }
+        bodyReserved.set((long) len);
         return IOUtil.readExactly(rawIn, len);
     }
 
@@ -567,6 +632,9 @@ public class HttpServer implements Runnable {
         STATUS_TEXT.put(200, "OK");
         STATUS_TEXT.put(400, "Bad Request");
         STATUS_TEXT.put(401, "Unauthorized");
+        STATUS_TEXT.put(405, "Method Not Allowed");
+        STATUS_TEXT.put(413, "Payload Too Large");
+        STATUS_TEXT.put(503, "Service Unavailable");
         STATUS_TEXT.put(429, "Too Many Requests");
         STATUS_TEXT.put(404, "Not Found");
         STATUS_TEXT.put(500, "Internal Server Error");

@@ -76,7 +76,7 @@ public final class PanelAuthE2ETest {
         FakePrefs p = new FakePrefs();
         Context c = ctxOf(p);
         check(!PanelAuth.isEnabled(c), "fresh: not enabled before init");
-        PanelAuth.ensureInitialized(c);
+        check(PanelAuth.ensureInitialized(c), "fresh: ensureInitialized reports success (server may start)");
         String tok = PanelAuth.currentTokenOrEmpty(c);
         check(fmt.matcher(tok).matches(), "fresh: token generated in XXXXX-XXXXX format (" + tok + ")");
         check(PanelAuth.isEnabled(c), "fresh: enabled");
@@ -89,7 +89,7 @@ public final class PanelAuthE2ETest {
         check(PanelAuth.isOpenApi("system/auth/status") && PanelAuth.isOpenApi("system/auth/verify"),
                 "system/auth/* stays open for the unlock overlay");
 
-        PanelAuth.ensureInitialized(c);
+        check(PanelAuth.ensureInitialized(c), "second ensureInitialized still reports success");
         check(tok.equals(PanelAuth.currentTokenOrEmpty(c)), "second ensureInitialized keeps the same token");
 
         HttpServer.ApiResponse hijack = PanelAuth.set(c, q("token", "HIJACKED-9999"), new HashMap<String, String>());
@@ -99,7 +99,7 @@ public final class PanelAuthE2ETest {
 
         HttpServer.ApiResponse clr = PanelAuth.clear(c, q(), hdr(null, "MINE-ONLY-77"));
         check(st(clr) == 200 && !PanelAuth.isEnabled(c), "clear with the current token disables");
-        PanelAuth.ensureInitialized(c);
+        check(PanelAuth.ensureInitialized(c), "user-disabled auth is a reliable state: server may start");
         check(PanelAuth.currentTokenOrEmpty(c).isEmpty() && !PanelAuth.isEnabled(c), "'restart' does not silently re-enable");
         check(PanelAuth.requireAuth(c, q(), new HashMap<String, String>()) == null, "disabled -> open (the user's explicit choice)");
 
@@ -113,10 +113,10 @@ public final class PanelAuthE2ETest {
         FakePrefs p3 = new FakePrefs();
         p3.commitOk = false;
         Context c3 = ctxOf(p3);
-        PanelAuth.ensureInitialized(c3);
+        check(!PanelAuth.ensureInitialized(c3), "failed commit -> false: caller must NOT start the control server");
         check(p3.m.isEmpty() && !PanelAuth.isEnabled(c3), "failed commit leaves state untouched, no crash");
         p3.commitOk = true;
-        PanelAuth.ensureInitialized(c3);
+        check(PanelAuth.ensureInitialized(c3), "retry after a failed commit reports success");
         check(fmt.matcher(PanelAuth.currentTokenOrEmpty(c3)).matches(), "retry after a failed commit generates the token");
 
         FakePrefs p4 = new FakePrefs();
