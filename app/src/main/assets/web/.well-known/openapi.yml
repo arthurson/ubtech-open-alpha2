@@ -4755,6 +4755,157 @@ paths:
         schema:
           type: boolean
         description: ROI 跟隨（預設 true；檢到後只掃臉附近，320x240 長開 10fps 用；掃唔到 3 次回全圖）
+      - name: walkFollow
+        in: query
+        schema:
+          type: boolean
+        description: 行路跟總開關（預設 false；開＝身體方位（畫面偏移＋頭 yaw 偏離 home）偏就轉向／橫移、遠就前進、近就企定；gait 引擎（預設）前進後退用 WalkCenter 連續步態 hold／release，可隨時平滑收步，掃唔到最遲 1.5 s 租約自動收步；ubx 引擎播一步 .ubx（13 s 盲行）。轉向／橫移一次一動；同一決策要連續 2 幀先出手。平地＋清空＋有人睇住先開；跌倒保護見 fallRecover）
+      - name: turnDb
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.8
+        description: 轉向死區（身體方位 |bearing| 超過先轉，預設 0.35；單位同 dx（1＝半個鏡頭視角）；身體郁大步過頭，同頭死區分開）
+      - name: closeCoverage
+        in: query
+        schema:
+          type: number
+          minimum: 0.02
+          maximum: 0.6
+        description: 夠近覆蓋率（估算臉框面積／全圖，預設 0.09≈約 0.6 m；推算值未實測，每個人眼距唔同——請按 status.coverage 實測校正；大過即企定唔行，淨個頭瞄）
+      - name: walkFwd
+        in: query
+        schema:
+          type: string
+        description: 前進一步動作（只 walkEngine=ubx 用；fileId／名／檔名，預設 1508999860568 前進，13.35 s）
+      - name: walkLeft
+        in: query
+        schema:
+          type: string
+        description: 左轉一步動作（預設 1464835936047 左轉）
+      - name: walkRight
+        in: query
+        schema:
+          type: string
+        description: 右轉一步動作（預設 1464835936041 右轉）
+      - name: walkLeftBig
+        in: query
+        schema:
+          type: string
+        description: 大左轉動作（預設 1508999477476 向左轉，3.0 s；每步轉幾多度未量，轉得細過普通轉可同 walkLeft 對調）
+      - name: walkRightBig
+        in: query
+        schema:
+          type: string
+        description: 大右轉動作（預設 1508999731737 右轉，3.3 s）
+      - name: walkSideLeft
+        in: query
+        schema:
+          type: string
+        description: 左橫移一步動作（預設 1464835936046 左移，2.75 s）
+      - name: walkSideRight
+        in: query
+        schema:
+          type: string
+        description: 右橫移一步動作（預設 1464835936040 右移，2.75 s）
+      - name: walkSideLeftBig
+        in: query
+        schema:
+          type: string
+        description: 大左橫移動作（預設 1508999547240 向左移動，同左移同一姿勢連續 3 步，4.85 s）
+      - name: walkSideRightBig
+        in: query
+        schema:
+          type: string
+        description: 大右橫移動作（預設 1508999801028 右移，4.55 s）
+      - name: walkBack
+        in: query
+        schema:
+          type: string
+        description: 後退動作（只 walkEngine=ubx 且 backCoverage>0 用；預設 1510818256622 後退，16.65 s；gait 引擎用 walk_back 連續步態）
+      - name: walkEngine
+        in: query
+        schema:
+          type: string
+          enum:
+          - gait
+          - ubx
+          default: gait
+        description: 行路引擎：gait＝WalkCenter 連續步態做前進後退（預設；hold／release 可隨時平滑收步，未接線時自動退返 ubx）；ubx＝舊式播一步 .ubx
+      - name: sideDb
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.8
+        description: 橫移死區（bearing 超過先橫移，須細過 turnDb 先有效；0＝關閉橫移，預設 0.15；橫移唔轉身，保持朝向）
+      - name: bigSideDb
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.8
+        description: 大橫移死區（預設 0.25；細過 sideDb 即當同值；須細過 turnDb 先有效）
+      - name: sideMinCoverage
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.6
+        description: 橫移最低覆蓋率（估算臉框面積／全圖；細過即太遠，橫移改唔到方位，唔橫移改為前進，預設 0.03≈約 1 m，未實測）
+      - name: bigTurnDb
+        in: query
+        schema:
+          type: number
+          minimum: 0.1
+          maximum: 2.0
+        description: 大轉死區（|bearing| 超過用大轉動作，預設 0.9；細過 turnDb 即當同值；頭偏移計埋所以可以大過 1）
+      - name: backCoverage
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.9
+        description: 後退覆蓋率（估算臉框面積／全圖；大過即後退；0＝唔後退，預設 0；開咗自動校正到 >= closeCoverage×1.3）
+      - name: halfFovDeg
+        in: query
+        schema:
+          type: number
+          minimum: 10
+          maximum: 60
+        description: 鏡頭水平半視角（度，預設 30；未量，且假設 1 舵機單位≈1°——用嚟將頭 yaw 偏離換算成 dx 尺度，請實測校正）
+      - name: walkSpeed
+        in: query
+        schema:
+          type: number
+          minimum: 1
+          maximum: 2
+        description: gait 前進最高速倍率（預設 1.0＝恆速；>1 時遠用呢個、近線性降到 1.0；實際封頂約 1.33 倍）
+      - name: searchSteps
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 12
+        description: 掃唔到時身體朝最後見到嘅方向轉幾多步搵返（預設 0＝唔搜；盲轉有風險故 opt-in；從未見過目標唔搜）
+      - name: headSearch
+        in: query
+        schema:
+          type: boolean
+        description: 掃唔到時頭朝最後見到嘅方向掃（預設 true；只喺行路跟＋頭追蹤開住時有效；最多約 50 幀然後回 home）。每個步態／.ubx 動作都將頭拉返 home，大角度轉向後目標可能跌出視角，靠呢個搵返
+      - name: fallRecover
+        in: query
+        schema:
+          type: boolean
+        description: 行路跟期間跌倒保護（預設 true）：臨時確保跌倒看門狗（fall/*）開住（唔寫偏好設定，行路跟結束即還原）；未武裝（要先見到企直 2 秒）或者睇唔到加速度計就唔行；跌低／起身中即收步並停晒指令，由看門狗播 BackStand／FrontStand 起身（兩個動作未經機身實測），起身企穩後多等 1.5 s 自動繼續。false＝唔保護，跌低都照發命令
+      - name: maxFalls
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 10
+        description: 2 分鐘內跌夠幾多次就放棄行路跟（預設 3）：自動關 walkFollow（status.fallStop 寫明原因），要人手重新開
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -4806,7 +4957,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OkWrapper'
         '200':
-          description: '{ok, running, detector, pan, tilt, faces, fx/fy/fw/fh, confidence, roiTracking, effectiveIntervalMs, framesSeen/Processed, moves, lostStreak, lastCostMs, config, servo}'
+          description: '{ok, running, detector, pan, tilt, faces, fx/fy/fw/fh, confidence, coverage（估算臉框面積，校正行路跟 closeCoverage 用）, roiTracking, lastWalk/walkMoves/decision/walkState/engine/ubxPlaying（行路跟）, effectiveIntervalMs, framesSeen/Processed, moves, lostStreak, lastCostMs, config, servo}'
           content:
             application/json:
               schema:
@@ -4877,6 +5028,132 @@ paths:
         in: query
         schema:
           type: boolean
+      - name: walkFollow
+        in: query
+        schema:
+          type: boolean
+      - name: turnDb
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.8
+      - name: closeCoverage
+        in: query
+        schema:
+          type: number
+          minimum: 0.02
+          maximum: 0.6
+      - name: walkFwd
+        in: query
+        schema:
+          type: string
+      - name: walkLeft
+        in: query
+        schema:
+          type: string
+      - name: walkRight
+        in: query
+        schema:
+          type: string
+      - name: walkLeftBig
+        in: query
+        schema:
+          type: string
+      - name: walkRightBig
+        in: query
+        schema:
+          type: string
+      - name: walkSideLeft
+        in: query
+        schema:
+          type: string
+      - name: walkSideRight
+        in: query
+        schema:
+          type: string
+      - name: walkSideLeftBig
+        in: query
+        schema:
+          type: string
+      - name: walkSideRightBig
+        in: query
+        schema:
+          type: string
+      - name: walkBack
+        in: query
+        schema:
+          type: string
+      - name: walkEngine
+        in: query
+        schema:
+          type: string
+          enum:
+          - gait
+          - ubx
+          default: gait
+      - name: sideDb
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.8
+      - name: bigSideDb
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.8
+      - name: sideMinCoverage
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.6
+      - name: bigTurnDb
+        in: query
+        schema:
+          type: number
+          minimum: 0.1
+          maximum: 2.0
+      - name: backCoverage
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.9
+      - name: halfFovDeg
+        in: query
+        schema:
+          type: number
+          minimum: 10
+          maximum: 60
+      - name: walkSpeed
+        in: query
+        schema:
+          type: number
+          minimum: 1
+          maximum: 2
+      - name: searchSteps
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 12
+      - name: headSearch
+        in: query
+        schema:
+          type: boolean
+      - name: fallRecover
+        in: query
+        schema:
+          type: boolean
+      - name: maxFalls
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 10
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -5019,14 +5296,14 @@ paths:
         in: query
         schema:
           type: boolean
-        description: 行路跟總開關（預設 false；開＝偏就播轉向、遠就播前進一步、近就企定；淨播內建短步態，一次一動，掃唔到／停即唔發新步。平地＋清空＋有人睇住先開）
+        description: 行路跟總開關（預設 false；開＝身體方位（畫面偏移＋頭 yaw 偏離 home）偏就轉向／橫移、遠就前進、近就企定；gait 引擎（預設）前進後退用 WalkCenter 連續步態 hold／release，可隨時平滑收步，掃唔到最遲 1.5 s 租約自動收步；ubx 引擎播一步 .ubx（13 s 盲行）。轉向／橫移一次一動；同一決策要連續 2 幀先出手。平地＋清空＋有人睇住先開；跌倒保護見 fallRecover）
       - name: turnDb
         in: query
         schema:
           type: number
           minimum: 0
           maximum: 0.8
-        description: 轉向死區（|dx| 超過先轉，預設 0.35；身體郁大步過頭，同頭死區分開）
+        description: 轉向死區（身體方位 |bearing| 超過先轉，預設 0.35；單位同 dx（1＝半個鏡頭視角）；身體郁大步過頭，同頭死區分開）
       - name: closeCoverage
         in: query
         schema:
@@ -5038,7 +5315,7 @@ paths:
         in: query
         schema:
           type: string
-        description: 前進一步動作（fileId／名／檔名，預設 1508999860568 前進）
+        description: 前進一步動作（只 walkEngine=ubx 用；fileId／名／檔名，預設 1508999860568 前進，13.35 s）
       - name: walkLeft
         in: query
         schema:
@@ -5049,6 +5326,123 @@ paths:
         schema:
           type: string
         description: 右轉一步動作（預設 1464835936041 右轉）
+      - name: walkLeftBig
+        in: query
+        schema:
+          type: string
+        description: 大左轉動作（預設 1508999477476 向左轉，3.0 s；每步轉幾多度未量，轉得細過普通轉可同 walkLeft 對調）
+      - name: walkRightBig
+        in: query
+        schema:
+          type: string
+        description: 大右轉動作（預設 1508999731737 右轉，3.3 s）
+      - name: walkSideLeft
+        in: query
+        schema:
+          type: string
+        description: 左橫移一步動作（預設 1464835936046 左移，2.75 s）
+      - name: walkSideRight
+        in: query
+        schema:
+          type: string
+        description: 右橫移一步動作（預設 1464835936040 右移，2.75 s）
+      - name: walkSideLeftBig
+        in: query
+        schema:
+          type: string
+        description: 大左橫移動作（預設 1508999547240 向左移動，同左移同一姿勢連續 3 步，4.85 s）
+      - name: walkSideRightBig
+        in: query
+        schema:
+          type: string
+        description: 大右橫移動作（預設 1508999801028 右移，4.55 s）
+      - name: walkBack
+        in: query
+        schema:
+          type: string
+        description: 後退動作（只 walkEngine=ubx 且 backCoverage>0 用；預設 1510818256622 後退，16.65 s；gait 引擎用 walk_back 連續步態）
+      - name: walkEngine
+        in: query
+        schema:
+          type: string
+          enum:
+          - gait
+          - ubx
+          default: gait
+        description: 行路引擎：gait＝WalkCenter 連續步態做前進後退（預設；hold／release 可隨時平滑收步，未接線時自動退返 ubx）；ubx＝舊式播一步 .ubx
+      - name: sideDb
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.8
+        description: 橫移死區（bearing 超過先橫移，須細過 turnDb 先有效；0＝關閉橫移，預設 0.15；橫移唔轉身，保持朝向）
+      - name: bigSideDb
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.8
+        description: 大橫移死區（預設 0.25；細過 sideDb 即當同值；須細過 turnDb 先有效）
+      - name: sideMinCoverage
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.6
+        description: 橫移最低覆蓋率（細過即太遠，橫移改唔到方位，唔橫移改為前進，預設 0.04）
+      - name: bigTurnDb
+        in: query
+        schema:
+          type: number
+          minimum: 0.1
+          maximum: 2.0
+        description: 大轉死區（|bearing| 超過用大轉動作，預設 0.9；細過 turnDb 即當同值；頭偏移計埋所以可以大過 1）
+      - name: backCoverage
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.9
+        description: 後退覆蓋率（色塊／全圖；大過即後退；0＝唔後退，預設 0；開咗自動校正到 >= closeCoverage×1.3）
+      - name: halfFovDeg
+        in: query
+        schema:
+          type: number
+          minimum: 10
+          maximum: 60
+        description: 鏡頭水平半視角（度，預設 30；未量，且假設 1 舵機單位≈1°——用嚟將頭 yaw 偏離換算成 dx 尺度，請實測校正）
+      - name: walkSpeed
+        in: query
+        schema:
+          type: number
+          minimum: 1
+          maximum: 2
+        description: gait 前進最高速倍率（預設 1.0＝恆速；>1 時遠用呢個、近線性降到 1.0；實際封頂約 1.33 倍）
+      - name: searchSteps
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 12
+        description: 掃唔到時身體朝最後見到嘅方向轉幾多步搵返（預設 0＝唔搜；盲轉有風險故 opt-in；從未見過目標唔搜）
+      - name: headSearch
+        in: query
+        schema:
+          type: boolean
+        description: 掃唔到時頭朝最後見到嘅方向掃（預設 true；只喺行路跟＋頭追蹤開住時有效；最多約 50 幀然後回 home）。每個步態／.ubx 動作都將頭拉返 home，大角度轉向後目標可能跌出視角，靠呢個搵返
+      - name: fallRecover
+        in: query
+        schema:
+          type: boolean
+        description: 行路跟期間跌倒保護（預設 true）：臨時確保跌倒看門狗（fall/*）開住（唔寫偏好設定，行路跟結束即還原）；未武裝（要先見到企直 2 秒）或者睇唔到加速度計就唔行；跌低／起身中即收步並停晒指令，由看門狗播 BackStand／FrontStand 起身（兩個動作未經機身實測），起身企穩後多等 1.5 s 自動繼續。false＝唔保護，跌低都照發命令
+      - name: maxFalls
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 10
+        description: 2 分鐘內跌夠幾多次就放棄行路跟（預設 3）：自動關 walkFollow（status.fallStop 寫明原因），要人手重新開
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -5231,6 +5625,104 @@ paths:
         in: query
         schema:
           type: string
+      - name: walkLeftBig
+        in: query
+        schema:
+          type: string
+      - name: walkRightBig
+        in: query
+        schema:
+          type: string
+      - name: walkSideLeft
+        in: query
+        schema:
+          type: string
+      - name: walkSideRight
+        in: query
+        schema:
+          type: string
+      - name: walkSideLeftBig
+        in: query
+        schema:
+          type: string
+      - name: walkSideRightBig
+        in: query
+        schema:
+          type: string
+      - name: walkBack
+        in: query
+        schema:
+          type: string
+      - name: walkEngine
+        in: query
+        schema:
+          type: string
+          enum:
+          - gait
+          - ubx
+          default: gait
+      - name: sideDb
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.8
+      - name: bigSideDb
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.8
+      - name: sideMinCoverage
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.6
+      - name: bigTurnDb
+        in: query
+        schema:
+          type: number
+          minimum: 0.1
+          maximum: 2.0
+      - name: backCoverage
+        in: query
+        schema:
+          type: number
+          minimum: 0
+          maximum: 0.9
+      - name: halfFovDeg
+        in: query
+        schema:
+          type: number
+          minimum: 10
+          maximum: 60
+      - name: walkSpeed
+        in: query
+        schema:
+          type: number
+          minimum: 1
+          maximum: 2
+      - name: searchSteps
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 12
+      - name: headSearch
+        in: query
+        schema:
+          type: boolean
+      - name: fallRecover
+        in: query
+        schema:
+          type: boolean
+      - name: maxFalls
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 10
       - $ref: '#/components/parameters/PanelToken'
       responses:
         '401':
@@ -8391,7 +8883,10 @@ components:
       properties:
         enabled:
           type: boolean
-          description: 看門狗開關（記喺 SharedPreferences）
+          description: 看門狗開關（記喺 SharedPreferences；行路跟開住時可能臨時開咗但冇記，見 walkFollowHolds）
+        walkFollowHolds:
+          type: integer
+          description: 行路跟（顏色／人臉追蹤）臨時要求開住看門狗嘅計數（>0＝有行路跟用緊；唔寫偏好設定，全部放手後如果偏好冇開就自動關返）
         state:
           type: string
           enum: [DISARMED, ARMED, FALLEN, RECOVERING, FAILED]

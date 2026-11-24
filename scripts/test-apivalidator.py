@@ -156,7 +156,11 @@ def main() -> int:
     # 第二套：ColorTrackTest (ColorTrackLogic 純 java.*，唔經 android stub)。
     files2 = [
         str(src / "ColorTrackLogic.java"),
+        str(src / "ColorTrackPlanner.java"),
+        str(src / "FaceTrackLogic.java"),
         str(testdir / "ColorTrackTest.java"),
+        str(testdir / "ColorTrackPlannerTest.java"),
+        str(testdir / "FaceTrackLogicTest.java"),
     ]
     cp2 = [javac, "-encoding", "UTF-8", "-nowarn", "-d", str(tmp)] + files2
     r = subprocess.run(cp2, capture_output=True, text=True)
@@ -164,17 +168,22 @@ def main() -> int:
         print(r.stdout)
         print(r.stderr)
         raise SystemExit("編譯失敗 (ColorTrackTest)")
-    r = subprocess.run(
-        [java, "-cp", str(tmp), "com.open.alpha2.ColorTrackTest"],
-        capture_output=True, text=True,
-    )
-    print(r.stdout, end="")
-    if r.stderr:
-        print(r.stderr, end="", file=sys.stderr)
-    if r.returncode != 0:
-        shutil.rmtree(tmp, ignore_errors=True)
-        print("FAIL")
-        return r.returncode
+    for test_cls in (
+        "com.open.alpha2.ColorTrackTest",
+        "com.open.alpha2.ColorTrackPlannerTest",
+        "com.open.alpha2.FaceTrackLogicTest",
+    ):
+        r = subprocess.run(
+            [java, "-cp", str(tmp), test_cls],
+            capture_output=True, text=True,
+        )
+        print(r.stdout, end="")
+        if r.stderr:
+            print(r.stderr, end="", file=sys.stderr)
+        if r.returncode != 0:
+            shutil.rmtree(tmp, ignore_errors=True)
+            print("FAIL")
+            return r.returncode
 
     # 第三套：MusicEqTest (MusicEq 純 java.*，唔經 android stub)。
     files3 = [

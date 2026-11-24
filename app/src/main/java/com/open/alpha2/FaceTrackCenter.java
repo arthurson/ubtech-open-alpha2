@@ -41,23 +41,34 @@ public final class FaceTrackCenter {
     private static final String TAG = "FaceTrackCenter";
 
     /** 頭部舵機：19 yaw（左右）、20 pitch（上下），範圍與前端校準表一致。 */
-    public static final int PAN_ID = 19;
-    public static final int TILT_ID = 20;
-    public static final int PAN_MIN = 75;
-    public static final int PAN_MAX = 165;
-    public static final int PAN_HOME = 120;
-    public static final int TILT_MIN = 105;
-    public static final int TILT_MAX = 155;
-    public static final int TILT_HOME = 120;
+    public static final int PAN_ID = WalkFollower.PAN_ID;
+    public static final int TILT_ID = WalkFollower.TILT_ID;
+    public static final int PAN_MIN = WalkFollower.PAN_MIN;
+    public static final int PAN_MAX = WalkFollower.PAN_MAX;
+    public static final int PAN_HOME = WalkFollower.PAN_HOME;
+    public static final int TILT_MIN = WalkFollower.TILT_MIN;
+    public static final int TILT_MAX = WalkFollower.TILT_MAX;
+    public static final int TILT_HOME = WalkFollower.TILT_HOME;
 
     public static final int DEFAULT_INTERVAL_MS = 500;
     public static final int DEFAULT_STEP_DEG = 17;
     public static final float DEFAULT_DEADBAND = 0.10f;
     public static final int DEFAULT_TIME_MS = 400;
     public static final int DEFAULT_MAX_FACES = 3;
+    // ── 行路跟（opt-in，同顏色追蹤共用 WalkFollower；以下係人臉版預設，其餘見 WalkFollower）──
+    /**
+     * 夠近覆蓋率＝估算臉框面積（見 FaceTrackLogic#faceCoverage）。預設 0.09 ≈ 約 0.6 m
+     *（推算：6.3 cm 眼距、水平視角約 60°、偵測圖寬 320 px；**未實測**，每個人眼距唔同，
+     * 細路眼距細會行得更近——請用 status 嘅 coverage 欄位實測後校正 closeCoverage）。
+     */
+    public static final float DEFAULT_CLOSE_COVERAGE = 0.09f;
+    /** 橫移最低覆蓋率（細過即太遠，橫移改唔到方位）；預設 0.03 ≈ 約 1 m（同上，未實測）。 */
+    public static final float DEFAULT_SIDE_MIN_COVERAGE = 0.03f;
 
     private final CameraController cameraController;
     private final UbxApi ubxApi;
+    /** 頭追蹤＋行路跟（顏色／人臉共用執行層）。 */
+    private final WalkFollower follower;
 
     // ── 可調參數（volatile，HTTP 線程寫、檢測線程讀）──
     private volatile boolean running = false;
@@ -77,11 +88,8 @@ public final class FaceTrackCenter {
     private volatile int trackIntervalMs = 100;
 
     // ── 狀態／統計 ──
-    private volatile int curPan = PAN_HOME;
-    private volatile int curTilt = TILT_HOME;
     private volatile long framesSeen = 0;
     private volatile long framesProcessed = 0;
-    private volatile long moves = 0;
     private volatile long lastDetectMs = 0;
     private volatile int lastFaces = 0;
     private volatile float lastFx = -1f;
@@ -89,7 +97,8 @@ public final class FaceTrackCenter {
     private volatile float lastFw = 0f;
     private volatile float lastFh = 0f;
     private volatile float lastConfidence = 0f;
-    private volatile long lastMoveMs = 0;
+    /** 最近一幀估算臉框面積（行路跟嘅距離代理；掃唔到＝0）。校正 closeCoverage 用。 */
+    private volatile float lastCoverage = 0f;
     private volatile int lostStreak = 0;
     /** 上一幀檢測耗時 ms（decode＋detect；調 fps 上限用嘅實測依據）。 */
     private volatile long lastCostMs = 0;
@@ -129,10 +138,6 @@ public final class FaceTrackCenter {
     private static final int ROI_MIN_PX = 96;
     /** ROI 大到接近全圖就唔裁（慳唔到幾多，直接行全圖）。 */
     private static final float ROI_MAX_FRACTION = 0.8f;
-    /** 舵機指令最小間隔 ms：10fps 下唔好每幀 hammer 胸板串口（見 UbxApi 連讀間隔註解）。 */
-    private static final long SERVO_MIN_GAP_MS = 150;
-    private volatile long lastServoSendMs = 0;
-
     private final CameraController.FrameListener sampler = new CameraController.FrameListener() {
         @Override public void onFrame(CameraController.Frame frame) {
             if (!running) return;
@@ -164,6 +169,22 @@ public final class FaceTrackCenter {
     public FaceTrackCenter(CameraController cameraController, UbxApi ubxApi) {
         this.cameraController = cameraController;
         this.ubxApi = ubxApi;
+        this.follower = new WalkFollower(ubxApi, DEFAULT_CLOSE_COVERAGE, DEFAULT_SIDE_MIN_COVERAGE);
+    }
+
+    /** MainActivity 接線用：後補 ActionDirect（起得慢過 Center；未注入時行路跟唔郁，頭照跟）。 */
+    public void setActionDirect(ActionDirect actionDirect) {
+        follower.setActionDirect(actionDirect);
+    }
+
+    /** MainActivity 接線用：後補 WalkCenter（比 Center 起得遲；未注入時 gait 引擎退返 ubx 引擎）。 */
+    public void setWalkCenter(WalkCenter walkCenter) {
+        follower.setWalkCenter(walkCenter);
+    }
+
+    /** MainActivity 接線用：後補跌倒看門狗（行路跟跌低要暫停、等起身；見 WalkFollower）。 */
+    public void setFallMonitor(FallMonitor fallMonitor) {
+        follower.setFallMonitor(fallMonitor);
     }
 
     private void ensureThreadLocked() {
@@ -182,8 +203,9 @@ public final class FaceTrackCenter {
 
     /** 當前生效間隔（sampler 同 status 共用；自動開＝跟到臉用快速，否則用慢速）。 */
     private int effectiveIntervalMs() {
-        if (autoInterval && roiHasTrack) return trackIntervalMs;
-        return intervalMs;
+        int base = (autoInterval && roiHasTrack) ? trackIntervalMs : intervalMs;
+        // gait 行緊要靠每幀續租（租約 1500 ms）：間隔過慢會每次都過期＝起停起停。
+        return follower.clampIntervalMs(base);
     }
 
     /** 從 query 讀可選追蹤參數並套用（start/config 共用；缺席即保留現值）。 */
@@ -208,6 +230,7 @@ public final class FaceTrackCenter {
                 && !query.get("autoInterval").isEmpty()) {
             autoInterval = ApiValidator.optionalBoolean(query, "autoInterval", autoInterval);
         }
+        follower.applyConfig(query); // 行路跟／轉向／橫移／後退／頭搜索等（同 ColorTrackCenter 共用）
     }
 
     /** 啟動追蹤：先確保相機開流，再訂閱抽樣。HTTP worker 線程調用（會 block 開相機）。 */
@@ -226,6 +249,7 @@ public final class FaceTrackCenter {
             }
             lastSampleMs = 0;
         }
+        follower.onStart();
         running = true;
         lostStreak = 0;
         roiHasTrack = false;
@@ -245,6 +269,7 @@ public final class FaceTrackCenter {
                 subscribed = false;
             }
         }
+        follower.onStop();
         return HttpServer.ApiResponse.ok(statusJson());
     }
 
@@ -290,6 +315,7 @@ public final class FaceTrackCenter {
     /** 放開相機訂閱＋停背景線程（MainActivity.onDestroy 用）。 */
     public synchronized void shutdown() {
         running = false;
+        follower.onShutdown();
         synchronized (subLock) {
             if (subscribed) {
                 try { cameraController.unsubscribe(sampler); } catch (Throwable ignored) {}
@@ -460,25 +486,37 @@ public final class FaceTrackCenter {
             lastCostMs = lastDetectMs - t0;
             if (found <= 0) {
                 lastFaces = 0;
+                lastCoverage = 0f;
                 lostStreak++;
                 if (inRoi) {
                     roiMiss++;
                     if (roiMiss >= ROI_MISS_LIMIT) { roiHasTrack = false; roiMiss = 0; }
                 }
+                follower.update(false, 0f, 0f, 0f, headFollow, deadband, stepDeg, timeMs);
                 return;
             }
-            // 取眼睛距離最大（最大張）且 confidence 較高者。
-            FaceDetector.Face best = null;
-            float bestScore = -1f;
+            // 揀臉：眼距×(0.5+confidence) 最高者；有連續性（兩個人分數相若時唔逐幀左右跳，
+            // 見 FaceTrackLogic#pickIndex）。座標先映射返全圖（ROI 裁框要加返偏移）。
+            float[] cxs = new float[found];
+            float[] cys = new float[found];
+            float[] scs = new float[found];
             for (int i = 0; i < found; i++) {
                 FaceDetector.Face f = faces[i];
-                if (f == null) continue;
-                float score = f.eyesDistance() * (0.5f + f.confidence());
-                if (score > bestScore) { bestScore = score; best = f; }
+                if (f == null) { scs[i] = -1f; continue; }
+                PointF m = new PointF();
+                f.getMidPoint(m);
+                cxs[i] = (inRoi ? roiLeft + m.x : m.x) / Math.max(1, bw);
+                cys[i] = (inRoi ? roiTop + m.y : m.y) / Math.max(1, bh);
+                scs[i] = f.eyesDistance() * (0.5f + f.confidence());
             }
+            boolean hasPrev = lostStreak == 0 && lastFx >= 0f;
+            int bi = FaceTrackLogic.pickIndex(cxs, cys, scs, found, lastFx, lastFy, hasPrev);
+            FaceDetector.Face best = bi >= 0 ? faces[bi] : null;
             if (best == null) {
                 lastFaces = 0;
+                lastCoverage = 0f;
                 lostStreak++;
+                follower.update(false, 0f, 0f, 0f, headFollow, deadband, stepDeg, timeMs);
                 return;
             }
             PointF mid = new PointF();
@@ -488,11 +526,13 @@ public final class FaceTrackCenter {
             // 過濾極低 confidence 誤檢（FaceDetector confidence 約 0-1）。
             if (conf < 0.15f) {
                 lastFaces = 0;
+                lastCoverage = 0f;
                 lostStreak++;
                 if (inRoi) {
                     roiMiss++;
                     if (roiMiss >= ROI_MISS_LIMIT) { roiHasTrack = false; roiMiss = 0; }
                 }
+                follower.update(false, 0f, 0f, 0f, headFollow, deadband, stepDeg, timeMs);
                 return;
             }
             // ROI 座標映射返全圖（detect 圖像素；eyes 本身已經係像素，無需縮放——裁框唔放大）。
@@ -527,48 +567,11 @@ public final class FaceTrackCenter {
             if (dy < -1f) dy = -1f;
             if (dy > 1f) dy = 1f;
 
-            boolean moved = false;
-            int newPan = curPan;
-            int newTilt = curTilt;
-            float db = deadband;
-            // 追頭總開關：關＝只偵測＋畫框，兩軸都不動（調試／展示用人臉框時用）。
-            if (headFollow && Math.abs(dx) > db) {
-                float mag = (Math.abs(dx) - db) / Math.max(0.001f, 1f - db);
-                int delta = Math.max(1, Math.round(mag * stepDeg));
-                if (dx < 0) delta = -delta;
-                newPan = clamp(curPan + delta, PAN_MIN, PAN_MAX);
-            }
-            if (headFollow && Math.abs(dy) > db) {
-                float mag = (Math.abs(dy) - db) / Math.max(0.001f, 1f - db);
-                int delta = Math.max(1, Math.round(mag * stepDeg));
-                if (dy < 0) delta = -delta;
-                newTilt = clamp(curTilt + delta, TILT_MIN, TILT_MAX);
-            }
-            // 只有角度真變＋同上次發送隔夠 SERVO_MIN_GAP_MS 先發舵機：
-            // 10fps 下唔好每幀 hammer 胸板串口（見 UbxApi 連讀間隔註解）。
-            long nowMs = System.currentTimeMillis();
-            boolean servoDue = nowMs - lastServoSendMs >= SERVO_MIN_GAP_MS;
-            if (headFollow && servoDue && newPan != curPan) {
-                if (ubxApi != null
-                        && ubxApi.servoSendOneCode(PAN_ID, newPan, timeMs)
-                        == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-                    curPan = newPan;
-                    moved = true;
-                }
-            }
-            if (headFollow && servoDue && newTilt != curTilt) {
-                if (ubxApi != null
-                        && ubxApi.servoSendOneCode(TILT_ID, newTilt, timeMs)
-                        == UbxErrorCode.API_ERROR_CODE.API_ERROR_SUCCEED) {
-                    curTilt = newTilt;
-                    moved = true;
-                }
-            }
-            if (moved) {
-                moves++;
-                lastMoveMs = nowMs;
-                lastServoSendMs = nowMs;
-            }
+            // 頭追蹤＋行路跟全部交 WalkFollower（同 ColorTrackCenter 共用）：
+            // 距離代理＝估算臉框面積（越近越大）。
+            float cov = FaceTrackLogic.faceCoverage(fw, fh);
+            lastCoverage = cov;
+            follower.update(true, dx, dy, cov, headFollow, deadband, stepDeg, timeMs);
         } catch (Throwable t) {
             Log.w(TAG, "detectAndFollow failed", t);
         } finally {
@@ -587,20 +590,22 @@ public final class FaceTrackCenter {
         StringBuilder sb = new StringBuilder("{\"ok\":true,");
         sb.append("\"running\":").append(running).append(",");
         sb.append("\"detector\":\"android.media.FaceDetector\",");
-        sb.append("\"pan\":").append(curPan).append(",\"tilt\":").append(curTilt).append(",");
+        sb.append("\"pan\":").append(follower.curPan()).append(",\"tilt\":").append(follower.curTilt()).append(",");
         sb.append("\"faces\":").append(lastFaces).append(",");
         sb.append("\"fx\":").append(fmt3(lastFx)).append(",\"fy\":").append(fmt3(lastFy));
         sb.append(",\"fw\":").append(fmt3(lastFw)).append(",\"fh\":").append(fmt3(lastFh));
         sb.append(",\"confidence\":").append(fmt3(lastConfidence)).append(",");
+        sb.append("\"coverage\":").append(fmt3(lastCoverage)).append(",");
         sb.append("\"roiTracking\":").append(roiTracking).append(",");
+        follower.appendStatusJson(sb);
         sb.append("\"effectiveIntervalMs\":").append(effectiveIntervalMs()).append(",");
         sb.append("\"framesSeen\":").append(framesSeen)
                 .append(",\"framesProcessed\":").append(framesProcessed)
-                .append(",\"moves\":").append(moves)
+                .append(",\"moves\":").append(follower.moves())
                 .append(",\"lostStreak\":").append(lostStreak)
                 .append(",\"lastDetectMs\":").append(lastDetectMs)
                 .append(",\"lastCostMs\":").append(lastCostMs)
-                .append(",\"lastMoveMs\":").append(lastMoveMs).append(",");
+                .append(",\"lastMoveMs\":").append(follower.lastMoveMs()).append(",");
         sb.append("\"config\":{");
         sb.append("\"intervalMs\":").append(intervalMs).append(",");
         sb.append("\"stepDeg\":").append(stepDeg).append(",");
@@ -610,7 +615,8 @@ public final class FaceTrackCenter {
         sb.append("\"headFollow\":").append(headFollow).append(",");
         sb.append("\"roiEnabled\":").append(roiEnabled).append(",");
         sb.append("\"autoInterval\":").append(autoInterval).append(",");
-        sb.append("\"trackIntervalMs\":").append(trackIntervalMs);
+        sb.append("\"trackIntervalMs\":").append(trackIntervalMs).append(",");
+        follower.appendConfigJson(sb);
         sb.append("},");
         sb.append("\"servo\":{\"panId\":").append(PAN_ID)
                 .append(",\"tiltId\":").append(TILT_ID)

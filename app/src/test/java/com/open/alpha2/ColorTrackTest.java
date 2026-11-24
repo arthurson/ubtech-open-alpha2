@@ -137,6 +137,81 @@ public final class ColorTrackTest {
         // 偏＋近：轉向優先（對正先好行）。
         eq(true, "left".equals(ColorTrackLogic.walkDecision(-0.6f, 0.5f, 0.35f, 0.12f)), "walk.turnFirst");
 
+        // ── matchMask：同 rgbToHsv＋matchHsv 逐像素一致（隨機 20000 像素＋多組閾值，固定 seed）──
+        java.util.Random rnd = new java.util.Random(20260511L);
+        float[][] ths = {
+            { 335f, 25f, 0.45f, 1.0f, 0.25f, 1.0f },   // 預設紅（wrap）
+            { 90f, 150f, 0.30f, 1.0f, 0.20f, 0.95f },  // 綠
+            { 0f, 360f, 0.0f, 0.25f, 0.60f, 1.0f },    // 白（低飽和）
+        };
+        int[] pxs = new int[20000];
+        for (int i = 0; i < pxs.length; i++) pxs[i] = rnd.nextInt();
+        // 補灰階／純色邊角。
+        pxs[0] = 0xFF000000; pxs[1] = 0xFFFFFFFF; pxs[2] = 0xFFFF0000; pxs[3] = 0xFF00FF00;
+        pxs[4] = 0xFF0000FF; pxs[5] = 0xFF808080;
+        boolean[] mk = new boolean[pxs.length];
+        for (int t = 0; t < ths.length; t++) {
+            float[] th = ths[t];
+            int mm = ColorTrackLogic.matchMask(pxs, pxs.length, mk, th[0], th[1], th[2], th[3], th[4], th[5]);
+            int ref = 0;
+            boolean same = true;
+            for (int i = 0; i < pxs.length; i++) {
+                int px = pxs[i];
+                float[] hsv = ColorTrackLogic.rgbToHsv((px >> 16) & 0xFF, (px >> 8) & 0xFF, px & 0xFF);
+                boolean e = ColorTrackLogic.matchHsv(hsv[0], hsv[1], hsv[2], th[0], th[1], th[2], th[3], th[4], th[5]);
+                if (e) ref++;
+                if (e != mk[i]) same = false;
+            }
+            eq(true, same, "matchMask.sameAsRef" + t);
+            eq(ref, mm, "matchMask.count" + t);
+        }
+
+        // ── pickBlob：Scratch 重用結果同 largestBlob 一致；連續性揀近者 ──
+        {
+            int w = 20, h = 10;
+            boolean[] m2 = new boolean[w * h];
+            // 左 blob 6x4=24 像素，右 blob 5x4=20 像素（右較細但 >= 一半）；3x1 雜點。
+            for (int y = 2; y < 6; y++) for (int x = 1; x < 7; x++) m2[y * w + x] = true;
+            for (int y = 2; y < 6; y++) for (int x = 13; x < 18; x++) m2[y * w + x] = true;
+            for (int x = 9; x < 12; x++) m2[8 * w + x] = true;
+            ColorTrackLogic.Scratch sc = new ColorTrackLogic.Scratch();
+            ColorTrackLogic.Blob big0 = ColorTrackLogic.largestBlob(m2, w, h, 3);
+            ColorTrackLogic.Blob big1 = ColorTrackLogic.pickBlob(m2, w, h, 3, sc, 0f, 0f, false);
+            ColorTrackLogic.Blob big2 = ColorTrackLogic.pickBlob(m2, w, h, 3, sc, 0f, 0f, false); // 重用
+            eq(24, big0.count, "pick.largest");
+            eq(true, big1.count == big0.count && big2.count == big0.count && big1.sumX == big2.sumX, "pick.scratchReuse");
+            // 上一幀質心喺右邊（fx≈0.77）：右 blob 夠大（20*2>=24）→ 揀右。
+            ColorTrackLogic.Blob nearRight = ColorTrackLogic.pickBlob(m2, w, h, 3, sc, 0.77f, 0.4f, true);
+            eq(20, nearRight.count, "pick.continuityRight");
+            // 上一幀喺左邊：揀左（同最大一致）。
+            ColorTrackLogic.Blob nearLeft = ColorTrackLogic.pickBlob(m2, w, h, 3, sc, 0.2f, 0.4f, true);
+            eq(24, nearLeft.count, "pick.continuityLeft");
+            // 雜點 3 像素唔夠大（3*2<24）：就算上一幀喺雜點嗰邊都唔搶。
+            ColorTrackLogic.Blob nearNoise = ColorTrackLogic.pickBlob(m2, w, h, 3, sc, 0.5f, 0.85f, true);
+            eq(true, nearNoise.count >= 20, "pick.noiseNotChosen");
+            // minPixels 過濾：全部細過即 null。
+            eqNull(ColorTrackLogic.pickBlob(m2, w, h, 100, sc, 0f, 0f, false), "pick.allTooSmall");
+            // 傳細過 w*h 嘅 mask／null scratch：回 null，唔炸。
+            eqNull(ColorTrackLogic.pickBlob(new boolean[3], w, h, 3, sc, 0f, 0f, false), "pick.shortMask");
+            eqNull(ColorTrackLogic.pickBlob(m2, w, h, 3, null, 0f, 0f, false), "pick.nullScratch");
+            // 兩件大細一樣：揀近上一幀者（唔固定揀先掃到嗰件）。
+            boolean[] m3 = new boolean[w * h];
+            for (int y = 2; y < 6; y++) for (int x = 1; x < 6; x++) m3[y * w + x] = true;
+            for (int y = 2; y < 6; y++) for (int x = 13; x < 18; x++) m3[y * w + x] = true;
+            ColorTrackLogic.Blob tieRight = ColorTrackLogic.pickBlob(m3, w, h, 3, sc, 0.8f, 0.4f, true);
+            eq(true, tieRight.sumX / tieRight.count > 10, "pick.tieFollowsPrevRight");
+            ColorTrackLogic.Blob tieLeft = ColorTrackLogic.pickBlob(m3, w, h, 3, sc, 0.15f, 0.4f, true);
+            eq(true, tieLeft.sumX / tieLeft.count < 10, "pick.tieFollowsPrevLeft");
+        }
+
+        // ── headOffset：pan 增＝向右＝正；halfFov<=0 保護 ──
+        eq(true, Math.abs(ColorTrackLogic.headOffset(120, 120, 30f)) < 1e-6f, "headOffset.home");
+        eq(true, Math.abs(ColorTrackLogic.headOffset(150, 120, 30f) - 1.0f) < 1e-6f, "headOffset.rightFullFov");
+        eq(true, Math.abs(ColorTrackLogic.headOffset(105, 120, 30f) + 0.5f) < 1e-6f, "headOffset.left");
+        eq(true, Math.abs(ColorTrackLogic.headOffset(150, 120, 0f)) < 1e-6f, "headOffset.zeroFov");
+        // 頭已向左 30° 但色喺畫面中間：身體方位偏左一個半視角（原本 dx 單睇會當 0）。
+        eq(true, ColorTrackLogic.headOffset(90, 120, 30f) + 0f < -0.99f, "headOffset.bodyBearingBug");
+
         System.out.println("ColorTrackTest: passed=" + passed + " failed=" + failed);
         if (failed > 0) {
             System.exit(1);

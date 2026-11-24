@@ -393,6 +393,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 入面永遠跳過——行路跟唔郁得頭郁就係咁嚟）。
         if (actionDirect != null) {
             try { colorTrackCenter.setActionDirect(actionDirect); } catch (Throwable ignored) {}
+            try { faceTrackCenter.setActionDirect(actionDirect); } catch (Throwable ignored) {}
         }
         // Sonar＋PIR sensors 包：只需要 ledCenter (紫燈指示)，在 xiaozhiBridge 之前起——
         // MCP sensors 4 tool 經 ctor 取得 (斷 cycle：PIR 推送
@@ -437,11 +438,26 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 按住向前行／向後行（步態 assets/gait/walk_fwd.json＋walk_back.json，源自 .ubx）；手柄 walk:* 映射同 HTTP walk/* 共用。
         walkCenter = new WalkCenter(this, ubxPlayer);
         gamepadCenter.attachWalkCenter(walkCenter);
+        // 顏色／人臉追蹤行路跟：前進／後退用 WalkCenter 連續步態（hold／release），要等 walkCenter 起好先掛入。
+        if (colorTrackCenter != null) {
+            try { colorTrackCenter.setWalkCenter(walkCenter); } catch (Throwable ignored) {}
+        }
+        if (faceTrackCenter != null) {
+            try { faceTrackCenter.setWalkCenter(walkCenter); } catch (Throwable ignored) {}
+        }
         // ONNX policy（policies/<name>/policy.onnx＋manifest.json；預設 dry-run 排練）。
         policyCenter = new PolicyCenter(this, ubxPlayer, deviceStatus);
         // 跌倒自己起身看門狗（app 層，獨立於 policy 會話；開關記喺 SharedPreferences，
         // 預設關）。用內建 BackStand／FrontStand 動作，唔使 policy；policyCenter 只用嚟讓路。
         fallRecoveryCenter = new FallRecoveryCenter(this, deviceStatus, ubxPlayer, actionDirect, policyCenter);
+        // 顏色／人臉追蹤行路跟：跌低要停晒指令、等看門狗起身、起身後自動繼續（行路跟開住時臨時確保看門狗開住，
+        // 唔寫偏好設定）；要等 fallRecoveryCenter 起好先掛入。
+        if (colorTrackCenter != null) {
+            try { colorTrackCenter.setFallMonitor(fallRecoveryCenter); } catch (Throwable ignored) {}
+        }
+        if (faceTrackCenter != null) {
+            try { faceTrackCenter.setFallMonitor(fallRecoveryCenter); } catch (Throwable ignored) {}
+        }
         // dispatcher 包全部上面 controller (+speechCenter 做 Host；sensorState
         // 繼續經 this——TTS／sonar 全部轉交給對應 center；servo/sonar 直調
         // sonarCenter)。

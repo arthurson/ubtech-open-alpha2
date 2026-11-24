@@ -32,11 +32,15 @@ import java.util.Map;
  *       auto-recover 搶控制。</li>
  * </ul>
  *
+ * <p>行路跟（顏色／人臉追蹤）經 {@link FallMonitor} 接入：開咗行路跟就 {@link #acquire()} 臨時確保
+ * 呢個看門狗開住（唔寫 SharedPreferences，全部 {@link #release()} 後還原），並讀 {@link #fallLevel()}
+ * 知道機身有冇跌低；起身動作仍然由呢度播，行路跟只負責停晒指令同起身後自動繼續。</p>
+ *
  * <p>加速度計軸映射已按實機修正（預設 {@code -y+x+z}：sensor y 為前後方向，+y 趴住，-y 仰躺）；BackStand／FrontStand 動作尚未在硬件上確認；
  * 軸映射錯誤會令機身站立時也被判定為跌倒，因此預設關閉。實機測試前請吊住或扶住機身，並先檢查
  * {@code fall/status} 中的 {@code tiltDeg}／{@code side} 是否正確。</p>
  */
-public final class FallRecoveryCenter {
+public final class FallRecoveryCenter implements FallMonitor {
     private static final String TAG = "FallRecovery";
     private static final String PREFS = "fall_recovery";
     private static final String KEY_ON = "on";
@@ -66,7 +70,10 @@ public final class FallRecoveryCenter {
     private volatile String lastError = "";
     private volatile String lastEvent = "idle";
     private volatile int generation;
-    private Thread worker;
+    private volatile Thread worker;
+    /** 行路跟臨時要求開住嘅計數（acquire／release）；sessionEnabled＝呢個開關係因為行路跟先開。 */
+    private int sessionHolds;
+    private boolean sessionEnabled;
 
     public FallRecoveryCenter(Context context, DeviceStatus deviceStatus, UbxPlayer ubxPlayer,
                               ActionDirect actionDirect, PolicyCenter policyCenter) {
@@ -138,7 +145,11 @@ public final class FallRecoveryCenter {
     }
 
     private synchronized String setEnabledInternal(boolean on) {
-        if (on == enabled) return null;
+        if (on == enabled) {
+            // 用戶明確要求開（可能只係行路跟臨時開住）：記落偏好，行路跟 release 後唔好關。
+            if (on) prefs.edit().putBoolean(KEY_ON, true).apply();
+            return null;
+        }
         if (on && !deviceStatus.hasAccelerometer()) {
             return "no accelerometer sensor on this device";
         }
@@ -171,6 +182,77 @@ public final class FallRecoveryCenter {
         }
     }
 
+    // -- FallMonitor（行路跟用）---------------------------------------------
+
+    /**
+     * FALL_OK＝看門狗開住、已武裝（見過企直）、加速度計有數據；FALL_DOWN＝跌低／起身中／起身失敗
+     *（FALLEN／RECOVERING／FAILED）；其餘（未開、未武裝、睇唔到加速度計）＝FALL_NOT_READY：
+     * 唔識偵測跌倒，行路跟唔會行。
+     */
+    @Override
+    public int fallLevel() {
+        if (!enabled || worker == null) return ColorTrackPlanner.FALL_NOT_READY;
+        switch (detector.state()) {
+            case FALLEN:
+            case RECOVERING:
+            case FAILED:
+                return ColorTrackPlanner.FALL_DOWN;
+            case ARMED:
+                return deviceStatus.accelSmoothed(ACCEL_MAX_AGE_MS) != null
+                        ? ColorTrackPlanner.FALL_OK : ColorTrackPlanner.FALL_NOT_READY;
+            default:
+                return ColorTrackPlanner.FALL_NOT_READY;
+        }
+    }
+
+    @Override
+    public String fallState() {
+        if (!enabled || worker == null) return "off";
+        FallRecoveryDetector.State st = detector.state();
+        if (st == FallRecoveryDetector.State.ARMED && deviceStatus.accelSmoothed(ACCEL_MAX_AGE_MS) == null) {
+            return "noAccel";
+        }
+        return st.name().toLowerCase(Locale.US);
+    }
+
+    /** 行路跟期間確保看門狗開住（可重入計數，唔寫 SharedPreferences）。 */
+    @Override
+    public synchronized String acquire() {
+        if (!enabled && !deviceStatus.hasAccelerometer()) {
+            return "no accelerometer sensor on this device";
+        }
+        sessionHolds++;
+        if (!enabled) {
+            enabled = true;
+            sessionEnabled = true;
+            recoveries = 0;
+            lastError = "";
+            lastEvent = "enabled (walk follow)";
+            detector.reset();
+            ensureAccel();
+            startWorker();
+            publish();
+            Log.i(TAG, "fall recovery enabled for walk follow (not persisted)");
+        }
+        return null;
+    }
+
+    /** 最後一個 release：如果看門狗只係因為行路跟先開（偏好冇開），就關返。 */
+    @Override
+    public synchronized void release() {
+        if (sessionHolds > 0) sessionHolds--;
+        if (sessionHolds == 0 && sessionEnabled) {
+            sessionEnabled = false;
+            if (!prefs.getBoolean(KEY_ON, false)) {
+                enabled = false;
+                lastEvent = "disabled (walk follow ended)";
+                stopWorker();
+                publish();
+                Log.i(TAG, "fall recovery disabled again (walk follow ended)");
+            }
+        }
+    }
+
     // -- HTTP ----------------------------------------------------------------
 
     public HttpServer.ApiResponse statusResponse() {
@@ -179,6 +261,7 @@ public final class FallRecoveryCenter {
         if (err.isEmpty()) err = lastError;
         StringBuilder sb = new StringBuilder("{\"ok\":true");
         sb.append(",\"enabled\":").append(enabled);
+        sb.append(",\"walkFollowHolds\":").append(sessionHolds);
         sb.append(",\"state\":\"").append(detector.state().name()).append('"');
         sb.append(",\"side\":\"").append(JsonUtil.esc(detector.side())).append('"');
         sb.append(",\"tiltDeg\":").append(num(detector.tiltDeg()));

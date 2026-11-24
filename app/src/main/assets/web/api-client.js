@@ -275,6 +275,16 @@ const Alpha2Api = (function() {
     if (params && params.minPixels != null) assertRange(Number(params.minPixels), 10, 22000, 'minPixels');
     if (params && params.turnDb != null) assertRange(Number(params.turnDb), 0, 0.8, 'turnDb');
     if (params && params.closeCoverage != null) assertRange(Number(params.closeCoverage), 0.02, 0.6, 'closeCoverage');
+    if (params && params.walkEngine != null) assertEnum(params.walkEngine, ['gait', 'ubx'], 'walkEngine');
+    if (params && params.sideDb != null) assertRange(Number(params.sideDb), 0, 0.8, 'sideDb');
+    if (params && params.bigSideDb != null) assertRange(Number(params.bigSideDb), 0, 0.8, 'bigSideDb');
+    if (params && params.sideMinCoverage != null) assertRange(Number(params.sideMinCoverage), 0, 0.6, 'sideMinCoverage');
+    if (params && params.bigTurnDb != null) assertRange(Number(params.bigTurnDb), 0.1, 2.0, 'bigTurnDb');
+    if (params && params.backCoverage != null) assertRange(Number(params.backCoverage), 0, 0.9, 'backCoverage');
+    if (params && params.halfFovDeg != null) assertRange(Number(params.halfFovDeg), 10, 60, 'halfFovDeg');
+    if (params && params.walkSpeed != null) assertRange(Number(params.walkSpeed), 1, 2, 'walkSpeed');
+    if (params && params.searchSteps != null) assertRange(Number(params.searchSteps), 0, 12, 'searchSteps');
+    if (params && params.maxFalls != null) assertRange(Number(params.maxFalls), 1, 10, 'maxFalls');
     // 更新顏色追蹤參數（不啟停；啟動中亦可即時調）
     return api('color/track/config', params);
   }
@@ -294,6 +304,16 @@ const Alpha2Api = (function() {
     if (params && params.minPixels != null) assertRange(Number(params.minPixels), 10, 22000, 'minPixels');
     if (params && params.turnDb != null) assertRange(Number(params.turnDb), 0, 0.8, 'turnDb');
     if (params && params.closeCoverage != null) assertRange(Number(params.closeCoverage), 0.02, 0.6, 'closeCoverage');
+    if (params && params.walkEngine != null) assertEnum(params.walkEngine, ['gait', 'ubx'], 'walkEngine');
+    if (params && params.sideDb != null) assertRange(Number(params.sideDb), 0, 0.8, 'sideDb');
+    if (params && params.bigSideDb != null) assertRange(Number(params.bigSideDb), 0, 0.8, 'bigSideDb');
+    if (params && params.sideMinCoverage != null) assertRange(Number(params.sideMinCoverage), 0, 0.6, 'sideMinCoverage');
+    if (params && params.bigTurnDb != null) assertRange(Number(params.bigTurnDb), 0.1, 2.0, 'bigTurnDb');
+    if (params && params.backCoverage != null) assertRange(Number(params.backCoverage), 0, 0.9, 'backCoverage');
+    if (params && params.halfFovDeg != null) assertRange(Number(params.halfFovDeg), 10, 60, 'halfFovDeg');
+    if (params && params.walkSpeed != null) assertRange(Number(params.walkSpeed), 1, 2, 'walkSpeed');
+    if (params && params.searchSteps != null) assertRange(Number(params.searchSteps), 0, 12, 'searchSteps');
+    if (params && params.maxFalls != null) assertRange(Number(params.maxFalls), 1, 10, 'maxFalls');
     // 開始純 Java 顏色追蹤（HSV 閾值＋最大 blob＋頭部 19/20 跟色）
     return api('color/track/start', params);
   }
@@ -315,6 +335,18 @@ const Alpha2Api = (function() {
     if (params && params.deadband != null) assertRange(Number(params.deadband), 0, 0.5, 'deadband');
     if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2200, 'timeMs');
     if (params && params.maxFaces != null) assertRange(Number(params.maxFaces), 1, 5, 'maxFaces');
+    if (params && params.turnDb != null) assertRange(Number(params.turnDb), 0, 0.8, 'turnDb');
+    if (params && params.closeCoverage != null) assertRange(Number(params.closeCoverage), 0.02, 0.6, 'closeCoverage');
+    if (params && params.walkEngine != null) assertEnum(params.walkEngine, ['gait', 'ubx'], 'walkEngine');
+    if (params && params.sideDb != null) assertRange(Number(params.sideDb), 0, 0.8, 'sideDb');
+    if (params && params.bigSideDb != null) assertRange(Number(params.bigSideDb), 0, 0.8, 'bigSideDb');
+    if (params && params.sideMinCoverage != null) assertRange(Number(params.sideMinCoverage), 0, 0.6, 'sideMinCoverage');
+    if (params && params.bigTurnDb != null) assertRange(Number(params.bigTurnDb), 0.1, 2.0, 'bigTurnDb');
+    if (params && params.backCoverage != null) assertRange(Number(params.backCoverage), 0, 0.9, 'backCoverage');
+    if (params && params.halfFovDeg != null) assertRange(Number(params.halfFovDeg), 10, 60, 'halfFovDeg');
+    if (params && params.walkSpeed != null) assertRange(Number(params.walkSpeed), 1, 2, 'walkSpeed');
+    if (params && params.searchSteps != null) assertRange(Number(params.searchSteps), 0, 12, 'searchSteps');
+    if (params && params.maxFalls != null) assertRange(Number(params.maxFalls), 1, 10, 'maxFalls');
     // 更新人臉追蹤參數（不啟停；啟動中亦可即時調）
     return api('face/track/config', params);
   }
@@ -331,6 +363,18 @@ const Alpha2Api = (function() {
     if (params && params.deadband != null) assertRange(Number(params.deadband), 0, 0.5, 'deadband');
     if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2200, 'timeMs');
     if (params && params.maxFaces != null) assertRange(Number(params.maxFaces), 1, 5, 'maxFaces');
+    if (params && params.turnDb != null) assertRange(Number(params.turnDb), 0, 0.8, 'turnDb');
+    if (params && params.closeCoverage != null) assertRange(Number(params.closeCoverage), 0.02, 0.6, 'closeCoverage');
+    if (params && params.walkEngine != null) assertEnum(params.walkEngine, ['gait', 'ubx'], 'walkEngine');
+    if (params && params.sideDb != null) assertRange(Number(params.sideDb), 0, 0.8, 'sideDb');
+    if (params && params.bigSideDb != null) assertRange(Number(params.bigSideDb), 0, 0.8, 'bigSideDb');
+    if (params && params.sideMinCoverage != null) assertRange(Number(params.sideMinCoverage), 0, 0.6, 'sideMinCoverage');
+    if (params && params.bigTurnDb != null) assertRange(Number(params.bigTurnDb), 0.1, 2.0, 'bigTurnDb');
+    if (params && params.backCoverage != null) assertRange(Number(params.backCoverage), 0, 0.9, 'backCoverage');
+    if (params && params.halfFovDeg != null) assertRange(Number(params.halfFovDeg), 10, 60, 'halfFovDeg');
+    if (params && params.walkSpeed != null) assertRange(Number(params.walkSpeed), 1, 2, 'walkSpeed');
+    if (params && params.searchSteps != null) assertRange(Number(params.searchSteps), 0, 12, 'searchSteps');
+    if (params && params.maxFalls != null) assertRange(Number(params.maxFalls), 1, 10, 'maxFalls');
     // 開始 Android 內置人臉追蹤（FaceDetector＋頭部 19/20 跟人）
     return api('face/track/start', params);
   }
