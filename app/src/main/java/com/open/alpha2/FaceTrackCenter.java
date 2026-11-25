@@ -116,10 +116,12 @@ public final class FaceTrackCenter {
     private int cachedW = -1;
     private int cachedH = -1;
     private int cachedCap = -1;
-    /** ROI 專用第二快取（ROI 尺寸隨塊面郁而變，同主快取分開免互相踢走）。 */
-    private FaceDetector cachedRoiDetector;
-    private int cachedRoiW = -1;
-    private int cachedRoiH = -1;
+    /** ROI 專用快取：按（寬，高）存多個（ROI 邊長已量化到 ROI_QUANT_PX 倍數，只有幾級；
+     *  同主快取分開免互相踢走）。只經 worker 線程讀寫。滿咗就清空重建（防萬一尺寸亂跳）。 */
+    private final java.util.HashMap<Long, FaceDetector> roiDetectors = new java.util.HashMap<>();
+    private static final int ROI_DETECTOR_CACHE_MAX = 16;
+    /** ROI 邊長量化級距（px）：見 FaceTrackLogic.quantUp。 */
+    private static final int ROI_QUANT_PX = 32;
     // ── ROI 跟隨狀態（roiHasTrack 會被相機線程讀（自動間隔用），其餘只經 worker 線程讀寫）──
     /** 上次全圖命中嘅臉框（detect 圖歸一化），ROI 裁框基準。 */
     private volatile boolean roiHasTrack = false;
@@ -211,26 +213,36 @@ public final class FaceTrackCenter {
     /** 從 query 讀可選追蹤參數並套用（start/config 共用；缺席即保留現值）。 */
     public void applyConfigFromQuery(Map<String, String> query) {
         if (query == null) return;
-        intervalMs = ApiValidator.optionalIntRange(query, "intervalMs", 100, 3000, intervalMs);
-        trackIntervalMs = ApiValidator.optionalIntRange(query, "trackIntervalMs", 100, 3000, trackIntervalMs);
-        stepDeg = ApiValidator.optionalIntRange(query, "stepDeg", 1, 30, stepDeg);
-        deadband = ApiValidator.optionalFloatRange(query, "deadband", 0.0, 0.5, deadband);
-        timeMs = ApiValidator.optionalIntRange(query, "timeMs", 20, 2000, timeMs);
-        maxFaces = ApiValidator.optionalIntRange(query, "maxFaces", 1, 5, maxFaces);
-        if (query.containsKey("headFollow") && query.get("headFollow") != null
-                && !query.get("headFollow").isEmpty()) {
-            headFollow = ApiValidator.optionalBoolean(query, "headFollow", headFollow);
-        }
-        if (query.containsKey("roiEnabled") && query.get("roiEnabled") != null
-                && !query.get("roiEnabled").isEmpty()) {
-            roiEnabled = ApiValidator.optionalBoolean(query, "roiEnabled", roiEnabled);
-            if (!roiEnabled) { roiHasTrack = false; roiMiss = 0; roiTracking = false; }
-        }
-        if (query.containsKey("autoInterval") && query.get("autoInterval") != null
-                && !query.get("autoInterval").isEmpty()) {
-            autoInterval = ApiValidator.optionalBoolean(query, "autoInterval", autoInterval);
-        }
-        follower.applyConfig(query); // 行路跟／轉向／橫移／後退／頭搜索等（同 ColorTrackCenter 共用）
+        // 先全部驗證落局部變量（非法即拋，現值唔動）→ follower 自己亦係原子 → 最後先賦值，
+        // 避免「後面參數非法、前面已經生效」嘅半套用。
+        final int nIntervalMs = ApiValidator.optionalIntRange(query, "intervalMs", 100, 3000, intervalMs);
+        final int nTrackIntervalMs = ApiValidator.optionalIntRange(query, "trackIntervalMs", 100, 3000, trackIntervalMs);
+        final int nStepDeg = ApiValidator.optionalIntRange(query, "stepDeg", 1, 30, stepDeg);
+        final float nDeadband = ApiValidator.optionalFloatRange(query, "deadband", 0.0, 0.5, deadband);
+        final int nTimeMs = ApiValidator.optionalIntRange(query, "timeMs", 20, 2000, timeMs);
+        final int nMaxFaces = ApiValidator.optionalIntRange(query, "maxFaces", 1, 5, maxFaces);
+        final boolean nHeadFollow = hasParam(query, "headFollow")
+                ? ApiValidator.optionalBoolean(query, "headFollow", headFollow) : headFollow;
+        final boolean nRoiEnabled = hasParam(query, "roiEnabled")
+                ? ApiValidator.optionalBoolean(query, "roiEnabled", roiEnabled) : roiEnabled;
+        final boolean nAutoInterval = hasParam(query, "autoInterval")
+                ? ApiValidator.optionalBoolean(query, "autoInterval", autoInterval) : autoInterval;
+        follower.applyConfig(query); // 行路跟／轉向／橫移／後退／頭搜索等（同 ColorTrackCenter 共用；本身原子）
+        intervalMs = nIntervalMs;
+        trackIntervalMs = nTrackIntervalMs;
+        stepDeg = nStepDeg;
+        deadband = nDeadband;
+        timeMs = nTimeMs;
+        maxFaces = nMaxFaces;
+        headFollow = nHeadFollow;
+        roiEnabled = nRoiEnabled;
+        if (!roiEnabled) { roiHasTrack = false; roiMiss = 0; roiTracking = false; }
+        autoInterval = nAutoInterval;
+    }
+
+    private static boolean hasParam(Map<String, String> q, String k) {
+        String v = q.get(k);
+        return v != null && !v.isEmpty();
     }
 
     /** 啟動追蹤：先確保相機開流，再訂閱抽樣。HTTP worker 線程調用（會 block 開相機）。 */
@@ -252,6 +264,9 @@ public final class FaceTrackCenter {
         follower.onStart();
         running = true;
         lostStreak = 0;
+        lastFaces = 0; // 上一節嘅偵測結果唔好帶入新一節（前端 start 後即讀 status，會畫出舊框）
+        lastCoverage = 0f;
+        lastConfidence = 0f;
         roiHasTrack = false;
         roiMiss = 0;
         roiTracking = false;
@@ -403,8 +418,8 @@ public final class FaceTrackCenter {
             if (roiEnabled && roiHasTrack) {
                 float cx = roiFx * bw;
                 float cy = roiFy * bh;
-                float rw = Math.max(roiFw * bw * ROI_EXPAND, ROI_MIN_PX);
-                float rh = Math.max(roiFh * bh * ROI_EXPAND, ROI_MIN_PX);
+                float rw = FaceTrackLogic.quantUp(Math.max(roiFw * bw * ROI_EXPAND, ROI_MIN_PX), ROI_QUANT_PX, bw);
+                float rh = FaceTrackLogic.quantUp(Math.max(roiFh * bh * ROI_EXPAND, ROI_MIN_PX), ROI_QUANT_PX, bh);
                 if (rw * rh < bw * bh * ROI_MAX_FRACTION) {
                     int left = Math.round(cx - rw / 2);
                     int top = Math.round(cy - rh / 2);
@@ -444,18 +459,20 @@ public final class FaceTrackCenter {
             int cap = inRoi ? 1 : Math.max(1, Math.min(5, maxFaces));
             FaceDetector fd;
             if (inRoi) {
-                if (cachedRoiDetector == null || ww != cachedRoiW || wh != cachedRoiH) {
+                final long roiKey = ((long) ww << 32) | (wh & 0xFFFFFFFFL);
+                FaceDetector cachedRoi = roiDetectors.get(roiKey);
+                if (cachedRoi == null) {
                     try {
-                        cachedRoiDetector = new FaceDetector(ww, wh, 1);
+                        cachedRoi = new FaceDetector(ww, wh, 1);
                     } catch (Throwable t) {
                         Log.w(TAG, "ROI FaceDetector ctor failed", t);
                         try { work.recycle(); } catch (Throwable ignored) {}
                         return;
                     }
-                    cachedRoiW = ww;
-                    cachedRoiH = wh;
+                    if (roiDetectors.size() >= ROI_DETECTOR_CACHE_MAX) roiDetectors.clear();
+                    roiDetectors.put(roiKey, cachedRoi);
                 }
-                fd = cachedRoiDetector;
+                fd = cachedRoi;
             } else {
                 if (cachedDetector == null || bw != cachedW || bh != cachedH || cap != cachedCap) {
                     try {
@@ -487,6 +504,7 @@ public final class FaceTrackCenter {
             if (found <= 0) {
                 lastFaces = 0;
                 lastCoverage = 0f;
+                lastConfidence = 0f;
                 lostStreak++;
                 if (inRoi) {
                     roiMiss++;
@@ -515,6 +533,7 @@ public final class FaceTrackCenter {
             if (best == null) {
                 lastFaces = 0;
                 lastCoverage = 0f;
+                lastConfidence = 0f;
                 lostStreak++;
                 follower.update(false, 0f, 0f, 0f, headFollow, deadband, stepDeg, timeMs);
                 return;
@@ -527,6 +546,7 @@ public final class FaceTrackCenter {
             if (conf < 0.15f) {
                 lastFaces = 0;
                 lastCoverage = 0f;
+                lastConfidence = 0f;
                 lostStreak++;
                 if (inRoi) {
                     roiMiss++;

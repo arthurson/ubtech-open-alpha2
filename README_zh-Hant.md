@@ -2,7 +2,7 @@
 
 > 語言：[English](README.md) | 繁體中文（本檔）
 
-`com.open.alpha2`（`versionName "beta 8.3"`、`versionCode 9`）係裝喺 UBTECH Alpha2
+`com.open.alpha2`（`versionName "beta 8.4"`、`versionCode 9`）係裝喺 UBTECH Alpha2
 機械人上嘅 Android 應用程式。開機後自動啟動 HTTP＋WebSocket 伺服器（port `8888`）；
 同一 Wi-Fi 下用瀏覽器開 `http://<機械人IP>:8888/` 就有完整控制面板。
 `/blockly.html` 係積木編程頁，`/docs` 係 OpenAPI 嘅 Swagger UI。
@@ -47,7 +47,7 @@ adb forward tcp:8888 tcp:8888          # 可選，用 USB 連面板
 用已入庫嘅 debug key `app/debug.keystore`（密碼 `android`）簽名；簽名衝突就先
 uninstall。App 開機自動啟動。出貨前行 `./gradlew clean assembleDebug --offline`
 （增量編譯會令 APK 變大）。CI（`build-apk.yml`）會清走 web 註解、編譯並上傳
-`open-alpha2-beta8.3.apk`。
+`open-alpha2-beta8.4.apk`。
 
 ## 控制面板（`app/src/main/assets/web/`）
 
@@ -67,7 +67,7 @@ uninstall。App 開機自動啟動。出貨前行 `./gradlew clean assembleDebug
   隨機動作同 Disco LED 選項。
 - **LED** — 頭／眼／嘴預設效果。
 - **相機** — MJPEG 串流、預覽截圖、高解像度拍照、mp4 錄影、縮放、雲台搖桿、
-  收聽機械人咪高峰、人臉追蹤同顏色追蹤（可選跟行）。
+  收聽機械人咪高峰、人臉追蹤、顏色追蹤同物件追蹤（畫面框選目標；可選行走跟隨）。
 - **小智** — AI 語音對話橋接：配對、連線、文字對話、TTS 輸出選擇、自訂
   OTA／伺服器、逐個 MCP 工具啟用／停用。
 - **實驗** — 面板口令、開機語音模式、資源下載（Vosk 模型、動作包、Google TTS

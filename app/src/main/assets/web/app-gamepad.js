@@ -615,6 +615,9 @@ function gamepadApplyToggleState(d) {
       try { faceTrackRunning = d.running; } catch (e) {}
       var ftg = document.getElementById("faceTrackToggle");
       if (ftg) ftg.checked = d.running;
+      // 5選1：手柄起人臉追蹤，後端已停咗顏色／物件追蹤，UI 對齊。
+      if (d.running) { try { colorTrackSyncOff(); } catch (e) {} try { objectTrackSyncOff(); } catch (e) {} }
+      try { trackOptionsUpdate(); } catch (e) {}
       if (d.running) {
         try { faceTrackStartPolling(); } catch (e) {}
         try { faceTrackRefreshStatus(); } catch (e) {}
@@ -626,6 +629,8 @@ function gamepadApplyToggleState(d) {
       try { colorTrackRunning = d.running; } catch (e) {}
       var ctg = document.getElementById("colorTrackToggle");
       if (ctg) ctg.checked = d.running;
+      if (d.running) { try { faceTrackSyncOff(); } catch (e) {} try { objectTrackSyncOff(); } catch (e) {} }
+      try { trackOptionsUpdate(); } catch (e) {}
       if (d.running) {
         try { colorTrackStartPolling(); } catch (e) {}
         try { colorTrackRefreshStatus(); } catch (e) {}
@@ -2649,7 +2654,7 @@ function gamepadBindDiagrams() {
 // 版面跟 X360：搖桿左右下（放手自動回中）／十字掣左中（一體 plus 搖桿式，
 // 唔使離掣碌臂轉向）／ABXY 右中 A 下 B 右／start-select 中下／
 // L1L2 左上 R1R2 右上；多點觸控（pointerId→掣／桿／十字）可兩手齊用。
-// 同功能鍵 2選1：兩邊開關互斥，同一時間最多一邊著（見 cameraFeatureToggle）。
+// 同功能鍵／人臉／顏色／物件追蹤 5選1：互斥，同一時間最多一個著（見 cameraFeatureToggle、app-camera.js cameraMode*）。
 // 防黐掣同面板圖同級：up 即送＋300ms 補（殘留成套收）、搖桿 0 即送＋250ms 補、
 // move／pointerout 見 buttons=0 補 up、blur／visibility／pagehide／閂視圖放晒、
 // 撳住狀態向 live pointer 表對數（殘留下次撳自愈，唔變死掣）。
@@ -2669,7 +2674,8 @@ var __campadMirror = { lx: 0, ly: 0, rx: 0, ry: 0 };
 var __campadAxisSentAt = 0;
 var __campadAxisTimer = null;
 
-// 功能鍵開關：開即閂手柄（2選1；閂就由得佢，兩邊可齊熄）。
+// 功能鍵開關：相機模式 5選1（功能鍵／手柄／人臉／顏色／物件追蹤，同一時間最多開一個，見 app-camera.js
+// 「相機模式 5選1」）。開即閂手柄＋停追蹤；閂就由得佢，可以全熄。
 function cameraFeatureToggle() {
   var f = document.getElementById("featureEnabled");
   if (f && f.checked) {
@@ -2679,6 +2685,7 @@ function cameraFeatureToggle() {
     var cv = document.getElementById("cameraPadCanvas");
     if (cv) cv.style.display = "none";
     try { cameraPadReleaseAll(); } catch (e) {}
+    try { cameraModeStopTrackers(); } catch (e) {}
   }
   try { updateCrosshairVisibility(); } catch (e) {}
 }
@@ -2689,6 +2696,8 @@ function cameraPadToggleView() {
   if (cameraPadViewOn) {
     var f = document.getElementById("featureEnabled");
     if (f) f.checked = false;
+    // 5選1：開手柄即停追蹤（功能鍵上面已經閂咗）。
+    try { cameraModeStopTrackers(); } catch (e) {}
   }
   var cv = document.getElementById("cameraPadCanvas");
   if (cv) cv.style.display = cameraPadViewOn ? "block" : "none";

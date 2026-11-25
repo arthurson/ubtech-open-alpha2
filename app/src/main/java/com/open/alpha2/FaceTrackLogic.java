@@ -62,4 +62,17 @@ public final class FaceTrackLogic {
         if (fh > 1f) fh = 1f;
         return fw * fh;
     }
+
+    /**
+     * ROI 邊長向上對齊到 q 嘅倍數（再夾 cap）。
+     *
+     * 點解：FaceDetector 每個（寬，高）要 new 一個（native 初始化唔平），而 ROI 邊長原本跟住
+     * 臉框大細逐幀微變，快取幾乎次次落空＝幾乎每幀都 new 一個。量化之後邊長只有幾級
+     * （例如 96,128,…,320），塊面慢慢郁就連續命中。只會變大唔會變細，ROI 仍然包得住臉。
+     */
+    public static float quantUp(float v, int q, int cap) {
+        if (q <= 1) return Math.min(v, cap);
+        float r = (float) Math.ceil(v / q) * q;
+        return Math.min(r, cap);
+    }
 }

@@ -837,7 +837,7 @@ function connectCameraStream() {
 }
 
 // DOMContentLoaded 單次初始化變焦與搖桿回中（不依賴 app-log.js 順序，自身亦可獨立起）
-function initCameraUiToggles() { try { initCameraZoom(); } catch(e){} try { initJoystickAutoReturn(); } catch(e){} try { updateCrosshairVisibility(); } catch(e){} try { faceTrackRefreshStatus(); } catch(e){} try { colorTrackRefreshStatus(); } catch(e){} }
+function initCameraUiToggles() { try { initCameraZoom(); } catch(e){} try { initJoystickAutoReturn(); } catch(e){} try { updateCrosshairVisibility(); } catch(e){} try { faceTrackRefreshStatus(); } catch(e){} try { colorTrackRefreshStatus(); } catch(e){} try { objectTrackRefreshStatus(); } catch(e){} try { objectTrackSelectInit(); } catch(e){} }
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initCameraUiToggles);
 } else {
@@ -857,6 +857,7 @@ if (document.readyState === "loading") {
 
 let faceTrackPollTimer = null;
 let faceTrackRunning = false;
+let faceTrackWalkFollow = false;
 
 function faceTrackRenderBox(json) {
   const box = document.getElementById("faceTrackBox");
@@ -866,7 +867,7 @@ function faceTrackRenderBox(json) {
     box.classList.remove("on");
     return;
   }
-  const rect = viewport.getBoundingClientRect();
+  const rect = objectTrackContentRect() || { left: 0, top: 0, width: viewport.clientWidth, height: viewport.clientHeight };
   const fx = Number(json.fx), fy = Number(json.fy);
   const fw = Number(json.fw) || 0.25, fh = Number(json.fh) || 0.3;
   if (!(fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1)) { box.classList.remove("on"); return; }
@@ -874,8 +875,8 @@ function faceTrackRenderBox(json) {
   // 全區定位（近似框，調試用，不保證與 MJPEG 像素級對齊）。
   const w = Math.max(24, fw * rect.width);
   const h = Math.max(24, fh * rect.height);
-  const left = Math.max(0, Math.min(rect.width - w, fx * rect.width - w / 2));
-  const top = Math.max(0, Math.min(rect.height - h, fy * rect.height - h / 2));
+  const left = rect.left + Math.max(0, Math.min(rect.width - w, fx * rect.width - w / 2));
+  const top = rect.top + Math.max(0, Math.min(rect.height - h, fy * rect.height - h / 2));
   box.style.left = left + "px";
   box.style.top = top + "px";
   box.style.width = w + "px";
@@ -889,12 +890,23 @@ function faceTrackRenderStatus(json) {
   faceTrackRunning = !!json.running;
   if (toggle && toggle.checked !== faceTrackRunning) toggle.checked = faceTrackRunning;
   faceTrackRenderBox(json);
+  // 行走跟隨以後端 config echo 為準（舊版無呢個欄位即當關）；共用開關由 trackOptionsUpdate 按當前模式畫。
+  faceTrackWalkFollow = !!(json.config && json.config.walkFollow);
+  if (json.running) cameraModeEnforce();
+  trackOptionsUpdate();
 }
+
+
 
 async function faceTrackRefreshStatus() {
   try {
     const json = await Alpha2Api.faceTrackStatus();
     faceTrackRenderStatus(json);
+    // 開頁時後端已經行緊／其他客戶端（手機、手柄）啟停：按 running 自動開關輪詢，框先會郁、唔會輪詢到永遠。
+    if (json && json.ok) {
+      if (json.running && !faceTrackPollTimer) faceTrackStartPolling();
+      else if (!json.running && faceTrackPollTimer) faceTrackStopPolling();
+    }
   } catch (e) {
     showError(t("face_track_label"), e);
   }
@@ -916,10 +928,11 @@ async function faceTrackToggleChanged() {
   const on = toggle ? toggle.checked : false;
   try {
     if (on) {
+      cameraModeBegin(); // 5選1：開追蹤即閂功能鍵／手柄
       // 設定卡已移除：空參數即用後端定案預設（步進 17／死區 0.10／自動 500/100ms，追頭＋ROI 開）。
       const json = await Alpha2Api.faceTrackStart({});
       faceTrackRenderStatus(json);
-      if (json && json.ok && json.running) { faceTrackStartPolling(); colorTrackSyncOff(); }
+      if (json && json.ok && json.running) { faceTrackStartPolling(); colorTrackSyncOff(); objectTrackSyncOff(); }
       else if (toggle) toggle.checked = false;
     } else {
       const json = await Alpha2Api.faceTrackStop();
@@ -1017,24 +1030,6 @@ async function colorTrackPickPreset(code) {
   }
 }
 
-async function colorTrackWalkChanged() {
-  const toggle = document.getElementById("walkFollowToggle");
-  const on = toggle ? toggle.checked : false;
-  // 平地＋清空＋有人睇住先開：開即部機會行，browser confirm 閘一閘（誤掂唔會即刻行）。
-  if (on && !colorTrackWalkFollow) {
-    const ok = window.confirm
-      ? window.confirm(t("walk_follow_confirm", { label: t("walk_follow_label") }))
-      : true;
-    if (!ok) { if (toggle) toggle.checked = false; return; }
-  }
-  try {
-    const json = await Alpha2Api.colorTrackConfig({ walkFollow: on });
-    colorTrackRenderStatus(json); // toggle 以後端 echo 為準
-  } catch (e) {
-    showError(t("walk_follow_label"), e);
-    if (toggle) toggle.checked = colorTrackWalkFollow;
-  }
-}
 
 function colorTrackRenderBox(json) {
   const box = document.getElementById("colorTrackBox");
@@ -1044,15 +1039,15 @@ function colorTrackRenderBox(json) {
     box.classList.remove("on");
     return;
   }
-  const rect = viewport.getBoundingClientRect();
+  const rect = objectTrackContentRect() || { left: 0, top: 0, width: viewport.clientWidth, height: viewport.clientHeight };
   const fx = Number(json.fx), fy = Number(json.fy);
   const fw = Number(json.fw) || 0.25, fh = Number(json.fh) || 0.3;
   if (!(fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1)) { box.classList.remove("on"); return; }
   // 中心＋寬高（歸一化）轉 viewport px；同人臉框一樣按 viewport 全區定位（近似框）。
   const w = Math.max(24, fw * rect.width);
   const h = Math.max(24, fh * rect.height);
-  const left = Math.max(0, Math.min(rect.width - w, fx * rect.width - w / 2));
-  const top = Math.max(0, Math.min(rect.height - h, fy * rect.height - h / 2));
+  const left = rect.left + Math.max(0, Math.min(rect.width - w, fx * rect.width - w / 2));
+  const top = rect.top + Math.max(0, Math.min(rect.height - h, fy * rect.height - h / 2));
   box.style.left = left + "px";
   box.style.top = top + "px";
   box.style.width = w + "px";
@@ -1067,17 +1062,20 @@ function colorTrackRenderStatus(json) {
   if (toggle && toggle.checked !== colorTrackRunning) toggle.checked = colorTrackRunning;
   colorTrackRenderBox(json);
   colorTrackUpdatePresetVisibility();
-  // 行路跟開關以後端為準（config echo；舊版無呢個欄位即當關）。
-  const walkOn = !!(json.config && json.config.walkFollow);
-  colorTrackWalkFollow = walkOn;
-  const walkToggle = document.getElementById("walkFollowToggle");
-  if (walkToggle && walkToggle.checked !== walkOn) walkToggle.checked = walkOn;
+  // 行走跟隨以後端 config echo 為準（舊版無呢個欄位即當關）；共用開關由 trackOptionsUpdate 按當前模式畫。
+  colorTrackWalkFollow = !!(json.config && json.config.walkFollow);
+  if (json.running) cameraModeEnforce();
+  trackOptionsUpdate();
 }
 
 async function colorTrackRefreshStatus() {
   try {
     const json = await Alpha2Api.colorTrackStatus();
     colorTrackRenderStatus(json);
+    if (json && json.ok) {
+      if (json.running && !colorTrackPollTimer) colorTrackStartPolling();
+      else if (!json.running && colorTrackPollTimer) colorTrackStopPolling();
+    }
   } catch (e) {
     showError(t("color_track_label"), e);
   }
@@ -1101,6 +1099,7 @@ function colorTrackSyncOff() {
   const toggle = document.getElementById("colorTrackToggle");
   if (toggle) toggle.checked = false;
   colorTrackUpdatePresetVisibility();
+  trackOptionsUpdate();
 }
 
 // 人臉側成功 start 後調（上面 faceTrackToggleChanged 已接）：後端已停人臉，前端同步熄。
@@ -1109,6 +1108,7 @@ function faceTrackSyncOff() {
   faceTrackStopPolling(); // 內已清人臉框 .on
   const toggle = document.getElementById("faceTrackToggle");
   if (toggle) toggle.checked = false;
+  trackOptionsUpdate();
 }
 
 async function colorTrackToggleChanged() {
@@ -1116,10 +1116,11 @@ async function colorTrackToggleChanged() {
   const on = toggle ? toggle.checked : false;
   try {
     if (on) {
+      cameraModeBegin(); // 5選1：開追蹤即閂功能鍵／手柄
       // 帶當前選色起（預設紅；選色列點過即換 colorTrackPreset，start 即用）。
       const json = await Alpha2Api.colorTrackStart(colorTrackPresetParams(colorTrackPreset));
       colorTrackRenderStatus(json);
-      if (json && json.ok && json.running) { colorTrackStartPolling(); faceTrackSyncOff(); }
+      if (json && json.ok && json.running) { colorTrackStartPolling(); faceTrackSyncOff(); objectTrackSyncOff(); }
       else if (toggle) toggle.checked = false;
     } else {
       const json = await Alpha2Api.colorTrackStop();
@@ -1132,6 +1133,368 @@ async function colorTrackToggleChanged() {
     showError(t("color_track_label"), e);
     if (toggle) toggle.checked = colorTrackRunning;
   }
+}
+
+// ---------------- Camera: 純 Java 物件追蹤 ----------------
+//
+// 後端 ObjectTrackCenter（灰階模板匹配 ZSAD，零依賴）：用戶喺預覽畫面拖框（或點一下）
+// 揀任意物件做目標，之後按偏移步進驅動頭部 19/20，可選行走跟隨（共用 WalkFollower）。
+// 開關預設以畫面正中框做目標（將物件對正鏡頭再開）；追蹤中再拖框＝重新揀目標（config 帶 bx/by/bw/bh）。
+// 同人臉／顏色追蹤互斥（後端 CameraApi 層 start 一邊即停另外兩邊，前端用 *SyncOff 對齊 UI）。
+let objectTrackRunning = false;
+let objectTrackPollTimer = null;
+let objectTrackWalkFollow = false;
+let objectTrackLastStatus = null; // 最近一次 status（提示文字用）
+let objectTrackSel = null; // 拖框中：{ x0, y0, x1, y1 }（viewport 局部 px）
+// 點一下揀點時用嘅預設框大小（同後端預設正中框一致：寬 25%、高 30%）。
+const OBJECT_TRACK_TAP_W = 0.25;
+const OBJECT_TRACK_TAP_H = 0.30;
+const OBJECT_TRACK_DRAG_MIN_PX = 12;
+
+// 預覽畫面真正顯示嘅範圍（img 係 object-fit:contain，16:9 串流喺 4:3 viewport 會有黑邊）；
+// 未有 img／未載入就退返成個 viewport。座標：viewport 局部 px。
+function objectTrackContentRect() {
+  const viewport = document.getElementById("cameraViewport");
+  if (!viewport) return null;
+  const r = viewport.getBoundingClientRect();
+  const full = { left: 0, top: 0, width: r.width, height: r.height };
+  const img = viewport.querySelector("img");
+  if (!img || !img.naturalWidth || !img.naturalHeight || !r.width || !r.height) return full;
+  const scale = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight);
+  const cw = img.naturalWidth * scale;
+  const ch = img.naturalHeight * scale;
+  return { left: (r.width - cw) / 2, top: (r.height - ch) / 2, width: cw, height: ch };
+}
+
+function objectTrackRenderBox(json) {
+  const box = document.getElementById("objectTrackBox");
+  if (!box) return;
+  const cr = objectTrackContentRect();
+  if (!cr || !json || !json.running || json.fx == null || json.fx < 0 || !json.selected) {
+    box.classList.remove("on", "lost");
+    return;
+  }
+  const fx = Number(json.fx), fy = Number(json.fy);
+  const fw = Number(json.fw) || OBJECT_TRACK_TAP_W, fh = Number(json.fh) || OBJECT_TRACK_TAP_H;
+  if (!(fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1)) { box.classList.remove("on", "lost"); return; }
+  const w = Math.max(16, fw * cr.width);
+  const h = Math.max(16, fh * cr.height);
+  const left = cr.left + Math.max(0, Math.min(cr.width - w, fx * cr.width - w / 2));
+  const top = cr.top + Math.max(0, Math.min(cr.height - h, fy * cr.height - h / 2));
+  box.style.left = left + "px";
+  box.style.top = top + "px";
+  box.style.width = w + "px";
+  box.style.height = h + "px";
+  box.classList.add("on");
+  // 跟丟：框停喺最後位置、變虛線半透明（faces=0）
+  if (json.faces) box.classList.remove("lost"); else box.classList.add("lost");
+}
+
+// 物件追蹤狀態對應嘅提示文字（顯示喺共用追蹤選項列左邊）。
+function objectTrackHintText() {
+  const json = objectTrackLastStatus;
+  if (json && json.selected && json.lowTexture) return t("object_track_low_texture");
+  if (json && json.selected && !json.faces) return t("object_track_lost");
+  if (json && json.error) return json.error;
+  return t("object_track_hint");
+}
+
+function objectTrackUpdateUi(json) {
+  objectTrackLastStatus = json || null;
+  const viewport = document.getElementById("cameraViewport");
+  if (viewport) viewport.classList.toggle("object-selecting", objectTrackRunning);
+  trackOptionsUpdate();
+}
+
+function objectTrackRenderStatus(json) {
+  const toggle = document.getElementById("objectTrackToggle");
+  if (!json || !json.ok) return;
+  objectTrackRunning = !!json.running;
+  if (toggle && toggle.checked !== objectTrackRunning) toggle.checked = objectTrackRunning;
+  objectTrackRenderBox(json);
+  // 行走跟隨以後端 config echo 為準；共用開關由 trackOptionsUpdate 按當前模式畫。
+  objectTrackWalkFollow = !!(json.config && json.config.walkFollow);
+  if (json.running) cameraModeEnforce();
+  objectTrackUpdateUi(json);
+}
+
+async function objectTrackRefreshStatus() {
+  try {
+    const json = await Alpha2Api.objectTrackStatus();
+    objectTrackRenderStatus(json);
+    if (json && json.ok) {
+      if (json.running && !objectTrackPollTimer) objectTrackStartPolling();
+      else if (!json.running && objectTrackPollTimer) objectTrackStopPolling();
+    }
+  } catch (e) {
+    showError(t("object_track_label"), e);
+  }
+}
+
+function objectTrackStartPolling() {
+  objectTrackStopPolling();
+  // 物件會郁，框要跟得上：比顏色／人臉（1.5 s）密，status 係純記憶體讀取。
+  objectTrackPollTimer = setInterval(objectTrackRefreshStatus, 600);
+}
+
+function objectTrackStopPolling() {
+  if (objectTrackPollTimer) { clearInterval(objectTrackPollTimer); objectTrackPollTimer = null; }
+  const box = document.getElementById("objectTrackBox");
+  if (box) box.classList.remove("on", "lost");
+}
+
+// 另一邊（人臉／顏色）成功 start 後調用：只對齊 UI，唔再發 stop（後端已互斥停咗）。
+function objectTrackSyncOff() {
+  objectTrackRunning = false;
+  objectTrackStopPolling();
+  const toggle = document.getElementById("objectTrackToggle");
+  if (toggle) toggle.checked = false;
+  objectTrackUpdateUi(null);
+  objectTrackSelectHide();
+}
+
+async function objectTrackToggleChanged() {
+  const toggle = document.getElementById("objectTrackToggle");
+  const on = toggle ? toggle.checked : false;
+  try {
+    if (on) {
+      cameraModeBegin(); // 5選1：開追蹤即閂功能鍵／手柄
+      // 空參數＝以畫面正中框做目標；開咗之後拖框／點一下可重新揀。
+      const json = await Alpha2Api.objectTrackStart({});
+      objectTrackRenderStatus(json);
+      if (json && json.ok && json.running) { objectTrackStartPolling(); faceTrackSyncOff(); colorTrackSyncOff(); }
+      else if (toggle) toggle.checked = false;
+    } else {
+      const json = await Alpha2Api.objectTrackStop();
+      objectTrackRenderStatus(json);
+      objectTrackStopPolling();
+      objectTrackRenderBox({ running: false });
+      objectTrackSelectHide();
+    }
+  } catch (e) {
+    showError(t("object_track_label"), e);
+    if (toggle) toggle.checked = objectTrackRunning;
+  }
+}
+
+
+// ── 拖框揀目標（pointer events，掛喺 viewport；只喺物件追蹤行緊、手柄視圖冇開嗰陣先理） ──
+const OBJECT_TRACK_IGNORE_SEL =
+  "#fabRow, #cameraZoomVertical, #cameraResolutionWrap, #joystickAutoReturnWrap, #crosshairPad, #cameraPadCanvas, select, button, input, label";
+
+function objectTrackSelectHide() {
+  objectTrackSel = null;
+  const sel = document.getElementById("objectTrackSelBox");
+  if (sel) sel.classList.remove("on");
+}
+
+function objectTrackPadVisible() {
+  const cv = document.getElementById("cameraPadCanvas");
+  return !!(cv && cv.style.display !== "none");
+}
+
+function objectTrackLocalPoint(e) {
+  const viewport = document.getElementById("cameraViewport");
+  const r = viewport.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function objectTrackSelectDraw() {
+  const sel = document.getElementById("objectTrackSelBox");
+  if (!sel || !objectTrackSel) return;
+  const s = objectTrackSel;
+  sel.style.left = Math.min(s.x0, s.x1) + "px";
+  sel.style.top = Math.min(s.y0, s.y1) + "px";
+  sel.style.width = Math.abs(s.x1 - s.x0) + "px";
+  sel.style.height = Math.abs(s.y1 - s.y0) + "px";
+  sel.classList.add("on");
+}
+
+function objectTrackOnDown(e) {
+  if (!objectTrackRunning || objectTrackPadVisible()) return;
+  if (e.button !== undefined && e.button !== 0) return;
+  if (e.target && e.target.closest && e.target.closest(OBJECT_TRACK_IGNORE_SEL)) return;
+  const p = objectTrackLocalPoint(e);
+  objectTrackSel = { x0: p.x, y0: p.y, x1: p.x, y1: p.y, id: e.pointerId };
+  try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+  e.preventDefault();
+}
+
+function objectTrackOnMove(e) {
+  if (!objectTrackSel || objectTrackSel.id !== e.pointerId) return;
+  const p = objectTrackLocalPoint(e);
+  objectTrackSel.x1 = p.x;
+  objectTrackSel.y1 = p.y;
+  // 太細嘅拖動當係點擊，唔畫框（免閃一下）
+  if (Math.abs(p.x - objectTrackSel.x0) >= OBJECT_TRACK_DRAG_MIN_PX ||
+      Math.abs(p.y - objectTrackSel.y0) >= OBJECT_TRACK_DRAG_MIN_PX) {
+    objectTrackSelectDraw();
+  }
+}
+
+async function objectTrackOnUp(e) {
+  const s = objectTrackSel;
+  if (!s || s.id !== e.pointerId) return;
+  const p = objectTrackLocalPoint(e);
+  s.x1 = p.x;
+  s.y1 = p.y;
+  objectTrackSelectHide();
+  if (e.type === "pointercancel") return;
+  const cr = objectTrackContentRect();
+  if (!cr || !cr.width || !cr.height) return;
+  const dragW = Math.abs(s.x1 - s.x0);
+  const dragH = Math.abs(s.y1 - s.y0);
+  let nx, ny, nw, nh;
+  if (dragW < OBJECT_TRACK_DRAG_MIN_PX && dragH < OBJECT_TRACK_DRAG_MIN_PX) {
+    // 點一下＝以該點為中心嘅預設大小框
+    nw = OBJECT_TRACK_TAP_W;
+    nh = OBJECT_TRACK_TAP_H;
+    nx = (s.x1 - cr.left) / cr.width - nw / 2;
+    ny = (s.y1 - cr.top) / cr.height - nh / 2;
+  } else {
+    nx = (Math.min(s.x0, s.x1) - cr.left) / cr.width;
+    ny = (Math.min(s.y0, s.y1) - cr.top) / cr.height;
+    nw = dragW / cr.width;
+    nh = dragH / cr.height;
+  }
+  // 夾返喺畫面入面（框可以拖出黑邊／畫面外）
+  const x0 = Math.max(0, Math.min(1, nx));
+  const y0 = Math.max(0, Math.min(1, ny));
+  const x1 = Math.max(0, Math.min(1, nx + nw));
+  const y1 = Math.max(0, Math.min(1, ny + nh));
+  const bw = x1 - x0;
+  const bh = y1 - y0;
+  if (bw < 0.04 || bh < 0.04) return; // 太細（後端最細約 8 像素），忽略
+  try {
+    const json = await Alpha2Api.objectTrackConfig({ bx: x0, by: y0, bw: bw, bh: bh });
+    objectTrackRenderStatus(json);
+  } catch (err) {
+    showError(t("object_track_label"), err);
+  }
+}
+
+function objectTrackSelectInit() {
+  const viewport = document.getElementById("cameraViewport");
+  if (!viewport || viewport.dataset.objectSelectInit) return;
+  viewport.dataset.objectSelectInit = "1";
+  viewport.addEventListener("pointerdown", objectTrackOnDown);
+  viewport.addEventListener("pointermove", objectTrackOnMove);
+  viewport.addEventListener("pointerup", objectTrackOnUp);
+  viewport.addEventListener("pointercancel", objectTrackOnUp);
+}
+
+// ---------------- 追蹤選項列（共用「行走跟隨」） ----------------
+//
+// 人臉／顏色／物件三個追蹤共用同一粒「行走跟隨」開關，按當前行緊嘅模式送去對應 config
+// （後端三個 Center 共用 WalkFollower，各自一份 walkFollow 狀態；停咗追蹤即復位成 false）。
+function trackActiveMode() {
+  if (faceTrackRunning) return "face";
+  if (colorTrackRunning) return "color";
+  if (objectTrackRunning) return "object";
+  return null;
+}
+
+function trackOptionsUpdate() {
+  const mode = trackActiveMode();
+  const row = document.getElementById("trackOptionsRow");
+  if (row) {
+    const show = !!mode;
+    if ((row.style.display !== "none") !== show) row.style.display = show ? "" : "none";
+  }
+  const hint = document.getElementById("trackHint");
+  if (hint) {
+    let msg = "";
+    if (mode === "face") msg = t("face_track_hint");
+    else if (mode === "object") msg = objectTrackHintText();
+    if (hint.textContent !== msg) hint.textContent = msg;
+    const want = msg ? "" : "none";
+    if (hint.style.display !== want) hint.style.display = want;
+  }
+  const tg = document.getElementById("walkFollowToggle");
+  if (tg) {
+    const on = mode === "face" ? faceTrackWalkFollow
+      : mode === "color" ? colorTrackWalkFollow
+      : mode === "object" ? objectTrackWalkFollow : false;
+    if (tg.checked !== on) tg.checked = on;
+  }
+}
+
+async function trackWalkFollowChanged() {
+  const toggle = document.getElementById("walkFollowToggle");
+  const on = toggle ? toggle.checked : false;
+  const mode = trackActiveMode();
+  if (!mode) { if (toggle) toggle.checked = false; return; }
+  const cur = mode === "face" ? faceTrackWalkFollow
+    : mode === "color" ? colorTrackWalkFollow : objectTrackWalkFollow;
+  // 平地＋清空＋有人睇住先開：開即部機會行，browser confirm 閘一閘（誤掂唔會即刻行）。
+  if (on && !cur) {
+    const ok = window.confirm
+      ? window.confirm(t("walk_follow_confirm", { label: t("walk_follow_label") }))
+      : true;
+    if (!ok) { if (toggle) toggle.checked = false; return; }
+  }
+  try {
+    if (mode === "face") faceTrackRenderStatus(await Alpha2Api.faceTrackConfig({ walkFollow: on }));
+    else if (mode === "color") colorTrackRenderStatus(await Alpha2Api.colorTrackConfig({ walkFollow: on }));
+    else objectTrackRenderStatus(await Alpha2Api.objectTrackConfig({ walkFollow: on }));
+  } catch (e) {
+    showError(t("walk_follow_label"), e);
+    if (toggle) toggle.checked = cur; // 失敗還原
+  }
+}
+
+// ---------------- 相機模式 5選1 ----------------
+//
+// 功能鍵／手柄／人臉追蹤／顏色追蹤／物件追蹤 互斥：同一時間最多開一個（可以全熄）。
+// 開一個即閂晒其餘；追蹤之間後端亦互斥（CameraApi 層 start 一邊即停另外兩邊）。
+// 後端／其他客戶端（手機、手柄）起咗追蹤，status 輪詢到 running 亦會即閂功能鍵／手柄
+// （cameraModeEnforce），開頁時對齊後端狀態都靠呢個。
+let cameraModeQuietUntil = 0; // 呢個時間前唔強制（自己切換中，避免在途輪詢嘅舊 running 打返轉頭）
+
+function cameraModeQuiet(ms) { cameraModeQuietUntil = Date.now() + (ms || 2500); }
+
+// 閂功能鍵＋手柄（各自走返原本嘅開關處理，行為同人手撳一樣）。
+function cameraModeLeaveOverlays() {
+  const f = document.getElementById("featureEnabled");
+  if (f && f.checked) {
+    f.checked = false;
+    try { cameraFeatureToggle(); } catch (e) {}
+  }
+  const p = document.getElementById("cameraPadToggle");
+  if (p && p.checked) {
+    p.checked = false;
+    try { cameraPadToggleView(); } catch (e) {}
+  }
+}
+
+// 追蹤要開：先閂功能鍵／手柄。
+function cameraModeBegin() {
+  cameraModeQuiet();
+  cameraModeLeaveOverlays();
+}
+
+// 輪詢／事件見到追蹤行緊：對齊 UI（自己切換中唔做）。
+function cameraModeEnforce() {
+  if (Date.now() < cameraModeQuietUntil) return;
+  cameraModeLeaveOverlays();
+}
+
+// 功能鍵／手柄開咗：停晒行緊嘅追蹤（逐個走返各自嘅開關處理＝發 stop，框同輪詢一齊清）。
+async function cameraModeStopTrackers() {
+  cameraModeQuiet();
+  const list = [
+    ["faceTrackToggle", function () { return faceTrackRunning; }, faceTrackToggleChanged],
+    ["colorTrackToggle", function () { return colorTrackRunning; }, colorTrackToggleChanged],
+    ["objectTrackToggle", function () { return objectTrackRunning; }, objectTrackToggleChanged],
+  ];
+  for (const item of list) {
+    const tg = document.getElementById(item[0]);
+    if ((tg && tg.checked) || item[1]()) {
+      if (tg) tg.checked = false;
+      try { await item[2](); } catch (e) {}
+    }
+  }
+  cameraModeQuiet(1500);
 }
 
 

@@ -19,6 +19,9 @@ public final class CameraApi {
     private final RingtoneCenter ringtoneCenter;
     private volatile FaceTrackCenter faceTrackCenter;
     private volatile ColorTrackCenter colorTrackCenter;
+    private volatile ObjectTrackCenter objectTrackCenter;
+    /** 三個追蹤 start 共用：「停另外兩邊＋start 自己」要原子，免兩個客戶端（網頁／手柄）同時 start 兩邊齊行。 */
+    private final Object trackLock = new Object();
     private volatile VideoCenter videoCenter;
 
     /** GamepadCenter 追蹤 toggle 共用：讀真態（唔經自記 flag，兩邊互斥都啱）。 */
@@ -34,6 +37,15 @@ public final class CameraApi {
     public boolean isColorTrackRunning() {
         try {
             return colorTrackCenter != null && colorTrackCenter.isRunning();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 讀真態（互斥／前端同步用）。 */
+    public boolean isObjectTrackRunning() {
+        try {
+            return objectTrackCenter != null && objectTrackCenter.isRunning();
         } catch (Throwable t) {
             return false;
         }
@@ -72,10 +84,17 @@ public final class CameraApi {
     // -- 純 Java 顏色追蹤（見 ColorTrackCenter）：薄 delegate，不在這裡加 logic --
     // 互斥：同人臉追蹤爭同一對頭舵機（19/20），start 一邊即停另一邊。
     public HttpServer.ApiResponse colorTrackStart(Map<String, String> query) {
+        synchronized (trackLock) {
+            return colorTrackStartLocked(query);
+        }
+    }
+
+    private HttpServer.ApiResponse colorTrackStartLocked(Map<String, String> query) {
         HttpServer.ApiResponse err = colorOrError();
         if (err != null) return err;
         try {
             if (faceTrackCenter != null && faceTrackCenter.isRunning()) faceTrackCenter.stop();
+            if (objectTrackCenter != null && objectTrackCenter.isRunning()) objectTrackCenter.stop();
         } catch (Throwable ignored) {}
         return colorTrackCenter.start(query);
     }
@@ -96,6 +115,54 @@ public final class CameraApi {
         HttpServer.ApiResponse err = colorOrError();
         if (err != null) return err;
         return colorTrackCenter.config(query);
+    }
+
+    /** MainActivity 接線用：注入物件追蹤中心（未注入時 object/track/* 回清晰錯誤）。 */
+    public void setObjectTrackCenter(ObjectTrackCenter center) {
+        this.objectTrackCenter = center;
+    }
+
+    private HttpServer.ApiResponse objectOrError() {
+        if (objectTrackCenter == null) {
+            return HttpServer.ApiResponse.error("object track not initialised");
+        }
+        return null;
+    }
+
+    // -- 純 Java 物件追蹤（見 ObjectTrackCenter）：薄 delegate，不在這裡加 logic --
+    // 互斥：同人臉／顏色追蹤爭同一對頭舵機（19/20），start 一邊即停另外兩邊。
+    public HttpServer.ApiResponse objectTrackStart(Map<String, String> query) {
+        synchronized (trackLock) {
+            return objectTrackStartLocked(query);
+        }
+    }
+
+    private HttpServer.ApiResponse objectTrackStartLocked(Map<String, String> query) {
+        HttpServer.ApiResponse err = objectOrError();
+        if (err != null) return err;
+        try {
+            if (faceTrackCenter != null && faceTrackCenter.isRunning()) faceTrackCenter.stop();
+            if (colorTrackCenter != null && colorTrackCenter.isRunning()) colorTrackCenter.stop();
+        } catch (Throwable ignored) {}
+        return objectTrackCenter.start(query);
+    }
+
+    public HttpServer.ApiResponse objectTrackStop() {
+        HttpServer.ApiResponse err = objectOrError();
+        if (err != null) return err;
+        return objectTrackCenter.stop();
+    }
+
+    public HttpServer.ApiResponse objectTrackStatus() {
+        HttpServer.ApiResponse err = objectOrError();
+        if (err != null) return err;
+        return objectTrackCenter.status();
+    }
+
+    public HttpServer.ApiResponse objectTrackConfig(Map<String, String> query) {
+        HttpServer.ApiResponse err = objectOrError();
+        if (err != null) return err;
+        return objectTrackCenter.config(query);
     }
 
     /** MainActivity 接線用：注入錄影中心（未注入時 camera/video/* 回清晰錯誤）。 */
@@ -178,10 +245,17 @@ public final class CameraApi {
     // -- Android 內置人臉追蹤（見 FaceTrackCenter）：薄 delegate，不在這裡加 logic --
     // 互斥：同顏色追蹤爭同一對頭舵機（19/20），start 一邊即停另一邊。
     public HttpServer.ApiResponse faceTrackStart(Map<String, String> query) {
+        synchronized (trackLock) {
+            return faceTrackStartLocked(query);
+        }
+    }
+
+    private HttpServer.ApiResponse faceTrackStartLocked(Map<String, String> query) {
         HttpServer.ApiResponse err = faceOrError();
         if (err != null) return err;
         try {
             if (colorTrackCenter != null && colorTrackCenter.isRunning()) colorTrackCenter.stop();
+            if (objectTrackCenter != null && objectTrackCenter.isRunning()) objectTrackCenter.stop();
         } catch (Throwable ignored) {}
         return faceTrackCenter.start(query);
     }

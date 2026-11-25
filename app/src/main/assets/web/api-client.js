@@ -389,6 +389,70 @@ const Alpha2Api = (function() {
     return api('face/track/stop', params);
   }
 
+  function objectTrackConfig(params) {
+    if (params && params.intervalMs != null) assertRange(Number(params.intervalMs), 100, 3000, 'intervalMs');
+    if (params && params.trackIntervalMs != null) assertRange(Number(params.trackIntervalMs), 100, 3000, 'trackIntervalMs');
+    if (params && params.stepDeg != null) assertRange(Number(params.stepDeg), 1, 30, 'stepDeg');
+    if (params && params.deadband != null) assertRange(Number(params.deadband), 0, 0.5, 'deadband');
+    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2200, 'timeMs');
+    if (params && params.bx != null) assertRange(Number(params.bx), 0.0, 1.0, 'bx');
+    if (params && params.by != null) assertRange(Number(params.by), 0.0, 1.0, 'by');
+    if (params && params.bw != null) assertRange(Number(params.bw), 0.02, 1.0, 'bw');
+    if (params && params.bh != null) assertRange(Number(params.bh), 0.02, 1.0, 'bh');
+    if (params && params.matchThreshold != null) assertRange(Number(params.matchThreshold), 0.02, 0.4, 'matchThreshold');
+    if (params && params.turnDb != null) assertRange(Number(params.turnDb), 0, 0.8, 'turnDb');
+    if (params && params.closeCoverage != null) assertRange(Number(params.closeCoverage), 0.02, 0.6, 'closeCoverage');
+    if (params && params.walkEngine != null) assertEnum(params.walkEngine, ['gait', 'ubx'], 'walkEngine');
+    if (params && params.sideDb != null) assertRange(Number(params.sideDb), 0, 0.8, 'sideDb');
+    if (params && params.bigSideDb != null) assertRange(Number(params.bigSideDb), 0, 0.8, 'bigSideDb');
+    if (params && params.sideMinCoverage != null) assertRange(Number(params.sideMinCoverage), 0, 0.6, 'sideMinCoverage');
+    if (params && params.bigTurnDb != null) assertRange(Number(params.bigTurnDb), 0.1, 2.0, 'bigTurnDb');
+    if (params && params.backCoverage != null) assertRange(Number(params.backCoverage), 0, 0.9, 'backCoverage');
+    if (params && params.halfFovDeg != null) assertRange(Number(params.halfFovDeg), 10, 60, 'halfFovDeg');
+    if (params && params.walkSpeed != null) assertRange(Number(params.walkSpeed), 1, 2, 'walkSpeed');
+    if (params && params.searchSteps != null) assertRange(Number(params.searchSteps), 0, 12, 'searchSteps');
+    if (params && params.maxFalls != null) assertRange(Number(params.maxFalls), 1, 10, 'maxFalls');
+    // 更新物件追蹤參數／重新框選目標（不啟停；啟動中亦可即時調）
+    return api('object/track/config', params);
+  }
+
+  function objectTrackStart(params) {
+    if (params && params.intervalMs != null) assertRange(Number(params.intervalMs), 100, 3000, 'intervalMs');
+    if (params && params.trackIntervalMs != null) assertRange(Number(params.trackIntervalMs), 100, 3000, 'trackIntervalMs');
+    if (params && params.stepDeg != null) assertRange(Number(params.stepDeg), 1, 30, 'stepDeg');
+    if (params && params.deadband != null) assertRange(Number(params.deadband), 0, 0.5, 'deadband');
+    if (params && params.timeMs != null) assertRange(Number(params.timeMs), 20, 2200, 'timeMs');
+    if (params && params.bx != null) assertRange(Number(params.bx), 0.0, 1.0, 'bx');
+    if (params && params.by != null) assertRange(Number(params.by), 0.0, 1.0, 'by');
+    if (params && params.bw != null) assertRange(Number(params.bw), 0.02, 1.0, 'bw');
+    if (params && params.bh != null) assertRange(Number(params.bh), 0.02, 1.0, 'bh');
+    if (params && params.matchThreshold != null) assertRange(Number(params.matchThreshold), 0.02, 0.4, 'matchThreshold');
+    if (params && params.turnDb != null) assertRange(Number(params.turnDb), 0, 0.8, 'turnDb');
+    if (params && params.closeCoverage != null) assertRange(Number(params.closeCoverage), 0.02, 0.6, 'closeCoverage');
+    if (params && params.walkEngine != null) assertEnum(params.walkEngine, ['gait', 'ubx'], 'walkEngine');
+    if (params && params.sideDb != null) assertRange(Number(params.sideDb), 0, 0.8, 'sideDb');
+    if (params && params.bigSideDb != null) assertRange(Number(params.bigSideDb), 0, 0.8, 'bigSideDb');
+    if (params && params.sideMinCoverage != null) assertRange(Number(params.sideMinCoverage), 0, 0.6, 'sideMinCoverage');
+    if (params && params.bigTurnDb != null) assertRange(Number(params.bigTurnDb), 0.1, 2.0, 'bigTurnDb');
+    if (params && params.backCoverage != null) assertRange(Number(params.backCoverage), 0, 0.9, 'backCoverage');
+    if (params && params.halfFovDeg != null) assertRange(Number(params.halfFovDeg), 10, 60, 'halfFovDeg');
+    if (params && params.walkSpeed != null) assertRange(Number(params.walkSpeed), 1, 2, 'walkSpeed');
+    if (params && params.searchSteps != null) assertRange(Number(params.searchSteps), 0, 12, 'searchSteps');
+    if (params && params.maxFalls != null) assertRange(Number(params.maxFalls), 1, 10, 'maxFalls');
+    // 開始純 Java 物件追蹤（框選目標＋模板匹配＋頭部 19/20 跟隨，可選行走跟隨）
+    return api('object/track/start', params);
+  }
+
+  function objectTrackStatus(params) {
+    // 查詢物件追蹤狀態（running／目標框／頭角度／統計）
+    return api('object/track/status', params);
+  }
+
+  function objectTrackStop(params) {
+    // 停止物件追蹤（頭停在現位，不自動回中；目標模板保留到下次 start 前會被新框覆蓋）
+    return api('object/track/stop', params);
+  }
+
   // ── core ──────────────────────────────────────────────
   function batteryStatus(params) {
     // 查詢電池狀態 (BatteryManager broadcast 緩存)
@@ -1429,6 +1493,10 @@ const Alpha2Api = (function() {
     faceTrackStart,
     faceTrackStatus,
     faceTrackStop,
+    objectTrackConfig,
+    objectTrackStart,
+    objectTrackStatus,
+    objectTrackStop,
     batteryStatus,
     batteryVersion,
     btStatus,

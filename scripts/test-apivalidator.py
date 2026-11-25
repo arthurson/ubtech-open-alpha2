@@ -158,9 +158,11 @@ def main() -> int:
         str(src / "ColorTrackLogic.java"),
         str(src / "ColorTrackPlanner.java"),
         str(src / "FaceTrackLogic.java"),
+        str(src / "ObjectTrackLogic.java"),
         str(testdir / "ColorTrackTest.java"),
         str(testdir / "ColorTrackPlannerTest.java"),
         str(testdir / "FaceTrackLogicTest.java"),
+        str(testdir / "ObjectTrackTest.java"),
     ]
     cp2 = [javac, "-encoding", "UTF-8", "-nowarn", "-d", str(tmp)] + files2
     r = subprocess.run(cp2, capture_output=True, text=True)
@@ -172,6 +174,7 @@ def main() -> int:
         "com.open.alpha2.ColorTrackTest",
         "com.open.alpha2.ColorTrackPlannerTest",
         "com.open.alpha2.FaceTrackLogicTest",
+        "com.open.alpha2.ObjectTrackTest",
     ):
         r = subprocess.run(
             [java, "-cp", str(tmp), test_cls],

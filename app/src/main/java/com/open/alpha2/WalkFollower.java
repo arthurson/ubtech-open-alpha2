@@ -148,6 +148,8 @@ public final class WalkFollower {
     /** 最近一幀嘅步態狀態（ColorTrackPlanner.WALK_*）；walkingNow＝前進／後退行緊（未收步）。 */
     private volatile int walkStateNow = ColorTrackPlanner.WALK_NONE;
     private volatile boolean walkingNow = false;
+    /** update() 同 onStop／onShutdown／walkFollow 切換互斥：stop 返回後唔會有在途一幀再起步。 */
+    private final Object updateLock = new Object();
 
     /**
      * @param closeCoverage   「夠近」覆蓋率預設（顏色 0.12；人臉見 FaceTrackCenter）
@@ -209,47 +211,74 @@ public final class WalkFollower {
     /** 讀行路相關可選參數並套用（缺席即保留現值；非法值由 ApiValidator 拋 IllegalArgumentException）。 */
     public void applyConfig(Map<String, String> query) {
         if (query == null) return;
-        turnDb = ApiValidator.optionalFloatRange(query, "turnDb", 0.0, 0.8, turnDb);
-        closeCoverage = ApiValidator.optionalFloatRange(query, "closeCoverage", 0.02, 0.6, closeCoverage);
-        walkFwd = optionalActionName(query, "walkFwd", walkFwd);
-        walkLeft = optionalActionName(query, "walkLeft", walkLeft);
-        walkRight = optionalActionName(query, "walkRight", walkRight);
-        walkLeftBig = optionalActionName(query, "walkLeftBig", walkLeftBig);
-        walkRightBig = optionalActionName(query, "walkRightBig", walkRightBig);
-        walkSideLeft = optionalActionName(query, "walkSideLeft", walkSideLeft);
-        walkSideRight = optionalActionName(query, "walkSideRight", walkSideRight);
-        walkSideLeftBig = optionalActionName(query, "walkSideLeftBig", walkSideLeftBig);
-        walkSideRightBig = optionalActionName(query, "walkSideRightBig", walkSideRightBig);
-        walkBack = optionalActionName(query, "walkBack", walkBack);
-        walkEngine = ApiValidator.optionalEnum(query, "walkEngine", new String[] {"gait", "ubx"}, walkEngine);
-        sideDb = ApiValidator.optionalFloatRange(query, "sideDb", 0.0, 0.8, sideDb);
-        bigSideDb = ApiValidator.optionalFloatRange(query, "bigSideDb", 0.0, 0.8, bigSideDb);
-        sideMinCoverage = ApiValidator.optionalFloatRange(query, "sideMinCoverage", 0.0, 0.6, sideMinCoverage);
-        bigTurnDb = ApiValidator.optionalFloatRange(query, "bigTurnDb", 0.1, 2.0, bigTurnDb);
-        backCoverage = ApiValidator.optionalFloatRange(query, "backCoverage", 0.0, 0.9, backCoverage);
-        halfFovDeg = ApiValidator.optionalFloatRange(query, "halfFovDeg", 10.0, 60.0, halfFovDeg);
-        walkSpeed = ApiValidator.optionalFloatRange(query, "walkSpeed", 1.0, 2.0, walkSpeed);
-        searchSteps = ApiValidator.optionalIntRange(query, "searchSteps", 0, 12, searchSteps);
-        if (has(query, "headSearch")) {
-            headSearch = ApiValidator.optionalBoolean(query, "headSearch", headSearch);
-        }
-        if (has(query, "fallRecover")) {
-            fallRecover = ApiValidator.optionalBoolean(query, "fallRecover", fallRecover);
-        }
-        maxFalls = ApiValidator.optionalIntRange(query, "maxFalls", 1, 10, maxFalls);
-        if (has(query, "walkFollow")) {
+        // 兩段式：先將所有參數驗證／解析落局部變量（任何一個非法即拋，現值一個都唔改），
+        // 全部過晒先一次過套用——之前逐個賦值，後面嘅參數非法會令前面嘅已經生效（半套用）。
+        final float nTurnDb = ApiValidator.optionalFloatRange(query, "turnDb", 0.0, 0.8, turnDb);
+        final float nCloseCoverage = ApiValidator.optionalFloatRange(query, "closeCoverage", 0.02, 0.6, closeCoverage);
+        final String nWalkFwd = optionalActionName(query, "walkFwd", walkFwd);
+        final String nWalkLeft = optionalActionName(query, "walkLeft", walkLeft);
+        final String nWalkRight = optionalActionName(query, "walkRight", walkRight);
+        final String nWalkLeftBig = optionalActionName(query, "walkLeftBig", walkLeftBig);
+        final String nWalkRightBig = optionalActionName(query, "walkRightBig", walkRightBig);
+        final String nWalkSideLeft = optionalActionName(query, "walkSideLeft", walkSideLeft);
+        final String nWalkSideRight = optionalActionName(query, "walkSideRight", walkSideRight);
+        final String nWalkSideLeftBig = optionalActionName(query, "walkSideLeftBig", walkSideLeftBig);
+        final String nWalkSideRightBig = optionalActionName(query, "walkSideRightBig", walkSideRightBig);
+        final String nWalkBack = optionalActionName(query, "walkBack", walkBack);
+        final String nWalkEngine = ApiValidator.optionalEnum(query, "walkEngine", new String[] {"gait", "ubx"}, walkEngine);
+        final float nSideDb = ApiValidator.optionalFloatRange(query, "sideDb", 0.0, 0.8, sideDb);
+        final float nBigSideDb = ApiValidator.optionalFloatRange(query, "bigSideDb", 0.0, 0.8, bigSideDb);
+        final float nSideMinCoverage = ApiValidator.optionalFloatRange(query, "sideMinCoverage", 0.0, 0.6, sideMinCoverage);
+        final float nBigTurnDb = ApiValidator.optionalFloatRange(query, "bigTurnDb", 0.1, 2.0, bigTurnDb);
+        final float nBackCoverage = ApiValidator.optionalFloatRange(query, "backCoverage", 0.0, 0.9, backCoverage);
+        final float nHalfFovDeg = ApiValidator.optionalFloatRange(query, "halfFovDeg", 10.0, 60.0, halfFovDeg);
+        final float nWalkSpeed = ApiValidator.optionalFloatRange(query, "walkSpeed", 1.0, 2.0, walkSpeed);
+        final int nSearchSteps = ApiValidator.optionalIntRange(query, "searchSteps", 0, 12, searchSteps);
+        final boolean nHeadSearch = has(query, "headSearch")
+                ? ApiValidator.optionalBoolean(query, "headSearch", headSearch) : headSearch;
+        final boolean nFallRecover = has(query, "fallRecover")
+                ? ApiValidator.optionalBoolean(query, "fallRecover", fallRecover) : fallRecover;
+        final int nMaxFalls = ApiValidator.optionalIntRange(query, "maxFalls", 1, 10, maxFalls);
+        final boolean hasWalkFollow = has(query, "walkFollow");
+        final boolean nWalkFollow = hasWalkFollow
+                ? ApiValidator.optionalBoolean(query, "walkFollow", walkFollow) : walkFollow;
+
+        turnDb = nTurnDb;
+        closeCoverage = nCloseCoverage;
+        walkFwd = nWalkFwd;
+        walkLeft = nWalkLeft;
+        walkRight = nWalkRight;
+        walkLeftBig = nWalkLeftBig;
+        walkRightBig = nWalkRightBig;
+        walkSideLeft = nWalkSideLeft;
+        walkSideRight = nWalkSideRight;
+        walkSideLeftBig = nWalkSideLeftBig;
+        walkSideRightBig = nWalkSideRightBig;
+        walkBack = nWalkBack;
+        walkEngine = nWalkEngine;
+        sideDb = nSideDb;
+        bigSideDb = nBigSideDb;
+        sideMinCoverage = nSideMinCoverage;
+        bigTurnDb = nBigTurnDb;
+        backCoverage = nBackCoverage;
+        halfFovDeg = nHalfFovDeg;
+        walkSpeed = nWalkSpeed;
+        searchSteps = nSearchSteps;
+        headSearch = nHeadSearch;
+        fallRecover = nFallRecover;
+        maxFalls = nMaxFalls;
+        if (hasWalkFollow) {
             boolean was = walkFollow;
-            walkFollow = ApiValidator.optionalBoolean(query, "walkFollow", walkFollow);
-            if (was && !walkFollow) {
-                // 中途關行路跟：決策狀態清零，gait 行緊就平滑收步（唔使等租約過期）。
-                planner.reset();
-                releaseGaitIfWalking();
-            }
-            if (!was && walkFollow) {
+            // 同 update() 互斥：等在途一幀做完先切，之後嘅幀見到嘅已經係新狀態
+            //（planner 亦唔係線程安全，reset 同 step 唔可以齊行）。
+            synchronized (updateLock) {
+                walkFollow = nWalkFollow;
+                if (was != nWalkFollow) planner.reset();
                 // 重新開（包括跌太多次放棄之後人手重開）：跌倒計數同放棄原因清零。
-                planner.reset();
-                fallStop = "";
+                if (!was && nWalkFollow) fallStop = "";
             }
+            // 中途關行路跟：gait 行緊就平滑收步（唔使等租約過期）。
+            if (was && !nWalkFollow) releaseGaitIfWalking();
         }
         syncFallHold();
     }
@@ -305,13 +334,22 @@ public final class WalkFollower {
      * 行路跟冇開時唔掂（例如手柄行緊）。
      */
     public void onStop() {
-        planner.reset();
+        // 先擋住之後嘅 update()（並等在途一幀做完）：否則 stop 完仲有一幀用舊狀態起步，
+        // ubx 引擎會盲行 13 s。
+        final boolean wasFollow = walkFollow;
+        synchronized (updateLock) {
+            active = false;
+            planner.reset();
+            // 行路跟只係單節有效：停咗即復位（status.config.walkFollow 亦會變 false），
+            // 下次 start 要人手重新開，唔會一開波就因為上次忘記關而行。
+            walkFollow = false;
+        }
         walkingNow = false;
         walkStateNow = ColorTrackPlanner.WALK_NONE;
         // 跌低／起身中唔掂任何動作：stopActionWithRecovery 會截停起身動作＋蹲下站起，會破壞起身。
         FallMonitor fm = fallMonitor;
         boolean down = fallRecover && fm != null && fm.fallLevel() == ColorTrackPlanner.FALL_DOWN;
-        if (walkFollow && !down) {
+        if (wasFollow && !down) {
             WalkCenter wc = walkCenter;
             ActionDirect ad = actionDirect;
             try {
@@ -322,16 +360,19 @@ public final class WalkFollower {
                 }
             } catch (Throwable ignored) {}
         }
-        active = false;
         syncFallHold();
     }
 
     /** Center.shutdown：gait 行緊就放手（租約亦會兜底）。 */
     public void onShutdown() {
+        final boolean wasFollow = walkFollow;
+        synchronized (updateLock) {
+            active = false;
+            walkFollow = false;
+        }
         FallMonitor fm = fallMonitor;
         boolean down = fallRecover && fm != null && fm.fallLevel() == ColorTrackPlanner.FALL_DOWN;
-        if (walkFollow && !down) releaseGaitIfWalking();
-        active = false;
+        if (wasFollow && !down) releaseGaitIfWalking();
         syncFallHold();
     }
 
@@ -471,6 +512,14 @@ public final class WalkFollower {
      * @param headFollow／deadband／stepDeg／timeMs  caller 嘅頭追蹤設定
      */
     public void update(boolean found, float dx, float dy, float coverage,
+            boolean headFollow, float deadband, int stepDeg, int timeMs) {
+        synchronized (updateLock) {
+            if (!active) return; // 已 stop／未 start：在途幀唔再出手（頭／步態都唔掂）
+            updateLocked(found, dx, dy, coverage, headFollow, deadband, stepDeg, timeMs);
+        }
+    }
+
+    private void updateLocked(boolean found, float dx, float dy, float coverage,
             boolean headFollow, float deadband, int stepDeg, int timeMs) {
         final long nowMs = System.currentTimeMillis();
         final ActionDirect ad = actionDirect;

@@ -2,7 +2,7 @@
 
 > Language: English (this file) | [繁體中文](README_zh-Hant.md)
 
-`com.open.alpha2` (`versionName "beta 8.3"`, `versionCode 9`) is an Android app
+`com.open.alpha2` (`versionName "beta 8.4"`, `versionCode 9`) is an Android app
 for the UBTECH Alpha2 robot. On boot it starts an HTTP + WebSocket server on
 port `8888`; open `http://<robot-ip>:8888/` from a browser on the same Wi-Fi for
 the full control panel. `/blockly.html` is a block-programming page; `/docs` is
@@ -52,7 +52,7 @@ Signed with the committed debug key `app/debug.keystore` (password `android`);
 uninstall first on a signature mismatch. The app auto-starts on boot. Run
 `./gradlew clean assembleDebug --offline` before shipping (incremental builds
 bloat the APK). CI (`build-apk.yml`) strips web comments, builds the APK and
-uploads `open-alpha2-beta8.3.apk`.
+uploads `open-alpha2-beta8.4.apk`.
 
 ## Control panel (`app/src/main/assets/web/`)
 
@@ -74,7 +74,7 @@ English / Traditional Chinese, 10 tabs, live updates over WebSocket.
   Archive tracks, 5-band equalizer, random-motion and disco-LED options.
 - **LED** — head / eye / mouth presets.
 - **Camera** — MJPEG stream, snapshot, hi-res photo, mp4 recording, zoom,
-  pan-tilt joystick, mic listening, face tracking and colour tracking (with
+  pan-tilt joystick, mic listening, face tracking, colour tracking and object tracking (box a target in the preview; with
   optional walk-follow).
 - **Xiaozhi** — AI voice-chat bridge: pairing, connect, text chat, TTS output
   choice, custom OTA/server, per-tool MCP enable/disable.

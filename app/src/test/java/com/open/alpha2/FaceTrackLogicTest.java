@@ -67,6 +67,14 @@ public final class FaceTrackLogicTest {
         float cov = FaceTrackLogic.faceCoverage(fw, fh);
         ok(cov > 0.085f && cov < 0.095f, "cov.defaultCloseMatchesAbout29pxEyes(" + cov + ")");
 
+        // ROI 邊長量化：向上對齊 32 倍數、夾 cap；只升唔降；相近嘅邊長落同一級（令 FaceDetector 快取命中）。
+        ok(near(FaceTrackLogic.quantUp(96f, 32, 320), 96f), "quant.exactMultipleUnchanged");
+        ok(near(FaceTrackLogic.quantUp(97f, 32, 320), 128f), "quant.roundsUp");
+        ok(near(FaceTrackLogic.quantUp(300f, 32, 180), 180f), "quant.capped");
+        ok(near(FaceTrackLogic.quantUp(100f, 32, 320), FaceTrackLogic.quantUp(127f, 32, 320)), "quant.nearbyShareLevel");
+        ok(FaceTrackLogic.quantUp(150.3f, 32, 320) >= 150.3f, "quant.neverShrinks");
+        ok(near(FaceTrackLogic.quantUp(150f, 1, 320), 150f), "quant.q1Noop");
+
         System.out.println("FaceTrackLogicTest: passed=" + passed + " failed=" + failed);
         if (failed > 0) {
             System.exit(1);

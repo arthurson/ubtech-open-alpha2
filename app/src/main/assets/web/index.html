@@ -695,14 +695,29 @@
           <span class="toggle-track"></span>
         </span>
       </label>
-    </div>
-    <!-- 追色選擇：同 LED 七色對應（紅綠藍黃紫青白），開咗顏色追蹤先出；點即換（行緊都即時轉，唔使重開） -->
-    <div class="row" id="colorTrackPresets" style="display:none;gap:8px;align-items:center">
-      <span class="hint" data-i18n="led_color_label" style="margin:0">顏色：</span>
-      <span id="colorTrackDots" style="display:flex;gap:8px;align-items:center"></span>
-      <label class="switch-label" id="walkFollowWrap" style="margin-left:auto"><span data-i18n="walk_follow_label">行路跟</span>
+      <label class="switch-label"><span data-i18n="object_track_label">物件追蹤</span>
         <span class="toggle-switch">
-          <input type="checkbox" id="walkFollowToggle" onchange="colorTrackWalkChanged()">
+          <input type="checkbox" id="objectTrackToggle" onchange="objectTrackToggleChanged()">
+          <span class="toggle-track"></span>
+        </span>
+      </label>
+    </div>
+    <!-- 追蹤選項列：人臉／顏色／物件任何一個追蹤行緊先出（五個模式互斥，見 app-camera.js「相機模式 5選1」）。
+         左邊係隨模式變嘅上下文（顏色＝選色點；物件＝揀目標提示；人臉＝簡短說明），
+         右邊係共用嘅「行走跟隨」開關（按當前追蹤模式送去對應嘅 config；後端三個追蹤共用 WalkFollower，各自一份狀態）。 -->
+    <div class="row" id="trackOptionsRow" style="display:none;gap:8px;align-items:center">
+      <div class="track-ctx" style="flex:1;min-width:0">
+        <!-- 追色選擇：同 LED 七色對應（紅綠藍黃紫青白），開咗顏色追蹤先出；點即換（行緊都即時轉，唔使重開） -->
+        <div class="track-ctx" id="colorTrackPresets" style="display:none">
+          <span class="hint" data-i18n="led_color_label" style="margin:0">顏色：</span>
+          <span id="colorTrackDots" style="display:flex;gap:8px;align-items:center"></span>
+        </div>
+        <span class="hint" id="trackHint" style="margin:0;display:none"></span>
+      </div>
+      <label class="switch-label" id="walkFollowWrap" style="margin-left:auto"
+             title="機械人會轉向、橫移、前進後退，行去跟住目標（頭追蹤照舊）" data-i18n-title="walk_follow_tip"><span data-i18n="walk_follow_label">行走跟隨</span>
+        <span class="toggle-switch">
+          <input type="checkbox" id="walkFollowToggle" onchange="trackWalkFollowChanged()">
           <span class="toggle-track"></span>
         </span>
       </label>
@@ -750,6 +765,9 @@
       <div id="faceTrackBox" class="face-track-box"></div>
       <!-- 顏色追蹤框：後端 color/track/status 回同一形狀 fx/fy/fw/fh，畫橙框（同人臉追蹤互斥，唔會齊出） -->
       <div id="colorTrackBox" class="color-track-box"></div>
+      <!-- 物件追蹤框：後端 object/track/status 回同一形狀 fx/fy/fw/fh，畫青框；objectTrackSelBox 係拖框揀目標時嘅虛線框 -->
+      <div id="objectTrackBox" class="object-track-box"></div>
+      <div id="objectTrackSelBox" class="object-track-sel"></div>
       <!-- 手柄視圖：22 粒 pad 鍵全畫喺呢塊 canvas（圖形化，唔係 HTML 掣；定義跟手柄映射，
            經 gamepad/key 注入，見 app-gamepad.js cameraPad*；同功能鍵 overlay 互斥） -->
       <canvas id="cameraPadCanvas" class="camera-pad-canvas" style="display:none"></canvas>
@@ -1560,7 +1578,7 @@
     <section class="card">
       <h3 data-i18n="about_version_heading">ℹ️ Open Alpha2 版本</h3>
       <div class="row">
-        <button onclick="window.open('https://github.com/arthurson/ubtech-open-alpha2/releases','_blank','noopener')" style="font-weight:700;">Open Alpha2 beta 8.3 ↗</button>
+        <button onclick="window.open('https://github.com/arthurson/ubtech-open-alpha2/releases','_blank','noopener')" style="font-weight:700;">Open Alpha2 beta 8.4 ↗</button>
       </div>
     </section>
   </div>

@@ -1148,6 +1148,34 @@ button.eq-preset-sq.selected {
 }
 .color-track-box.on { display: block; }
 
+/* 追蹤選項列左邊嘅上下文區（選色點／提示文字） */
+.track-ctx { display: flex; gap: 8px; align-items: center; }
+
+/* 物件追蹤框：青框（同人臉綠／顏色橙區分；三者互斥），不攔 pointer */
+.object-track-box {
+  position: absolute;
+  border: 2px solid rgba(56, 189, 248, 0.95);
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  display: none;
+  pointer-events: none;
+  z-index: 8;
+}
+.object-track-box.on { display: block; }
+.object-track-box.lost { border-style: dashed; opacity: 0.6; }
+/* 拖框揀目標時嘅虛線框 */
+.object-track-sel {
+  position: absolute;
+  border: 2px dashed rgba(255, 255, 255, 0.95);
+  background: rgba(56, 189, 248, 0.15);
+  display: none;
+  pointer-events: none;
+  z-index: 9;
+}
+.object-track-sel.on { display: block; }
+/* 物件追蹤中：畫面可拖框揀目標（十字游標，禁止觸控捲動） */
+.camera-viewport.object-selecting { cursor: crosshair; touch-action: none; }
+
 .camera-kbd-hint {
   position: absolute;
   left: 12px;

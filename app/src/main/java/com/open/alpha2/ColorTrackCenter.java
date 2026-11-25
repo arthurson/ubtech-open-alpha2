@@ -193,27 +193,43 @@ public final class ColorTrackCenter {
     /** 從 query 讀可選追蹤參數並套用（start/config 共用；缺席即保留現值）。 */
     public void applyConfigFromQuery(Map<String, String> query) {
         if (query == null) return;
-        intervalMs = ApiValidator.optionalIntRange(query, "intervalMs", 100, 3000, intervalMs);
-        trackIntervalMs = ApiValidator.optionalIntRange(query, "trackIntervalMs", 100, 3000, trackIntervalMs);
-        stepDeg = ApiValidator.optionalIntRange(query, "stepDeg", 1, 30, stepDeg);
-        deadband = ApiValidator.optionalFloatRange(query, "deadband", 0.0, 0.5, deadband);
-        timeMs = ApiValidator.optionalIntRange(query, "timeMs", 20, 2000, timeMs);
-        hMin = ApiValidator.optionalFloatRange(query, "hMin", 0.0, 360.0, hMin);
-        hMax = ApiValidator.optionalFloatRange(query, "hMax", 0.0, 360.0, hMax);
-        sMin = ApiValidator.optionalFloatRange(query, "sMin", 0.0, 1.0, sMin);
-        sMax = ApiValidator.optionalFloatRange(query, "sMax", 0.0, 1.0, sMax);
-        vMin = ApiValidator.optionalFloatRange(query, "vMin", 0.0, 1.0, vMin);
-        vMax = ApiValidator.optionalFloatRange(query, "vMax", 0.0, 1.0, vMax);
-        minPixels = ApiValidator.optionalIntRange(query, "minPixels", 10, 20000, minPixels);
-        follower.applyConfig(query); // 行路跟／轉向／橫移／後退／頭搜索等（同 FaceTrackCenter 共用）
-        if (query.containsKey("headFollow") && query.get("headFollow") != null
-                && !query.get("headFollow").isEmpty()) {
-            headFollow = ApiValidator.optionalBoolean(query, "headFollow", headFollow);
-        }
-        if (query.containsKey("autoInterval") && query.get("autoInterval") != null
-                && !query.get("autoInterval").isEmpty()) {
-            autoInterval = ApiValidator.optionalBoolean(query, "autoInterval", autoInterval);
-        }
+        // 先全部驗證落局部變量（非法即拋，現值唔動）→ follower 自己亦係原子 → 最後先賦值。
+        final int nIntervalMs = ApiValidator.optionalIntRange(query, "intervalMs", 100, 3000, intervalMs);
+        final int nTrackIntervalMs = ApiValidator.optionalIntRange(query, "trackIntervalMs", 100, 3000, trackIntervalMs);
+        final int nStepDeg = ApiValidator.optionalIntRange(query, "stepDeg", 1, 30, stepDeg);
+        final float nDeadband = ApiValidator.optionalFloatRange(query, "deadband", 0.0, 0.5, deadband);
+        final int nTimeMs = ApiValidator.optionalIntRange(query, "timeMs", 20, 2000, timeMs);
+        final float nHMin = ApiValidator.optionalFloatRange(query, "hMin", 0.0, 360.0, hMin);
+        final float nHMax = ApiValidator.optionalFloatRange(query, "hMax", 0.0, 360.0, hMax);
+        final float nSMin = ApiValidator.optionalFloatRange(query, "sMin", 0.0, 1.0, sMin);
+        final float nSMax = ApiValidator.optionalFloatRange(query, "sMax", 0.0, 1.0, sMax);
+        final float nVMin = ApiValidator.optionalFloatRange(query, "vMin", 0.0, 1.0, vMin);
+        final float nVMax = ApiValidator.optionalFloatRange(query, "vMax", 0.0, 1.0, vMax);
+        final int nMinPixels = ApiValidator.optionalIntRange(query, "minPixels", 10, 20000, minPixels);
+        final boolean nHeadFollow = hasParam(query, "headFollow")
+                ? ApiValidator.optionalBoolean(query, "headFollow", headFollow) : headFollow;
+        final boolean nAutoInterval = hasParam(query, "autoInterval")
+                ? ApiValidator.optionalBoolean(query, "autoInterval", autoInterval) : autoInterval;
+        follower.applyConfig(query); // 行路跟／轉向／橫移／後退／頭搜索等（同 FaceTrackCenter 共用；本身原子）
+        intervalMs = nIntervalMs;
+        trackIntervalMs = nTrackIntervalMs;
+        stepDeg = nStepDeg;
+        deadband = nDeadband;
+        timeMs = nTimeMs;
+        hMin = nHMin;
+        hMax = nHMax;
+        sMin = nSMin;
+        sMax = nSMax;
+        vMin = nVMin;
+        vMax = nVMax;
+        minPixels = nMinPixels;
+        headFollow = nHeadFollow;
+        autoInterval = nAutoInterval;
+    }
+
+    private static boolean hasParam(Map<String, String> q, String k) {
+        String v = q.get(k);
+        return v != null && !v.isEmpty();
     }
 
     /** 啟動追蹤：先確保相機開流，再訂閱抽樣。HTTP worker 線程調用（會 block 開相機）。 */
@@ -236,6 +252,10 @@ public final class ColorTrackCenter {
         running = true;
         lostStreak = 0;
         hasTrack = false;
+        // 上一節嘅偵測結果唔好帶入新一節（前端 start 後即讀 status，會畫出舊框）。
+        lastFound = 0;
+        lastCoverage = 0f;
+        lastPixels = 0;
         return HttpServer.ApiResponse.ok(statusJson());
     }
 
@@ -347,6 +367,8 @@ public final class ColorTrackCenter {
                     : null;
             if (best == null) {
                 lastFound = 0;
+                lastCoverage = 0f; // 跟丟後 status.confidence 唔好停喺舊值
+                lastPixels = 0;
                 hasTrack = false;
                 lostStreak++;
                 actuate(false, 0f, 0f);

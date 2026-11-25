@@ -3,7 +3,7 @@
   "info": {
     "title": "Open Alpha2 API",
     "description": "`com.open.alpha2` 裝在 UBTECH Alpha2 機械人 (Android 5.1.1, API 22) 上的本地控制面板 HTTP + WebSocket API。\n依 `MainActivity handleApi()` / `HttpServer` 反向生成，\n覆蓋機械人全部本機能力（原 17 個 AIDL interface 功能，現經直驅實現），加上獨立的 system/xiaozhi/stream/upload 命名空間。\n預設由 `HttpServer.PORT = 8888` 以純 HTTP 提供 (`http://<robot-ip>:8888/`)，同 WiFi 任何瀏覽器可直接訪問。\n所有 `/api/*` 回應皆為 `application/json; charset=utf-8` 的 `{ok: boolean, ...}` 形狀，失敗時帶 `error` 欄位。401 一律附 `WWW-Authenticate: Bearer realm=\"panel\"`。\n即時事件 (觸摸/ASR/電池/跌落/PIR 等) 經 `GET /ws` (RFC6455 WebSocket) 推送，非輪詢。\n實驗 tab 管理面板 token (`/api/system/auth/*`，見 PanelAuth.java)：預設啟用——首次啟動自動產生 token 並顯示於機身畫面（用戶主動清除＝停用，重啟後不會自動重新啟用）； 啟用後成個面板上鎖——全部 `/api/*`（含讀操作、其他分頁、Blockly）、全部 `/upload/*`、 `/stream/*` 同 `/ws` 要帶認證（`Authorization: Bearer <token>` 主；設不到 header 的 `<img>`／WebSocket 用 `?panel_token=` fallback），缺／錯回 401；淨 `system/auth/*` （解鎖入口）同靜態頁開放。Token 記喺瀏覽器 localStorage（同一個面板地址跨 tab 共用）。 舊 `?token=` 別名已移除（同小智 ota `token` 撞名），curl 請用 `-H \"Authorization: Bearer ...\"` 或 `?panel_token=`。\n",
-    "version": "beta 8.3",
+    "version": "beta 8.4",
     "contact": {
       "name": "Open Alpha2",
       "url": "https://github.com/arthurson/ubtech-open-alpha2"
@@ -137,7 +137,7 @@
                 },
                 "example": {
                   "ok": true,
-                  "appVersion": "beta 8.3",
+                  "appVersion": "beta 8.4",
                   "chestAvailable": true,
                   "headerAvailable": true,
                   "androidTtsReady": true
@@ -8001,7 +8001,7 @@
             "schema": {
               "type": "boolean"
             },
-            "description": "行路跟總開關（預設 false；開＝身體方位（畫面偏移＋頭 yaw 偏離 home）偏就轉向／橫移、遠就前進、近就企定；gait 引擎（預設）前進後退用 WalkCenter 連續步態 hold／release，可隨時平滑收步，掃唔到最遲 1.5 s 租約自動收步；ubx 引擎播一步 .ubx（13 s 盲行）。轉向／橫移一次一動；同一決策要連續 2 幀先出手。平地＋清空＋有人睇住先開；跌倒保護見 fallRecover）"
+            "description": "行走跟隨總開關（預設 false，只對當前一節有效：停咗追蹤即自動復位成 false，下次 start 要重新開，免得上次忘記關而一開波就行；開＝身體方位（畫面偏移＋頭 yaw 偏離 home）偏就轉向／橫移、遠就前進、近就企定；gait 引擎（預設）前進後退用 WalkCenter 連續步態 hold／release，可隨時平滑收步，掃唔到最遲 1.5 s 租約自動收步；ubx 引擎播一步 .ubx（13 s 盲行）。轉向／橫移一次一動；同一決策要連續 2 幀先出手。平地＋清空＋有人睇住先開；跌倒保護見 fallRecover）"
           },
           {
             "name": "turnDb",
@@ -8202,7 +8202,7 @@
             "schema": {
               "type": "boolean"
             },
-            "description": "掃唔到時頭朝最後見到嘅方向掃（預設 true；只喺行路跟＋頭追蹤開住時有效；最多約 50 幀然後回 home）。每個步態／.ubx 動作都將頭拉返 home，大角度轉向後目標可能跌出視角，靠呢個搵返"
+            "description": "掃唔到時頭朝最後見到嘅方向掃（預設 true；只喺行走跟隨＋頭追蹤開住時有效；最多約 50 幀然後回 home）。每個步態／.ubx 動作都將頭拉返 home，大角度轉向後目標可能跌出視角，靠呢個搵返"
           },
           {
             "name": "fallRecover",
@@ -8210,7 +8210,7 @@
             "schema": {
               "type": "boolean"
             },
-            "description": "行路跟期間跌倒保護（預設 true）：臨時確保跌倒看門狗（fall/*）開住（唔寫偏好設定，行路跟結束即還原）；未武裝（要先見到企直 2 秒）或者睇唔到加速度計就唔行；跌低／起身中即收步並停晒指令，由看門狗播 BackStand／FrontStand 起身（兩個動作未經機身實測），起身企穩後多等 1.5 s 自動繼續。false＝唔保護，跌低都照發命令"
+            "description": "行走跟隨期間跌倒保護（預設 true）：臨時確保跌倒看門狗（fall/*）開住（唔寫偏好設定，行走跟隨結束即還原）；未武裝（要先見到企直 2 秒）或者睇唔到加速度計就唔行；跌低／起身中即收步並停晒指令，由看門狗播 BackStand／FrontStand 起身（兩個動作未經機身實測），起身企穩後多等 1.5 s 自動繼續。false＝唔保護，跌低都照發命令"
           },
           {
             "name": "maxFalls",
@@ -8220,7 +8220,7 @@
               "minimum": 1,
               "maximum": 10
             },
-            "description": "2 分鐘內跌夠幾多次就放棄行路跟（預設 3）：自動關 walkFollow（status.fallStop 寫明原因），要人手重新開"
+            "description": "2 分鐘內跌夠幾多次就放棄行走跟隨（預設 3）：自動關 walkFollow（status.fallStop 寫明原因），要人手重新開"
           },
           {
             "$ref": "#/components/parameters/PanelToken"
@@ -8310,7 +8310,7 @@
             }
           },
           "200": {
-            "description": "{ok, running, detector, pan, tilt, faces, fx/fy/fw/fh, confidence, coverage（估算臉框面積，校正行路跟 closeCoverage 用）, roiTracking, lastWalk/walkMoves/decision/walkState/engine/ubxPlaying（行路跟）, effectiveIntervalMs, framesSeen/Processed, moves, lostStreak, lastCostMs, config, servo}",
+            "description": "{ok, running, detector, pan, tilt, faces, fx/fy/fw/fh, confidence, coverage（估算臉框面積，校正行走跟隨 closeCoverage 用）, roiTracking, lastWalk/walkMoves/decision/walkState/engine/ubxPlaying（行走跟隨）, effectiveIntervalMs, framesSeen/Processed, moves, lostStreak, lastCostMs, config, servo}",
             "content": {
               "application/json": {
                 "schema": {
@@ -8844,7 +8844,7 @@
             "schema": {
               "type": "boolean"
             },
-            "description": "行路跟總開關（預設 false；開＝身體方位（畫面偏移＋頭 yaw 偏離 home）偏就轉向／橫移、遠就前進、近就企定；gait 引擎（預設）前進後退用 WalkCenter 連續步態 hold／release，可隨時平滑收步，掃唔到最遲 1.5 s 租約自動收步；ubx 引擎播一步 .ubx（13 s 盲行）。轉向／橫移一次一動；同一決策要連續 2 幀先出手。平地＋清空＋有人睇住先開；跌倒保護見 fallRecover）"
+            "description": "行走跟隨總開關（預設 false，只對當前一節有效：停咗追蹤即自動復位成 false，下次 start 要重新開，免得上次忘記關而一開波就行；開＝身體方位（畫面偏移＋頭 yaw 偏離 home）偏就轉向／橫移、遠就前進、近就企定；gait 引擎（預設）前進後退用 WalkCenter 連續步態 hold／release，可隨時平滑收步，掃唔到最遲 1.5 s 租約自動收步；ubx 引擎播一步 .ubx（13 s 盲行）。轉向／橫移一次一動；同一決策要連續 2 幀先出手。平地＋清空＋有人睇住先開；跌倒保護見 fallRecover）"
           },
           {
             "name": "turnDb",
@@ -9045,7 +9045,7 @@
             "schema": {
               "type": "boolean"
             },
-            "description": "掃唔到時頭朝最後見到嘅方向掃（預設 true；只喺行路跟＋頭追蹤開住時有效；最多約 50 幀然後回 home）。每個步態／.ubx 動作都將頭拉返 home，大角度轉向後目標可能跌出視角，靠呢個搵返"
+            "description": "掃唔到時頭朝最後見到嘅方向掃（預設 true；只喺行走跟隨＋頭追蹤開住時有效；最多約 50 幀然後回 home）。每個步態／.ubx 動作都將頭拉返 home，大角度轉向後目標可能跌出視角，靠呢個搵返"
           },
           {
             "name": "fallRecover",
@@ -9053,7 +9053,7 @@
             "schema": {
               "type": "boolean"
             },
-            "description": "行路跟期間跌倒保護（預設 true）：臨時確保跌倒看門狗（fall/*）開住（唔寫偏好設定，行路跟結束即還原）；未武裝（要先見到企直 2 秒）或者睇唔到加速度計就唔行；跌低／起身中即收步並停晒指令，由看門狗播 BackStand／FrontStand 起身（兩個動作未經機身實測），起身企穩後多等 1.5 s 自動繼續。false＝唔保護，跌低都照發命令"
+            "description": "行走跟隨期間跌倒保護（預設 true）：臨時確保跌倒看門狗（fall/*）開住（唔寫偏好設定，行走跟隨結束即還原）；未武裝（要先見到企直 2 秒）或者睇唔到加速度計就唔行；跌低／起身中即收步並停晒指令，由看門狗播 BackStand／FrontStand 起身（兩個動作未經機身實測），起身企穩後多等 1.5 s 自動繼續。false＝唔保護，跌低都照發命令"
           },
           {
             "name": "maxFalls",
@@ -9063,7 +9063,7 @@
               "minimum": 1,
               "maximum": 10
             },
-            "description": "2 分鐘內跌夠幾多次就放棄行路跟（預設 3）：自動關 walkFollow（status.fallStop 寫明原因），要人手重新開"
+            "description": "2 分鐘內跌夠幾多次就放棄行走跟隨（預設 3）：自動關 walkFollow（status.fallStop 寫明原因），要人手重新開"
           },
           {
             "$ref": "#/components/parameters/PanelToken"
@@ -9545,6 +9545,842 @@
           }
         },
         "operationId": "colorTrackConfig_get"
+      }
+    },
+    "/api/object/track/start": {
+      "get": {
+        "tags": [
+          "camera"
+        ],
+        "summary": "開始純 Java 物件追蹤（框選目標＋模板匹配＋頭部 19/20 跟隨，可選行走跟隨）",
+        "description": "零額外依賴（唔用 TFLite／OpenCV／ML Kit），離線可用。會自動開相機（若未開流），160x120 灰階模板匹配（ZSAD，×0.9/1.0/1.11 三尺度，跟丟後全圖重搵）跟隨用戶框選嘅任意物件，死區＋步進驅動頭部 yaw/pitch。用 bx/by/bw/bh 揀目標；唔帶＝以畫面正中框做目標。追蹤中發 object/track/config 帶新框即重揀。status.lowTexture＝目標紋理太少（純色／白牆）跟唔穩。同人臉／顏色追蹤互斥：啟動即停另外兩邊。播動作時請先停追蹤，兩邊同搶頭部舵機會打架。",
+        "parameters": [
+          {
+            "name": "intervalMs",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 3000
+            },
+            "description": "檢測間隔 ms（預設 200；跟唔到用呢個；自動開且跟到目標改用 trackIntervalMs）"
+          },
+          {
+            "name": "trackIntervalMs",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 3000
+            },
+            "description": "跟到目標時檢測間隔 ms（預設 100；僅自動開有效；實測單幀全圖 160x120 個位數 ms）"
+          },
+          {
+            "name": "autoInterval",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "自動間隔（預設 true；開＝跟唔到慢掃、跟到快掃；關＝一律用 intervalMs）"
+          },
+          {
+            "name": "stepDeg",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            },
+            "description": "每次最大跟隨步進（度，預設 17；死區外按偏移比例折算）"
+          },
+          {
+            "name": "deadband",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5
+            },
+            "description": "中央死區（歸一化半寬，預設 0.10；目標中心在死區內不動頭）"
+          },
+          {
+            "name": "timeMs",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 20,
+              "maximum": 2200
+            },
+            "description": "單步舵機執行時間 ms（預設 400）"
+          },
+          {
+            "name": "headFollow",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "追頭總開關（預設 true；關＝只偵測＋畫框，頭不動）"
+          },
+          {
+            "name": "bx",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0
+            },
+            "description": "目標框左上 x（歸一化 0-1，原點畫面左上）；bx/by/bw/bh 須四個齊。start 唔帶框＝以畫面正中（寬 25%、高 30%）做目標；追蹤中再帶＝重新揀目標"
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0
+            },
+            "description": "目標框左上 y（歸一化 0-1）"
+          },
+          {
+            "name": "bw",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 1.0
+            },
+            "description": "目標框寬（歸一化 0.02-1；實際最細約 8 像素＝偵測圖寬 5%）"
+          },
+          {
+            "name": "bh",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 1.0
+            },
+            "description": "目標框高（歸一化 0.02-1）"
+          },
+          {
+            "name": "matchThreshold",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 0.4
+            },
+            "description": "模板匹配接受門檻（ZSAD 平均絕對差／255，預設 0.14；細＝嚴，易跟丟；大＝鬆，易鎖錯）"
+          },
+          {
+            "name": "adapt",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "跟到時慢慢更新模板（預設 true；物件轉面／光影變都撐到；怕漂移可關）"
+          },
+          {
+            "name": "walkFollow",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "行走跟隨總開關（預設 false，只對當前一節有效：停咗追蹤即自動復位成 false，下次 start 要重新開，免得上次忘記關而一開波就行；開＝身體方位（畫面偏移＋頭 yaw 偏離 home）偏就轉向／橫移、遠就前進、近就企定；gait 引擎（預設）前進後退用 WalkCenter 連續步態 hold／release，可隨時平滑收步，跟唔到最遲 1.5 s 租約自動收步；ubx 引擎播一步 .ubx（13 s 盲行）。轉向／橫移一次一動；同一決策要連續 2 幀先出手。平地＋清空＋有人睇住先開；跌倒保護見 fallRecover）"
+          },
+          {
+            "name": "turnDb",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.8
+            },
+            "description": "轉向死區（身體方位 |bearing| 超過先轉，預設 0.35；單位同 dx（1＝半個鏡頭視角）；身體郁大步過頭，同頭死區分開）"
+          },
+          {
+            "name": "closeCoverage",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 0.6
+            },
+            "description": "夠近覆蓋率（框面積／全圖，預設 0.12；大過即企定唔行，淨個頭瞄）"
+          },
+          {
+            "name": "walkFwd",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "前進一步動作（只 walkEngine=ubx 用；fileId／名／檔名，預設 1508999860568 前進，13.35 s）"
+          },
+          {
+            "name": "walkLeft",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "左轉一步動作（預設 1464835936047 左轉）"
+          },
+          {
+            "name": "walkRight",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "右轉一步動作（預設 1464835936041 右轉）"
+          },
+          {
+            "name": "walkLeftBig",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "大左轉動作（預設 1508999477476 向左轉，3.0 s；每步轉幾多度未量，轉得細過普通轉可同 walkLeft 對調）"
+          },
+          {
+            "name": "walkRightBig",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "大右轉動作（預設 1508999731737 右轉，3.3 s）"
+          },
+          {
+            "name": "walkSideLeft",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "左橫移一步動作（預設 1464835936046 左移，2.75 s）"
+          },
+          {
+            "name": "walkSideRight",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "右橫移一步動作（預設 1464835936040 右移，2.75 s）"
+          },
+          {
+            "name": "walkSideLeftBig",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "大左橫移動作（預設 1508999547240 向左移動，同左移同一姿勢連續 3 步，4.85 s）"
+          },
+          {
+            "name": "walkSideRightBig",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "大右橫移動作（預設 1508999801028 右移，4.55 s）"
+          },
+          {
+            "name": "walkBack",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "後退動作（只 walkEngine=ubx 且 backCoverage>0 用；預設 1510818256622 後退，16.65 s；gait 引擎用 walk_back 連續步態）"
+          },
+          {
+            "name": "walkEngine",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "gait",
+                "ubx"
+              ],
+              "default": "gait"
+            },
+            "description": "行路引擎：gait＝WalkCenter 連續步態做前進後退（預設；hold／release 可隨時平滑收步，未接線時自動退返 ubx）；ubx＝舊式播一步 .ubx"
+          },
+          {
+            "name": "sideDb",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.8
+            },
+            "description": "橫移死區（bearing 超過先橫移，須細過 turnDb 先有效；0＝關閉橫移，預設 0.15；橫移唔轉身，保持朝向）"
+          },
+          {
+            "name": "bigSideDb",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.8
+            },
+            "description": "大橫移死區（預設 0.25；細過 sideDb 即當同值；須細過 turnDb 先有效）"
+          },
+          {
+            "name": "sideMinCoverage",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.6
+            },
+            "description": "橫移最低覆蓋率（細過即太遠，橫移改唔到方位，唔橫移改為前進，預設 0.04）"
+          },
+          {
+            "name": "bigTurnDb",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 2.0
+            },
+            "description": "大轉死區（|bearing| 超過用大轉動作，預設 0.9；細過 turnDb 即當同值；頭偏移計埋所以可以大過 1）"
+          },
+          {
+            "name": "backCoverage",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.9
+            },
+            "description": "後退覆蓋率（框面積／全圖；大過即後退；0＝唔後退，預設 0；開咗自動校正到 >= closeCoverage×1.3）"
+          },
+          {
+            "name": "halfFovDeg",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 60
+            },
+            "description": "鏡頭水平半視角（度，預設 30；未量，且假設 1 舵機單位≈1°——用嚟將頭 yaw 偏離換算成 dx 尺度，請實測校正）"
+          },
+          {
+            "name": "walkSpeed",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 2
+            },
+            "description": "gait 前進最高速倍率（預設 1.0＝恆速；>1 時遠用呢個、近線性降到 1.0；實際封頂約 1.33 倍）"
+          },
+          {
+            "name": "searchSteps",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 12
+            },
+            "description": "跟唔到時身體朝最後見到嘅方向轉幾多步搵返（預設 0＝唔搜；盲轉有風險故 opt-in；從未見過目標唔搜）"
+          },
+          {
+            "name": "headSearch",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "跟唔到時頭朝最後見到嘅方向掃（預設 true；只喺行走跟隨＋頭追蹤開住時有效；最多約 50 幀然後回 home）。每個步態／.ubx 動作都將頭拉返 home，大角度轉向後目標可能跌出視角，靠呢個搵返"
+          },
+          {
+            "name": "fallRecover",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "行走跟隨期間跌倒保護（預設 true）：臨時確保跌倒看門狗（fall/*）開住（唔寫偏好設定，行走跟隨結束即還原）；未武裝（要先見到企直 2 秒）或者睇唔到加速度計就唔行；跌低／起身中即收步並停晒指令，由看門狗播 BackStand／FrontStand 起身（兩個動作未經機身實測），起身企穩後多等 1.5 s 自動繼續。false＝唔保護，跌低都照發命令"
+          },
+          {
+            "name": "maxFalls",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            },
+            "description": "2 分鐘內跌夠幾多次就放棄行走跟隨（預設 3）：自動關 walkFollow（status.fallStop 寫明原因），要人手重新開"
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "追蹤狀態（同 color/track/status 同形狀）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "objectTrackStart_get"
+      }
+    },
+    "/api/object/track/stop": {
+      "get": {
+        "tags": [
+          "camera"
+        ],
+        "summary": "停止物件追蹤（頭停在現位，不自動回中；目標模板保留到下次 start 前會被新框覆蓋）",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "追蹤狀態",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "objectTrackStop_get"
+      }
+    },
+    "/api/object/track/status": {
+      "get": {
+        "tags": [
+          "camera"
+        ],
+        "summary": "查詢物件追蹤狀態（running／目標框／頭角度／統計）",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "{ok, running, detector, pan, tilt, faces(0/1), fx/fy/fw/fh, confidence, score, selected, selectCount, reacquired, texture, lowTexture, error, effectiveIntervalMs, framesSeen/Processed, moves, lostStreak, lastCostMs, config, servo}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/OkWrapper"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "running": {
+                          "type": "boolean"
+                        },
+                        "faces": {
+                          "type": "integer"
+                        },
+                        "pan": {
+                          "type": "integer"
+                        },
+                        "tilt": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "objectTrackStatus_get"
+      }
+    },
+    "/api/object/track/config": {
+      "get": {
+        "tags": [
+          "camera"
+        ],
+        "summary": "更新物件追蹤參數／重新框選目標（不啟停；啟動中亦可即時調）",
+        "parameters": [
+          {
+            "name": "intervalMs",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 3000
+            }
+          },
+          {
+            "name": "trackIntervalMs",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 3000
+            }
+          },
+          {
+            "name": "autoInterval",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "stepDeg",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            }
+          },
+          {
+            "name": "deadband",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.5
+            }
+          },
+          {
+            "name": "timeMs",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 20,
+              "maximum": 2200
+            }
+          },
+          {
+            "name": "headFollow",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "bx",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0
+            },
+            "description": "目標框左上 x（歸一化 0-1，原點畫面左上）；bx/by/bw/bh 須四個齊。start 唔帶框＝以畫面正中（寬 25%、高 30%）做目標；追蹤中再帶＝重新揀目標"
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0
+            },
+            "description": "目標框左上 y（歸一化 0-1）"
+          },
+          {
+            "name": "bw",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 1.0
+            },
+            "description": "目標框寬（歸一化 0.02-1；實際最細約 8 像素＝偵測圖寬 5%）"
+          },
+          {
+            "name": "bh",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 1.0
+            },
+            "description": "目標框高（歸一化 0.02-1）"
+          },
+          {
+            "name": "matchThreshold",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 0.4
+            },
+            "description": "模板匹配接受門檻（ZSAD 平均絕對差／255，預設 0.14；細＝嚴，易跟丟；大＝鬆，易鎖錯）"
+          },
+          {
+            "name": "adapt",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "跟到時慢慢更新模板（預設 true；物件轉面／光影變都撐到；怕漂移可關）"
+          },
+          {
+            "name": "walkFollow",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "turnDb",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.8
+            }
+          },
+          {
+            "name": "closeCoverage",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 0.6
+            }
+          },
+          {
+            "name": "walkFwd",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "walkLeft",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "walkRight",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "walkLeftBig",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "walkRightBig",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "walkSideLeft",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "walkSideRight",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "walkSideLeftBig",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "walkSideRightBig",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "walkBack",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "walkEngine",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "gait",
+                "ubx"
+              ],
+              "default": "gait"
+            }
+          },
+          {
+            "name": "sideDb",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.8
+            }
+          },
+          {
+            "name": "bigSideDb",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.8
+            }
+          },
+          {
+            "name": "sideMinCoverage",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.6
+            }
+          },
+          {
+            "name": "bigTurnDb",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 2.0
+            }
+          },
+          {
+            "name": "backCoverage",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.9
+            }
+          },
+          {
+            "name": "halfFovDeg",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 10,
+              "maximum": 60
+            }
+          },
+          {
+            "name": "walkSpeed",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 2
+            }
+          },
+          {
+            "name": "searchSteps",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 12
+            }
+          },
+          {
+            "name": "headSearch",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fallRecover",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "maxFalls",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PanelToken"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "面板 token 缺／錯（僅啟用後）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "追蹤狀態",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkWrapper"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "objectTrackConfig_get"
       }
     },
     "/api/audio/testtone": {
@@ -14856,11 +15692,11 @@
         "properties": {
           "enabled": {
             "type": "boolean",
-            "description": "看門狗開關（記喺 SharedPreferences；行路跟開住時可能臨時開咗但冇記，見 walkFollowHolds）"
+            "description": "看門狗開關（記喺 SharedPreferences；行走跟隨開住時可能臨時開咗但冇記，見 walkFollowHolds）"
           },
           "walkFollowHolds": {
             "type": "integer",
-            "description": "行路跟（顏色／人臉追蹤）臨時要求開住看門狗嘅計數（>0＝有行路跟用緊；唔寫偏好設定，全部放手後如果偏好冇開就自動關返）"
+            "description": "行走跟隨（顏色／人臉追蹤）臨時要求開住看門狗嘅計數（>0＝有行走跟隨用緊；唔寫偏好設定，全部放手後如果偏好冇開就自動關返）"
           },
           "state": {
             "type": "string",

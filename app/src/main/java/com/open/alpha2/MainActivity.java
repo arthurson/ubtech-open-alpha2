@@ -214,6 +214,7 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
     private VoskApi voskApi;
     private FaceTrackCenter faceTrackCenter;
     private ColorTrackCenter colorTrackCenter;
+    private ObjectTrackCenter objectTrackCenter;
 
     // RobotEventReceiver 沒有 constructor/field 拿到 outer
     // MainActivity instance (它一直只經 EventBus 靜態方法送 event, 不認識
@@ -388,12 +389,16 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         // 純 Java 顏色追蹤（HSV＋最大 blob，零依賴；同人臉追蹤互斥，見 CameraApi）。
         colorTrackCenter = new ColorTrackCenter(cameraController, ubxApi);
         cameraApi.setColorTrackCenter(colorTrackCenter);
+        // 純 Java 物件追蹤（框選目標＋模板匹配，零依賴；同人臉／顏色追蹤互斥，見 CameraApi）。
+        objectTrackCenter = new ObjectTrackCenter(cameraController, ubxApi);
+        cameraApi.setObjectTrackCenter(objectTrackCenter);
         // 顏色行路跟要 ActionDirect：initRobot()（line 224）起得早過呢度，
         // 嗰陣 Center 仲係 null 注入唔到，呢度兩邊齊先後補（之前擺 initRobot
         // 入面永遠跳過——行路跟唔郁得頭郁就係咁嚟）。
         if (actionDirect != null) {
             try { colorTrackCenter.setActionDirect(actionDirect); } catch (Throwable ignored) {}
             try { faceTrackCenter.setActionDirect(actionDirect); } catch (Throwable ignored) {}
+            try { objectTrackCenter.setActionDirect(actionDirect); } catch (Throwable ignored) {}
         }
         // Sonar＋PIR sensors 包：只需要 ledCenter (紫燈指示)，在 xiaozhiBridge 之前起——
         // MCP sensors 4 tool 經 ctor 取得 (斷 cycle：PIR 推送
@@ -445,6 +450,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         if (faceTrackCenter != null) {
             try { faceTrackCenter.setWalkCenter(walkCenter); } catch (Throwable ignored) {}
         }
+        if (objectTrackCenter != null) {
+            try { objectTrackCenter.setWalkCenter(walkCenter); } catch (Throwable ignored) {}
+        }
         // ONNX policy（policies/<name>/policy.onnx＋manifest.json；預設 dry-run 排練）。
         policyCenter = new PolicyCenter(this, ubxPlayer, deviceStatus);
         // 跌倒自己起身看門狗（app 層，獨立於 policy 會話；開關記喺 SharedPreferences，
@@ -457,6 +465,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         }
         if (faceTrackCenter != null) {
             try { faceTrackCenter.setFallMonitor(fallRecoveryCenter); } catch (Throwable ignored) {}
+        }
+        if (objectTrackCenter != null) {
+            try { objectTrackCenter.setFallMonitor(fallRecoveryCenter); } catch (Throwable ignored) {}
         }
         // dispatcher 包全部上面 controller (+speechCenter 做 Host；sensorState
         // 繼續經 this——TTS／sonar 全部轉交給對應 center；servo/sonar 直調
@@ -1293,6 +1304,9 @@ public class MainActivity extends Activity implements XiaozhiBridge.HostState, G
         }
         if (colorTrackCenter != null) {
             try { colorTrackCenter.shutdown(); } catch (Throwable ignored) {}
+        }
+        if (objectTrackCenter != null) {
+            try { objectTrackCenter.shutdown(); } catch (Throwable ignored) {}
         }
         if (videoCenter != null) {
             try { videoCenter.stopIfRecording(); } catch (Throwable ignored) {}
